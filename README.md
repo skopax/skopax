@@ -66,7 +66,7 @@ Or run the published image with a MongoDB of your own. The first line makes the 
 
 Keep that key, for example in your password manager (`echo "$SKOPAX_SECRET_KEY"` prints it; with Compose it stays in `.env`), and pass the same value on every start. With another key, Skopax cannot open the integration secrets sealed with the old one, so each has to be entered again, and everyone has to sign in again (see [Settings](docs/configuration.md#settings)).
 
-The image is built for `linux/amd64` and `linux/arm64`. Releases and release candidates are published to GHCR; a Docker Hub mirror, `docker.io/skopax/skopax`, comes in a later release. Read the setup code with `docker logs skopax` instead of `docker compose logs skopax` below. [Operations](docs/operations.md#the-image) has more on the image.
+The image is built for `linux/amd64` and `linux/arm64`. From 0.1.0, Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. Read the setup code with `docker logs skopax` instead of `docker compose logs skopax` below. [Operations](docs/operations.md#the-image) has more on the image.
 
 Run one Skopax per MongoDB database: that is the supported shape in v0.1. Several pods of one Skopax share their database safely, but two separate copies on one database can, for example, post a retried route message twice.
 

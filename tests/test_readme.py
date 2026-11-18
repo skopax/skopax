@@ -422,8 +422,9 @@ def test_readme_states_the_stable_release_status():
     assert 'settings and the plug-in contract follow semantic versioning' in flat and 'without a note in [CHANGELOG.md](CHANGELOG.md)' in flat
     assert 'Release candidate, not yet stable' not in text and 'pre-release, not ready for use' not in text and 'may still change before 0.1.0' not in text
     assert re.search(rf'ghcr\.io/skopax/skopax:{re.escape(image_tag())}(?![\w.-])', text)
-    assert 'Releases and release candidates are published to GHCR; a Docker Hub mirror, `docker.io/skopax/skopax`, comes in a later release.' in flat and 'comes with 0.1.0' not in text
-    assert 'A release is tagged `X.Y.Z`, `X.Y` and `latest` on GHCR.' in image and 'until then it skips that step with a notice' in image and 'from 0.1.0 the same tags go to' not in image
+    assert 'Docker Hub has a mirror of each release, `docker.io/skopax/skopax`' in flat and 'comes with 0.1.0' not in text
+    assert 'release candidates are published to GHCR only' in flat
+    assert 'A release is tagged `X.Y.Z`, `X.Y` and `latest` on GHCR and Docker Hub' in image and 'skips the Docker Hub copy with a notice' in image and 'from 0.1.0 the same tags go to' not in image
     assert 'docker compose up --build' in text and '## First run' in text
 
 

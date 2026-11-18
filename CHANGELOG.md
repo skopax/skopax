@@ -11,9 +11,9 @@ The first stable release. Skopax watches your services and tools, turns problems
 - Slack: cards and deploy reports in a channel, answers in threads, buttons for the common actions. An example app manifest is in `examples/slack-app-manifest.yaml`.
 - Admin: integrations as searchable tiles with one form for every integration, feature switches, built-in accounts and SSO (OIDC) with sign-in limits, API tokens, MCP access.
 - Plug-ins: a stable contract for checks, tools, settings sources, migrations, locales, card types and deploy reports, with three example plug-ins in `examples/`.
-- The image for `linux/amd64` and `linux/arm64` on GHCR, with the licence, notices and a software list inside. A Docker Hub mirror follows in a later release.
+- The image for `linux/amd64` and `linux/arm64` on GHCR and Docker Hub, with the licence, notices and a software list inside.
 
-Since 0.1.0-rc.3: no code changes; the version, the README status, the image wording, and the image workflow skips the Docker Hub copy while its secrets are not set.
+Since 0.1.0-rc.3: no code changes; the version, the README status, the image wording, and the image workflow skips the Docker Hub copy with a notice when its secrets are not set.
 
 ## 0.1.0-rc.3 (2026-11-18)
 
