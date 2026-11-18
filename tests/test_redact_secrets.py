@@ -109,19 +109,32 @@ def test_redact_secrets_masks_the_secrets_before_the_personal_data():
         assert leaked not in out
 
 
+def table_shapes(n: int) -> list[str]:
+    return ['|' * (6 * n), '| password |\n|---|\n' + '| x |\n' * (2 * n), '<table><tr><th>password</th></tr>' + '<tr><td>x</td></tr>' * n,
+            '<table>' * (2 * n), '<td>' * (2 * n) + 'x', '| a |\n|---|\n' * n]
+
+
+def fastest_mask(shapes: list[str]) -> float:
+    runs = []
+    for _ in range(3):
+        started = time.perf_counter()
+        for shape in shapes:
+            secrets_masked(shape)
+        runs.append(time.perf_counter() - started)
+    return min(runs)
+
+
 def test_the_table_passes_stay_linear_on_long_input():
     # given
-    shapes = ['|' * 300_000, '| password |\n|---|\n' + '| x |\n' * 100_000, '<table><tr><th>password</th></tr>' + '<tr><td>x</td></tr>' * 50_000,
-              '<table>' * 100_000, '<td>' * 100_000 + 'x', '| a |\n|---|\n' * 50_000]
+    small, large = table_shapes(3_000), table_shapes(12_000)
 
     # when
-    started = time.perf_counter()
-    out = [secrets_masked(s) for s in shapes]
-    took = time.perf_counter() - started
+    ratio = fastest_mask(large) / fastest_mask(small)
+    out = [secrets_masked(s) for s in large]
 
     # then
-    assert took < 3.0
-    assert out[0] == shapes[0] and out[3] == shapes[3]
+    assert ratio < 8
+    assert out[0] == large[0] and out[3] == large[3]
 
 
 @pytest.mark.parametrize('kept', ['0.4242424242424242', '{"metric": {"job": "api"}, "value": [1792224000.123, "0.4242424242424242"]}', '42424242424242.42',
