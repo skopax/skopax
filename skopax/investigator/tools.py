@@ -29,7 +29,7 @@ from skopax.messages import msg
 from skopax.mcptools import PREFIX as BRIDGE_PREFIX
 from skopax.models import email_allowed
 from skopax.postdeploy import NUMBERS_BY, SERVER_BY
-from skopax.redact import redact
+from skopax.redact import redact, redact_text
 from skopax.store import NotFound, auto_sender, draft_hash, glob_match, new_id
 
 log = logging.getLogger('skopax.investigator.tools')
@@ -82,6 +82,9 @@ HANDLED_SEVERITIES = ('warn', 'info')
 ABSORB_MAX = 5
 ABSORB_LIMIT = 200
 ABSORB_TEXT_MIN = 6
+ABSORB_KEYS_SHOWN = 20
+ABSORB_KEY_CUT = 120
+ABSORB_ERROR_ROOM = ABSORB_KEYS_SHOWN * (ABSORB_KEY_CUT + 3) + 600
 CAUSE_LIMIT = 200
 CAUSE_LINE = 'Same incident as {ref}: {cause}'
 CAUSE_LINES: dict[str, str] = {}
@@ -96,7 +99,7 @@ LANGUAGES = {'kt': 'kotlin', 'kts': 'kotlin', 'java': 'java', 'py': 'python', 'j
 
 
 class ToolError(Authored, Exception):
-    pass
+    room = None
 
 
 @dataclass
@@ -315,8 +318,15 @@ def absorb_problem(pattern: str, keys: list[str]) -> str | None:
         return (f'absorb pattern too broad: with a * it needs a literal part of at least {ABSORB_TEXT_MIN} characters naming the message or a label, after the level of a log key '
                 f'or the alert name of an alert key, like log|checkout-service|ERROR|*gateway timeout* ({pattern})')
     if not any(glob_match(pattern, k) for k in keys):
-        return f'absorb pattern matches no card of this group: a pattern only carries this incident on, so it must match the parent or one of its children ({pattern})'
+        return (f'absorb pattern matches no card of this group: a pattern only carries this incident on, so it must match the parent or one of its children ({pattern}). '
+                f'the group holds: {group_keys(keys)}')
     return None
+
+
+def group_keys(keys: list[str]) -> str:
+    shown = [redact_text(k, ABSORB_KEY_CUT) for k in dict.fromkeys(keys)]
+    more = len(shown) - ABSORB_KEYS_SHOWN
+    return ' ; '.join(shown[:ABSORB_KEYS_SHOWN]) + (f' ; and {more} more' if more > 0 else '')
 
 
 def blame_rows(host: CodeHost, project: dict, path: str, sha: str, first: int, last: int) -> list[dict]:
@@ -745,7 +755,9 @@ def held_row(row: dict) -> dict:
 
 
 def render(out) -> tuple[str, int | None, bool]:
-    rows, note = None, None
+    rows, note, lead = None, None, ''
+    if isinstance(out, dict) and set(out) == {'note', 'rows'} and isinstance(out['note'], str) and isinstance(out['rows'], list):
+        lead, out = out['note'] + '\n', out['rows']
     if isinstance(out, list):
         rows = len(out)
         text = json.dumps(out[:READ_LIMIT_ROWS], ensure_ascii=False, default=str)
@@ -760,7 +772,7 @@ def render(out) -> tuple[str, int | None, bool]:
         note = f'cut at {READ_LIMIT_CHARS:,} characters' + (f', so only the first {whole_rows(out[:READ_LIMIT_ROWS])} of {rows} rows are whole' if rows is not None else '')
     if note:
         text += f'\n[truncated: {note}; narrow the query]'
-    return text, rows, note is not None
+    return lead + text, rows, note is not None
 
 
 def utc_iso(value) -> str | None:
@@ -1017,7 +1029,7 @@ class Toolbox:
                 self.flags += scan(name, text)
             return (text if content is None else content), False
         except ToolError as e:
-            entry['error'] = e.text[:ERROR_LIMIT]
+            entry['error'] = e.text[:e.room or ERROR_LIMIT]
             if scanned:
                 self.flags += scan(name, entry['error'])
         except Exception as e:
@@ -1520,7 +1532,9 @@ class Toolbox:
         members = [parent] + children + [x['key'] for k in [parent] + children for x in self._open_children(k)]
         problem = next((p for p in (absorb_problem(x, members) for x in absorb) if p), None)
         if problem:
-            raise ToolError(problem)
+            refused = ToolError(problem)
+            refused.room = ABSORB_ERROR_ROOM
+            raise refused
 
     def _grouped(self, parent: str, children: list[str], absorb: list[str], line: str | None) -> None:
         self.store.group(parent, children, absorb or None)

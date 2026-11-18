@@ -297,12 +297,15 @@ def test_due_jobs_run_side_by_side_so_a_stuck_one_delays_no_other(store: Store):
 
 def test_at_most_four_due_jobs_run_at_once(store: Store):
     # given
-    live, peak, guard = [0], [0], threading.Lock()
+    live, peak, guard, four = [0], [0], threading.Lock(), threading.Event()
 
     def job(now: float) -> None:
         with guard:
             live[0] += 1
             peak[0] = max(peak[0], live[0])
+            if live[0] == 4:
+                four.set()
+        four.wait(5)
         threading.Event().wait(0.05)
         with guard:
             live[0] -= 1
@@ -347,6 +350,7 @@ def test_a_poll_does_not_wait_for_a_slow_job_and_a_running_job_is_skipped(store:
 
     # when
     first = s.run_due(join=False)
+    s._running['quick'].join(5)
     clock.t += 300
     second = s.run_due(join=False)
     stuck.set()
@@ -390,15 +394,13 @@ def test_a_full_set_of_running_jobs_leaves_the_rest_for_the_next_poll(store: Sto
 def test_the_loop_polls_without_waiting_for_the_jobs_it_starts(store: Store):
     # given
     calls: list[bool] = []
+    polled = threading.Event()
     s = Scheduler(store, [], poll=0.01, clock=Clock(SLOT))
-    s.run_due = lambda join=True: calls.append(join) or []
+    s.run_due = lambda join=True: calls.append(join) or polled.set() or []
 
     async def go():
         loop = asyncio.create_task(s.loop())
-        for _ in range(100):
-            if calls:
-                break
-            await asyncio.sleep(0.01)
+        await asyncio.to_thread(polled.wait, 5)
         loop.cancel()
 
     # when

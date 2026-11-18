@@ -1,9 +1,13 @@
+import copy
 import fnmatch
+import json
 import logging
 import re
+import time
 from collections.abc import Callable
 
-from skopax.errkind import Authored
+from skopax.bounded import HOOK_TIMEOUT_S, Bound
+from skopax.errkind import Authored, kind as error_kind
 
 log = logging.getLogger('skopax.tags')
 
@@ -26,6 +30,9 @@ WHY_LIMIT = 300
 RULES_KEY = re.compile(r'tags\.([a-z0-9-]{1,30})\.rules')
 EXTRA: list = [{}]
 DEFS: list = [{}]
+TEXTS: list = [(), HOOK_TIMEOUT_S]
+TEXT_CALLS = Bound('card-text')
+SKIPPED = object()
 
 
 class Refused(Authored, Exception):
@@ -125,17 +132,98 @@ def rules_of(config: dict[str, str]) -> tuple:
     return tuple((tag, given.get(tag, terms)) for tag, terms in RULES)
 
 
-def apply_rules(cards: list[dict], rules: tuple, at: str) -> None:
+def use_texts(hooks: list[tuple[str, Callable[[dict], str | None]]] | Callable[[], list[tuple[str, Callable[[dict], str | None]]]], timeout: float = HOOK_TIMEOUT_S) -> None:
+    TEXTS[0], TEXTS[1] = hooks, timeout
+
+
+def text_hooks() -> list[tuple[str, Callable[[dict], str | None]]] | None:
+    plugged = TEXTS[0]
+    try:
+        return list(plugged() if callable(plugged) else plugged)
+    except Exception as e:
+        log.warning('plug-in card texts not read, rule sentences stay as they are (%s)', error_kind(e))
+        return None
+
+
+def rule_text(card: dict, hooks: list[tuple[str, Callable[[dict], str | None]]] | None, end: float, failed: set[str]) -> object:
+    if hooks is None:
+        return SKIPPED
+    for owner, hook in hooks:
+        left = end - time.monotonic()
+        if left <= 0:
+            return SKIPPED
+        given = copy.deepcopy(card)
+        try:
+            said = TEXT_CALLS.call(owner, lambda hook=hook, given=given: hook(given), left)
+        except Exception as e:
+            if owner not in failed:
+                failed.add(owner)
+                log.warning('plug-in %s: card text failed, the sentences it writes stay as they are this pass (%s)', owner, error_kind(e))
+            return SKIPPED
+        if said is None:
+            continue
+        if not isinstance(said, str):
+            if owner not in failed:
+                failed.add(owner)
+                log.warning('plug-in %s: card text answered %s and not text, the sentences it writes stay as they are this pass', owner, type(said).__name__)
+            return SKIPPED
+        text = clip(said, TEXT_LIMIT)
+        if text:
+            return text
+    return None
+
+
+def _ruled(a: dict, rules: tuple, at: str) -> None:
+    off = set(a.get('tagsOff') or [])
+    tags = [t for t in a.get('tags') or [] if isinstance(t, dict)]
+    kept = [t for t in tags if t.get('by') != RULE]
+    have = {t.get('id') for t in kept}
+    before = {t.get('id'): t for t in tags if t.get('by') == RULE}
+    ruled = [before.get(tag) or {'id': tag, 'by': RULE, 'at': at} for tag, terms in rules
+             if tag not in off and tag not in have and any(hits(term, a) for term in terms)]
+    if kept + ruled != tags:
+        a['tags'] = kept + ruled
+
+
+def _wants_text(a: dict) -> bool:
+    said = a.get('business') or {}
+    return a.get('status') != 'cleared' and isinstance(said, dict) and (not said or said.get('by') == RULE)
+
+
+def _seen_as(a: dict) -> str:
+    return json.dumps(a, sort_keys=True, default=str)
+
+
+def card_texts(cards: list[dict], rules: tuple, at: str) -> dict[str, tuple[str, object]]:
+    return texts_with(cards, rules, at, text_hooks() if cards else [])
+
+
+def texts_with(cards: list[dict], rules: tuple, at: str, hooks: list[tuple[str, Callable[[dict], str | None]]] | None) -> dict[str, tuple[str, object]]:
+    wanted = []
+    for a in copy.deepcopy(cards):
+        _ruled(a, rules, at)
+        if _wants_text(a):
+            wanted.append(a)
+    end = time.monotonic() + TEXTS[1]
+    failed: set[str] = set()
+    return {a['key']: (_seen_as(a), rule_text(a, hooks, end, failed)) for a in wanted}
+
+
+def apply_rules(cards: list[dict], rules: tuple, at: str, texts: dict[str, tuple[str, object]] | None = None) -> None:
+    if texts is None:
+        texts = card_texts(cards, rules, at)
     for a in cards:
-        off = set(a.get('tagsOff') or [])
-        tags = [t for t in a.get('tags') or [] if isinstance(t, dict)]
-        kept = [t for t in tags if t.get('by') != RULE]
-        have = {t.get('id') for t in kept}
-        before = {t.get('id'): t for t in tags if t.get('by') == RULE}
-        ruled = [before.get(tag) or {'id': tag, 'by': RULE, 'at': at} for tag, terms in rules
-                 if tag not in off and tag not in have and any(hits(term, a) for term in terms)]
-        if kept + ruled != tags:
-            a['tags'] = kept + ruled
+        _ruled(a, rules, at)
+        if not _wants_text(a):
+            continue
+        seen, text = texts.get(a.get('key'), (None, SKIPPED))
+        if text is SKIPPED or seen != _seen_as(a):
+            continue
+        said = a.get('business') or {}
+        if text and said.get('text') != text:
+            a['business'] = {'text': text, 'by': RULE, 'at': at}
+        elif not text and said:
+            a['business'] = None
 
 
 def toggled(card: dict, tag: str, on: bool, by: str, at: str) -> dict:

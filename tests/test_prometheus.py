@@ -567,7 +567,7 @@ def test_server_info_lists_the_prometheus_tile(store: Store):
     # then
     assert info['plugins'] == [{'id': 'prometheus', 'name': 'Prometheus', 'icon': '/plugins/prometheus/icon.svg', 'tab': 'svcs', 'passes': ['prom', 'prom-east'],
                                 'instances': [{'name': 'main', 'primary': True, 'pass': 'prom', 'status': 'ok', 'state': 'ok', 'text': msg('integrations.health.ok')},
-                                              {'name': 'east', 'primary': False, 'pass': 'prom-east', 'status': 'ok', 'state': 'ok', 'text': msg('integrations.health.ok')}], 'pages': [], 'queued': False}]
+                                              {'name': 'east', 'primary': False, 'pass': 'prom-east', 'status': 'ok', 'state': 'ok', 'text': msg('integrations.health.ok')}], 'pages': [], 'queued': False, 'types': []}]
     assert 'prometheus' not in info
 
 

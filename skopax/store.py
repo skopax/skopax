@@ -1067,7 +1067,7 @@ class Store:
         return runs
 
     def investigation_usage(self, since: str) -> dict:
-        runs = list(self.investigations.find({'startedAt': {'$gte': since}}, {'toolCalls.input': 0}, sort=[('startedAt', DESCENDING)], limit=USAGE_RUN_LIMIT))
+        runs = list(self.investigations.find({'startedAt': {'$gte': since}}, {'toolCalls.input': 0}, sort=[('startedAt', DESCENDING), ('_id', DESCENDING)], limit=USAGE_RUN_LIMIT))
         usage = dict.fromkeys(USAGE_FIELDS, 0)
         tools: dict[str, dict] = {}
         keys: dict[str, dict] = {}
@@ -1101,9 +1101,9 @@ class Store:
         return {'since': since, 'runs': len(runs), 'usd': round(usd, 4), 'turns': turns, 'usage': usage,
                 'cacheShare': round(usage['cache_read_input_tokens'] / prompt, 3) if prompt else None,
                 'models': models, 'outcomes': outcomes,
-                'tools': sorted(({**t, 'avgMs': round(t['ms'] / t['calls'])} for t in tools.values()), key=lambda t: -t['calls']),
-                'keys': sorted(({**k, 'usd': round(k['usd'], 4)} for k in keys.values()), key=lambda k: -k['usd'])[:USAGE_TOP_KEYS],
-                'slowest': sorted(slowest, key=lambda c: -c['ms'])[:USAGE_TOP_SLOW]}
+                'tools': sorted(({**t, 'avgMs': round(t['ms'] / t['calls'])} for t in tools.values()), key=lambda t: (-t['calls'], -t['ms'], t['name'])),
+                'keys': sorted(({**k, 'usd': round(k['usd'], 4)} for k in keys.values()), key=lambda k: (-k['usd'], -k['runs'], k['key']))[:USAGE_TOP_KEYS],
+                'slowest': sorted(slowest, key=lambda c: (-c['ms'], c['tool'], str(c['run'])))[:USAGE_TOP_SLOW]}
 
     def list_investigations(self, key: str | None, limit: int, page: bool = False, chats: bool = True) -> list[dict]:
         query = {'keys': key} | NOT_CHAT if key else ({} if chats else NOT_CHAT)
@@ -1596,6 +1596,13 @@ class Store:
         if not current:
             raise NotFound(f'no action with id {action_id}')
         raise ActionMoved(current.get('status', 'unknown'))
+
+    def hand_back_action(self, action_id: str) -> None:
+        if self.actions.update_one({'_id': action_id, 'status': 'processing'}, {'$set': {'status': 'requested'}, '$unset': {'processingAt': ''}}).matched_count == 0:
+            current = self.actions.find_one({'_id': action_id})
+            if not current:
+                raise NotFound(f'no action with id {action_id}')
+            raise ActionMoved(current.get('status', 'unknown'))
 
     def get_action(self, action_id: str) -> dict:
         doc = self.actions.find_one({'_id': action_id})

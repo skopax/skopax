@@ -1,3 +1,4 @@
+import datetime as dt
 import re
 from collections.abc import Mapping
 
@@ -6,17 +7,24 @@ from skopax.kit.elastic import CLUSTERS, FALLBACK, REJECTED, Elastic, ElasticErr
 
 FROM = re.compile(r'^\s*FROM\s+([^|]+)', re.I)
 TIME_BOUND = re.compile(r'@timestamp`?\s*(>=|>|<=|<)', re.I)
+UPPER_BOUND = re.compile(r'@timestamp`?\s*(<=|<)', re.I)
+LOWER_BOUND = re.compile(r'(@timestamp`?\s*(?:>=|>)\s*)(?:NOW\(\)\s*-\s*(\d+)\s*(minutes?|hours?|days?|weeks?)\b|"([^"]+)")', re.I)
+UNIT_HOURS = {'minute': 1 / 60, 'hour': 1, 'day': 24, 'week': 168}
+LAST_DAY = 'NOW() - 1 day'
+NARROW_HINT = 'narrow the time range or the index'
 MAX_INDICES = 3
 ANSWER_MAX = 300
 ROWS = 1000
 QUERY_LIMIT = 8000
 TIMEOUT_S = 75
 AGENT_QUERY_S = 70
+QUERY_S = 55
 KEYS = (r'elastic\.(logging|apm)-(url|api-key)',)
 AGENT_CLUSTERS = {'logs': 'logging', 'apm': 'apm'}
 AGENT_REFUSED = 502
 SLOW = ('ES|QL HTTP 504: the query ran past the time limit of the gateway in front of Elasticsearch. Name fewer indices without a star, shorten the @timestamp range, '
         'filter on a keyword field before any LIKE "*...*", or count one day at a time')
+LAST_DAY_NOTE = ('the full time range timed out, so this answer covers only the last day (NOW() - 1 day to now); ask for the earlier days one at a time')
 DESCRIPTION = ('ES|QL query on Elasticsearch, read only. cluster logs (the default) reads the log cluster, whose logs are in {field:log-index}; '
                'cluster apm reads the APM cluster: {field:apm-index}, logs-apm.error-* and metrics-apm.*. '
                'FROM comes first and names one to three indices; a wildcard or more indices is refused unless WHERE bounds @timestamp. '
@@ -49,6 +57,37 @@ def answer(text: str, status: int, config: Mapping[str, str]) -> str:
     return text[:max(0, ANSWER_MAX - len(tail))] + tail
 
 
+def hours_of(count: str, unit: str) -> float:
+    return int(count) * UNIT_HOURS[unit.lower().rstrip('s')]
+
+
+def literal_hours(text: str) -> float | None:
+    try:
+        stamp = dt.datetime.fromisoformat(text.strip().replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=dt.timezone.utc)
+    return (dt.datetime.now(dt.timezone.utc) - stamp).total_seconds() / 3600
+
+
+def last_day(query: str) -> str | None:
+    if UPPER_BOUND.search(query):
+        return None
+    wide = False
+
+    def narrow(m: re.Match) -> str:
+        nonlocal wide
+        hours = hours_of(m.group(2), m.group(3)) if m.group(2) else literal_hours(m.group(4))
+        if hours is None or hours <= 24:
+            return m.group(0)
+        wide = True
+        return m.group(1) + LAST_DAY
+
+    narrowed = LOWER_BOUND.sub(narrow, query)
+    return narrowed if wide else None
+
+
 def check_scope(query: str, index: str) -> None:
     m = FROM.match(query)
     if not m:
@@ -68,12 +107,22 @@ def run_esql(ctx: Context, args: dict) -> object:
         raise ReadError(400, 'query is required')
     config = ctx.instance.config
     check_scope(query, index_of(config, cluster))
+    es = client_for(ctx.instance, ctx.http(), cluster)
     try:
-        return client_for(ctx.instance, ctx.http(), cluster).query(query)
+        return es.query(query, timeout=QUERY_S)
     except ElasticError as e:
         if e.denied:
             raise ReadError(e.status if e.status in REJECTED else 403, refused_text(e.status, sources_of(query))) from None
-        raise ReadError(e.status if 400 <= e.status <= 599 else 502, answer(e.text, e.status, config)) from None
+        first = answer(e.text, e.status, config)
+        status = e.status if 400 <= e.status <= 599 else 502
+        narrowed = last_day(query) if e.status == 504 or e.timed_out else None
+        if narrowed is None:
+            raise ReadError(status, first + (f' - {NARROW_HINT}' if e.status == 504 or e.timed_out else '')) from None
+    try:
+        rows = es.query(narrowed, timeout=QUERY_S)
+    except ElasticError as again:
+        raise ReadError(status, f'{first} - the retry on the last day failed too: {answer(again.text, again.status, config)}') from None
+    return {'note': LAST_DAY_NOTE, 'rows': rows}
 
 
 def agent_sources(config: Mapping[str, str]) -> list[str]:

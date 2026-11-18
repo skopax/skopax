@@ -18,13 +18,14 @@ from skopax.investigator.toolset import Proposals
 from skopax.messages import MESSAGES, msg
 from skopax.operators import Operators
 from skopax.registry import Registry
+from skopax.runtime import Runtime
 from skopax.slack import AUTO_BY, POST_ACTIONS, PROPOSAL_CONFIRM, Slack, answer_blocks, card_action_label, known_confirm, level_label, report_message, sender, task_button, task_confirm
 from skopax.slackevents import Clicks
 from tests.conftest import AUTH, anomaly, settings, state
 from tests.fake_anthropic import verdict
 from tests.fake_slack import FakeSlackApi, fake_slack
 from tests.test_investigator_tools import sources
-from tests.plugin_kit import registry_with
+from tests.plugin_kit import no_loop, registry_with
 from tests.plugins.base import minimal
 from tests.test_plugin_hooks import DEMO, served
 from tests.test_slack import FakeSlack
@@ -405,6 +406,7 @@ def test_every_investigator_need_has_a_slack_twin_and_a_missing_one_falls_back(s
 def test_the_language_step_warns_once_about_a_value_that_is_no_tag_and_names_its_own_failure(store, caplog, monkeypatch):
     # given
     caplog.set_level(logging.WARNING, logger='skopax')
+    monkeypatch.setattr(Runtime, 'loop', no_loop)
 
     # when
     with served(store, DEMO, language='german') as client:

@@ -25,6 +25,22 @@ var TYPE_NAMES = {'page-typos': 'Typos', 'page-layout': 'Layout', log: 'Log erro
   'store-rating': 'Store ratings', 'play-vitals': 'Play vitals', 'crash-rate': 'Crash rate', 'crash-new': 'New crashes', 'ab-test': 'A/B tests', 'ab-verdict': 'A/B verdicts'};
 var LINK_FILTERS = ['open', 'stale', 'progress', 'taken', 'muted', 'cleared', 'all', 'investigating', 'dived', 'crit', 'warn', 'info', 'slack', 'recurring', 'archived', 'closed'];
 var TYPE_ALIAS = {access: 'no-access', 'umami-access': 'no-access'};
+var CORE_TYPE_NAMES = Object.assign({}, TYPE_NAMES), CORE_TYPE_ALIAS = Object.assign({}, TYPE_ALIAS), TYPE_SIG = /^[a-z0-9-]{1,30}$/;
+function useTypes(tiles) {
+  var names = Object.assign({}, CORE_TYPE_NAMES), alias = Object.assign({}, CORE_TYPE_ALIAS);
+  (Array.isArray(tiles) ? tiles : []).forEach(function (p) {
+    (p && Array.isArray(p.types) ? p.types : []).forEach(function (t) {
+      if (!t || typeof t.sig !== 'string' || !TYPE_SIG.test(t.sig) || typeof t.label !== 'string' || !t.label.trim()) return;
+      if (Object.prototype.hasOwnProperty.call(names, t.sig) || Object.prototype.hasOwnProperty.call(alias, t.sig)) return;
+      names[t.sig] = t.label;
+      if (typeof t.alias === 'string' && TYPE_SIG.test(t.alias) && t.alias !== t.sig) alias[t.sig] = t.alias;
+    });
+  });
+  var changed = JSON.stringify([names, alias]) !== JSON.stringify([TYPE_NAMES, TYPE_ALIAS]);
+  TYPE_NAMES = names;
+  TYPE_ALIAS = alias;
+  return changed;
+}
 function typeOf(a) { var t = a.sig || a.src || 'other'; return TYPE_ALIAS[t] || t; }
 var TAG_NAMES = {};
 var TECH_TAGS = {developer: 'engineering has to change the code or config of a service', data: 'the data team has to change a pipeline, an Airbyte sync or a DWH table', infra: 'infrastructure has to change (cluster, network, DNS, CI/CD, database server)', analyst: 'an analyst has to decide or specify something first (a requirement, a business rule, a flow or a text)'};
@@ -316,6 +332,7 @@ function setPlugins(list) {
   SOURCE_GROUPS = SOURCES.length ? [{id: 'integrations', label: 'Integrations', srcs: SOURCES}] : [];
   down = SOURCES.filter(function (k) { return srcState(k) === 'error'; });
   if (typeof sidePlugins === 'function') sidePlugins([].concat.apply([], PLUGIN_TILES.map(function (p) { return (Array.isArray(p.pages) ? p.pages : []).map(function (g) { return Object.assign({}, g, {plugin: p.id}); }); })));
+  return useTypes(PLUGIN_TILES);
 }
 function sigTags(list) {
   return list.length ? '<div class="sig-tags">' + list.map(function (a) {
@@ -327,6 +344,7 @@ function fineMs(v) { return v == null ? num(null) : v < 0.01 ? '&lt;0.01 ms' : v
 
 function derive(data) {
   D = data || {};
+  if (Array.isArray(D.plugins)) useTypes(D.plugins);
   ALL = D.anomalies || []; S = D.services || []; H = D.history || [];
   KIDS = {};
   var byKey = {};

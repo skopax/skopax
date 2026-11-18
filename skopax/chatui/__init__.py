@@ -3,14 +3,17 @@ import functools
 import hashlib
 import importlib.util
 import json
+import locale
 import logging
 import os
 import re
 import secrets
 import shutil
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Iterable, Mapping
 from typing import Callable
 from urllib.parse import parse_qsl, urlencode
 
@@ -218,12 +221,154 @@ def config_text(origin: str, session: int = SESSION_S, name: str | None = None) 
     return CONFIG.format(session=session, origin=origin, name=json.dumps(name, ensure_ascii=False), description=json.dumps(msg('chat.description', product=name), ensure_ascii=False))
 
 
+TRANSLATIONS: dict[str, tuple[str, Mapping]] = {}
+TRANSLATIONS_LOCK = threading.Lock()
+WRITE_LOCK = threading.Lock()
+WRITTEN = '.skopax-written'
+DEFAULT_TRANSLATION = 'en-US'
+FAILED_LOCALES: set[str] = set()
+
+
+def translation_names(tag: str) -> list[str]:
+    language, _, region = tag.partition('-')
+    if region:
+        return [tag]
+    full = re.split(r'[.@]', locale.normalize(language), maxsplit=1)[0].replace('_', '-')
+    head, _, place = full.partition('-')
+    return [tag, f'{language}-{place}'] if head.lower() == language.lower() and place else [tag]
+
+
+def translation_files(trees: Iterable[tuple[str, Mapping]]) -> dict[str, tuple[str, Mapping]]:
+    chosen = {tag: tree for tag, tree in trees if isinstance(tag, str) and isinstance(tree, Mapping) and tree and tag.partition('-')[0].lower() != 'en'}
+    files: dict[str, tuple[str, Mapping]] = {}
+    for tag, tree in chosen.items():
+        files.update({name: (tag, tree) for name in translation_names(tag)[1:]})
+    for tag, tree in chosen.items():
+        files[tag] = (tag, tree)
+    return files
+
+
+def set_translations(trees: Iterable[tuple[str, Mapping]]) -> None:
+    files = translation_files(trees)
+    with TRANSLATIONS_LOCK:
+        TRANSLATIONS.clear()
+        TRANSLATIONS.update(files)
+    if os.environ.get(ROOT_ENV):
+        write_translations(os.environ[ROOT_ENV])
+
+
+def bundled_translation(name: str) -> dict | None:
+    spec = importlib.util.find_spec('chainlit')
+    if spec is None or not spec.origin:
+        return None
+    try:
+        found = json.loads((Path(spec.origin).parent / 'translations' / f'{name}.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    return found if isinstance(found, dict) else None
+
+
+@functools.cache
+def english() -> dict:
+    return bundled_translation(DEFAULT_TRANSLATION) or {}
+
+
+def _over(base: object, tree: Mapping) -> dict:
+    out = dict(base) if isinstance(base, Mapping) else {}
+    for key, value in tree.items():
+        out[key] = _over(out.get(key), value) if isinstance(value, Mapping) else value
+    return out
+
+
+def translation_text(tree: Mapping) -> str:
+    return json.dumps(_over(english(), tree), ensure_ascii=False, indent=4)
+
+
+def _put(path: Path, text: str) -> None:
+    fd, temp = tempfile.mkstemp(dir=path.parent, prefix=f'.{path.name}.', suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(text)
+        os.replace(temp, path)
+    except BaseException:
+        try:
+            os.unlink(temp)
+        except OSError:
+            pass
+        raise
+
+
+def _written(target: Path) -> list[str]:
+    try:
+        names = json.loads((target / WRITTEN).read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+    return [n for n in names if isinstance(n, str) and n and '/' not in n and not n.startswith('.')] if isinstance(names, list) else []
+
+
+def _drop(target: Path, name: str) -> None:
+    if name in chainlit_tags():
+        original = bundled_translation(name)
+        if original is not None:
+            _put(target / f'{name}.json', json.dumps(original, ensure_ascii=False, indent=4))
+            return
+    (target / f'{name}.json').unlink(missing_ok=True)
+
+
+def _failed_locale(tag: str, e: Exception) -> None:
+    if tag not in FAILED_LOCALES:
+        FAILED_LOCALES.add(tag)
+        log.warning('%s', msg('chat.translation_failed', lang=tag, error=type(e).__name__))
+
+
+def write_translations(root: str) -> None:
+    with TRANSLATIONS_LOCK:
+        held = dict(TRANSLATIONS)
+    target = Path(root) / '.chainlit' / 'translations'
+    with WRITE_LOCK:
+        before = _written(target)
+        if not held and not before:
+            return
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            log.warning('%s', msg('chat.translations_failed', error=type(e).__name__))
+            return
+        kept = set()
+        bad = set()
+        for name, (tag, tree) in held.items():
+            try:
+                _put(target / f'{name}.json', translation_text(tree))
+            except (OSError, TypeError, ValueError) as e:
+                bad.add(tag)
+                _failed_locale(tag, e)
+                if name in before:
+                    kept.add(name)
+                continue
+            kept.add(name)
+        FAILED_LOCALES.difference_update({tag for tag, _ in held.values()} - bad)
+        for name in [n for n in before if n not in held]:
+            try:
+                _drop(target, name)
+            except OSError as e:
+                kept.add(name)
+                log.warning('%s', msg('chat.translations_failed', error=type(e).__name__))
+        try:
+            if kept:
+                _put(target / WRITTEN, json.dumps(sorted(kept)))
+            else:
+                (target / WRITTEN).unlink(missing_ok=True)
+        except OSError as e:
+            log.warning('%s', msg('chat.translations_failed', error=type(e).__name__))
+
+
 def prepare(origin: str) -> str:
     os.environ.setdefault('TRACELOOP_TELEMETRY', 'false')
     if os.environ.get(ROOT_ENV):
         config = Path(os.environ[ROOT_ENV]) / '.chainlit' / 'config.toml'
         if config.exists():
             config.write_text(config_text(origin), encoding='utf-8')
+        write_translations(os.environ[ROOT_ENV])
         return os.environ[ROOT_ENV]
     root = Path(tempfile.mkdtemp(prefix='skopax-chat-'))
     (root / '.chainlit').mkdir()
@@ -232,6 +377,7 @@ def prepare(origin: str) -> str:
     for name in ('chainlit.md',) + tuple(f'chainlit_{lang}.md' for lang in MD_LANGS):
         (root / name).write_text('', encoding='utf-8')
     os.environ[ROOT_ENV] = str(root)
+    write_translations(str(root))
     return str(root)
 
 

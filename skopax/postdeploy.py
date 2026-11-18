@@ -30,6 +30,7 @@ SLACK_ROWS = 3
 SERVER_BY = 'server'
 COST_NOTE = 'Prometheus and Jira queries only, no model'
 NUMBERS_BY = 'server · numbers'
+WAIT_WINDOW_S = 1800
 
 
 def utc(t: float) -> dt.datetime:
@@ -64,20 +65,24 @@ def release_name(template: str, project: str, day: dt.datetime) -> str:
     return RELEASE_PLACEHOLDER.sub(lambda m: parts.get(m.group(1), m.group(0)), template)
 
 
-def slack_text(rows: list[dict], frm: float, now: float) -> str:
+def slack_text(rows: list[dict], frm: float, now: float, flags: list[str] | None = None) -> str:
     flagged = [r for r in rows if r['flags']]
     first = min(when(r['at']) for r in rows if r.get('at')) if any(r.get('at') for r in rows) else utc(frm)
     span = f"{clock.hm(first)}–{clock.hm(utc(frm))}" if clock.hm(first) != clock.hm(utc(frm)) else clock.hm(utc(frm))
     head = msg('postdeploy.head', date=clock.date(utc(frm), hm=False), count=len(rows), span=span, zone=clock.label(utc(frm)), clean=len(rows) - len(flagged))
     if flagged:
         head += msg('postdeploy.flagged', n=len(flagged), list='; '.join(f"{r['svc']} ({', '.join(r['flags'])})" for r in flagged[:SLACK_ROWS])) + (msg('postdeploy.more') if len(flagged) > SLACK_ROWS else '')
+    if flags:
+        head += msg('postdeploy.plugin_flags', list='; '.join(flags[:SLACK_ROWS])) + (msg('postdeploy.more') if len(flags) > SLACK_ROWS else '')
     return head + msg('postdeploy.window', minutes=max(MIN_WINDOW_S, int(now - frm)) // 60)
 
 
 class PostDeploy:
     def __init__(self, store: Store, prom_for: Callable[[str | None], Prometheus | None], jira: object, flag: bool | Callable[[], bool] = True, base_url: str = '', clock=time.time,
                  assess: Callable[[], bool] | None = None, projects: tuple[str, ...] = (), serving: Callable[[], bool] | None = None,
-                 primary_name: Callable[[], str | None] = lambda: None, release_template: Callable[[], str] = lambda: RELEASE_NAME):
+                 primary_name: Callable[[], str | None] = lambda: None, release_template: Callable[[], str] = lambda: RELEASE_NAME,
+                 plugin_reports: Callable[[list[dict], float, float], list[dict]] | None = None):
+        self.plugin_reports = plugin_reports
         self.projects = projects
         self.release_template = release_template
         self.primary_name = primary_name
@@ -103,8 +108,11 @@ class PostDeploy:
                 self.store.update_action(act['id'], 'processing', None, 'requested')
             except ActionMoved:
                 continue
+            answers = self.plugin_answers(act, now)
+            if self.waiting(act, answers, now) and self.handed_back(act):
+                continue
             try:
-                return self.check(act, now)
+                return self.check(act, now, answers)
             except Exception as e:
                 log.error('post-deploy check for action %s failed: %s', act['id'], error_kind(e))
                 self.store.update_action(act['id'], 'failed', error_kind(e)[:RESULT_LIMIT], 'processing')
@@ -125,7 +133,35 @@ class PostDeploy:
             wave.append(d)
         return [d for d in wave if d.get('svc') not in skip]
 
-    def check(self, act: dict, now: float) -> dict | None:
+    def plugin_answers(self, act: dict, now: float) -> list[dict]:
+        if self.plugin_reports is None:
+            return []
+        try:
+            rows = [d for d in self.targets(act, now) if when(d.get('at'))]
+            if not rows:
+                return []
+            started = min(when(d['at']).timestamp() for d in rows)
+            return list(self.plugin_reports(rows, started, now))
+        except Exception as e:
+            log.warning('post-deploy plug-in answers left out: %s', error_kind(e))
+            return []
+
+    def waiting(self, act: dict, answers: list[dict], now: float) -> bool:
+        until = max((a['wait_until'] for a in answers if a.get('wait_until') is not None), default=None)
+        since = when(act.get('requestedAt'))
+        if until is None or since is None:
+            return False
+        return now < min(until, since.timestamp() + WAIT_WINDOW_S)
+
+    def handed_back(self, act: dict) -> bool:
+        try:
+            self.store.hand_back_action(act['id'])
+        except Exception as e:
+            log.warning('post-deploy check for action %s could not wait, its report is written now: %s', act['id'], error_kind(e))
+            return False
+        return True
+
+    def check(self, act: dict, now: float, answers: list[dict] | None = None) -> dict | None:
         rows = [d for d in self.targets(act, now) if when(d.get('at'))]
         if not rows:
             self.store.update_action(act['id'], 'done', f'no image change in the last {LOOKBACK_HOURS} h', 'processing')
@@ -177,8 +213,9 @@ class PostDeploy:
         report = {'summary': summary, 'brief': {'level': 'warn' if flagged else 'ok', 'headline': summary, 'points': [f"{r['svc']}: {', '.join(r['flags'])}" for r in flagged][:POINTS]},
                   'windowFrom': iso(utc(frm)), 'windowTo': iso(utc(now)), 'rows': out, 'releases': releases, 'issues': issues, 'text': report_text(out),
                   'actionId': act['id'], 'usd': 0.0, 'costNote': COST_NOTE} | ({'issuesNote': refused} if refused else {})
+        report = self.with_plugins(report, answers or [])
         saved = self.store.add_deploy_report(report)
-        draft = slack_text(out, frm, now)
+        draft = slack_text(out, frm, now, report.get('flags'))
         self.store.report_slack_draft(saved['id'], draft, NUMBERS_BY if assessed else SERVER_BY)
         self.store.update_action(act['id'], 'done', summary[:RESULT_LIMIT], 'processing')
         if assessed:
@@ -187,6 +224,16 @@ class PostDeploy:
         self.store.add_activity('postdeploy', SERVER_BY, line, reportId=saved['id'])
         log.info('post-deploy report %s for action %s: %s', saved['id'], act['id'], summary)
         return saved
+
+    def with_plugins(self, report: dict, answers: list[dict]) -> dict:
+        if not answers:
+            return report
+        flags = [f"{a['plugin']}: {f}" for a in answers for f in a['flags']]
+        text = report['text'] + ''.join(f"\n[{a['plugin']}] {a['text']}" for a in answers)
+        brief = dict(report['brief'])
+        if flags:
+            brief = {**brief, 'level': 'warn', 'points': (brief['points'] + flags)[:POINTS]}
+        return {**report, 'plugins': {a['id']: a['text'] for a in answers}, 'flags': flags, 'brief': brief, 'text': text[:20000]}
 
     def queue_assessment(self, report: dict) -> None:
         self.store.add_action({'type': 'assess', 'key': f"report:{report['id']}", 'target': f"report:{report['id']}", 'reportId': report['id'],

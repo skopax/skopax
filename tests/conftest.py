@@ -13,10 +13,10 @@ import mongomock
 import pytest
 from fastapi.testclient import TestClient
 
-from skopax import agent, app as app_module, brand, clock, messages, probe, redact, sections, tags
+from skopax import agent, app as app_module, brand, clock, engine, messages, probe, redact, sections, tags
 from skopax.app import create_app
 from skopax.chatui.text import reset as reset_chat_texts
-from skopax.investigator import prompt
+from skopax.investigator import prompt, select
 from skopax.config import Settings
 from skopax.jiralinks import JiraLinks
 from skopax.store import Store
@@ -69,6 +69,11 @@ def reset_plugin_rules():
     redact.use_rules(())
     tags.use_rules({})
     tags.use_tags({})
+    tags.use_texts(())
+    select.use_own_findings(())
+    engine.set_daily(())
+    chatui.set_translations(())
+    chatui.FAILED_LOCALES.clear()
     messages.reset()
     prompt.use_writing(None)
     reset_chat_texts()
@@ -77,6 +82,11 @@ def reset_plugin_rules():
     redact.use_rules(())
     tags.use_rules({})
     tags.use_tags({})
+    tags.use_texts(())
+    select.use_own_findings(())
+    engine.set_daily(())
+    chatui.set_translations(())
+    chatui.FAILED_LOCALES.clear()
     messages.reset()
     prompt.use_writing(None)
     reset_chat_texts()

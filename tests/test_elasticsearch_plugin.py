@@ -836,7 +836,7 @@ def test_a_gateway_timeout_tells_the_model_how_to_narrow_the_query(store: Store)
     text, err = tool(tools, {'cluster': 'logs', 'query': 'FROM logs-* | WHERE @timestamp >= NOW() - 2 days AND message LIKE "*x*" | LIMIT 1'})
 
     # then
-    assert err and text.startswith('ES|QL HTTP 504: ') and text.endswith('one day at a time') and '<html>' not in text and '60 s' not in text
+    assert err and text.startswith('ES|QL HTTP 504: ') and 'one day at a time' in text and 'the retry on the last day failed too' in text and '<html>' not in text and '60 s' not in text
 
 
 @pytest.mark.parametrize('query,ok', [

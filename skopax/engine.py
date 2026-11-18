@@ -46,6 +46,7 @@ STALE_S = 24 * 3600
 STALE_DAILY_S = 3 * 24 * 3600
 STALE_MANUAL_S = 7 * 24 * 3600
 DAILY_KEYS = ('crux', 'ga', 'varnish-cache')
+PLUGIN_DAILY: frozenset[str] = frozenset()
 INFO_CLOSE_DAYS = 3
 INFO_KEEP_SIGS = ('warn', 'err')
 NO_DATA = ':no-data'
@@ -290,11 +291,30 @@ def retire(state: dict, keys: set[str], note: str, now: float, cluster: str | No
     return closed
 
 
+def daily_keys_of(plugins) -> frozenset[str]:
+    return frozenset(k for p in plugins for c in p.checks if c.daily is True for k in (c.id, *c.ran) if isinstance(k, str))
+
+
+def set_daily(keys) -> None:
+    global PLUGIN_DAILY
+    PLUGIN_DAILY = frozenset(keys)
+
+
+def daily_names(a: dict) -> set:
+    key = a.get('ranKey') or a.get('src')
+    names = {key, a.get('src')}
+    if isinstance(key, str):
+        cluster = a.get('cluster')
+        base = key[:-len(cluster) - 1] if isinstance(cluster, str) and cluster and key.endswith(f'-{cluster}') else key
+        names |= {base, base.split(':', 1)[0]}
+    return names
+
+
 def stale_after(a: dict) -> float:
     key = a.get('ranKey') or a.get('src')
     if key == 'manual':
         return STALE_MANUAL_S
-    return STALE_DAILY_S if key in DAILY_KEYS or a.get('src') in DAILY_KEYS else STALE_S
+    return STALE_DAILY_S if key in DAILY_KEYS or a.get('src') in DAILY_KEYS or PLUGIN_DAILY & daily_names(a) else STALE_S
 
 
 def auto_resolution(at: str) -> dict:
@@ -491,27 +511,37 @@ def number_cards(store: Store, cards: list[dict]) -> None:
         log.warning('card numbers not given this pass: %s', error_kind(e))
 
 
+def _merged(state: dict, all_results: list[PassResult], now: float, alert_twins: tuple[str, ...], screen, clusters) -> tuple:
+    results = screen(state, all_results) if screen else all_results
+    found = [x for r in results if r.ok for x in r.found]
+    events, push, _ = merge(state, copy.deepcopy(found), reach_of(results, clusters), now)
+    twins = group_alert_twins(state, alert_twins)
+    siblings = group_siblings(state)
+    if twins or siblings:
+        grouped = {k for k, _ in twins + siblings}
+        push = [a for a in push if a.get('key') not in grouped]
+    return results, events, push, twins, siblings
+
+
 def apply(store: Store, results: list[PassResult], now: float, links: Callable[[dict], list[dict] | None] | None = None, dm: bool = False,
           attempts: int = APPLY_ATTEMPTS, after: Callable[[dict], None] | None = None, auto_resolve_days: int = AUTO_RESOLVE_DAYS,
           recurring_count: int = history.RECURRING_COUNT, recurring_days: int = history.RECURRING_DAYS, tag_rules: tuple | None = None,
           alert_twins: tuple[str, ...] = (), screen: Callable[[dict, list[PassResult]], list[PassResult]] | None = None,
           clusters: Mapping[str, tuple[str | None, ...]] | None = None) -> Applied | None:
     all_results = results
+    hooks = tags.text_hooks() if tag_rules is not None else []
+    texts = None
+    if hooks:
+        ahead = store.load()
+        _merged(ahead, all_results, now, alert_twins, screen, clusters)
+        texts = tags.texts_with(ahead['anomalies'], tag_rules, iso(now), hooks)
     for attempt in range(attempts):
         state = store.load()
-        results = screen(state, all_results) if screen else all_results
-        found = [x for r in results if r.ok for x in r.found]
-        ran = reach_of(results, clusters)
         loaded = copy.deepcopy(state)
         base = state.get('rev', 0)
-        events, push, _ = merge(state, copy.deepcopy(found), ran, now)
-        twins = group_alert_twins(state, alert_twins)
-        siblings = group_siblings(state)
-        if twins or siblings:
-            grouped = {k for k, _ in twins + siblings}
-            push = [a for a in push if a.get('key') not in grouped]
+        results, events, push, twins, siblings = _merged(state, all_results, now, alert_twins, screen, clusters)
         if tag_rules is not None:
-            tags.apply_rules(state['anomalies'], tag_rules, iso(now))
+            tags.apply_rules(state['anomalies'], tag_rules, iso(now), texts if hooks else tags.texts_with(state['anomalies'], tag_rules, iso(now), hooks))
         number_cards(store, state['anomalies'])
         if links:
             for a in state['anomalies']:

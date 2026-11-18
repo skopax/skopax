@@ -1,12 +1,12 @@
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from pymongo.database import Database
 
 from skopax.engine import PassResult, anomaly, fmt, iso
-from skopax.errkind import Authored, NoAccess
+from skopax.errkind import Authored, InvalidInstance, NoAccess, SourceOwned
 from skopax.remote import HttpError, Transport, Unreachable, call, send
 
 __all__ = [
@@ -26,6 +26,7 @@ __all__ = [
     'TestResult',
     'Sweep',
     'Check',
+    'CardType',
     'RuleSet',
     'Setting',
     'Tool',
@@ -37,6 +38,9 @@ __all__ = [
     'TagRule',
     'Redaction',
     'Migration',
+    'InstanceWriter',
+    'InvalidInstance',
+    'SourceOwned',
     'Outbound',
     'AgentRead',
     'ReadError',
@@ -149,6 +153,15 @@ class Check:
     once: bool = False
     timeout: int | None = None
     background: bool = False
+    own_findings: bool = False
+    daily: bool = False
+
+
+@dataclass(frozen=True)
+class CardType:
+    sig: str
+    label: str
+    alias: str = ''
 
 
 @dataclass(frozen=True)
@@ -226,6 +239,7 @@ class Locale:
     writing: str = ''
     days: Mapping[str, str] = field(default_factory=dict)
     chat: Mapping[str, object] = field(default_factory=dict)
+    chainlit: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -250,7 +264,18 @@ class Redaction:
 class Migration:
     version: int
     name: str
-    run: Callable[[Database], None]
+    run: Callable[[Database], None] | Callable[[Database, 'InstanceWriter'], None]
+    needs_instances: bool = False
+    required: bool = False
+
+
+class InstanceWriter(Protocol):
+    def adopt_sealed(self, plugin: str, name: str, field: str, sealed: str, by: str) -> None: ...
+
+    def put(self, plugin: str, name: str, values: Mapping[str, str], secrets: Mapping[str, str], by: str, primary: bool = False, sealed: Mapping[str, str] | None = None,
+            enabled: bool = True, off_checks: Iterable[str] = ()) -> None: ...
+
+    def get(self, plugin: str, name: str) -> Mapping[str, str] | None: ...
 
 
 @dataclass(frozen=True)
@@ -442,6 +467,7 @@ class Plugin:
     probe_targets: Callable[[InstanceInfo], list[dict]] | None = None
     outbound: Outbound | None = None
     releases: Callable[[list[dict], float], list[dict]] | None = None
+    deploy_report: Callable[[Context, list[dict], float], dict | None] | None = None
     tags: tuple[Tag, ...] = ()
     tag_rules: tuple[TagRule, ...] = ()
     panels: tuple[Panel, ...] = ()
@@ -452,3 +478,5 @@ class Plugin:
     migrations: tuple[Migration, ...] = ()
     agent_reads: tuple[AgentRead, ...] = ()
     redactions: tuple[Redaction, ...] = ()
+    card_types: tuple[CardType, ...] = ()
+    card_text: Callable[[dict], str | None] | None = None

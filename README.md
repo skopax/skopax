@@ -10,7 +10,7 @@ Behind it, alerts and errors are grouped into one card per problem, so the team 
 
 The name comes from the Greek *skopos*, "lookout": the one who stands on a high place, scans the horizon and calls out what is coming.
 
-Status: Release candidate, not yet stable. The current version is 0.1.0-rc.1; settings, data and the plug-in contract may still change before 0.1.0.
+Status: Release candidate, not yet stable. The current version is 0.1.0-rc.2; settings, data and the plug-in contract may still change before 0.1.0.
 
 ## Quickstart
 
@@ -30,7 +30,7 @@ Or run the published image with a MongoDB of your own. The first line makes the 
       -e MONGO_URI=mongodb://skopax-mongo:27017/skopax \
       -e SKOPAX_BASE_URL=http://localhost:8080 \
       -e SKOPAX_SECRET_KEY="$SKOPAX_SECRET_KEY" \
-      ghcr.io/skopax/skopax:0.1.0-rc.1
+      ghcr.io/skopax/skopax:0.1.0-rc.2
 
 Keep that key, for example in your password manager (`echo "$SKOPAX_SECRET_KEY"` prints it; with Compose it stays in `.env`), and pass the same value on every start. With another key, Skopax cannot open the integration secrets sealed with the old one, so each has to be entered again, and everyone has to sign in again (see [Settings](docs/configuration.md#settings)).
 
