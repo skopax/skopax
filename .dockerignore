@@ -12,7 +12,6 @@ coverage.xml
 __pycache__
 **/__pycache__
 tests
-requirements-dev.txt
 pytest.ini
 README.md
 .env

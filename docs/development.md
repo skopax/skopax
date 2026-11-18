@@ -13,16 +13,15 @@ Skopax manages its Python packages with uv (https://docs.astral.sh/uv/). Install
 
 If `uv sync` reports that no Python 3.15 interpreter was found, update uv with `uv self update` and run it again.
 
-After changing a dependency in `pyproject.toml`, update the lock and the two hashed requirements files made from it:
+After changing a dependency in `pyproject.toml`, update the lock:
 
     uv lock
-    { echo '# Generated from uv.lock by: uv export --frozen --no-dev --no-header --no-annotate'; uv export --frozen --no-dev --no-header --no-annotate; } > requirements.txt
-    { echo '# Generated from uv.lock by: uv export --frozen --group dev --no-header --no-annotate'; uv export --frozen --group dev --no-header --no-annotate; } > requirements-dev.txt
 
-A test fails when either requirements file no longer matches `uv.lock`.
+`uv.lock` is the only pinned list; no requirements files are kept in the repository.
 
-Without uv, install the same hash-checked set with pip, in a Python 3.15 virtual environment:
+To install with pip instead, export the locked, hash-checked set with uv once, then install it with pip in a Python 3.15 virtual environment:
 
+    uv export --frozen --group dev --no-header --no-annotate > requirements-dev.txt
     pip install --require-hashes -r requirements-dev.txt
 
 Run Skopax from the clone with Docker Compose:
