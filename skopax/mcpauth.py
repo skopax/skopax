@@ -24,7 +24,9 @@ CACHE_MAX = 1000
 PAUSE_S = 5
 PROVIDER_DOWN = ('unreachable', 'discovery', 'endpoint')
 REFUSALS = {'no-email': ('mcp.no_email', 'mcp.no_email_header'), 'unverified': ('mcp.unverified', 'mcp.unverified_header'),
-            'local-account': ('mcp.local_account', 'mcp.local_account_header'), 'disabled': ('mcp.disabled', 'mcp.disabled_header')}
+            'local-account': ('mcp.local_account', 'mcp.local_account_header'), 'disabled': ('mcp.disabled', 'mcp.disabled_header'),
+            'not-added': ('mcp.not_allowed', 'mcp.not_allowed_header'), 'domain': ('mcp.not_allowed', 'mcp.not_allowed_header'),
+            'unconfirmed': ('mcp.not_allowed', 'mcp.not_allowed_header')}
 
 
 class Forbidden(Exception):

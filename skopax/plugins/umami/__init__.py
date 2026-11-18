@@ -132,8 +132,8 @@ PLUGIN = Plugin(
                                                  'Empty watches pageviews only.'),
             Field('properties', 'Properties', 'text', default='type', help='Event-data properties, comma-separated. The first splits the event into one count per value; '
                                                                           'the umami tool reads only these.'),
-            Field('ca', 'CA certificate', 'pem', help='PEM certificate to trust instead of the system roots.'),
-            Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),
+            Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),
+            Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), group='advanced', help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),
     test=test,
     checks=(Check(check.CHECK, 'Pageviews and a tracked event against 1 and 7 days earlier', 900, 420, RAN, run, tool='umami'),),
     rules=(RuleSet('rules', 'Umami', dict(check.RULES), check.RULE_HELP),),

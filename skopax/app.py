@@ -11,6 +11,7 @@ import re
 import secrets
 import threading
 import time
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -70,7 +71,7 @@ from skopax.slacklink import SlackLink
 from skopax.kit.promql import Prometheus, client_for
 from skopax.kit.promql import CHECK as PROMETHEUS_CHECK, ID as PROMETHEUS_ID
 from skopax.tickets import PROJECT_KEY, projects_of
-from skopax.users import IDP_SOURCES, ROLES, IdpManaged, InvalidUser, LastAdmin, LINK_PENDING_S, UserExists, Users, admin_row, leaves_admin, link_admits
+from skopax.users import IDP_SOURCES, NAME_MAX, PASSWORD_MAX, PASSWORD_MIN, ROLES, IdpManaged, InvalidUser, LastAdmin, LINK_PENDING_S, UserExists, Users, admin_row, clean_email, clean_name, clean_password, clean_role, leaves_admin, link_admits
 from skopax.settingsources import Follower, SourceSet, boot, labelled, merged
 from skopax.settingsources import core_knowledge_ids, core_setting_ids
 from skopax.tunables import SESSIONS_AFTER_KEY, SLACK_CHANNEL_KEY, SSO_SWITCH_KEY, Invalid as TunableInvalid, Live, TunableStore, View, apply as apply_tunables, parse as parse_tunable, plugin_tunables, stored as stored_text
@@ -119,8 +120,13 @@ LOGIN_SLOT = re.compile(r'\[\[(\w+)\]\]')
 LOGIN_FIELDS = ('title', 'email', 'password', 'submit')
 EMAIL_KEY_MAX = 254
 PROXY_NOTE_SECONDS = 3600
+NOT_ADDED_S = 3600
+NOT_ADDED_KEEP = 1000
 PROXY_THREAD = 'skopax-proxy-sighting'
 ERROR_FIELDS = ('type', 'loc', 'msg')
+USER_FIELDS = {'email': ('user.email_invalid', {}), 'name': ('user.name_length', {'max': NAME_MAX}), 'role': ('user.role_invalid', {}),
+               'password': ('user.password_length', {'min': PASSWORD_MIN, 'max': PASSWORD_MAX}), 'sso': ('access.user_fields', {}), 'disabled': ('access.user_fields', {}),
+               'ssoLink': ('access.user_fields', {})}
 SHARE_ID = re.compile(r'[A-Za-z0-9-]{1,64}')
 OAUTH_ERROR = re.compile(r'[a-z_]{1,40}')
 LOGIN_RESTARTS = {'cancelled': 'login.cancelled', 'state': 'login.mismatch', 'changed': 'login.restart'}
@@ -128,6 +134,7 @@ LOGIN_UNAVAILABLE = ('unreachable', 'hook')
 USER_CACHE_SECONDS = 30
 FAILURE_PAUSE_SECONDS = 5
 DROPS_SHOWN = 5
+ORIGIN_VIEW = {'builtin': 'builtin', 'entry-point': 'package', 'env': 'env'}
 DUPLICATE_KEY_CODE = 11000
 CHAT_PAGE = re.compile(r'/chat/(?:thread|share)/[A-Za-z0-9-]{1,64}/?')
 WEB = Path(__file__).parent / 'web'
@@ -353,6 +360,23 @@ def refused_fields(e: RequestValidationError) -> list[dict]:
     return [{name: item[name] for name in ERROR_FIELDS if name in item} for item in e.errors()]
 
 
+def refused_user(e: RequestValidationError) -> JSONResponse:
+    first = next(iter(e.errors()), {})
+    loc = tuple(first.get('loc') or ())
+    field = loc[1] if len(loc) == 2 and loc[0] == 'body' and loc[1] in USER_FIELDS and first.get('type') != 'extra_forbidden' else None
+    key, values = USER_FIELDS[field] if field else ('access.user_fields', {})
+    if field == 'password' and first.get('type') != 'string_too_long':
+        key, values = 'user.password_text', {}
+    return JSONResponse({'detail': msg(key, **values)} | ({'field': field} if field else {}), status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
+
+
+def user_field(clean: Callable[[str], str], field: str, value: str) -> str:
+    try:
+        return clean(value)
+    except InvalidUser as e:
+        raise FieldRefused(field, e.text) from None
+
+
 async def refused_request(_: Request, e: RequestValidationError) -> Response:
     return Response(json.dumps({'detail': jsonable_encoder(refused_fields(e))}), status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, media_type='application/json')
 
@@ -523,6 +547,23 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except PyMongoError as e:
             log.warning('the SSO link activity line was not saved: %s', kind(e))
 
+    def note_not_added(email: str) -> None:
+        now = clock()
+        with not_added_guard:
+            at = not_added_seen.get(email)
+            if at is not None and 0 <= now - at < NOT_ADDED_S:
+                return
+            not_added_seen[email] = now
+            not_added_seen.move_to_end(email)
+            while len(not_added_seen) > NOT_ADDED_KEEP:
+                not_added_seen.popitem(last=False)
+        try:
+            store.add_activity(ACCESS_KIND, email, msg('access.sso_not_added', email=email))
+        except PyMongoError as e:
+            log.warning('the refused SSO sign-in activity line was not saved: %s', kind(e))
+
+    not_added_seen: OrderedDict[str, float] = OrderedDict()
+    not_added_guard = threading.Lock()
     signin = SignIn(users, settings, resolvers, clock=clock, on_bound=note_bound)
     api_tokens = ApiTokens(db, clock=clock)
     setup_gate = SetupGate(db, users)
@@ -1696,6 +1737,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     async def on_invalid_request(request: Request, e: RequestValidationError):
         if getattr(request.scope.get('route'), 'path', '').startswith('/api/admin/anthropic-key'):
             return JSONResponse({'detail': msg('aikey.invalid')}, status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
+        if getattr(request.scope.get('route'), 'path', '').startswith('/api/admin/users'):
+            return refused_user(e)
         return await refused_request(request, e)
 
     @app.exception_handler(ActionMoved)
@@ -1853,6 +1896,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return forget_login(login_refused(e))
         except Refused as e:
             log.warning('login refused: %s', e.reason)
+            if e.reason == 'not-added' and e.email:
+                note_not_added(e.email)
             return forget_login(message_page(msg('login.failed'), e.status))
         email = stored['email']
         user_cache.pop(email, None)
@@ -2346,14 +2391,67 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.post('/api/admin/users', status_code=status.HTTP_201_CREATED)
     def post_admin_user(body: UserIn, by: Annotated[str, Depends(require_admin)]) -> dict:
+        email = user_field(clean_email, 'email', body.email)
+        role = user_field(clean_role, 'role', body.role)
+        name = email.partition('@')[0] if body.name == '' else user_field(clean_name, 'name', body.name)
+        password = body.password or None
+        if body.sso and not signon.active():
+            raise FieldRefused('sso', msg('access.sso_off'))
+        if password is None and not body.sso:
+            raise FieldRefused('password', msg('access.password_or_sso'))
+        if password is not None:
+            user_field(clean_password, 'password', password)
+        if body.sso and not sso_domain_allowed(email):
+            raise FieldRefused('email', msg('access.sso_domain'))
         try:
-            made = users.create(body.email, body.name, body.role, body.password)
+            made = users.add_sso(email, name, role) if password is None else users.create(email, name, role, password, link_by=by if body.sso else None)
         except UserExists as e:
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.user_exists')) from e
         except InvalidUser as e:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, e.text) from e
-        store.add_activity(ACCESS_KIND, by, msg('access.user_created', email=made['email'], role=made['role']))
+        if password is None:
+            store.add_activity(ACCESS_KIND, by, msg('access.user_added_sso', email=made['email'], role=made['role']))
+        else:
+            store.add_activity(ACCESS_KIND, by, msg('access.user_created', email=made['email'], role=made['role']))
+        if made.get('ssoLink'):
+            store.add_activity(ACCESS_KIND, by, msg('access.sso_linked', email=made['email'], days=LINK_PENDING_S // 86400))
         return admin_row(made, clock())
+
+    def sso_domain_allowed(email: str) -> bool:
+        return email_allowed(email, tuple(settings.sso_allowed_domains or ()))
+
+    def checked_patch(key: str, body: UserPatch, current: dict) -> None:
+        to_local = body.password is not None and current.get('source') == 'sso'
+        if to_local and current.get('opened') is not False:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_password'))
+        if body.ssoLink is not None and current.get('source') != 'local' and not to_local:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_link_local_only'))
+        try:
+            fields, _ = users.prepare_change(body.role, body.disabled, None, current)
+            if body.password is not None and not to_local:
+                clean_password(body.password)
+        except InvalidUser as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, e.text) from e
+        except IdpManaged:
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.role_from_idp')) from None
+        if to_local:
+            user_field(clean_password, 'password', body.password)
+        if body.ssoLink and not sso_domain_allowed(key):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_domain'))
+        if leaves_admin(fields) and users.is_last_admin(key):
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_admin'))
+
+    def sso_to_local(key: str, body: UserPatch, by: str) -> dict:
+        try:
+            made = users.make_local(key, body.password, by)
+        finally:
+            user_cache.pop(key, None)
+            mcp_auth.forget(key)
+        if made is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_password'))
+        store.add_activity(ACCESS_KIND, by, msg('access.user_password', email=key))
+        store.add_activity(ACCESS_KIND, by, msg('access.sso_linked', email=key, days=LINK_PENDING_S // 86400))
+        return made
 
     @app.patch('/api/admin/users/{email}')
     def patch_admin_user(email: str, body: UserPatch, by: Annotated[str, Depends(require_admin)]) -> dict:
@@ -2361,10 +2459,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         current = users.get(key)
         if current is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, msg('access.unknown_user'))
+        checked_patch(key, body, current)
         if body.password is not None and current.get('source') == 'sso':
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_password'))
-        if body.ssoLink is not None and current.get('source') != 'local':
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_link_local_only'))
+            current = sso_to_local(key, body, by)
+            body = body.model_copy(update={'password': None})
         try:
             fields, unset = users.prepare_change(body.role, body.disabled, body.password, current)
         except InvalidUser as e:
@@ -2697,12 +2795,14 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 for lang, count, keys in locale_drops(found)]
 
     def plugin_row(found, passes: dict) -> dict:
+        origin = ORIGIN_VIEW[found.origin]
         if found.plugin is None:
-            return {'id': found.id, 'module': found.module, 'reason': found.reason}
+            return {'id': found.id, 'module': found.module, 'reason': found.reason, 'origin': origin}
         if found.state == 'broken':
-            return {'id': found.id, 'module': found.module, 'reason': found.reason, 'enabled': plugin_state.enabled(found.id)}
+            return {'id': found.id, 'module': found.module, 'reason': found.reason, 'enabled': plugin_state.enabled(found.id), 'origin': origin}
         listed = instances.all(found.id)
         return {**describe(found.plugin, registry.icon(found.id) is not None), 'state': found.state, 'reason': found.reason, 'enabled': plugin_state.enabled(found.id),
+                'origin': origin, **({} if origin == 'builtin' else {'module': found.module}),
                 'localeDrops': drops_view(found) if found.state == 'ok' else [],
                 'fields': runtime.fields_of(found.id), 'instances': [i.view() for i in listed], 'health': plugin_health(found.plugin, listed, passes)}
 

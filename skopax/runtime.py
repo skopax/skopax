@@ -7,7 +7,7 @@ import logging
 import re
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from urllib.parse import urlsplit
 
 import regex
@@ -32,7 +32,7 @@ from skopax.remote import Transport
 
 log = logging.getLogger('skopax.runtime')
 
-KNOWLEDGE_TOTAL = 24000
+KNOWLEDGE_TOTAL = 80000
 
 ORG_KEYS = ('link_hosts', 'email_domains', 'ticket_projects')
 ASSET_MAX_BYTES = 2 * 1024 * 1024
@@ -230,6 +230,14 @@ def field_set(instance, field: str) -> bool:
     return bool(str(instance.values.get(field) or instance.secrets.get(field) or '').strip())
 
 
+def shown_knowledge(plugin: Plugin, k: Knowledge) -> Knowledge:
+    return dataclasses.replace(k, text=f'From plug-in {plugin.name}.\n\n{k.text.strip()}')
+
+
+def knowledge_size(k: Knowledge) -> int:
+    return len(f'\n## {k.title} {{#{k.id}}}\n\n{k.text.strip()}\n')
+
+
 def held_knowledge(plugin: Plugin, found: list) -> bool:
     if plugin.checks:
         return False
@@ -270,7 +278,7 @@ class Runtime:
         self._catching = threading.Lock()
         self._good: dict[str, dict[str, tuple[str, ...]]] = {}
         self._org_failing: set[str] = set()
-        self._crowded: set[str] = set()
+        self._left_out: frozenset[str] | None = None
         self._links_failed: set[str] = set()
         self._release_runs: dict[tuple[str, str | None], tuple[dict, threading.Event]] = {}
         self._releasing = threading.Lock()
@@ -606,25 +614,39 @@ class Runtime:
         transport = self.transport_for(plugin, info)
         return Peer(info, lambda: transport, frozenset(instance.off_checks))
 
-    def knowledge(self) -> list[Knowledge]:
+    def knowledge(self, cards: Sequence[dict] = ()) -> list[Knowledge]:
+        serving = self.serving()
+        active = [plugin for plugin, _ in serving]
+        owners = [owner.id for owner in (self._owner(card, active) for card in cards if isinstance(card, dict)) if owner is not None]
+        first = {plugin_id: at for at, plugin_id in enumerate(dict.fromkeys(owners))}
         out: list[Knowledge] = []
+        left: list[str] = []
         used = 0
         full = False
-        for plugin, found in self.serving():
+        for plugin, found in sorted(serving, key=lambda pair: first.get(pair[0].id, len(first))):
             if held_knowledge(plugin, found):
                 continue
             for k in plugin.knowledge:
-                shown = dataclasses.replace(k, text=f'From plug-in {plugin.name}.\n\n{k.text.strip()}')
-                size = len(f'\n## {shown.title} {{#{shown.id}}}\n\n{shown.text.strip()}\n')
+                shown = shown_knowledge(plugin, k)
+                size = knowledge_size(shown)
                 if full or used + size > KNOWLEDGE_TOTAL:
                     full = True
-                    if plugin.id not in self._crowded:
-                        self._crowded.add(plugin.id)
-                        log.warning('%s', msg('plugins.knowledge.skipped', plugin=plugin.name, limit=KNOWLEDGE_TOTAL))
+                    if plugin.name not in left:
+                        left.append(plugin.name)
                     continue
                 used += size
                 out.append(shown)
+        self._note_left_out(tuple(left))
         return out
+
+    def _note_left_out(self, left: tuple[str, ...]) -> None:
+        if not left:
+            return
+        with self._guard:
+            changed = frozenset(left) != self._left_out
+            self._left_out = frozenset(left)
+        if changed:
+            log.info('%s', msg('plugins.knowledge.left_out', limit=KNOWLEDGE_TOTAL, plugins=', '.join(left)))
 
     def context(self, plugin: Plugin, instance: Instance | None, now: float, reads=None) -> RunContext:
         return RunContext(self, plugin, instance, now, reads)

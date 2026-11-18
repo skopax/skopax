@@ -102,8 +102,42 @@ MARK = r"""((marks) => {
 OVERFLOW = r"""((limit) => {
   const vw = document.documentElement.clientWidth;
   const items = [], taken = [];
+  const hides = o => o === 'hidden' || o === 'clip';
+  const lost = (el, clips) => {
+    const box = el.getBoundingClientRect();
+    if (box.width <= 2 || box.height <= 2) return false;
+    let lo = 0, hi = vw;
+    for (const c of clips) { const k = c.getBoundingClientRect(); lo = Math.max(lo, k.left + c.clientLeft); hi = Math.min(hi, k.left + c.clientLeft + c.clientWidth); }
+    if (hi - lo <= 2) return false;
+    const out = k => k.width > 0 && k.height > 0 && (k.right > hi + 4 || k.left < lo - 4);
+    const calm = n => {
+      for (let q = n; q; q = q.parentElement) {
+        const qs = getComputedStyle(q);
+        if (q.getAttribute('aria-hidden') === 'true' || (qs.textOverflow === 'ellipsis' && qs.overflowX !== 'visible')) return true;
+        if (clips.includes(q)) return false;
+        if (q instanceof SVGElement || qs.transform !== 'none' || qs.animationName !== 'none' || qs.opacity === '0') return true;
+        if ((qs.overflowX === 'auto' || qs.overflowX === 'scroll') && !out(q.getBoundingClientRect())) return true;
+      }
+      return false;
+    };
+    const controls = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [tabindex]:not([tabindex="-1"])';
+    for (const c of [el, ...el.querySelectorAll(controls)]) {
+      if (c.matches(controls) && getComputedStyle(c).visibility === 'visible' && out(c.getBoundingClientRect()) && !calm(c)) return true;
+    }
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      if (!/\S/.test(n.data)) continue;
+      range.selectNodeContents(n);
+      if (![...range.getClientRects()].some(out)) continue;
+      const t = n.parentElement;
+      if (t && getComputedStyle(t).visibility === 'visible' && !calm(t)) return true;
+    }
+    return false;
+  };
+  let kept = 0;
   for (const el of document.body.querySelectorAll('*')) {
-    if (items.length >= limit) break;
+    if (kept >= limit || items.length >= limit * 8) break;
     if (taken.some(t => t.contains(el))) continue;
     const r = el.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0 || r.right <= 1 || r.left >= vw - 1) continue;
@@ -114,16 +148,21 @@ OVERFLOW = r"""((limit) => {
     if (!wide && !past) continue;
     if (ox === 'visible' && !past && r.left + sw <= vw + 1) continue;
     const right = ox === 'visible' ? Math.max(r.right, r.left + sw) : r.right;
-    let clip = '', pans = false;
+    let clip = '', pans = false, edge = null;
     const root = document.documentElement, rootVisible = getComputedStyle(root).overflowX === 'visible';
     for (let p = el.parentElement; p; p = p.parentElement) {
       const ps = getComputedStyle(p), o = ps.overflowX;
       if (o === 'visible') continue;
       const pr = p.getBoundingClientRect();
-      if (ps.overflowY === 'visible' || right > pr.right + 1 || r.left < pr.left - 1) { clip = o; pans = p === root || (p === document.body && rootVisible); break; }
+      if (ps.overflowY === 'visible' || right > pr.right + 1 || r.left < pr.left - 1) { clip = o; pans = p === root || (p === document.body && rootVisible); edge = p; break; }
     }
+    const self = hides(ox) && wide, outer = hides(clip) && !pans;
+    const item = {i: items.length, ox: ox, sw: sw, cw: cw, x: Math.round(r.left + window.scrollX), y: Math.round(r.top + window.scrollY), w: Math.round(r.width), h: Math.round(r.height), clip: clip, pans: pans};
+    if (self || outer) item.lost = lost(el, [self ? el : null, outer ? edge : null].filter(c => c));
     el.setAttribute('data-page-check-overflow', String(items.length));
-    items.push({i: items.length, ox: ox, sw: sw, cw: cw, x: Math.round(r.left + window.scrollX), y: Math.round(r.top + window.scrollY), w: Math.round(r.width), h: Math.round(r.height), clip: clip, pans: pans});
+    items.push(item);
+    if (item.lost === false) { if (el instanceof SVGElement) taken.push(el); continue; }
+    kept++;
     taken.push(el);
   }
   return {vw: vw, items: items};
@@ -332,6 +371,11 @@ def number(value: object) -> float | None:
 
 
 def verdict(item: object, vw: float) -> str | None:
+    found = judge(item, vw)
+    return None if found == 'cut' and isinstance(item, dict) and item.get('lost') is False else found
+
+
+def judge(item: object, vw: float) -> str | None:
     if not isinstance(item, dict) or not isinstance(item.get('i'), int) or isinstance(item.get('i'), bool):
         return None
     sw, cw, x, w = (number(item.get(k)) for k in ('sw', 'cw', 'x', 'w'))

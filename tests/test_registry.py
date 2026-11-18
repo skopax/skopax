@@ -174,7 +174,7 @@ def test_core_version_range_is_checked():
 
     # then
     assert loaded.state == 'incompatible'
-    assert skopax.__version__ == '0.1.0rc2' and '0.1.0rc2' in loaded.reason and '>=9' in loaded.reason
+    assert skopax.__version__ == '0.1.0rc3' and '0.1.0rc3' in loaded.reason and '>=9' in loaded.reason
     assert [p.id for p in reg.usable()] == ['demo']
 
 
@@ -288,6 +288,19 @@ def test_capabilities_must_cover_secret_fields():
     ({'fields': (Field('url', 'URL', 'url'), Field('url', 'URL again', 'url'))}, 'repeated'),
     ({'fields': (Field('url', 'URL', 'url'), Field('mode', 'Mode', 'colour'))}, 'unknown kind'),
     ({'fields': (Field('url', 'URL', 'url'), Field('ca', 'CA', 'pem', show_if=('mode', 'slow')))}, 'depends on'),
+    ({'fields': (Field('url', 'URL', 'url'), Field('auth', 'Auth', 'choice', choices=('none', 'basic'), choice_labels={'bearer': 'Bearer token'}))}, 'choice labels'),
+    ({'fields': (Field('url', 'URL', 'url'), Field('auth', 'Auth', 'choice', choices=('none', 'basic'), choice_labels={'none': ''}))}, 'choice labels'),
+    ({'fields': (Field('url', 'URL', 'url'), Field('auth', 'Auth', 'choice', choices=('none', 'basic'), choice_labels={'none': 'n' * 41}))}, 'choice labels'),
+    ({'fields': (Field('url', 'URL', 'url'), Field('auth', 'Auth', 'choice', choices=('none', 'basic'), choice_labels={'none': 'No' + chr(10) + 'sign-in'}))}, 'choice labels'),
+    ({'fields': (Field('url', 'URL', 'url'), Field('auth', 'Auth', 'choice', choices=('none', 'basic'), choice_labels={'none': '   '}))}, 'choice labels'),
+    ({'fields': (Field('url', 'URL', 'url'), Field('auth', 'Auth', 'choice', choices=('none', 'basic'), choice_labels={'none': 5}))}, 'choice labels'),
+    ({'fields': (Field('url', 'URL', 'url'), Field('auth', 'Auth', 'choice', choices=('none', 'basic'), choice_labels=(('none', 'None'),)))}, 'choice labels'),
+    ({'fields': (Field('url', 'URL', 'url'), Field('on', 'On', 'bool', choice_labels={'true': 'Yes'}))}, 'choice labels'),
+    ({'fields': (Field('url', 'URL', 'url', group='Connection'),)}, 'group'),
+    ({'fields': (Field('url', 'URL', 'url', group='sign in'),)}, 'group'),
+    ({'fields': (Field('url', 'URL', 'url', group='g' * 25),)}, 'group'),
+    ({'fields': (Field('url', 'URL', 'url', group='-x'),)}, 'group'),
+    ({'fields': (Field('url', 'URL', 'url', group=None),)}, 'group'),
     ({'capabilities': Capabilities(hosts=('@nope',), secrets=('token',), agent_reads=True)}, 'URL field'),
     ({'capabilities': Capabilities(hosts=('@token',), secrets=('token',), agent_reads=True)}, 'URL field'),
     ({'capabilities': Capabilities(hosts=('@url',), secrets=('token',), agent_reads=False)}, 'agent reads'),
@@ -824,12 +837,44 @@ def test_agent_read_field_keys_never_clash_with_the_agent_instance_fields_and_ne
     assert (first.state, second.state) == ('ok', 'broken') and 'shared.key' in second.reason and 'aaa' in second.reason
 
 
+def test_a_field_may_label_its_choices_and_name_its_section():
+    # given
+    field = Field('auth', 'Sign-in', 'choice', default='none', choices=('none', 'header', 'oauth'), choice_labels={'none': 'No sign-in', 'header': 'Token in a header'}, group='sign-in')
+    plugin = variant(fields=DEMO.fields + (field, Field('cert', 'CA certificate', 'pem', group='advanced'), Field('pinned', 'Pinned', 'bool', default='false', group='advanced')))
+
+    # when
+    loaded = solo(plugin)
+    view = registry.field_view(field)
+
+    # then
+    assert loaded.state == 'ok', loaded.reason
+    assert (view['choiceLabels'], view['group']) == ({'none': 'No sign-in', 'header': 'Token in a header'}, 'sign-in')
+    assert [(f['key'], f['choiceLabels'], f['group']) for f in registry.describe(plugin)['fields']][-3:] == [('auth', {'none': 'No sign-in', 'header': 'Token in a header'}, 'sign-in'), ('cert', {}, 'advanced'), ('pinned', {}, 'advanced')]
+    assert (Field('x', 'X', 'text').choice_labels, Field('x', 'X', 'text').group) == ({}, '')
+
+
+@pytest.mark.parametrize('over', [{'group': 'Advanced'}, {'group': 'a b'}, {'kind': 'choice', 'choices': ('a',), 'choice_labels': {'b': 'B'}}], ids=['caps', 'space', 'unknown-choice'])
+def test_an_agent_read_field_follows_the_same_label_and_group_rules(over):
+    # given
+    plugin = agent_field_plugin('reader', 'reader.mode')
+    read = plugin.agent_reads[0]
+    bad = dataclasses.replace(plugin, agent_reads=(dataclasses.replace(read, fields=(dataclasses.replace(read.fields[0], **over),)),))
+
+    # when
+    fine = Registry.of(plugin).get('reader')
+    refused = Registry.of(bad).get('reader')
+
+    # then
+    assert fine.state == 'ok'
+    assert refused.state == 'broken' and 'reader.mode' in refused.reason
+
+
 def test_the_field_view_is_public_and_describe_uses_it():
     # given
     field = Field('url', 'URL', 'url', required=True, show_if=('mode', 'agent'), ui=True)
 
     # then
-    assert registry.field_view(field) == {'key': 'url', 'label': 'URL', 'kind': 'url', 'required': True, 'default': '', 'help': '', 'choices': [], 'low': None, 'high': None, 'showIf': ['mode', 'agent'], 'ui': True}
+    assert registry.field_view(field) == {'key': 'url', 'label': 'URL', 'kind': 'url', 'required': True, 'default': '', 'help': '', 'choices': [], 'low': None, 'high': None, 'showIf': ['mode', 'agent'], 'ui': True, 'choiceLabels': {}, 'group': ''}
     assert registry.describe(demo_plugin.PLUGIN)['fields'][0] == registry.field_view(demo_plugin.PLUGIN.fields[0])
     assert not hasattr(registry, '_field')
 

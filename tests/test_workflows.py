@@ -6,6 +6,7 @@ import sys
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 
 from tests.yaml_kit import yaml_comment_lines
@@ -17,6 +18,7 @@ PR_EVENTS = ['opened', 'edited', 'synchronize', 'reopened', 'ready_for_review']
 DEPENDABOT_EMAIL = '49699333+dependabot[bot]@users.noreply.github.com'
 WORKFLOWS = ROOT / '.github' / 'workflows'
 EXAMPLE_DOCKERFILE = ROOT / 'examples' / 'hello-plugin' / 'Dockerfile'
+EXAMPLE_DOCKERFILES = [EXAMPLE_DOCKERFILE] + [ROOT / 'examples' / name / 'Dockerfile' for name in ('couchbase-plugin', 'managed-redis-plugin')]
 PINNED = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_./-]+)?@[0-9a-f]{40}')
 DIGEST = re.compile(r'[^\s@]+@sha256:[0-9a-f]{64}')
 LOCAL_CALLS = {'./.github/workflows/ci.yml'}
@@ -359,7 +361,11 @@ def image_problems(image: dict) -> list[str]:
     script = '\n'.join(runs(image, 'layer-smoke'))
     for needle in ('docker build --build-arg BASE_IMAGE="$IMAGE" --build-arg SKOPAX_VERSION="$SKOPAX_VERSION"', 'examples/hello-plugin',
                    '/actuator/health/liveness', '/api/admin/plugins', 'p["hello"]', '== "ok"', '/plugins/hello/icon.svg', '[ "$icon" = 200 ]',
-                   'import secrets; print(secrets.token_urlsafe(32))', '-e SKOPAX_TOKEN ', '-e SKOPAX_SECRET_KEY ', '$(seq 60)'):
+                   'import secrets; print(secrets.token_urlsafe(32))', '-e SKOPAX_TOKEN ', '-e SKOPAX_SECRET_KEY ', '$(seq 60)',
+                   '--build-arg BASE_IMAGE=skopax-hello --build-arg SKOPAX_VERSION=smoke -t skopax-couchbase:smoke examples/couchbase-plugin',
+                   '--build-arg BASE_IMAGE=skopax-couchbase --build-arg SKOPAX_VERSION=smoke -t skopax-examples:smoke examples/managed-redis-plugin',
+                   '-e SKOPAX_SECRET_KEY skopax-examples:smoke', 'for i in ("couchbase", "managed-redis")', 'for plugin in couchbase managed-redis; do',
+                   '/plugins/$plugin/icon.svg'):
         if needle not in script:
             problems.append(f'layer-smoke lacks {needle}')
     if any('--max-time' not in line for line in script.splitlines() if re.search(r'\bcurl\b', line)):
@@ -736,9 +742,10 @@ def test_the_image_job_builds_amd64_and_arm64_with_labels_and_runs_the_layer_smo
     assert image_problems(lingering) == ['layer-smoke does not remove its container at the end']
 
 
-def test_the_example_layer_builds_on_the_named_image_at_the_package_version():
+@pytest.mark.parametrize('path', EXAMPLE_DOCKERFILES, ids=lambda path: path.parent.name)
+def test_the_example_layer_builds_on_the_named_image_at_the_package_version(path):
     # given
-    dockerfile = EXAMPLE_DOCKERFILE.read_text(encoding='utf-8')
+    dockerfile = path.read_text(encoding='utf-8')
     package = tomllib.loads((ROOT / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version']
 
     # when
@@ -767,7 +774,7 @@ def test_dependabot_watches_actions_uv_docker_and_npm_weekly():
     assert config['version'] == 2
     assert set(found) == {'github-actions', 'uv', 'docker', 'npm'}
     assert {u['schedule']['interval'] for u in found.values()} == {'weekly'}
-    assert found['docker']['directories'] == ['/', '/examples/hello-plugin']
+    assert found['docker']['directories'] == ['/', '/examples/hello-plugin', '/examples/couchbase-plugin', '/examples/managed-redis-plugin']
     assert found['docker']['groups'] == {'docker': {'group-by': 'dependency-name'}}
     assert found['npm']['directory'] == '/tests/page'
     assert {u['cooldown']['default-days'] for u in found.values()} == {14}

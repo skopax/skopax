@@ -176,6 +176,7 @@ def test_trademarks_lets_a_plug_in_package_carry_the_skopax_prefix_as_a_function
     functional = flat[flat.index('## 3. The basic rule'):flat.index('## 4.')]
     permission = flat[flat.index('## 5. Uses that need written permission'):flat.index('## 6.')]
     example = read('examples/hello-plugin/pyproject.toml')
+    fuller = {name: read(f'examples/{name}-plugin/pyproject.toml') for name in ('couchbase', 'managed-redis')}
 
     # then
     assert 'a plug-in package named `skopax-<name>` or `skopax_<name>`' in functional
@@ -183,6 +184,9 @@ def test_trademarks_lets_a_plug_in_package_carry_the_skopax_prefix_as_a_function
     assert 'package name that contains "Skopax" (other than a plug-in package named as in section 3)' in permission
     assert '"SkopaxOps" (other than a plug-in, and its repository, named as in section 3);' in permission
     assert 'name = "skopax-hello"' in example and 'description = "Example plug-in for Skopax:' in example
+    assert all(f'name = "skopax-{name}"' in text and 'description = "Example plug-in for Skopax:' in text for name, text in fuller.items())
+    assert all('license = "Apache-2.0"' in text and 'license-files = ["LICENSE"]' in text for text in [example, *fuller.values()])
+    assert all(read(f'examples/{name}-plugin/LICENSE') == read('LICENSE') for name in ('hello', *fuller))
 
 
 def test_code_of_conduct_is_the_contributor_covenant_with_the_hello_contact():
@@ -242,14 +246,17 @@ def test_community_files_and_docs_are_ascii():
     docs = sorted(str(path.relative_to(ROOT)) for path in (ROOT / 'docs').rglob('*.md'))
     paths = ['CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'TRADEMARKS.md', 'SECURITY.md', '.github/PULL_REQUEST_TEMPLATE.md',
              '.github/ISSUE_TEMPLATE/bug.yml', '.github/ISSUE_TEMPLATE/feature.yml', '.github/ISSUE_TEMPLATE/config.yml',
-             'README.md', 'THIRD_PARTY_NOTICES.md', 'examples/hello-plugin/README.md', *docs]
+             'README.md', 'THIRD_PARTY_NOTICES.md', 'CHANGELOG.md', 'examples/hello-plugin/README.md', 'examples/couchbase-plugin/README.md', 'examples/managed-redis-plugin/README.md', *docs]
+    examples = sorted(str(path.relative_to(ROOT)) for path in (ROOT / 'examples').rglob('*') if path.is_file() and '__pycache__' not in path.parts)
 
     # when
     odd = [p for p in paths if not read(p).isascii()]
+    odd_examples = [p for p in examples if not (ROOT / p).read_bytes().isascii()]
 
     # then
     assert len(docs) >= 8
     assert odd == []
+    assert len(examples) >= 24 and odd_examples == []
 
 
 def test_the_yaml_comment_check_sees_trailing_comments_but_not_block_text():

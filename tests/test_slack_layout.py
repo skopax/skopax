@@ -650,10 +650,16 @@ def test_an_auto_sent_post_says_who_drafted_its_body():
     server = anomaly_message(card | {'slackDraft': {'text': 'x', 'by': SERVER_BY}}, LINK, AUTO_BY, 'x')
     investigator = anomaly_message(card | {'slackDraft': {'text': 'x', 'by': 'pod'}}, LINK, AUTO_BY, 'x')
     person = anomaly_message(card | {'slackDraft': {'text': 'x', 'by': 'pod'}}, LINK, 'alice@example.com', 'x')
+    token = anomaly_message(card | {'slackDraft': {'text': 'x', 'by': 'token:release-bot'}}, LINK, AUTO_BY, 'x')
+    unnamed = anomaly_message(card | {'slackDraft': {'text': 'x', 'by': 'token'}}, LINK, AUTO_BY, 'x')
+    core = anomaly_message(card | {'slackDraft': {'text': 'x', 'by': 'token:bootstrap'}}, LINK, AUTO_BY, 'x')
 
     # then
     assert bar_of(server)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 Skopax \u00b7 auto-sent'
-    assert bar_of(investigator)[0].endswith(' \u00b7 Claude \u00b7 auto-sent')
+    assert bar_of(investigator)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 Investigator \u00b7 auto-sent'
+    assert bar_of(token)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 release-bot \u00b7 auto-sent'
+    assert bar_of(unnamed)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 Investigator \u00b7 auto-sent'
+    assert bar_of(core)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 Investigator \u00b7 auto-sent'
     assert bar_of(person)[0] == f'Open \u00b7 Warning \u00b7 {SINCE}', 'a person who shares it is named in the headline'
 
 

@@ -71,13 +71,13 @@ def test_image_tags_for_rc_and_release(capsys):
     assert (foreign, foreign_out) == (1, 'tag v\u0661.0.0 is not vX.Y.Z or vX.Y.Z-rc.N\n')
 
 
-def test_the_tree_version_is_the_first_release_candidate():
+def test_the_tree_version_is_the_current_release():
     # given
     declared = tomllib.loads((ROOT / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version']
 
     # then
-    assert release_version.package_version() == declared == skopax.__version__ == '0.1.0rc2'
-    assert release_version.main(['check', 'v0.1.0-rc.2']) == 0
+    assert release_version.package_version() == declared == skopax.__version__ == '0.1.0rc3'
+    assert release_version.main(['check', 'v0.1.0-rc.3']) == 0
 
 
 def test_release_tag_turns_a_package_version_into_its_git_tag():

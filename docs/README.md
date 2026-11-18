@@ -2,6 +2,12 @@
 
 Start with the [quickstart](../README.md#quickstart) and [First run](../README.md#first-run) on the front page. These pages cover the rest.
 
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="images/board-dark.png">
+<source media="(prefers-color-scheme: light)" srcset="images/board-light.png">
+<img src="images/board-light.png" alt="The Skopax Board: columns of open, in progress, done and muted cards for a shop, with critical, warning and info cards and their assignees">
+</picture>
+
 - [Setup](setup.md): [The page](setup.md#the-page), [Admin](setup.md#admin) (with the [feature switches](setup.md#feature-switches) and the [Anthropic key](setup.md#the-anthropic-key)), [Add Prometheus](setup.md#add-prometheus), [Run the demo](setup.md#run-the-demo) and [Offline](setup.md#offline).
 - [Configuration](configuration.md): [Settings](configuration.md#settings), [Branding](configuration.md#branding), [Settings sources](configuration.md#settings-sources) and [Languages](configuration.md#languages).
 - [Sign-in](sign-in.md): [Sign in with SSO](sign-in.md#sign-in-with-sso), [Roles](sign-in.md#roles), [Local accounts and SSO](sign-in.md#local-accounts-and-sso), [MCP](sign-in.md#mcp) and [Headless setup](sign-in.md#headless-setup).

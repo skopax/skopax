@@ -21,6 +21,7 @@ SOURCES = ('local', 'sso')
 ROLE_SOURCES = ('resolver', 'claim', 'admin', 'default')
 IDP_SOURCES = ('resolver', 'claim')
 ROLE_FIELDS = ('role', 'roleFrom', 'adminRole')
+RESOLVED_AT = 'resolvedAtTs'
 
 SCRYPT_N = 2 ** 14
 SCRYPT_R = 8
@@ -47,6 +48,10 @@ class LastAdmin(Exception):
 
 
 class IdpManaged(Exception):
+    pass
+
+
+class Unopened(Exception):
     pass
 
 
@@ -187,7 +192,11 @@ class Users:
     def get(self, email: str) -> dict | None:
         return public(self.col.find_one({'_id': str(email or '').strip().lower()}))
 
-    def create(self, email: str, name: str, role: str, password: str | None = None, source: str = 'local') -> dict:
+    def pending_link(self, by: str) -> dict:
+        at = self.now()
+        return {'state': 'pending', 'by': by, 'at': clock.stamp(at), 'atTs': at}
+
+    def create(self, email: str, name: str, role: str, password: str | None = None, source: str = 'local', link_by: str | None = None) -> dict:
         key = clean_email(email)
         if source not in SOURCES:
             raise InvalidUser(msg('user.source_invalid'))
@@ -195,6 +204,25 @@ class Users:
                'disabled': False, 'createdAt': stamp(), 'lastLogin': None}
         if password is not None:
             doc['pw'] = hash_password(clean_password(password))
+        if link_by is not None:
+            if source != 'local':
+                raise InvalidUser(msg('access.sso_link_local_only'))
+            doc['ssoLink'] = self.pending_link(link_by)
+        return self.insert(doc)
+
+    def add_sso(self, email: str, name: str, role: str) -> dict:
+        key = clean_email(email)
+        chosen = clean_role(role)
+        return self.insert({'_id': key, 'email': key, 'name': clean_name(name), 'role': chosen, 'adminRole': chosen, 'roleFrom': 'admin', 'source': 'sso',
+                            'disabled': False, 'createdAt': stamp(), 'lastLogin': None, 'opened': False})
+
+    def make_local(self, email: str, password: str, by: str) -> dict | None:
+        key = str(email or '').strip().lower()
+        change = {'$set': {'source': 'local', 'pw': hash_password(clean_password(password)), 'ssoLink': self.pending_link(by)}, '$unset': {'opened': ''}}
+        return public(self.col.find_one_and_update({'_id': key, 'source': 'sso', 'opened': False}, change, return_document=ReturnDocument.AFTER))
+
+    def insert(self, doc: dict) -> dict:
+        key = doc['_id']
         try:
             self.col.insert_one(doc)
         except DuplicateKeyError as e:
@@ -258,19 +286,21 @@ class Users:
     def list(self) -> list[dict]:
         return [public(d) for d in self.col.find().sort('_id', ASCENDING)]
 
-    def upsert_sso(self, email: str, name: str, default_role: str) -> dict:
+    def upsert_sso(self, email: str, name: str, default_role: str, verified: bool = False) -> dict:
         key = clean_email(email)
         label = clean_name(name)
         role = clean_role(default_role)
         now = stamp()
-        only = {'_id': key, 'source': 'sso', 'disabled': {'$ne': True}}
-        seen = {'$set': {'name': label, 'lastLogin': now}}
+        only = {'_id': key, 'source': 'sso', 'disabled': {'$ne': True}} | ({} if verified else {'opened': {'$ne': False}})
+        seen = {'$set': {'name': label, 'lastLogin': now}, '$unset': {'opened': ''}}
         try:
             self.col.update_one(only, seen | {'$setOnInsert': {'email': key, 'role': role, 'roleFrom': 'default', 'disabled': False, 'createdAt': now}}, upsert=True)
         except DuplicateKeyError as e:
             found = self.get(key)
             if found is None or found.get('source') != 'sso':
                 raise UserExists(key) from e
+            if found.get('opened') is False and not verified:
+                raise Unopened(key) from e
             if not found.get('disabled'):
                 self.col.update_one(only, seen)
                 return self.get(key)
@@ -284,12 +314,20 @@ class Users:
                                                              'disabled': False, 'createdAt': now, 'lastLogin': now}}, upsert=True)
         return self.get(key)
 
+    def open_sso(self, email: str) -> dict | None:
+        key = str(email or '').strip().lower()
+        return public(self.col.find_one_and_update({'_id': key, 'source': 'sso', 'disabled': {'$ne': True}, 'opened': False},
+                                                   {'$set': {'lastLogin': stamp()}, '$unset': {'opened': ''}}, return_document=ReturnDocument.AFTER))
+
+    def stamp_resolved(self, email: str, role: str, at: float) -> None:
+        key = str(email or '').strip().lower()
+        self.col.update_one({'_id': key, 'source': 'sso', 'disabled': {'$ne': True}, 'role': role, 'roleFrom': 'resolver'}, {'$set': {RESOLVED_AT: int(at)}})
+
     def set_sso_link(self, email: str, allow: bool, by: str) -> dict:
         key = str(email or '').strip().lower()
         if allow:
-            at = self.now()
             only = {'ssoLink.state': {'$ne': 'bound'}}
-            change = {'$set': {'ssoLink': {'state': 'pending', 'by': by, 'at': clock.stamp(at), 'atTs': at}}}
+            change = {'$set': {'ssoLink': self.pending_link(by)}}
         else:
             only, change = {}, {'$unset': {'ssoLink': ''}}
         after = self.col.find_one_and_update({'_id': key, 'source': 'local', **only}, change, return_document=ReturnDocument.AFTER)
@@ -315,11 +353,11 @@ class Users:
             {'_id': key, 'source': 'local', 'disabled': {'$ne': True}, 'ssoLink.state': 'bound', 'ssoLink.iss': iss, 'ssoLink.sub': sub},
             {'$set': {'lastLogin': clock.stamp(self.now())}}, return_document=ReturnDocument.AFTER))
 
-    def apply_sign_in_role(self, email: str, role: str, role_from: str, seen: dict | None = None) -> dict:
+    def apply_sign_in_role(self, email: str, role: str, role_from: str, seen: dict | None = None, at: float | None = None) -> dict:
         key = clean_email(email)
         if role_from not in ROLE_SOURCES:
             raise ValueError(f'unknown role source {role_from!r}')
-        fields = {'role': clean_role(role), 'roleFrom': role_from}
+        fields = {'role': clean_role(role), 'roleFrom': role_from} | ({RESOLVED_AT: int(at)} if role_from == 'resolver' and at is not None else {})
         held = seen if seen is not None else self.col.find_one({'_id': key}, dict.fromkeys(ROLE_FIELDS, 1)) or {}
         if 'adminRole' not in held and admin_set_of(held) is not None:
             fields['adminRole'] = admin_set_of(held)

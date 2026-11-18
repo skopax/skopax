@@ -426,7 +426,8 @@ async function theAddFormShowsTokenOnlyForBearerAuth() {
   assert.strictEqual(field(t.doc, 'token').querySelector('.int-in').type, 'password');
   assert.strictEqual(field(t.doc, 'token').querySelector('.int-in').placeholder, 'not set');
   assert.ok(field(t.doc, 'name') && field(t.doc, 'url') && field(t.doc, 'auth'), 'the name and every field are there');
-  assert.deepStrictEqual([...panel(t.doc).querySelectorAll('.int-form button')].map((b) => b.textContent), ['Test connection', 'Save', 'Save & turn on', 'Cancel']);
+  assert.deepStrictEqual([...panel(t.doc).querySelectorAll('.int-form .int-foot button')].map((b) => b.textContent), ['Test connection', 'Cancel', 'Save', 'Save & turn on']);
+  assert.deepStrictEqual([...panel(t.doc).querySelectorAll('.int-form button')].filter((b) => !b.closest('.int-foot')).map((b) => b.className), ['int-seg-b', 'int-seg-b', 'int-eye'], 'the only other buttons are the field controls');
   assert.ok(inPanel(t.doc, '.int-add').getAttribute('aria-pressed') === 'true' && !inPanel(t.doc, '.int-itab[aria-selected="true"]'), 'the Add instance tab is the one shown');
   t.w.close();
   console.log('PASS Admin, Integrations: the add form shows token only for auth=bearer');
@@ -1226,10 +1227,10 @@ async function theSidePanelIsAViewportOverlayAndFullScreenOnAPhone() {
 
   //then
   assert.ok(/\.int-wrap \{[^}]*position: fixed;[^}]*inset: 0;/.test(css), 'the wrap covers the viewport');
-  assert.ok(/\.int-panel \{[^}]*width: 340px;/.test(css), '340 px wide');
+  assert.ok(/\.int-panel \{[^}]*width: 420px;/.test(css), '420 px wide');
   assert.ok(/@media \(max-width: 768px\) \{[^@]*\.int-panel \{ width: 100%;/.test(css), 'full screen at 768 px and below');
   assert.ok(/<div class="int-wrap" id="int-wrap" hidden>/.test(css) && css.indexOf('id="int-wrap"') > css.indexOf('</main>'), 'outside the content, at body level');
-  console.log('PASS Admin, Integrations: the side panel is a fixed body-level overlay, 340 px wide, full screen on a phone');
+  console.log('PASS Admin, Integrations: the side panel is a fixed body-level overlay, 420 px wide, full screen on a phone');
 }
 
 async function aTileSwitchKeepsTheKeyboardFocusOnItsSwitch() {
@@ -1415,8 +1416,123 @@ async function noImageIsRenderedWithoutASource() {
   console.log('PASS Admin, Integrations: no img is rendered without a source, on the page, in the side panel or in the catalog');
 }
 
+function customCatalog() {
+  const c = catalog();
+  const by = (id) => c.plugins.filter((x) => x.id === id)[0];
+  Object.assign(by('acme'), {origin: 'builtin', author: 'Skopax', licence: 'Apache-2.0'});
+  Object.assign(by('pager'), {origin: 'package', module: 'acme_pager', author: 'Pat Pager', licence: 'MIT', version: '2.3.1'});
+  Object.assign(by('evil'), {origin: 'env', module: 'local.evil', author: 'Eve', licence: 'GPL-3.0', version: '0.0.1'});
+  Object.assign(by('prometheus'), {origin: 'package', module: 'acme_prom', author: 'Pat', licence: 'MIT', version: '1.0.0'});
+  Object.assign(by('cracked'), {origin: 'env'});
+  by('gold').origin = 'builtin';
+  return c;
+}
+
+async function aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin() {
+  //given
+  const t = await boot({catalog: customCatalog()});
+
+  //when
+  await open(t);
+  const {doc} = t;
+  const desc = (id) => { const open = tile(doc, id).querySelector('.int-open'); const ref = doc.getElementById(open.getAttribute('aria-describedby')); return [open.title, ref && ref.textContent]; };
+
+  //then
+  assert.deepStrictEqual(tiles(doc).map((x) => [x.dataset.id, x.dataset.origin]), [['acme', 'builtin'], ['pager', 'package'], ['gold', 'builtin'], ['cracked', 'env'], ['evil', 'env']]);
+  assert.strictEqual(tile(doc, 'acme').querySelector('.int-cat').textContent, 'Metrics', 'a built-in tile looks as before');
+  assert.ok(!tile(doc, 'acme').querySelector('.int-open').title && !tile(doc, 'acme').querySelector('.int-open').hasAttribute('aria-describedby'), 'no tooltip on a built-in');
+  assert.strictEqual(tile(doc, 'pager').querySelector('.int-cat').textContent, 'Alerts ' + DOT + ' Custom');
+  const said = 'Custom plug-in by Pat Pager, version 2.3.1, from acme_pager';
+  assert.deepStrictEqual(desc('pager'), [said, said]);
+  assert.strictEqual(tile(doc, 'evil').querySelector('.int-cat').textContent, 'Other ' + DOT + ' Custom');
+  const eve = 'Custom plug-in by Eve, version 0.0.1, from local.evil';
+  assert.deepStrictEqual(desc('evil'), [eve, eve]);
+  assert.strictEqual(tile(doc, 'cracked').querySelector('.int-cat').textContent, 'Other ' + DOT + ' Custom', 'a broken custom plug-in is marked too');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: a custom plug-in reads Custom on its tile with a tooltip and an accessible description, a built-in is unchanged');
+}
+
+async function theDrawerHeaderShowsOneMutedLineSayingBuiltInOrCustom() {
+  //given
+  const t = await boot({catalog: customCatalog()});
+  await open(t);
+
+  //when
+  openTile(t, 'acme');
+  const builtin = [inPanel(t.doc, '.int-meta').textContent, panel(t.doc).querySelectorAll('.int-meta').length, inPanel(t.doc, '.int-desc').nextElementSibling === inPanel(t.doc, '.int-meta')];
+  openTile(t, 'pager');
+  const custom = [inPanel(t.doc, '.int-meta').textContent, panel(t.doc).querySelectorAll('.int-meta').length];
+  openTile(t, 'evil');
+  const second = inPanel(t.doc, '.int-meta').textContent;
+
+  //then
+  assert.deepStrictEqual(builtin, ['Built-in ' + DOT + ' version 1.0.0', 1, true]);
+  assert.deepStrictEqual(custom, ['Custom plug-in ' + DOT + ' by Pat Pager ' + DOT + ' version 2.3.1 ' + DOT + ' MIT', 1]);
+  assert.strictEqual(second, 'Custom plug-in ' + DOT + ' by Eve ' + DOT + ' version 0.0.1 ' + DOT + ' GPL-3.0');
+  assert.ok(inPanel(t.doc, '.int-meta').classList.contains('muted'));
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: the drawer header shows one muted meta line, Built-in or Custom plug-in with author, version and licence');
+}
+
+async function theCustomChipAppearsOnlyWhenACustomPluginIsLoadedAndFiltersAlone() {
+  //given
+  const none = await boot();
+  await open(none);
+  const plain = [...none.doc.querySelectorAll('#integrations .int-chip')].map((c) => c.textContent);
+  none.w.close();
+  const t = await boot({catalog: customCatalog()});
+  await open(t);
+  const {doc} = t;
+  const chip = (label) => [...doc.querySelectorAll('#integrations .int-chip')].filter((c) => c.textContent === label)[0];
+
+  //when
+  const labels = [...doc.querySelectorAll('#integrations .int-chip')].map((c) => c.textContent);
+  chip('Metrics').click();
+  chip('Custom').click();
+  const custom = [shown(doc), chip('Custom').getAttribute('aria-pressed'), chip('Metrics').getAttribute('aria-pressed'), chip('All').getAttribute('aria-pressed')];
+  chip('Alerts').click();
+  const alerts = [shown(doc), chip('Custom').getAttribute('aria-pressed')];
+  chip('Custom').click();
+  chip('All').click();
+  const all = [shown(doc), chip('Custom').getAttribute('aria-pressed')];
+
+  //then
+  assert.ok(!plain.includes('Custom'), 'no custom plug-in loaded: no chip');
+  assert.deepStrictEqual(labels, ['All', 'Metrics', 'Alerts', 'Tickets', 'Other', 'Custom']);
+  assert.deepStrictEqual(custom, [['pager', 'cracked', 'evil'], 'true', 'false', 'false']);
+  assert.deepStrictEqual(alerts, [['pager'], 'false']);
+  assert.deepStrictEqual(all, [['acme', 'pager', 'gold', 'cracked', 'evil'], 'false']);
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: the Custom chip shows only when a custom plug-in is loaded and filters on its own, replacing the category');
+}
+
+async function theCatalogMarksACustomPluginQuietly() {
+  //given
+  const t = await boot({catalog: customCatalog()});
+  await open(t);
+
+  //when
+  addBtn(t.doc).click();
+  await wait(60);
+
+  //then
+  assert.strictEqual(pick(t.doc, 'prometheus').querySelector('.int-pick-c').textContent, 'Custom');
+  assert.ok(!pick(t.doc, 'acme').querySelector('.int-pick-c'), 'a built-in carries no mark');
+  assert.strictEqual(pick(t.doc, 'prometheus').dataset.origin, 'package');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: the add-integration catalog marks a custom plug-in with a quiet Custom label');
+}
+
 (async () => {
   await theTilesShowEveryConnectedPluginWithItsStateHealthAndIcon();
+  await aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin();
+  await theDrawerHeaderShowsOneMutedLineSayingBuiltInOrCustom();
+  await theCustomChipAppearsOnlyWhenACustomPluginIsLoadedAndFiltersAlone();
+  await theCatalogMarksACustomPluginQuietly();
   await anInstanceWithoutACheckReadsNoChecksGreyAndNeverConnected();
   await noImageIsRenderedWithoutASource();
   await theSubtitleCountsAndTheChipsFilterTheTiles();

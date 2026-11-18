@@ -2,6 +2,7 @@ import dataclasses
 import json
 import logging
 import threading
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,10 +13,10 @@ from skopax.auth import SESSION_COOKIE
 from skopax.config import ConfigurationError, load_settings
 from skopax.contract import Hooks
 from skopax.messages import msg
-from skopax.operators import OperatorUnknown
+from skopax.operators import OperatorUnknown, Operators
 from skopax import roles
 from skopax.roles import MAP_MAX, VALUE_MAX, ResolverError, Resolvers, choose, claim_values, mapped_role, parse_role_map, role_map
-from skopax.signin import SignIn
+from skopax.signin import Refused, SignIn
 from skopax.sso import SsoHttp
 from skopax.store import Store
 from skopax.users import Users
@@ -517,6 +518,24 @@ def test_an_unexpected_role_failure_is_the_generic_503_not_a_500(store: Store, m
     assert Users(store.db).get(ALICE) is None and Users(store.db).get(BOB) is None, 'nothing is written before the role is known'
 
 
+def test_a_failed_role_lookup_logs_one_warning_that_names_the_plugin_and_still_answers_503(store: Store, answers, caplog):
+    # given
+    client = client_for(store)
+    answers[('ivy@example.com', 'slack')] = 'raise'
+    answers[('jo@example.com', 'slack')] = 'raise'
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        down = admin_of(client).get('/api/operators/check', params={'email': 'ivy@example.com'})
+        with pytest.raises(OperatorUnknown):
+            client.app.state.operators.access_of('jo@example.com')
+    warned = [r for r in caplog.records if r.levelno == logging.WARNING]
+
+    # then
+    assert (down.status_code, down.json()['detail']) == (503, 'role lookup failed: ResolverError')
+    assert [(r.name, r.getMessage()) for r in warned] == [('skopax.operators', 'the role resolver of plug-in resolver-test failed: RuntimeError')] * 2
+
+
 def test_one_warning_when_resolver_calls_wait_for_a_free_worker(caplog):
     # given
     release = threading.Event()
@@ -569,3 +588,307 @@ def test_a_refused_submit_does_not_count_a_busy_worker(monkeypatch):
 
     # then
     assert roles.busy() == before
+
+
+def claims_of(email: str, roles: list[str] | None = None) -> dict:
+    return {'iss': ISSUER, 'sub': email, 'email': email, 'email_verified': True, 'name': email.split('@')[0].title(), 'roles': roles or []}
+
+
+def resolved_ago(store: Store, email: str, minutes: float) -> None:
+    Users(store.db).col.update_one({'_id': email}, {'$set': {'resolvedAtTs': int(time.time() - minutes * 60)}})
+
+
+def warnings_of(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+DOWN = 'the role resolver of plug-in resolver-test failed: RuntimeError'
+
+
+def test_a_resolver_that_fails_once_is_asked_again_and_its_second_answer_counts(caplog):
+    # given
+    calls: list[str] = []
+
+    def flaky(user, channel):
+        calls.append(channel)
+        if len(calls) == 1:
+            raise ConnectionError('a blip')
+        return 'operator'
+
+    resolvers = Resolvers(lambda: [('crm', flaky)], timeout=5)
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        got = resolvers.resolve({'email': ALICE}, 'page')
+
+    # then
+    assert got == 'operator' and calls == ['page', 'page']
+    assert warnings_of(caplog) == []
+
+
+def test_a_resolver_that_fails_after_half_its_time_is_not_asked_again():
+    # given
+    now = [100.0]
+    calls: list[int] = []
+
+    def slow_failure(user, channel):
+        calls.append(1)
+        now[0] += 3
+        raise ConnectionError('down')
+
+    resolvers = Resolvers(lambda: [('crm', slow_failure)], timeout=5, clock=lambda: now[0])
+    twice = Resolvers(lambda: [('crm', lambda user, channel: calls.append(2) or 1 / 0)], timeout=5, clock=lambda: now[0])
+
+    # when
+    with pytest.raises(ResolverError) as slow:
+        resolvers.resolve({'email': ALICE}, 'page')
+    with pytest.raises(ResolverError) as quick:
+        twice.resolve({'email': ALICE}, 'page')
+
+    # then
+    assert calls == [1, 2, 2], 'a quick failure is asked once more, never more'
+    assert (slow.value.plugin, slow.value.why, quick.value.why) == ('crm', 'ConnectionError', 'ZeroDivisionError')
+
+
+def test_a_down_resolver_signs_in_with_the_last_resolved_role_within_the_limit_on_the_page_and_mcp(store: Store, answers, caplog):
+    # given
+    client = client_for(store)
+    signin = client.app.state.signin
+    answers[(ALICE, 'page')] = 'operator'
+    signin.page(claims_of(ALICE, ['ops-admins']), ISSUER)
+    answers[(ALICE, 'page')] = 'raise'
+    answers[(ALICE, 'mcp')] = 'raise'
+    resolved_ago(store, ALICE, 12.5)
+    before = Users(store.db).get(ALICE)
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        kept = signin.page(claims_of(ALICE, ['ops-admins']), ISSUER)
+        caught = warnings_of(caplog)
+        caplog.clear()
+        mcp_user = signin.mcp(claims_of(ALICE, ['ops-admins']), ISSUER)
+        mcp_caught = warnings_of(caplog)
+
+    # then
+    assert (before['role'], before['roleFrom']) == ('operator', 'resolver')
+    assert (kept['role'], kept['roleFrom'], kept['resolvedAtTs']) == ('operator', 'resolver', before['resolvedAtTs']), 'a fallback never renews the last known role'
+    assert mcp_user.role == 'operator'
+    assert caught == mcp_caught == [f'{DOWN}; using the last known role from 12 min ago']
+
+
+def test_a_down_resolver_refuses_beyond_the_limit_a_new_person_and_with_the_limit_at_zero(store: Store, answers, caplog):
+    # given
+    client = client_for(store)
+    closed = client_for(store, roles_stale_max_minutes=0)
+    answers[(ALICE, 'page')] = 'operator'
+    answers[(BOB, 'page')] = 'operator'
+    client.app.state.signin.page(claims_of(ALICE), ISSUER)
+    client.app.state.signin.page(claims_of(BOB), ISSUER)
+    for email in (ALICE, BOB, CAROL):
+        answers[(email, 'page')] = 'raise'
+        answers[(email, 'mcp')] = 'raise'
+    resolved_ago(store, ALICE, 61)
+    resolved_ago(store, BOB, 1)
+    tries = ((client, ALICE), (client, CAROL), (closed, BOB))
+
+    # when
+    refused = []
+    with caplog.at_level(logging.WARNING):
+        for c, email in tries:
+            for channel in (c.app.state.signin.page, c.app.state.signin.mcp):
+                with pytest.raises(Refused) as e:
+                    channel(claims_of(email), ISSUER)
+                refused.append(e.value.status)
+
+    # then
+    assert refused == [503] * 6
+    assert warnings_of(caplog) == [DOWN] * 6
+    assert Users(store.db).get(CAROL) is None, 'a new person is not created while the resolver is down'
+
+
+def test_the_stale_limit_is_a_general_setting_from_0_to_1440_minutes(store: Store):
+    # given
+    live = tunables.Live(settings(), tunables.TunableStore(store.db))
+
+    # when
+    item = {e['key']: e for e in live.entries()}['roles.stale-max-minutes']
+    loaded = load_settings(env={})
+
+    # then
+    assert (item['group'], item['kind'], item['low'], item['high'], item['value']) == ('General', 'int', 0, 1440, '60')
+    assert loaded.roles_stale_max_minutes == 60
+    with pytest.raises(tunables.Invalid):
+        live.set('roles.stale-max-minutes', '1441', ALICE)
+
+
+def test_operators_keep_the_last_good_verdict_within_the_limit(caplog):
+    # given
+    now = [1_792_224_000.0]
+    down = {'on': False}
+
+    def lookup(email: str) -> bool:
+        if down['on']:
+            raise ResolverError('crm', 'RoleLookupDown')
+        return True
+
+    base = dataclasses.replace(settings(), slack_operator_cache_s=600, roles_stale_max_minutes=60)
+    ops = Operators(lookup, None, base, clock=lambda: now[0])
+    closed = Operators(lookup, None, dataclasses.replace(base, roles_stale_max_minutes=0), clock=lambda: now[0])
+    first, closed_first = ops.access_of(ALICE), closed.access_of(ALICE)
+    down['on'] = True
+    now[0] += 12 * 60
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        kept = ops.access_of(ALICE)
+        with pytest.raises(OperatorUnknown):
+            closed.access_of(ALICE)
+        now[0] += 50 * 60
+        with pytest.raises(OperatorUnknown):
+            ops.access_of(ALICE)
+
+    # then
+    assert first == closed_first == kept == (ALICE, True)
+    assert warnings_of(caplog) == ['the role resolver of plug-in crm failed: RoleLookupDown; using the last known role from 12 min ago',
+                                   'the role resolver of plug-in crm failed: RoleLookupDown', 'the role resolver of plug-in crm failed: RoleLookupDown']
+
+
+def test_the_stale_limit_saved_in_admin_applies_at_once_to_sign_in_and_slack(store: Store, answers, caplog):
+    # given
+    client = client_for(store)
+    signin, operators, live = client.app.state.signin, client.app.state.operators, client.app.state.live
+    answers[(ALICE, 'page')] = 'operator'
+    answers[(BOB, 'slack')] = 'operator'
+    signin.page(claims_of(ALICE), ISSUER)
+    assert operators.access_of(BOB) == (BOB, True)
+    operators._verdicts[BOB] = (time.time() - 20 * 60, (BOB, True))
+    answers[(ALICE, 'page')] = 'raise'
+    answers[(BOB, 'slack')] = 'raise'
+    resolved_ago(store, ALICE, 20)
+
+    # when
+    kept = signin.page(claims_of(ALICE), ISSUER)['role'], operators.access_of(BOB)
+    live.set('roles.stale-max-minutes', '0', ADMIN_EMAIL)
+    with pytest.raises(Refused):
+        signin.page(claims_of(ALICE), ISSUER)
+    with pytest.raises(OperatorUnknown):
+        operators.access_of(BOB)
+
+    # then
+    assert kept == ('operator', (BOB, True))
+
+
+def test_an_mcp_sign_in_renews_the_last_known_role_only_when_the_resolver_confirms_the_stored_one(store: Store, answers, caplog):
+    # given
+    client = client_for(store)
+    signin = client.app.state.signin
+    answers[(ALICE, 'page')] = 'operator'
+    signin.page(claims_of(ALICE), ISSUER)
+    resolved_ago(store, ALICE, 90)
+    answers[(ALICE, 'mcp')] = 'operator'
+
+    # when
+    mcp_user = signin.mcp(claims_of(ALICE), ISSUER)
+    renewed = Users(store.db).get(ALICE)
+    answers[(ALICE, 'page')] = 'raise'
+    with caplog.at_level(logging.WARNING):
+        kept = signin.page(claims_of(ALICE), ISSUER)
+
+    # then
+    assert mcp_user.role == 'operator'
+    assert time.time() - renewed['resolvedAtTs'] < 60 and (renewed['role'], renewed['roleFrom']) == ('operator', 'resolver')
+    assert (kept['role'], kept['roleFrom']) == ('operator', 'resolver')
+
+
+def test_an_mcp_answer_that_differs_from_the_stored_role_leaves_the_stamp_so_a_down_resolver_gives_no_old_admin(store: Store, answers, caplog):
+    # given
+    client = client_for(store)
+    signin = client.app.state.signin
+    answers[(ALICE, 'page')] = 'admin'
+    signin.page(claims_of(ALICE), ISSUER)
+    resolved_ago(store, ALICE, 90)
+    before = Users(store.db).get(ALICE)
+    answers[(ALICE, 'mcp')] = 'viewer'
+
+    # when
+    mcp_user = signin.mcp(claims_of(ALICE), ISSUER)
+    after_mcp = Users(store.db).get(ALICE)
+    answers[(ALICE, 'page')] = 'raise'
+    with caplog.at_level(logging.WARNING), pytest.raises(Refused) as e:
+        signin.page(claims_of(ALICE), ISSUER)
+
+    # then
+    assert (before['role'], before['roleFrom']) == ('admin', 'resolver')
+    assert mcp_user.role == 'viewer'
+    assert (after_mcp['role'], after_mcp['roleFrom'], after_mcp['resolvedAtTs']) == ('admin', 'resolver', before['resolvedAtTs']), 'MCP never writes the role and leaves the stamp'
+    assert e.value.status == 503
+    assert Users(store.db).get(ALICE)['resolvedAtTs'] == before['resolvedAtTs']
+
+
+def test_operators_keep_the_last_verdict_only_for_a_resolver_failure(caplog):
+    # given
+    now = [1_792_224_000.0]
+    down = {'on': False}
+
+    def lookup(email: str) -> bool:
+        if down['on']:
+            raise KeyError('a bug in the lookup')
+        return True
+
+    ops = Operators(lookup, None, dataclasses.replace(settings(), slack_operator_cache_s=600, roles_stale_max_minutes=60), clock=lambda: now[0])
+    first = ops.access_of(ALICE)
+    down['on'] = True
+    now[0] += 12 * 60
+
+    # when
+    with caplog.at_level(logging.WARNING), pytest.raises(OperatorUnknown):
+        ops.access_of(ALICE)
+
+    # then
+    assert first == (ALICE, True)
+    assert warnings_of(caplog) == ['role lookup failed: KeyError']
+
+
+@pytest.mark.parametrize('raised', [TimeoutError('read timed out'), __import__('socket').timeout('timed out')])
+def test_a_resolver_that_raises_its_own_timeout_is_asked_again_like_any_error(caplog, raised):
+    # given
+    calls: list[str] = []
+
+    def flaky(user, channel):
+        calls.append(channel)
+        if len(calls) == 1:
+            raise raised
+        return 'operator'
+
+    resolvers = Resolvers(lambda: [('crm', flaky)], timeout=5)
+    always = Resolvers(lambda: [('crm', lambda user, channel: calls.append('again') or (_ for _ in ()).throw(TimeoutError('read timed out')))], timeout=5)
+
+    # when
+    got = resolvers.resolve({'email': ALICE}, 'page')
+    with pytest.raises(ResolverError) as e:
+        always.resolve({'email': ALICE}, 'page')
+
+    # then
+    assert got == 'operator' and calls == ['page', 'page', 'again', 'again']
+    assert e.value.why == 'TimeoutError', 'a hook that keeps timing out on its own is named by its error, not as no answer'
+
+
+def test_a_resolver_that_does_not_answer_in_time_is_not_asked_again():
+    # given
+    gate = threading.Event()
+    calls: list[int] = []
+
+    def hangs(user, channel):
+        calls.append(1)
+        gate.wait(5)
+        return 'admin'
+
+    resolvers = Resolvers(lambda: [('crm', hangs)], timeout=0.2)
+
+    # when
+    with pytest.raises(ResolverError) as e:
+        resolvers.resolve({'email': ALICE}, 'page')
+    gate.set()
+
+    # then
+    assert calls == [1] and e.value.why == 'no answer within 0.2 s'

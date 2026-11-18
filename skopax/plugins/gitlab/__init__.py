@@ -65,8 +65,8 @@ PLUGIN = Plugin(
     fields=(Field('url', 'URL', 'url', required=True, default=GITLAB_URL, ui=True, help='Address of GitLab; its API is read under /api/v4.'),
             Field('token', 'Token', 'secret', required=True, help='An access token with the read_api scope.'),
             Field('group', 'Group', 'text', required=True, help='Path of the group whose projects are read, such as acme. Code links must point under it.'),
-            Field('ca', 'CA certificate', 'pem', help='PEM certificate to trust instead of the system roots.'),
-            Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),
+            Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),
+            Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), group='advanced', help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),
     env_instances=env_instances, test=test, tools=TOOLS,
     knowledge=(Knowledge('gitlab', 'GitLab', (Path(__file__).parent / 'gitlab.md').read_text(encoding='utf-8'), slack=True),),
 )

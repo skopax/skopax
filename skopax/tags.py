@@ -6,7 +6,7 @@ import re
 import time
 from collections.abc import Callable
 
-from skopax.bounded import HOOK_TIMEOUT_S, Bound
+from skopax.bounded import HOOK_TIMEOUT_S, Bound, Busy, TimedOut
 from skopax.errkind import Authored, kind as error_kind
 
 log = logging.getLogger('skopax.tags')
@@ -145,32 +145,65 @@ def text_hooks() -> list[tuple[str, Callable[[dict], str | None]]] | None:
         return None
 
 
-def rule_text(card: dict, hooks: list[tuple[str, Callable[[dict], str | None]]] | None, end: float, failed: set[str]) -> object:
+def asked_each(hook: Callable[[dict], str | None], cards: list[dict], said: list, end: float) -> None:
+    for card in cards:
+        if time.monotonic() >= end:
+            return
+        try:
+            said.append((True, hook(copy.deepcopy(card))))
+        except Exception as e:
+            said.append((False, e))
+
+
+def warn_text(owner: str, failed: set[str], why: str) -> None:
+    if owner not in failed:
+        failed.add(owner)
+        log.warning('plug-in %s: %s', owner, why)
+
+
+def rule_texts(cards: list[dict], hooks: list[tuple[str, Callable[[dict], str | None]]] | None, end: float) -> list[object]:
     if hooks is None:
-        return SKIPPED
+        return [SKIPPED] * len(cards)
+    out: list[object] = [None] * len(cards)
+    waiting = list(range(len(cards)))
+    failed: set[str] = set()
     for owner, hook in hooks:
+        if not waiting:
+            break
         left = end - time.monotonic()
         if left <= 0:
-            return SKIPPED
-        given = copy.deepcopy(card)
+            for at in waiting:
+                out[at] = SKIPPED
+            return out
+        said: list = []
         try:
-            said = TEXT_CALLS.call(owner, lambda hook=hook, given=given: hook(given), left)
+            TEXT_CALLS.call(owner, lambda hook=hook, given=[cards[at] for at in waiting], said=said: asked_each(hook, given, said, end), left, wait=True, stuck=TEXTS[1])
+            stopped = TimedOut()
         except Exception as e:
-            if owner not in failed:
-                failed.add(owner)
-                log.warning('plug-in %s: card text failed, the sentences it writes stay as they are this pass (%s)', owner, error_kind(e))
-            return SKIPPED
-        if said is None:
-            continue
-        if not isinstance(said, str):
-            if owner not in failed:
-                failed.add(owner)
-                log.warning('plug-in %s: card text answered %s and not text, the sentences it writes stay as they are this pass', owner, type(said).__name__)
-            return SKIPPED
-        text = clip(said, TEXT_LIMIT)
-        if text:
-            return text
-    return None
+            stopped = e
+        answers = list(said)
+        still = []
+        for n, at in enumerate(waiting):
+            if n >= len(answers):
+                warn_text(owner, failed, f"card text skipped, another pass held it until this pass's deadline ({error_kind(stopped)})" if isinstance(stopped, Busy)
+                          else f'card text failed, the sentences it writes stay as they are this pass ({error_kind(stopped)})')
+                out[at] = SKIPPED
+                continue
+            ok, value = answers[n]
+            if not ok:
+                warn_text(owner, failed, f'card text failed, the sentences it writes stay as they are this pass ({error_kind(value)})')
+                out[at] = SKIPPED
+            elif value is None:
+                still.append(at)
+            elif not isinstance(value, str):
+                warn_text(owner, failed, f'card text answered {type(value).__name__} and not text, the sentences it writes stay as they are this pass')
+                out[at] = SKIPPED
+            elif text := clip(value, TEXT_LIMIT):
+                out[at] = text
+            else:
+                still.append(at)
+        waiting = still
+    return out
 
 
 def _ruled(a: dict, rules: tuple, at: str) -> None:
@@ -204,9 +237,8 @@ def texts_with(cards: list[dict], rules: tuple, at: str, hooks: list[tuple[str, 
         _ruled(a, rules, at)
         if _wants_text(a):
             wanted.append(a)
-    end = time.monotonic() + TEXTS[1]
-    failed: set[str] = set()
-    return {a['key']: (_seen_as(a), rule_text(a, hooks, end, failed)) for a in wanted}
+    said = rule_texts(wanted, hooks, time.monotonic() + TEXTS[1])
+    return {a['key']: (_seen_as(a), text) for a, text in zip(wanted, said)}
 
 
 def apply_rules(cards: list[dict], rules: tuple, at: str, texts: dict[str, tuple[str, object]] | None = None) -> None:

@@ -1,6 +1,6 @@
 # Extending Skopax
 
-Writing your own plug-in, from the example in `examples/hello-plugin` to the full contract.
+Writing your own plug-in, from the example in `examples/hello-plugin` to the full contract. Two fuller examples sit next to it; see [More examples](#more-examples).
 
 ## The example plug-in: Hello
 
@@ -75,7 +75,7 @@ The example carries a copy of the Apache License 2.0. `license-files = ["LICENSE
 
 Skopax is not published to a package index; only its images are. A plug-in in a repository of its own runs its tests against a clone of Skopax at the release it targets, next to the plug-in's folder. From the plug-in's folder:
 
-    git clone --branch v0.1.0-rc.2 https://github.com/skopax/skopax ../skopax
+    git clone --branch v0.1.0-rc.3 https://github.com/skopax/skopax ../skopax
     (cd ../skopax && uv sync --frozen)
     PYTHONPATH=../skopax:. ../skopax/.venv/bin/python -m pytest -q tests
 
@@ -87,7 +87,7 @@ The Skopax image is distroless, so it has no `pip` and no shell. Install the plu
 
 ```dockerfile
 ARG BASE_IMAGE=ghcr.io/skopax/skopax
-ARG SKOPAX_VERSION=0.1.0-rc.2
+ARG SKOPAX_VERSION=0.1.0-rc.3
 
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS build
 
@@ -102,7 +102,7 @@ COPY --from=build /plugins /usr/local/lib/python3.15/site-packages/
 ```
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.1.0-rc.2 -t skopax-hello examples/hello-plugin
+docker build --build-arg SKOPAX_VERSION=0.1.0-rc.3 -t skopax-hello examples/hello-plugin
 ```
 
 - `BASE_IMAGE` (default `ghcr.io/skopax/skopax`) names the Skopax image to build on, for example a mirror or your own registry. `SKOPAX_VERSION` (default: the current release) picks its tag.
@@ -117,6 +117,18 @@ curl -fsS -H "Authorization: Bearer <the SKOPAX_TOKEN value>" http://localhost:8
 ```
 
 - The icon is served at `/plugins/hello/icon.svg`. `panel.js` answers 404 until the plug-in has an enabled instance.
+
+## More examples
+
+Hello is small on purpose. The two other examples in `examples/` are complete plug-ins for real services, each with its own README that walks through the parts of the contract it adds, and with tests that run against a fake transport. Read them in this order:
+
+| Example | Read it for |
+| --- | --- |
+| [`examples/hello-plugin`](../examples/hello-plugin/README.md) | The smallest whole plug-in: one field, one check, Test connection, one page and a layer image. |
+| [`examples/couchbase-plugin`](../examples/couchbase-plugin/README.md) | A check that reads through a peer Prometheus instance: one instance per cluster, a selector field it checks itself, 1-day and 7-day baselines with `kit.promql`, a rule set, card types, card links, the access-refused card, a page in the Observe group and a read-only tool on the last pass. |
+| [`examples/managed-redis-plugin`](../examples/managed-redis-plugin/README.md) | A check that reads Prometheus series through a Grafana datasource, for a service you cannot reach directly: metric names as fields with `redis_exporter` defaults, `offset` baselines, the access card naming the missing Grafana right, and a live tool with `scan=True`. |
+
+They build, test and ship like Hello: `.venv/bin/python -m pytest -q -n 0 examples/<name>/tests`, and a layer image from each folder's `Dockerfile`, which differs from Hello's only in the package it copies.
 
 ## Writing a plug-in
 
@@ -148,6 +160,15 @@ A plug-in reads the network only through `ctx.http()` and the kit. Pinned TLS (`
 For Test connection, write a function that makes one real call and returns a short summary, and return `connection.result(that_function)`. It times the call and turns a failure into a fixed sentence: credentials refused (HTTP 401), credentials that lack a permission (HTTP 403), another HTTP status, a TLS failure, a timeout, a service that cannot be reached, or a failed test named by the error's type only. A `SourceDown` keeps its own text, and a `ReadError` its message with known secret shapes masked. The exception's own text never reaches the page, because it can carry a URL with a token.
 
 `ctx.instance.off_checks` (a frozenset of check ids) names the checks switched off on the instance, in a pass and in Test connection, so a test can leave out the parts only those checks read. Test connection on an unsaved form uses the form's ticks; otherwise it uses the stored ones, and it is empty when there are none.
+
+### The instance form
+
+Admin > Integrations builds the form that adds or edits an instance from `fields`, in the order they are declared. Two `Field` options shape it, and both default to the plain form:
+
+- **`group`** names the section a field sits in. Fields without one come first, under no heading. Each group then gets a section, in the order its first field appears, headed by its id with a capital first letter (`sign-in` reads Sign-in). `group='advanced'` puts a field in a folded Advanced section at the end, and `pem` fields always go there. Advanced opens on its own when one of its fields holds a value other than its default or a stored secret, or when a save refuses one of its fields. A group is empty, `advanced`, or a lowercase id that starts with a letter and has at most 24 letters, digits and hyphens. Group every field of a plug-in or none: ungrouped fields move above the first heading.
+- **`choice_labels`** gives readable names to the values of a `choice` field, such as `{'none': 'No sign-in', 'header': 'Token in a header'}`. Each key must be one of `choices`, and each label is 1 to 40 printable characters. A value without a label is shown with a capital first letter and spaces for underscores (`header` reads Header). Only what the form shows changes: the stored and sent value stays the choice.
+
+The admin listing serves both with each field, as `group` and `choiceLabels`. A `bool` shows as a switch and still submits `true` or `false`. A `choice` with two or three options, counting the empty one of a field that may stay empty, shows as segments that the arrow keys move through, and a longer one as a list. A `secret` has a Show button for what was typed and a chip that says it is set and where it comes from. Test connection, Cancel and Save stay at the bottom of the drawer while the form scrolls. A plug-in whose labels or group break these rules does not load, with a reason that names the field, as for any other field rule.
 
 ### Peers, clients and state
 
@@ -194,7 +215,7 @@ Skopax waits at most 10 seconds (`HOOK_TIMEOUT_S` in `skopax.bounded`) for a plu
 
 ### Sign-in hooks
 
-- **`role_resolver(user, channel)`** gives a person's role at sign-in. `user` is a copy of `{email, name, source, role, claims}`: the stored role, if any, and the token's claims (empty in Slack). `channel` is `page`, `mcp` or `slack`. It returns `viewer`, `operator`, `admin`, or None to leave the role to the next step (see [Roles](sign-in.md#roles)). Resolvers run in load order and the first answer that is not None wins. It is called only for SSO users and for Slack users without a local account, never for local accounts. A resolver that raises, answers something other than a role or None, or takes longer than 5 seconds fails closed: the page sign-in fails with no session, MCP answers 503, and Slack treats the person as not an operator. The 5 seconds include the time spent waiting for a worker: all resolvers share a pool of 4 workers, and a full pool logs one warning. A hook cannot be stopped once it runs, so it must set its own timeouts on every network or database call, shorter than 5 seconds.
+- **`role_resolver(user, channel)`** gives a person's role at sign-in. `user` is a copy of `{email, name, source, role, claims}`: the stored role, if any, and the token's claims (empty in Slack). `channel` is `page`, `mcp` or `slack`. It returns `viewer`, `operator`, `admin`, or None to leave the role to the next step (see [Roles](sign-in.md#roles)). Resolvers run in load order and the first answer that is not None wins. It is called only for SSO users and for Slack users without a local account, never for local accounts. A resolver that raises is asked once more when at least half of the 5 seconds are left. A resolver that still raises, answers something other than a role or None, or takes longer than 5 seconds fails closed: the page sign-in fails with no session, MCP answers 503, and Slack treats the person as not an operator, unless the person's last known role is recent enough (see [When a resolver is down](sign-in.md#roles)). The 5 seconds include the time spent waiting for a worker: all resolvers share a pool of 4 workers, and a full pool logs one warning. A hook cannot be stopped once it runs, so it must set its own timeouts on every network or database call, shorter than 5 seconds.
 - **`oidc_token_request(request)`** can add to the token request of a sign-in. `request` is `{url, headers, params}` without the client secret, the code or the code verifier. It returns `{params, headers}` to add. A parameter Skopax sets itself (`grant_type`, `code`, `redirect_uri`, `client_id`, `client_secret`, `code_verifier`) and the `Authorization` header are dropped with a warning. The token request carries no `scope`, so a provider that wants one gets it here. A hook that raises stops the sign-in.
 
 ### Checks, keys and sections
@@ -256,8 +277,10 @@ A tool may return a picture for the model: a dict with `image` (`media_type` `im
 - The first answer in load order wins, and core stores it as `business = {text, by: 'rule', at}`, cut to 500 characters. An unchanged answer keeps its `at`.
 - A sentence a person or the investigator wrote is never replaced, and the hook is not asked about that card.
 - When every hook answers None, or an empty text, a sentence a hook wrote earlier is removed.
-- A hook that raises, answers something other than text or None, or is late leaves that card as it was for the pass, and the hooks after it are not asked about it. The calls of one pass share 10 seconds (`HOOK_TIMEOUT_S`); once they are spent, the cards still to come keep their sentences until the next pass. A late hook is not called again while it still runs, and one warning per plug-in and pass names it.
+- A hook that raises, answers something other than text or None, or is late leaves that card as it was for the pass, and the hooks after it are not asked about it. The calls of one pass share 10 seconds (`HOOK_TIMEOUT_S`); once they are spent, the cards still to come keep their sentences until the next pass. A late hook is not called again while it still runs: a pass that finds the plug-in still busy with another pass waits for that call to end, within its own 10 seconds, and past them leaves its cards as they were. A call that has already run longer than the hook time limit counts as stuck, and a pass skips that plug-in at once instead of waiting. One warning per plug-in and pass names what happened: a hook that failed or was late, or (`Busy`) another pass that held the plug-in until this pass's deadline.
 - Only serving plug-ins are asked. Anything other than a function or None breaks the plug-in.
+
+`Plugin.knowledge` (a tuple of `Knowledge(id, title, text)`) goes into the investigator's prompt: the prompt keeps up to 80,000 characters of plug-in knowledge, the card's own plug-in comes first, entries are kept whole or left out whole, and one INFO line names any plug-in left out.
 
 ### Org packs
 

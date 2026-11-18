@@ -102,10 +102,10 @@ def test(ctx: HostContext) -> TestResult:
 PLUGIN = Plugin(
     id=ID, name='Kubernetes', version='0.1.0', category='infrastructure', description='Read-only access to the Kubernetes API of this cluster, or of another cluster through a remote agent.', icon='icon.svg',
     author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community', capabilities=Capabilities(hosts=('@url', 'kubernetes.default.svc'), secrets=('token',)),
-    fields=(Field('mode', 'Mode', 'choice', required=True, default='agent', choices=('in-cluster', 'agent'), help='Read the cluster this service runs in, or a cluster through a remote agent.'),
+    fields=(Field('mode', 'Mode', 'choice', required=True, default='agent', choices=('in-cluster', 'agent'), choice_labels={'in-cluster': 'This cluster', 'agent': 'Through an agent'}, help='Read the cluster this service runs in, or a cluster through a remote agent.'),
             Field('url', 'URL', 'url', required=True, show_if=('mode', 'agent'), help='Address of the remote agent.'),
             Field('token', 'Token', 'secret', required=True, show_if=('mode', 'agent'), help='Bearer token the remote agent expects.'),
-            Field('via', 'Relay', 'text', show_if=('mode', 'agent'), help='Name of another agent instance that relays the calls to this agent.')),
+            Field('via', 'Relay', 'text', show_if=('mode', 'agent'), group='advanced', help='Name of another agent instance that relays the calls to this agent.')),
     env_instances=env_instances, test=test,
     checks=(Check(PASS, 'Node and agent heartbeat', PERIOD, 165, (PASS,), nodes_run, sections=(PASS,), section_help=SECTION_HELP, once=True),),
     tools=(Tool('kube', DESCRIPTION, SCHEMA, kube, instance_input='cluster'),),

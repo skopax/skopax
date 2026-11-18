@@ -97,6 +97,8 @@ class Field:
     ui: bool = False
     address: str = ''
     hosts_of: Callable[[str, Mapping[str, str]], list[str]] | None = None
+    choice_labels: Mapping[str, str] = field(default_factory=dict)
+    group: str = ''
 
 
 @dataclass(frozen=True)

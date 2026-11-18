@@ -4,6 +4,7 @@ var INT_DOTS = {ok: 'ok', warn: 'warn', error: 'error', pending: 'pending', none
 var INT_MCP = 'mcp-tools', INT_MCP_PRESETS = null, INT_MCP_BACK = null, INT_MCP_SEQ = 0, INT_MCP_FRESH_MS = 600000, INT_MCP_WRITES = {}, INT_MCP_EXPIRED = false, INT_MCP_NOTE = '';
 var INT_MCP_KINDS = {read: ['Reads', 'k-good'], unknown: ['May change data', 'k-warn'], write: ['Changes data', 'k-crit']};
 var INT_MCP_STATES = {connected: 'Connected', reconnect: 'Needs a new sign-in', none: 'Not connected'};
+var INT_SEG_MAX = 3, INT_CUSTOM = '@custom';
 function intBase(p) { return '/api/admin/plugins/' + encodeURIComponent(p.id); }
 function intStateOf(p) { return !p.state ? 'broken' : p.state === 'ok' ? (p.enabled ? 'on' : 'off') : p.state; }
 function intSay(msg, text, bad) {
@@ -20,31 +21,63 @@ function intPeerNames(f) {
   var used = intFind(intList(f.choices)[0]);
   return intList(used && used.instances).map(function (i) { return i && i.name; }).filter(function (n) { return typeof n === 'string' && n !== ''; });
 }
+function intHuman(v) {
+  v = String(v == null ? '' : v).replace(/_/g, ' ');
+  return v.charAt(0).toUpperCase() + v.slice(1);
+}
+function intChoiceText(f, v, blank) {
+  var l = f.choiceLabels && typeof f.choiceLabels === 'object' ? f.choiceLabels : {};
+  if (v === '') return blank;
+  return Object.prototype.hasOwnProperty.call(l, v) && typeof l[v] === 'string' && l[v] ? l[v] : intHuman(v);
+}
+function intGroupOf(f) { return f.kind === 'pem' ? 'advanced' : typeof f.group === 'string' ? f.group : ''; }
+function intInit(f, inst) { return inst && inst.values && inst.values[f.key] != null ? String(inst.values[f.key]) : (f.default || ''); }
+function intMoved(f, inst) {
+  if (f.kind === 'secret') return !!(inst && inst.secrets && inst.secrets[f.key] && inst.secrets[f.key].set);
+  return intInit(f, inst) !== (f.default || '');
+}
 function intFieldHtml(p, f, inst) {
   var id = 'int-' + p.id + '-' + (inst ? inst.name : 'new') + '-' + f.key;
-  var init = inst && inst.values && inst.values[f.key] != null ? inst.values[f.key] : (f.default || '');
+  var init = intInit(f, inst);
   var owned = !!(inst && (inst.owned || []).indexOf(f.key) >= 0);
   var show = f.showIf ? ' data-show-key="' + esc(f.showIf[0]) + '" data-show-val="' + esc(f.showIf[1]) + '"' : '';
-  var input;
+  var input, tag = 'label', extra = '', side = '';
   if (f.kind === 'secret') {
-    var locked = owned;
-    input = '<input id="' + esc(id) + '" class="int-in" type="password" autocomplete="new-password" maxlength="4000" placeholder="' + esc(intPlaceholder(f, inst)) + '"' + (locked ? ' readonly' : '') + '>' +
-      (!locked && inst && inst.secrets && inst.secrets[f.key] && inst.secrets[f.key].set ? '<button type="button" class="btn sec small int-clear">Clear</button>' : '');
+    var locked = owned, held = inst && inst.secrets && inst.secrets[f.key];
+    input = '<div class="int-sec-row"><input id="' + esc(id) + '" class="int-in" type="password" autocomplete="new-password" maxlength="4000" placeholder="' + esc(intPlaceholder(f, inst)) + '"' + (locked ? ' readonly' : '') + '>' +
+      (locked ? '' : '<button type="button" class="int-eye" aria-pressed="false" aria-controls="' + esc(id) + '" data-label="' + esc(f.label) + '" aria-label="Show ' + esc(f.label) + '">Show</button>') + '</div>';
+    if (held && held.set) {
+      var said = held.from ? 'From ' + held.from : 'Set';
+      side = '<span class="int-set" data-said="' + esc(said) + '">' + esc(said) + '</span>' + (locked ? '' : '<button type="button" class="btn sec small int-clear">Clear</button>');
+    }
   } else if (f.kind === 'pem') {
-    input = '<textarea id="' + esc(id) + '" class="int-in" rows="4" maxlength="20000">' + esc(init) + '</textarea>';
-  } else if (f.kind === 'bool' || f.kind === 'choice' || f.kind === 'instance') {
-    var opts = f.kind === 'bool' ? ['true', 'false'] : f.kind === 'instance' ? intPeerNames(f) : f.choices.slice();
+    input = '<textarea id="' + esc(id) + '" class="int-in int-pem" rows="4" maxlength="20000" spellcheck="false">' + esc(init) + '</textarea>';
+  } else if (f.kind === 'bool') {
+    extra = ' data-default="' + esc(f.default || '') + '"';
+    input = '<input type="hidden" class="int-in" value="' + esc(init) + '"><button type="button" id="' + esc(id) + '" class="int-switch int-tog" role="switch" aria-checked="false" aria-labelledby="' + esc(id) + '-l"></button>';
+  } else if (f.kind === 'choice' || f.kind === 'instance') {
+    var opts = f.kind === 'instance' ? intPeerNames(f) : intList(f.choices).slice();
     if (f.kind === 'instance' && init !== '' && opts.indexOf(init) < 0) opts.unshift(init);
-    var clears = p.id === INT_MCP && f.key === 'preset';
+    var entry = p.id === INT_MCP && f.key === 'preset';
     if (init === '' || (f.kind === 'choice' && !f.required && !f.default)) opts.unshift('');
-    input = '<select id="' + esc(id) + '" class="int-in">' + opts.map(function (c) { return '<option value="' + esc(c) + '"' + (c === init ? ' selected' : '') + '>' + esc(c === '' && clears ? 'No catalog entry' : c) + '</option>'; }).join('') + '</select>';
+    var text = function (c) { return f.kind === 'instance' ? c : intChoiceText(f, c, entry ? 'No catalog entry' : ''); };
+    if (f.kind === 'choice' && !entry && opts.length >= 2 && opts.length <= INT_SEG_MAX) {
+      tag = 'span';
+      input = '<input type="hidden" class="int-in" value="' + esc(init) + '"><div class="int-seg" id="' + esc(id) + '" role="radiogroup" aria-labelledby="' + esc(id) + '-l">' +
+        opts.map(function (c) { return '<button type="button" class="int-seg-b" role="radio" data-value="' + esc(c) + '" aria-checked="false" tabindex="-1">' + esc(intChoiceText(f, c, 'Not set')) + '</button>'; }).join('') + '</div>';
+    } else {
+      input = '<select id="' + esc(id) + '" class="int-in' + (entry ? '' : ' int-sel') + '"' + (entry ? ' hidden' : '') + '>' + opts.map(function (c) { return '<option value="' + esc(c) + '"' + (c === init ? ' selected' : '') + '>' + esc(text(c)) + '</option>'; }).join('') + '</select>';
+      if (entry) input = '<div class="int-entry"><span class="int-entry-chip"><span class="int-entry-n"></span><button type="button" class="int-entry-change">Change</button>' +
+        '<button type="button" class="int-entry-clear" aria-label="No catalog entry" title="No catalog entry">\u2715</button></span>' + input + '</div>';
+    }
   } else if (f.kind === 'int') {
     input = '<input id="' + esc(id) + '" class="int-in" type="number" inputmode="numeric" step="1"' + (f.low != null ? ' min="' + esc(f.low) + '"' : '') + (f.high != null ? ' max="' + esc(f.high) + '"' : '') + ' value="' + esc(init) + '">';
   } else {
     input = '<input id="' + esc(id) + '" class="int-in" type="text" maxlength="1000" value="' + esc(init) + '"' + (owned ? ' readonly' : '') + '>';
   }
-  return '<div class="int-field" data-key="' + esc(f.key) + '" data-kind="' + esc(f.kind) + '" data-initial="' + esc(init) + '"' + show + '>' +
-    '<label for="' + esc(id) + '">' + esc(f.label) + (f.required ? ' *' : '') + '</label>' + input +
+  var lab = '<' + tag + (tag === 'label' ? ' for="' + esc(id) + '"' : ' class="int-lab"') + ' id="' + esc(id) + '-l">' + esc(f.label) + (f.required ? '<span class="int-req"> *</span>' : '') + '</' + tag + '>';
+  return '<div class="int-field" data-key="' + esc(f.key) + '" data-kind="' + esc(f.kind) + '" data-initial="' + esc(init) + '"' + extra + show + '>' +
+    '<div class="int-lrow">' + lab + side + '</div>' + input +
     (f.help ? '<span class="adm-help">' + esc(f.help) + '</span>' : '') +
     (owned && f.kind !== 'secret' ? '<span class="adm-msg">from ' + esc(inst.source) + '</span>' : '') +
     '<span class="adm-msg int-field-msg" role="status"></span></div>';
@@ -53,6 +86,18 @@ function intList(x) { return Array.isArray(x) ? x : []; }
 function intName(p) { return String(p.name || p.id); }
 function intUsable(p) { return p.state === 'ok'; }
 function intCatOf(p) { return typeof p.category === 'string' && p.category ? p.category : 'other'; }
+function intIsCustom(p) { return p.origin === 'package' || p.origin === 'env'; }
+function intCustomSaid(p) {
+  var parts = [];
+  if (p.author) parts.push(' by ' + p.author);
+  if (p.version) parts.push(' version ' + p.version);
+  if (p.module) parts.push(' from ' + p.module);
+  return 'Custom plug-in' + parts.join(',');
+}
+function intMetaOf(p) {
+  if (!intIsCustom(p)) return 'Built-in' + (p.version ? ' \u00b7 version ' + p.version : '');
+  return ['Custom plug-in', p.author ? 'by ' + p.author : '', p.version ? 'version ' + p.version : '', p.licence || ''].filter(Boolean).join(' \u00b7 ');
+}
 function intCatLabel(c) { return Object.prototype.hasOwnProperty.call(INT_CATS, c) ? INT_CATS[c] : c; }
 function intTiled(p) {
   if (!intUsable(p)) return p.enabled === true || intList(p.instances).length > 0;
@@ -142,12 +187,22 @@ function intTile(p) {
   t.dataset.id = p.id;
   t.dataset.state = st;
   t.dataset.cat = intCatOf(p);
+  t.dataset.origin = p.origin || 'builtin';
   var top = accText('div', 'int-tile-top');
   top.appendChild(intIcon(p));
   var open = accText('button', 'int-open');
   open.type = 'button';
   open.appendChild(accText('b', 'int-name', intName(p)));
-  open.appendChild(accText('span', 'int-cat', intCatLabel(intCatOf(p))));
+  var custom = intIsCustom(p);
+  open.appendChild(accText('span', 'int-cat', intCatLabel(intCatOf(p)) + (custom ? ' \u00b7 Custom' : '')));
+  if (custom) {
+    var said = intCustomSaid(p), note = accText('span', 'int-custom-d', said);
+    note.id = 'int-custom-' + p.id;
+    note.hidden = true;
+    open.title = said;
+    open.setAttribute('aria-describedby', note.id);
+    open.appendChild(note);
+  }
   top.appendChild(open);
   var sw = accText('button', 'int-switch');
   sw.type = 'button';
@@ -190,7 +245,7 @@ async function intSwitch(p, sw, msg) {
   }
 }
 function intFilter() {
-  document.querySelectorAll('#integrations .int-tile').forEach(function (t) { t.hidden = !!INT_CAT && t.dataset.cat !== INT_CAT; });
+  document.querySelectorAll('#integrations .int-tile').forEach(function (t) { t.hidden = INT_CAT === INT_CUSTOM ? t.dataset.origin === 'builtin' : !!INT_CAT && t.dataset.cat !== INT_CAT; });
   document.querySelectorAll('#integrations .int-chip').forEach(function (c) { c.setAttribute('aria-pressed', String(c.dataset.cat === INT_CAT)); });
 }
 function renderIntegrations(note) {
@@ -200,7 +255,8 @@ function renderIntegrations(note) {
   intPopClose(false);
   box.textContent = '';
   var shown = intPlugins().filter(intTiled), cats = intCatsOf(shown), need = shown.filter(intAttention).length, live = intPlugins().filter(intConnected).length;
-  if (INT_CAT && cats.indexOf(INT_CAT) < 0) INT_CAT = '';
+  var anyCustom = shown.some(intIsCustom);
+  if (INT_CAT && (INT_CAT === INT_CUSTOM ? !anyCustom : cats.indexOf(INT_CAT) < 0)) INT_CAT = '';
   var top = accText('div', 'int-top'), head = accText('div', 'int-h');
   head.appendChild(accText('h3', 'int-title', 'Integrations'));
   var picker = accText('div', 'int-picker'), add = accText('button', 'btn small int-add-btn', '+ Add integration'), pop = accText('div', 'int-pop');
@@ -222,8 +278,8 @@ function renderIntegrations(note) {
     var chips = accText('div', 'int-chips');
     chips.setAttribute('role', 'group');
     chips.setAttribute('aria-label', 'Categories');
-    [''].concat(cats).forEach(function (c) {
-      var b = accText('button', 'int-chip', c ? intCatLabel(c) : 'All');
+    [''].concat(cats, anyCustom ? [INT_CUSTOM] : []).forEach(function (c) {
+      var b = accText('button', 'int-chip', c === INT_CUSTOM ? 'Custom' : c ? intCatLabel(c) : 'All');
       b.type = 'button';
       b.dataset.cat = c;
       b.addEventListener('click', function () { INT_CAT = c; intFilter(); });
@@ -268,9 +324,11 @@ function intPick(p) {
   var b = accText('button', 'int-pick'), connected = intConnected(p);
   b.type = 'button';
   b.dataset.id = p.id;
-  b.dataset.find = foldCase([intName(p), p.id, intCatLabel(intCatOf(p))].join(' '));
+  b.dataset.origin = p.origin || 'builtin';
+  b.dataset.find = foldCase([intName(p), p.id, intCatLabel(intCatOf(p))].concat(intIsCustom(p) ? ['custom'] : []).join(' '));
   b.appendChild(intIcon(p));
   b.appendChild(accText('span', 'int-pick-n', intName(p)));
+  if (intIsCustom(p)) b.appendChild(accText('span', 'muted int-pick-c', 'Custom'));
   if (connected) {
     b.classList.add('has');
     b.appendChild(accText('span', 'int-has', '\u2713'));
@@ -349,12 +407,16 @@ function intPopClose(back) {
 function intWrap() { return document.getElementById('int-wrap'); }
 function intPanelEl() { return document.getElementById('int-panel'); }
 function intFocusables(panel) {
-  return [].filter.call(panel.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'), function (x) { return !x.disabled && !x.closest('[hidden]'); });
+  return [].filter.call(panel.querySelectorAll('button, input, select, textarea, summary, a[href], [tabindex]:not([tabindex="-1"])'), function (x) {
+    if (x.disabled || x.closest('[hidden]') || x.type === 'hidden' || x.getAttribute('tabindex') === '-1') return false;
+    var fold = x.closest('details');
+    return !fold || fold.open || (x.tagName === 'SUMMARY' && x.parentElement === fold);
+  });
 }
 function intFocusFirst(sel) {
   var panel = intPanelEl();
   if (!panel) return;
-  var list = intFocusables(panel), to = (sel && list.filter(function (x) { return x.matches(sel); })[0]) || list.filter(function (x) { return x.matches('.int-name-in, .int-in'); })[0] || list[0];
+  var list = intFocusables(panel), to = (sel && list.filter(function (x) { return x.matches(sel); })[0]) || list.filter(function (x) { return x.matches('.int-name-in, .int-in, .int-tog, .int-seg-b'); })[0] || list[0];
   if (to) to.focus();
 }
 function intOpen(id, name, from) {
@@ -412,11 +474,15 @@ function intPanelPaint(note) {
   close.title = 'Close';
   close.setAttribute('aria-label', 'Close');
   close.addEventListener('click', function () { intClose(true); });
+  var names = accText('div', 'int-ph-t');
+  names.appendChild(title);
+  if (usable && fields.length && !cur) names.appendChild(accText('span', 'int-ph-sub', 'Add instance'));
   head.appendChild(intIcon(p));
-  head.appendChild(title);
+  head.appendChild(names);
   head.appendChild(close);
   panel.appendChild(head);
   if (p.description) panel.appendChild(accText('p', 'adm-help int-desc', String(p.description)));
+  panel.appendChild(accText('p', 'muted int-meta', intMetaOf(p)));
   if (!usable && p.reason) panel.appendChild(accText('p', 'adm-msg bad int-reason', String(p.reason)));
   intDrops(p, panel);
   var said = accText('p', 'adm-msg ok int-panel-note', note || '');
@@ -562,11 +628,51 @@ function intInstHead(p, inst) {
 function intFieldOf(form, key) {
   return [].filter.call(form.querySelectorAll('.int-field'), function (w) { return w.dataset.key === key; })[0];
 }
+function intSync(form) {
+  form.querySelectorAll('.int-field').forEach(function (w) {
+    var input = w.querySelector('.int-in'), sw = w.querySelector('.int-tog'), seg = w.querySelector('.int-seg'), entry = w.querySelector('.int-entry');
+    if (!input) return;
+    if (sw) {
+      sw.setAttribute('aria-checked', String((input.value === '' ? w.dataset.default || '' : input.value) === 'true'));
+      if (input.disabled) sw.setAttribute('aria-disabled', 'true'); else sw.removeAttribute('aria-disabled');
+    }
+    if (seg) {
+      var bs = [].slice.call(seg.querySelectorAll('.int-seg-b')), hit = bs.filter(function (b) { return b.dataset.value === input.value; })[0];
+      bs.forEach(function (b) {
+        b.setAttribute('aria-checked', String(b === hit));
+        b.tabIndex = b === (hit || bs[0]) ? 0 : -1;
+      });
+      if (input.disabled) seg.setAttribute('aria-disabled', 'true'); else seg.removeAttribute('aria-disabled');
+    }
+    if (entry) {
+      var chip = entry.querySelector('.int-entry-chip'), picking = w.dataset.pick === '1', f = {choiceLabels: {}};
+      [].forEach.call(input.options, function (o) { f.choiceLabels[o.value] = o.textContent; });
+      chip.hidden = picking;
+      input.hidden = !picking;
+      chip.classList.toggle('none', input.value === '');
+      chip.querySelector('.int-entry-n').textContent = input.value === '' ? 'No catalog entry' : intChoiceText(f, input.value, '');
+      chip.querySelector('.int-entry-clear').hidden = input.value === '';
+    }
+  });
+}
 function intShowIf(form) {
+  intSync(form);
   form.querySelectorAll('[data-show-key]').forEach(function (w) {
     var other = intFieldOf(form, w.dataset.showKey), input = other && other.querySelector('.int-in');
     w.hidden = !input || (w.dataset.showVal === '*' ? !input.value.trim() : input.value !== w.dataset.showVal);
   });
+  form.querySelectorAll('.int-grp, .int-adv').forEach(function (g) { g.hidden = ![].some.call(g.querySelectorAll('.int-field'), function (w) { return !w.hidden; }); });
+}
+function intPut(input, v) {
+  input.value = v;
+  input.dispatchEvent(new Event('input', {bubbles: true}));
+  input.dispatchEvent(new Event('change', {bubbles: true}));
+}
+function intOptions(w) {
+  var input = w.querySelector('.int-in'), segs = w.querySelectorAll('.int-seg-b');
+  if (input.tagName === 'SELECT') return [].map.call(input.options, function (o) { return o.value; });
+  if (segs.length) return [].map.call(segs, function (b) { return b.dataset.value; });
+  return w.querySelector('.int-tog') ? ['true', 'false'] : null;
 }
 function intValues(form, mode) {
   var out = {};
@@ -590,6 +696,7 @@ function intFail(form, e, fallback) {
   var w = e && e.field ? intFieldOf(form, e.field) : null;
   if (w && w.hidden) w = null;
   intSay(form.querySelector('.int-form-msg'), '', false);
+  if (w && w.closest('details')) w.closest('details').open = true;
   if (w) intSay(w.querySelector('.int-field-msg'), e.detail || fallback, true);
   else intSay(form.querySelector('.int-form-msg'), e && e.detail ? e.detail : fallback, true);
 }
@@ -599,22 +706,37 @@ function intBusy(form, on) {
 function intOffChecks(form) {
   return [].filter.call(form.querySelectorAll('.int-check'), function (c) { return !c.checked; }).map(function (c) { return c.dataset.check; });
 }
+function intGroupHtml(p, g, html) {
+  if (!g) return '<div class="int-grp" data-group="">' + html + '</div>';
+  var hid = 'int-g-' + p.id + '-' + g;
+  return '<section class="int-grp" data-group="' + esc(g) + '" aria-labelledby="' + esc(hid) + '"><h3 class="int-grp-h" id="' + esc(hid) + '">' + esc(intHuman(g)) + '</h3>' + html + '</section>';
+}
 function intFormHtml(p, inst) {
   var h = '<form class="int-form" data-plugin="' + esc(p.id) + '"' + (inst ? ' data-name="' + esc(inst.name) + '"' : '') + '>';
-  if (!inst) h += '<b>Add instance</b><div class="int-field int-name" data-key="name"><label for="int-' + esc(p.id) + '-name">Name *</label><input id="int-' + esc(p.id) + '-name" class="int-name-in" type="text" maxlength="20" autocomplete="off"><span class="adm-msg int-field-msg" role="status"></span></div>';
-  h += p.fields.map(function (f) { return intFieldHtml(p, f, inst); }).join('');
-  h += '<div class="int-test-row"><button type="button" class="btn sec small int-test">Test connection</button><p class="int-result" role="status" hidden></p></div>';
+  var order = [''], by = {'': ''}, adv = '', open = false;
+  p.fields.forEach(function (f) {
+    var g = intGroupOf(f), html = intFieldHtml(p, f, inst);
+    if (g === 'advanced') { adv += html; if (intMoved(f, inst)) open = true; return; }
+    if (!Object.prototype.hasOwnProperty.call(by, g)) { by[g] = ''; order.push(g); }
+    by[g] += html;
+  });
+  var top = (by[''] || order.length === 1) ? '' : order[1];
+  if (!inst) by[top] = '<div class="int-field int-name" data-key="name"><div class="int-lrow"><label for="int-' + esc(p.id) + '-name">Name<span class="int-req"> *</span></label></div><input id="int-' + esc(p.id) + '-name" class="int-name-in" type="text" maxlength="20" autocomplete="off"><span class="adm-msg int-field-msg" role="status"></span></div>' + by[top];
+  order.forEach(function (g) { if (by[g]) h += intGroupHtml(p, g, by[g]); });
   var checks = intShownChecks(p, inst), off = inst ? intList(inst.offChecks) : [];
   if (checks.length) {
     h += '<div class="int-field int-checks" data-key="offChecks" data-kind="checks" role="group" aria-labelledby="int-checks-h"><span class="int-checks-h" id="int-checks-h">What it watches</span>' +
       checks.map(function (c) { return '<label class="int-check-l"><input type="checkbox" class="int-check" data-check="' + esc(c.id) + '"' + (off.indexOf(c.id) >= 0 ? '' : ' checked') + '>' + esc(c.label || c.id) + '</label>'; }).join('') +
       '<span class="adm-msg int-field-msg" role="status"></span></div>';
   }
-  h += '<div class="int-acts"><button type="submit" class="btn small int-save">Save</button>';
-  if ((!inst || !inst.enabled) && p.id !== INT_MCP) h += '<button type="button" class="btn small int-save-on">Save &amp; turn on</button>';
-  if (!inst) h += '<button type="button" class="btn sec small int-cancel">Cancel</button>';
+  if (adv) h += '<details class="int-adv"' + (open ? ' open' : '') + '><summary class="int-adv-h">Advanced</summary><div class="int-adv-b">' + adv + '</div></details>';
+  h += '<div class="int-foot"><p class="int-result" role="status" hidden></p><span class="adm-msg int-form-msg" role="status"></span><div class="int-foot-row"><div class="int-test-row"><button type="button" class="btn sec small int-test">Test connection</button>';
   if (inst && inst.source === 'admin') h += '<button type="button" class="btn sec small int-del">Delete</button>';
-  return h + '<span class="adm-msg int-form-msg" role="status"></span></div></form>';
+  h += '</div><div class="int-acts int-foot-acts">';
+  if (!inst) h += '<button type="button" class="btn sec small int-cancel">Cancel</button>';
+  h += '<button type="submit" class="btn small int-save">Save</button>';
+  if ((!inst || !inst.enabled) && p.id !== INT_MCP) h += '<button type="button" class="btn small int-save-on">Save &amp; turn on</button>';
+  return h + '</div></div></div></form>';
 }
 function intForm(slot, p, inst) {
   slot.innerHTML = intFormHtml(p, inst);
@@ -624,14 +746,16 @@ function intForm(slot, p, inst) {
   form.addEventListener('change', function () { intShowIf(form); });
   form.querySelectorAll('.int-clear').forEach(function (b) {
     b.addEventListener('click', function () {
-      var w = b.closest('.int-field'), input = w.querySelector('.int-in'), on = w.dataset.clear !== '1';
+      var w = b.closest('.int-field'), input = w.querySelector('.int-in'), on = w.dataset.clear !== '1', chip = w.querySelector('.int-set');
       if (on) w.dataset.clear = '1'; else delete w.dataset.clear;
       input.disabled = on;
       input.value = '';
       input.placeholder = on ? 'will be cleared on save' : 'set';
       b.textContent = on ? 'Keep' : 'Clear';
+      if (chip) { chip.textContent = on ? 'Cleared on save' : chip.dataset.said; chip.classList.toggle('clearing', on); }
     });
   });
+  intWidgets(form);
   var cancel = form.querySelector('.int-cancel');
   if (cancel) cancel.addEventListener('click', function () {
     if (!intList(p.instances).length) { intClose(true); return; }
@@ -666,6 +790,70 @@ function intForm(slot, p, inst) {
   if (on) on.addEventListener('click', function () { intSave(form, p, inst, true); });
   var del = form.querySelector('.int-del');
   if (del) del.addEventListener('click', function () { intDelete(form, p, inst); });
+}
+function intWidgets(form) {
+  form.querySelectorAll('.int-tog').forEach(function (sw) {
+    var input = sw.closest('.int-field').querySelector('.int-in');
+    sw.addEventListener('click', function () {
+      if (input.disabled || sw.getAttribute('aria-disabled') === 'true') return;
+      intPut(input, sw.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+    });
+    sw.addEventListener('keydown', function (e) {
+      if (e.key !== ' ' && e.key !== 'Enter') return;
+      e.preventDefault();
+      sw.click();
+    });
+    sw.addEventListener('keyup', function (e) { if (e.key === ' ') e.preventDefault(); });
+  });
+  form.querySelectorAll('.int-seg').forEach(function (seg) {
+    var input = seg.closest('.int-field').querySelector('.int-in'), bs = [].slice.call(seg.querySelectorAll('.int-seg-b'));
+    var pick = function (b) {
+      if (!b || input.disabled) return;
+      if (input.value !== b.dataset.value) intPut(input, b.dataset.value);
+      b.focus();
+    };
+    bs.forEach(function (b) { b.addEventListener('click', function () { pick(b); }); });
+    seg.addEventListener('keydown', function (e) {
+      var at = bs.indexOf(e.target), n = bs.length, to = null;
+      if (at < 0) return;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') to = (at + 1) % n;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') to = (at - 1 + n) % n;
+      else if (e.key === 'Home') to = 0;
+      else if (e.key === 'End') to = n - 1;
+      else if (e.key === ' ' || e.key === 'Enter') to = at;
+      if (to === null) return;
+      e.preventDefault();
+      pick(bs[to]);
+    });
+  });
+  form.querySelectorAll('.int-eye').forEach(function (b) {
+    var input = b.closest('.int-field').querySelector('.int-in'), name = b.dataset.label;
+    b.addEventListener('click', function () {
+      var on = b.getAttribute('aria-pressed') !== 'true';
+      input.type = on ? 'text' : 'password';
+      b.setAttribute('aria-pressed', String(on));
+      b.setAttribute('aria-label', (on ? 'Hide ' : 'Show ') + name);
+      b.textContent = on ? 'Hide' : 'Show';
+    });
+  });
+  form.querySelectorAll('.int-entry').forEach(function (box) {
+    var w = box.closest('.int-field'), input = w.querySelector('.int-in'), change = box.querySelector('.int-entry-change');
+    change.addEventListener('click', function () {
+      w.dataset.pick = '1';
+      intSync(form);
+      input.focus();
+    });
+    box.querySelector('.int-entry-clear').addEventListener('click', function () {
+      intPut(input, '');
+      change.focus();
+    });
+    input.addEventListener('change', function () {
+      if (w.dataset.pick !== '1') return;
+      delete w.dataset.pick;
+      intSync(form);
+      change.focus();
+    });
+  });
 }
 async function intChecksStored(p, name, sent, said) {
   if (!(await loadIntegrations())) return false;
@@ -804,9 +992,9 @@ function intMcpPrefill(preset, texts) {
   var panel = intPanelEl(), form = panel && panel.querySelector('.int-slot .int-form');
   if (!form || form.dataset.plugin !== INT_MCP || form.dataset.name !== undefined) return;
   [['url', preset.url], ['auth', preset.auth], ['header-name', preset.headerName], ['oauth-scopes', preset.scopes], ['preset', preset.id]].forEach(function (x) {
-    var w = intFieldOf(form, x[0]), input = w && w.querySelector('.int-in');
+    var w = intFieldOf(form, x[0]), input = w && w.querySelector('.int-in'), allowed = input && intOptions(w);
     if (!input || typeof x[1] !== 'string' || !x[1]) return;
-    if (input.tagName === 'SELECT' && ![].some.call(input.options, function (o) { return o.value === x[1]; })) return;
+    if (allowed && allowed.indexOf(x[1]) < 0) return;
     input.value = x[1];
     w.dataset.prefill = '1';
   });
@@ -846,7 +1034,7 @@ function intMcpMount(panel, p, inst) {
   INT_PANEL.mcp = null;
   panel.appendChild(box);
   var form = panel.querySelector('.int-slot .int-form'), know = form && intFieldOf(form, 'knowledge'), lock = know && know.querySelector('.int-in');
-  if (lock) lock.disabled = true;
+  if (lock) { lock.disabled = true; intSync(form); }
   if (held && held.name === inst.name && held.view) { intMcpPaint(box, p, inst, held.view); return; }
   box.appendChild(accText('p', 'muted int-mcp-wait', 'Loading the connection\u2026'));
   intMcpLoad(box, p, inst);
@@ -918,6 +1106,7 @@ function intMcpKnowField(know) {
   var stuck = know.possible !== true && know.on !== true;
   w.hidden = stuck && know.state === 'soon';
   input.disabled = stuck && know.state !== 'soon';
+  intShowIf(form);
 }
 function intMcpSection(key, title) {
   var s = accText('section', 'int-mcp-sec int-mcp-' + key), h = accText('h3', 'int-mcp-h', title);
@@ -947,13 +1136,14 @@ function intMcpGate(p, inst, v) {
 function intMcpIdentity(v) {
   var panel = intPanelEl(), form = panel && panel.querySelector('.int-slot .int-form'), w = form && intFieldOf(form, 'chat-role'), input = w && w.querySelector('.int-in');
   if (!input) return;
-  var old = w.querySelector('.int-mcp-identity');
+  var old = w.querySelector('.int-mcp-identity'), seg = w.querySelector('.int-seg');
   if (old) old.remove();
-  if (typeof v.identity !== 'string' || !v.identity) { input.removeAttribute('aria-describedby'); return; }
+  if (typeof v.identity !== 'string' || !v.identity) { input.removeAttribute('aria-describedby'); if (seg) seg.removeAttribute('aria-describedby'); return; }
   var note = accText('p', 'adm-help int-mcp-identity', v.identity), help = w.querySelector('.adm-help');
   note.id = 'int-mcp-identity';
-  (help || input).after(note);
+  (help || seg || input).after(note);
   input.setAttribute('aria-describedby', note.id);
+  if (seg) seg.setAttribute('aria-describedby', note.id);
 }
 function intMcpConn(box, inst, auth) {
   var s = intMcpSection('conn', 'Connection'), st = Object.prototype.hasOwnProperty.call(INT_MCP_STATES, auth.state) ? auth.state : 'none', line = INT_MCP_STATES[st];

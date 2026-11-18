@@ -343,18 +343,38 @@ def layout_issues(probe: dict, overflow: object, site: Site) -> list[dict]:
         out.append({'kind': 'overflow', 'wrong': cut_words(wrong, TEXT_LIMIT), 'where': cut_words(unlinked(o.get('text')), WHERE_LIMIT),
                     'marks': boxes_of(offenders) or boxes_of([e['box'] for e in pages if isinstance(e.get('box'), dict)]),
                     'columns': names, 'element': element if sideways else '', 'right': right if sideways else None, 'vw': round(vw)})
+    cuts: dict[tuple[str, ...], list[dict]] = {}
     for e in entries:
         if e.get('verdict') == 'cut':
-            names = texts_of(e.get('offscreen'))
-            wrong = (f'On the phone view a box is cut off at the screen edge: the columns {listing(names)} cannot be reached' if names
-                     else 'On the phone view part of a box is cut off at the screen edge and cannot be reached')
-            out.append({'kind': 'cut', 'wrong': cut_words(wrong, TEXT_LIMIT), 'where': '', 'columns': names, 'marks': boxes_of([e['box']]) if isinstance(e.get('box'), dict) else []})
+            cuts.setdefault(tuple(texts_of(e.get('offscreen'))), []).append(e)
+    for names, same in cuts.items():
+        out.append({'kind': 'cut', 'wrong': cut_words(cut_text(list(names), len(same)), TEXT_LIMIT), 'where': '', 'columns': list(names), 'count': len(same),
+                    'marks': boxes_of([e['box'] for e in same if isinstance(e.get('box'), dict)])})
     whole = flat(probe.get('text'))
     for p in probe.get('placeholders') or []:
         if isinstance(p, str):
             out.append({'kind': 'placeholder', 'wrong': cut_words(f'Placeholder text is showing: "{edges(flat(p), whole)}"', TEXT_LIMIT), 'where': ''})
     for src in [s for s in probe.get('broken') or [] if isinstance(s, str) and allowed_host(urlsplit(s).hostname or '', site.hosts)]:
         out.append({'kind': 'image', 'wrong': cut_words(f'An image does not load: {src}', TEXT_LIMIT), 'where': ''})
+    return out
+
+
+def cut_text(names: list[str], n: int) -> str:
+    if n == 1:
+        return (f'On the phone view a box is cut off at the screen edge: the columns {listing(names)} cannot be reached' if names
+                else 'On the phone view part of a box is cut off at the screen edge and cannot be reached')
+    return (f'On the phone view {n} boxes are cut off at the screen edge: the columns {listing(names)} cannot be reached' if names
+            else f'On the phone view {n} boxes are cut off at the screen edge and part of each cannot be reached')
+
+
+def unique(items: list[dict]) -> list[dict]:
+    seen: set[tuple[str, str]] = set()
+    out = []
+    for i in items:
+        said = (flat(i.get('wrong')).casefold(), flat(i.get('where')).casefold())
+        if said not in seen:
+            seen.add(said)
+            out.append(i)
     return out
 
 
@@ -780,7 +800,7 @@ class Scan:
             row['swipe'] = [n['wrong'] for n in notes]
         promoted = [n for n in notes if any(claimed(v, n) for v in visual)]
         shown = [v for v in visual if not any(claimed(v, n) for n in promoted)]
-        issues = code + promoted + shown
+        issues = unique(code + promoted + shown)
         memo.pop('goneAt', None)
         memo.update(url=url, typos=[public(t) for t in typos], visual=[public(v) for v in promoted + shown], claims=[public(v) for v in visual], title=facts.get('title'),
                     checkedAt=iso(self.now))
@@ -967,7 +987,9 @@ def measured(code: list[dict], notes: list[dict], overflow: list | None) -> str:
             else:
                 out.append('- An element sticks out past the screen edge, so the whole page is wider than the screen and pans sideways' + counted(columns, 'reachable only by panning the page'))
         elif i.get('kind') == 'cut':
-            out.append('- A box is cut off at the screen edge' + (counted(columns, 'cut off and cannot be reached') if columns else ' and part of it cannot be reached'))
+            n = i.get('count') if isinstance(i.get('count'), int) and i['count'] > 1 else 1
+            out.append(('- A box is cut off at the screen edge' if n == 1 else f'- {n} boxes are cut off at the screen edge')
+                       + (counted(columns, 'cut off and cannot be reached') if columns else ' and part of it cannot be reached' if n == 1 else ' and part of each cannot be reached'))
         else:
             continue
         named += [f'- column: "{c}"' for c in columns]

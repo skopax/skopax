@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 from pymongo import DESCENDING, ReturnDocument
 
-from skopax import brand, clock as zone_clock, tags
+from skopax import brand, clock as zone_clock, logs, tags
 from skopax.config import DEFAULT_ROLES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SSO_CLAIM_MODES, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
@@ -122,6 +122,12 @@ SIGN_IN_ROLES = (
       'matched exactly, and several matches give the highest role. Empty uses the admin and operator role settings. A plug-in role resolver comes first', 'rolemap'),
     T('sso.default-role', 'sso_default_role', SIGNIN, 'Default role', 'The role of a person who signs in with SSO when no plug-in, claim or Admin-set role gives one: viewer or operator. '
       'Admins come from the role map', 'choice', choices=DEFAULT_ROLES),
+    T('sso.new-accounts', 'sso_new_accounts', SIGNIN, 'New accounts', 'Who may sign in with SSO: anyone the identity provider signs in gets an account, or added-only lets in only people who already have one, '
+      'added in Admin or by an earlier sign-in. With a public provider, anyone means any account there', 'choice', choices=('anyone', 'added-only')),
+    T('sso.allowed-domains', 'sso_allowed_domains', SIGNIN, 'Allowed email domains', 'Email domains that may sign in with SSO, such as example.com, separated by commas; matched exactly, without wildcards. '
+      'Empty lets every domain in', 'list'),
+    T('roles.stale-max-minutes', 'roles_stale_max_minutes', GENERAL, 'Last known role (minutes)', 'While a plug-in role resolver fails, a person whose role that resolver gave in the last N minutes '
+      'signs in with that role, and {product} logs a warning; anyone else is refused. 0 refuses everyone while the resolver fails', 'int', 0, 1440),
 )
 
 
@@ -142,6 +148,11 @@ STATIC = (
     T(LINKS_KEY, 'instance_links', GENERAL, 'Other instances', 'Other deployments of {product} that the instance switcher at the top of the sidebar offers, as name=url pairs separated by commas, '
       f'such as staging=https://staging.example.com; at most {LINKS_MAX}. A name is 1 to {LINK_NAME_MAX} letters, digits, spaces, dots, dashes or underscores, '
       'and an address is http:// or https:// without a user name or password', 'text'),
+    T('core.log-format', 'log_format', GENERAL, 'Log format', 'How {product} writes its log lines: text (one readable line per record), json (one flat JSON object per line, for a log store) '
+      'or log4j (the Log4j JSON layout). Lines written at start, before the settings are read, follow SKOPAX_LOG_FORMAT', 'choice', choices=logs.FORMATS),
+    T('core.log-color', 'log_color', GENERAL, 'Log colour', 'Colour of text log lines: always, auto (only when the log goes to a terminal) or never. The JSON formats never carry colour', 'choice',
+      choices=logs.COLORS),
+    T('core.log-level', 'log_level', GENERAL, 'Log level', 'The lowest level written to the log: DEBUG, INFO, WARNING or ERROR', 'choice', choices=logs.LEVEL_NAMES),
     T('access.public-read', 'public_read', ACCESS, 'Public read', 'Let anyone who can reach the page read the board without logging in. Changes still need a login.', 'bool'),
     T('sso.enabled', 'sso_on', SIGNIN, 'Single sign-on', 'Lets people sign in through the identity provider; switching it off ends single sign-on sessions within 30 seconds and turns MCP off, while password logins go on. API tokens made from single sign-on sessions are refused and stay refused after switching back on; make new ones afterwards', 'bool'),
     T('sso.issuer', 'sso_issuer', SIGNIN, 'Issuer URL', 'The issuer URL of the identity provider, whose /.well-known/openid-configuration document gives the endpoints', 'text'),
@@ -150,7 +161,7 @@ STATIC = (
     T('sso.claims', 'sso_claims', SIGNIN, 'Claims come from', 'Which token gives the email, name and roles: id-token, or access-token for providers that put the roles only there', 'choice', choices=SSO_CLAIM_MODES),
     T('sso.client-auth', 'sso_client_auth', SIGNIN, 'Client authentication', 'How the client secret reaches the token endpoint: auto follows what the provider lists, post sends it in the form and basic in an Authorization header', 'choice',
       choices=SSO_CLIENT_AUTH),
-    T('sso.require-verified-email', 'sso_require_verified_email', SIGNIN, 'Require verified email', 'Refuses a sign-in whose token does not say email_verified is true; when off, only an email_verified of false is refused', 'bool'),
+    T('sso.require-verified-email', 'sso_require_verified_email', SIGNIN, 'Require verified email', 'Refuses a sign-in whose token does not say email_verified is true; when off, only an email_verified of false is refused. The first sign-in to an account added in Admin, and every sign-in while Allowed email domains or New accounts limits who gets in, always needs a verified email', 'bool'),
     T('sso.authorize-url', 'sso_authorize_url', SIGNIN, 'Authorize URL', 'Replaces the authorization endpoint the provider lists; empty uses the listed one', 'text'),
     T('sso.token-url', 'sso_token_url', SIGNIN, 'Token URL', 'Replaces the token endpoint the provider lists; empty uses the listed one', 'text'),
     T('sso.jwks-url', 'sso_jwks_url', SIGNIN, 'Keys (JWKS) URL', 'Replaces the signing keys (JWKS) address the provider lists; empty uses the listed one', 'text'),
@@ -376,6 +387,11 @@ def parse(t: Tunable, raw, base: Settings, loading: bool = False):
         bad = [p for p in entries if t.key == CERT_SKIP_KEY and not skip_entry_ok(p)]
         if bad:
             raise Invalid(msg('certs.skip_invalid', entry=bad[0][:SKIP_SHOWN]))
+        if t.key == 'sso.allowed-domains':
+            from skopax.config import bad_domains
+
+            if wrong := bad_domains(entries):
+                raise Invalid(msg('sso.domain_invalid', entry=wrong[0][:SKIP_SHOWN]))
         return entries
     if t.kind == 'rolemap':
         from skopax.roles import map_text, parse_role_map
@@ -579,6 +595,7 @@ class Live:
                 overrides = self.tunables.all()
                 self._current = apply(self.base, {k: v['value'] for k, v in overrides.items()}, self.extra())
                 zone_clock.set_zone(self._current.timezone)
+                logs.use(self._current.log_format, self._current.log_color, self._current.log_level)
                 self.overrides = overrides
                 self._rev = rev
             self._seen()

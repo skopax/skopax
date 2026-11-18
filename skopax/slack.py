@@ -11,7 +11,7 @@ from urllib.parse import quote, urlencode, urlsplit
 from skopax import brand, clock
 from skopax.cardlink import card_url
 from skopax.errkind import Authored, kind as error_kind
-from skopax.actors import SYSTEM, is_token, token_label
+from skopax.actors import BOOTSTRAP_TOKEN, SYSTEM, is_token, token_label
 from skopax.messages import fold, msg
 from skopax.actions import DEFAULT_MUTE_HOURS
 from skopax.config import RELEASE_NAME, RELEASE_PLACEHOLDER, release_problem
@@ -490,7 +490,10 @@ def local_hm(value: str | None) -> str:
 
 def sender(by: str, draft_by: str | None = None) -> str:
     if by == AUTO_BY:
-        return msg('slack.sender.server' if draft_by == SERVER_BY else 'slack.sender.auto')
+        if draft_by == SERVER_BY:
+            return msg('slack.sender.server')
+        label = token_label(draft_by, '') if is_token(draft_by) and draft_by != BOOTSTRAP_TOKEN else ''
+        return msg('slack.sender.token', label=label) if label else msg('slack.sender.auto')
     return token_label(by) if is_token(by) else by.split('@')[0]
 
 

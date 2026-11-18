@@ -276,9 +276,10 @@ class SmallTalkIn(BaseModel):
 class UserIn(BaseModel):
     model_config = ConfigDict(extra='forbid')
     email: str = Field(max_length=320)
-    name: str = Field(max_length=400)
+    name: str = Field(default='', max_length=400)
     role: str = Field(max_length=20)
-    password: str = Field(max_length=1000)
+    password: str | None = Field(default=None, max_length=1000)
+    sso: bool = Field(default=False, strict=True)
 
 
 class UserPatch(BaseModel):

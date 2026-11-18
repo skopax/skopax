@@ -42,7 +42,7 @@ function sqWhat(r) {
   if (r.kind === 'report') return '<span class="state k-info">Report</span><span class="svc">' + esc(sqTitle(r.x)) + '</span>';
   return state(r.x.sev) + '<span class="svc">' + esc(r.x.svc + ' / ' + r.x.label) + '</span>';
 }
-function sqSender(by) { return by === AUTO_BY ? draftBy(by) : isTokenActor(by) ? tokenActorLabel(by, 'Claude') + ' (on request)' : !by || by === 'Claude' ? 'Claude (on request)' : String(by).split('@')[0]; }
+function sqSender(by, drafted) { return by === AUTO_BY ? draftBy(by, drafted) : isTokenActor(by) ? tokenActorLabel(by, 'Claude') + ' (on request)' : !by || by === 'Claude' ? 'Claude (on request)' : String(by).split('@')[0]; }
 function sqFirstLine(t) { return String(t).split('\n').filter(function (l) { return l.trim(); })[0] || ''; }
 function slackTabState() {
   var rows = sqDrafts(), armed = rows.filter(function (r) { return r.st.armed; });
@@ -57,7 +57,7 @@ function renderSlackSent() {
   if (!rows.length) tb.appendChild(el('tr', 'empty', '<td colspan="4">' + SQ_SENT_EMPTY + '</td>'));
   rows.forEach(function (r) {
     var tr = el('tr');
-    tr.innerHTML = '<td class="when">' + slackLink(r.p.permalink, dayhm(r.p.at)) + '</td><td>' + sqWhat({kind: r.kind, x: r.x}) + '</td><td>' + esc(sqSender(r.p.by)) + '</td>' +
+    tr.innerHTML = '<td class="when">' + slackLink(r.p.permalink, dayhm(r.p.at)) + '</td><td>' + sqWhat({kind: r.kind, x: r.x}) + '</td><td>' + esc(sqSender(r.p.by, (r.x.slackDraft || {}).by)) + '</td>' +
       '<td><span class="tag ' + (r.p.draft ? 'k-act' : 'plain') + '" title="' + esc(r.p.draft ? 'Claude’s draft was the message' : 'The standard message built from the card or the report') + '">' + (r.p.draft ? 'draft' : 'plain') + '</span></td>';
     tb.appendChild(tr);
   });

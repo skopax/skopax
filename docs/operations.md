@@ -1,6 +1,6 @@
 # Operations
 
-Running Skopax: the image, agents, the probe, proxies and recovery.
+Running Skopax: the image, agents, the probe, logs, proxies and recovery.
 
 ## The image
 
@@ -19,7 +19,7 @@ The image is `ghcr.io/skopax/skopax`, built for `linux/amd64` and `linux/arm64`.
 1. **Back up the database.** With Compose, `docker compose exec -T mongo mongodump --db skopax --archive > skopax-backup.archive` writes one archive file; with a MongoDB of your own, run `mongodump` against it the same way.
 2. **Pin the new exact tag** and keep the same `SKOPAX_SECRET_KEY`. With Compose, check out the new release tag in your clone and run `docker compose up -d --build`. With `docker run`, remove the container (`docker rm -f skopax`) and start it again with the same options and the new tag.
 3. **Migrations run at start**, one pod at a time: the pod that starts first takes a 5-minute lease, renewed while it works, and runs the migrations of Skopax and of each plug-in that has some; the other pods check every 5 seconds and wait up to 5 minutes for it. A failed migration of Skopax stops the start, and so does a plug-in migration marked required that is not applied for any reason: it failed, an earlier migration of the plug-in failed, the plug-in is broken at load, locked or switched off, or another pod held the lease past the 5 minutes or the database connection dropped. When the database cannot be reached at start, a plug-in that declares a required migration stops the start too; with none, the pod serves and runs the migrations once the database is back. Kubernetes then restarts the pod. Any other failed plug-in migration breaks only its plug-in (see [Migrations](extending.md#migrations)).
-4. **Keep the backup** until the new version runs well. Between release candidates there is no downgrade path: an older version may not read a database a newer one has migrated, so going back means restoring the backup (`mongorestore --archive`).
+4. **Keep the backup** until the new version runs well. There is no downgrade path: an older version may not read a database a newer one has migrated, so going back means restoring the backup (`mongorestore --archive`).
 5. **Plug-ins.** If you run a layer image with plug-ins, rebuild your layer images on the new tag (see [The example plug-in: Hello](extending.md#the-example-plug-in-hello)), and keep each plug-in's `core` range in step with it.
 
 ## Agent mode
@@ -45,6 +45,28 @@ The probe is the core setting `core.probe` (Admin > Features, Other switches, or
 **Certificate cards.** The core pass `certs` turns the report into one card per HTTPS host: a warning below `warn_days` (21) days to expiry and a critical card below `crit_days` (7), set in the Certificates rules (`core.certs`, or `SKOPAX_CERT_RULES`). Cards are made for HTTPS targets whose certificate verified. An expired certificate keeps a critical card until it is renewed, and any other TLS failure shows in the report instead. Hosts in Certificates not watched (`core.cert-skip`, or `SKOPAX_CERT_SKIP`) get no card but still count as checked, so a card they already have closes.
 
 **Run now.** `POST /api/probe` with an API token of the operator role or above runs the probe at once and answers its report, with URLs and errors for an admin token only; while the probe is off it answers 409. An operator can run one plug-in check at once with `POST /api/checks/<plugin>/<check>/run`. It answers 202 and writes an activity line, 404 for an unknown plug-in or check, and 409 when the plug-in does not serve, when the check is switched off for all of its instances, or, for a once check, when it is switched off on the primary instance or the primary instance is not serving.
+
+## Logs
+
+Skopax writes one line per log record to standard error.
+
+- **Format.** `SKOPAX_LOG_FORMAT` picks one of three formats. Use `json` when shipping to a log store.
+  - `text`, the default: one readable line per record with the time in UTC with milliseconds, the level, the logger and the message. An exception follows on the next lines as its trace.
+
+        2026-11-18T14:05:12.345Z WARN  skopax.roles  the role resolver of plug-in crm failed: RoleLookupDown
+
+  - `json`: one flat JSON object per line with `time`, `level` (`DEBUG`, `INFO`, `WARN`, `ERROR` or `FATAL`), `logger`, `message` and `thread`, plus `error` (`type`, `message`, `trace` and `cause`) when there is one.
+
+        {"time": "2026-11-18T14:05:12.345Z", "level": "WARN", "logger": "skopax.roles", "message": "the role resolver of plug-in crm failed: RoleLookupDown", "thread": "MainThread"}
+
+  - `log4j`: the Log4j JSON layout, for pipelines built for it.
+
+        {"timeMillis": 1795010712345, "thread": "MainThread", "level": "WARN", "loggerName": "skopax.roles", "message": "the role resolver of plug-in crm failed: RoleLookupDown", "endOfBatch": false, "loggerFqcn": "logging.Logger", "threadId": 8460, "threadPriority": 5}
+
+- **Colour.** `SKOPAX_LOG_COLOR` is `always` (the default), `auto` (only when the log goes to a terminal) or `never`, and a non-empty `NO_COLOR` turns colour off, also over a colour from Admin, the config file or a settings source. Only text lines have colour: the level (DEBUG dim, INFO green, WARN yellow, ERROR and FATAL bold red) and the logger (dim). The message stays plain, with its control characters shown escaped (such as `\n` and `\x1b`), so one record stays one line. The JSON formats never carry colour.
+- **Level.** `SKOPAX_LOG_LEVEL` is `DEBUG`, `INFO` (the default), `WARNING` (or `WARN`) or `ERROR`. The database driver and the HTTP and model libraries (`pymongo`, `httpcore`, `httpx`, `urllib3`, `anthropic` and `mcp`) stay at WARNING at every level, so DEBUG never logs database commands and replies, such as password hashes and session documents.
+- **Bad values.** A value that is not one of these starts with the default and one warning that names it.
+- **At start and live.** The variables set the log from the first line of a start. Once the settings are read, Admin > General has Log format, Log colour and Log level (`core.log-format`, `core.log-color` and `core.log-level`, which the config file or a settings source can also give). A value saved there wins over the variable, except that a non-empty `NO_COLOR` keeps colour off, and applies from the next line on, without a restart; Reset goes back to the variable. The first lines of a start, written before the settings are read, always follow the variables or the defaults. An agent has no Admin settings and follows the variables only.
 
 ## Behind a proxy or ingress
 

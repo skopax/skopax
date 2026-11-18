@@ -8,10 +8,11 @@ from pymongo.errors import PyMongoError
 
 from skopax.auth import login_name, sso_email
 from skopax.messages import msg
-from skopax.roles import ResolverError, Resolvers, choose, claim_values, mapped_role, role_map
+from skopax.models import email_allowed
+from skopax.roles import ResolverError, Resolvers, choose, claim_values, last_known, mapped_role, role_map, said_down
 from skopax.sessions import role_at_least
 from skopax.tunables import Invalid
-from skopax.users import NAME_MAX, UserExists, Users, admin_set_of
+from skopax.users import EMAIL, NAME_MAX, Unopened, UserExists, Users, admin_set_of
 
 log = logging.getLogger('skopax.signin')
 
@@ -19,8 +20,9 @@ UNAVAILABLE = ('database', 'resolver')
 
 
 class Refused(Exception):
-    def __init__(self, reason: str):
+    def __init__(self, reason: str, email: str | None = None):
         self.reason = reason
+        self.email = email
         self.status = 503 if reason in UNAVAILABLE else 401
         super().__init__(reason)
 
@@ -61,6 +63,40 @@ def text_claim(claims: dict, name: str) -> str:
     return value if isinstance(value, str) else ''
 
 
+def domain_refused(email: str, settings) -> bool:
+    return not email_allowed(email, tuple(settings.sso_allowed_domains or ()))
+
+
+def new_refused(existing: dict | None, settings) -> bool:
+    return existing is None and settings.sso_new_accounts == 'added-only'
+
+
+def restricted(settings) -> bool:
+    return bool(tuple(settings.sso_allowed_domains or ())) or settings.sso_new_accounts == 'added-only'
+
+
+def owns(claims: dict, email: str) -> bool:
+    return text_claim(claims, 'email').strip().lower() == email and email_verified(claims.get('email_verified'), True)
+
+
+def unopened(doc: dict | None) -> bool:
+    return doc is not None and doc.get('source') == 'sso' and doc.get('opened') is False
+
+
+def address_of(claims: dict, settings) -> str:
+    if restricted(settings):
+        own = text_claim(claims, 'email').strip()
+        if not EMAIL.match(own) or not owns(claims, own.lower()):
+            raise Refused('unconfirmed')
+        return own.lower()
+    email = sso_email(claims)
+    if email is None:
+        raise Refused('no-email')
+    if not email_verified(claims.get('email_verified'), bool(settings.sso_require_verified_email)):
+        raise Refused('unverified')
+    return email
+
+
 class SignIn:
     def __init__(self, users: Users, settings, resolvers: Resolvers, clock: Callable[[], float] = time.time, on_bound: Callable[[str], None] = lambda email: None):
         self.users = users
@@ -70,32 +106,40 @@ class SignIn:
         self.on_bound = on_bound
 
     def page(self, claims: dict, issuer: str) -> dict:
-        email = sso_email(claims)
-        if email is None:
-            raise Refused('no-email')
-        if not email_verified(claims.get('email_verified'), bool(self.settings.sso_require_verified_email)):
-            raise Refused('unverified')
+        email = address_of(claims, self.settings)
+        if domain_refused(email, self.settings):
+            raise Refused('domain', email)
         try:
             existing = self.users.get(email)
             if existing is not None and existing.get('source') != 'sso':
                 return self.linked(existing, claims, email)
             if existing is not None and existing.get('disabled'):
                 raise Refused('disabled')
+            if unopened(existing) and not owns(claims, email):
+                raise Refused('unverified')
+            if new_refused(existing, self.settings):
+                raise Refused('not-added', email)
             name = display_name(claims, email)
             user = {'email': email, 'name': name, 'source': 'sso', 'role': (existing or {}).get('role'), 'claims': json_safe(claims)}
+            kept = None
             try:
                 resolved = self.resolvers.resolve(user, 'page')
                 mapped = mapped_role(claim_values(claims, self.settings.sso_roles_claim), role_map(self.settings))
-            except (ResolverError, Invalid) as e:
+            except ResolverError as e:
+                kept = self.last_role(existing, e)
+            except Invalid as e:
                 raise Refused('resolver') from e
             try:
-                stored = self.users.upsert_sso(email, name, self.settings.sso_default_role)
+                stored = self.users.upsert_sso(email, name, self.settings.sso_default_role, verified=owns(claims, email))
             except UserExists:
                 raise Refused('local-account') from None
+            except Unopened:
+                raise Refused('unverified') from None
             if stored is None or stored.get('disabled'):
                 raise Refused('disabled')
-            role, role_from = choose(resolved=resolved, mapped=mapped, admin_set=admin_set_of(stored), default=self.settings.sso_default_role)
-            stored = self.users.apply_sign_in_role(email, role, role_from, seen=stored)
+            if kept is None:
+                role, role_from = choose(resolved=resolved, mapped=mapped, admin_set=admin_set_of(stored), default=self.settings.sso_default_role)
+                stored = self.users.apply_sign_in_role(email, role, role_from, seen=stored, at=self.clock())
         except PyMongoError as e:
             raise Refused('database') from e
         if stored is None or stored.get('disabled'):
@@ -126,11 +170,9 @@ class SignIn:
         return stored
 
     def mcp(self, claims: dict, issuer: str) -> McpUser:
-        email = sso_email(claims)
-        if email is None:
-            raise Refused('no-email')
-        if not email_verified(claims.get('email_verified'), bool(self.settings.sso_require_verified_email)):
-            raise Refused('unverified')
+        email = address_of(claims, self.settings)
+        if domain_refused(email, self.settings):
+            raise Refused('domain', email)
         sub = text_claim(claims, 'sub')
         try:
             existing = self.users.get(email)
@@ -138,22 +180,54 @@ class SignIn:
                 return McpUser(name=email, sub=sub, email=email, role=self.mcp_linked(existing, text_claim(claims, 'iss'), sub, email))
             if existing is not None and existing.get('disabled'):
                 raise Refused('disabled')
+            if unopened(existing) and not owns(claims, email):
+                raise Refused('unverified')
+            if new_refused(existing, self.settings):
+                raise Refused('not-added', email)
             name = display_name(claims, email)
             user = {'email': email, 'name': (existing or {}).get('name') or name, 'source': 'sso', 'role': (existing or {}).get('role'), 'claims': json_safe(claims)}
+            kept = None
             try:
                 resolved = self.resolvers.resolve(user, 'mcp')
                 mapped = mapped_role(claim_values(claims, self.settings.sso_roles_claim), role_map(self.settings))
-            except (ResolverError, Invalid) as e:
+            except ResolverError as e:
+                kept = self.last_role(existing, e)
+            except Invalid as e:
                 raise Refused('resolver') from e
             stored = existing if existing is not None else self.users.insert_sso(email, name, self.settings.sso_default_role)
             if stored is not None and stored.get('source') != 'sso':
                 raise Refused('local-account')
             if stored is None or stored.get('disabled'):
                 raise Refused('disabled')
+            if unopened(stored):
+                stored = self.mcp_opened(claims, email)
+            if kept is None and resolved is not None:
+                self.users.stamp_resolved(email, resolved, self.clock())
         except PyMongoError as e:
             raise Refused('database') from e
-        role, _ = choose(resolved=resolved, mapped=mapped, admin_set=admin_set_of(stored), default=self.settings.sso_default_role)
+        role = kept if kept is not None else choose(resolved=resolved, mapped=mapped, admin_set=admin_set_of(stored), default=self.settings.sso_default_role)[0]
         return McpUser(name=email, sub=sub, email=email, role=role)
+
+    def mcp_opened(self, claims: dict, email: str) -> dict:
+        if not owns(claims, email):
+            raise Refused('unverified')
+        opened = self.users.open_sso(email)
+        if opened is None:
+            opened = self.users.get(email)
+        if opened is None or opened.get('source') != 'sso':
+            raise Refused('local-account')
+        if opened.get('disabled'):
+            raise Refused('disabled')
+        if unopened(opened):
+            raise Refused('unverified')
+        return opened
+
+    def last_role(self, existing: dict | None, error: ResolverError) -> str:
+        found = last_known(existing, self.clock(), int(getattr(self.settings, 'roles_stale_max_minutes', 0) or 0))
+        said_down(error, found[1] if found else None)
+        if found is None:
+            raise Refused('resolver') from error
+        return found[0]
 
     def mcp_linked(self, existing: dict, iss: str, sub: str, email: str) -> str:
         if existing.get('disabled'):

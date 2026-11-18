@@ -1326,3 +1326,67 @@ def test_a_page_with_a_held_line_sends_its_text_but_no_pictures_and_rests_until_
     assert [c.url for c in browser.calls[:shots] if c.viewport == 'desktop'] == [TABLES]
     assert 'AI visual review held on 1 page: its text reads like instructions to an AI' in first.result.status
     assert len(ai.requests) == 2 and not [c for c in browser.calls[shots:] if c.viewport == 'desktop'] and 'visual review held' not in second.result.status
+
+
+def cut_box(y: int, offscreen: list | None = None) -> dict:
+    return {'verdict': 'cut', 'revealed': [], 'offscreen': list(offscreen or []), 'box': {'x': 16, 'y': y, 'w': 358, 'h': 200}}
+
+
+def test_boxes_cut_off_the_same_way_are_one_finding_that_counts_them_and_marks_each():
+    # given
+    entries = [cut_box(500 + 300 * n) for n in range(7)]
+    browser = FakeBrowser({CHAIRS: probe('Garden chairs')}, overflow={CHAIRS: entries})
+
+    # when
+    sweep = run(Ctx(browser, None, extra=(CHAIRS,)))
+
+    # then
+    [card] = sweep.result.found
+    assert [f['wrong'] for f in card['findings']] == ['On the phone view 7 boxes are cut off at the screen edge and part of each cannot be reached']
+    assert card['what'].count('cut off') == 1 and card['what'].startswith(f'1 layout problem on {CHAIRS}: ')
+    [marked] = [c for c in browser.calls if c.mark is not None]
+    assert marked.mark == [{'x': 16, 'y': 500 + 300 * n, 'w': 358, 'h': 200} for n in range(7)]
+
+
+def test_cut_boxes_group_by_the_columns_they_lose_and_keep_their_order():
+    # given
+    entries = [cut_box(500, ['Fees', 'Total cost']), cut_box(900), cut_box(1300, ['Fees', 'Total cost'])]
+    browser = FakeBrowser({CHAIRS: probe('Garden chairs')}, overflow={CHAIRS: entries})
+
+    # when
+    sweep = run(Ctx(browser, None, extra=(CHAIRS,)))
+
+    # then
+    [card] = sweep.result.found
+    assert [f['wrong'] for f in card['findings']] == [
+        'On the phone view 2 boxes are cut off at the screen edge: the columns "Fees" and "Total cost" cannot be reached',
+        'On the phone view part of a box is cut off at the screen edge and cannot be reached']
+
+
+def test_the_model_hears_how_many_boxes_are_cut_off_once():
+    # given
+    entries = [cut_box(500), cut_box(900), cut_box(1300)]
+    browser = FakeBrowser({CHAIRS: probe('Garden chairs')}, overflow={CHAIRS: entries})
+    ai = FakeAi([[]])
+
+    # when
+    run(Ctx(browser, ai, extra=(CHAIRS,)))
+
+    # then
+    told = first_text(ai.requests[0])
+    assert '- 3 boxes are cut off at the screen edge and part of each cannot be reached' in told and told.count('cut off at the screen edge') == 1
+
+
+def test_the_same_visual_sentence_twice_is_one_finding_on_the_card():
+    # given
+    browser = FakeBrowser({CHAIRS: probe('Garden chairs\nPrice')})
+    ai = FakeAi([[visual('The banner text overlaps the price'), visual('The banner text overlaps the price'), visual('The footer logo is blurry'),
+                  visual('The footer logo is blurry', where='Footer, phone')]])
+
+    # when
+    sweep = run(Ctx(browser, ai, extra=(CHAIRS,)))
+
+    # then
+    [card] = sweep.result.found
+    assert [(f['wrong'], f['where']) for f in card['findings']] == [('The banner text overlaps the price', 'Price table, phone'), ('The footer logo is blurry', 'Price table, phone'),
+                                                                     ('The footer logo is blurry', 'Footer, phone')]

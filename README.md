@@ -4,13 +4,45 @@
 
 Every team has that one person who always knows why things are happening and what to do. Skopax is that person, for the whole team, at any hour.
 
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.png">
+<source media="(prefers-color-scheme: light)" srcset="docs/images/board-light.png">
+<img src="docs/images/board-light.png" alt="The Skopax Board: open, in progress, done and muted columns of cards for a shop's checkout, payments, search, inventory and notifications services, with critical, warning and info cards and their assignees">
+</picture>
+
 Its AI investigator keeps an eye on production. When something breaks, it reads your metrics, logs and recent deploys, then tells you why it broke and what to do next, in plain words. You can also chat with it about prod on its own chat page, ask it in Slack, or reach it from your own AI assistant over MCP.
 
 Behind it, alerts and errors are grouped into one card per problem, so the team can see who is on it.
 
 The name comes from the Greek *skopos*, "lookout": the one who stands on a high place, scans the horizon and calls out what is coming.
 
-Status: Release candidate, not yet stable. The current version is 0.1.0-rc.2; settings, data and the plug-in contract may still change before 0.1.0.
+Status: Release candidate, not yet stable. The current version is 0.1.0-rc.3; settings, data and the plug-in contract may still change before 0.1.0. What changed in each release is in [CHANGELOG.md](CHANGELOG.md).
+
+## What it looks like
+
+A card as Skopax posts it to a Slack channel, and its answer to a question in the thread (an illustration, drawn from the message Skopax sends):
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/slack-thread-dark.png">
+<source media="(prefers-color-scheme: light)" srcset="docs/images/slack-thread-light.png">
+<img src="docs/images/slack-thread-light.png" alt="A chat channel where Skopax posted critical card 42, checkout p95 latency, with its draft, numbers and links, and a thread where bob asks whether only checkout is slow and Skopax answers from the metrics and logs">
+</picture>
+
+The Chat page, where you ask about prod in plain words and the answer names the metrics and logs it read:
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/chat-dark.png">
+<source media="(prefers-color-scheme: light)" srcset="docs/images/chat-light.png">
+<img src="docs/images/chat-light.png" alt="The Skopax Chat page answering Why is checkout slow since 14:00 with the latency rise, the timeout log lines, the cause in checkout 2.14.0 and a next step">
+</picture>
+
+A card opened from the Board, with the investigator's suspects, recommendation, code lead and note, and the cards merged under it:
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/card-dark.png">
+<source media="(prefers-color-scheme: light)" srcset="docs/images/card-light.png">
+<img src="docs/images/card-light.png" alt="Card 42, checkout p95 latency, open in a drawer: suspects, a recommendation to roll back, the code line that changed, the investigation note and two merged cards">
+</picture>
 
 ## Quickstart
 
@@ -30,7 +62,7 @@ Or run the published image with a MongoDB of your own. The first line makes the 
       -e MONGO_URI=mongodb://skopax-mongo:27017/skopax \
       -e SKOPAX_BASE_URL=http://localhost:8080 \
       -e SKOPAX_SECRET_KEY="$SKOPAX_SECRET_KEY" \
-      ghcr.io/skopax/skopax:0.1.0-rc.2
+      ghcr.io/skopax/skopax:0.1.0-rc.3
 
 Keep that key, for example in your password manager (`echo "$SKOPAX_SECRET_KEY"` prints it; with Compose it stays in `.env`), and pass the same value on every start. With another key, Skopax cannot open the integration secrets sealed with the old one, so each has to be entered again, and everyone has to sign in again (see [Settings](docs/configuration.md#settings)).
 
@@ -57,7 +89,7 @@ The full guide is in [docs/](docs/README.md):
 - [Configuration](docs/configuration.md): settings, the config file and settings sources, branding and languages.
 - [Sign-in](docs/sign-in.md): single sign-on, roles, local accounts and the MCP server.
 - [Integrations](docs/plugins.md): the plug-ins that ship with Skopax, their instances and outside MCP servers.
-- [Extending Skopax](docs/extending.md): writing a plug-in, starting from the example in `examples/hello-plugin`.
+- [Extending Skopax](docs/extending.md): writing a plug-in, starting from the example in `examples/hello-plugin`, with two fuller examples next to it: `examples/couchbase-plugin` and `examples/managed-redis-plugin`.
 - [Operations](docs/operations.md): the image, agent mode, the probe, proxies and recovery.
 - [Development](docs/development.md): the tests, continuous integration, the licence gate and releases.
 

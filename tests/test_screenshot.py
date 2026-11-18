@@ -988,3 +988,33 @@ def test_the_listed_site_host_may_answer_from_a_private_address():
 
     # then
     assert pic.data == JPEG
+
+
+@pytest.mark.parametrize('item, shown', [
+    ({'i': 0, 'ox': 'hidden', 'sw': 454, 'cw': 358, 'x': 16, 'w': 358, 'clip': '', 'lost': False}, None),
+    ({'i': 0, 'ox': 'hidden', 'sw': 454, 'cw': 358, 'x': 16, 'w': 358, 'clip': '', 'lost': True}, 'cut'),
+    ({'i': 0, 'ox': 'visible', 'sw': 600, 'cw': 600, 'x': 0, 'w': 600, 'clip': 'hidden', 'lost': False}, None),
+    ({'i': 0, 'ox': 'visible', 'sw': 700, 'cw': 300, 'x': 0, 'w': 300, 'clip': 'hidden', 'pans': False, 'lost': False}, None),
+    ({'i': 0, 'ox': 'visible', 'sw': 600, 'cw': 600, 'x': 0, 'w': 600, 'clip': 'hidden', 'lost': True}, 'cut'),
+    ({'i': 0, 'ox': 'hidden', 'sw': 900, 'cw': 500, 'x': 0, 'w': 500, 'clip': '', 'lost': False}, 'page'),
+    ({'i': 0, 'ox': 'auto', 'sw': 900, 'cw': 390, 'x': 0, 'w': 390, 'clip': '', 'lost': False}, 'scrolls'),
+    ({'i': 0, 'ox': 'hidden', 'sw': 454, 'cw': 358, 'x': 16, 'w': 358, 'clip': '', 'lost': 0}, 'cut'),
+])
+def test_a_clipped_box_is_cut_only_when_the_probe_found_readable_content_past_its_edge(item, shown):
+    # then
+    assert verdict(item, 390) == shown
+
+
+def test_boxes_that_lose_nothing_readable_do_not_use_up_the_cut_slots():
+    # given
+    calm = [{'i': n, 'ox': 'hidden', 'sw': 454, 'cw': 358, 'x': 16, 'y': 500 + 300 * n, 'w': 358, 'h': 200, 'clip': '', 'lost': False} for n in range(6)]
+    real = {'i': 6, 'ox': 'hidden', 'sw': 700, 'cw': 358, 'x': 16, 'y': 2500, 'w': 358, 'h': 120, 'clip': '', 'lost': True}
+    c = FakeChrome({CHAIRS: Site(height=3400, overflow={'vw': 390, 'items': calm + [real]})})
+
+    # when
+    pic = browser(c).shoot(CHAIRS, SHOP, 'phone', overflow=True)
+    c.close()
+
+    # then
+    assert pic.facts['overflow'] == [{'verdict': 'cut', 'revealed': [], 'offscreen': [], 'box': {'x': 16, 'y': 2500, 'w': 358, 'h': 120}}]
+    assert [p['expression'] for p in c.params('Runtime.evaluate') if p['expression'].startswith('((box)')] == [f'{browser_kit.NAMES}(6)']
