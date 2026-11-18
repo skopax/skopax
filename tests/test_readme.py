@@ -518,7 +518,7 @@ def test_the_compose_quickstart_makes_the_key_once_in_the_env_file_compose_passe
     # given
     readme = read('README.md')
     compose = yaml.safe_load(read('docker-compose.yml'))
-    quick = readme[readme.index('## Quickstart'):readme.index('Or run the published image')]
+    quick = readme[readme.index('### From source, with Docker Compose'):readme.index('## First run')]
 
     # then
     assert compose['services']['skopax']['environment']['SKOPAX_SECRET_KEY'] == '${SKOPAX_SECRET_KEY:-}'

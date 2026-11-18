@@ -63,14 +63,9 @@ Everything Skopax watches comes through plug-ins, and 30 of them ship in the ima
 
 ## Quickstart
 
-With Docker Compose, from a clone of this repository. The first line makes the secret key once and writes it to `.env`, which Compose reads on every start and passes to Skopax, so run that line only once:
+Skopax ships as a ready image, so there is nothing to clone or build: `ghcr.io/skopax/skopax:0.1.0`, built for `linux/amd64` and `linux/arm64`. Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. [Operations](docs/operations.md#the-image) has more on the image.
 
-    echo SKOPAX_SECRET_KEY="$(openssl rand -hex 32)" >> .env
-    docker compose up --build
-
-Then open http://localhost:8080. The compose file builds the image from the clone and starts it with a MongoDB.
-
-Or run the published image with a MongoDB of your own. The first line makes the secret key once:
+Run it with a MongoDB of your own. The first line makes the secret key once:
 
     SKOPAX_SECRET_KEY="$(openssl rand -hex 32)"
     docker network create skopax
@@ -81,9 +76,16 @@ Or run the published image with a MongoDB of your own. The first line makes the 
       -e SKOPAX_SECRET_KEY="$SKOPAX_SECRET_KEY" \
       ghcr.io/skopax/skopax:0.1.0
 
-Keep that key, for example in your password manager (`echo "$SKOPAX_SECRET_KEY"` prints it; with Compose it stays in `.env`), and pass the same value on every start. With another key, Skopax cannot open the integration secrets sealed with the old one, so each has to be entered again, and everyone has to sign in again (see [Settings](docs/configuration.md#settings)).
+Then open http://localhost:8080. Keep that key, for example in your password manager (`echo "$SKOPAX_SECRET_KEY"` prints it), and pass the same value on every start. With another key, Skopax cannot open the integration secrets sealed with the old one, so each has to be entered again, and everyone has to sign in again (see [Settings](docs/configuration.md#settings)).
 
-The image is built for `linux/amd64` and `linux/arm64`. From 0.1.0, Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. Read the setup code with `docker logs skopax` instead of `docker compose logs skopax` below. [Operations](docs/operations.md#the-image) has more on the image.
+### From source, with Docker Compose
+
+To build the image yourself, or to try the demo Prometheus, use Docker Compose from a clone of this repository. The first line makes the secret key once and writes it to `.env`, which Compose reads on every start and passes to Skopax, so run that line only once:
+
+    echo SKOPAX_SECRET_KEY="$(openssl rand -hex 32)" >> .env
+    docker compose up --build
+
+The compose file builds the image from the clone and starts it with a MongoDB; the key stays in `.env`. Read the setup code below with `docker compose logs skopax` instead of `docker logs skopax`.
 
 Run one Skopax per MongoDB database: that is the supported shape in v0.1. Several pods of one Skopax share their database safely, but two separate copies on one database can, for example, post a retried route message twice.
 
@@ -91,7 +93,7 @@ Run one Skopax per MongoDB database: that is the supported shape in v0.1. Severa
 
 A new install has no accounts, so every page sends you to `/setup`.
 
-- Read the setup code from the container logs: `docker compose logs skopax`. Look for `Skopax setup: open ... and enter the code XXXX-XXXX`. Enter the code, an email, a name and a password (12 to 256 characters) to create the first admin.
+- Read the setup code from the container logs: `docker logs skopax`. Look for `Skopax setup: open ... and enter the code XXXX-XXXX`. Enter the code, an email, a name and a password (12 to 256 characters) to create the first admin.
 - Or skip the form: set `SKOPAX_ADMIN_EMAIL` and `SKOPAX_ADMIN_PASSWORD` in the environment before the first start. That account is created as an admin. Do this when nobody opens a browser, for example in a script or a CI job: until a first admin exists, every API route answers 503, even with the bootstrap token `SKOPAX_TOKEN`.
 
 Admins add more people, change roles, manage API tokens and set up single sign-on in Admin > Access & sign-in (see [Sign in with SSO](docs/sign-in.md#sign-in-with-sso)).
