@@ -1149,7 +1149,7 @@ async function aWarnHealthShowsAsAWarningAndNeedsAttention() {
 
   //when
   await open(t);
-  const dot = tile(doc, 'mcp-tools').querySelector('.int-health .int-dot');
+  const dot = tile(doc, 'mcp-tools').querySelector('.int-st .int-dot');
   const need = doc.querySelector('#integrations .int-sub').textContent;
   await openInstance(t, 'live');
   const inst = panel(doc).querySelector('.int-ihealth .int-dot');
