@@ -42,7 +42,7 @@ From the root of the Skopax repository:
 ## Build the layer image
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.1.0-rc.3 -t skopax-managed-redis examples/managed-redis-plugin
+docker build --build-arg SKOPAX_VERSION=0.1.0 -t skopax-managed-redis examples/managed-redis-plugin
 ```
 
 Pin `SKOPAX_VERSION` to the Skopax release you run. Managed Redis is then listed in Admin > Integrations; add the Grafana instance first, with a token that may read and query datasources.

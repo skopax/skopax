@@ -4,7 +4,7 @@ Running Skopax: the image, agents, the probe, logs, proxies and recovery.
 
 ## The image
 
-The image is `ghcr.io/skopax/skopax`, built for `linux/amd64` and `linux/arm64`. A release candidate is tagged `X.Y.Z-rc.N` only, such as `0.1.0-rc.1`. A release is tagged `X.Y.Z`, `X.Y` and `latest`, and from 0.1.0 the same tags go to the Docker Hub mirror, `docker.io/skopax/skopax`. Pin an exact tag in production.
+The image is `ghcr.io/skopax/skopax`, built for `linux/amd64` and `linux/arm64`. A release candidate is tagged `X.Y.Z-rc.N` only, such as `0.1.0-rc.1`. A release is tagged `X.Y.Z`, `X.Y` and `latest` on GHCR and Docker Hub, where the mirror is `docker.io/skopax/skopax`. If the release environment has no Docker Hub secrets, the image workflow skips the Docker Hub copy with a notice. Pin an exact tag in production.
 
 - **Base.** The image is distroless: it has Python and Skopax, but no shell and no `pip`. It runs as user 1001 and listens on port 8080. Add plug-ins as a layer image (see [The example plug-in: Hello](extending.md#the-example-plug-in-hello)).
 - **Database.** Skopax needs a MongoDB, named by `MONGO_URI` (default `mongodb://localhost:27017`). The compose file uses `mongo:8.0.4`.

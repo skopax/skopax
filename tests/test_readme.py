@@ -411,19 +411,20 @@ def test_links_point_only_at_the_allowed_hosts():
     assert real == []
 
 
-def test_readme_states_the_release_candidate_status():
+def test_readme_states_the_stable_release_status():
     # given
     text = read('README.md')
     flat = ' '.join(text.split())
     image = ' '.join(read('docs/operations.md').split())
 
     # then
-    assert 'Status: Release candidate, not yet stable.' in flat and 'may still change before 0.1.0' in flat and '[CHANGELOG.md](CHANGELOG.md)' in flat
-    assert 'first stable release' not in text and 'pre-release, not ready for use' not in text
+    assert 'Status: 0.1.0 is the first stable release.' in flat
+    assert 'settings and the plug-in contract follow semantic versioning' in flat and 'without a note in [CHANGELOG.md](CHANGELOG.md)' in flat
+    assert 'Release candidate, not yet stable' not in text and 'pre-release, not ready for use' not in text and 'may still change before 0.1.0' not in text
     assert re.search(rf'ghcr\.io/skopax/skopax:{re.escape(image_tag())}(?![\w.-])', text)
-    assert 'docker.io/skopax/skopax' in text and 'comes with 0.1.0' in text
-    assert 'release candidates are published to ghcr only' in flat.lower()
-    assert 'from 0.1.0 the same tags go to the Docker Hub mirror' in image
+    assert 'Docker Hub has a mirror of each release, `docker.io/skopax/skopax`' in flat and 'comes with 0.1.0' not in text
+    assert 'release candidates are published to GHCR only' in flat
+    assert 'A release is tagged `X.Y.Z`, `X.Y` and `latest` on GHCR and Docker Hub' in image and 'skips the Docker Hub copy with a notice' in image and 'from 0.1.0 the same tags go to' not in image
     assert 'docker compose up --build' in text and '## First run' in text
 
 

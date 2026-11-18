@@ -38,6 +38,8 @@ IMAGE_JOBS = {'ci', 'version', 'build', 'layer-smoke', 'promote'}
 NEEDS = {'version': {'ci'}, 'build': {'version'}, 'layer-smoke': {'version', 'build'}, 'promote': {'version', 'build', 'layer-smoke'}}
 STATUS_FUNCTIONS = ('always()', 'cancelled()', 'failure()', 'success()')
 NOT_RC = "needs.version.outputs.rc == 'false'"
+HUB_IF = NOT_RC + " && env.HUB_USER != ''"
+HUB_SKIP = NOT_RC + " && env.HUB_USER == ''"
 PUBLIC_ONLY = 'github.event.repository.private == false'
 IMAGE = '${{ needs.version.outputs.image }}'
 VERSION = '${{ needs.version.outputs.version }}'
@@ -203,9 +205,13 @@ def rc_problems(image: dict, image_text: str) -> list[str]:
     for job, body in image['jobs'].items():
         for s in body.get('steps', []):
             text = json.dumps(s)
-            if (HUB in text or 'DOCKERHUB' in text or s.get('with', {}).get('registry') == 'docker.io') and (s.get('if') != NOT_RC or job != 'promote'):
+            if (HUB in text or 'DOCKERHUB' in text or s.get('with', {}).get('registry') == 'docker.io') and (s.get('if') != HUB_IF or job != 'promote'):
                 problems.append(f'Docker Hub step outside promote or without the non-rc condition: {job} {s.get("name")}')
-    hub = [s for s in steps(image, 'promote') if s.get('if') == NOT_RC]
+    if image['jobs']['promote'].get('env', {}).get('HUB_USER') != '${{ secrets.DOCKERHUB_USERNAME }}':
+        problems.append('promote does not read HUB_USER from the Docker Hub username secret')
+    if not any(s.get('if') == HUB_SKIP and '::notice' in s.get('run', '') for s in steps(image, 'promote')):
+        problems.append('no notice when the Docker Hub mirror is skipped')
+    hub = [s for s in steps(image, 'promote') if s.get('if') == HUB_IF]
     if not any(s.get('uses', '').startswith('docker/login-action@') and s.get('with', {}).get('registry') == 'docker.io' for s in hub):
         problems.append('no Docker Hub login behind the non-rc condition')
     if not any(f'{HUB}:$tag' in s.get('run', '') and 'imagetools create' in s.get('run', '') and '"$IMAGE@$DIGEST"' in s.get('run', '') for s in hub):

@@ -174,7 +174,7 @@ def test_core_version_range_is_checked():
 
     # then
     assert loaded.state == 'incompatible'
-    assert skopax.__version__ == '0.1.0rc3' and '0.1.0rc3' in loaded.reason and '>=9' in loaded.reason
+    assert skopax.__version__ == '0.1.0' and '0.1.0' in loaded.reason and '>=9' in loaded.reason
     assert [p.id for p in reg.usable()] == ['demo']
 
 

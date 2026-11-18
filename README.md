@@ -16,7 +16,7 @@ Behind it, alerts and errors are grouped into one card per problem, so the team 
 
 The name comes from the Greek *skopos*, "lookout": the one who stands on a high place, scans the horizon and calls out what is coming.
 
-Status: Release candidate, not yet stable. The current version is 0.1.0-rc.3; settings, data and the plug-in contract may still change before 0.1.0. What changed in each release is in [CHANGELOG.md](CHANGELOG.md).
+Status: 0.1.0 is the first stable release. From here, settings and the plug-in contract follow semantic versioning: before 1.0, no breaking change ships without a note in [CHANGELOG.md](CHANGELOG.md).
 
 ## What it looks like
 
@@ -62,11 +62,11 @@ Or run the published image with a MongoDB of your own. The first line makes the 
       -e MONGO_URI=mongodb://skopax-mongo:27017/skopax \
       -e SKOPAX_BASE_URL=http://localhost:8080 \
       -e SKOPAX_SECRET_KEY="$SKOPAX_SECRET_KEY" \
-      ghcr.io/skopax/skopax:0.1.0-rc.3
+      ghcr.io/skopax/skopax:0.1.0
 
 Keep that key, for example in your password manager (`echo "$SKOPAX_SECRET_KEY"` prints it; with Compose it stays in `.env`), and pass the same value on every start. With another key, Skopax cannot open the integration secrets sealed with the old one, so each has to be entered again, and everyone has to sign in again (see [Settings](docs/configuration.md#settings)).
 
-The image is built for `linux/amd64` and `linux/arm64`. Release candidates are published to GHCR only; the Docker Hub mirror, `docker.io/skopax/skopax`, comes with 0.1.0. Read the setup code with `docker logs skopax` instead of `docker compose logs skopax` below. [Operations](docs/operations.md#the-image) has more on the image.
+The image is built for `linux/amd64` and `linux/arm64`. From 0.1.0, Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. Read the setup code with `docker logs skopax` instead of `docker compose logs skopax` below. [Operations](docs/operations.md#the-image) has more on the image.
 
 Run one Skopax per MongoDB database: that is the supported shape in v0.1. Several pods of one Skopax share their database safely, but two separate copies on one database can, for example, post a retried route message twice.
 
