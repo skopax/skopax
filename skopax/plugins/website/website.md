@@ -1,0 +1,12 @@
+`page` and `screenshot` read the configured website as a visitor without cookies sees it.
+
+- `page` is one plain GET with up to 3 redirects, each hop reported. Use it for status, redirect, cache and "is this text on the page" questions; it opens no browser.
+- `screenshot` loads the page in the headless browser of the instance and shows you the picture. Use it when how the page looks matters. It is slower and capped per run and per day.
+- Both refuse /api/ paths, login pages, click-counting paths and ad-tracking parameters, and both stay on the site hosts. A refusal is the rule working, not the site failing.
+- A Cloudflare challenge is the answer of Cloudflare to the check, never the status of the page.
+- The browser blocks other hosts and every /api/ call, so a section that the page fills in later in the browser may be empty in a screenshot while visitors see it.
+- A `browser-down|<host>` card means the screenshot browser has not answered for 5 min; screenshots wait for it. An `access|-/website|browser` card means the browser service refused the read.
+- `pass_table` source `browser` holds one row per instance: whether the browser answers, its version and when it last answered.
+- `page_scan` loads a page without a picture and returns its text lines, the code layout checks and what the scheduled page scan last found there. It does not measure boxes that scroll sideways or are cut off; take a `screenshot` for that.
+- The page scan (switched on with `website.page-scan`) opens `page-typos|<page>` and `page-layout|<page>` cards. A box that scrolls inside the page is fine and opens no card; it becomes a sev info note only when a model claim says something in it is cut off. Content clipped only by the page itself can be reached by panning, so it counts as a page wider than the screen. The card text and its screenshot say what code measured; trust those facts over a guess from a picture.
+- `pass_table` source `pageScan` holds the last scan: one row per page read, the pages that did not load and a summary row.

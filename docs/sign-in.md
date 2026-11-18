@@ -1,0 +1,99 @@
+# Sign-in
+
+Single sign-on, roles, local accounts, the MCP server and setting all of it from the environment.
+
+## Sign in with SSO
+
+Skopax signs people in with any OpenID Connect provider. Set it up in Admin > Access & sign-in, on the Single sign-on card:
+
+1. Set `SKOPAX_BASE_URL` to the public address of Skopax. It is read at boot, so a change needs a restart. The card shows the redirect URI to register, `<SKOPAX_BASE_URL>/authorized` (or `SSO_REDIRECT_URI` when that is set; its path must be `/authorized`). Register it at the identity provider for a confidential client that uses the authorization code flow.
+2. Enter the issuer URL (https, or http on localhost), the client ID and the client secret. Skopax reads the rest from the provider's discovery document; "Advanced: endpoints" sets the authorize, token and keys URLs and the client authentication (`auto`, `post` or `basic`) by hand.
+3. Choose Test connection. It checks the discovery document, the issuer it names, the S256 code challenge, the RS256 signing keys, the client authentication, the redirect URI and the scope, each with a fixed sentence. It never calls the token endpoint, so the client secret is checked at the first sign-in.
+4. Choose Save. The switch is on by default, so Save turns SSO on once the settings are complete; Save & turn on shows only while the switch is off. The login page then offers "Sign in with SSO". A sign-in in the first 15 seconds after SSO comes on may need a second try.
+
+Until an issuer, a client ID other than the default or a secret is entered, the card reads "Not set up". The Chat page needs SSO at boot: when SSO is set up in Admin after boot, Chat waits for a restart.
+
+**Claims come from** says which token gives the email, name and roles. `id-token` (the default) reads the ID token: the scope must include `openid` (the default scope is `openid email profile`), and the token must carry this login's nonce. `access-token` reads the access token instead, for providers that put the roles only there: it must then be a JWT signed with the provider's keys, issued by the provider, for this client ID. Every sign-in uses PKCE with S256 and checks `state`; tokens are RS256 only, and their times may be 30 seconds off.
+
+The email is the first of `email`, `preferred_username` and `sub` that looks like an email address, in lower case. An `email_verified` of false is always refused; with Require verified email on, a token without `email_verified` true is refused too.
+
+The client secret is write-only: it is sealed with `SKOPAX_SECRET_KEY` (or the generated key) and never shown, logged or written to the change history. A secret from the environment or a settings source is read-only in Admin. Changes to these settings are written to the activity log as access lines, which only admins see.
+
+**The switch is an emergency stop.** Switching SSO off ends every SSO session on the page and refuses every MCP token issued before the stop, on every pod within 30 seconds, and they stay ended when SSO is switched on again: people sign in again. API tokens made from single sign-on sessions are refused too: every API token made from a single sign-on session that exists when SSO is switched off stays refused after it is switched back on, so make new ones afterwards; Admin > Access & sign-in tags them "Refused by the SSO stop". Password logins go on. After the stop, Slack still acts with an SSO user's stored role; to end that, disable the person in Admin. This holds wherever the switch is set (Admin, the environment or a settings source). Admin asks before switching off, and before a Reset that turns SSO off, which reads "Reset (turns SSO off)". Admin refuses to switch SSO off while no active local admin with a password exists, unless the request comes with the bootstrap token or an API token made from a password session, so that someone can still sign in; an API token made from a single sign-on session does not count, because it stops working as soon as single sign-on is off.
+
+While the provider cannot be reached, new sign-ins fail, people already signed in stay signed in, and the notices strip says so. Removing someone at the identity provider does not disable them in Skopax: to offboard a person, disable them in Admin > Access & sign-in.
+
+## Roles
+
+- `viewer`: reads everything and changes nothing on the board: no card actions, no assigning, no investigator or chat questions. Viewers only manage their own account, notifications and chats.
+- `operator`: everything a viewer can do, plus working cards (take, assign, resolve, mute, notes) and asking the investigator, on the page or in the chat.
+- `admin`: everything an operator can do, plus users, roles, API tokens and settings in Admin.
+
+At each SSO sign-in the role comes from the first of these that gives one:
+
+1. a plug-in's `role_resolver` hook (see [Sign-in hooks](extending.md#sign-in-hooks));
+2. the claim mapping: the values in the roles claim, looked up in the role map;
+3. the role an admin set for the person in Admin;
+4. the default role (`SSO_DEFAULT_ROLE`, `viewer` or `operator`).
+
+The roles claim (default `roles`) is a claim name or a dot path; a text value is one value and a list gives its text items. The role map is a list of value and role pairs, at most 50, matched exactly; when several match, the highest role wins. Maps saved in Admin are at most 4000 characters as JSON. With no role map saved, the values of `SKOPAX_ADMIN_ROLE` (default `SKOPAX_ADMIN`) and `SKOPAX_OPERATOR_ROLE` (default `SKOPAX_OPERATOR`) map to admin and operator, and Admin shows those pairs as "in use now". Saving any role map replaces them, so add them as rows to keep them. A Keycloak realm role, for example:
+
+    SSO_ROLES_CLAIM=realm_access.roles
+    SSO_ROLE_MAP=[{"value": "ops-admins", "role": "admin"}, {"value": "ops-operators", "role": "operator"}]
+
+In Keycloak, turn on "Add to ID token" on the realm roles mapper, since the default `id-token` mode reads the roles from the ID token.
+
+Or a groups claim:
+
+    SSO_ROLES_CLAIM=groups
+    SSO_ROLE_MAP=[{"value": "ops-admins", "role": "admin"}, {"value": "ops-viewers", "role": "viewer"}]
+
+A role set by the identity provider or a resolver is read-only in Admin, marked "from sign-in provider"; change it at the provider. An admin can still disable the person in Admin. A sign-in never demotes the last active admin: the role is kept, a warning is logged, and a later sign-in demotes them once another active admin exists.
+
+In Slack, a local account acts with its stored role, and an SSO user with the resolver's answer or else the role of their last sign-in. When a resolver fails, the person is not an operator in Slack.
+
+API tokens have their own role, never above their creator's, and stop working when their creator is disabled.
+
+## Local accounts and SSO
+
+Local accounts (from setup, `SKOPAX_ADMIN_EMAIL` or Admin) and SSO accounts are separate. An SSO sign-in whose email belongs to a local account is refused and never changes that account.
+
+To let a local account sign in with SSO, an admin turns on its SSO link in the users list. The next SSO sign-in to that email within 7 days links it, but only with a token whose own `email` claim is that email and whose `email_verified` is true. The link pins that identity provider account (its issuer and subject): from then on only it signs in, and another account at the provider with the same email is refused. A linked account keeps its password and the role set in Admin; claims and resolvers do not change it. Turning the link off ends the account's SSO sessions within 30 seconds. A link not used within 7 days expires, and Allow again starts a new one.
+
+Keep a break-glass local admin, with a password and no SSO link, at an address that no SSO user has, for example admin@example.com. It keeps working when the identity provider is down.
+
+## MCP
+
+The MCP server (the MCP server switch, and Connect MCP on the page) needs SSO set up and on; while SSO is not active, `/mcp` answers that MCP is not set up.
+
+Register the MCP client at the identity provider as a public client, separate from the page client: client ID `skopax-mcp` (or the MCP client ID), the authorization code flow with PKCE and no secret, a redirect to `http://localhost` on any port, access tokens whose `aud` is that client ID (or the MCP audience), and the `SKOPAX_MCP` role (or the MCP required role) in the roles claim. Keep the MCP client separate from the page client: with the same client ID, a page ID token also opens MCP. AI assistants sign in at the same identity provider: `<SKOPAX_BASE_URL>/.well-known/oauth-protected-resource` names it, and every call carries the access token as a Bearer token. The MCP settings are on the MCP card of Admin > Access & sign-in.
+
+A token is taken only when:
+
+- it is signed with the provider's RS256 keys, and its issuer is the MCP issuer (default: the origin of the authorize URL, else the issuer URL) or the issuer the provider names;
+- its audience is the MCP audience (default: the MCP client ID, `skopax-mcp`) or the MCP address itself, `<SKOPAX_BASE_URL>/mcp`;
+- with MCP allowed clients set, its `azp`, `client_id` or `cid` names one of them;
+- the roles claim set on the Single sign-on card holds the MCP required role (default `SKOPAX_MCP`; empty lets any token through);
+- it was issued after SSO was last switched off.
+
+Then the same rules as the page apply: the email must be there and not unverified, and a local account opens MCP only through its SSO link, with a token whose own issuer and subject match the link. A token under the MCP issuer alias is refused for a linked local account. A disabled person is refused on the next call, and on every pod within 30 seconds; a demotion takes effect within the same 30 seconds.
+
+The role of each call follows [Roles](#roles), read from that call's token; a linked local account keeps its stored role. A viewer gets the read tools only: `list_cards`, `get_card`, `get_investigation`, `investigator_status`, `list_deploy_reports`, `list_my_asks`, `get_ask` and `list_notifications`. An operator or admin also gets `investigate_card`, `ask`, `take_card`, `resolve_card`, `mute_card`, `reopen_card`, `assign_card` and `link_ticket`. An ask over MCP runs with the role of that MCP call. API tokens and the bootstrap `SKOPAX_TOKEN` never open MCP.
+
+## Headless setup
+
+Everything on the Single sign-on and MCP cards can also come from the environment. Each entry gives the environment name, then the setting id where Admin stores it; `SSO_REDIRECT_URI` and `SSO_TOKEN_HEADERS` are environment only. A value saved in Admin overrides the environment, and Reset goes back to it. The client secret is the exception: one from the environment or a settings source wins, and Admin shows it as read-only; one entered in Admin is stored sealed, apart from the settings.
+
+- `SSO_ISSUER` / `sso.issuer`, `SSO_CLIENT_ID` / `sso.client-id` (default `skopax`), `SSO_CLIENT_SECRET` / `sso.client-secret` (stored sealed), `SSO_SCOPE` / `sso.scope` (default `openid email profile`).
+- `SSO_ENABLED` / `sso.enabled`: default `true`. SSO is active only when it is also set up.
+- `SSO_CLAIMS` / `sso.claims`: `id-token` (default) or `access-token`.
+- `SSO_CLIENT_AUTH` / `sso.client-auth`: `auto` (default), `post` or `basic`.
+- `SSO_REQUIRE_VERIFIED_EMAIL` / `sso.require-verified-email`: default `false`.
+- `SSO_AUTHORIZE_URL` / `sso.authorize-url`, `SSO_TOKEN_URL` / `sso.token-url`, `SSO_JWKS_URL` / `sso.jwks-url`: endpoints that replace discovery.
+- `SSO_REDIRECT_URI` (environment only) replaces the redirect URI made from `SKOPAX_BASE_URL`. `SSO_TOKEN_HEADERS` (environment only): extra headers for the token request.
+- `SSO_ROLES_CLAIM` / `sso.roles-claim`: default `roles`.
+- `SSO_ROLE_MAP` / `sso.role-map`: a JSON list; unset means from `SKOPAX_ADMIN_ROLE` / `SKOPAX_OPERATOR_ROLE`.
+- `SSO_DEFAULT_ROLE` / `sso.default-role`: `viewer` (default) or `operator`.
+- `MCP_CLIENT_ID` / `mcp.client-id` (default `skopax-mcp`), `MCP_AUDIENCE` / `mcp.audience` (default empty: the MCP client ID), `MCP_ALLOWED_CLIENTS` / `mcp.allowed-clients` (default empty: any client), `MCP_REQUIRED_ROLE` / `mcp.required-role` (default `SKOPAX_MCP`), `MCP_ISSUER` / `mcp.issuer`, `MCP_SCOPE` / `mcp.scope` (default `mcp`) and `MCP_RESOURCE_URL` / `mcp.resource-url` (the public address of Skopax that MCP clients see, without `/mcp`, when it differs from the base URL).
+
+The compose file passes none of these through; add the ones you use under the `skopax` service's `environment:` in `docker-compose.yml`.

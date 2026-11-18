@@ -1,0 +1,259 @@
+# Extending Skopax
+
+Writing your own plug-in, from the example in `examples/hello-plugin` to the full contract.
+
+## The example plug-in: Hello
+
+[`examples/hello-plugin`](../examples/hello-plugin) is a complete plug-in that you can install, test and ship as a layer image. Its [README](../examples/hello-plugin/README.md) lists the files; this page walks through them one at a time. Hello asks one address on a schedule. When the address does not answer HTTP 200, Hello opens a card, and the card clears once the address answers 200 again. Each file shows one part of the contract, and [Writing a plug-in](#writing-a-plug-in) below covers the whole contract.
+
+### `pyproject.toml`: the package and its entry point
+
+```toml
+[project.entry-points."skopax.plugins"]
+hello = "skopax_hello:PLUGIN"
+```
+
+- Skopax finds installed plug-ins through the `skopax.plugins` entry point group.
+- The entry point's value names the module and the `Plugin` object in it.
+- The example builds with `uv_build`. Any PEP 517 backend works, as long as the wheel carries the package's data files (`icon.svg`, `panel.js`).
+
+### `skopax_hello/__init__.py`: the plug-in
+
+- **Imports.** The plug-in imports only the public surface: `skopax.contract`, `skopax.kit`, `skopax.remote`, `skopax.messages` (only `msg`) and a few more. It opens no sockets and does not import `urllib.request`, `http.client`, `httpx` or `requests`. Every request goes through the transport Skopax hands out, which holds the proxy, the timeouts and the size limits. The test suite checks both rules for built-in plug-ins and for this example.
+- **`Plugin(...)`.** The metadata is:
+  - `id`, `name`, `version` (`X.Y.Z`);
+  - `category` (one of the contract's `CATEGORIES`);
+  - `description`, `icon`, `author`, `licence`;
+  - `core`, the range of Skopax versions the plug-in works with, as a PEP 440 specifier such as `>=0.1,<0.2`.
+- **The `core` range and release candidates.** A release candidate counts as the release it leads to: Skopax `0.1.0rc1` is checked as `0.1.0`, so `>=0.1,<0.2` loads on it. A range that names a pre-release itself, such as `>=0.1.0rc2` or `==0.1.0rc1`, is compared with the full version, pre-releases included. A plug-in whose range does not match is listed under "+ Add integration" but cannot be set up, and the reason names the installed version.
+- **`fields`.** One required field, `Field('url', 'URL', 'url', required=True, help=...)`. An admin adds an instance in Admin > Integrations and fills in the field, and the code reads it as `ctx.instance.config['url']`. A plug-in can have many instances, and each one runs the checks with its own values.
+- **`capabilities`.** `Capabilities(hosts=('@url',))` declares the hosts the plug-in talks to. Here that is the host of its `url` field.
+- **`problem(ctx)`.** It calls `call_page(ctx.http(), url, timeout=10)`, which reads the address as a page and returns its HTTP status. A 404 or a 503 comes back as a status, and redirects are not followed. An `HttpError` from another transport is read for its code, and an `Unreachable` means no answer. The function returns `None` on a 200, and otherwise a short text such as `https://shop.example.com/health answered HTTP 503`. Every text shows the address through `shown(url)`, without its query or fragment: the card, the section row, Test connection, and the card's short line that Slack posts use. A token in a health URL therefore never reaches a card, the page or Slack. The request itself still uses the full URL.
+- **`test`, the Test connection button.** It wraps the work in `kit.connection.result(ask)`. That times the call, keeps the summary that `ask` returns, and turns an error into a short fixed text without the exception's own message. To show your own text, raise `SourceDown`, which is what Hello does.
+- **`checks`, the check.**
+  - It is declared as `Check('hello', 'Hello address', 300, 0, ('hello',), run, sections=('hello',), section_help=...)`: id, label, period in seconds, offset, the `ran` keys, and the function.
+  - `run(ctx)` returns a `Sweep`.
+  - Its `PassResult('hello', True, 'ok', cards, {}, ('hello',))` lists the cards found. Each card is a dict built with `anomaly(...)`.
+  - The card key is `hello|<host>`. `card()` sets `x['key'] = f'{ID}|{host}'`, so the key starts with the plug-in's id, as the PMM plug-in's keys start with `pmm|`.
+  - Why a plug-in scopes its keys: card keys are global across every plug-in in the state. Skopax adds the instance segment to a key, but never the plug-in id. If two plug-ins both wrote `down|<host>` for the same host, their passes would fight over one card, opening and clearing it in turn and flipping its `src`. Start every key with the plug-in's id.
+  - The `ran` key `hello` tells Skopax that this pass looked, so an open Hello card that the pass no longer reports is cleared.
+  - `Sweep(sections={'hello': [row]})` stores one row per instance under the `hello` section, which the page reads.
+  - Skopax adds the instance's name to the card key and the row for every instance but the primary one, so two instances never clash.
+- **`panels`, the page.**
+  - `Panel('hello', 'panel.js', label='Hello', group='more')` adds a Hello page to the More group of the sidebar.
+  - The rules for a page:
+    - the tab id may not be a built-in page;
+    - the label is 1 to 24 printable characters;
+    - a label needs a script;
+    - the group is one of `main`, `observe`, `activity`, `connect` and `more`.
+  - A panel without a label adds no sidebar entry.
+
+### `skopax_hello/panel.js`: the page script
+
+- Skopax serves the script from the package directory at `/plugins/hello/panel.js`, while the plug-in has an enabled instance.
+- The script listens for two events:
+  - `skopax:state` carries the whole page state, with the open cards in `state.anomalies` and the check's rows in `state.hello`;
+  - `skopax:page` hands over the page's `section` element when the Hello tab opens.
+- The script escapes every value before it writes HTML.
+- The open-card count uses the same filter as the built-in panels: open, not muted, and not triaged as in progress or handled.
+
+### `skopax_hello/icon.svg`: the icon
+
+The icon is an SVG of at most 20 KB in the package directory, named by `icon='icon.svg'`. It is shown on the Integrations tile and in the sidebar. A plug-in whose icon is missing or is not an SVG does not load.
+
+### `LICENSE`: the licence text
+
+The example carries a copy of the Apache License 2.0. `license-files = ["LICENSE"]` in `pyproject.toml` puts it into the wheel (`skopax_hello-0.1.0.dist-info/licenses/LICENSE`), so the wheel can be passed on by itself with its licence. The Dockerfile copies it into the build stage.
+
+### `tests/test_hello.py`: unit tests
+
+- The tests run `run` and `test` with a small fake `Context`, whose `http()` returns a fake transport that answers a chosen status or raises `HttpError` or `Unreachable`.
+- They need only `skopax.contract`, `skopax.remote` and the plug-in.
+- Run them from the root of the Skopax repository with `.venv/bin/python -m pytest -q -n 0 examples/hello-plugin/tests`. The full suite runs them too.
+
+### Working outside this repository
+
+Skopax is not published to a package index; only its images are. A plug-in in a repository of its own runs its tests against a clone of Skopax at the release it targets, next to the plug-in's folder. From the plug-in's folder:
+
+    git clone --branch v0.1.0-rc.1 https://github.com/skopax/skopax ../skopax
+    (cd ../skopax && uv sync --frozen)
+    PYTHONPATH=../skopax:. ../skopax/.venv/bin/python -m pytest -q tests
+
+The layer image installs the plug-in with `--no-deps`, so Skopax is not a runtime dependency of the plug-in wheel: leave `skopax` out of the plug-in's `dependencies`. Anything else the plug-in needs at run time must already be in the Skopax image, as the Dockerfile notes below say.
+
+### `Dockerfile`: the layer image
+
+The Skopax image is distroless, so it has no `pip` and no shell. Install the plug-in in a Python build stage, then copy it into the Skopax image's `site-packages`:
+
+```dockerfile
+ARG BASE_IMAGE=ghcr.io/skopax/skopax
+ARG SKOPAX_VERSION=0.1.0-rc.1
+
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS build
+
+WORKDIR /src
+COPY pyproject.toml README.md LICENSE ./
+COPY skopax_hello/ ./skopax_hello/
+RUN pip install --no-cache-dir --root-user-action=ignore --no-deps --target /plugins .
+
+FROM ${BASE_IMAGE}:${SKOPAX_VERSION}
+
+COPY --from=build /plugins /usr/local/lib/python3.15/site-packages/
+```
+
+```sh
+docker build --build-arg SKOPAX_VERSION=0.1.0-rc.1 -t skopax-hello examples/hello-plugin
+```
+
+- `BASE_IMAGE` (default `ghcr.io/skopax/skopax`) names the Skopax image to build on, for example a mirror or your own registry. `SKOPAX_VERSION` (default: the current release) picks its tag.
+- Pin `SKOPAX_VERSION` to the release you run, and keep the plug-in's `core` range in step with it.
+- `--no-deps` keeps the layer to the plug-in alone. Anything else the plug-in needs must already be in the Skopax image, or be installed in the same way.
+- Start the layer image exactly like the Skopax image (see the [quickstart](../README.md#quickstart)).
+- When you start it without a browser, for example in a CI job, set `SKOPAX_ADMIN_EMAIL` and `SKOPAX_ADMIN_PASSWORD` so that a first admin exists. Until one does, every API route answers 503, even with the bootstrap token `SKOPAX_TOKEN`.
+- The plug-in is found through its entry point, so `SKOPAX_PLUGINS` is not needed. Admin > Integrations lists Hello, and `GET /api/admin/plugins` lists it with the id `hello`:
+
+```sh
+curl -fsS -H "Authorization: Bearer <the SKOPAX_TOKEN value>" http://localhost:8080/api/admin/plugins
+```
+
+- The icon is served at `/plugins/hello/icon.svg`. `panel.js` answers 404 until the plug-in has an enabled instance.
+
+## Writing a plug-in
+
+A plug-in is a `Plugin` object from `skopax.contract`. This section covers what it can use and declare besides the page panels described under [Plug-ins](plugins.md#plug-ins).
+
+### Imports and the kit
+
+A plug-in module imports the standard library, third-party packages, its own package and, from Skopax, only `skopax.contract`, `skopax.kit`, `skopax.clock`, `skopax.remote`, `skopax.redact`, `skopax.monitor`, `skopax.errkind`, `skopax.kube`, `skopax.agent` and `msg` from `skopax.messages`. None of these imports a plug-in, and a test holds the built-in plug-ins to this list.
+
+A plug-in reads the network only through `ctx.http()` and the kit. Pinned TLS (`ca-pinned`) is for the core transport only: a plug-in reaches a pinned server through the transport core hands it (`ctx.http()`, built on `remote.sender`), never with a TLS context of its own, and event-loop TLS on a pinned context is refused. A JSON read through `ctx.http()` has a wall-clock limit of twice its timeout, as a page read has, and reads at most 64 MB; a plug-in can set a smaller cap with `call(..., limit=<bytes>)`. Past either limit the read fails as unreachable, naming the address without its query and the cap. The repository's guard tests refuse socket, HTTP-client, subprocess and dynamic-import use in plug-in code, including transport names re-exported by core or kit modules; they catch mistakes and are not a sandbox, since plug-ins are code an admin chose to install.
+
+`skopax.kit` holds the helpers that several plug-ins share:
+
+- `kit.promql`: the Prometheus HTTP client (`Prometheus`, `client_for`, `ranged` and the query helpers), `bounded(transport, seconds)` with its `Late` error for a pass budget, `instant(peer, expr)` for Test connection, and `ui_of`, `graph` and `number`;
+- `kit.links`: `sendable(url)`, whether a webhook or link address can be posted to: `https`, a host, no user name or password, no space, control or non-ASCII character, a valid port and at most 2000 characters; core's routes and the Teams plug-in share it;
+- `kit.text`: `duration(seconds)`, and `cut(text, limit)`, which folds whitespace and masks secrets before it cuts;
+- `kit.connection`: `result(run)` for Test connection;
+- `kit.env`: `env_set`, for `env_instances` (see [Peers, clients and state](#peers-clients-and-state));
+- `kit.access`: the refused-read helpers: `denied(code)`, `card(check, plugin, part, permission, status, credential)` for the warn card, `ran_key(check, part)`, `text(plugin, part, permission, credential, status)` for tool errors, `tested(plugin, part, status, permission, credential)` for Test connection, and `status(base, parts)`. `card` also takes `name` (the part as people read it, while the keys keep the part id), `plural` (for a plural credential such as keys) and `what` (the plug-in's own explanation). An empty credential means none is set. `kit.promql.credential(config)` names a Prometheus credential (`password` for basic auth, `token` for a bearer token, empty for none). Use `kit.access` for every refused read;
+- `kit.elastic`: the Elasticsearch ES|QL client and its helpers (`client_for`, `Elastic`, `ElasticError`, `Budget`, `refusal`, `access_card` and `fields_card` on top of `kit.access`, `no_access` and `discover_for`), for plug-ins that read through an Elasticsearch instance;
+- `kit.alerts`: `QUIET_ALERTS` (alerts that are never a card) and `ALERT_KEEP` (the alert labels a card keeps), which Prometheus and Grafana share;
+- `kit.web`: the page reader for a site's own pages (`Site`, `PageCheck`, `site_pacer`, `host_of`, `public_host`, `refusal`, `suffix_entries`), which opens only the site's hosts and connects to the address it checked;
+- `kit.browser`: the client of the browser service (`Browser`, `Shot`, `BrowserDown`);
+- `kit.google`: Google service-account sign-in (`GoogleAuth`, `access_key`, `bounded`, `connection_test`) and its refusals (`GoogleError`, `access_card`), shared by the Google plug-ins;
+- `kit.umami`: the Umami client (`Umami`, `UmamiError`, `form_of`, `top_paths`), shared by Umami and the page scan;
+- `kit.releases`: `attach_publish`, which names the latest Tag Manager publish on a drop card;
+- `kit.flags`: `scan(tool, text)`, the phrase scanner core runs on tool output and on model calls. Core's `card` and `past_cards` answers are scanned like any tool output; `open_cards` instead shows a card whose text trips the scanner as held, so one planted card does not hold every run's posts.
+
+For Test connection, write a function that makes one real call and returns a short summary, and return `connection.result(that_function)`. It times the call and turns a failure into a fixed sentence: credentials refused (HTTP 401), credentials that lack a permission (HTTP 403), another HTTP status, a TLS failure, a timeout, a service that cannot be reached, or a failed test named by the error's type only. A `SourceDown` keeps its own text, and a `ReadError` its message with known secret shapes masked. The exception's own text never reaches the page, because it can carry a URL with a token.
+
+`ctx.instance.off_checks` (a frozenset of check ids) names the checks switched off on the instance, in a pass and in Test connection, so a test can leave out the parts only those checks read. Test connection on an unsaved form uses the form's ticks; otherwise it uses the stored ones, and it is empty when there are none.
+
+### Peers, clients and state
+
+- **Peers.** A plug-in that reads through another plug-in's connection, for example a check that queries a Prometheus, names it in `uses` and adds a field of kind `instance` whose one choice is that plug-in: `Field('source', 'Prometheus', 'instance', choices=('prometheus',))`. Admin shows the field as a list of that plug-in's instances, and saving refuses a name that is not one of them. At run time `ctx.peer('source')` gives that instance (`info`) and a transport to it (`http()`), and `ctx.peers('prometheus')` lists every runnable instance of a used plug-in, primary first. If the peer is switched off, deleted or parked, only the reading instance's pass fails, with a text that names the peer. A used plug-in that is missing or broken never stops the reader from loading. A peer also carries `off_checks`, the checks an admin switched off on that instance. A plug-in that skips work because a peer covers it skips only while the peer's own check is on: Grafana skips a datasource of a Prometheus instance, and Kafka leaves out that instance's namespaces, only while its `prom` check is on (Kafka also needs its `kube` profile). When the check is switched off they raise the cards themselves, and when it is switched on again their copies close at their next pass.
+- **Clients.** `client(info, transport)` builds one client object for an instance. Core features that use an integration reach its connection through it, and `ctx.client()` hands the same object to the plug-in's own checks and tools. It is built on first use and kept until the instance's values change. A client that fails to build is tried again after a minute, or as soon as the values change. While no instance serves, core reads the integration as not set up or switched off.
+- **Limits.** `max_instances` caps the instances; see [Instances](plugins.md#instances).
+- **Environment.** `env_instances(env)` turns environment variables into instances named in the environment source. Use `kit.env.env_set(env, plugin, needed, optional)`: it returns the stripped values when every needed variable is set, and for a partial set returns None after one log warning naming what is missing.
+- **Capabilities.** `Capabilities(hosts, secrets)` lists the hosts a plug-in may call, as fixed names (`api.atlassian.com`) or `@<field>` for the host of a field's value, and the fields that are secrets.
+- **Missing and refused.** A client raises `contract.Missing` for a 404 that core reads as "not there", and `contract.Refused` for a write the service refused with a sentence the page shows.
+- **Code hosts.** A plug-in whose client core uses for deploy enrichment and code links returns a `contract.CodeHost` from `client()`.
+- **Refusals.** A client that core features use raises `contract.Denied(text, part, permission)` for a read the service refuses. It is a `SourceDown`, so every handler that catches one still does, and an `errkind.NoAccess`, so core names the part and the permission (deploy enrichment, the `jira-links` pass, the deploy report) instead of reading the refusal as nothing there.
+- **State.** In a check run, `ctx.previous(section)` returns the rows this plug-in wrote to that section last time for this instance, `ctx.deploys(since)` the recent deploys, and `ctx.open_cards()` the check's own open cards for this instance (`plugin_wide=True` for every check of the plug-in). They read the state once, at the start of the run. A tool can read `ctx.previous` too.
+- **Memos.** A check can return `Sweep.memos`, a dict of small JSON documents (at most 200 per pass, each at most 4 MB) that core keeps outside the state for that instance, and read one back with `ctx.memo(key)` in a later run or in a tool. A memo nobody writes for 90 days is dropped. A plug-in gets no other database of its own.
+- **Model calls.** In a check run, `ctx.ai(model)` gives a client whose `complete(system, messages, max_tokens, schema=None, effort='medium')` returns `{text, usd}`. It is None without an Anthropic key, for a model with no price, while the investigator is switched off or stopped, or once the daily spend cap is reached, and each call checks that again and returns None when it is. Every call is counted in the daily spend and in the spend ledger under `<plug-in>.<check>`; the Website page scan's calls go under `pagescan`, which the Costs page lists. A failed or refused call raises `ReadError` with a fixed reason.
+- **Screenshots and posts.** A check can return `Sweep.shots` (images with the card key they belong to, at most 20 per pass, counted against `screenshot.max-per-day`) and `Sweep.posts` (at most 3 digests per pass, each a title, card lines and picture replies, in plain text). Core stores the shots and shows them on their cards, and posts a digest to the main Slack channel once the pass is applied: it escapes the text, links each card, leaves out quiet and already posted cards, marks the rest posted and puts the pictures in the thread, at most 8 per thread. Nothing is marked posted while Slack is not set up.
+- **Releases.** `releases(rows, since)` gets the plug-in's own section rows, one instance at a time, and returns release rows, such as Tag Manager publishes. Each row needs the text keys `ns`, `svc`, `at` and `toImage`, and may carry `id`, `fromImage`, `title` and a small dict under the plug-in's id. Core cuts long texts, drops rows older than `since`, sets `kind` to the plug-in's id and lists the rows beside the deploys: under Releases, in `GET /api/deploys`, in the investigator's `deploys_since` and in `ctx.deploys`. They are never stored as deploys, so the post-deploy check never sees them. All `releases` calls of one read share the 10 seconds of the other hooks. A call that fails, runs late or returns something other than a list leaves that plug-in's rows out of the read, with one log warning until it works again. Rows of an instance other than the primary carry its name as `cluster`.
+
+### Hook time limits
+
+Skopax waits at most 10 seconds (`HOOK_TIMEOUT_S` in `skopax.bounded`) for a plug-in's `settings_source`, `entitlement` and `org_validators` hooks and for its `client`. For `links` the 10 seconds cover the whole links step of one pass, not each call: once they are spent, the links still to come are skipped for that pass. The `probe_targets` calls of one probe run share a deadline of 5 seconds. A hook that is slower is skipped for that call, as if it had failed, and its late answer is thrown away; while it still runs, it is not called again. When a main Skopax starts, a settings source that is too slow stops the start, as one that fails does; an agent starts anyway and tries the source again. Later reads keep the source's last data. `confirm` has its own 30 seconds (see [Tools and proposals](#tools-and-proposals)). `Outbound.post` gets 10 seconds per post, one post at a time per instance (see [Outbound](#outbound)). A post that is late, raises, or answers anything but `ok` true counts as failed, and so does one that finds the instance's previous post still running. Core tries an automatic post again later, and a post by hand answers with the failure. Delivery is at least once: a post that succeeded after the limit can be sent twice. `role_resolver` has its own 5 seconds (see [Sign-in hooks](#sign-in-hooks)).
+
+### Sign-in hooks
+
+- **`role_resolver(user, channel)`** gives a person's role at sign-in. `user` is a copy of `{email, name, source, role, claims}`: the stored role, if any, and the token's claims (empty in Slack). `channel` is `page`, `mcp` or `slack`. It returns `viewer`, `operator`, `admin`, or None to leave the role to the next step (see [Roles](sign-in.md#roles)). Resolvers run in load order and the first answer that is not None wins. It is called only for SSO users and for Slack users without a local account, never for local accounts. A resolver that raises, answers something other than a role or None, or takes longer than 5 seconds fails closed: the page sign-in fails with no session, MCP answers 503, and Slack treats the person as not an operator. The 5 seconds include the time spent waiting for a worker: all resolvers share a pool of 4 workers, and a full pool logs one warning. A hook cannot be stopped once it runs, so it must set its own timeouts on every network or database call, shorter than 5 seconds.
+- **`oidc_token_request(request)`** can add to the token request of a sign-in. `request` is `{url, headers, params}` without the client secret, the code or the code verifier. It returns `{params, headers}` to add. A parameter Skopax sets itself (`grant_type`, `code`, `redirect_uri`, `client_id`, `client_secret`, `code_verifier`) and the `Authorization` header are dropped with a warning. The token request carries no `scope`, so a provider that wants one gets it here. A hook that raises stops the sign-in.
+
+### Checks, keys and sections
+
+- **Twin checks.** One plug-in may hold checks `c` and `c-s`, such as `tick` and `tick-cache`. Another plug-in still may not use a check id or ran key that starts with `tick-`. The instance names that twins reserve are listed under [Instances](plugins.md#instances).
+- **Sub-keys.** A check may report ran keys `<k>:<x>` for any `k` in its `ran`, for example one per data source it reads. They are scoped to the instance like any ran key, and a pass clears only the cards of its own instance.
+- **No data.** A pass that read nothing reports the ran key `<check>:no-data`, which clears no card at all, on any instance. A card whose own sub-key is `no-data` (a datasource or a page with that name) is therefore never cleared by a pass and closes only through the 24 h stale rule; `no-data` cannot name an instance.
+- **Statuses.** An ok pass says `ok`, or `ok` and one or more of these tails after a middle dot (U+00B7), in this order: `no data` (every read part found nothing), `no data for <part>, <part>` (some did), `read <n> of <m> <things>` (a capped read; the rest stay out of `ran`), `read <n> <things>, more not read` (a capped read whose total is unknown), or `no access to <part>, <part>`. Self-review, Admin and the page count any status that starts with `ok ` as passed.
+- **No access.** A read refused with HTTP 401 or 403 (or the API's own permission error) is never read as none. The refused part's cards stay open, the status names it (the tail `no access to <part>`), and the pass raises one warn card per instance and part, ranKey `<check>:access:<part>`, labelled `<Plugin> cannot read <part>: the <credential> lacks <permission>` for a 403 and `... the <credential> is invalid or lacks <permission>` for a 401, where the credential is named by its own noun (token, password, API key, keys, application, client id and secret), and `... the server requires credentials and none are set` when none is set. The pass lists `<check>:access:<part>` for every part it read or was refused, and for every part that is switched off or left out by the instance's settings, so the card closes at the first pass that reads the part again or stops reading it; a part that failed for another reason keeps its card and makes the status `error: <part>: <reason>`, while the parts that were read still count. A refused tool call returns the same sentence as the tool error. Test connection uses the permission sentence for a 403 only; a 401 there keeps the credentials text, except when the plug-in's own login or token request has just succeeded with the same credentials, where it uses the `is invalid or lacks` sentence. A log field a check needs but the index lacks works the same way: a warn card with the ranKey `<check>:fields`, listed in `ran` on every pass.
+- **Once checks.** A check with `once=True` runs on the primary instance only, once per scheduled run, and its keys and cards carry no instance name. It reads the other instances through `ctx.peers` with its own plug-in id, and it waits while no primary can run. Its "What it watches" box shows on the primary only, and moving the primary keeps its cards open. When the primary moves, from Admin or from a settings source, the new primary takes over the old primary's choice of which once checks are switched off.
+- **Sections.** A section name is letters, digits and dashes, starts with a lower-case letter and has at most 31 characters, so camelCase names such as `logTop` work. Core's own state names are refused. `section_help` gives a section a one-line meaning that the investigator's pass table tool shows.
+- **Long checks.** A pass gets 240 seconds unless its check sets `timeout` in seconds. A check with `background=True` runs outside the shared job slots, so a long pass, such as the page scan, never holds up the other checks.
+- **Run slots.** At most 4 jobs (checks and core's own jobs) run at once. When more are due, a check asked to run now goes first, then the job that has waited longest; the rest wait for the next minute. A test holds the built-in checks alone, not core's own jobs, to at most 4 that fall due in any one minute.
+- **Links.** Every serving plug-in can add links to a card: the card's owner first, then the others in load order, without repeats and at most 8. Only `https://` links with a text label are kept.
+- **Ids.** A plug-in setting or rule set may not take the id of a core setting. When two plug-ins share an id, the first one loaded wins, built-in plug-ins first, and the other is broken with a reason that names where the winning copy came from: built in, an installed package, or `SKOPAX_PLUGINS`.
+
+### Tools and proposals
+
+Each `Tool` has a `kind`:
+
+- `read`: offered in every investigator run.
+- `write`: offered where core's card writes are, in card runs and in questions about cards on the page, never in Slack or chat questions or deploy reports. In shadow mode it never runs: the call is only recorded. An input that carries tool-call markup is refused.
+- `propose`: offered only when someone asks in a Slack channel or thread (not in a direct message or the chat), and it changes nothing. It returns a `title` (up to 200 characters) and a `text` (up to 2000), which stay on the run once the run finishes. It also needs a `confirm` function.
+
+A proposal is confirmed in these steps:
+
+1. An operator chooses Confirm under the run in Activity > History (Investigator runs), or the Confirm button under the Slack answer. Two confirms at the same moment still run it once.
+2. Skopax calls `confirm(ctx, args)` with a context for the instance the proposal came from and the tool's arguments. If that plug-in or instance no longer serves, nothing runs.
+3. `confirm` returns a dict with a bool `ok` and a str `summary`. Anything else, or an error, counts as a failure. The summary is kept as printable text of at most 300 characters.
+4. `confirm` gets 30 seconds. After that the outcome is timed out. A timed-out or failed result says the action may or may not have happened and that someone should check it, because a proposal is confirmed only once.
+5. The result shows under the proposal and in the Slack thread, and goes to the activity log. On the page it is headed by its outcome: confirmed, failed, timed out, or declined when `confirm` answered with `ok` false. A result that is not ok carries its summary into the activity line, and Activity > Events marks that line.
+
+A tool may return a picture for the model: a dict with `image` (`media_type` `image/jpeg` or `image/png`, and `data` in base64), an optional `text` and optional `facts`. Core refuses a picture over 3 MB or past `screenshot.max-per-day`, stores it with the run and hands the model the picture and the text. Mark such a tool `image=True`, so the daily cap is checked before it runs.
+
+`{field:<key>}` in a tool's description is filled, for the model, with the primary instance's value of that field. Secret fields stay empty, and the Tools page shows the field's label instead of its value. `reach` names the probe targets a tool depends on; left empty, it is every probe target of the plug-in. The Tools page marks a tool unreachable when the last probe found every one of them down, and names them in the tool's opened row.
+
+`probe_targets(info)` gives the probe the targets of one instance: a list of dicts, each with a `name` and a `url`. Other keys are dropped, and a URL that is not `http` or `https` is reported as failed. The calls for the instances of one probe run share a deadline of 5 seconds; one that is late, raises or returns something other than a list adds no targets. The probe uses the instance's own CA certificate only when the plug-in has a field `ca` of kind `pem`, and with the instance's `ca-pinned` on accepts only the exact certificates pasted there.
+
+`needs_field` names one of the plug-in's own fields, not a field it reads on an agent; a name that is not one of them breaks the plug-in. The tool is then offered only for the serving instances whose value for that field is set, and the Tools page shows it off ("No instance has <field> set") while none has. Confluence uses it for `spaces`. Core masks the answer of every read tool with `scan=True` before the model sees it, as it does for outside MCP servers: the instance's own secret values become `***`, then `redact.redact_secrets` masks PEM blocks, credentials in addresses, secret-looking table columns (HTML tables, and pipe tables with a delimiter row) and secret values, then what `redact` masks except card numbers (Bearer tokens, JWTs, e-mail addresses, IBANs and phone numbers that start with +; long numeric IDs such as order, account or metric ids are kept as they are), and a text value under a secret-named key becomes `[redacted]`. So a committed config file read through a code tool shows `password: [redacted]`. A plug-in can call `redact.redact_secrets(text)` itself for text that goes anywhere else.
+
+### Outbound
+
+`Plugin.outbound = Outbound(post, tags_field='tags', mentions_field='mentions', link_field=None, keys_field=None, sev_field=None)` makes each instance of the plug-in a route, as Teams does. The fields name the instance fields core reads: card tags, mentions (e-mail addresses) and card key patterns, each a text field, the address posts go to (any field), and the route's lowest severity (a choice within `info`, `warn` and `crit`). A plug-in whose `outbound` breaks this is not loaded.
+
+- Core picks what to post and when. `post(ctx, message)` sends one message and answers `{'ok': True}`, or `{'ok': False, 'status': <HTTP status>}`. The message holds `kind` (`action`, `info`, `fixed`, `card` or `test`), `title`, `text`, `why`, `lines`, `link`, `chat`, `page`, `board`, `mentions`, `card`, `cards`, `more`, `kids`, `teams`, `urgent` and `attribution` (the "powered by" line as `text` and `href`, or none).
+- `lines` come in the order core gives, with core's labels in the outbound language: for `action` the why first, then Recommended; for `info`, Info first, then the why. Render them in that order, so every chat tool leads with the same words.
+- Core reads three plug-in settings by id when the plug-in declares them, and uses its defaults otherwise: `repeat-days` (7), `min-sev` (`warn`) and `fixed-posts` (off). See [Microsoft Teams](plugins.md#microsoft-teams).
+- Tag routes of one plug-in whose address fields hold the same value share their posts: a card tagged for both is posted once. Core compares a hash of the value, never the value. A card's post history records the plug-in and the route, so two plug-ins may use the same route name.
+- `POST /api/routes/send` (operator) posts one card by hand, through one route or through every route that takes it. See [Hook time limits](#hook-time-limits) for the 10 seconds a post gets.
+
+### Org packs
+
+An `OrgPack` lets one plug-in replace the investigator's instructions for one company:
+
+- `process`: the process text, Markdown with `## Heading {#id}` sections; at most 200,000 characters, with at least one `{#id}` section.
+- `gate` and `small_talk`: the prompts of the gate that screens Slack messages and of the small-talk reply; at most 40,000 characters each. They use only the plain fields `{product}` and `{org}` (About your company), and a literal brace is written twice.
+- `slack_sections`: the ids of the sections the Slack and chat prompt keeps, taken from the pack's own process text or, without one, from core's.
+- `plugin_sections=False` leaves the other plug-ins' knowledge sections out of the prompts. The Jira working notes are one of them (how to find, read and propose tickets), and core's process text does not repeat them: with such a pack and Jira serving, the investigator knows the Jira tools by their descriptions only, unless the pack's own process text says how to use them.
+
+The first active plug-in with a pack, in load order, wins. Another plug-in's pack is ignored, logged once and listed on the notices strip in Admin. A pack that breaks one of these rules breaks its plug-in, and core's prompts stay in use. Core's section on untrusted input is kept in every prompt, whatever the pack says.
+
+### Locale packs
+
+A `Locale(lang, ...)` adds a language. `lang` is a tag of two or three lower-case letters, optionally followed by a dash and a region or script of 2 to 8 letters or digits, such as `de` or `pt-BR`; a tag with two such parts, such as `zh-Hant-TW`, is not valid, and a pack with such a tag is left out whole. Skopax ships English only, and message or chat texts for `en` or `en-*` are dropped, so built-in English stays as written. Every part is optional:
+
+- `messages`: translations keyed by core message key (see `skopax/messages.py`). Only core message keys translate, so a plug-in cannot add texts of its own this way, and only the texts Skopax sends out use them. An entry whose key is not a core key, whose `{fields}` differ from the English text, that writes a field other than as a plain `{field}` (a format spec such as `{count:>9}` or a conversion such as `{product!r}`), or that holds a control character other than a newline or more than 4000 characters is dropped with one warning, counted on the notices strip like any other text, and English is sent.
+- `writing`: a note to the investigator on writing in this language, at most 1000 characters.
+- `page`: exact English page texts and their translations. A key may not start with `@`.
+- `rules`: pairs of a regular expression and a replacement, for page texts that carry values; at most 200. A pattern has at most 300 characters, no lookbehind, and must not match the empty text. A replacement has at most 500 characters and refers to groups only as `$1` to `$9`.
+- `months` and `days`: names for `Jan` to `Dec` and `Mon` to `Sun`, used in shaped texts and inside the groups a rule captures.
+- `tails`: pairs of an English ending and its translation, for a known page text followed by that ending; at most 50.
+- `headers`: translations used only in table headers; at most 200.
+- `chat`: the chat texts, keyed by the names in `skopax/chattext.py`. Each text keeps exactly the plain `{fields}` of the English text, with no format spec or conversion, is not blank and has at most 500 characters. `starters` holds 1 to 6 pairs of a button label and the message the button sends, and `actions` and `kinds` translate some of their entries.
+
+A text that breaks one of the rules in this section is left out, with one warning in the log that names the plug-in, the language, the text or part, and the reason. Admins also see it without the log: the notices strip has one line per plug-in and language with how many texts show in English, and that plug-in's card in Admin > Integrations lists the first five of them. That text then shows from another pack or in English, and the plug-in keeps working: its checks, settings, tools and hooks are not affected. Only that one entry is left out: a page or message key, a rule, tail, header, month or day name, a chat text or entry, or a starter pair. A whole part is left out only when the part itself is not the expected list or map, or holds more than its limit, and then each text it held counts. A chat key that is not text is left out alone, and an empty `starters` list adds none, so the English starters show.
+
+Chat texts also follow these rules:
+
+- **No links.** The chat builds its links itself, so no chat text, starter or entry may hold a web address (`http://`, `https://`, `www.`), an e-mail address (`mailto:`, `xmpp:`, `name@host.tld`) or a `<scheme:` link, in upper or lower case, also when spelled with a backslash escape (`https\://`) or a character reference (`&#64;`).
+- **Joined texts.** The chat joins some texts into one line: `halted` with `halted_stopped` or `halted_capped`, and `call` or `calls` with `last`. When a joined pair makes an address, from one pack or from the packs of two plug-ins, both texts of the pair stay English, with one warning in the log.
+- **Starter messages.** A starter's message is sent as the person's own message and reaches the investigator as written. It is one line, and it may not hold Markdown or HTML marks either: `*`, `_`, a backtick, `~`, `<`, `>`, `\`, `&`, `](`, `]:` or `![`. It may not start with a space or a tab (four of them make a code block), `#`, `|`, `-`, `+` or a number followed by `.` or `)`. Its label is button text, so a mark there shows as written.
+- **Shown as text.** Pack texts in chat messages and steps are escaped for Markdown and collapsed to one line, and so are the values Skopax fills into them. Button labels, starter labels and the thread name keep the text as written.
+- **Placeholders.** A chat text holds the same placeholders as its English text: for example `not_ready` has `{needs}`, `feature_off` has `{feature}` and `refused_failed` has `{reason}`. A pack text whose placeholders differ does not match the English text, so it is left out with a warning that names the key, and that text shows in English.
+
+The page loads one script per plug-in and language, `/plugins/<id>/i18n-<lang>.js`, and the packs of several plug-ins merge in load order. The parts other than `page` arrive under the reserved keys `@rules`, `@months`, `@days`, `@tails` and `@th`, so the script of a pack with `page` texts only is a flat map of English texts to their translations. For each text the page tries, in order: a header translation, the exact text, a known text with a tail, the text's shape (numbers as `{0}`, `{1}` and so on, month names as `{M}`, day names as `{D}`), and then the first rule that matches. A rule the browser rejects is skipped with one console warning.

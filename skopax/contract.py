@@ -1,0 +1,454 @@
+import re
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from typing import Protocol
+
+from pymongo.database import Database
+
+from skopax.engine import PassResult, anomaly, fmt, iso
+from skopax.errkind import Authored, NoAccess
+from skopax.remote import HttpError, Transport, Unreachable, call, send
+
+__all__ = [
+    'ID',
+    'EDITIONS',
+    'CATEGORIES',
+    'FIELD_KINDS',
+    'SETTING_KINDS',
+    'TOOL_KINDS',
+    'CHANNELS',
+    'Capabilities',
+    'Field',
+    'InstanceInfo',
+    'KEY_SEGMENT',
+    'card_key',
+    'Peer',
+    'TestResult',
+    'Sweep',
+    'Check',
+    'RuleSet',
+    'Setting',
+    'Tool',
+    'Knowledge',
+    'OrgPack',
+    'Panel',
+    'Locale',
+    'Tag',
+    'TagRule',
+    'Redaction',
+    'Migration',
+    'Outbound',
+    'AgentRead',
+    'ReadError',
+    'SourceDown',
+    'Missing',
+    'Refused',
+    'Denied',
+    'CodeHost',
+    'SourceData',
+    'Hooks',
+    'Context',
+    'AiClient',
+    'Plugin',
+    'PassResult',
+    'anomaly',
+    'fmt',
+    'iso',
+    'Transport',
+    'HttpError',
+    'Unreachable',
+    'call',
+    'send',
+]
+
+ID = re.compile(r'[a-z][a-z0-9-]{1,30}')
+EDITIONS = ('community', 'enterprise')
+CATEGORIES = ('metrics', 'logs', 'alerts', 'infrastructure', 'tickets', 'code', 'chat', 'web', 'apps', 'marketing', 'other')
+FIELD_KINDS = ('text', 'url', 'secret', 'choice', 'bool', 'int', 'pem', 'regex', 'instance')
+SETTING_KINDS = ('int', 'float', 'bool', 'text', 'choice', 'list')
+TOOL_KINDS = ('read', 'write', 'propose')
+CHANNELS = ('page', 'slack', 'mcp')
+KEY_SEGMENT = '@'
+
+
+@dataclass(frozen=True)
+class Capabilities:
+    hosts: tuple[str, ...] = ()
+    secrets: tuple[str, ...] = ()
+    agent_reads: bool = False
+
+
+@dataclass(frozen=True)
+class Field:
+    key: str
+    label: str
+    kind: str
+    required: bool = False
+    default: str = ''
+    help: str = ''
+    choices: tuple[str, ...] = ()
+    low: int | None = None
+    high: int | None = None
+    show_if: tuple[str, str] | None = None
+    ui: bool = False
+    address: str = ''
+    hosts_of: Callable[[str, Mapping[str, str]], list[str]] | None = None
+
+
+@dataclass(frozen=True)
+class InstanceInfo:
+    name: str
+    primary: bool
+    segment: str | None
+    config: Mapping[str, str] = field(repr=False)
+    off_checks: frozenset[str] = frozenset()
+
+
+def card_key(raised: str, instance: InstanceInfo | None) -> str:
+    return raised if instance is None or instance.segment is None else f'{raised}{KEY_SEGMENT}{instance.segment}'
+
+
+@dataclass(frozen=True)
+class Peer:
+    info: InstanceInfo
+    http: Callable[[], Transport]
+    off_checks: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
+class TestResult:
+    __test__ = False
+
+    ok: bool
+    summary: str
+    ms: int
+
+
+@dataclass
+class Sweep:
+    result: PassResult
+    sections: dict[str, list[dict]] = field(default_factory=dict)
+    deploys: list[dict] = field(default_factory=list)
+    shots: list[dict] = field(default_factory=list)
+    posts: list[dict] = field(default_factory=list)
+    memos: dict[str, dict] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Check:
+    id: str
+    label: str
+    period: int
+    offset: int
+    ran: tuple[str, ...]
+    run: Callable[['Context'], Sweep]
+    tool: str | None = None
+    legacy_alias: bool = False
+    sections: tuple[str, ...] = ()
+    section_help: Mapping[str, str] = field(default_factory=dict)
+    once: bool = False
+    timeout: int | None = None
+    background: bool = False
+
+
+@dataclass(frozen=True)
+class RuleSet:
+    id: str
+    label: str
+    defaults: Mapping[str, float]
+    help: Mapping[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Setting:
+    key: str
+    label: str
+    help: str
+    kind: str
+    default: str
+    low: float | None = None
+    high: float | None = None
+    choices: tuple[str, ...] = ()
+    live: bool = True
+
+
+@dataclass(frozen=True)
+class Tool:
+    name: str
+    description: str
+    input_schema: dict
+    run: Callable[['Context', dict], object]
+    kind: str = 'read'
+    instance_input: str | None = 'instance'
+    per_run: int | None = None
+    reach: tuple[str, ...] = ()
+    scan: bool = True
+    confirm: Callable[['Context', dict], dict] | None = None
+    needs_field: str = ''
+    image: bool = False
+
+
+@dataclass(frozen=True)
+class Knowledge:
+    id: str
+    title: str
+    text: str
+    slack: bool = False
+
+
+@dataclass(frozen=True)
+class OrgPack:
+    process: str = ''
+    gate: str = ''
+    small_talk: str = ''
+    slack_sections: tuple[str, ...] = ()
+    plugin_sections: bool = True
+
+
+@dataclass(frozen=True)
+class Panel:
+    tab: str
+    script: str | None = None
+    fragment: str | None = None
+    label: str = ''
+    group: str = 'observe'
+
+
+@dataclass(frozen=True)
+class Locale:
+    lang: str
+    page: Mapping[str, str] = field(default_factory=dict)
+    messages: Mapping[str, str] = field(default_factory=dict)
+    rules: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    months: Mapping[str, str] = field(default_factory=dict)
+    tails: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    headers: Mapping[str, str] = field(default_factory=dict)
+    writing: str = ''
+    days: Mapping[str, str] = field(default_factory=dict)
+    chat: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Tag:
+    id: str
+    label: str
+
+
+@dataclass(frozen=True)
+class TagRule:
+    tag: str
+    terms: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Redaction:
+    id: str
+    pattern: str
+
+
+@dataclass(frozen=True)
+class Migration:
+    version: int
+    name: str
+    run: Callable[[Database], None]
+
+
+@dataclass(frozen=True)
+class Outbound:
+    post: Callable[['Context', dict], dict]
+    tags_field: str = 'tags'
+    mentions_field: str | None = 'mentions'
+    link_field: str | None = None
+    keys_field: str | None = None
+    sev_field: str | None = None
+
+
+@dataclass(frozen=True)
+class AgentRead:
+    op: str
+    args: tuple[str, ...]
+    keys: tuple[str, ...]
+    sources: Callable[[Mapping[str, str]], list[str]]
+    run: Callable[[Mapping[str, str], dict], object]
+    fields: tuple[Field, ...] = ()
+    timeout: int = 75
+
+
+class ReadError(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+
+class Planted(ReadError):
+    def __init__(self, phrases: tuple[str, ...]):
+        super().__init__(422, f"held: the text sent to the model reads like instructions to it ({', '.join(phrases)})")
+        self.phrases = tuple(phrases)
+
+
+class SourceDown(Authored, Exception):
+    pass
+
+
+class Missing(Exception):
+    pass
+
+
+class Refused(Authored, Exception):
+    pass
+
+
+class Denied(SourceDown, NoAccess):
+    def __init__(self, text: str, part: str = '', permission: str = ''):
+        super().__init__(text)
+        self.part = part
+        self.permission = permission
+
+
+def _scalar(where: str, value: object) -> str:
+    if value is None:
+        return ''
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    if isinstance(value, (str, int, float)):
+        return str(value)
+    raise ValueError(f'{where} must be a scalar')
+
+
+def _strings(where: str, raw: object) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        raise ValueError(f'{where} must be a dict')
+    if any(not isinstance(k, str) for k in raw):
+        raise ValueError(f'{where} keys must be strings')
+    return {k: _scalar(f'{where}.{k}', v) for k, v in raw.items()}
+
+
+@dataclass(frozen=True)
+class SourceData:
+    label: str
+    values: Mapping[str, str] = field(default_factory=dict, repr=False)
+    instances: tuple[Mapping[str, str], ...] = field(default=(), repr=False)
+
+    @classmethod
+    def of(cls, raw: dict, default_label: str) -> 'SourceData':
+        if not isinstance(raw, dict):
+            raise ValueError('a settings source must return a dict')
+        label = default_label if raw.get('label') in (None, '') else raw['label']
+        if not isinstance(label, str):
+            raise ValueError('label must be a string')
+        values = _strings('values', {} if raw.get('values') is None else raw['values'])
+        listed = () if raw.get('instances') is None else raw['instances']
+        if not isinstance(listed, (list, tuple)):
+            raise ValueError('instances must be a list')
+        return cls(label, values, tuple(_strings(f'instances[{i}]', item) for i, item in enumerate(listed)))
+
+
+@dataclass(frozen=True)
+class Hooks:
+    role_resolver: Callable[[dict, str], str | None] | None = None
+    settings_source: Callable[[Mapping[str, str]], dict] | None = None
+    oidc_token_request: Callable[[dict], dict] | None = None
+    org_validators: Callable[[], dict] | None = None
+    entitlement: Callable[[], str] | None = None
+
+
+class AiClient(Protocol):
+    def complete(self, system: str, messages: list[dict], max_tokens: int, schema: dict | None = None, effort: str = 'medium') -> dict | None: ...
+
+
+class Context(Protocol):
+    now: float
+    instance: InstanceInfo | None
+
+    def http(self) -> Transport: ...
+
+    def rules(self, set_id: str) -> dict[str, float]: ...
+
+    def setting(self, key: str) -> object: ...
+
+    def agent_read(self, agent: str, op: str, args: dict) -> object: ...
+
+    def peer(self, field: str) -> Peer | None: ...
+
+    def peers(self, plugin_id: str) -> list[Peer]: ...
+
+    def previous(self, section: str) -> list | None: ...
+
+    def deploys(self, since: float) -> list[dict]: ...
+
+    def open_cards(self, plugin_wide: bool = False) -> list[dict]: ...
+
+    def client(self) -> object | None: ...
+
+    def ai(self, model: str) -> AiClient | None: ...
+
+    def memo(self, key: str) -> dict | None: ...
+
+
+class CodeHost(Protocol):
+    @property
+    def enabled(self) -> bool: ...
+
+    def repo(self, name_or_path: str) -> dict | None: ...
+
+    def similar(self, name: str, limit: int = 5) -> list[str]: ...
+
+    def commit(self, repo: dict | str, ref: str) -> dict: ...
+
+    def commits(self, repo: dict | str, old: str, new: str) -> list[dict]: ...
+
+    def commits_since(self, repo: dict | str, ref: str, since: str) -> list[dict]: ...
+
+    def file(self, repo: dict | str, path: str, ref: str) -> str: ...
+
+    def blame(self, repo: dict | str, path: str, ref: str, first: int, last: int) -> list[dict]: ...
+
+    def commit_url(self, repo: dict, sha: str) -> str: ...
+
+    def compare_url(self, repo: dict, old: str, new: str) -> str: ...
+
+    def file_url(self, repo: dict, sha: str, path: str, first: int, last: int) -> str: ...
+
+    def link_problem(self, url: str) -> str | None: ...
+
+
+@dataclass(frozen=True)
+class Plugin:
+    id: str
+    name: str
+    version: str
+    category: str
+    description: str
+    icon: str
+    author: str
+    licence: str
+    core: str
+    edition: str = 'community'
+    capabilities: Capabilities = field(default_factory=Capabilities)
+    after: tuple[str, ...] = ()
+    uses: tuple[str, ...] = ()
+    client: Callable[[InstanceInfo, Transport], object] | None = None
+    max_instances: int | None = None
+    fields: tuple[Field, ...] = ()
+    env_instances: Callable[[Mapping[str, str]], list[dict]] | None = None
+    test: Callable[[Context], TestResult] | None = None
+    checks: tuple[Check, ...] = ()
+    rules: tuple[RuleSet, ...] = ()
+    settings: tuple[Setting, ...] = ()
+    tools: tuple[Tool, ...] = ()
+    links: Callable[[dict, InstanceInfo], list[dict] | None] | None = None
+    row_links: Callable[[dict, dict, InstanceInfo], dict[str, str]] | None = None
+    probe_targets: Callable[[InstanceInfo], list[dict]] | None = None
+    outbound: Outbound | None = None
+    releases: Callable[[list[dict], float], list[dict]] | None = None
+    tags: tuple[Tag, ...] = ()
+    tag_rules: tuple[TagRule, ...] = ()
+    panels: tuple[Panel, ...] = ()
+    knowledge: tuple[Knowledge, ...] = ()
+    org_pack: OrgPack | None = None
+    locales: tuple[Locale, ...] = ()
+    hooks: Hooks = field(default_factory=Hooks)
+    migrations: tuple[Migration, ...] = ()
+    agent_reads: tuple[AgentRead, ...] = ()
+    redactions: tuple[Redaction, ...] = ()

@@ -1,0 +1,8 @@
+`kafka` reads Kafka health through a Prometheus instance: the kafka_exporter series of each Kafka cluster, and the Spring Kafka listener and KafkaTemplate timers of each service.
+
+- A cluster is named by the preset's label: the namespace under `strimzi`, the exporter job under `kafka-exporter`. The tool's `cluster` input and the rows' `ns` use that name.
+- Cards: `kafka-broker` (fewer brokers in the metadata for 10 minutes than seen in a day), `kafka-exporter` (the exporter went silent), `kafka-offline` (partitions without a leader), `kafka-urp` (under-replicated partitions for 10 minutes), `kafka-disk` and `kafka-restart` (broker volumes and pod restarts, strimzi preset only; restarts only in namespaces the Prometheus instance does not already watch with its `kube` profile, which cards them itself), `kafka-gone` (a consumer group with no members while messages wait), `kafka-consume-err` and `kafka-send-err` (failed listener calls or sends of a service).
+- Order: `op clusters` for brokers, partitions and throughput; `op groups` for lag and members; `op group` with the card's group for lag per topic; `op history` to see when the lag started; `op apps` with the card's service as `job` for its listener and send failures.
+- A `kafka-gone` card means the consumers left: the service is down, scaled to zero, or cannot reach Kafka. Look at its pods before blaming Kafka. Growing lag with members present is a Prometheus `kafka-lag` card instead.
+- Under-replicated partitions next to a broker card mean a broker is gone; one more broker problem can then make data unavailable. Leaderless partitions stop producers and consumers of those partitions.
+- For anything else use `promql` on the same Prometheus instance (`kafka_*` and `spring_kafka_*` series).

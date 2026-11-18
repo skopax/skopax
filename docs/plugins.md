@@ -1,0 +1,384 @@
+# Integrations
+
+The plug-ins that ship with Skopax, their instances, and outside MCP servers.
+
+## Plug-ins
+
+Prometheus, Kubernetes, the observability plug-ins, GitLab, Jira, Confluence, Argo CD, Slack, Microsoft Teams, the web, app and marketing plug-ins and the MCP server plug-in ship with Skopax (see [Add Prometheus](setup.md#add-prometheus), [Observability plug-ins](#observability-plug-ins), [Code, tickets and chat](#code-tickets-and-chat), [Web, app and marketing plug-ins](#web-app-and-marketing-plug-ins) and [Outside MCP servers](#outside-mcp-servers)). Others are found in two ways:
+
+- installed packages that register a `skopax.plugins` entry point;
+- `SKOPAX_PLUGINS`, a comma-separated list of module paths, each with a `PLUGIN` object.
+
+Admin > Integrations shows a tile for each connected plug-in, with its health and an on/off switch, and "+ Add integration" lists the plug-ins that can be set up. A plug-in is on unless an admin switched it off, and one that needs instances does nothing until it has an enabled, valid instance.
+
+Editions are `community` and `enterprise`. Skopax runs as `community` unless a plug-in's entitlement hook says otherwise. A plug-in that needs another edition is listed under "+ Add integration" with its edition but cannot be set up or switched on, and it contributes nothing. A plug-in that needs a different Skopax version is listed there too, but cannot be set up; the reason shows when you point at it, and it contributes nothing. A plug-in that fails to load or breaks one of the plug-in rules contributes nothing either; the notices strip in Admin names it and says why. Plug-ins add no web routes.
+
+A plug-in page is a `Panel` with a `label`, a `script` and a sidebar `group`: `main`, `observe` (the default), `activity`, `connect` or `more`. While the plug-in serves, the page is a row at the end of that group, tagged plug-in and drawn with the plug-in's own icon. The label is 1 to 24 printable characters on one line, with spaces at either end dropped. The tab id is lower-case letters, digits and dashes, 2 to 31 characters; it is not a built-in page, not one of the ids the page reserves (`sub-anoms`, `fold-anoms`), and not a page tab another plug-in already declared. A plug-in that breaks one of these rules is not loaded, and the notices strip in Admin shows why.
+
+The page gets an empty `<section id="panel-<tab>">`, and the plug-in's script fills it. The script is loaded with the page, before the section exists, so it listens on `document` for the `skopax:page` event. The event fires once per page, right after its section is added: when the page first learns the plug-in list, or later when the plug-in starts serving. Its `detail` holds `tab` (the tab id) and `section` (the element). If the plug-in stops serving, the row and the section are removed.
+
+Each time the board paints, once at page load and again after every live update, it fires a `skopax:state` event on `document`. Its `detail.state` is the board state, with each section a plug-in writes under its own name (`state.<section>`). The first one fires before any `skopax:page`, so a panel script keeps the latest `detail.state` and renders from it on `skopax:page` and again on every `skopax:state`.
+
+A panel script defines its own helpers, such as escaping and time formatting, and reads nothing else of the page; the one page value it may read is `BRAND.version`.
+
+A panel on a built-in tab only points a tile at that page, so it has no script, fragment or label. Fragments are served but not loaded into the page in this version.
+
+## Instances
+
+A plug-in can have several instances, for example one Prometheus per cluster. One instance per plug-in is the primary. It is the default for tools that take a `cluster` input, and its cards and the names of its checks carry no instance name. The first instance becomes the primary, a source can flag one with `primary: true`, and an admin can move the flag.
+
+Other instances mark their cards with their name as the `cluster`.
+
+Two instances never share a card. The primary's card keys have no instance part (`err|shop/checkout-service`); a card of another instance carries the instance name after `@` (`err|shop/checkout-service@east`), and its ran keys end in `-<name>`. Each instance's pass clears only its own cards. A check reads its own open cards through `ctx.open_cards()` with the keys it raised, without the `@<name>` part; `contract.card_key(raised, ctx.instance)` gives the key such a card is stored under (`contract.KEY_SEGMENT` is the `@`), for a card that names another of its plug-in's cards. Turning an instance off, or deleting it, closes its open cards at once, without a "back to normal" message, and leaves the others alone.
+
+Changing an address of an instance (any field of kind `url`, or the relay of a remote agent) asks for its secrets again: a save that moves the address without re-entering each stored secret that is shown in the form is refused with "Enter the secret again for the new address", and a stored secret of a hidden field (another auth mode) is dropped. An optional link address beside the address the plug-in reads, such as the `ui-url` of Prometheus or Elasticsearch, moves no secret; a required address always asks, even when it is also used for links (Website's `url`, which receives `scan-headers`). A text field that lists hosts a secret goes to counts as an address when its plug-in marks it with `Field(..., address='hosts')`: adding a host, or renaming one, asks again, and removing one does not (Website's `hosts`). The plug-in can name the parser it reads the field with (`hosts_of(value, config)`, which also gets the instance's other values); then an edit that brings a stored host into use, such as splitting two hosts joined by a space, dropping one of more hosts than the plug-in reads, or removing a Website login host that covered its `url` host or one of its `hosts`, asks too. A change of trust asks the same way: a `ca` that is set, changed or cleared, or `ca-pinned` switched off, asks for the secrets that go to that address, with its own sentence ("Enter the secret again for the new certificate setting"), because the pasted certificate decides who receives them. The same certificate sent again with other line breaks is no change, and switching `ca-pinned` on asks for nothing. Clearing an address marked `address='alone'`, whose reads no other address takes over, asks for nothing (Website's `browser-url`); moving it still asks. For an agent-read field `<plugin>.url` only the secrets of that plug-in are asked for. Instances from a settings source keep their own rule, and so does `mcp-tools`.
+
+Instance names are lowercase letters, digits and hyphens, up to 20 characters, and are unique within a plug-in. Some names are reserved, and Admin refuses them with a sentence that names the name:
+
+- `primary`, `all`, `no-data`, the names of core's own passes (`manual`, `slack-posts`, `selfreview`, `certs` and `jira-links`) and every check id and ran key of a plug-in that loaded, each alone or followed by a hyphen: with a check `tick`, neither `tick` nor `tick-east` can name an instance of any plug-in;
+- within one plug-in, a name `n` when `<id>-<n>` is another check id or ran key of that plug-in. With twin checks `tick` and `tick-cache`, the names `cache` and `cache-*` are refused, so that each pass name belongs to one instance.
+
+A stored instance whose name has become reserved is parked with a reason, and a reserved name in the environment or the config file stops the start.
+
+A plug-in can limit how many instances it takes. Admin then refuses one more with a sentence that names the limit. Instances from the environment, the config file or a plug-in source take the slots first, and one beyond the limit, wherever it was added, is parked with the same sentence.
+
+## Observability plug-ins
+
+Besides Prometheus and Kubernetes, Skopax ships plug-ins for Capacity, Redis, Kafka, Grafana, Elasticsearch, Varnish, CSP reports, PMM, Cloudflare, Airbyte and Langfuse. Each does nothing until an admin adds an instance in Admin > Integrations. A check runs every 15 minutes unless its entry says otherwise, and its id is also its pass name in Admin and in `GET /api/state`. Rule sets are tuned in Admin > General, under the plug-in's name, by the ids given here. Links to a service's own pages (Kibana, Grafana, PMM dashboards, the Airbyte timeline) are added only for an `https://` address.
+
+### Reading through another instance
+
+Capacity, Redis and Kafka read through a Prometheus instance; Varnish and CSP read through an Elasticsearch instance. Each has a field, `prometheus` or `elasticsearch`, that lists that plug-in's instances, and you pick the one that holds the series or the logs. The reader uses that instance's address, credential and CA certificate and stores none of its own.
+
+- The boxes under the chosen instance's "What it watches" do not stop a reader: with `prom` switched off on Prometheus `main`, Capacity, Redis and Kafka still read through `main`. To stop a reader, switch off its own check or its instance.
+- If the chosen instance is switched off, deleted or parked, only the reader's pass fails, with a text that names that instance, and the reader's cards stay open until it reads again.
+- Grafana and Kafka leave out what a Prometheus instance already watches, but only while that instance's `prom` check is on. Grafana skips the datasources whose URL is the URL of such an instance. Kafka does not count the pod restarts in the namespaces that the Prometheus instance it reads through already watches, while that instance's `kube` profile is also on. When that check is switched off, Grafana and Kafka raise those cards themselves, and when it is switched on again their copies close at their next pass.
+
+### When a credential lacks a permission
+
+A read that the service refuses (HTTP 401 or 403, or the service's own permission error) never counts as "nothing there".
+
+- **The pass** stays ok for the parts it could read, and its status ends in `no access to <part>, <part>`. The cards of a refused part stay open, because the pass cannot tell whether they still hold.
+- **A warn card** per instance and refused part names what to add: `<Plug-in> cannot read <part>: the <credential> lacks <permission>`. The credential is named as the plug-in calls it (token, password, API key, keys, application, client id and secret). When the service's documentation names no permission, the card says "the needed permission". For a 401 the card reads `the <credential> is invalid or lacks <permission>`, because an expired or revoked credential and a missing permission answer alike. With no credential set, the card says `<Plug-in> cannot read <part>: the server requires credentials and none are set`. Two checks of one plug-in that read the same refused part each raise their own card, and both close together.
+- **The card closes** at the first pass that reads the part again, or once the part is switched off or left out by the instance's settings. A pass where the part failed for another reason, such as a timeout or an HTTP 5xx, keeps the card, so a flaky service never clears a real refusal.
+- **Test connection** fails with a fixed sentence that names the part and the permission when a part the switched-on checks read answers 403; parts that only switched-off checks read are not tried. A 401 keeps the credentials text, except right after the plug-in's own login or token request succeeded with the same credentials, where it gives the `is invalid or lacks` sentence. With no credential set, a 401 says the service requires credentials and none are set.
+- **A tool call** that is refused returns an error that names the missing permission, never an empty answer.
+- **Admin > Integrations** shows an instance with a refused part as No access, a warning, not as healthy. A pass that failed stays an error.
+- **On the board** every access card type (`no-access`, and the `access` and `umami-access` cards of the web, app and marketing plug-ins) shows under one No access type and group; the card keys keep their own types. The investigator never picks an access card for a run of its own; someone can still ask about one.
+- **The core pass `jira-links`**, which reads through Jira, uses the same forms (`jira-links:access:issues`, `error: issues: <reason>`), and its card also closes when Jira or Jira links is switched off.
+
+The permissions each plug-in needs are listed in its entry below.
+
+### Quiet, capped and failed passes
+
+An ok pass says `ok`, or `ok` and, after a middle dot, one or more of these tails, in this order: the `no data` forms, then the `read` forms, then `no access to`. A pass where one part failed says `error: <part>: <reason>` and may carry the same tails.
+
+- `no data`: every part it reads answered with nothing, for example a Prometheus without redis_exporter series or an Elasticsearch without APM indices. The pass opens no card and closes none.
+- `no data for <part>, <part>`: some parts answered with nothing. Their cards stay open; the other parts are judged as usual. A plug-in whose pass has a single ran key, such as Langfuse, cannot hold one part's cards apart, so its pass still closes them; Langfuse holds its turn cards when a set `turn-name` matches nothing.
+- `read <n> of <m> <things>`: the read stopped at a cap. What was not read keeps its cards. `<things>` may name where they were read, such as `alerts in <datasource>`.
+- `read <n> <things>, more not read`: the same, when the service gives no total.
+- `no access to <part>, <part>`: see above.
+- `browser down`: the Website browser service did not answer (see [The browser service](#the-browser-service)). Admin and the tile show it as a warning, browser down; a refused part beside it shows as No access.
+
+When a part failed for another reason, the parts that were read still close their cards; the failed part's cards stay. Self-review, Admin and the page count it as failed. A check that reads logs and finds a field it needs missing from the index opens a warn card `<Plug-in> logs lack the field <name>`; the card closes at the first pass that finds it. Test connection of Varnish and CSP names the missing field too.
+
+### Second instances
+
+Each instance has its own cards. The primary's card keys and pass names carry no instance name, so they stay as they were when a second instance is added. Another instance's card keys end in `@<name>` and its pass names in `-<name>`: Capacity `east` runs the pass `capacity-east`, and its cards never close or replace the primary's.
+
+### Reserved instance names
+
+The check ids and ran keys of these plug-ins cannot name an instance of any plug-in, alone or followed by a hyphen: `prom`, `kube`, `alert`, `capacity`, `redis`, `kafka`, `grafana`, `nodes`, `logs`, `apm`, `logflow`, `varnish`, `varnish-cache`, `csp`, `pmm`, `qan`, `mongo`, `cf`, `edge`, `airbyte` and `langfuse`. A Varnish instance also cannot be named `cache` or `cache-<anything>`. `no-data` is reserved for every plug-in.
+
+### Prometheus
+
+- **Fields:** `url`, `ui-url` (the address people open for graph links), `auth` (`none`, `bearer` with `token`, or `basic` with `username` and `password`), `ca`, `namespaces` (a pattern, default `.*`) and `profiles`.
+- **Profiles** pick the metric families the check reads, as a comma list: `spring` (Micrometer HTTP, log and Hikari metrics), `krakend` (KrakenD gateway), `ingress` (ingress-nginx), `kube` (kube-state-metrics restarts, pod states, nodes and image changes) and `kafka` (consumer lag). All five are on by default, and an empty list means all five. Alerts are always read. Switching `kube` off also stops image-change detection, so Releases, the deploy rows and the warm-up after a deploy get nothing from this instance.
+- **Ingress exclusion pattern** (`ingress-exclude`, a regular expression) leaves out ingresses whose name matches it from the `ingress` profile. Empty, the default, leaves none out.
+- **Check** `prom` (ran keys `prom`, `kube`, `alert`; sections `services`, `deploys`, `routes`). **Tool** `promql`. **Rules** `prometheus.rates`. Its tile is on the Services page.
+- **Access:** the token or password must be allowed to query the API. A refused read is the part `metrics`.
+
+### Capacity
+
+Volume, autoscaler, JVM heap and host disk headroom, read through a Prometheus instance.
+
+- **Fields:** `prometheus`; `jvm` (default on) reads the heap of Micrometer services; `host-disks` (default on) reads the disks that node_exporter reports in `node_filesystem_*` series; `volume-selector` adds label matchers to the `kubelet_volume_stats_*` series (empty by default); `fs-selector` holds the `node_filesystem_*` matchers, by default leaving out pseudo file systems and container mounts.
+- Switching `jvm` or `host-disks` off closes that part's cards at the next pass. On a Kubernetes Prometheus, node root disks are usually covered by the cluster's own DiskPressure checks, so you may switch `host-disks` off there.
+- **Check** `capacity` (section `capacity`). **Rules** `capacity.rules`. **Pages** Disk, JVM and Capacity.
+- **Access:** reads with the Prometheus instance's credential. Refused parts are `volumes`, `hpa`, `heap` and `dbdisk`.
+
+### Redis
+
+Redis instances from redis_exporter and the Redis calls of each service from Lettuce client series.
+
+- **Fields:** `prometheus`; `selector`, label matchers added to every Redis query, such as `env="prod"` (empty reads every series).
+- **Check** `redis` (section `redis`). **Tool** `redis`. **Rules** `redis.rules`. **Page** Redis.
+- **Access:** reads with the Prometheus instance's credential. Refused parts are `exporter` and `app`.
+
+### Kafka
+
+Brokers, partitions, consumer groups and the Kafka calls of each service, from kafka_exporter and Spring Kafka series.
+
+- **Fields:** `prometheus`; `preset`, `kafka-exporter` (default; clusters grouped by the exporter job) or `strimzi` (clusters grouped by namespace, with broker disks and pod restarts); `namespaces`, a pattern for the namespaces of the Kafka clusters (default `.*`). A preset changes only label and metric names, never thresholds. Under `kafka-exporter` the status adds that broker disks need the `strimzi` preset.
+- **Check** `kafka` (section `kafka`). **Tool** `kafka`. **Rules** `kafka.rules`. **Page** Kafka.
+- **Access:** reads with the Prometheus instance's credential. Refused parts are `clusters`, `groups` and `app`.
+
+### Grafana
+
+Alerts firing on the Prometheus datasources of Grafana.
+
+- **Fields:** `url` (also used for links to the alert rules), `token` (a service account token), `ca` and `skip-datasources` (comma-separated datasource names). Grafana reads at most 12 datasources a pass and says `read <n> of <m> datasources` past that. A datasource it stops watching, because it is skipped or because a Prometheus instance now covers it, has its cards closed at the next pass.
+- **Check** `grafana` (sub-keys `grafana:<datasource>`; section `grafanaAlerts`). **Tool** `grafana_alerts`.
+- **Access:** `datasources:read` to list the datasources (part `datasources`), `datasources:query` on each datasource read (the part is its name) and, for the Grafana-managed alerts the tool shows, `alert.rules:read`.
+
+### Kubernetes nodes
+
+The Kubernetes plug-in's node and agent heartbeat.
+
+- **Check** `nodes`, every 5 minutes, runs once, on the primary Kubernetes instance, and reaches every Kubernetes instance from there, so its keys are `nodes:<agent>` whichever instance is primary. Every Kubernetes instance that is switched on is pinged, whatever its own "What it watches" says; switch the instance off to stop it. Switching an agent off, deleting it, parking it or moving it to `in-cluster` closes its node card at the next pass. Turned back on, it starts like a new agent: an agent that has never answered gets its card after 24 hours, one that answered before after 5 minutes down. Section `nodes`; page Nodes.
+- **Access:** `list on nodes` in each cluster (part `nodes of <instance>`). An in-cluster primary raises the warn card; an agent whose own cluster read is refused shows `cluster not read` on its Nodes row instead of a card.
+
+### Elasticsearch
+
+New and growing error and warning log patterns, APM latency and failures, and the log flow per namespace, read with ES|QL.
+
+- **Fields:** `url` and `api-key` for the log cluster; `apm-url` and `apm-api-key` for the APM cluster, each defaulting to the log cluster's; `ca`; `ui-url` (Kibana) and `data-view` for the Discover links on cards and rows.
+- **Log fields** default to ECS names: `log-index` `logs-*`, `apm-index` `traces-apm*`, `namespace-field` `kubernetes.namespace`, `service-field` `service.name`, `level-field` `log.level`, `message-field` `message` and `error-field` `error.message`. When the log index has not mapped the error field, the logs check reads the message only and Test connection says so.
+- **`index-namespace`:** for setups with one index per namespace, a pattern with a group named `ns` takes the namespace from the index name, for example `logs-(?P<ns>[a-z0-9-]+)-.*` (empty by default, which reads `namespace-field`).
+- **Checks** `logs` (section `logTop`), `apm`, and `logflow`, which runs every 10 minutes (section `logflow`). **Tool** `esql`, which also serves agent reads; its `cluster` input is `logs` or `apm`. **Rules** `elasticsearch.apm` and `elasticsearch.logflow`. **Page** Logs. With a Kibana URL set, cards about a service gain a link to its logs, and deploy reports a Logs link over the deploy window.
+- **Access:** the read privilege on the log index (logs and log flow) and on the APM index (APM). The cluster's `monitor` privilege is optional; without it Test connection shows no version. Refused parts are `logs` and `apm`.
+
+### Varnish
+
+The Varnish cache hit ratio against the day and the week before, and a daily list of the paths that miss the cache most, from Varnish logs in Elasticsearch.
+
+- **Fields:** `elasticsearch`; `index` (empty means that instance's log index); `namespace` (empty: the cards show `-`) and `service` (default `varnish`) for the cards; `personal-paths`, a pattern for sign-in or checkout flows whose misses are expected.
+- **Log fields:** `varnish.method.keyword`, `varnish.cache_status.keyword` and `varnish.path.keyword` are required; `varnish.query_string`, `varnish.query_params._rsc.keyword` and `varnish.response_code.keyword` add hints when present.
+- **Checks** `varnish` (section `varnish`) and `varnish-cache`, once a day (section `varnishCache`). **Rules** `varnish.rules`.
+- **Access:** the read privilege on the Varnish index, with the Elasticsearch instance's API key (part `logs`).
+
+### CSP reports
+
+Content Security Policy violation reports in the logs: hosts the browsers block for the first time, and jumps in the hourly count.
+
+- **Fields:** `elasticsearch`; `query`, the ES|QL source and filter that select the report lines, such as `FROM logs-* | WHERE message LIKE "*csp-report*"`; `namespace` (empty: the cards show `-`) and `service` (default `csp`) for the cards.
+- **Check** `csp` (section `csp`). **Rules** `csp.rules`.
+- **Access:** the read privilege on the indices the query names (part `reports`).
+
+### PMM
+
+Postgres servers, slow queries and MongoDB members, read from Percona Monitoring and Management.
+
+- **Fields:** `url` (also used for dashboard links), `token`, `ca`, `metrics-datasource` and `qan-datasource` (data source uids), `postgres-services` and `mongo-services` (patterns), `replica-set` and `exclude-users` (default `pmm`).
+- **CA certificate:** a PMM with its own certificate authority is verified against the `ca` field. A wrong CA fails Test connection with the TLS sentence. `ca-pinned` (Trust this certificate as it is), shown once `ca` is set, is for a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. The chain, name and date checks are then off, and every other certificate is refused, also one signed by a certificate in `ca`, so a CA certificate does not work with the switch on. A pasted bundle of server certificates accepts each of them. With `ca` empty the switch has no effect, and saving with `ca` empty drops it. A new `ca`, or switching `ca-pinned` off, asks for the token again (see [Instances](#instances)). PMM, Elasticsearch, Prometheus, Grafana, Airbyte, Langfuse, GitLab, Argo CD and Umami all have it.
+- **Discovery:** with a data source uid empty, PMM uses the first Prometheus data source (metrics) or ClickHouse data source (Query Analytics) it lists at run time. Test connection names what it found, so you can pin it.
+- **Checks** `pmm` (Postgres servers), `qan` (Postgres queries) and `mongo` (MongoDB members), sections of the same names. **Tools** `pmm_query` and `qan`. **Rules** `pmm.postgres`, `pmm.qan` and `pmm.mongo`. **Pages** Postgres and MongoDB.
+- **Access:** the Viewer role to query the metrics and QAN data sources (parts `metrics` and `QAN`); listing data sources, needed only while a uid is empty, needs the Admin role or `datasources:read` (part `data sources`).
+
+### Cloudflare
+
+Health checks, certificate packs, status-page components and the edge 5xx share of Cloudflare zones.
+
+- **Fields:** `token`, `zones` (comma-separated zone names; their ids are looked up), `account` (empty means the account of the first zone) and `status-components` (semicolon-separated, written as the status page shows them). The status-page check runs only when components are set.
+- **Checks** `cf` (health checks, certificates and status; sub-keys `cf:<zone>:checks` and `cf:<zone>:certs`; section `cloudflare`) and `edge` (sub-keys `edge:<zone>`; section `edge`). **Tools** `edge` and `cloudflare_graphql`. **Rules** `cloudflare.edge`. **Page** Cloudflare.
+- **Access:** a read-only API token with Zone Read (part `zones`), Health Checks Read (`health checks`), SSL and Certificates Read (`certificates`) and Analytics Read (`analytics`) on the watched zones.
+
+### Airbyte
+
+Failed and unusually long Airbyte sync jobs, from the Airbyte public API.
+
+- **Fields:** `url`, `client-id` and `client-secret` of an Airbyte application, `connections` (comma-separated names or ids; empty watches every connection) and `ca`. At most 500 connections are read, and the status says so past that.
+- **Connections list:** an entry in `connections` that names no connection makes the status say `no data for <entry>` and holds the open cards of a connection with that name or id, so a renamed connection keeps its cards until the entry is fixed.
+- **Check** `airbyte` (sub-keys `airbyte:<connection id>`; section `airbyte`). **Tool** `airbyte`. **Rules** `airbyte.rules`. **Page** Airbyte.
+- **Access:** an application reads only the workspaces, connections and jobs its owning user can access. Refused parts are `connections` and `jobs`.
+
+### Langfuse
+
+Errors, traffic, latency and cost of the turns an AI app traces to Langfuse.
+
+- **Fields:** `url` (default `https://cloud.langfuse.com`), `public-key` and `secret-key` of the project, `environment` (empty reads every one), `namespace` (empty: the cards show `-`) and `service` (default `langfuse`) for the cards, `turn-name` and `ca`. With `turn-name` empty, a turn is the root observation of each trace, which needs a Langfuse version that knows `isRootObservation`; on an older server, set `turn-name` to the name of the observation that is one turn.
+- **Check** `langfuse` (section `langfuseCheck`). **Tool** `langfuse`, which also serves agent reads. **Rules** `langfuse.rules`.
+- **Access:** a project key pair with read access to the project. Refused parts are `metrics` and `observations`.
+
+## Code, tickets and chat
+
+GitLab, Jira, Confluence, Argo CD, Slack and Microsoft Teams ship with Skopax and do nothing until they are set up: open Admin > Integrations, choose "+ Add integration" and the plug-in, fill in its fields, choose Test connection, then Save & turn on. GitLab, Jira, Confluence and Slack take one connection each, and Admin refuses a second one. Argo CD takes one instance per Argo CD, and Teams one instance per route. A token changed in Admin is used by the next call with no restart; only the Slack app token needs one (see [Slack](#slack)). A read refused for a missing permission follows [When a credential lacks a permission](#when-a-credential-lacks-a-permission). Argo CD's check id `argo` is a reserved instance name in the same way as the observability check ids (see [Reserved instance names](#reserved-instance-names)), so no instance of any plug-in can be named `argo` or `argo-<anything>`.
+
+GitLab, Jira, Confluence and Slack can also take their connection from the environment. Each set defines an instance named `main`, shown in Admin and edited in the environment:
+
+- GitLab: `GITLAB_TOKEN` and `GITLAB_GROUP`, both needed, and `GITLAB_URL` (default `https://gitlab.com`);
+- Jira: `JIRA_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN`, all three needed, and `JIRA_CLOUD_ID`;
+- Confluence: `CONFLUENCE_URL`, `CONFLUENCE_EMAIL` and `CONFLUENCE_API_TOKEN`, all three needed, and `CONFLUENCE_SPACES`;
+- Slack: `SLACK_BOT_TOKEN`, and `SLACK_APP_TOKEN` for the listener.
+
+A set with some of its needed variables but not all gives no instance: Skopax starts, and one log warning names the missing variables. An optional variable alone, such as `GITLAB_URL`, gives no instance and no warning.
+
+A connection is always an instance, never a setting. The keys `gitlab.token`, `gitlab.group`, `jira.url`, `jira.email`, `jira.api-token`, `jira.cloud-id`, `slack.bot-token` and `slack.app-token` in the config file or a settings source are not read, and Skopax logs one warning at start that names the keys found and the instance form to use: give the connection as an instance under `plugins:` (see [Settings sources](configuration.md#settings-sources)). The behaviour settings, `SLACK_CHANNEL` (`slack.channel`) among them, are in Admin > General. Without a serving instance, what needs the integration is off: with no Jira, Create task is refused with a sentence and ticket keys are not linked, whatever other Jira settings are set.
+
+### GitLab
+
+- **Fields:** `url` (default `https://gitlab.com`; the API is read under `/api/v4`), `token` (an access token with the `read_api` scope), `group` (the path of the group whose projects are read), `ca` and `ca-pinned` (as for PMM).
+- **What uses it:** deploy enrichment (the tickets, commits and authors of each deploy on Releases), the code links the investigator writes, which must point under the group, and the read-only tools `gitlab_search`, `gitlab_file`, `gitlab_blame`, `gitlab_compare`, `gitlab_mrs` and `gitlab_pipelines`. The tools take a project's name or its full path at any depth; the group may be a subgroup path such as `acme/platform`. Deploy enrichment finds a project by the service name one subgroup below the group (`<group>/<subgroup>/<service>`), or deeper when no project of that name sits there; a project right under the group is not matched, and a deploy with no such project says so. While GitLab is off, deploy enrichment is skipped with one log line, and Releases says "not read: GitLab is off" in the Tickets cell of a deploy with no tickets. With GitLab on, a deploy not read yet says "not read from GitLab yet" during the 7 days that enrichment reads it, and "not read from GitLab" after that.
+- **Access:** reads need the `read_api` scope or a role that can read the projects, such as Reporter. Test connection reads `/version`, then the group's projects. A refused read names the part (`projects`, `code`, `merge requests` or `pipelines`) and the permission. GitLab answers 404 for a group or a private project the token cannot see, so a 404 is worded as "no such item, or the token lacks" the permission. A read refused during deploy enrichment shows on Releases as "not read:" and the reason. A refused project marks only its own deploys, named with its path, and the sweep goes on; a refused group listing stops the sweep and marks every deploy it left. The mark stays until a later read of that deploy succeeds, and a deploy older than the 7-day enrichment window is not read again.
+
+### Jira
+
+Jira Cloud only: calls go through the Atlassian API gateway, `api.atlassian.com`, with an account's email and API token.
+
+- **Fields:** `url` (the site, such as `https://example.atlassian.net`), `email`, `api-token` and `cloud-id` (optional; read from the site when empty).
+- **What uses it:** Create task on cards, ticket links, the `jira-links` pass that moves a card to In progress when a ticket names it (`core.jira-links`), the released issues on deploy reports, and the investigator's `jira_search`, `jira_issue` and `propose_ticket`, with Jira's notes for the investigator. With Jira off, the prompt names none of these tools, and `triage` offers only `handled`. The project, the fields and the other behaviour settings are in Admin > General, under Jira.
+- **Release names:** `jira.release-name` (Release name in Admin > General, or `JIRA_RELEASE_NAME`) names the Jira release of a deploy day, and deploy reports look up the issues of these releases. The default is `{project} {yyyy}-{mm}-{dd}`. The placeholders are `{project}`, `{yyyy}`, `{mm}` and `{dd}`, in the local time zone; each may appear at most once, and `{project}`, `{mm}` and `{dd}` are needed. A double quote or a backslash is refused, since the name goes into a Jira search. Admin refuses a value that breaks this, and such a value in the environment or the config file stops the start.
+- **Access:** issue reads need Browse projects (scope `read:jira-work`), user reads Browse users and groups (scope `read:jira-user`). Test connection reads `/myself`, then searches the issues updated in the last day and the users. A 401 on `/myself` gives the credentials text, and a 403 names the user permission. Because that sign-in worked, a 401 on a later read means the token lacks a scope (Atlassian answers "401 Unauthorized; scope does not match"), and Test names it. Test also fails on a refused user read: no check reads users, but Create task and the people search do. A refused issue read in the `jira-links` pass raises the warn card `jira-links:access:issues`, and the Jira tile shows No access; any other failure gives the status `error: issues: <reason>`, shown on the tile as an error, and keeps the card. Switching Jira or Jira links off closes the card. A refused release search is named on the deploy report (the issue count reads "not read"), and a refused release lookup during enrichment is named on the deploy. Jira answers 404 both for an issue that does not exist and for one the token cannot see, so `jira_issue` and the Releases page say both, and a deploy with such an issue is read again while it is in the enrichment window. A token without Browse projects may still get an empty search. A refused Create task names the Create issues permission.
+
+### Confluence
+
+Atlassian Cloud only, through the same gateway, with its own email and API token, not Jira's.
+
+- **Fields:** `url` (the site), `email`, `api-token` and `spaces`, a comma list of the space keys the tool may read.
+- **Tool** `confluence` searches and reads the pages of the allowed spaces, read only, with passwords, keys, tokens and personal data masked. With no space listed it is not offered and reads nothing.
+- **Access:** search needs the scope `search:confluence`, pages `read:page:confluence` and spaces `read:space:confluence`. Test connection reads the allowed spaces and fails naming any the account cannot see, then runs a one-page search in them. A 403 names the scope, and so does a 401 after that first read worked or one that says "scope does not match". A page that answers 404 is named as missing or not viewable (the View permission on its space), and an empty search names the allowed spaces the account cannot see.
+
+### Argo CD
+
+- **Modes:** `api` reads the Argo CD API with a token; `in-cluster` reads the Application objects of the cluster Skopax runs in, with its service account. Several Argo CD instances can be added.
+- **Fields:** `mode`, `url` (the Argo CD server, and the address of the links people open), `token` (api mode), `ca`, `ca-pinned` (as for PMM), `namespace` (default `argocd`: where the Application objects are read in in-cluster mode, and the namespace of the links), `projects` (a comma list; empty means all) and `app-suffix` (a suffix the application names carry after the service name, left out of the service on cards).
+- **Check** `argo` every 5 minutes: applications that stay out of sync or unhealthy, in the section `argo`. **Tool** `argo` (`apps`, `app`). Cards link to the application in the Argo CD UI, and the probe calls `<url>/healthz`.
+- **RBAC:** in api mode the token's account needs the RBAC permission `applications, get` on the applications to watch. In in-cluster mode the service account needs `get` and `list` on `applications.argoproj.io` in the namespace. A refused list gives the status tail `no access to applications` and one warn card, and keeps the application cards open.
+- **An empty list:** Argo CD leaves out the applications a token may not read, so in api mode an empty list is checked with `GET /api/v1/account/can-i/applications/get/*/*`. A yes gives the status tail `no data`. A no counts as a refusal: the warn card, Test connection fails naming `applications, get`, and the tool's `apps` returns an error. A role scoped to one project (`<project>/*`) answers no, so while that project has no applications it shows the warn card and fails Test.
+- **One application:** Argo CD answers a missing and a refused application alike, so in api mode an HTTP 403 on one application reads "Argo CD has no application <name>, or the token lacks the RBAC permission applications, get", and a 401 says the token "is invalid or lacks" it.
+- **A narrower token:** the list leaves out what the token may not read, so an application whose card is open and that drops out of the list closes its card only when can-i on `*/*` says yes; otherwise the card waits. A token scoped to some projects therefore keeps the cards of the others open until they expire.
+- **Large installs:** in-cluster mode reads 50 applications per page, for at most 200 pages or 3 minutes. Past that the status tail is `read <n> of <m> applications` (or `read <n> applications, more not read`), and the applications not read keep their cards. api mode reads the whole list in one call. A pass keeps only the fields it reads of each application, and Test connection asks the list for the names only.
+
+### Slack
+
+- **Fields:** `bot-token` (`xoxb-...`) and `app-token` (`xapp-...`, for Socket Mode, which the Slack listener needs). The channel that cards and deploy reports go to is the setting Channel in Admin > General > Slack (`slack.channel`, or `SLACK_CHANNEL`).
+- **Test connection** checks the token shapes first, then calls Slack's `auth.test` and fails naming the scopes the bot lacks: `chat:write`, `files:write`, `channels:read` or `groups:read`, `users:read` and `users:read.email`, plus `channels:history` or `groups:history` and `files:read` with an app token. With an app token it then asks `apps.connections.open` for a Socket Mode address, so a revoked app token fails Test. The notices strip names a scope the main channel or direct messages need (see [Notices](setup.md#notices)); the result is stored, so every server copy shows it.
+- **Transport:** Test connection goes through the instance's transport; posts, uploads and downloads use core's own Slack client, so a proxy or CA policy set on the transport does not reach them.
+- **Socket Mode** is started once, when Skopax starts and the integrations have loaded. An app token added or changed later needs a restart. A new bot token is used by the next call.
+- With Slack off or not set up, nothing is posted, and drafts wait until Slack is back.
+- Admin > General > Slack also holds Push users (`slack.push-user`, the Slack user ids that get phone pushes) and the operator check cache (`slack.operator-cache-seconds`, how long the answer to whether a Slack user may act as an operator is kept).
+
+### Microsoft Teams
+
+Each Teams instance is one route: the Workflows URL of a channel and the cards it takes.
+
+- **Fields:** `webhook` (the https address Teams Workflows gives for posting to the channel; kept secret), `tags` (card tags, such as `seo, developer`), `keys` (card key patterns with `*` and `?`, such as `log|checkout-*|*`), `mentions` (e-mail addresses mentioned in each post) and `min-sev` (the route's own lowest severity; empty uses `teams.min-sev`). A route needs a known card tag or a key pattern; Admin shows the instance's health as an error without one. Test connection refuses a route with neither filled in, or with an address it cannot post to, before it posts a test card.
+- **What it posts:** a route with tags only posts the open cards that carry one of them and are at or above `teams.min-sev`; a route for a business team posts a card once the investigator has written its business sentence. A route with key patterns posts the new and escalated cards whose key matches one of them, or that carry one of its tags. Routes that are not for a business team also skip cards below their own `min-sev`; a key route's own value replaces the setting, higher or lower. Card texts reach Teams as plain text, never as links. A business post leads with the why, then "Recommended:" and the action; an info post says what is happening. Two tag routes on the same address post a card tagged for both once.
+- **Settings** (Admin > General, under Microsoft Teams): `teams.repeat-days` (default 7: days before a card already posted to a channel is posted there again; 0 posts every time), `teams.min-sev` (default `warn`: the lowest severity a tag route posts, and the default of a key route with no `min-sev` of its own) and `teams.fixed-posts` (default off: a fixed message to a business channel when a card it was told about as info closes).
+- **By hand:** an operator posts a card through a route from the Notify row on the board or Send to... on the card page.
+- **Delivery:** route posts run in a background worker, never inside a pass. An automatic post that fails, or gets no answer within 10 seconds, is tried again at the next delivery, then after 2, 4, 8 and 16 minutes: at most 6 tries per card and route. A route that is still busy with an earlier post costs no try. While its last post failed, the instance shows `error: <route>: <reason>` in Admin > Integrations. After the last try the notices strip names the route; a Test connection that passes, or a new webhook, lets those cards be posted again. A slow post that succeeded late can arrive twice. A post by hand that fails says so at once, with the chat tool's answer, and a card sent by hand is not posted again by the retry.
+- **Access:** a 403 on the test post names what the Workflows URL needs: a workflow that is switched on, that anyone may trigger, and whose owner may post in that channel. A 404 says no workflow is at that address. A 401 gives the credentials text. Routes have no primary instance: every route posts.
+
+## Web, app and marketing plug-ins
+
+Skopax also ships Website, Umami, Chrome UX Report, Safe Browsing, App stores, Crashlytics, Google Analytics 4, Google Tag Manager, Google Ads and VWO. As with the observability plug-ins, each does nothing until an admin adds an instance, a check runs every 15 minutes unless its entry says otherwise, its id is also its pass name, and a refused read follows [When a credential lacks a permission](#when-a-credential-lacks-a-permission). Their check ids and ran keys are reserved instance names in the same way (`browser`, `pagescan`, `pagescan-digest`, `umami`, `crux`, `safebrowsing`, `appstore`, `play`, `play-reviews`, `crashlytics`, `ga`, `gtm`, `gads`, `gads-policy`, `wingify` and `wingify-verdict`), and a VWO instance also cannot be named `verdict`.
+
+- **Website:** the `page` tool reads a page of your site as a visitor without cookies sees it, the `screenshot` tool shows it to the investigator as a picture, and `page_scan` reads one page as the page scan does. They open only the host of `url`, its subdomains and `hosts`, never a login, API or click-counting path. A subdomain that is not the `url` host or a `hosts` entry is opened only when it resolves to public addresses, and a page read connects to the address that was checked; switch on `internal-subdomains` ("Subdomains may be internal") when such subdomains live on your internal network. Page reads honour `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`: through a proxy they open a CONNECT tunnel to the checked address, so the pin holds, and a proxy that refuses the tunnel is named in the error. The proxy must be an `http://` URL (an `https://` proxy URL is refused), and `NO_PROXY` is matched against the host name, not the checked address. In the browser the check is best-effort: Chrome looks the name up again, so Skopax also refuses a shot whose page or frame on such a subdomain answered from a private address. That address check assumes no proxy sits in front of the browser service; behind one, Chrome reports the proxy's address. A bare public suffix such as `co.uk` is never a site host, and Test connection names it. Check `browser` (every 5 minutes) watches the browser service. Checks `pagescan` and `pagescan-digest` are the page scan. The check, the tools and the page scan open only https sites on port 443, so the demo stack, which serves plain http on its own port, cannot serve the plug-in a page: point it at a real https site.
+  - **Fields:** `url` (required: the site, https), `hosts` (more hosts of the site; their subdomains count too), `login-hosts`, `login-paths`, `api-paths` and `refused-paths` (comma lists of hosts and path segments or paths that are never opened; `/api/` is always refused), `browser-url`, `description` (one or two sentences on the site, for the page scan), `umami` (the Umami instance whose busiest paths the page scan reads), `scan-headers` and `internal-subdomains` (default off). Settings (Admin > General, under Website): `website.page-scan`, `website.scan-hours`, `website.recheck-days`, `website.pages`, `website.extra`, `website.ignore` (words never reported as typos), `website.model`, `website.digest-hour` and `website.scan-prompt` (see [The page scan](#the-page-scan)).
+  - **Access:** no credential. Test connection reads the `url` page, with `scan-headers`, then the browser's version; a site that answers 401 or 403, or a browser that refuses, fails it. Check `browser` opens the access card `browser:access:browser` when the browser refuses the version read. The page scan opens `pagescan:access:site` when the site answers 401 or 403 to the pages it scans (fix it with `scan-headers`), and `pagescan:access:umami` when the linked Umami instance refuses its busiest paths (the Umami credential needs view access to the website).
+- **Umami:** pageviews and one tracked event of a website, hour by hour against 1 and 7 days earlier (check and tool `umami`). Umami Cloud takes an API key; your own server takes a token, or the username and password of a user that can view the website, and its `ca` and `ca-pinned` work as for PMM. A drop card names the latest Google Tag Manager publish of the 48 hours before it.
+  - **Fields:** `url` (required: `https://api.umami.is/v1` for Umami Cloud, or the address of your server), `ui-url` (the address people open for links; Umami Cloud needs it for cards to carry a link), `api-key` (Umami Cloud), or `token`, or `username` and `password` (your own server), `website-id` (required: the UUID of the website), `site` (the service name on cards; empty uses the domain Umami reports), `event` (one tracked event; empty watches pageviews only), `properties` (default `type`: event-data properties; the first one splits the event into one count per value), `ca` and `ca-pinned`.
+  - **Access:** the API key, token or user must be able to view the website. Test connection signs in and reads the website. A refusal opens the access card for the part `website`.
+- **Chrome UX Report:** INP, LCP and CLS that real Chrome users had on your origins, once a day against a week earlier (check and tool `crux`), with a Google API key.
+  - **Fields:** `api-key` (required) and `origins` (required: a comma list of origins; a bare host name means https, and a path is ignored).
+  - **Access:** the key needs the Chrome UX Report API enabled. A 403 names that and opens the access card for the part `origins`.
+- **Safe Browsing:** whether Google lists your hosts as unsafe (check and tool `safebrowsing`). With an API key it asks the Safe Browsing API; without one it reads the public site status page, and the tool is offered only from an instance that has a key.
+  - **Fields:** `api-key` (optional) and `hosts` (required: a comma list of host names).
+  - **Access:** with a key, the key needs the Safe Browsing API enabled; a 403 names that and opens the access card for the part `hosts`. Without a key the status page is read one host every few seconds.
+- **App stores:** App Store ratings (check `appstore`) and Google Play vitals and reviews (check `play`), tool `stores`. An empty app id or package skips that store, and Test connection also skips a store whose check is switched off.
+  - **Fields:** `apple-app-id` (the digits after `id` in the App Store link), `countries` (default `us`: at most 10 two-letter countries whose ratings are read), `play-package` (the Android package name, such as `com.example.app`) and `credentials` (needed for Google Play only).
+  - **Access:** App Store ratings need no credential. Google Play needs the service account with View app information (read-only) in Play Console; a refused part (Play vitals or Play reviews) opens its own access card, and the other part is still read.
+- **Crashlytics:** crash and freeze spikes and new crashes of the mobile apps (check `crashlytics`, tool `crashes`).
+  - **Fields:** `project` (the Firebase project id, shown in the Test result), `android-app-id` and `ios-app-id` (Firebase app ids, such as `1:<project number>:android:<hex>`; an empty one skips that app) and `credentials` (required).
+  - **Access:** the Firebase Crashlytics Viewer role (`roles/firebasecrashlytics.viewer`). A refused app opens an access card for that app, and the other app is still read.
+- **Google Analytics 4:** daily drops in key events and active users (check `ga`, once a day; tool `analytics`). A web drop card names the latest GTM publish from two days before its day to a day after it, which covers a property whose time zone runs behind the server's.
+  - **Fields:** `property-id` (required: the numeric id of the web property), `app-property-id` (a separate property of the mobile apps, read by the tool only; empty when the apps report into the web property), `site` (the service name on cards; empty shows the property id) and `credentials` (required).
+  - **Access:** the Viewer role on the GA4 property. A refusal opens the access card for the part `web`.
+- **Google Tag Manager:** a new live container version opens an info card (check `gtm`, every 5 minutes; tool `gtm`), and each publish is listed beside the deploys under Releases.
+  - **Fields:** `container` (required: the public id, such as `GTM-ABC1234`) and `credentials` (required).
+  - **Access:** Read on the container. A refusal opens the access card for the part `container`.
+- **Google Ads:** check `gads` opens the final URL of every enabled ad and opens a card when the page is broken (404, 410 or 5xx) or redirects elsewhere. Without a Website instance in its `website` field it opens only public addresses, and connects to the address it checked: link a Website instance when your own site resolves to internal addresses inside your network. With a Website instance, only that site's hosts are opened, so ads that point at other domains, such as a campaign site, are not checked. Check `gads-policy` raises one warning card per campaign with disapproved ads, naming the ads and their policy topics; the card clears when the ads are approved again, paused or removed. Tool `google_ads`.
+  - **Fields:** `customer-id` (required: the 10-digit account id), `login-customer-id` (only when the service account reaches the account through a manager account: that account's id), `developer-token` (required: the developer token from the API Center of the manager account; Explorer access is enough for these reads), `credentials` (required), `api-version` (default `v26`; raise it when Google retires a version) and `website` (the Website instance whose hosts the ad-link check follows).
+  - **Access:** the service account as a Read only user of the account, and a developer token Google accepts. A refusal opens the access card for the part `account`.
+- **VWO:** A/B tests that start, stop or change (check `wingify`, every 5 minutes) and the results VWO decided on (check `wingify-verdict`, hourly), tool `wingify`. An API token with Browse permission is enough.
+  - **Fields:** `api-token` (required) and `account-id` (default `current`: the account the token belongs to).
+  - **Access:** Browse permission; nothing is ever changed. A refused part (the account, campaigns or campaign results) opens its own access card.
+
+### Google service accounts
+
+App stores (for Google Play), Crashlytics, Google Analytics 4, Google Tag Manager and Google Ads each have their own `credentials` field: the JSON key of a Google service account, at most 4000 characters. You may paste the same key into each or use one account per plug-in; no plug-in reads another's key. Give the account read access in each product: View app information in Play Console, the Firebase Crashlytics Viewer role, the Viewer role on the GA4 property, Read on the Tag Manager container, and a Read only user in Google Ads. Google Ads also needs its `developer-token`, from the API Center of the manager account (see Google Ads above). A malformed or refused key fails Test connection with a fixed sentence, and the key never appears in a response, a log line or an error.
+
+### The browser service
+
+The `screenshot` tool and the page scan need a headless Chrome reached through its DevTools endpoint, set as `browser-url` on the Website instance; the `screenshot` and `page_scan` tools are offered only from an instance that has one. Run it as its own service, so the browser never holds Skopax's secrets. With Docker Compose, a service like this one works; it is not part of `docker-compose.yml`:
+
+    browser:
+      image: chromedp/headless-shell:157.0.8103.15
+      restart: unless-stopped
+      shm_size: 1gb
+
+Set `browser-url` to `http://browser:9222` and publish no port. Skopax looks the name up and connects to the address, because Chrome refuses a DevTools request addressed by name. Skopax always reaches the browser service directly: `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` apply to page and API reads only, never to the DevTools endpoint or its socket. The image carries few fonts, so text in a script it lacks, such as Chinese or Japanese, shows as empty boxes; add the fonts your site needs to the image.
+
+Each shot uses a fresh browser profile without cookies, loads nothing from other hosts or API paths, opens no WebSocket and sends no tracking ping. Shots are at least 5 seconds apart, at most 3 per investigator run and at most `screenshot.max-per-day` per day (60 by default) across all runs. Web workers, shared workers and service workers are switched off, and a JavaScript dialog is dismissed and named in the shot's facts. Check `browser` reports "ok, browser down" while the browser does not answer; Admin and the Website tile show it as a warning, "browser down". After 5 minutes without an answer it opens a `browser-down` card, and it opens an access card when the browser refuses the request, for example behind a proxy that asks for credentials. When `slack.attach-screenshots` is on, the investigator's Slack posts carry the shots it took in their thread; switch it off to keep shots out of Slack.
+
+### The page scan
+
+The page scan is off by default; switch it on with `website.page-scan`. It needs `browser-url`. Without the Anthropic key, or with the investigator off or at its daily cap, only the code layout checks run.
+
+- Every `website.scan-hours` (1 by default) it loads up to `website.pages` pages (50) at phone width: the `website.extra` pages first, then the busiest paths of the Umami instance named in the Website instance's `umami` field.
+- Code checks the layout. The model (`website.model`) reads new or changed text for typos and the pictures for layout problems, guided by the instance's `description`; `website.scan-prompt` replaces the built-in instructions. An unchanged page is read again after `website.recheck-days` (7).
+- Cards are `page-typos|<page>` and `page-layout|<page>`. A box that scrolls sideways inside the page is fine: it raises no card and takes no picture, and the scan only notes it as "reachable by swiping". It becomes a finding when the box is cut off, the whole page is wider than the screen, or the model reports something in it that cannot be reached on a phone. Content clipped only by the page itself (`overflow-x: hidden` on `body` or `html`) can still be reached by panning a phone sideways, so it counts as a page wider than the screen, not as cut off.
+- The page text, the column names and the pictures go to the model as data, never as instructions, behind a fixed preamble that `website.scan-prompt` cannot remove. A page line that reads like instructions to an AI is held back from the model, and the row and the pass status count the held lines; the rest of the page is still reviewed as text, but its pictures are not sent, because they would show the held line, until the page text changes. Core also scans every model call as a whole and holds it when page text outside the lines, such as a column name, reads that way. A typo's fix must stay close to the wrong text, and links are cut out of what the model writes.
+- Every model call counts against the daily AI spend cap and shows on the Costs page as `pagescan`. Once the cap is reached, the scan stops calling the model until the next day.
+- Once a day at `website.digest-hour` (10, local time; -1 for none) one digest goes to the main Slack channel, with the pictures in its thread. A digest line is cut at a word edge; a single word longer than the line, such as a long link, is cut at the limit. A reply carries at most 3 pictures and a thread at most 8; pictures over those caps are left out, and one log warning per pass names them.
+- `scan-headers` adds headers to the scan's, the screenshots' and Test connection's requests, for example one your firewall lets through. Separate headers with semicolons; they go only to the `url` host and the `hosts` entries, and Test connection names the headers it parsed.
+
+## Outside MCP servers
+
+The MCP server plug-in, which ships with Skopax, lets investigator runs and chat answers use the tools of an outside MCP server, such as Atlassian, Notion or GitHub. It is the other direction from the MCP server switch and Connect MCP, which let AI assistants call Skopax.
+
+- **Adding one.** In Admin > Integrations, "+ Add integration" has a group "MCP servers and company knowledge": a blank MCP server, the catalog entries Atlassian (Jira and Confluence), Notion, GitHub and Google Drive, and the entries coming soon. A catalog entry fills in the URL and the sign-in, and shows the form of the token as a hint, never a value. Google Drive is marked Preview, since Google still calls its server a preview, and needs a client id and secret from your own Google Cloud console. Each connection is an instance of the plug-in; open it from the MCP server tile to reach its panel. A new connection is always saved off, and it can be turned on only once its warnings are confirmed (see [Who can read what](#who-can-read-what)). At most 20 connections.
+- **Sign-in.** Three modes: none; a header with a token (Header name, `Authorization` by default, and Header value, for example `Bearer` and the token), sealed like every instance secret; or OAuth. For OAuth, choose Connect in the connection's panel. Skopax reads the sign-in details the server publishes (its OAuth protected resource metadata, without which there is nowhere to sign in), requires PKCE with S256, and registers itself where the sign-in server allows it. Where it does not, enter a client id and secret from the server's admin console and register `<SKOPAX_BASE_URL>/api/admin/mcp-tools/oauth/callback` there as the redirect address. OAuth needs `SKOPAX_BASE_URL` to be an https address (or `http://localhost` or `http://127.0.0.1` with a port), and the admin who started a sign-in must finish it within 10 minutes. The sign-in is renewed 5 minutes before it expires. When a renewal is refused, or the sign-in expires with nothing to renew it, the sign-in ends: the connection leaves runs, the notices strip says it needs a new sign-in, and Reconnect starts one. A renewal that fails with a server error, a timeout or a rate limit is tried again after 1 minute, or after the server's `Retry-After` (at most 1 hour), and the current sign-in is used while it lasts. When several Skopax pods share the database, one of them renews and the others wait for it, so a renewal is never sent twice.
+- **URL rules.** The URL is the server's streamable HTTP endpoint. It must be https, with no user name, password or `#` part; plain http works only for `localhost`, `127.0.0.1` and `::1` while the MCP server setting Allow plain http to this machine is on, for local testing. Skopax never calls a link-local or cloud metadata address, never connects when the server's name resolves to one (or to a loopback address, unless the name is `localhost`), and follows no redirects. Every address the server names for its sign-in must be https and passes the same checks. Compressed answers and answers over 2 MB are refused. A server with a private CA works with the CA certificate field. There is no `ca-pinned` switch here: MCP servers are reached by an async HTTP client, and a pinned certificate is used only by the core transport. MCP servers are reached directly: `HTTPS_PROXY` is not used, and proxy support comes in a later version. Changing the URL starts the connection over: its tool list, folder, confirmation and sign-in are cleared, and the header value or client secret it uses must be entered again in the same change. A new or cleared `ca` asks for that secret again too.
+- **Test connection** lists the server's tools within 12 seconds and reports the server's name and the number of tools. A server that lists no tools fails, since the account may lack a permission. A refusal names the credential (the token in its header, or the sign-in of the connected account) and the scope the server asks for in its `WWW-Authenticate` answer, or else "the needed permission"; for a connection without a sign-in it only says the server refused; a 401 that reports no missing scope says the credentials were refused. An OAuth connection is tested after Connect.
+- **What it can look up.** The connection's panel lists the tools that Refresh tools found, at most 500, each with a kind taken from the server's hints:
+  - Reads (`readOnlyHint`): the first listing switches these on, up to 40.
+  - May change data (no hint): turned on only after you tick I understand.
+  - Changes data (`destructiveHint`, or `readOnlyHint` false): locked, because tools that write come in a later version. A tool whose name starts with `execute` and contains `write` or `destructive`, in any case, counts as Changes data whatever its hints say, on every connection. The Atlassian entry, and any connection to its server address with or without the entry, also keeps `executeWrite` and `executeDestructive` locked.
+
+  A tool is also locked when its name, a field name or its input description (over 8,000 characters once cleaned) cannot be sent to the AI provider, and when its name holds a secret of the connection, which is then shown masked. Descriptions are cut at 1,000 characters, freed of control characters and prefixed with the connection's name. A tool whose title, description or input reads like an instruction to the AI starts off and shows the phrase, from the list the investigator also scans tool answers for, such as "ignore previous", "system prompt", "you are a" or "assistant". Some real tools trip it: read the description, and turn the tool on if it is harmless. At most 40 tools of one connection are on.
+- **Refreshes.** Refresh tools lists the server again. A tool whose description, input or hints changed is switched off and marked Changed on the server, new tools come in off, and the others keep their switches.
+- **The run-start check.** Each investigator run lists every connection again (10 seconds; a good answer is reused for 60 seconds) and compares each switched-on tool with the stored listing. A tool that changed or is gone is switched off, with an activity line and a notice; choose Refresh tools before turning it on again. A connection whose listing fails is left out of that run, with an activity line. When the server refused it, or refused a tool call, the notices strip says so until a listing works again. A switched-off connection raises no notices.
+- **In a run.** A tool reaches the model as `mcp_<connection>_<tool>`; a long name is cut and ends in a short hash. Its answer is cut at 20,000 characters, masked like every tool answer, framed as outside data, not instructions, and scanned for planted phrases. A server's error answer is masked and framed the same way, cut to fit 300 characters. A call refused for permission is a tool error, never an empty answer, and names the missing scope when the server gives one; for a connection without a sign-in it only says the server refused. Each call writes one activity line with its time, outcome and the characters read, never its arguments; the run's record of tool calls keeps the masked arguments, cut at 2,000 characters. The tools are offered only while the AI investigator is on, and in the chat only while Chat is on. Shadow mode does not hold calls to outside MCP servers: only read tools, and tools you turned on with I understand, are ever offered.
+
+### Who can read what
+
+- **One account per connection.** A connection acts as the one account it is connected with: the header token or the OAuth sign-in. Everyone who may use the connection reads what that account can read, so connect a narrow service account made for Skopax, not a personal or admin login. Sign-ins per person come in a later version.
+- **Chat and asks.** "Who may use it in chat and asks" (default `operator`) is the lowest role whose questions may use the connection: questions on the page, on the Chat page, over the API, in Slack and its direct messages, and over MCP. A question counts with its asker's Skopax role; one asked over MCP counts with the role of that MCP call. A Slack user who is not an active Skopax user, and an API token, count as `viewer`.
+- **Card runs** always may use it: card investigations, Investigate clicks and deploy-report assessments.
+- **The confirmation.** An admin reads the connection's warnings in its panel and confirms them: who can read what it reads, which account to connect, that document text goes to Anthropic, that answers are kept in chat history and card notes, that a document can try to steer the AI, that personal data can appear in answers, and that each lookup costs tokens. Confirming needs a tool list; an OAuth connection must be connected, and a knowledge source needs its folder. Who confirmed, and when, shows in the panel and in the activity log. The confirmation lapses, and the connection leaves runs until an admin confirms again, when its URL changes, wherever it is set (Admin, the config file or a settings source; list its tools again before you confirm), when its sign-in fields, header value, CA certificate, catalog entry or Knowledge source switch change in Admin, at each OAuth sign-in and disconnect, when a folder is picked, when Read without login is switched (the warnings then also name everyone who opens the board), and when the warnings change. A connection that is on without a current confirmation shows Needs confirmation as a warning. One that needs a new sign-in, or whose last listing or tool call the server refused, shows as an error with the text of its notice. Connections from the config file or a settings source also reach runs only once confirmed in Admin.
+
+### Company knowledge
+
+A connection is a knowledge source when its catalog entry has a ready knowledge adapter and its Knowledge source field is on. Knowledge source cannot be switched on for any other connection. In this version only Google Drive has one.
+
+- **One folder.** Pick it in the panel: search, then choose from the folders the server lists; a pick must come from a list read in the last 15 minutes. Only the files directly in the folder are read, not its sub-folders. A knowledge source may have only its adapter's tools on (for Drive, `search_files`, `get_file_metadata` and `read_file_content`); its other tools are locked. The Google Drive and GitHub entries keep their own server address; to use another URL, clear the catalog entry.
+- **Enforced on both sides.** On the way in, Skopax adds the folder to every search and refuses a search that names a folder itself or could break out of the one added. It reads a file only after the file's own details place it directly in the folder, which costs one more call; folders, shortcuts and comments are not read. On the way out, every result outside the folder, or whose place cannot be checked, is dropped; when none is left, the model is told that nothing could be confirmed inside the folder.
+- **Citations.** The investigator is told to search the folder for the card's service (its runbook, past postmortems and design docs) before it concludes, to cite each document it used with its link, and to say when a search found nothing. While a Drive source is offered in a run, links to `docs.google.com` and `drive.google.com` pass the investigator's link check. The folder's name reaches the prompt only in quotes and cut at 80 characters. This part of the prompt stays even when an org pack leaves out the plug-in sections; with no knowledge source offered, the prompt is unchanged.
+- **Coming soon.** GitHub's knowledge adapter reads GitHub's search results as GitHub documents them, but how the hosted server names the place of a file has not been checked on a real account yet, so GitHub is tools only for now, and its Knowledge source shows Coming soon. The same goes for Confluence (through the Atlassian entry) and Notion, whose search results are not documented to say where each item comes from. Microsoft SharePoint and OneDrive is listed as coming soon and cannot be added yet. Any other server is tools only.
+
+### Limits
+
+Per investigator run:
+
+| Limit | Value |
+|---|---|
+| Tools offered from MCP servers | 60, with at most 60,000 characters of their definitions |
+| Calls of one tool | 8 |
+| Calls to MCP servers | 20 |
+| Characters read before calls stop | 80,000 |
+| One answer | 20,000 characters (2 MB from the server) |
+| One call | 45 seconds |
+| The run-start listing | 10 seconds, reused for 60 seconds |
+
+Tools past a run limit are left out of that run, with one activity line.

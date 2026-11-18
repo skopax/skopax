@@ -1,0 +1,15 @@
+.venv/
+.idea/
+.pytest_cache/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+node_modules/
+coverage.xml
+.coverage
+.coverage.*
+.chainlit/
+.files/
+.env.*
+*.pem

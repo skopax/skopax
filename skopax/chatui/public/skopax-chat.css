@@ -1,0 +1,7 @@
+.watermark, a[href*="github.com/Chainlit"] { display: none !important; }
+button:has(.lucide-thumbs-up), button:has(.lucide-thumbs-down) { display: none !important; }
+a.text-primary { color: #1e5bb8; text-decoration: underline; text-underline-offset: 2px; }
+.dark a.text-primary { color: #7eaaf2; }
+html.in-frame a[href="/"], html.in-frame button:has(a[href="/"]) { display: none !important; }
+.skopax-attribution { position: fixed; left: 12px; bottom: 6px; z-index: 40; font: 11px/14px system-ui, sans-serif; opacity: .72; }
+.skopax-attribution a { color: inherit; }

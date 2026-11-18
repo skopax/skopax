@@ -1,0 +1,69 @@
+# Operations
+
+Running Skopax: the image, agents, the probe, proxies and recovery.
+
+## The image
+
+The image is `ghcr.io/skopax/skopax`, built for `linux/amd64` and `linux/arm64`. A release candidate is tagged `X.Y.Z-rc.N` only, such as `0.1.0-rc.1`. A release is tagged `X.Y.Z`, `X.Y` and `latest`, and from 0.1.0 the same tags go to the Docker Hub mirror, `docker.io/skopax/skopax`. Pin an exact tag in production.
+
+- **Base.** The image is distroless: it has Python and Skopax, but no shell and no `pip`. It runs as user 1001 and listens on port 8080. Add plug-ins as a layer image (see [The example plug-in: Hello](extending.md#the-example-plug-in-hello)).
+- **Database.** Skopax needs a MongoDB, named by `MONGO_URI` (default `mongodb://localhost:27017`). The compose file uses `mongo:8.0.4`.
+- **Health.** `GET /actuator/health/liveness` answers 200 while the process runs, and the image's own health check calls it. `GET /actuator/health` also pings MongoDB: it answers 200 with `UP`, or 503 with `DOWN` while the database cannot be reached, and names the commit the image was built from. `GET /actuator/health/readiness` gives the same answer, for a readiness probe.
+- **First admin.** Every API route answers 503 until a first admin exists, even with the bootstrap token `SKOPAX_TOKEN`. Create the admin on the setup page, or set `SKOPAX_ADMIN_EMAIL` and `SKOPAX_ADMIN_PASSWORD` when nobody opens a browser (see [First run](../README.md#first-run)).
+- **Labels.** The image carries the OCI labels `org.opencontainers.image.title` (`Skopax`), `licenses` (`Apache-2.0`), `source` (`https://github.com/skopax/skopax`), `url` (`https://skopax.io`), `version` and `revision` (the commit it was built from).
+- **Licences.** `/usr/share/doc/skopax/` holds `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, `third-party-python.md` (every Python distribution in the image with its licence and licence texts) and `third-party-debian.md` (every Debian library copied in, with its package, its reviewed licence and its copyright file), plus `third-party-bundled.md` (every native library a Python wheel bundles, with its reviewed licence) when a wheel bundles one. Each Debian package's copyright file is at `/usr/share/doc/<package>/copyright`. The Python interpreter is CPython 3.15, under the PSF-2.0 licence, with its licence text at `/usr/local/lib/python3.15/LICENSE.txt`, and the distroless base keeps the copyright files of its own packages under `/usr/share/doc/`. See [The licence gate](development.md#the-licence-gate).
+- **Left out.** The standard library modules `readline`, `dbm.gnu` and `dbm.ndbm` are not in the image, because their libraries are GPL-3+ or Sleepycat. `dbm.sqlite3` and `dbm.dumb` remain.
+
+## Upgrades
+
+1. **Back up the database.** With Compose, `docker compose exec -T mongo mongodump --db skopax --archive > skopax-backup.archive` writes one archive file; with a MongoDB of your own, run `mongodump` against it the same way.
+2. **Pin the new exact tag** and keep the same `SKOPAX_SECRET_KEY`. With Compose, check out the new release tag in your clone and run `docker compose up -d --build`. With `docker run`, remove the container (`docker rm -f skopax`) and start it again with the same options and the new tag.
+3. **Migrations run at start**, one pod at a time: the pod that starts first takes a 5-minute lease, renewed while it works, and runs the migrations of Skopax and of each plug-in that has some; the other pods check every 5 seconds and wait up to 5 minutes for it.
+4. **Keep the backup** until the new version runs well. Between release candidates there is no downgrade path: an older version may not read a database a newer one has migrated, so going back means restoring the backup (`mongorestore --archive`).
+5. **Plug-ins.** If you run a layer image with plug-ins, rebuild your layer images on the new tag (see [The example plug-in: Hello](extending.md#the-example-plug-in-hello)), and keep each plug-in's `core` range in step with it.
+
+## Agent mode
+
+An agent reads a cluster for a main Skopax that cannot reach it directly. Start the same image with:
+
+- `SKOPAX_MODE=agent`;
+- `SKOPAX_AGENT_TOKEN`: the bearer token the main Skopax must send;
+- `SKOPAX_AGENT_RELAY_HOSTS`: a comma-separated list of hosts this agent may relay calls to. Empty by default, so an agent relays to nobody until it is set.
+
+An agent uses no database. `GET /actuator/health/liveness` and `GET /actuator/health/readiness` both answer 200 with `UP` while the process runs, and `GET /actuator/health` adds `mode`, `kube` and `token`. All three are open without the token.
+
+On the main side, add the agent in Admin > Integrations: "+ Add integration" > Kubernetes, or "+ Add instance" on the Kubernetes tile once it is connected. Choose mode `agent` and enter the agent's URL and the token. The optional Relay field names another agent instance that passes the calls on. The `local` instance (mode `in-cluster`) appears by itself when Skopax runs inside a cluster.
+
+## Probe
+
+The probe checks, from this server, that what the integrations depend on can be reached. Every 15 minutes and at start, it asks each instance of every serving plug-in for its probe targets (a name and an `http` or `https` URL each) and calls every target: name lookup, connection, TLS, then one HTTP request. Any HTTP answer below 500 counts as reachable. TLS is checked against the system's CA certificates, or against the instance's own CA certificate when it has one. Each target has 8 seconds, so one that hangs never holds up the others. A failure is a short fixed code, such as `dns: gaierror`, `timeout` or `http 503`, never the error's own text.
+
+The report is part of `GET /api/server`, under `reach`. Admins see each target's URL and error; everyone else sees names, results, times and the days left on a certificate. The Tools page marks a tool unreachable when every probe target it depends on was down at the last probe.
+
+The probe is the core setting `core.probe` (Admin > Features, Other switches, or `SKOPAX_PROBE`), on by default and live. While it is off, nothing is probed, the last report is not shown and no tool reads unreachable.
+
+**Certificate cards.** The core pass `certs` turns the report into one card per HTTPS host: a warning below `warn_days` (21) days to expiry and a critical card below `crit_days` (7), set in the Certificates rules (`core.certs`, or `SKOPAX_CERT_RULES`). Cards are made for HTTPS targets whose certificate verified. An expired certificate keeps a critical card until it is renewed, and any other TLS failure shows in the report instead. Hosts in Certificates not watched (`core.cert-skip`, or `SKOPAX_CERT_SKIP`) get no card but still count as checked, so a card they already have closes.
+
+**Run now.** `POST /api/probe` with an API token of the operator role or above runs the probe at once and answers its report, with URLs and errors for an admin token only; while the probe is off it answers 409. An operator can run one plug-in check at once with `POST /api/checks/<plugin>/<check>/run`. It answers 202 and writes an activity line, 404 for an unknown plug-in or check, and 409 when the plug-in does not serve, when the check is switched off for all of its instances, or, for a once check, when it is switched off on the primary instance or the primary instance is not serving.
+
+## Behind a proxy or ingress
+
+Set `FORWARDED_ALLOW_IPS` to the proxy's address or range, for example `10.0.0.0/8`. Without it every client appears to come from the proxy's IP, so 20 wrong passwords from anyone pause password login for everyone for 15 minutes. The log warns when this looks misconfigured. Logins are also limited to 5 failures per email in 15 minutes.
+
+The proxy must pass the original `Host` header through. Skopax compares it with the browser's `Origin` and refuses changes that look cross-site.
+
+## Outbound gateway
+
+If outbound calls to Anthropic go through a gateway of your own, it must pass the `Authorization` header: the Anthropic client sends the API key as `Authorization: Bearer <key>`, not as `X-Api-Key`.
+
+## Lost setup code
+
+Set `SKOPAX_ADMIN_EMAIL` and `SKOPAX_ADMIN_PASSWORD`, then run `docker compose up -d` (a plain `restart` keeps the old environment). The admin is created from the environment.
+
+## Lost admin password
+
+Another admin can set a new one in Admin > Access & sign-in. With no other admin, use the `SKOPAX_TOKEN` value as a Bearer token (if it is not set, set it and run `docker compose up -d` first):
+
+    curl -X PATCH http://localhost:8080/api/admin/users/admin@example.com \
+      -H 'Authorization: Bearer <the SKOPAX_TOKEN value>' -H 'Content-Type: application/json' \
+      -d '{"password": "a new password of 12 to 256 characters"}'

@@ -1,0 +1,54 @@
+name: Bug report
+description: Something does not work as described
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remove tokens, passwords, keys, cookies and internal host names from everything you post. Do not report security problems here; see SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Skopax version
+      description: The version shown at the bottom of the page, or the image tag.
+      placeholder: 0.1.0-rc.1
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you run it
+      options:
+        - Docker image
+        - Docker Compose
+        - Kubernetes
+        - From source
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Redact secrets and internal names first.
+      render: text
+    validations:
+      required: false

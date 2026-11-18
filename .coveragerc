@@ -1,0 +1,7 @@
+[run]
+source = skopax
+relative_files = True
+branch = True
+
+[report]
+skip_empty = True

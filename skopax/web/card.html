@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>[[brand]]</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mark.svg">
+<style>
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --sunken: #eef0f3; --fg: #16191f; --fg-2: #3b414d; --muted: #646b78; --line: #e1e4e9; --line-2: #cbd0d8;
+  --link: #1e5bb8; --ring: #1e5bb8; --btn-bg: #1b1f27; --btn-fg: #ffffff; --btn-hover: #323945; --bar-bg: #14171c; --brand-line: #3cc8f0;
+  --crit: #b42318; --crit-bg: #fcefee; --warn: #935700; --warn-bg: #fbf2e1; --info: #1e5bb8; --info-bg: #eaf1fb;
+  --good: #1d7442; --good-bg: #e8f4ed; --clear: #546074; --clear-bg: #edf0f4;
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-data: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1115; --surface: #171a20; --sunken: #13161b; --fg: #e6e8ec; --fg-2: #bdc3cd; --muted: #8b929f; --line: #272b33; --line-2: #383d47;
+    --link: #7eaaf2; --ring: #7eaaf2; --btn-bg: #e6e8ec; --btn-fg: #121419; --btn-hover: #ffffff; --bar-bg: #0a0c0f;
+    --crit: #f0857a; --crit-bg: #391f1d; --warn: #e3a744; --warn-bg: #32281a; --info: #7eaaf2; --info-bg: #182537;
+    --good: #5cbf80; --good-bg: #16291e; --clear: #9aa5b5; --clear-bg: #222731;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1115; --surface: #171a20; --sunken: #13161b; --fg: #e6e8ec; --fg-2: #bdc3cd; --muted: #8b929f; --line: #272b33; --line-2: #383d47;
+  --link: #7eaaf2; --ring: #7eaaf2; --btn-bg: #e6e8ec; --btn-fg: #121419; --btn-hover: #ffffff; --bar-bg: #0a0c0f;
+  --crit: #f0857a; --crit-bg: #391f1d; --warn: #e3a744; --warn-bg: #32281a; --info: #7eaaf2; --info-bg: #182537;
+  --good: #5cbf80; --good-bg: #16291e; --clear: #9aa5b5; --clear-bg: #222731;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background-color: var(--bg); background-image: linear-gradient(var(--bar-bg), var(--bar-bg)); background-size: 100% 112px; background-repeat: no-repeat; color: var(--fg); font-family: var(--font-ui); font-size: 1rem; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+[hidden] { display: none !important; }
+a { color: var(--link); }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 18px; min-width: 0; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 0.85rem; color: rgba(242, 243, 245, 0.62); }
+.brand { display: inline-flex; align-items: center; gap: 8px; color: #f2f3f5; font-weight: 700; text-decoration: none; letter-spacing: -0.01em; }
+.brand .wordmark { display: inline-flex; }
+.brand .wordmark svg { display: block; height: 22px; width: auto; }
+.top a:focus-visible { outline-color: #8db5f6; }
+.num { font-family: var(--font-data); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 22px 22px 20px; display: grid; gap: 14px; min-width: 0; }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pill { display: inline-flex; align-items: center; font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 3px; border: 1px solid transparent; }
+.pill.crit { color: var(--crit); background: var(--crit-bg); } .pill.warn { color: var(--warn); background: var(--warn-bg); } .pill.info { color: var(--info); background: var(--info-bg); }
+.pill.tag { color: var(--fg-2); background: var(--sunken); border-color: var(--line); }
+h1 { margin: 0; font-size: 1.35rem; line-height: 1.3; font-weight: 700; overflow-wrap: anywhere; }
+.status { margin: 0; font-size: 0.92rem; color: var(--fg-2); }
+.state-pill { display: inline-flex; align-items: center; gap: 7px; font-size: 0.9rem; font-weight: 700; padding: 4px 12px 4px 10px; border-radius: 999px; color: var(--c, var(--fg)); background: var(--cb, var(--sunken)); border: 1px solid color-mix(in srgb, var(--c, var(--line)) 40%, transparent); }
+.state-pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.state-pill.crit { --c: var(--crit); --cb: var(--crit-bg); } .state-pill.warn { --c: var(--warn); --cb: var(--warn-bg); } .state-pill.info { --c: var(--info); --cb: var(--info-bg); }
+.state-pill.good { --c: var(--good); --cb: var(--good-bg, var(--sunken)); } .state-pill.clear { --c: var(--clear); --cb: var(--clear-bg, var(--sunken)); }
+.head .state-pill { margin-right: 4px; }
+.todo { background: var(--sunken); border: 1px solid var(--line); border-left: 3px solid var(--info); border-radius: 4px; padding: 14px 16px; display: grid; gap: 6px; }
+.todo h2 { margin: 0; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-2); }
+.todo p { margin: 0; font-size: 1.05rem; font-weight: 600; overflow-wrap: anywhere; }
+.todo .why { color: var(--fg); }
+.todo .rec { font-size: 0.95rem; font-weight: 400; }
+.btn { display: inline-flex; align-items: center; gap: 6px; background: var(--btn-bg); color: var(--btn-fg); text-decoration: none; font-weight: 600; font-size: 0.9rem; padding: 8px 14px; border-radius: 4px; transition: background-color .15s ease; }
+.btn:hover { background: var(--btn-hover); }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn.big { justify-content: center; gap: 10px; padding: 13px 20px; font-size: 1.02rem; border-radius: 6px; }
+.btn.big svg { width: 20px; height: 20px; flex: none; }
+.acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.btn.small { padding: 5px 12px; font-size: 0.84rem; border-radius: 4px; cursor: pointer; font-family: inherit; }
+.btn.icon { width: 32px; height: 32px; padding: 0; justify-content: center; border: 0; cursor: pointer; }
+button.btn { font-family: inherit; border: 0; cursor: pointer; }
+button.btn.sec { border: 1px solid var(--line-2); }
+button.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+button.btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.act-last { font-size: 0.8rem; color: var(--muted); }
+.act-last.bad, .act-err { color: var(--crit); }
+.act-err { margin: 0; font-size: 0.82rem; flex-basis: 100%; }
+.act-note { font-size: 0.82rem; color: var(--fg-2); }
+.owner { margin: -4px 0 10px; font-size: 0.9rem; color: var(--fg-2); }
+.act-form { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
+.tsg { position: relative; display: flex; flex: 1 1 200px; min-width: 0; }
+.tsg > input { flex: 1 1 auto; }
+.tsg-list { position: absolute; z-index: 5; top: calc(100% + 2px); left: 0; right: 0; margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--line-2); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.18); max-height: 280px; overflow-y: auto; }
+.tsg-list li { display: grid; gap: 1px; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 0.84rem; }
+.tsg-list li[aria-selected="true"], .tsg-list li[data-i]:hover { background: var(--sunken); }
+.tsg-list .tsg-m { font-size: 0.75rem; color: var(--muted); }
+.tsg-list .tsg-none { color: var(--muted); cursor: default; }
+.act-form input { flex: 1 1 200px; min-width: 0; font: inherit; font-size: 0.88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 10px; }
+.act-form input[aria-invalid="true"] { border-color: var(--crit); }
+.res-kinds { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+.btn.sec { background: var(--surface); color: var(--fg); border: 1px solid var(--line-2); }
+.btn.sec:hover { background: var(--sunken); }
+.btn.res-kind[aria-pressed="true"] { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--btn-bg); }
+.shots { display: grid; gap: 10px; }
+.shots img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; display: block; background: var(--sunken); }
+.shot { margin: 0; display: grid; gap: 4px; }
+.shot.phone { max-width: 320px; }
+.shot figcaption { font-size: 0.78rem; color: var(--muted); }
+details.tech { border-top: 1px solid var(--line); padding-top: 12px; }
+details.tech > summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; color: var(--fg-2); list-style: none; }
+details.tech > summary::-webkit-details-marker { display: none; }
+details.tech > summary::before { content: "\203a"; display: inline-block; width: 1em; transition: transform .12s ease; }
+details.tech[open] > summary::before { transform: rotate(90deg); }
+.tech-body { display: grid; gap: 10px; margin-top: 10px; font-size: 0.9rem; color: var(--fg-2); min-width: 0; }
+.tech-body p, .tech-body ul { margin: 0; overflow-wrap: anywhere; }
+.tech-body h3 { margin: 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.nums { font-family: var(--font-data); font-size: 0.82rem; }
+.key { font-family: var(--font-data); font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
+footer.attribution { margin-top: 8px; }
+footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 0.82rem; color: var(--muted); }
+.empty { text-align: center; color: var(--fg-2); }
+.merged h2 { margin: 0 0 6px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.merged ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.merged li { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; min-width: 0; }
+.merged .m1 { overflow-wrap: anywhere; font-size: 0.92rem; }
+.merged p { margin: 4px 0 0; font-size: 0.88rem; overflow-wrap: anywhere; color: var(--fg-2); }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="top"><a class="brand" href="/">[[wordmark]]</a><span class="num" id="num"></span></div>
+  <article class="card" id="card" aria-live="polite"><p class="empty">Loading the card&hellip;</p></article>
+  <footer><a id="full" href="/">The whole [[brand]]</a><span id="upd"></span></footer>
+  [[attribution_html]]
+</main>
+<script type="application/json" id="brand-data">
+/*__BRAND_DATA__*/
+</script>
+<script src="/static/actors.js"></script>
+<script src="/static/i18n.js"></script>
+<script type="text/plain" id="plugin-scripts"></script>
+<script src="/static/suggest.js"></script>
+<script src="/static/card.js"></script>
+</body>
+</html>

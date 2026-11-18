@@ -1,0 +1,72 @@
+title = "Skopax secret scan"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Page test stub returns a made-up skopax_ API token shape."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^tests/page/skopax-access\.test\.js$''']
+regexes = ['''^skopax_0a1b2c3d_SECRETSECRETSECRETSECRET$''']
+
+[[allowlists]]
+description = "Made-up plug-in instance token for the admin plug-in settings tests."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^tests/test_admin_plugins\.py$''']
+regexes = ['''^tok-7f3a9c1d-plain$''']
+
+[[allowlists]]
+description = "Truncated, invalid PEM private key block used to test certificate and key input checks."
+condition = "AND"
+targetRules = ["private-key"]
+paths = ['''^tests/test_instances\.py$''']
+regexes = ['''^-{5}BEGIN PRIVATE KEY-{5}\\nMIIBVQIBADANBgkqhkiG9w0BAQEFAASCAT8wggE7AgEAAkEA\\n-{5}END PRIVATE KEY-{5}$''']
+
+[[allowlists]]
+description = "Unsigned sample JWT used to test scope header handling."
+condition = "AND"
+targetRules = ["jwt"]
+paths = ['''^tests/test_mcp_access\.py$''']
+regexes = ['''^eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0In0\.c2lnbmF0dXJlMTIz$''']
+
+[[allowlists]]
+description = "Unsigned sample JWT used to test tool output splitting."
+condition = "AND"
+targetRules = ["jwt"]
+paths = ['''^tests/test_plugin_tools\.py$''']
+regexes = ['''^eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiJhbGljZSJ9\.c2lnbmF0dXJlMTIz$''']
+
+[[allowlists]]
+description = "Made-up JWT-shaped auth value that the redaction test expects to be masked."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^tests/test_redact_long_tokens\.py$''']
+regexes = ['''^eyJhbGciOi\.eyJzdWIiOi\.c2lnbmF0dXJl$''']
+
+[[allowlists]]
+description = "Made-up source token that the test proves never reaches errors or logs."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^tests/test_settings_sources\.py$''']
+regexes = ['''^tok-SECRET-9921$''']
+
+[[allowlists]]
+description = "The Slack plug-in tests pass the made-up key sk-test; the default rule reads the keyword itself as the value."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^tests/test_slack_plugin\.py$''']
+regexes = ['''^anthropic_api_key=$''']
+
+[[allowlists]]
+description = "Made-up Umami API key for the Umami plug-in tests."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^tests/test_umami_plugin\.py$''']
+regexes = ['''^umami-api-key-41c2$''']
+
+[[allowlists]]
+description = "Python bytecode that pytest writes beside the tests: it holds the same made-up fixture values as the allowlisted test files, and git never tracks it, so only a scan of a working tree sees it."
+targetRules = ["generic-api-key", "jwt", "private-key"]
+paths = ['''^tests/(?:[^/]+/)*__pycache__/[^/]+\.pyc$''']

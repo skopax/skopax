@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an improvement
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like
+      description: How it could work. Examples help; use example.com for hosts and alice or bob for people.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+    validations:
+      required: false
+  - type: dropdown
+    id: help
+    attributes:
+      label: Would you like to build it
+      description: Pull requests from outside open with 0.1.0.
+      options:
+        - "Yes, once pull requests open"
+        - "No, I only need it"
+    validations:
+      required: false

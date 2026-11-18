@@ -1,0 +1,61 @@
+[python.cffi]
+version = "2.1.1"
+licence = "MIT-0"
+reason = "MIT No Attribution, as the shipped LICENSE says; more permissive than MIT, which is allowed"
+
+[python.lazify]
+version = "0.4.0"
+licence = "BSD-3-Clause"
+reason = "metadata says BSD and the wheel ships no licence file; the upstream LICENSE at the 0.4.0 tag (github.com/numberly/lazify) is the BSD 3-clause text, carried here"
+text = "licence_texts/lazify-0.4.0-LICENSE"
+
+[python.literalai]
+version = "0.1.201"
+licence = "Apache-2.0"
+reason = "License field reads Apache License 2.0 and the shipped LICENSE is the Apache 2.0 text"
+
+[python.protobuf]
+version = "7.36.2"
+licence = "BSD-3-Clause"
+reason = "License field reads 3-Clause BSD License and the shipped LICENSE is the BSD 3-clause text"
+
+[python.uvloop]
+version = "0.23.0"
+licence = "Apache-2.0 OR MIT"
+reason = "the description says dual-licensed under MIT and Apache 2.0, and both texts ship (LICENSE-APACHE, LICENSE-MIT); the License field reads MIT License, which is not SPDX"
+
+[debian."libbz2-1.0"]
+licence = "bzip2-1.0.6"
+reason = "copyright file: Files * License BSD-variant, the bzip2 BSD-style licence"
+
+[debian.libffi8]
+licence = "MIT"
+reason = "copyright file: Files * License Expat"
+
+[debian.liblzma5]
+licence = "0BSD"
+reason = "copyright file: Files * License 0BSD; the GPL and LGPL parts are scripts and getopt, not in the library"
+
+[debian.libmpdec4]
+licence = "BSD-2-Clause"
+reason = "copyright file: Files * License BSD-2-clause"
+
+[debian.libncursesw6]
+licence = "X11-distribute-modifications-variant"
+reason = "copyright file: Files * License MIT/X11, the ncurses licence that SPDX names X11-distribute-modifications-variant"
+
+[debian.libtinfo6]
+licence = "X11-distribute-modifications-variant"
+reason = "copyright file: Files * License MIT/X11, the ncurses licence that SPDX names X11-distribute-modifications-variant; ncurses/tinfo/read_termcap.c in this library is BSD-3-clause, as the copyright file says"
+
+[debian."libsqlite3-0"]
+licence = "blessing"
+reason = "copyright file: Files * License public-domain, the SQLite blessing that SPDX names blessing"
+
+[debian.libuuid1]
+licence = "BSD-3-Clause"
+reason = "copyright file: Files libuuid/* License BSD-3-clause; the GPL parts are other util-linux programs; libuuid also builds lib/randutils.c, which the copyright file lists as LGPL but upstream v2.41 marks SPDX-License-Identifier: BSD-3-Clause"
+
+[debian.libzstd1]
+licence = "(BSD-3-Clause OR GPL-2.0-only) AND MIT"
+reason = "copyright file: Files * License BSD-3-clause or GPL-2, used under BSD-3-Clause; lib/dictBuilder/divsufsort.* in the library is Expat"

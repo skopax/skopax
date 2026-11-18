@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>[[title]]</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mark.svg">
+<style>
+body{font-family:system-ui,sans-serif;max-width:420px;margin:10vh auto;padding:0 16px;line-height:1.5;color:#0e1420;background:#f2f4f7}
+h1{font-size:1.3rem}
+label{display:block;margin-top:14px;font-size:.9rem}
+input{display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:8px 10px;font:inherit;color:inherit;background:transparent;border:1px solid #8a94a6;border-radius:6px}
+button{margin-top:20px;padding:9px 16px;font:inherit;color:#fff;background:#1d58d4;border:0;border-radius:6px;cursor:pointer}
+a{color:#1d58d4}
+.sso{margin-top:20px}
+.error{margin-top:14px;padding:8px 10px;border-radius:6px;color:#8a1c1c;background:#fde8e8}
+.wm-dark{display:none}
+@media (prefers-color-scheme:dark){.wm-light{display:none}.wm-dark{display:block}body{color:#e6eaf0;background:#0a0d12}button{background:#3a6fe0}a{color:#79a6ff}.error{color:#ffb4b4;background:#3a1717}input{border-color:#4a5568}}
+.wordmark{display:block;margin-bottom:24px}
+.wordmark svg{display:block;height:40px;width:auto}
+.wordmark-text{font-size:1.6rem;font-weight:700}
+.attribution{margin-top:40px;font-size:.8rem}
+.attribution a{color:inherit;opacity:.7}
+</style>
+</head>
+<body>
+[[wordmark]]
+<h1>[[title]]</h1>
+[[error]]
+<form method="post" action="/login">
+<input type="hidden" name="next" value="[[nextvalue]]">
+<label>[[email]]<input name="email" type="email" required maxlength="254" autocomplete="username" value="[[emailvalue]]"></label>
+<label>[[password]]<input name="password" type="password" required maxlength="256" autocomplete="current-password"></label>
+<button type="submit">[[submit]]</button>
+</form>
+[[sso]]
+[[footer]]
+</body>
+</html>

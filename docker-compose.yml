@@ -1,0 +1,43 @@
+services:
+  mongo:
+    image: mongo:8.0.4
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  skopax:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017/skopax
+      SKOPAX_BASE_URL: http://localhost:8080
+      SKOPAX_TIMEZONE: UTC
+      SKOPAX_TOKEN: ${SKOPAX_TOKEN:-}
+      SKOPAX_SECRET_KEY: ${SKOPAX_SECRET_KEY:-}
+      SKOPAX_ADMIN_EMAIL: ${SKOPAX_ADMIN_EMAIL:-}
+      SKOPAX_ADMIN_PASSWORD: ${SKOPAX_ADMIN_PASSWORD:-}
+      SKOPAX_PUBLIC_READ: ${SKOPAX_PUBLIC_READ:-false}
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    profiles: [demo]
+    restart: unless-stopped
+    volumes:
+      - ./demo/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./demo/rules.yml:/etc/prometheus/rules.yml:ro
+    depends_on:
+      - node-exporter
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    profiles: [demo]
+    restart: unless-stopped
+volumes:
+  mongo-data:

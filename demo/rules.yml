@@ -1,0 +1,11 @@
+groups:
+  - name: skopax-demo
+    rules:
+      - alert: SkopaxDemoExporterUp
+        expr: up{job="node"} == 1
+        for: 0s
+        labels:
+          severity: warning
+          namespace: demo
+        annotations:
+          summary: "Demo alert: the demo exporter is up"

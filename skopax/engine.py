@@ -1,0 +1,561 @@
+import collections
+import copy
+import datetime as dt
+import logging
+import re
+from dataclasses import dataclass, field
+from typing import Callable, Mapping
+
+from pymongo.errors import PyMongoError
+
+from skopax import clock, history, summary, tags
+from skopax.actors import SYSTEM
+from skopax.errkind import kind as error_kind
+from skopax.jiralinks import ticket_pattern
+from skopax.messages import msg
+from skopax.store import Conflict, Store, glob_match, mute_matches
+
+log = logging.getLogger('skopax.engine')
+
+REOPEN_QUIET_S = 2 * 3600
+PUSH_SVC_QUIET_S = 30 * 60
+CLEARED_KEEP_S = 24 * 3600
+KEEP_UNTIL_ADDRESSED = ('warn', 'crit')
+ADDRESSED_TRIAGE = ('progress', 'handled')
+HANDLED = ('progress', 'handled')
+POD_REOPEN = ('dived',) + HANDLED
+HISTORY_KEEP = 300
+SEV_RANK = {'info': 0, 'warn': 1, 'crit': 2}
+OFFER_MARKS = ('takeOffered', 'resolveOffered', 'knownOffered', 'muteOffered', 'ticketOffered')
+CARRY = ('note', 'suspects', 'recommend', 'assessedAt', 'triage', 'ticket', 'owner', 'absorb', 'code', 'slackDraft', 'slackPost', 'autoSend', 'slackFallback', 'triagedBy', 'investigator', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'num', 'assigned', 'sevSet', 'resolution')
+POST_LISTS = ('teamsPosts', 'fixPosts')
+SHOTS = 'screenshots'
+NO_SERVICE = (None, '', '-', '?')
+PUSH_LIMIT = 200
+PUSH_FRESH_S = 3600
+SERVER_PUSH_KEEP = 10
+APPLY_ATTEMPTS = 5
+AUTO_RESOLVE_DAYS = 3
+RESOLVED_KEEP_S = 24 * 3600
+AUTO_RESOLVED_BY = 'auto'
+SYSTEM_VIA = SYSTEM
+BY_SYSTEM = ('pod', AUTO_RESOLVED_BY)
+BACK_AFTER_RESOLVE = 'backAfterResolve'
+DUPLICATE_MUTE_S = 24 * 3600
+STALE_S = 24 * 3600
+STALE_DAILY_S = 3 * 24 * 3600
+STALE_MANUAL_S = 7 * 24 * 3600
+DAILY_KEYS = ('crux', 'ga', 'varnish-cache')
+INFO_CLOSE_DAYS = 3
+INFO_KEEP_SIGS = ('warn', 'err')
+NO_DATA = ':no-data'
+
+
+def no_data(key: object) -> bool:
+    return isinstance(key, str) and key.endswith(NO_DATA)
+
+
+def iso(t: float) -> str:
+    return dt.datetime.fromtimestamp(t, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def parse_iso(s: str) -> float:
+    return dt.datetime.fromisoformat(s.replace('Z', '+00:00')).timestamp()
+
+
+def fmt(v: float, unit: str = '') -> str:
+    if unit == '%':
+        return f'{v:.1f}%' if v >= 1 or v == 0 else f'{v:.2f}%'
+    if unit == 'ms':
+        return f'{v:.0f} ms' if v < 1000 else f'{v / 1000:.1f} s'
+    return f'{v:.0f}' if abs(v) >= 1 or v == 0 else f'{v:.2f}'
+
+
+def anomaly(src: str, sig: str, ns: str, svc: str, sub: str, sev: str, now: float, d1: float | None, d7: float | None, unit: str, label: str, what: str, slack: float = 1, short: str | None = None) -> dict:
+    key = f'{sig}|{ns}/{svc}' + (f'|{sub}' if sub else '')
+    target = svc + (f' {sub}' if sub else '')
+    base = '' if d1 is None else f' (1d {fmt(d1, unit)}' + ('' if d7 is None else f' / 7d {fmt(d7, unit)}') + ')'
+    value = f' {fmt(now, unit)}' if d1 is not None or unit else ''
+    return dict(key=key, src=src, sig=sig, ns=ns, svc=svc, sub=sub, sev=sev, now=round(now, 3), d1=None if d1 is None else round(d1, 3),
+                d7=None if d7 is None else round(d7, 3), unit=unit, label=label, what=what,
+                short=short or f'{sev.upper()} {target} {label}{value}{base}', slack=slack)
+
+
+def ticket_owned(a: dict | None) -> bool:
+    a = a or {}
+    return a.get('triage') == 'progress' and bool(ticket_pattern(()).fullmatch(str(a.get('ticket') or '')))
+
+
+def push_group(a: dict) -> tuple | None:
+    if a.get('svc') in NO_SERVICE:
+        return None
+    return (a['svc'],)
+
+
+def mute_for(state: dict, key: str, now: float) -> dict | None:
+    for m in state.get('muted', []):
+        if (m.get('until') is None or parse_iso(m['until']) > now) and mute_matches(m, key):
+            return m
+    return None
+
+
+def duplicate_of(a: dict, prev: dict) -> dict | None:
+    r = a.get('resolution') if isinstance(a.get('resolution'), dict) else {}
+    ref = str(r.get('ref') or '') if r.get('kind') == 'duplicate' else ''
+    if ref.startswith('#') and ref[1:].isdigit():
+        n = int(ref[1:])
+        return next((p for p in prev.values() if p is not a and p.get('num') == n), None)
+    hit = prev.get(ref) if ref else None
+    return hit if hit is not a else None
+
+
+def follow_original(state: dict, a: dict, original: dict, firing: set, now: float) -> str | None:
+    ref = f"#{original['num']}" if original.get('num') else original['key']
+    live = original.get('status') == 'open' or original['key'] in firing
+    om = mute_for(state, original['key'], now)
+    if om and live:
+        cap = now + DUPLICATE_MUTE_S
+        until = om.get('until') if om.get('until') and parse_iso(om['until']) <= cap else iso(cap)
+        entry = {'pattern': a['key'], 'exact': True, 'until': until, 'reason': f"follows {ref}: {om.get('reason') or 'muted'}", 'kind': 'mute', 'at': iso(now)}
+        state['muted'] = [m for m in state['muted'] if m.get('pattern') != a['key']] + [entry]
+        a['muted'] = entry['reason']
+        return 'muted'
+    if original.get('triage') == 'progress':
+        a.update(triage='progress', ticket=original.get('ticket'), owner=original.get('owner'), triagedBy=None, resolution=None)
+        if live:
+            a['parent'] = original['key']
+        return 'progress'
+    if live and original.get('triage') != 'handled':
+        a['parent'] = original['key']
+        return 'merged'
+    return None
+
+
+def reported(reach: bool | frozenset | None, a: dict) -> bool:
+    if reach is True:
+        return True
+    cluster = a.get('cluster') or None
+    return bool(reach) and (cluster is None or isinstance(cluster, str)) and cluster in reach
+
+
+def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now: float) -> tuple[list[dict], list[dict], bool]:
+    t = iso(now)
+    first = not state.get('initialized')
+    prev = {a['key']: a for a in state.get('anomalies', [])}
+    state['muted'] = [m for m in state.get('muted', []) if m.get('until') is None or parse_iso(m['until']) > now]
+    events, push, seen = [], [], set()
+    firing = {f['key'] for f in found}
+    recent: dict[tuple, int] = {}
+    for p in prev.values():
+        group = push_group(p)
+        if group and p.get('pushedAt') and p.get('pushedSev') in SEV_RANK and now - parse_iso(p['pushedAt']) < PUSH_SVC_QUIET_S:
+            recent[group] = max(recent.get(group, -1), SEV_RANK[p['pushedSev']])
+    for f in found:
+        k = f['key']
+        if k in seen:
+            continue
+        seen.add(k)
+        a = prev.get(k)
+        m = mute_for(state, k, now)
+        f['muted'] = m['reason'] if m else None
+        if a is None:
+            a = dict(f, firstSeen=t, lastSeen=t, peak=f['now'], status='open', pushedAt=None, pushedSev=None, pushedPeak=None, note=None)
+            prev[k] = a
+            ev = 'new'
+        elif a['status'] == 'cleared':
+            carried = {x: a.get(x) for x in CARRY if x not in POST_LISTS or a.get(x) is not None}
+            pushed = (a.get('pushedAt'), a.get('pushedSev'), a.get('pushedPeak'))
+            a.clear()
+            a.update(f, **carried)
+            a.update(firstSeen=t, lastSeen=t, peak=f['now'], status='open', pushedAt=pushed[0], pushedSev=pushed[1], pushedPeak=pushed[2])
+            original = duplicate_of(a, prev) if a.get('triage') == 'handled' else None
+            followed = follow_original(state, a, original, firing, now) if original else None
+            if a.get('triage') == 'handled' and followed != 'muted':
+                if a.get('triagedBy') not in BY_SYSTEM:
+                    a[BACK_AFTER_RESOLVE] = t
+                a['triage'] = None
+                a['triagedBy'] = None
+                a['resolution'] = None
+            ev = 'reopened'
+        else:
+            keep = {x: a.get(x) for x in ('firstSeen', 'pushedAt', 'pushedSev', 'pushedPeak', 'peak', 'parent', BACK_AFTER_RESOLVE, SHOTS) + OFFER_MARKS + CARRY
+                    if x not in POST_LISTS + OFFER_MARKS + (BACK_AFTER_RESOLVE, SHOTS) or a.get(x) is not None}
+            a.clear()
+            a.update(f, **keep)
+            a['lastSeen'] = t
+            a['status'] = 'open'
+            a['peak'] = max(a.get('peak') or 0, f['now'])
+            ev = None
+        manual = a.get('sevSet')
+        if isinstance(manual, dict) and manual.get('sev') in SEV_RANK:
+            a['sevAuto'] = f['sev']
+            a['sev'] = manual['sev']
+        if ev and not a.get('parent'):
+            host = next((p for p in prev.values() if p is not a and p['status'] == 'open' and p.get('triage') != 'handled' and SEV_RANK[a['sev']] <= SEV_RANK.get(p.get('sev'), 0)
+                         and any(glob_match(g, k) for g in p.get('absorb') or [])), None)
+            if host:
+                a['parent'] = host['key']
+        pushable = not first and not a['muted'] and SEV_RANK[a['sev']] >= 1
+        should = False
+        if a.get('parent') and ev:
+            a['pushedAt'], a['pushedSev'], a['pushedPeak'] = t, a['sev'], a['now']
+            pushable = False
+        if pushable:
+            higher = a.get('pushedSev') is None or SEV_RANK[a['sev']] > SEV_RANK[a['pushedSev']]
+            quiet = a.get('pushedAt') is None or now - parse_iso(a['pushedAt']) > REOPEN_QUIET_S
+            doubled = a.get('pushedPeak') is not None and a['now'] >= 2 * a['pushedPeak'] and a['now'] - a['pushedPeak'] >= a.get('slack', 1)
+            if ev == 'new':
+                should = True
+            elif ev == 'reopened':
+                should = higher or (doubled if a.get('triage') in HANDLED else quiet)
+            else:
+                should = higher or doubled
+                if should:
+                    ev = 'escalated'
+        if should and a.get('triagedBy') in BY_SYSTEM and a.get('triage') in POD_REOPEN:
+            a['triage'] = None
+            a['triagedBy'] = None
+            a['resolution'] = None
+        if first and SEV_RANK[a['sev']] >= 1:
+            a['pushedAt'], a['pushedSev'], a['pushedPeak'] = t, a['sev'], a['now']
+        if ev:
+            events.append(dict(t=t, key=k, ev=ev, sev=a['sev'], text=a['short'], muted=bool(a['muted'])))
+        if should:
+            a['pushedAt'], a['pushedSev'], a['pushedPeak'] = t, a['sev'], a['now']
+            if SEV_RANK[a['sev']] > recent.get(push_group(a), -1):
+                push.append(a)
+    for k, a in prev.items():
+        if k in seen or a['status'] != 'open' or not reported(ran.get(clearing_key(a)), a):
+            continue
+        a['status'] = 'cleared'
+        a['clearedAt'] = t
+        events.append(dict(t=t, key=k, ev='cleared', sev=a['sev'], text=a['short'], muted=bool(a.get('muted'))))
+    for k, a in prev.items():
+        if k in seen or a['status'] != 'open' or not a.get('lastSeen') or now - parse_iso(a['lastSeen']) <= stale_after(a):
+            continue
+        expire(a, t, f"Closed: not seen since {clock.date(parse_iso(a['lastSeen']))}, its check no longer reports it")
+        events.append(dict(t=t, key=k, ev='cleared', sev=a['sev'], text=a['short'], muted=bool(a.get('muted'))))
+    for k, a in prev.items():
+        if a['status'] == 'cleared':
+            m = mute_for(state, k, now)
+            a['muted'] = m['reason'] if m else None
+
+    def settled(a: dict) -> bool:
+        m = mute_for(state, a['key'], now)
+        return a.get('triage') in ADDRESSED_TRIAGE or bool(m and m.get('until') is None)
+
+    def addressed(a: dict) -> bool:
+        p = prev.get(a.get('parent'))
+        return settled(a) or bool(p and p is not a and settled(p))
+
+    def resolved_kept(a: dict | None) -> bool:
+        a = a or {}
+        stamps = (a.get('autoResolvedAt'), a.get('triagedAt') if a.get('triage') == 'handled' else None)
+        return any(now - parse_iso(at) < RESOLVED_KEEP_S for at in stamps if at)
+
+    keep = [a for a in prev.values() if a['status'] == 'open' or (a['sev'] in KEEP_UNTIL_ADDRESSED and not addressed(a)) or now - parse_iso(a.get('clearedAt') or t) < CLEARED_KEEP_S
+            or any(resolved_kept(c) or ticket_owned(c) for c in (a, prev.get(a.get('parent'))))]
+    keep.sort(key=lambda a: (a['status'] != 'open', bool(a.get('muted')), -SEV_RANK[a['sev']], a['firstSeen']))
+    state['anomalies'] = keep
+    state['history'] = (events[::-1] + state.get('history', []))[:HISTORY_KEEP]
+    state['initialized'] = True
+    return events, push, first
+
+
+def clearing_key(a: dict) -> str:
+    return a.get('ranKey') or a.get('cluster') or a.get('src')
+
+
+def expire(a: dict, t: str, note: str) -> None:
+    a.update(status='cleared', clearedAt=t, expired=True)
+    if not a.get('note'):
+        a['note'] = {'text': note, 'at': t}
+
+
+ANY_CLUSTER = object()
+
+
+def retire(state: dict, keys: set[str], note: str, now: float, cluster: str | None | object = ANY_CLUSTER) -> list[str]:
+    t = iso(now)
+    closed = []
+    for a in state.get('anomalies') or []:
+        if a.get('status') != 'open' or clearing_key(a) not in keys:
+            continue
+        if cluster is not ANY_CLUSTER and (a.get('cluster') or None) != cluster:
+            continue
+        expire(a, t, note)
+        closed.append(a['key'])
+        state['history'] = [dict(t=t, key=a['key'], ev='cleared', sev=a['sev'], text=a['short'], muted=bool(a.get('muted')))] + state.get('history', [])
+    state['history'] = state.get('history', [])[:HISTORY_KEEP]
+    return closed
+
+
+def stale_after(a: dict) -> float:
+    key = a.get('ranKey') or a.get('src')
+    if key == 'manual':
+        return STALE_MANUAL_S
+    return STALE_DAILY_S if key in DAILY_KEYS or a.get('src') in DAILY_KEYS else STALE_S
+
+
+def auto_resolution(at: str) -> dict:
+    return {'kind': 'handled', 'by': AUTO_RESOLVED_BY, 'via': SYSTEM_VIA, 'at': at}
+
+
+def follow_parents(state: dict, now: float) -> list[dict]:
+    t = iso(now)
+    cards = state.get('anomalies') or []
+    by_key = {a['key']: a for a in cards}
+    out = []
+    for a in cards:
+        pk = a.get('parent')
+        if not pk or pk == a['key'] or a.get('status') != 'cleared' or a.get('triage') in ADDRESSED_TRIAGE + ('investigating',) or a.get('muted'):
+            continue
+        p = by_key.get(pk)
+        if p is not None and p.get('triage') not in ADDRESSED_TRIAGE:
+            continue
+        triage = p['triage'] if p is not None else 'handled'
+        a.update(triage=triage, triagedBy=AUTO_RESOLVED_BY, triagedAt=t)
+        if p is not None and p.get('ticket'):
+            a['ticket'] = p['ticket']
+        if triage == 'handled':
+            a['autoResolvedAt'] = t
+            a['resolution'] = auto_resolution(t)
+        if triage == 'progress':
+            ticket = f" ({p['ticket']})" if p is not None and p.get('ticket') else ''
+            head, why = 'In progress with its parent', f'{pk}{ticket}'
+        else:
+            head, why = 'Auto-resolved', f'its parent {pk} was ' + ('handled and has left the page' if p is None else 'marked no action needed')
+        if not a.get('note'):
+            a['note'] = {'text': f'{head}: {why}', 'at': t}
+        out.append({'key': a['key'], 'text': f"{head.lower()} {a.get('svc')} {a.get('label')} · {why}"})
+    return out
+
+
+def auto_close_info(state: dict, now: float, days: int = INFO_CLOSE_DAYS) -> list[dict]:
+    t = iso(now)
+    out = []
+    for a in state.get('anomalies') or []:
+        if a.get('status') != 'open' or a.get('sev') != 'info' or a.get('muted') or a.get('triage') or a.get('ticket') or a.get('parent'):
+            continue
+        if a.get('src') == 'logs' or a.get('sig') in INFO_KEEP_SIGS or not a.get('firstSeen') or now - parse_iso(a['firstSeen']) <= days * 86400:
+            continue
+        why = f"info firing since {clock.date(parse_iso(a['firstSeen']))}, nobody acted in {days} days"
+        a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
+        if not a.get('note'):
+            a['note'] = {'text': f'Auto-resolved: {why}', 'at': t}
+        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} · {why}"})
+    return out
+
+
+def auto_resolve(state: dict, now: float, days: int) -> list[dict]:
+    if days <= 0:
+        return []
+    t = iso(now)
+    out = []
+    for a in summary.waiting_cards(state.get('anomalies') or []):
+        if a.get('triage') == 'investigating' or a.get('autoResolvedAt') or not a.get('clearedAt'):
+            continue
+        cleared = parse_iso(a['clearedAt'])
+        if now - cleared <= days * 86400:
+            continue
+        why = f"cleared {clock.date(cleared)}, nobody acted in {days} day{'' if days == 1 else 's'}"
+        a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
+        if not a.get('note'):
+            a['note'] = {'text': f'Auto-resolved: {why}', 'at': t}
+        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} · {why}"})
+    return out
+
+
+SIBLING_ORDINAL = re.compile(r'-\d+$')
+
+
+def group_alert_twins(state: dict, twins: tuple[str, ...] = ()) -> list[tuple[str, str]]:
+    cards = state.get('anomalies') or []
+    hosts = [a for a in cards if a.get('status') == 'open' and a.get('src') not in ('alert', 'grafana') and not a.get('muted') and not a.get('parent') and a.get('ns') not in (None, '', '-')]
+    out = []
+    for a in cards:
+        parts = a['key'].split('|')
+        if a.get('src') != 'alert' or len(parts) < 2 or parts[1] not in twins or a.get('status') != 'open':
+            continue
+        if a.get('parent') or a.get('triage') or a.get('slackPost') or a.get('slackDraft') or a.get('muted'):
+            continue
+        same = sorted((h for h in hosts if h.get('ns') == a.get('ns')), key=lambda h: (-SEV_RANK.get(h.get('sev'), 0), h.get('firstSeen') or ''))
+        if same:
+            a['parent'] = same[0]['key']
+            out.append((a['key'], same[0]['key']))
+    return out
+
+
+def sibling_stem(a: dict) -> str | None:
+    svc = a.get('svc') or ''
+    m = SIBLING_ORDINAL.search(svc)
+    if not m or svc not in a['key']:
+        return None
+    return '|'.join((a.get('src') or '', a.get('ns') or '', a['key'].replace(svc, svc[:m.start()])))
+
+
+def posted_this_time(a: dict) -> bool:
+    at = (a.get('slackPost') or {}).get('at')
+    return bool(at and a.get('firstSeen') and at >= a['firstSeen'])
+
+
+def group_siblings(state: dict) -> list[tuple[str, str]]:
+    cards = [a for a in state.get('anomalies') or [] if a.get('status') == 'open' and not a.get('muted') and not a.get('parent')]
+    sets: dict[str, list[dict]] = {}
+    for a in cards:
+        stem = sibling_stem(a)
+        if stem:
+            sets.setdefault(stem, []).append(a)
+    out = []
+    for same in sets.values():
+        if len(same) < 2:
+            continue
+        host = sorted(same, key=lambda h: (-SEV_RANK.get(h.get('sev'), 0), h.get('firstSeen') or '', h['key']))[0]
+        for a in same:
+            if a is host or a.get('triage') in ADDRESSED_TRIAGE + ('investigating',) or a.get('slackDraft') or posted_this_time(a):
+                continue
+            if host.get('triage') == 'handled' and a.get('sev') == 'crit':
+                continue
+            a['parent'] = host['key']
+            out.append((a['key'], host['key']))
+    return out
+
+
+def push_line(push: list[dict]) -> str:
+    if not push:
+        return ''
+    push = sorted(push, key=lambda a: -SEV_RANK[a['sev']])
+    line = msg('push.prefix') + '; '.join(a['short'] for a in push)
+    return line if len(line) < PUSH_LIMIT else line[:PUSH_LIMIT - 4] + '…'
+
+
+def new_pushes(before: dict[str, str | None], items: list[dict], now: float) -> list[dict]:
+    out = []
+    for a in items:
+        at = a.get('pushedAt')
+        if not at or at == before.get(a['key']) or a.get('muted') or a.get('sev') not in ('warn', 'crit'):
+            continue
+        if a.get('parent') and a.get('firstSeen') == at:
+            continue
+        try:
+            fresh = now - parse_iso(at) < PUSH_FRESH_S
+        except (TypeError, ValueError):
+            fresh = False
+        if fresh:
+            out.append(a)
+    return out
+
+
+@dataclass
+class PassResult:
+    name: str
+    ok: bool
+    status: str
+    found: list[dict] = field(default_factory=list)
+    sections: dict = field(default_factory=dict)
+    ran: tuple[str, ...] = ()
+
+
+@dataclass
+class Applied:
+    rev: int
+    events: list[dict]
+    push: list[dict]
+    resolved: list[dict] = field(default_factory=list)
+    cards: list[dict] = field(default_factory=list)
+
+
+def reach_of(results: list[PassResult], clusters: Mapping[str, tuple[str | None, ...]] | None = None) -> dict[str, bool | frozenset]:
+    out: dict[str, bool | frozenset] = {}
+    for r in results:
+        if not r.ok:
+            continue
+        mine = None if clusters is None else clusters.get(r.name)
+        for k in r.ran or (r.name,):
+            if no_data(k):
+                continue
+            seen = out.get(k)
+            out[k] = True if mine is None or seen is True else frozenset(seen or ()) | frozenset(mine)
+    return out
+
+
+def number_cards(store: Store, cards: list[dict]) -> None:
+    missing = [a for a in cards if not a.get('num')]
+    if not missing:
+        return
+    try:
+        known = store.card_numbers([a['key'] for a in missing])
+        for a in missing:
+            a['num'] = known.get(a['key']) or store.card_number(a['key'])
+    except PyMongoError as e:
+        log.warning('card numbers not given this pass: %s', error_kind(e))
+
+
+def apply(store: Store, results: list[PassResult], now: float, links: Callable[[dict], list[dict] | None] | None = None, dm: bool = False,
+          attempts: int = APPLY_ATTEMPTS, after: Callable[[dict], None] | None = None, auto_resolve_days: int = AUTO_RESOLVE_DAYS,
+          recurring_count: int = history.RECURRING_COUNT, recurring_days: int = history.RECURRING_DAYS, tag_rules: tuple | None = None,
+          alert_twins: tuple[str, ...] = (), screen: Callable[[dict, list[PassResult]], list[PassResult]] | None = None,
+          clusters: Mapping[str, tuple[str | None, ...]] | None = None) -> Applied | None:
+    all_results = results
+    for attempt in range(attempts):
+        state = store.load()
+        results = screen(state, all_results) if screen else all_results
+        found = [x for r in results if r.ok for x in r.found]
+        ran = reach_of(results, clusters)
+        loaded = copy.deepcopy(state)
+        base = state.get('rev', 0)
+        events, push, _ = merge(state, copy.deepcopy(found), ran, now)
+        twins = group_alert_twins(state, alert_twins)
+        siblings = group_siblings(state)
+        if twins or siblings:
+            grouped = {k for k, _ in twins + siblings}
+            push = [a for a in push if a.get('key') not in grouped]
+        if tag_rules is not None:
+            tags.apply_rules(state['anomalies'], tag_rules, iso(now))
+        number_cards(store, state['anomalies'])
+        if links:
+            for a in state['anomalies']:
+                got = links(a)
+                if got is not None:
+                    a['links'] = got
+        sources = dict(state.get('sources') or {})
+        runs = dict(state.get('serverPasses') or {})
+        for r in results:
+            sources[r.name] = r.status
+            runs[r.name] = {'at': iso(now), 'status': r.status}
+            if r.ok:
+                state.update(r.sections)
+        state['sources'] = sources
+        state['serverPasses'] = runs
+        if after:
+            after(state)
+        resolved = auto_resolve(state, now, auto_resolve_days) + (follow_parents(state, now) + auto_close_info(state, now) if auto_resolve_days > 0 else [])
+        rows = store.history_rows([a['key'] for a in state['anomalies']])
+        if rows is not None:
+            try:
+                history.annotate(state['anomalies'], rows, now, recurring_count, recurring_days, ticket_owned)
+            except Exception as e:
+                log.warning('seen-before and recurring marks skipped this pass: %s', error_kind(e))
+        state['summary'] = summary.build(state, store, now)
+        line = push_line(push)
+        if line:
+            state['serverPushes'] = ([{'at': iso(now), 'line': line, 'keys': [a['key'] for a in push], 'dm': dm}] + (state.get('serverPushes') or []))[:SERVER_PUSH_KEEP]
+        try:
+            rev, _ = store.save_state(state, base, loaded)
+        except Conflict:
+            log.info('server passes met a newer state (attempt %d), merging again', attempt + 1)
+            continue
+        if results:
+            store.add_activity('pass', 'server', ' · '.join(f'{r.name} {r.status}' for r in results), error=' · '.join(f'{r.name} {r.status}' for r in results if not r.ok) or None)
+        if events:
+            counts = collections.Counter(e['ev'] for e in events)
+            store.add_activity('merge', 'server', ' · '.join(f'{n} {ev}' for ev, n in sorted(counts.items())))
+        for r in resolved:
+            store.add_activity('auto', SYSTEM, r['text'], key=r['key'])
+            log.info('%s', r['text'])
+        for key, host in twins:
+            store.add_activity('auto', SYSTEM, msg('engine.grouped.twin', key=key, host=host), key=key)
+        for key, host in siblings:
+            store.add_activity('auto', SYSTEM, msg('engine.grouped.sibling', key=key, host=host), key=key)
+        return Applied(rev, events, push, resolved, state['anomalies'])
+    raise Conflict(store.rev()['rev'])
