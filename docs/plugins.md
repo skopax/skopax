@@ -351,7 +351,7 @@ A connection's panel in Admin > Integrations, with its access, the tools it can 
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="images/integrations-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="images/integrations-light.png">
-<img src="images/integrations-light.png" alt="Admin, Integrations: five connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches">
+<img width="560" src="images/integrations-light.png" alt="Admin, Integrations: five connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches">
 </picture>
 
 - **Adding one.** In Admin > Integrations, "+ Add integration" has a group "MCP servers and company knowledge": a blank MCP server, the catalog entries Atlassian (Jira and Confluence), Notion, GitHub and Google Drive, and the entries coming soon. A catalog entry fills in the URL and the sign-in, and shows the form of the token as a hint, never a value. Google Drive is marked Preview, since Google still calls its server a preview, and needs a client id and secret from your own Google Cloud console. Each connection is an instance of the plug-in; open it from the MCP server tile to reach its panel. A new connection is always saved off, and it can be turned on only once its warnings are confirmed (see [Who can read what](#who-can-read-what)). At most 20 connections.

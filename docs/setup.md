@@ -18,7 +18,7 @@ The Chat page answers questions about prod from the connected integrations, such
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="images/chat-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="images/chat-light.png">
-<img src="images/chat-light.png" alt="The Skopax Chat page answering a question about slow checkout with the latency rise, the timeout log lines, the cause and a next step">
+<img width="560" src="images/chat-light.png" alt="The Skopax Chat page answering a question about slow checkout with the latency rise, the timeout log lines, the cause and a next step">
 </picture>
 
 ## Admin

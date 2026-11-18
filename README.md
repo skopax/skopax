@@ -7,7 +7,7 @@ Every team has that one person who always knows why things are happening and wha
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="docs/images/board-light.png">
-<img src="docs/images/board-light.png" alt="The Skopax Board: open, in progress, done and muted columns of cards for a shop's checkout, payments, search, inventory and notifications services, with critical, warning and info cards and their assignees">
+<img width="640" src="docs/images/board-light.png" alt="The Skopax Board: open, in progress, done and muted columns of cards for a shop's checkout, payments, search, inventory and notifications services, with critical, warning and info cards and their assignees">
 </picture>
 
 Its AI investigator keeps an eye on production. When something breaks, it reads your metrics, logs and recent deploys, then tells you why it broke and what to do next, in plain words. You can also chat with it about prod on its own chat page, ask it in Slack, or reach it from your own AI assistant over MCP.
@@ -20,29 +20,43 @@ Status: 0.1.0 is the first stable release. From here, settings and the plug-in c
 
 ## What it looks like
 
-The Chat page, where you ask about prod in plain words and the answer names the metrics and logs it read:
+<table>
+<tr>
+<td width="33%" valign="top">
 
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="docs/images/chat-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="docs/images/chat-light.png">
-<img src="docs/images/chat-light.png" alt="The Skopax Chat page answering Why is checkout slow since 14:00 with the latency rise, the timeout log lines, the cause in checkout 2.14.0 and a next step">
+<img width="280" src="docs/images/chat-light.png" alt="The Skopax Chat page answering Why is checkout slow since 14:00 with the latency rise, the timeout log lines, the cause in checkout 2.14.0 and a next step">
 </picture>
 
-A card opened from the Board, with the investigator's suspects, recommendation, code lead and note, and the cards merged under it:
+<b>Chat</b>: ask about prod in plain words; the answer names the metrics and logs it read.
+
+</td>
+<td width="33%" valign="top">
 
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="docs/images/card-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="docs/images/card-light.png">
-<img src="docs/images/card-light.png" alt="Card 42, checkout p95 latency, open in a drawer: suspects, a recommendation to roll back, the code line that changed, the investigation note and two merged cards">
+<img width="280" src="docs/images/card-light.png" alt="Card 42, checkout p95 latency, open in a drawer: suspects, a recommendation to roll back, the code line that changed, the investigation note and two merged cards">
 </picture>
 
-The Integrations page, where every connection uses the same form; here an outside MCP server with the tools it may use:
+<b>Investigation</b>: a card with its suspects, a recommendation, the code lead and the merged cards.
+
+</td>
+<td width="33%" valign="top">
 
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="docs/images/integrations-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="docs/images/integrations-light.png">
-<img src="docs/images/integrations-light.png" alt="Admin, Integrations: connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches">
+<img width="280" src="docs/images/integrations-light.png" alt="Admin, Integrations: connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches">
 </picture>
+
+<b>Integrations</b>: every connection uses the same form, here an outside MCP server and its tools.
+
+</td>
+</tr>
+</table>
 
 ## Quickstart
 
@@ -90,7 +104,7 @@ The full guide is in [docs/](docs/README.md):
 - [Sign-in](docs/sign-in.md): single sign-on, roles, local accounts and the MCP server.
 - [Integrations](docs/plugins.md): the plug-ins that ship with Skopax, their instances and outside MCP servers.
 - [Extending Skopax](docs/extending.md): writing a plug-in, starting from the example in `examples/hello-plugin`, with two fuller examples next to it: `examples/couchbase-plugin` and `examples/managed-redis-plugin`.
-- [Operations](docs/operations.md): the image, agent mode, the probe, proxies and recovery.
+- [Operations](docs/operations.md): the image, logs, agent mode, the probe, proxies and recovery.
 - [Development](docs/development.md): the tests, continuous integration, the licence gate and releases.
 
 ## Contributing
