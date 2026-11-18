@@ -2,6 +2,7 @@ import copy
 import json
 import re
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -11,6 +12,9 @@ from tests.yaml_kit import yaml_comment_lines
 from tools import release_version
 
 ROOT = Path(__file__).resolve().parent.parent
+DCO_CHECK = ROOT / 'tools' / 'dco_check.py'
+PR_EVENTS = ['opened', 'edited', 'synchronize', 'reopened', 'ready_for_review']
+DEPENDABOT_EMAIL = '49699333+dependabot[bot]@users.noreply.github.com'
 WORKFLOWS = ROOT / '.github' / 'workflows'
 EXAMPLE_DOCKERFILE = ROOT / 'examples' / 'hello-plugin' / 'Dockerfile'
 PINNED = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_./-]+)?@[0-9a-f]{40}')
@@ -19,6 +23,8 @@ LOCAL_CALLS = {'./.github/workflows/ci.yml'}
 READ_ONLY = {'contents': 'read'}
 PERMISSIONS = {
     **{('ci.yml', job): READ_ONLY for job in ('tests', 'pages', 'licences', 'secrets')},
+    ('pr.yml', 'title'): READ_ONLY,
+    ('pr.yml', 'dco'): READ_ONLY,
     ('image.yml', 'ci'): READ_ONLY,
     ('image.yml', 'version'): READ_ONLY,
     ('image.yml', 'build'): {'contents': 'read', 'packages': 'write', 'id-token': 'write', 'attestations': 'write'},
@@ -384,6 +390,35 @@ def example_problems(dockerfile: str) -> list[str]:
     return problems
 
 
+def run_title_script(script: str, title: str) -> tuple[int, str]:
+    done = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], env={'PATH': '/usr/bin:/bin', 'TITLE': title}, capture_output=True, text=True, check=False)
+    return done.returncode, done.stdout
+
+
+def git(repo: Path, *args: str, env: dict[str, str] | None = None) -> str:
+    base = {'PATH': '/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin', 'HOME': str(repo), 'GIT_CONFIG_NOSYSTEM': '1'}
+    return subprocess.run(['git', *args], cwd=repo, env=base | (env or {}), capture_output=True, text=True, check=True).stdout.strip()
+
+
+def commit(repo: Path, subject: str, name: str, email: str, sign_off: str | None) -> None:
+    message = subject if sign_off is None else f'{subject}\n\nSigned-off-by: {sign_off}'
+    (repo / 'file.txt').write_text(message, encoding='utf-8')
+    git(repo, 'add', 'file.txt')
+    git(repo, 'commit', '-m', message, env={'GIT_AUTHOR_NAME': name, 'GIT_AUTHOR_EMAIL': email, 'GIT_COMMITTER_NAME': name, 'GIT_COMMITTER_EMAIL': email})
+
+
+def dco_result(tmp_path: Path, name: str, email: str, sign_off: str | None) -> tuple[int, str]:
+    repo = tmp_path / 'repo'
+    repo.mkdir(parents=True)
+    git(repo, 'init', '-q', '-b', 'main')
+    commit(repo, 'base', 'Base Person', 'base@example.com', 'Base Person <base@example.com>')
+    base = git(repo, 'rev-parse', 'HEAD')
+    commit(repo, 'change the file', name, email, sign_off)
+    head = git(repo, 'rev-parse', 'HEAD')
+    done = subprocess.run([sys.executable, str(DCO_CHECK), base, head], cwd=repo, capture_output=True, text=True, check=False)
+    return done.returncode, done.stdout
+
+
 def all_docs() -> dict[str, dict]:
     return {p.name: yaml.safe_load(p.read_text(encoding='utf-8')) for p in sorted(WORKFLOWS.glob('*.yml'))}
 
@@ -405,7 +440,7 @@ def test_every_action_is_pinned_by_sha():
     found = unpinned_actions(docs)
 
     # then
-    assert set(docs) == {'ci.yml', 'image.yml'}
+    assert set(docs) == {'ci.yml', 'image.yml', 'pr.yml'}
     assert sum(1 for doc in docs.values() for s in steps(doc) if 'uses' in s) >= 10
     assert found == []
     assert unpinned_actions(broken) == ['ci.yml: actions/checkout@v7']
@@ -784,3 +819,137 @@ def test_workflow_files_carry_no_comments_and_are_ascii():
     assert commented == {}
     assert hashed == []
     assert odd == []
+
+
+def test_the_pr_workflow_runs_on_pull_request_only_with_read_access_and_no_secrets():
+    # given
+    pr = load('pr.yml')
+    text = (WORKFLOWS / 'pr.yml').read_text(encoding='utf-8')
+    targeted = copy.deepcopy(pr)
+    targeted[True]['pull_request_target'] = None
+
+    # when
+    on = triggers(pr)
+
+    # then
+    assert set(on) == {'pull_request'}
+    assert on['pull_request'] == {'types': PR_EVENTS}
+    assert set(triggers(targeted)) == {'pull_request', 'pull_request_target'}
+    assert 'pull_request_target' not in text and 'secrets.' not in text and 'secrets:' not in text
+    assert pr['permissions'] == {}
+    assert set(pr['jobs']) == {'title', 'dco'}
+    assert all(job['permissions'] == READ_ONLY and job['runs-on'] == 'ubuntu-24.04' and 0 < job['timeout-minutes'] <= 30 for job in pr['jobs'].values())
+    assert all(s['with']['persist-credentials'] is False for s in uses(pr, 'actions/checkout'))
+    assert [s['with']['fetch-depth'] for s in uses(pr, 'actions/checkout', 'dco')] == [0]
+    assert uses(pr, 'actions/checkout', 'title') == []
+
+
+def test_the_pr_workflow_reads_the_title_and_the_shas_only_through_env():
+    # given
+    pr = load('pr.yml')
+    title = steps(pr, 'title')
+    dco = steps(pr, 'dco')
+
+    # when
+    exposed = [r for r in runs(pr) if '${{' in r or 'github.event' in r]
+
+    # then
+    assert exposed == []
+    assert [s['env'] for s in title if 'run' in s] == [{'TITLE': '${{ github.event.pull_request.title }}'}]
+    assert [s['env'] for s in dco if 'run' in s] == [{'BASE_SHA': '${{ github.event.pull_request.base.sha }}', 'HEAD_SHA': '${{ github.event.pull_request.head.sha }}'}]
+    assert any('"$BASE_SHA" "$HEAD_SHA"' in r and 'tools/dco_check.py' in r for r in runs(pr, 'dco'))
+
+
+def test_the_title_check_accepts_conventional_commit_titles_and_rejects_the_rest():
+    # given
+    script = '\n'.join(runs(load('pr.yml'), 'title'))
+    good = ['feat: x', 'fix(page): x', 'feat!: x', 'chore(deps): bump a from 1 to 2', 'refactor(a.b/c_d-e)!: rename']
+    bad = ['Fix bug', 'feat:x', 'feature: x', 'feat(Bad Scope): x', 'feat(): x', 'feat: ', 'feat', 'Feat: x', '']
+
+    # when
+    accepted = {title: run_title_script(script, title) for title in good}
+    rejected = {title: run_title_script(script, title) for title in bad}
+
+    # then
+    assert all(code == 0 for code, out in accepted.values())
+    assert all(code == 1 and out.count('\n') == 1 and 'type: summary' in out for code, out in rejected.values())
+    assert '$TITLE' in script and '${{' not in script
+
+
+def test_the_dco_check_passes_a_commit_signed_off_by_its_author(tmp_path):
+    # given
+    name, email = 'Alice Example', 'alice@example.com'
+
+    # when
+    code, out = dco_result(tmp_path, name, email, f'{name} <{email}>')
+
+    # then
+    assert (code, out) == (0, '')
+
+
+def test_the_dco_check_compares_the_sign_off_email_without_case(tmp_path):
+    # given
+    name, email = 'Alice Example', 'Alice@Example.com'
+
+    # when
+    code, out = dco_result(tmp_path, name, email, 'Alice Example <alice@example.COM>')
+
+    # then
+    assert (code, out) == (0, '')
+
+
+def test_the_dco_check_fails_an_unsigned_commit_and_names_it_and_the_fix(tmp_path):
+    # given
+    name, email = 'Alice Example', 'alice@example.com'
+
+    # when
+    code, out = dco_result(tmp_path, name, email, None)
+
+    # then
+    assert code == 1
+    assert re.search(r'^  [0-9a-f]{7} change the file$', out, re.M)
+    assert 'git commit --amend -s' in out and 'git rebase --signoff' in out
+
+
+def test_the_dco_check_fails_a_sign_off_with_another_email(tmp_path):
+    # given
+    name, email = 'Alice Example', 'alice@example.com'
+
+    # when
+    code, out = dco_result(tmp_path, name, email, 'Alice Example <bob@example.com>')
+
+    # then
+    assert code == 1
+    assert re.search(r'^  [0-9a-f]{7} change the file$', out, re.M)
+
+
+def test_the_dco_check_exempts_dependabot_and_github_actions_commits(tmp_path):
+    # given
+    bots = {'dependabot': ('dependabot[bot]', DEPENDABOT_EMAIL), 'by_name': ('dependabot[bot]', 'other@example.com'),
+            'actions': ('github-actions[bot]', '41898282+github-actions[bot]@users.noreply.github.com')}
+
+    # when
+    results = {key: dco_result(tmp_path / key, name, email, None) for key, (name, email) in bots.items()}
+
+    # then
+    assert results == {key: (0, '') for key in bots}
+
+
+def test_the_dco_check_lists_only_the_failing_commits_of_a_range(tmp_path):
+    # given
+    repo = tmp_path / 'repo'
+    repo.mkdir()
+    git(repo, 'init', '-q', '-b', 'main')
+    commit(repo, 'base', 'Base Person', 'base@example.com', None)
+    base = git(repo, 'rev-parse', 'HEAD')
+    commit(repo, 'good one', 'Alice Example', 'alice@example.com', 'Alice Example <alice@example.com>')
+    commit(repo, 'bad one', 'Alice Example', 'alice@example.com', None)
+    commit(repo, 'good two', 'Alice Example', 'alice@example.com', 'Alice Example <alice@example.com>')
+    head = git(repo, 'rev-parse', 'HEAD')
+
+    # when
+    done = subprocess.run([sys.executable, str(DCO_CHECK), base, head], cwd=repo, capture_output=True, text=True, check=False)
+
+    # then
+    assert done.returncode == 1
+    assert [line.strip().split(' ', 1)[1] for line in done.stdout.splitlines() if line.startswith('  ')] == ['bad one']

@@ -5,7 +5,7 @@ Thank you for helping with Skopax. This page covers what we accept, how to set t
 ## What we accept
 
 - Issues are welcome now. Use the issue forms for bugs and feature requests, and describe what you saw and what you expected.
-- Pull requests from outside open with 0.1.0. Until then please open an issue instead of a pull request, so nobody does work that cannot be merged yet.
+- Pull requests are welcome. Keep them small and focused, and link each one to an issue for anything beyond a typo.
 - Contributions go to the **Skopax community edition**: the public repositories of the `skopax` GitHub organization, starting with `skopax/skopax`. The community edition is open source under the Apache License, Version 2.0.
 - Skopax Cloud and the Enterprise edition, if they come, will not be open for contributions.
 - A plug-in you publish yourself is your own work under your own terms. It is not a contribution to Skopax. See `TRADEMARKS.md` for how to name it.
@@ -55,6 +55,8 @@ Every commit in a pull request carries a `Signed-off-by` line under the Develope
 That appends a line like this, using your real name and the email address of your git configuration:
 
     Signed-off-by: Alice Example <alice@example.com>
+
+The pull request title follows Conventional Commits: `type: summary`, with type `feat`, `fix`, `docs`, `ci`, `test`, `chore`, `build`, `perf` or `refactor`, an optional `(scope)` after the type, and `!` before the colon for a breaking change, for example `fix(page): keep the sidebar open`. The title becomes the squash commit.
 
 If you forgot it on the last commit, run `git commit --amend -s --no-edit`. For several commits, run `git rebase --signoff` on your branch and push again.
 
