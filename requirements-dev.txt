@@ -573,9 +573,9 @@ opentelemetry-instrumentation-marqo==0.63.0 \
 opentelemetry-instrumentation-mcp==0.63.0 \
     --hash=sha256:32d36d043a531273272c79ec0e87260a5dc876656d394ada311a691a8cc3fd53 \
     --hash=sha256:4d0e87b40a72fe65f53c58dedfb7b8af9c4ccff8abb73a944334e2a73e1f1077
-opentelemetry-instrumentation-milvus==0.60.0 \
-    --hash=sha256:b084553fc7ac64f75d588bfb5d7ae3c89fab1c8175e37c17e2df7a39525ce759 \
-    --hash=sha256:c69ab9f73913afad771a2a05bd44a1dea3ac9e6b63d55fac0f9d676e896bcfbd
+opentelemetry-instrumentation-milvus==0.62.4 \
+    --hash=sha256:05644ad5f8e55be30b063f3fd44ae2c6dad3f49f578b029634318f0e613e7322 \
+    --hash=sha256:f0112492096da10e378a9bf19f356cd50e3c7ff60346bf3cc9d6fd6c74a1eda0
 opentelemetry-instrumentation-mistralai==0.63.0 \
     --hash=sha256:adff05d6d713b6267c7dfe23de3d483d93339fdfc5c159cf8566352d00f1c76a \
     --hash=sha256:bf938be7c385edd5c1ff308681a615f7a698a8cebd7102887af0f58491556eff
