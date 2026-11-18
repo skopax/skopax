@@ -199,6 +199,7 @@ jobs:
       IMAGE: ${{ needs.version.outputs.image }}
       VERSION: ${{ needs.version.outputs.version }}
       TAGS: ${{ needs.version.outputs.tags }}
+      HUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
       DIGEST: ${{ needs.build.outputs.digest }}
     steps:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
@@ -219,14 +220,17 @@ jobs:
           if [ "${#args[@]}" = 0 ]; then echo "no moving tags for $VERSION"; exit 0; fi
           docker buildx imagetools create "${args[@]}" "$IMAGE@$DIGEST"
       - name: Log in to Docker Hub
-        if: needs.version.outputs.rc == 'false'
+        if: needs.version.outputs.rc == 'false' && env.HUB_USER != ''
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
         with:
           registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Docker Hub mirror skipped
+        if: needs.version.outputs.rc == 'false' && env.HUB_USER == ''
+        run: echo "::notice::No Docker Hub secrets in the release environment, so $VERSION is on GHCR only"
       - name: Copy the release to Docker Hub
-        if: needs.version.outputs.rc == 'false'
+        if: needs.version.outputs.rc == 'false' && env.HUB_USER != ''
         run: |
           args=()
           for tag in $TAGS; do

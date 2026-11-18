@@ -131,7 +131,7 @@ The package version lives in `pyproject.toml` and `skopax/__init__.py`, in its P
 | Package version | Git tag | Image tags |
 |---|---|---|
 | `X.Y.ZrcN` | `vX.Y.Z-rc.N` | `X.Y.Z-rc.N`, on GHCR only |
-| `X.Y.Z` | `vX.Y.Z` | `X.Y.Z`, `X.Y` and `latest`, on GHCR and Docker Hub |
+| `X.Y.Z` | `vX.Y.Z` | `X.Y.Z`, `X.Y` and `latest` on GHCR, plus the Docker Hub mirror once its secrets are set |
 
 `python -m tools.release_version check <tag>` fails when the tag does not match the package version, and `python -m tools.release_version tags <tag>` prints the image tags. The image workflow runs both before it builds.
 
