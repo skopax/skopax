@@ -401,8 +401,8 @@ jsonschema-specifications==2025.9.1 \
 lazify==0.4.0 \
     --hash=sha256:7102bfe63e56de2ab62b3bc661a7190c4056771a8624f04a8b785275c3dd1f9b \
     --hash=sha256:c2c17a7a33e9406897e3f66fde4cd3f84716218d580330e5af10cfe5a0cd195a
-literalai==0.1.201 \
-    --hash=sha256:29e4ccadd9d68bfea319a7f0b4fc32611b081990d9195f98e5e97a14d24d3713
+literalai==0.1.300 \
+    --hash=sha256:f408ebfd0f3251effe55fb84b3bf480c4790a7010d6f30a181b56cd1c3942cfb
 markupsafe==3.0.4 \
     --hash=sha256:02fa4acbc6a3fc5c693c34d4dd8c1130b7fe99cc915181b0ddd6f72aeb296002 \
     --hash=sha256:03470d1a8268e692ecf79ecd565593e59d44219377a7ead61f1f1b94c1f7ff6b \
