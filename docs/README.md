@@ -5,7 +5,7 @@ Start with the [quickstart](../README.md#quickstart) and [First run](../README.m
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="images/board-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="images/board-light.png">
-<img src="images/board-light.png" alt="The Skopax Board: columns of open, in progress, done and muted cards for a shop, with critical, warning and info cards and their assignees">
+<img width="560" src="images/board-light.png" alt="The Skopax Board: columns of open, in progress, done and muted cards for a shop, with critical, warning and info cards and their assignees">
 </picture>
 
 - [Setup](setup.md): [The page](setup.md#the-page), [Admin](setup.md#admin) (with the [feature switches](setup.md#feature-switches) and the [Anthropic key](setup.md#the-anthropic-key)), [Add Prometheus](setup.md#add-prometheus), [Run the demo](setup.md#run-the-demo) and [Offline](setup.md#offline).

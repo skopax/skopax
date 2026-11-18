@@ -256,13 +256,7 @@ Atlassian Cloud only, through the same gateway, with its own email and API token
 
 ### Slack
 
-Skopax posts a card to the channel, keeps the post up to date, and answers questions asked in its thread (an illustration, drawn from the message Skopax sends):
-
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="images/slack-thread-dark.png">
-<source media="(prefers-color-scheme: light)" srcset="images/slack-thread-light.png">
-<img src="images/slack-thread-light.png" alt="A chat channel where Skopax posted critical card 42, checkout p95 latency, and a thread where bob asks whether only checkout is slow and Skopax answers from the metrics and logs">
-</picture>
+Skopax posts a card to the channel, keeps the post up to date, and answers questions asked in its thread.
 
 - **Creating the Slack app:** at api.slack.com/apps choose "Create New App", then "From a manifest", pick your workspace and paste [`examples/slack-app-manifest.yaml`](../examples/slack-app-manifest.yaml). It turns on Socket Mode, buttons and dialogs, the events the listener reads (mentions, and messages in channels, private channels and direct messages) and every bot scope listed below, plus `im:history`, `reactions:write` and `app_mentions:read`. Install the app, copy the bot token (`xoxb-...`), and create an app-level token with the `connections:write` scope under Basic Information (`xapp-...`).
 - **Fields:** `bot-token` (`xoxb-...`) and `app-token` (`xapp-...`, for Socket Mode, which the Slack listener needs). The channel that cards and deploy reports go to is the setting Channel in Admin > General > Slack (`slack.channel`, or `SLACK_CHANNEL`).
@@ -357,7 +351,7 @@ A connection's panel in Admin > Integrations, with its access, the tools it can 
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="images/integrations-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="images/integrations-light.png">
-<img src="images/integrations-light.png" alt="Admin, Integrations: five connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches">
+<img width="560" src="images/integrations-light.png" alt="Admin, Integrations: five connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches">
 </picture>
 
 - **Adding one.** In Admin > Integrations, "+ Add integration" has a group "MCP servers and company knowledge": a blank MCP server, the catalog entries Atlassian (Jira and Confluence), Notion, GitHub and Google Drive, and the entries coming soon. A catalog entry fills in the URL and the sign-in, and shows the form of the token as a hint, never a value. Google Drive is marked Preview, since Google still calls its server a preview, and needs a client id and secret from your own Google Cloud console. Each connection is an instance of the plug-in; open it from the MCP server tile to reach its panel. A new connection is always saved off, and it can be turned on only once its warnings are confirmed (see [Who can read what](#who-can-read-what)). At most 20 connections.

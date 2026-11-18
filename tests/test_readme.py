@@ -353,7 +353,7 @@ def test_the_docs_images_come_in_both_themes_are_all_shown_and_stay_small():
     assert sum(p.stat().st_size for p in images) <= 6 * 1024 * 1024
 
 
-def test_the_readme_shows_the_board_after_the_intro_and_the_slack_thread_chat_and_card_under_what_it_looks_like():
+def test_the_readme_shows_the_board_after_the_intro_and_the_chat_card_and_integrations_under_what_it_looks_like():
     # given
     text = read('README.md')
     start = text.find('## What it looks like')
@@ -361,8 +361,9 @@ def test_the_readme_shows_the_board_after_the_intro_and_the_slack_thread_chat_an
 
     # then
     assert text.index('Every team has that one person') < text.find('docs/images/board-light.png') < text.index('## Quickstart')
-    assert [n for n in ('slack-thread', 'chat', 'card') if f'docs/images/{n}-light.png' in section] == ['slack-thread', 'chat', 'card']
-    assert section.index('slack-thread-light') < section.index('chat-light') < section.index('card-light')
+    assert [n for n in ('chat', 'card', 'integrations') if f'docs/images/{n}-light.png' in section] == ['chat', 'card', 'integrations']
+    assert section.index('chat-light') < section.index('card-light') < section.index('integrations-light')
+    assert 'slack-thread' not in text and 'an illustration' not in text
 
 
 def test_every_community_file_link_resolves_and_points_only_at_the_allowed_hosts():
