@@ -78,6 +78,42 @@ Run it with a MongoDB of your own. The first line makes the secret key once:
 
 Then open http://localhost:8080. Keep that key, for example in your password manager (`echo "$SKOPAX_SECRET_KEY"` prints it), and pass the same value on every start. With another key, Skopax cannot open the integration secrets sealed with the old one, so each has to be entered again, and everyone has to sign in again (see [Settings](docs/configuration.md#settings)).
 
+### With Docker Compose, no clone
+
+Save this as `compose.yml` in an empty folder:
+
+    services:
+      mongo:
+        image: mongo:8.0.4
+        restart: unless-stopped
+        volumes:
+          - mongo-data:/data/db
+        healthcheck:
+          test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+          interval: 10s
+          retries: 10
+      skopax:
+        image: ghcr.io/skopax/skopax:0.1.0
+        restart: unless-stopped
+        ports:
+          - "127.0.0.1:8080:8080"
+        depends_on:
+          mongo:
+            condition: service_healthy
+        environment:
+          MONGO_URI: mongodb://mongo:27017/skopax
+          SKOPAX_BASE_URL: http://localhost:8080
+          SKOPAX_SECRET_KEY: ${SKOPAX_SECRET_KEY:?run the echo line below first}
+    volumes:
+      mongo-data:
+
+Then, in that folder, make the secret key once (it goes to `.env`, which Compose reads on every start) and start it:
+
+    echo SKOPAX_SECRET_KEY="$(openssl rand -hex 32)" >> .env
+    docker compose up -d
+
+Read the setup code below with `docker compose logs skopax` instead of `docker logs skopax`.
+
 ### From source, with Docker Compose
 
 To build the image yourself, or to try the demo Prometheus, use Docker Compose from a clone of this repository. The first line makes the secret key once and writes it to `.env`, which Compose reads on every start and passes to Skopax, so run that line only once:

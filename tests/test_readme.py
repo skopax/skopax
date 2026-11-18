@@ -527,6 +527,26 @@ def test_the_compose_quickstart_makes_the_key_once_in_the_env_file_compose_passe
     assert '.env' in read('.gitignore').split()
 
 
+def test_the_no_clone_compose_file_runs_the_current_release_and_refuses_a_missing_key():
+    # given
+    readme = read('README.md')
+    part = readme[readme.index('### With Docker Compose, no clone'):readme.index('### From source, with Docker Compose')]
+    start = part.index('Save this as `compose.yml`')
+    block = '\n'.join(line[4:] for line in part[start:part.index('Then, in that folder')].splitlines() if line.startswith('    '))
+
+    # when
+    compose = yaml.safe_load(block)
+    skopax = compose['services']['skopax']
+    repo = yaml.safe_load(read('docker-compose.yml'))['services']
+
+    # then
+    assert skopax['image'] == f'ghcr.io/skopax/skopax:{image_tag()}' and 'build' not in skopax
+    assert skopax['environment']['SKOPAX_SECRET_KEY'].startswith('${SKOPAX_SECRET_KEY:?')
+    assert {k: skopax['environment'][k] for k in ('MONGO_URI', 'SKOPAX_BASE_URL')} == {k: repo['skopax']['environment'][k] for k in ('MONGO_URI', 'SKOPAX_BASE_URL')}
+    assert compose['services']['mongo']['image'] == repo['mongo']['image'] and skopax['ports'] == repo['skopax']['ports']
+    assert f'    echo SKOPAX_SECRET_KEY={GENERATED_SECRET} >> .env\n    docker compose up -d\n' in part
+
+
 def test_every_env_name_the_docs_mention_exists_and_the_settings_list_points_at_the_setting_ids():
     # given
     known = known_names()
