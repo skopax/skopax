@@ -125,7 +125,7 @@ def keep_apart(lang: str, held: dict[str, object], shown: dict[str, str], englis
         warn_joined(lang, *bad)
 
 
-def built(packs: Iterable[tuple[str, Mapping[str, object]]]) -> Held:
+def built(packs: Iterable[tuple[str, Mapping[str, object]]], trees: Iterable[tuple[str, Mapping[str, object]]] = ()) -> Held:
     english = TEXTS[ENGLISH]
     plain: dict[str, dict[str, object]] = {ENGLISH: dict(english)}
     markdown: dict[str, dict[str, str]] = {ENGLISH: {key: value for key, value in english.items() if shape(value) == TEXT}}
@@ -149,6 +149,13 @@ def built(packs: Iterable[tuple[str, Mapping[str, object]]]) -> Held:
                 held[key] = {**held[key], **value}
             else:
                 held[key] = tuple(tuple(pair) for pair in value)
+    written: dict[str, str] = {}
+    for lang, tree in trees:
+        if isinstance(tree, Mapping) and tree and isinstance(lang, str) and primary(lang) != ENGLISH:
+            name = spelled.setdefault(lang.lower(), lang)
+            plain.setdefault(name, dict(english))
+            markdown.setdefault(name, dict(markdown[ENGLISH]))
+            written[name] = name
     for name in plain:
         if name != ENGLISH:
             keep_apart(name, plain[name], markdown[name], markdown[ENGLISH])
@@ -156,14 +163,14 @@ def built(packs: Iterable[tuple[str, Mapping[str, object]]]) -> Held:
     primaries: dict[str, str] = {}
     for low in sorted(langs):
         primaries.setdefault(primary(low), langs[low])
-    return Held(plain, markdown, langs, primaries, {name: tag for name in plain if (tag := chainlit_language(name))})
+    return Held(plain, markdown, langs, primaries, {name: tag for name in plain if (tag := written.get(name) or chainlit_language(name))})
 
 
 HELD: list[Held] = [built(())]
 
 
-def set_texts(packs: Iterable[tuple[str, Mapping[str, object]]]) -> None:
-    HELD[0] = built(packs)
+def set_texts(packs: Iterable[tuple[str, Mapping[str, object]]], trees: Iterable[tuple[str, Mapping[str, object]]] = ()) -> None:
+    HELD[0] = built(packs, list(trees))
 
 
 def reset() -> None:

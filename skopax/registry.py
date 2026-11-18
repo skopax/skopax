@@ -16,8 +16,8 @@ from packaging.version import InvalidVersion, Version
 
 import skopax
 from skopax.bounded import HOOK_TIMEOUT_S, Bound
-from skopax.chattext import STARTERS_MAX as CHAT_STARTERS_MAX, TEXT_MAX as CHAT_TEXT_MAX, chat_kept, chat_problem
-from skopax.contract import CATEGORIES, EDITIONS, FIELD_KINDS, ID, TOOL_KINDS, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Tag, TagRule, Tool
+from skopax.chattext import STARTERS_MAX as CHAT_STARTERS_MAX, TEXT_MAX as CHAT_TEXT_MAX, chat_kept, chat_problem, tree_problem
+from skopax.contract import CATEGORIES, EDITIONS, FIELD_KINDS, ID, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Tag, TagRule, Tool
 from skopax.errkind import Authored, kind as exc_kind
 from skopax.messages import LANG_TAG, msg, refusal as message_refusal
 
@@ -113,7 +113,7 @@ TAILS_MAX = 50
 HEADERS_MAX = 200
 MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
 DAYS = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
-LOCALE_PARTS = ('page', 'messages', 'writing', 'rules', 'tails', 'months', 'days', 'headers', 'chat')
+LOCALE_PARTS = ('page', 'messages', 'writing', 'rules', 'tails', 'months', 'days', 'headers', 'chat', 'chainlit')
 LOCALE_ENTRIES = ('page', 'messages', 'rules', 'tails', 'months', 'days', 'headers')
 LOCALE_LISTS = ('rules', 'tails')
 LOCALE_LIMITS = {'rules': RULES_MAX, 'tails': TAILS_MAX, 'headers': HEADERS_MAX}
@@ -133,6 +133,19 @@ SECTION_ANCHOR = re.compile(r'^## [^\n]*?\{#([a-z-]+)\}[ \t]*$', re.M)
 HELP_MAX = 160
 DROPS_MAX = 50
 SEVERITIES = ('info', 'warn', 'crit')
+CARD_LABEL_MAX = 40
+CORE_SIGS = frozenset((
+    'page-typos', 'page-layout', 'log', 'alert', 'err', '5xx', 'avg-latency', 'apm-p95', 'apm-fail', 'pvc-disk', 'db-disk', 'hpa-max', 'jvm-heap', 'varnish-cache', 'varnish-hit',
+    'kafka-consume-err', 'kafka-lag', 'airbyte-long-run', 'airbyte-failed', 'restarts', 'waiting', 'no-ready-pods', 'unavailable', 'argo', 'integrity-fail', 'cf-status', 'csp',
+    'node-not-ready', 'cert-expiry', 'ad-link', 'ad-link-moved', 'sonar-gate', 'cve-deps', 'cve-os', 'cve-scan', 'no-access', 'varnish-fields', 'varnish-cache-fields',
+    'logflow-fields', 'csp-fields', 'logs-stopped', 'logs-lag', 'lf-errors', 'lf-traffic', 'lf-latency', 'lf-turn-cost', 'lf-day-cost', 'cf-health', 'cf-cert', 'cf-incident',
+    'edge-conn', 'edge-5xx', 'kafka-broker', 'kafka-exporter', 'kafka-offline', 'kafka-urp', 'kafka-disk', 'kafka-restart', 'kafka-gone', 'kafka-send-err', 'redis-down',
+    'redis-master', 'redis-repl', 'redis-evict', 'redis-reject', 'redis-app', 'redis-app-err', 'qan-load', 'qan-slow', 'qan-stall', 'qan-calls', 'qan-total', 'pg-down',
+    'pg-saturation', 'pg-conn-jump', 'pg-idle-in-tx', 'pg-long-tx', 'pg-repl-lag', 'pg-lock-waits', 'pg-deadlocks', 'mongo-down', 'mongo-state', 'mongo-repl-lag',
+    'mongo-saturation', 'mongo-conn-jump', 'mongo-queue', 'mongo-latency', 'mongo-no-primary', 'mongo-election', 'traffic-drop', 'traffic-spike', 'node-pressure',
+    'umami-redirect', 'umami-pageviews', 'crux', 'safebrowsing', 'ga-drop', 'gtm-publish', 'ad-disapproved', 'browser-down', 'store-rating', 'play-vitals', 'crash-rate',
+    'crash-new', 'ab-test', 'ab-verdict', 'access', 'umami-access', 'other',
+))
 
 
 @dataclass(frozen=True)
@@ -184,7 +197,7 @@ def _home(plugin: object) -> tuple[str | None, Path | None]:
     if not isinstance(plugin, Plugin):
         return None, None
     hooks = plugin.hooks
-    calls = [c.run for c in plugin.checks] + [t.run for t in plugin.tools] + [plugin.test, plugin.env_instances, plugin.links, plugin.row_links, plugin.probe_targets, plugin.releases,
+    calls = [c.run for c in plugin.checks] + [t.run for t in plugin.tools] + [plugin.test, plugin.env_instances, plugin.links, plugin.row_links, plugin.probe_targets, plugin.releases, plugin.deploy_report,
                                                                              hooks.role_resolver, hooks.settings_source, hooks.oidc_token_request, hooks.org_validators, hooks.entitlement]
     for call in calls:
         module = sys.modules.get(getattr(call, '__module__', None) or '')
@@ -244,6 +257,8 @@ def _locale_problem(item: Locale) -> str | None:
         found = _rule_problem(lang, pattern, replacement)
         if found is not None:
             return found[1]
+    if tree_problem(item.chainlit):
+        return msg('plugins.why.locale_chainlit', lang=lang)
     return _chat_problem(item)
 
 
@@ -322,7 +337,7 @@ def _text_count(value: object) -> int:
 def _pack_texts(item: object) -> int:
     if not isinstance(item, Locale):
         return 1
-    held = sum(len(value) for value in (getattr(item, what, None) for what in LOCALE_ENTRIES + ('chat',)) if isinstance(value, (Mapping, tuple, list)))
+    held = sum(len(value) for value in (getattr(item, what, None) for what in LOCALE_ENTRIES + ('chat', 'chainlit')) if isinstance(value, (Mapping, tuple, list)))
     return max(1, held + (1 if isinstance(getattr(item, 'writing', ''), str) and item.writing else 0))
 
 
@@ -341,6 +356,10 @@ def _part_kept(parts: dict, what: str, lang: str, malformed: tuple[str, str]) ->
     return [(what, label, found, 1) for label, _, found in judged if found is not None]
 
 
+def _plain_tree(tree: Mapping) -> dict:
+    return {key: _plain_tree(value) if isinstance(value, Mapping) else value for key, value in tree.items()}
+
+
 def _kept_locale(item: object, index: int) -> tuple[Locale | None, list[tuple[str, str, tuple[str, str], int]]]:
     malformed = _because('plugins.why.locale', limit=WRITING_MAX)
     if not isinstance(item, Locale) or not isinstance(item.lang, str) or not LANG.fullmatch(item.lang):
@@ -350,10 +369,15 @@ def _kept_locale(item: object, index: int) -> tuple[Locale | None, list[tuple[st
     if not isinstance(parts['writing'], str) or len(parts['writing']) > WRITING_MAX:
         parts['writing'] = ''
         dropped.append(('writing', 'writing', malformed, 1))
+    if tree_problem(parts['chainlit']):
+        dropped.append(('chainlit', 'chainlit', _because('plugins.why.locale_chainlit', lang=item.lang), _text_count(parts['chainlit'])))
+        parts['chainlit'] = {}
+    elif parts['chainlit']:
+        parts['chainlit'] = _plain_tree(parts['chainlit'])
     whole_chat = parts['chat']
     parts['chat'], found = chat_kept(whole_chat)
     dropped += [('chat', _chat_part(what, key, entry, at), _chat_reason(item.lang, what, key, str(entry)), _text_count(whole_chat) if what == 'chat' else 1) for what, key, entry, at in found]
-    return (replace(item, **parts) if dropped else item), dropped
+    return (replace(item, **parts) if dropped or parts['chainlit'] is not item.chainlit else item), dropped
 
 
 def _kept_pack(item: object, index: int) -> tuple[Locale | None, list[tuple[str, str, tuple[str, str], int]], str]:
@@ -386,7 +410,8 @@ def _kept_locales(plugin: Plugin) -> tuple[Plugin, tuple[Drop, ...], tuple[tuple
                 drops.append(Drop(plugin.id, shown, part, _escaped(label), code))
         if clean is not None:
             kept.append(clean)
-    return (replace(plugin, locales=tuple(kept)) if counts else plugin), tuple(drops), tuple(counts.items())
+    changed = counts or any(a is not b for a, b in zip(kept, plugin.locales))
+    return (replace(plugin, locales=tuple(kept)) if changed else plugin), tuple(drops), tuple(counts.items())
 
 
 def locale_drops(found: Loaded) -> list[tuple[str, int, list[str]]]:
@@ -539,7 +564,7 @@ def _shape(plugin: Plugin) -> None:
         helps = check.section_help
         if not _text_map(helps) or not set(helps) <= set(check.sections) or not all(0 < len(v) <= HELP_MAX and v.isprintable() for v in helps.values()):
             raise _why('section_help', id=check.id, limit=HELP_MAX)
-        for flag in ('once', 'legacy_alias', 'background'):
+        for flag in ('once', 'legacy_alias', 'background', 'daily'):
             if not isinstance(getattr(check, flag), bool):
                 raise _why('shape', what=f'check {flag}')
         if check.timeout is not None and (not isinstance(check.timeout, int) or isinstance(check.timeout, bool) or not 1 <= check.timeout <= CHECK_TIMEOUT_MAX):
@@ -676,6 +701,38 @@ def _check(plugin: Plugin, directory: Path | None) -> None:
     if plugin.hooks.entitlement is not None and plugin.edition != 'community':
         raise _why('entitlement')
     _org_pack(plugin.org_pack)
+    _card_types(plugin)
+
+
+def _card_type_ok(item: object) -> bool:
+    return (isinstance(item, CardType) and isinstance(item.sig, str) and bool(TAG_ID.fullmatch(item.sig)) and isinstance(item.label, str)
+            and 0 < len(item.label.strip()) <= CARD_LABEL_MAX and item.label.isprintable() and isinstance(item.alias, str)
+            and (item.alias == '' or (bool(TAG_ID.fullmatch(item.alias)) and item.alias != item.sig)))
+
+
+def _card_types(plugin: Plugin) -> None:
+    for check in plugin.checks:
+        if not isinstance(check.own_findings, bool):
+            raise _why('shape', what='check own_findings')
+    if plugin.card_text is not None and not callable(plugin.card_text):
+        raise _why('shape', what='card_text')
+    if plugin.deploy_report is not None and not callable(plugin.deploy_report):
+        raise _why('shape', what='deploy_report')
+    if not isinstance(plugin.card_types, (tuple, list)):
+        raise _why('shape', what='card_types')
+    seen = set()
+    for item in plugin.card_types:
+        if not _card_type_ok(item):
+            raise _why('card_type', limit=CARD_LABEL_MAX)
+        if item.sig in CORE_SIGS:
+            raise _why('card_type_core', sig=item.sig)
+        if item.sig in seen:
+            raise _why('card_type_repeat', sig=item.sig)
+        seen.add(item.sig)
+
+
+def card_types_view(plugin: Plugin) -> list[dict]:
+    return [{'sig': t.sig, 'label': ' '.join(t.label.split()), 'alias': t.alias} for t in plugin.card_types]
 
 
 def section_anchors(text: str) -> list[str]:
@@ -1046,6 +1103,12 @@ class Registry:
             dropped = [i for i in ids if self._forced.pop(i, None) is not None]
         if dropped:
             self.refresh()
+
+    def own_findings(self) -> frozenset[str]:
+        with self._lock:
+            found = [x.plugin for x in self._snapshot if x.plugin is not None]
+        checks = [c for p in found if isinstance(getattr(p, 'checks', None), (tuple, list)) for c in p.checks]
+        return frozenset(c.id for c in checks if isinstance(c, Check) and c.own_findings is True and isinstance(c.id, str))
 
     def mark_broken(self, id: str, reason: str) -> None:
         with self._lock:

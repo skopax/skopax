@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping
 
 from skopax.contract import HttpError, InstanceInfo, PassResult, ReadError, Sweep, Transport, Unreachable, anomaly, call, send
 from skopax.kit import access
+from skopax.remote import TimedOut
 
 SAFE = "()':,!*-._~"
 QUERY_TIMEOUT = 120
@@ -30,8 +31,9 @@ KEY_MIN = 8
 
 
 class ElasticError(ReadError):
-    def __init__(self, reason: str, detail: str = '', status: int = 0, missing: bool = False, unknown: tuple[str, ...] = (), denied: bool = False):
+    def __init__(self, reason: str, detail: str = '', status: int = 0, missing: bool = False, unknown: tuple[str, ...] = (), denied: bool = False, timed_out: bool = False):
         super().__init__(status, reason)
+        self.timed_out = timed_out
         self.reason = reason
         self.detail = detail
         self.missing = missing
@@ -98,8 +100,8 @@ class Elastic:
             body = call(self.transport, 'POST', f'{self.url}/_query', self.headers(), {'query': esql}, timeout=timeout).body
         except HttpError as e:
             raise self._refused(e.code, e.body) from None
-        except Unreachable:
-            raise ElasticError('ES|QL unreachable') from None
+        except Unreachable as e:
+            raise ElasticError('ES|QL unreachable', timed_out=isinstance(e, TimedOut)) from None
         if not isinstance(body, dict):
             raise ElasticError('ES|QL answered without rows')
         names = [c.get('name') if isinstance(c, dict) else None for c in body.get('columns') or []]

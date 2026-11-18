@@ -159,7 +159,7 @@ class Route:
         return SEV_RANK.get(card.get('sev'), 0) >= SEV_RANK.get(self.min_sev, 1) and self.hit(card)
 
     def due(self, card: dict) -> bool:
-        if card.get('status') != 'open' or card.get('muted') or card.get('triage') == 'handled' or card.get('parent'):
+        if card.get('status') != 'open' or card.get('muted') or card.get('triage') == 'handled' or card.get('parent') or card.get('noRoutes') is True:
             return False
         if (self.business and not said(card)) or not self.takes(card):
             return False
@@ -168,7 +168,7 @@ class Route:
 
     def fixed_due(self, card: dict, now: float) -> bool:
         said_it = card.get('business') or {}
-        return (self.business and said_it.get('kind') == tags.INFO and bool(said(card)) and not card.get('muted') and not card.get('parent') and self.takes(card)
+        return (self.business and said_it.get('kind') == tags.INFO and bool(said(card)) and not card.get('muted') and not card.get('parent') and card.get('noRoutes') is not True and self.takes(card)
                 and closed(card, now))
 
 

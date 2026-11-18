@@ -500,9 +500,11 @@ def test_boot_env_lists_the_names_read_before_settings_exist():
     # given
     from skopax import agent, registry, settingsources
     from skopax.config import BOOT_ENV
+    from skopax.plugins import kubernetes
 
     # then
-    assert BOOT_ENV == ('SKOPAX_PLUGINS', 'SKOPAX_CONFIG_FILE', 'SKOPAX_MODE', 'SKOPAX_AGENT_TOKEN', 'SKOPAX_AGENT_RELAY_HOSTS')
+    assert BOOT_ENV == ('SKOPAX_PLUGINS', 'SKOPAX_CONFIG_FILE', 'SKOPAX_MODE', 'SKOPAX_AGENT_TOKEN', 'SKOPAX_AGENT_RELAY_HOSTS', 'SKOPAX_KUBE_LOCAL_NAME')
+    assert kubernetes.LOCAL_NAME_ENV in BOOT_ENV
     assert registry.ENV in BOOT_ENV
     assert settingsources.FILE_ENV in BOOT_ENV
     assert (agent.MODE_ENV, agent.TOKEN_ENV, agent.RELAY_ENV) == ('SKOPAX_MODE', 'SKOPAX_AGENT_TOKEN', 'SKOPAX_AGENT_RELAY_HOSTS')

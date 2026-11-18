@@ -250,7 +250,7 @@ function pluginTilesChanged(list) {
   var sig = JSON.stringify(list);
   if (sig === PLUGIN_SIG) return;
   PLUGIN_SIG = sig;
-  setPlugins(list);
+  if (setPlugins(list)) repaintCards();
   renderMeta();
   liveness();
   if (typeof TOOLS !== 'undefined' && TOOLS && Array.isArray(TOOLS.tools)) renderTools(TOOLS);

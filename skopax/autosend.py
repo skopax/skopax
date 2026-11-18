@@ -8,7 +8,7 @@ from pymongo.errors import PyMongoError
 from skopax import clock
 from skopax.engine import fmt, iso as epoch_iso, parse_iso
 from skopax.errkind import Authored, kind as error_kind
-from skopax.investigator.select import EVENT_WINDOW_S, OWN_FINDINGS, announced_twin, merged, stamps
+from skopax.investigator.select import EVENT_WINDOW_S, announced_twin, merged, own_findings, stamps
 from skopax.messages import msg
 from skopax.postdeploy import SERVER_BY
 from skopax.slack import SlackError, cut
@@ -157,9 +157,10 @@ class Fallback:
     def due(self, state: dict, runs: list[dict], now: float) -> list[tuple[dict, str]]:
         by_key = {a['key']: a for a in state.get('anomalies') or []}
         picked = []
+        own = own_findings()
         for key, fired_at in stamps(state.get('history') or []).items():
             a = by_key.get(key)
-            if not a or a.get('status') != 'open' or a.get('muted') or a.get('sev') != FALLBACK_SEV or merged(a, by_key) or a.get('src') in OWN_FINDINGS:
+            if not a or a.get('status') != 'open' or a.get('muted') or a.get('sev') != FALLBACK_SEV or merged(a, by_key) or a.get('src') in own:
                 continue
             if a.get('slackDraft') or (a.get('slackPost') or {}).get('at') or (a.get('autoSend') or {}).get('holdBy') or a.get('triage') in FALLBACK_SKIP_TRIAGE:
                 continue
@@ -200,9 +201,10 @@ class CritNow:
     def due(self, pushed: list[dict], cards: list[dict], now: float) -> list[dict]:
         by_key = {c['key']: c for c in cards}
         picked = []
+        own = own_findings()
         for p in pushed:
             a = by_key.get(p['key'], p)
-            if a.get('sev') != FALLBACK_SEV or a.get('status') != 'open' or a.get('muted') or merged(a, by_key) or a.get('src') in OWN_FINDINGS:
+            if a.get('sev') != FALLBACK_SEV or a.get('status') != 'open' or a.get('muted') or merged(a, by_key) or a.get('src') in own:
                 continue
             if a.get('slackDraft') or (a.get('slackPost') or {}).get('at') or (a.get('autoSend') or {}).get('holdBy') or a.get('triage') in STOPPED_TRIAGE:
                 continue

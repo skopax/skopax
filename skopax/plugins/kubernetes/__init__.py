@@ -11,6 +11,8 @@ from skopax.messages import msg
 from skopax.plugins.kubernetes.nodes import ID, NAME, NODES_RIGHT, PASS, PERIOD, local_nodes, run as nodes_run
 
 SA_ROOT = cluster.SA_ROOT
+LOCAL_NAME_ENV = 'SKOPAX_KUBE_LOCAL_NAME'
+LOCAL_NAME = 'local'
 SINCE_MINUTES = 60
 TAIL = 100
 SECTION_HELP = {'nodes': 'one row per Kubernetes instance from the heartbeat: status and since when, last answer, version and a summary of its cluster nodes'}
@@ -44,7 +46,9 @@ def env_instances(env: Mapping[str, str]) -> list[dict]:
         inside = (SA_ROOT / 'token').is_file()
     except OSError:
         inside = False
-    return [{'name': 'local', 'primary': 'true', 'mode': 'in-cluster'}] if inside else []
+    if not inside:
+        return []
+    return [{'name': (env.get(LOCAL_NAME_ENV) or '').strip() or LOCAL_NAME, 'primary': 'true', 'mode': 'in-cluster'}]
 
 
 def in_cluster(ctx: Context) -> bool:

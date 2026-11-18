@@ -1,4 +1,9 @@
+import logging
+from collections.abc import Callable, Iterable
+
 from skopax.engine import SEV_RANK, parse_iso
+
+log = logging.getLogger('skopax.investigator.select')
 
 ANNOUNCE_WINDOW_S = 6 * 3600
 EVENT_WINDOW_S = 6 * 3600
@@ -10,6 +15,21 @@ MAX_FAILURES = 2
 NOT_FAILURES = ('done', 'stopped', 'skipped', 'abandoned')
 SEVERITIES = ('warn', 'crit')
 NO_SERVICE = (None, '', '-')
+PLUGGED: list = [()]
+
+
+def use_own_findings(extra: Iterable[str] | Callable[[], Iterable[str]]) -> None:
+    PLUGGED[0] = extra
+
+
+def own_findings() -> frozenset[str]:
+    plugged = PLUGGED[0]
+    try:
+        extra = frozenset(plugged() if callable(plugged) else plugged)
+    except Exception as e:
+        log.warning('plug-in own findings not read, using the core ones (%s)', type(e).__name__)
+        extra = frozenset()
+    return frozenset(OWN_FINDINGS) | extra
 
 
 def stamps(history: list[dict]) -> dict[str, str]:
@@ -67,9 +87,10 @@ def eligible(state: dict, mode: str, runs: list[dict], now: float, limit: int, c
     by_key = {a['key']: a for a in state.get('anomalies') or []}
     picked = []
     kind = kinds(state.get('history') or [])
+    own = own_findings()
     for key, t in stamps(state.get('history') or []).items():
         a = by_key.get(key)
-        if not a or a.get('status') != 'open' or a.get('muted') or a.get('sev') not in SEVERITIES or merged(a, by_key) or a.get('src') in OWN_FINDINGS or ACCESS_KEY in str(a.get('ranKey') or ''):
+        if not a or a.get('status') != 'open' or a.get('muted') or a.get('sev') not in SEVERITIES or merged(a, by_key) or a.get('src') in own or ACCESS_KEY in str(a.get('ranKey') or ''):
             continue
         if now - parse_iso(t) > EVENT_WINDOW_S:
             continue

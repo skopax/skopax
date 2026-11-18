@@ -10,6 +10,10 @@ LINKISH = re.compile(r'(?i)https?://|www\.|mailto:|xmpp:|[\w.+-]@[\w-]+\.[\w-]|<
 MARKED = re.compile(r'\]\(|\]:|!\[|[<>*_`~\\&\r\n]')
 LEADING = re.compile(r'[\s#|+-]|\d+[.)]')
 TEXT, ENTRIES, PAIRS = 'text', 'entries', 'pairs'
+TREE_KEY = re.compile(r'[A-Za-z0-9_-]{1,60}')
+TREE_DEPTH = 6
+TREE_LEAVES = 1000
+TREE_LEAF_MAX = 1000
 ACTIONS = {'investigate': 'Investigate', 'resolve': 'Resolve', 'take': 'Take', 'known': 'Mark as known noise', 'mute': 'Mute'}
 TEXTS = {
     ENGLISH: {
@@ -181,3 +185,29 @@ def chat_problem(chat: object) -> tuple[str, str, str] | None:
         if found is not None:
             return found[0], key, found[1]
     return None
+
+
+def _tree_ok(node: object, depth: int, left: list[int]) -> bool:
+    if depth > TREE_DEPTH or not isinstance(node, Mapping) or not node:
+        return False
+    for key, value in node.items():
+        if not isinstance(key, str) or not TREE_KEY.fullmatch(key):
+            return False
+        if isinstance(value, Mapping):
+            if not _tree_ok(value, depth + 1, left):
+                return False
+            continue
+        left[0] -= 1
+        if left[0] < 0 or not isinstance(value, str) or not value.strip() or len(value) > TREE_LEAF_MAX or linkish(value) or marked_text(value):
+            return False
+    return True
+
+
+def marked_text(text: str) -> bool:
+    return any(MARKED.search(shown) for shown in (text, normal(text)))
+
+
+def tree_problem(tree: object) -> bool:
+    if isinstance(tree, Mapping) and not tree:
+        return False
+    return not _tree_ok(tree, 1, [TREE_LEAVES])

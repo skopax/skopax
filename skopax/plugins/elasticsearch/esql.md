@@ -8,6 +8,7 @@ What the scheduled checks read, so you can reproduce a card:
 
 Query tips:
 - Start with FROM and name the indices. A wildcard, or more than three indices, needs a @timestamp bound in WHERE, such as WHERE @timestamp >= NOW() - 1 hour.
+- A query that times out (HTTP 504, or no answer in time) over more than one day, with a lower bound like WHERE @timestamp >= NOW() - 3 days, is retried once on the last day only (NOW() - 1 day); the answer then says so, and you ask for the earlier days one at a time. A query without such a range is not retried: narrow the time range or the index.
 - Aggregate with STATS ... BY instead of reading raw lines; keep LIMIT small when you need lines.
 - first and last are reserved words: name such columns oldest and newest.
 - A field compared with a number that answers "is [text]" needs a quoted value or its .keyword field.

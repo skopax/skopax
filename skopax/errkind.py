@@ -19,5 +19,19 @@ class NoAccess(Exception):
     permission = ''
 
 
+class InvalidInstance(Authored, ValueError):
+    def __init__(self, field: str, message: str):
+        super().__init__(message)
+        self.field = field
+
+
+class SourceOwned(Exception):
+    def __init__(self, field: str, source: str, label: str | None = None, delete: bool = False):
+        from skopax.messages import msg
+        super().__init__(msg('instances.source_delete', source=source) if delete else msg('instances.source_owned', field=label or field, source=source))
+        self.field = field
+        self.source = source
+
+
 def text_of(e: BaseException) -> str:
     return e.text if isinstance(e, Authored) else kind(e)

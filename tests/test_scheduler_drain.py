@@ -24,10 +24,10 @@ def test_drain_waits_for_a_running_job_up_to_the_limit(store):
 
     s = Scheduler(store, [Job('slow', 300, 0, slow)], clock=lambda: SLOT)
     s.run_due(join=False)
+    began = time.monotonic()
     threading.Timer(0.2, release.set).start()
 
     # when
-    began = time.monotonic()
     s.drain(5)
     waited = time.monotonic() - began
 

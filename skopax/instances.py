@@ -17,7 +17,7 @@ from skopax.actors import SYSTEM
 from skopax.agentproto import KEYS_MAX, VALUE_LIMIT
 from skopax.bounded import HOOK_TIMEOUT_S, Bound
 from skopax.contract import Field, InstanceInfo, Plugin, SourceData
-from skopax.errkind import Authored, kind
+from skopax.errkind import InvalidInstance, SourceOwned, kind
 from skopax.messages import msg
 from skopax.registry import ALONE_ADDRESS, HOSTS_ADDRESS, Registry
 from skopax.sealer import SEALED, Sealer, stored_key
@@ -43,12 +43,6 @@ SEALABLE = ('secret', 'text')
 PINNED_FIELD = 'ca-pinned'
 
 
-class InvalidInstance(Authored, ValueError):
-    def __init__(self, field: str, message: str):
-        super().__init__(message)
-        self.field = field
-
-
 class InstanceExists(Exception):
     pass
 
@@ -56,13 +50,6 @@ class InstanceExists(Exception):
 class InstanceMissing(KeyError):
     def __str__(self) -> str:
         return str(self.args[0])
-
-
-class SourceOwned(Exception):
-    def __init__(self, field: str, source: str, label: str | None = None, delete: bool = False):
-        super().__init__(msg('instances.source_delete', source=source) if delete else msg('instances.source_owned', field=label or field, source=source))
-        self.field = field
-        self.source = source
 
 
 @dataclass(frozen=True)
@@ -534,7 +521,7 @@ class Instances:
         with self._guard:
             self._move_warned = {k for k in self._move_warned if k[0] != plugin}
 
-    def create(self, plugin: str, name: str, values: Mapping, enabled: bool, by: str, off_checks: Iterable[str] = ()) -> Instance:
+    def create(self, plugin: str, name: str, values: Mapping, enabled: bool, by: str, off_checks: Iterable[str] = (), kept: Mapping[str, str] | None = None) -> Instance:
         with self._write:
             found = self.registry.get(plugin)
             if found is None or found.state != 'ok':
@@ -556,7 +543,7 @@ class Instances:
             sealer = self._sealer()
             now = _stamp()
             doc = {'_id': f'{plugin}/{name}', 'plugin': plugin, 'name': name, 'enabled': bool(enabled), 'values': {k: v for k, v in clean.items() if kinds[k] != 'secret'},
-                   'secrets': {k: self._seal(sealer, v) for k, v in clean.items() if kinds[k] == 'secret'}, 'createdBy': by, 'createdAt': now, 'updatedBy': by, 'updatedAt': now}
+                   'secrets': {k: (kept or {}).get(k) or self._seal(sealer, v) for k, v in clean.items() if kinds[k] == 'secret'}, 'createdBy': by, 'createdAt': now, 'updatedBy': by, 'updatedAt': now}
             if off:
                 doc['offChecks'] = sorted(off)
             if not self.all(plugin):
@@ -568,7 +555,7 @@ class Instances:
             self._reload(live=False)
             return self.get(plugin, name)
 
-    def update(self, plugin: str, name: str, values: Mapping, by: str) -> Instance:
+    def update(self, plugin: str, name: str, values: Mapping, by: str, kept: Mapping[str, str] | None = None) -> Instance:
         with self._write:
             self._reload(live=False)
             current = self._need(plugin, name)
@@ -589,7 +576,7 @@ class Instances:
             live, unsent = self._no_secret_follows(found.plugin, fields, extra, stored, live) if current.source == ADMIN and plugin not in OWN_ADDRESS_RULE else (live, None)
             sealer = self._sealer()
             plain = {k: v if v in (None, '') else clean[k] for k, v in live.items() if fields[k].kind != 'secret'} | dict.fromkeys(stale, '')
-            sealed = {k: v if v in (None, '') else self._seal(sealer, clean[k]) for k, v in live.items() if fields[k].kind == 'secret'} | dict.fromkeys(stale, '')
+            sealed = {k: v if v in (None, '') else (kept or {}).get(k) or self._seal(sealer, clean[k]) for k, v in live.items() if fields[k].kind == 'secret'} | dict.fromkeys(stale, '')
             row = self._source_row(plugin, name)
             after = {**{k: v for k, v in (row[3] if row else {}).items() if v != ''}, **merged_values(stored.get('values') or {}, plain)}
             plain |= dict.fromkeys([k for k in orphaned(after, fields) if k in (stored.get('values') or {}) or plain.get(k)], '')
@@ -725,6 +712,58 @@ class Instances:
                 self._patch(plugin, name, by, {f'{part}.{field}': kept})
             self._reload(live=False)
             return self.get(plugin, name)
+
+    def put(self, plugin: str, name: str, values: Mapping[str, str], secrets: Mapping[str, str], by: str, primary: bool = False, sealed: Mapping[str, str] | None = None,
+            enabled: bool = True, off_checks: Iterable[str] = ()) -> Instance:
+        with self._write:
+            found = self.registry.get(plugin)
+            if found is None or found.plugin is None:
+                raise InvalidInstance('plugin', msg('instances.invalid.plugin', plugin=plugin))
+            fields = {f.key: f for f in effective_fields(found.plugin, self.extra_fields(plugin))}
+            given_sealed = dict(sealed or {})
+            for part, secret in ((values, False), (secrets, True)):
+                for key in part:
+                    if key not in fields:
+                        raise InvalidInstance(str(key), msg('instances.invalid.unknown', field=key))
+                    if (fields[key].kind == 'secret') != secret:
+                        raise InvalidInstance(key, msg('instances.invalid.misfiled', field=fields[key].label))
+            opened: dict[str, str] = {}
+            for key, value in given_sealed.items():
+                if key not in fields:
+                    raise InvalidInstance(str(key), msg('instances.invalid.unknown', field=key))
+                if fields[key].kind not in SEALABLE:
+                    raise InvalidInstance(key, msg('instances.not_sealable', field=fields[key].label))
+                if key in secrets or key in values:
+                    raise InvalidInstance(key, msg('instances.invalid.twice', field=fields[key].label))
+                plain = self._sealer().open(value) if isinstance(value, str) and value.startswith(SEALED) else None
+                if plain is None:
+                    raise InvalidInstance(key, msg('instances.secret_unreadable', field=fields[key].label))
+                opened[key] = plain
+            kept = {k: v for k, v in given_sealed.items() if fields[k].kind == 'secret'}
+            off = checks_off(found.plugin, off_checks)
+            if primary and not enabled:
+                raise InvalidInstance('primary', msg('instances.primary_disabled', name=name))
+            given = {**values, **secrets, **opened}
+            self._reload(live=False)
+            current = self.get(plugin, name)
+            if primary and current is not None and not current.enabled:
+                raise InvalidInstance('primary', msg('instances.primary_disabled', name=name))
+            if current is None:
+                self.create(plugin, name, given, enabled, by, off, kept)
+            else:
+                self.update(plugin, name, given, by, kept)
+                if not enabled and current.enabled:
+                    self.set_enabled(plugin, name, False, by)
+                if off - current.off_checks:
+                    self.set_checks(plugin, name, current.off_checks | off, by)
+            if primary:
+                self.make_primary(plugin, name, by)
+            return self.get(plugin, name)
+
+    def values_of(self, plugin: str, name: str) -> dict[str, str] | None:
+        self._reload(live=False)
+        found = self.get(plugin, name)
+        return None if found is None else dict(found.values)
 
     def _peers_ok(self, plugin: Plugin, values: Mapping[str, str], extra: Iterable[Field]) -> None:
         for f in effective_fields(plugin, extra):
@@ -904,6 +943,7 @@ class Instances:
         values = {f.key: f.default for f in all_fields if f.default and f.kind != 'secret'}
         secrets: dict[str, str] = {}
         owned: set[str] = set()
+        addresses: set[str] = set()
         problem = None
         error = None
         flag = None
@@ -927,8 +967,12 @@ class Instances:
                         owned.add(key)
                 elif value != '':
                     values[key] = value
+                    if fields[key].kind == 'url':
+                        addresses.add(key)
         if owned:
-            owned |= {k for k, f in fields.items() if f.kind == 'url' or (plugin.id == AGENT_PLUGIN and k == 'via')}
+            owners = address_owners(self.registry, plugin.id, extra)
+            sides = {owners.get(k, plugin.id) for k in owned} | {plugin.id}
+            owned |= addresses | {k for k, f in fields.items() if (f.kind == 'url' and owners.get(k, plugin.id) in sides) or (plugin.id == AGENT_PLUGIN and k == 'via' and plugin.id in sides)}
         unreadable = None
         if doc is not None:
             for key, value in (doc.get('values') or {}).items():
@@ -970,6 +1014,21 @@ class Instances:
         other = alt()
         plain = other.open(sealed) if other is not None else None
         return None if plain is None else (plain, True)
+
+
+class Writer:
+    def __init__(self, instances: Instances):
+        self._instances = instances
+
+    def adopt_sealed(self, plugin: str, name: str, field: str, sealed: str, by: str) -> None:
+        self._instances.adopt_sealed(plugin, name, field, sealed, by)
+
+    def put(self, plugin: str, name: str, values: Mapping[str, str], secrets: Mapping[str, str], by: str, primary: bool = False, sealed: Mapping[str, str] | None = None,
+            enabled: bool = True, off_checks: Iterable[str] = ()) -> None:
+        self._instances.put(plugin, name, values, secrets, by, primary, sealed, enabled, off_checks)
+
+    def get(self, plugin: str, name: str) -> Mapping[str, str] | None:
+        return self._instances.values_of(plugin, name)
 
 
 @dataclass

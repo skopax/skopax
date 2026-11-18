@@ -12,11 +12,12 @@ from urllib.parse import urlsplit
 
 import regex
 
-from skopax import remote, tags
+from skopax import engine, remote, tags
 from skopax.agent import AgentError, RemoteAgent, declared, http_link, rev_of
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
 from skopax.contract import Context, Field, InstanceInfo, Knowledge, Locale, OrgPack, Panel, Peer, Plugin, ReadError, SourceDown, TestResult
 from skopax.engine import parse_iso
+from skopax.deployhook import DeployHooks
 from skopax.errkind import kind
 from skopax.kube import Kube
 from skopax.messages import LANG_TAG, msg
@@ -274,6 +275,7 @@ class Runtime:
         self._release_runs: dict[tuple[str, str | None], tuple[dict, threading.Event]] = {}
         self._releasing = threading.Lock()
         self._releases_failed: set[str] = set()
+        self._deploy_hooks = DeployHooks(self)
         self._files: dict[tuple[str, str], tuple[bytes, str] | None] = {}
         self._checked: dict[tuple[str, str], list] = {}
         self._compiled: dict[tuple[str, str, str], regex.Pattern] = {}
@@ -294,14 +296,17 @@ class Runtime:
             self._compiled = {}
         steps = [('migrate', self._catch_up)] if self.migrate is not None else []
         after = [(name, part) for name, part in (('languages', self.languages), ('heal', self.after_refresh)) if part is not None]
-        for name, part in steps + [('registry', self.registry.refresh), ('state', self.state.refresh), ('instances', self.instances.refresh), ('org', self._refresh_org)] + after:
-            if name in ('registry', 'instances', 'org'):
+        for name, part in steps + [('registry', self.registry.refresh), ('daily', self._publish_daily), ('state', self.state.refresh), ('instances', self.instances.refresh), ('org', self._refresh_org)] + after:
+            if name in ('registry', 'daily', 'instances', 'org'):
                 self._step(name, part)
                 continue
             try:
                 self._calls.call(('step', name), lambda name=name, part=part: self._step(name, part), self.hook_timeout)
             except TimedOut as e:
                 self._step_failed(name, e)
+
+    def _publish_daily(self) -> None:
+        engine.set_daily(engine.daily_keys_of(self.registry.usable()))
 
     def _step(self, name: str, part: Callable[[], None]) -> None:
         try:
@@ -751,6 +756,9 @@ class Runtime:
             out += kept.get(plugin.id, [])
         return out
 
+    def deploy_reports(self, deploys: list[dict], started_at: float, now: float) -> list[dict]:
+        return self._deploy_hooks.ask(deploys, started_at, now)
+
     def _release_groups(self, plugin: Plugin, found: list[Instance], read: Callable[[str], object]) -> dict[str | None, list[dict]]:
         segments = {None if i.primary else i.name for i in found} if plugin.fields else {None}
         groups: dict[str | None, list[dict]] = {}
@@ -948,6 +956,9 @@ class Runtime:
                     self._warn(('tag', plugin.id, rule.tag), 'plug-in %s: its tag rule for %s is ignored, there is no tag of that name', plugin.id, rule.tag)
                 out[rule.tag] = tuple(dict.fromkeys((*out.get(rule.tag, ()), *rule.terms)))
         return out
+
+    def card_texts(self) -> list[tuple[str, Callable[[dict], str | None]]]:
+        return [(plugin.id, plugin.card_text) for plugin in self._plugins() if plugin.card_text is not None]
 
     def ui_hosts(self) -> tuple[str, ...]:
         hosts = set()

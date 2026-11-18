@@ -52,7 +52,7 @@ from skopax.config import ConfigurationError, Settings
 from skopax.contract import CodeHost, OrgPack, SourceDown
 from skopax.engine import Applied, PassResult, apply, iso as epoch_iso, new_pushes
 from skopax.enrich import Enricher
-from skopax.investigator import JOB_OFFSET as INVESTIGATE_OFFSET, JOB_PERIOD as INVESTIGATE_PERIOD, Investigator, prompt
+from skopax.investigator import JOB_OFFSET as INVESTIGATE_OFFSET, JOB_PERIOD as INVESTIGATE_PERIOD, Investigator, prompt, select
 from skopax.investigator.gate import Gate, GateDown
 from skopax.investigator.smalltalk import DEFAULTS as SMALL_TALK_DEFAULTS, Reply, SmallTalk, WINDOW_S as SMALL_TALK_WINDOW_S
 from skopax.investigator.tools import CORE_TOOLS, FIX_FIELDS, Effects, Sources, allowed_link_hosts
@@ -91,8 +91,8 @@ from skopax.setup import BadCode, SetupDone, SetupGate, render_form
 from skopax import migrations
 from skopax.errkind import NoAccess, Refusal, kind, text_of
 from skopax.features import BY_ID as FEATURE_BY_ID, FEATURES, Features, Locked, off_text
-from skopax.instances import InstanceExists, InstanceMissing, Instances, InvalidInstance, PluginState, SourceOwned, checks_off
-from skopax.registry import Registry, describe, locale_drops
+from skopax.instances import InstanceExists, InstanceMissing, Instances, InvalidInstance, PluginState, SourceOwned, Writer, checks_off
+from skopax.registry import Registry, card_types_view, describe, locale_drops
 from skopax.plugai import PluginAi
 from skopax.plugintools import PluginTools
 from skopax.runtime import Runtime
@@ -468,6 +468,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     redaction.use_rules(runtime.redaction_rules, runtime.redaction_timed_out)
     tags.use_rules(runtime.tag_rules)
     tags.use_tags(runtime.tag_defs)
+    tags.use_texts(runtime.card_texts, runtime.hook_timeout)
+    select.use_own_findings(registry.own_findings)
     outbound = [base_settings.language]
     writing: list[dict[str, str]] = [{}]
     language_state: dict = {'warned': None}
@@ -598,7 +600,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     jira_links = JiraLinks(store, jira, settings.jira_links, notes, base_url, settings.jira_developer_field)
     assigner = Assigner(store, slack, settings, base_url, notes, notices, posts=card_posts)
     postdeploy = PostDeploy(store, prom_for, jira, lambda: features.on('postdeploy'), base_url, assess=lambda: investigator.available(), projects=settings.release_projects, serving=prom_watching,
-                            primary_name=lambda: getattr(runtime.instances.primary(PROMETHEUS_ID), 'name', None), release_template=lambda: settings.jira_release_name)
+                            primary_name=lambda: getattr(runtime.instances.primary(PROMETHEUS_ID), 'name', None), release_template=lambda: settings.jira_release_name, plugin_reports=lambda rows, started, now: runtime.deploy_reports(rows, started, now))
     settle = Settle(store, settings.release_settle)
     throttle = Throttle(db)
 
@@ -1040,7 +1042,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def refresh_languages() -> None:
         locales = [locale for _, locale in runtime.locales()]
         messages.set_catalogs([(locale.lang, locale.messages) for locale in locales])
-        set_chat_texts([(locale.lang, locale.chat) for locale in locales])
+        set_chat_texts([(locale.lang, locale.chat) for locale in locales], [(locale.lang, locale.chainlit) for locale in locales])
+        chatui.set_translations([(locale.lang, locale.chainlit) for locale in locales])
         writing[0] = {locale.lang: locale.writing for locale in locales if locale.writing}
         outbound_language()
 
@@ -1112,7 +1115,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             icon = f'/plugins/{plugin.id}/icon.svg'
             pages = [{'tab': p.tab, 'label': p.label.strip(), 'group': p.group, 'icon': icon} for p in plugin.panels if p.label and serves]
             tiles.append({'id': plugin.id, 'name': plugin.name, 'icon': icon, 'tab': tab, 'passes': list(dict.fromkeys(names)), 'instances': instances_out, 'pages': pages,
-                          'queued': any(f'{plugin.id}.{check.id}' in queued for check in plugin.checks)})
+                          'queued': any(f'{plugin.id}.{check.id}' in queued for check in plugin.checks), 'types': card_types_view(plugin)})
         return tiles
 
     def pass_health(checks, info, passes: dict) -> dict:
@@ -1273,7 +1276,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         boot_id = secrets.token_hex(8)
-        runtime.migrate = lambda: migrations.attempt(db, registry, boot_id)
+        writer = Writer(instances)
+        runtime.migrate = lambda: migrations.attempt(db, registry, boot_id, writer=writer)
+        checked = False
         try:
             store.ensure_indexes()
             users.ensure_indexes()
@@ -1285,16 +1290,19 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             await asyncio.to_thread(instances.ensure_indexes)
             await asyncio.to_thread(mcptools_auth.ensure_indexes)
             try:
-                caught_up = await asyncio.to_thread(migrations.wait_and_run, db, registry, boot_id)
+                caught_up = await asyncio.to_thread(migrations.wait_and_run, db, registry, boot_id, writer=writer)
             except PyMongoError as e:
                 log.warning('%s', msg('migrations.lease_error', error=kind(e)))
                 caught_up = None
+            checked = True
             if caught_up is not None:
                 runtime.migrate = None
             await asyncio.to_thread(runtime.refresh)
             await asyncio.to_thread(aikey.refresh)
             await asyncio.to_thread(sso_secret.refresh)
         except PyMongoError as e:
+            if not checked:
+                migrations.stop_if_required(registry, e)
             log.warning('index setup skipped, Mongo not reachable (%s)', kind(e))
         else:
             await asyncio.to_thread(boot_backfills)
@@ -1707,7 +1715,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/', response_class=HTMLResponse)
     def page() -> str:
-        return render_page({**store.load(), 'archiveHours': settings.archive_hours}, runtime.page_scripts())
+        return render_page({**store.load(), 'archiveHours': settings.archive_hours, 'plugins': plugin_tiles(store.server_runs()['passes'])}, runtime.page_scripts())
 
     @app.get('/c/{num}', response_class=HTMLResponse)
     def card_page(num: int) -> HTMLResponse:

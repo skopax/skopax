@@ -57,6 +57,10 @@ class NotJson(Unreachable):
     pass
 
 
+class TimedOut(Unreachable):
+    pass
+
+
 @dataclass(frozen=True)
 class Reply:
     body: object
@@ -506,8 +510,10 @@ def sender(context: ssl.SSLContext | None = None, follow: bool = True, limit: in
             raise HttpError(e.code, where, error_body(e)) from None
         except (http.client.HTTPException, OSError, ValueError) as e:
             if expired.is_set():
-                raise Unreachable(f'{where} gave no full answer within {budget:g} s') from None
+                raise TimedOut(f'{where} gave no full answer within {budget:g} s') from None
             reason = getattr(e, 'reason', e)
+            if isinstance(reason, TimeoutError):
+                raise TimedOut(f"{where} unreachable ({kind(reason)})") from None
             raise Unreachable(f"{where} unreachable ({kind(reason) if isinstance(reason, BaseException) else reason})") from None
         finally:
             timer.cancel()
