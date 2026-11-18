@@ -15,11 +15,22 @@ Until an issuer, a client ID other than the default or a secret is entered, the 
 
 **Claims come from** says which token gives the email, name and roles. `id-token` (the default) reads the ID token: the scope must include `openid` (the default scope is `openid email profile`), and the token must carry this login's nonce. `access-token` reads the access token instead, for providers that put the roles only there: it must then be a JWT signed with the provider's keys, issued by the provider, for this client ID. Every sign-in uses PKCE with S256 and checks `state`; tokens are RS256 only, and their times may be 30 seconds off.
 
-The email is the first of `email`, `preferred_username` and `sub` that looks like an email address, in lower case. An `email_verified` of false is always refused; with Require verified email on, a token without `email_verified` true is refused too.
+The email is the first of `email`, `preferred_username` and `sub` that looks like an email address, in lower case. An `email_verified` of false is always refused; with Require verified email on, a token without `email_verified` true is refused too. While Allowed email domains is set or New accounts is `added-only`, only the token's own `email` claim counts, and only with `email_verified` true (see [Who may sign in with SSO](#who-may-sign-in-with-sso)).
 
 The client secret is write-only: it is sealed with `SKOPAX_SECRET_KEY` (or the generated key) and never shown, logged or written to the change history. A secret from the environment or a settings source is read-only in Admin. Changes to these settings are written to the activity log as access lines, which only admins see.
 
 **The switch is an emergency stop.** Switching SSO off ends every SSO session on the page and refuses every MCP token issued before the stop, on every pod within 30 seconds, and they stay ended when SSO is switched on again: people sign in again. API tokens made from single sign-on sessions are refused too: every API token made from a single sign-on session that exists when SSO is switched off stays refused after it is switched back on, so make new ones afterwards; Admin > Access & sign-in tags them "Refused by the SSO stop". Password logins go on. After the stop, Slack still acts with an SSO user's stored role; to end that, disable the person in Admin. This holds wherever the switch is set (Admin, the environment or a settings source). Admin asks before switching off, and before a Reset that turns SSO off, which reads "Reset (turns SSO off)". Admin refuses to switch SSO off while no active local admin with a password exists, unless the request comes with the bootstrap token or an API token made from a password session, so that someone can still sign in; an API token made from a single sign-on session does not count, because it stops working as soon as single sign-on is off.
+
+## Who may sign in with SSO
+
+Two settings on the Single sign-on card decide who an SSO sign-in lets in. Both are checked before any account is made, changed or linked, and a refused page sign-in shows the same "The login could not be completed." as every other refusal, so the page sign-in never tells whether an account exists.
+
+Both settings rely on the provider's verified `email` claim. While either is set, the address that is checked against the domains, matched to an account and given to a new account is the token's own `email` claim, never `preferred_username` or `sub`, and `email_verified` must be true, whatever Require verified email says. A token without both is refused before anything is written: on the page with the usual "The login could not be completed.", over MCP with "This account may not sign in".
+
+- **Allowed email domains** (`sso.allowed-domains`): email domains such as `example.com`, separated by commas. A domain matches exactly and without regard to case: `example.com` lets in `ana@example.com` but not `ana@eu.example.com`, and there are no wildcards. Empty lets every domain in. It applies to every SSO sign-in, on the page and over MCP, also to existing SSO accounts and to linking a local account. Add user refuses an SSO account (the "Signs in with SSO" switch on) and an SSO link at another domain, with a message under the email; a password-only local account may have any domain, so a break-glass admin stays possible.
+- **New accounts** (`sso.new-accounts`): `anyone` (the default) gives an account to anyone the identity provider signs in; `added-only` lets in only people who already have one, added in Admin or made by an earlier sign-in. A refused new email gets no account, and the page sign-in writes one access line to the activity log. A local account with an SSO link still links under `added-only`.
+
+**With a public provider, `anyone` means anyone.** When the issuer signs in any account at all, for example a consumer Google sign-in, `anyone` lets every such account in as the default role. Set allowed domains, or `added-only` and add people in Admin.
 
 While the provider cannot be reached, new sign-ins fail, people already signed in stay signed in, and the notices strip says so. Removing someone at the identity provider does not disable them in Skopax: to offboard a person, disable them in Admin > Access & sign-in.
 
@@ -50,9 +61,25 @@ Or a groups claim:
 
 A role set by the identity provider or a resolver is read-only in Admin, marked "from sign-in provider"; change it at the provider. An admin can still disable the person in Admin. A sign-in never demotes the last active admin: the role is kept, a warning is logged, and a later sign-in demotes them once another active admin exists.
 
-In Slack, a local account acts with its stored role, and an SSO user with the resolver's answer or else the role of their last sign-in. When a resolver fails, the person is not an operator in Slack.
+In Slack, a local account acts with its stored role, and an SSO user with the resolver's answer or else the role of their last sign-in.
+
+**When a resolver is down.** A resolver that raises is asked once more if at least half of its 5 seconds are left. If it still fails, the person may go on with their last known role: Last known role (minutes) in Admin > General (`roles.stale-max-minutes`, or `SSO_ROLE_STALE_MAX_MINUTES`; 0 to 1440, default 60) is how old that role may be.
+
+- **Page and MCP.** When a resolver gave the person their stored role within that many minutes, they sign in with it, and one warning names the plug-in, the failure and how old the role is ("using the last known role from 12 min ago"). Such a sign-in does not renew the role, so the limit counts from the last answer the resolver gave. Without a role from a resolver, with an older one, or for a person signing in for the first time, the sign-in is refused (the page fails with no session, MCP answers 503).
+- **Slack.** The last answer of the operator check is used while it is younger than the same limit; after that, the person is not an operator in Slack.
+- **0** turns this off: a failing resolver refuses everyone, on every channel.
 
 API tokens have their own role, never above their creator's, and stop working when their creator is disabled.
+
+## Adding people
+
+Admin > Access & sign-in > Users > Add user opens a card with the email, an optional name (empty uses the part of the email before the `@`), the role and, while SSO is set up and on, a "Signs in with SSO" switch that starts on. The card checks the fields before it sends anything and shows each problem under its field.
+
+- **Signs in with SSO, no password:** an SSO-only account. It is an SSO account added ahead of its first sign-in, with the role picked here, marked as set in Admin. It has no password, so a password login with that email fails like any wrong password. The list shows it as "SSO only" and "Not signed in yet" until the first sign-in opens it. That first sign-in, on the page or over MCP, needs no link, but it needs a token whose own `email` claim is this email and whose `email_verified` is true, whatever Require verified email says, as for a link. Once it is open, it signs in like any SSO account. An account added before this rule counts as open. Its role then follows [Roles](#roles): a resolver or a role map match still wins over the role set here, and with neither the role set here stays.
+- **Signs in with SSO and a password:** a local account with an SSO link waiting 7 days for its first sign-in, as below.
+- **Switch off, or SSO not on:** a local account with a password of 12-256 characters.
+
+Until its first sign-in opens it, an SSO-only account can get a password with Set password: it becomes a local account with the password and an SSO link that waits 7 days. Once it has signed in, it stays an SSO account without a password.
 
 ## Local accounts and SSO
 
@@ -94,6 +121,9 @@ Everything on the Single sign-on and MCP cards can also come from the environmen
 - `SSO_ROLES_CLAIM` / `sso.roles-claim`: default `roles`.
 - `SSO_ROLE_MAP` / `sso.role-map`: a JSON list; unset means from `SKOPAX_ADMIN_ROLE` / `SKOPAX_OPERATOR_ROLE`.
 - `SSO_DEFAULT_ROLE` / `sso.default-role`: `viewer` (default) or `operator`.
+- `SSO_NEW_ACCOUNTS` / `sso.new-accounts`: `anyone` (default) or `added-only`. Another value stops the boot.
+- `SSO_ALLOWED_DOMAINS` / `sso.allowed-domains`: email domains separated by commas; default empty, every domain. A value that is not a domain stops the boot.
+- `SSO_ROLE_STALE_MAX_MINUTES` / `roles.stale-max-minutes`: 0 to 1440, default 60; see [When a resolver is down](#roles).
 - `MCP_CLIENT_ID` / `mcp.client-id` (default `skopax-mcp`), `MCP_AUDIENCE` / `mcp.audience` (default empty: the MCP client ID), `MCP_ALLOWED_CLIENTS` / `mcp.allowed-clients` (default empty: any client), `MCP_REQUIRED_ROLE` / `mcp.required-role` (default `SKOPAX_MCP`), `MCP_ISSUER` / `mcp.issuer`, `MCP_SCOPE` / `mcp.scope` (default `mcp`) and `MCP_RESOURCE_URL` / `mcp.resource-url` (the public address of Skopax that MCP clients see, without `/mcp`, when it differs from the base URL).
 
 The compose file passes none of these through; add the ones you use under the `skopax` service's `environment:` in `docker-compose.yml`.

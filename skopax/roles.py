@@ -2,12 +2,13 @@ import copy
 import json
 import logging
 import threading
+import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
 from skopax.messages import msg
 from skopax.tunables import Invalid
-from skopax.users import ROLES
+from skopax.users import RESOLVED_AT, ROLES
 
 log = logging.getLogger('skopax.roles')
 
@@ -93,40 +94,55 @@ class ResolverError(Exception):
     def __init__(self, plugin: str, why: str):
         self.plugin = plugin
         self.why = why
-        super().__init__(f'the role resolver of plug-in {plugin} failed: {why}')
+        self.line = f'the role resolver of plug-in {plugin} failed: {why}'
+        super().__init__(self.line)
 
 
 class Resolvers:
-    def __init__(self, hooks: Callable[[], list[tuple[str, Hook]]], timeout: float = RESOLVER_TIMEOUT_S):
+    def __init__(self, hooks: Callable[[], list[tuple[str, Hook]]], timeout: float = RESOLVER_TIMEOUT_S, clock: Callable[[], float] = time.monotonic):
         self.hooks = hooks
         self.timeout = timeout
+        self.clock = clock
 
     def resolve(self, user: dict, channel: str) -> str | None:
         try:
             hooks = list(self.hooks())
         except Exception as e:
-            raise self.failed('runtime', type(e).__name__) from None
+            raise ResolverError('runtime', type(e).__name__) from None
         for plugin, hook in hooks:
-            future = submit(hook, copy.deepcopy(user), channel)
-            try:
-                value = future.result(timeout=self.timeout)
-            except FutureTimeout:
-                future.cancel()
-                raise self.failed(plugin, f'no answer within {self.timeout:g} s') from None
-            except Exception as e:
-                raise self.failed(plugin, type(e).__name__) from None
+            value = self.asked(plugin, hook, user, channel)
             if value is None:
                 continue
             if value not in ROLES:
-                raise self.failed(plugin, 'it answered a value that is not a role')
+                raise ResolverError(plugin, 'it answered a value that is not a role')
             return value
         return None
 
-    @staticmethod
-    def failed(plugin: str, why: str) -> ResolverError:
-        error = ResolverError(plugin, why)
-        log.warning('%s', error)
-        return error
+    def asked(self, plugin: str, hook: Hook, user: dict, channel: str) -> str | None:
+        end = self.clock() + self.timeout
+        for attempt in range(2):
+            future = submit(hook, copy.deepcopy(user), channel)
+            try:
+                return future.result(timeout=max(0.0, end - self.clock()))
+            except Exception as e:
+                if isinstance(e, FutureTimeout) and not future.done():
+                    future.cancel()
+                    raise ResolverError(plugin, f'no answer within {self.timeout:g} s') from None
+                if attempt == 0 and end - self.clock() >= self.timeout / 2:
+                    continue
+                raise ResolverError(plugin, type(e).__name__) from None
+
+
+def said_down(error: ResolverError, minutes: int | None = None) -> None:
+    log.warning('%s', error.line if minutes is None else msg('roles.last_known', error=error.line, minutes=minutes))
+
+
+def last_known(doc: dict | None, now: float, limit_minutes: int) -> tuple[str, int] | None:
+    at = (doc or {}).get(RESOLVED_AT)
+    if not limit_minutes or not doc or doc.get('roleFrom') != 'resolver' or doc.get('role') not in ROLES or isinstance(at, bool) or not isinstance(at, (int, float)):
+        return None
+    age = now - at
+    return (doc['role'], int(age // 60)) if 0 <= age <= limit_minutes * 60 else None
 
 
 def busy() -> int:

@@ -539,7 +539,7 @@ async function initActions() {
   function slackLabel(a) { return waiting(a) ? 'Send draft to Slack' : a.slackPost ? 'Send again' : 'Send to Slack'; }
   function slackTip(a) {
     if (waiting(a)) return 'Post the Slack draft on this card as the message, with the anomaly card attached below it; click twice to confirm';
-    if (a.slackPost) return 'Already posted ' + dayhm(a.slackPost.at) + ' by ' + draftBy(a.slackPost.by) + '; this posts it to the channel again' + (draftOf(a) ? ', with the draft' : '') + '; click twice to confirm';
+    if (a.slackPost) return 'Already posted ' + dayhm(a.slackPost.at) + ' by ' + draftBy(a.slackPost.by, (a.slackDraft || {}).by) + '; this posts it to the channel again' + (draftOf(a) ? ', with the draft' : '') + '; click twice to confirm';
     return 'Post this anomaly to the Slack channel; click twice to confirm';
   }
   function slackButton(a, b) {
@@ -796,7 +796,7 @@ async function initActions() {
   }
   function repSlackTip(r) {
     if (waiting(r)) return 'Post the Slack draft as the message, with the report summary, its flagged rows and the shipped tickets under it; click twice to confirm';
-    if (r.slackPost) return 'Already posted ' + dayhm(r.slackPost.at) + ' by ' + draftBy(r.slackPost.by) + '; this posts it to the channel again' + (draftOf(r) ? ', with the draft' : '') + '; click twice to confirm';
+    if (r.slackPost) return 'Already posted ' + dayhm(r.slackPost.at) + ' by ' + draftBy(r.slackPost.by, (r.slackDraft || {}).by) + '; this posts it to the channel again' + (draftOf(r) ? ', with the draft' : '') + '; click twice to confirm';
     return 'Post this deploy report to the Slack channel: release, services, clean or flagged, the summary, the flagged rows and the shipped tickets; click twice to confirm';
   }
   var REASSESS_TIP = "Run the investigator's assessment of this report again (Opus). Replaces the summary; never posts to Slack again.";
@@ -830,7 +830,7 @@ async function initActions() {
       b.dataset.tip = b.title = repSlackTip(r);
       b.addEventListener('click', function () { repSlackClick(r, b); });
       var st = el('span', 'slack-st');
-      if (r.slackPost) st.innerHTML = slackLink(r.slackPost.permalink, 'Sent to Slack ' + dayhm(r.slackPost.at)) + esc(' · ' + draftBy(r.slackPost.by) + (r.slackPost.draft ? ' · draft' : ''));
+      if (r.slackPost) st.innerHTML = slackLink(r.slackPost.permalink, 'Sent to Slack ' + dayhm(r.slackPost.at)) + esc(' · ' + draftBy(r.slackPost.by, (r.slackDraft || {}).by) + (r.slackPost.draft ? ' · draft' : ''));
       box.append(b);
       if (autoArmed(r)) {
         var hold = holdBtn(true);
@@ -1213,7 +1213,7 @@ async function initActions() {
       var sx = latest['slack:' + a.key], ux = latest['slack-update:' + a.key], ss = box.closest('article.inc').querySelector('.notif .slack-st'), sp = a.slackPost || {}, sn = sp.stateNote;
       if (ss) ss.innerHTML = (sn ? slackLink(sn.permalink, 'Status note ' + dayhm(sn.at), sn.text) + ' · ' : '') +
         (!ux ? '' : ux.status === 'done' ? slackLink((ux.slack || {}).permalink, 'Thread update ' + dayhm(ux.doneAt || ux.requestedAt)) + ' · ' : '<span class="st s-failed">Thread update failed</span> <span class="muted">' + esc(ux.result || '') + '</span> · ') + (!sx ? '' : sx.status === 'done'
-        ? slackLink((sx.slack || {}).permalink || sp.permalink, 'Sent to Slack ' + dayhm(sx.doneAt || sx.requestedAt)) + ' · ' + esc(draftBy(sx.requestedBy)) + (sx.draft ? ' · draft' : '')
+        ? slackLink((sx.slack || {}).permalink || sp.permalink, 'Sent to Slack ' + dayhm(sx.doneAt || sx.requestedAt)) + ' · ' + esc(draftBy(sx.requestedBy, (a.slackDraft || {}).by)) + (sx.draft ? ' · draft' : '')
         : '<span class="st s-failed">Slack failed</span> ' + esc(dayhm(sx.failedAt || sx.requestedAt)) + ' <span class="muted">' + esc(sx.result || '') + '</span>');
     });
     var pending = all.filter(function (x) { return x.status === 'requested'; });

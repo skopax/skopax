@@ -422,7 +422,7 @@ class Investigator:
             self.store.add_investigation(record)
             self.store.add_activity('run', 'investigator', f"assessing deploy report · {report.get('summary')}" if report else 'chat message · private' + (' · via MCP' if mcp else '') if chat_ask else f"{'slack ' if slack_ask else ''}ask by {action.get('requestedBy')} · {prompt.flat(ask)[:ASK_LINE]}" if ask else f"run started · {mode} · {', '.join(keys)}" + (f" · via MCP by {action.get('requestedBy')}" if mcp else ''), runId=run_id)
             if keys or ask or report:
-                sections = self.sources.plugin_tools.knowledge() if self.sources.plugin_tools is not None else ()
+                sections = self.sources.plugin_tools.knowledge(() if chat_ask else cards) if self.sources.plugin_tools is not None else ()
                 toolbox = Toolbox(self.sources, self.store, self.effects, keys, mode, now, self.base_url, run_id=run_id, ask=bool(ask), report_id=report_id or None, read_only=quick,
                                   strict=self.strict_tools, asker=action.get('requestedBy') if ask and not quick else None, chat=chat_ask, language=self.language,
                                   web=web_from(self.web_domains, self.web_searches, self.web_fetches), settings=self.settings, role=self.role_of(action))

@@ -16,7 +16,8 @@ const OFF = 'Off \u00b7 set up, paused';
 
 const FIELDS = [
   {key: 'url', label: 'URL', kind: 'url', required: true, default: '', help: 'The streamable HTTP endpoint of the MCP server.', choices: [], low: null, high: null, showIf: null, ui: false},
-  {key: 'preset', label: 'Catalog entry', kind: 'choice', required: false, default: '', help: 'Set by the catalog entry you added it from.', choices: ['atlassian', 'notion', 'github', 'google-drive'], low: null, high: null, showIf: null, ui: false},
+  {key: 'preset', label: 'Catalog entry', kind: 'choice', required: false, default: '', help: 'Set by the catalog entry you added it from.', choices: ['atlassian', 'notion', 'github', 'google-drive'], low: null, high: null, showIf: null, ui: false,
+    choiceLabels: {atlassian: 'Atlassian (Jira and Confluence)', notion: 'Notion', github: 'GitHub', 'google-drive': 'Google Drive'}, group: 'connection'},
   {key: 'auth', label: 'Sign-in', kind: 'choice', required: false, default: 'none', help: 'No sign-in, a header with a token, or OAuth.', choices: ['none', 'header', 'oauth'], low: null, high: null, showIf: null, ui: false},
   {key: 'header-name', label: 'Header name', kind: 'text', required: false, default: 'Authorization', help: 'The header that carries the token.', choices: [], low: null, high: null, showIf: ['auth', 'header'], ui: false},
   {key: 'header-value', label: 'Header value', kind: 'secret', required: true, default: '', help: 'For example Bearer and the token.', choices: [], low: null, high: null, showIf: ['auth', 'header'], ui: false},
@@ -274,6 +275,44 @@ async function theGroupListsTheBlankServerThePresetsAndTheSoonItemsAndTheGridLea
   assert.ok(!u.calls.some((c) => c[1].indexOf('mcp-tools') >= 0), 'and the presets are never asked for');
   u.w.close();
   console.log('PASS MCP panel: the popup group lists MCP server, the presets and the soon items; the category grid leaves mcp-tools out');
+}
+
+async function theCatalogEntryIsAChipThatCanBeChangedOrCleared() {
+  //given
+  const t = await boot();
+  const {doc, w} = t;
+  await open(t);
+  await openPopup(t);
+
+  //when
+  presetPick(doc, 'github').click();
+  await wait(80);
+  const chip = field(doc, 'preset').querySelector('.int-entry-chip');
+  const picked = [chip.hidden, chip.querySelector('.int-entry-n').textContent, fieldIn(doc, 'preset').hidden, fieldIn(doc, 'preset').value];
+  chip.querySelector('.int-entry-change').click();
+  const changing = [chip.hidden, fieldIn(doc, 'preset').hidden, doc.activeElement === fieldIn(doc, 'preset'), [...fieldIn(doc, 'preset').options].map((o) => o.textContent)];
+  setValue(w, fieldIn(doc, 'preset'), 'notion');
+  const changed = [chip.hidden, chip.querySelector('.int-entry-n').textContent, fieldIn(doc, 'preset').hidden, doc.activeElement === chip.querySelector('.int-entry-change')];
+  chip.querySelector('.int-entry-clear').click();
+  const cleared = [chip.querySelector('.int-entry-n').textContent, fieldIn(doc, 'preset').value, chip.querySelector('.int-entry-clear').hidden, doc.activeElement === chip.querySelector('.int-entry-change')];
+  setValue(w, panel(doc).querySelector('.int-name-in'), 'main');
+  const from = t.calls.length;
+  panel(doc).querySelector('.int-save').click();
+  await wait(120);
+  const post = t.calls.slice(from).filter((c) => c[0] === 'POST')[0];
+  await openInstance(t, 'east');
+  const edit = field(doc, 'preset').querySelector('.int-entry-n').textContent;
+
+  //then
+  assert.deepStrictEqual(picked, [false, 'GitHub', true, 'github'], 'the entry shows as a chip with its name and the select stays out of the way');
+  assert.deepStrictEqual(changing, [true, false, true, ['No catalog entry', 'Atlassian (Jira and Confluence)', 'Notion', 'GitHub', 'Google Drive']], 'Change brings back the select, with readable names');
+  assert.deepStrictEqual(changed, [false, 'Notion', true, true]);
+  assert.deepStrictEqual(cleared, ['No catalog entry', '', true, true], 'the clear button leaves no catalog entry');
+  assert.ok(post && !('preset' in post[2].values), 'a cleared entry is not sent');
+  assert.strictEqual(edit, 'Notion');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS MCP panel: the catalog entry is a chip with its name, which Change turns back into a select and the clear button empties');
 }
 
 async function presetPrefillsUrlAndAuthAndNeverAValue() {
@@ -1110,7 +1149,7 @@ async function aWarnHealthShowsAsAWarningAndNeedsAttention() {
 
   //when
   await open(t);
-  const dot = tile(doc, 'mcp-tools').querySelector('.int-health .int-dot');
+  const dot = tile(doc, 'mcp-tools').querySelector('.int-st .int-dot');
   const need = doc.querySelector('#integrations .int-sub').textContent;
   await openInstance(t, 'live');
   const inst = panel(doc).querySelector('.int-ihealth .int-dot');
@@ -1531,6 +1570,7 @@ async function backFromAddInstanceWaitsForAnInFlightWrite() {
   await comingSoonEntryShowsAndHasNoAddControl();
   await theGroupListsTheBlankServerThePresetsAndTheSoonItemsAndTheGridLeavesMcpOut();
   await presetPrefillsUrlAndAuthAndNeverAValue();
+  await theCatalogEntryIsAChipThatCanBeChangedOrCleared();
   await aPresetThatNeedsAClientSaysSoAboveTheOauthFields();
   await warningsShowBeforeConfirmAndTheSwitchStaysOff();
   await confirmPostsAndShowsWho();

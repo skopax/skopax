@@ -1,0 +1,19 @@
+[build-system]
+requires = ["uv_build>=0.13.8,<0.14"]
+build-backend = "uv_build"
+
+[project]
+name = "skopax-couchbase"
+version = "0.1.0"
+description = "Example plug-in for Skopax: watches a Couchbase cluster through a Prometheus instance."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.15,<3.16"
+
+[project.entry-points."skopax.plugins"]
+couchbase = "skopax_couchbase:PLUGIN"
+
+[tool.uv.build-backend]
+module-name = "skopax_couchbase"
+module-root = ""

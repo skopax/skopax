@@ -11,6 +11,8 @@ Prometheus, Kubernetes, the observability plug-ins, GitLab, Jira, Confluence, Ar
 
 Admin > Integrations shows a tile for each connected plug-in, with its health and an on/off switch, and "+ Add integration" lists the plug-ins that can be set up. A plug-in is on unless an admin switched it off, and one that needs instances does nothing until it has an enabled, valid instance.
 
+A plug-in that is installed as a package or loaded from `SKOPAX_PLUGINS` shows as Custom in Admin > Integrations, with a Custom chip to list only those; built-in plug-ins carry no mark.
+
 Editions are `community` and `enterprise`. Skopax runs as `community` unless a plug-in's entitlement hook says otherwise. A plug-in that needs another edition is listed under "+ Add integration" with its edition but cannot be set up or switched on, and it contributes nothing. A plug-in that needs a different Skopax version is listed there too, but cannot be set up; the reason shows when you point at it, and it contributes nothing. A plug-in that fails to load or breaks one of the plug-in rules contributes nothing either; the notices strip in Admin names it and says why. Plug-ins add no web routes.
 
 A plug-in page is a `Panel` with a `label`, a `script` and a sidebar `group`: `main`, `observe` (the default), `activity`, `connect` or `more`. While the plug-in serves, the page is a row at the end of that group, tagged plug-in and drawn with the plug-in's own icon. The label is 1 to 24 printable characters on one line, with spaces at either end dropped. The tab id is lower-case letters, digits and dashes, 2 to 31 characters; it is not a built-in page, not one of the ids the page reserves (`sub-anoms`, `fold-anoms`), and not a page tab another plug-in already declared. A plug-in that breaks one of these rules is not loaded, and the notices strip in Admin shows why.
@@ -254,6 +256,14 @@ Atlassian Cloud only, through the same gateway, with its own email and API token
 
 ### Slack
 
+Skopax posts a card to the channel, keeps the post up to date, and answers questions asked in its thread (an illustration, drawn from the message Skopax sends):
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="images/slack-thread-dark.png">
+<source media="(prefers-color-scheme: light)" srcset="images/slack-thread-light.png">
+<img src="images/slack-thread-light.png" alt="A chat channel where Skopax posted critical card 42, checkout p95 latency, and a thread where bob asks whether only checkout is slow and Skopax answers from the metrics and logs">
+</picture>
+
 - **Creating the Slack app:** at api.slack.com/apps choose "Create New App", then "From a manifest", pick your workspace and paste [`examples/slack-app-manifest.yaml`](../examples/slack-app-manifest.yaml). It turns on Socket Mode, buttons and dialogs, the events the listener reads (mentions, and messages in channels, private channels and direct messages) and every bot scope listed below, plus `im:history`, `reactions:write` and `app_mentions:read`. Install the app, copy the bot token (`xoxb-...`), and create an app-level token with the `connections:write` scope under Basic Information (`xapp-...`).
 - **Fields:** `bot-token` (`xoxb-...`) and `app-token` (`xapp-...`, for Socket Mode, which the Slack listener needs). The channel that cards and deploy reports go to is the setting Channel in Admin > General > Slack (`slack.channel`, or `SLACK_CHANNEL`).
 - **Test connection** checks the token shapes first, then calls Slack's `auth.test` and fails naming the scopes the bot lacks: `chat:write`, `files:write`, `channels:read` or `groups:read`, `users:read` and `users:read.email`, plus `channels:history` or `groups:history` and `files:read` with an app token. With an app token it then asks `apps.connections.open` for a Socket Mode address, so a revoked app token fails Test. The notices strip names a scope the main channel or direct messages need (see [Notices](setup.md#notices)); the result is stored, so every server copy shows it.
@@ -341,6 +351,14 @@ The page scan is off by default; switch it on with `website.page-scan`. It needs
 ## Outside MCP servers
 
 The MCP server plug-in, which ships with Skopax, lets investigator runs and chat answers use the tools of an outside MCP server, such as Atlassian, Notion or GitHub. It is the other direction from the MCP server switch and Connect MCP, which let AI assistants call Skopax.
+
+A connection's panel in Admin > Integrations, with its access, the tools it can look up and its knowledge source:
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="images/integrations-dark.png">
+<source media="(prefers-color-scheme: light)" srcset="images/integrations-light.png">
+<img src="images/integrations-light.png" alt="Admin, Integrations: five connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches">
+</picture>
 
 - **Adding one.** In Admin > Integrations, "+ Add integration" has a group "MCP servers and company knowledge": a blank MCP server, the catalog entries Atlassian (Jira and Confluence), Notion, GitHub and Google Drive, and the entries coming soon. A catalog entry fills in the URL and the sign-in, and shows the form of the token as a hint, never a value. Google Drive is marked Preview, since Google still calls its server a preview, and needs a client id and secret from your own Google Cloud console. Each connection is an instance of the plug-in; open it from the MCP server tile to reach its panel. A new connection is always saved off, and it can be turned on only once its warnings are confirmed (see [Who can read what](#who-can-read-what)). At most 20 connections.
 - **Sign-in.** Three modes: none; a header with a token (Header name, `Authorization` by default, and Header value, for example `Bearer` and the token), sealed like every instance secret; or OAuth. For OAuth, choose Connect in the connection's panel. Skopax reads the sign-in details the server publishes (its OAuth protected resource metadata, without which there is nowhere to sign in), requires PKCE with S256, and registers itself where the sign-in server allows it. Where it does not, enter a client id and secret from the server's admin console and register `<SKOPAX_BASE_URL>/api/admin/mcp-tools/oauth/callback` there as the redirect address. OAuth needs `SKOPAX_BASE_URL` to be an https address (or `http://localhost` or `http://127.0.0.1` with a port), and the admin who started a sign-in must finish it within 10 minutes. The sign-in is renewed 5 minutes before it expires. When a renewal is refused, or the sign-in expires with nothing to renew it, the sign-in ends: the connection leaves runs, the notices strip says it needs a new sign-in, and Reconnect starts one. A renewal that fails with a server error, a timeout or a rate limit is tried again after 1 minute, or after the server's `Retry-After` (at most 1 hour), and the current sign-in is used while it lasts. When several Skopax pods share the database, one of them renews and the others wait for it, so a renewal is never sent twice.

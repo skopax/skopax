@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Mapping
 from urllib.parse import urlsplit
 
-from skopax import brand
+from skopax import brand, logs
 from skopax.messages import msg
 from skopax.users import ROLES
 
@@ -26,11 +26,15 @@ MCP_DIVE_CAP = 6
 SSO_SCOPE = 'openid email profile'
 SSO_CLAIM_MODES = ('id-token', 'access-token')
 SSO_CLIENT_AUTH = ('auto', 'post', 'basic')
+SSO_NEW_ACCOUNTS = ('anyone', 'added-only')
+DOMAIN = re.compile(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', re.IGNORECASE)
 RELEASE_NAME = '{project} {yyyy}-{mm}-{dd}'
 RELEASE_PLACEHOLDER = re.compile(r'\{([^{}]*)\}')
 RELEASE_PARTS = ('project', 'yyyy', 'mm', 'dd')
 RELEASE_NEEDS = ('project', 'dd', 'mm')
 NEW_ENV_PREFIX = 'SKOPAX_'
+ROLES_STALE_MINUTES = 60
+LOG_FORMAT_KEY, LOG_COLOR_KEY, LOG_LEVEL_KEY = 'core.log-format', 'core.log-color', 'core.log-level'
 BOOT_ENV = ('SKOPAX_PLUGINS', 'SKOPAX_CONFIG_FILE', 'SKOPAX_MODE', 'SKOPAX_AGENT_TOKEN', 'SKOPAX_AGENT_RELAY_HOSTS', 'SKOPAX_KUBE_LOCAL_NAME')
 ORG_ABOUT_MAX = 300
 SETTING_TEXT_MAX = 20000
@@ -107,6 +111,8 @@ class Settings:
     sso_claims: str = 'id-token'
     sso_client_auth: str = 'auto'
     sso_require_verified_email: bool = False
+    sso_new_accounts: str = 'anyone'
+    sso_allowed_domains: tuple[str, ...] = ()
     sso_roles_claim: str = 'roles'
     sso_role_map: str = ''
     sso_session_idle_hours: int = SESSION_IDLE_HOURS
@@ -221,6 +227,10 @@ class Settings:
     jira_developer_field: str = ''
     alert_twins: tuple[str, ...] = ()
     release_ignore: tuple[str, ...] = ()
+    log_format: str = logs.TEXT
+    log_color: str = logs.ALWAYS
+    log_level: str = logs.DEFAULT_LEVEL
+    roles_stale_max_minutes: int = ROLES_STALE_MINUTES
 
     @property
     def release_projects(self) -> tuple[str, ...]:
@@ -233,6 +243,24 @@ class Settings:
 
 def csv_of(raw: str) -> tuple[str, ...]:
     return tuple(p for p in (part.strip() for part in (raw or '').split(',')) if p)
+
+
+def bad_domains(entries: tuple[str, ...]) -> list[str]:
+    return [p for p in entries if not DOMAIN.fullmatch(p) or p.rsplit('.', 1)[-1].isdigit()]
+
+
+def sso_domains(raw: str) -> tuple[str, ...]:
+    entries = csv_of(raw)
+    if wrong := bad_domains(entries):
+        raise ConfigurationError(msg('config.sso_domains_invalid', entry=repr(wrong[0][:80])))
+    return entries
+
+
+def sso_new_accounts(raw: str) -> str:
+    value = (raw or '').strip().lower() or SSO_NEW_ACCOUNTS[0]
+    if value not in SSO_NEW_ACCOUNTS:
+        raise ConfigurationError(msg('config.sso_new_accounts_invalid', value=repr(value[:80])))
+    return value
 
 
 def pairs_of(raw: str) -> tuple[tuple[str, str], ...]:
@@ -371,6 +399,11 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
     if len(org_about) > ORG_ABOUT_MAX:
         raise ConfigurationError(msg('settings.env_too_long', name='SKOPAX_ORG_ABOUT', limit=ORG_ABOUT_MAX))
 
+    def log_setting(key: str, var: str, allowed: tuple[str, ...], default: str) -> str:
+        return logs.chosen(key, resolve(config[key], config), allowed, default) if key in config else logs.chosen(var, env.get(var, ''), allowed, default)
+
+    log_color = logs.NEVER if env.get(logs.NO_COLOR_ENV) else log_setting(LOG_COLOR_KEY, logs.COLOR_ENV, logs.COLORS, logs.ALWAYS)
+
     release_template = get('jira.release-name', 'JIRA_RELEASE_NAME', RELEASE_NAME).strip() or RELEASE_NAME
     release_refused = release_problem(release_template)
     if release_refused:
@@ -399,6 +432,8 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         sso_claims=choice('sso.claims', get('sso.claims', 'SSO_CLAIMS', SSO_CLAIM_MODES[0]), SSO_CLAIM_MODES),
         sso_client_auth=choice('sso.client-auth', get('sso.client-auth', 'SSO_CLIENT_AUTH', SSO_CLIENT_AUTH[0]), SSO_CLIENT_AUTH),
         sso_require_verified_email=get('sso.require-verified-email', 'SSO_REQUIRE_VERIFIED_EMAIL', 'false').strip().lower() == 'true',
+        sso_new_accounts=sso_new_accounts(get('sso.new-accounts', 'SSO_NEW_ACCOUNTS', SSO_NEW_ACCOUNTS[0])),
+        sso_allowed_domains=sso_domains(get('sso.allowed-domains', 'SSO_ALLOWED_DOMAINS', '')),
         sso_roles_claim=get('sso.roles-claim', 'SSO_ROLES_CLAIM', 'roles').strip() or 'roles',
         sso_role_map=role_map,
         sso_session_idle_hours=idle_hours,
@@ -513,4 +548,9 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         jira_developer_field=get('jira.developer-field', 'JIRA_DEVELOPER_FIELD', '').strip(),
         alert_twins=csv_of(get('core.alert-twins', 'SKOPAX_ALERT_TWINS', '')),
         release_ignore=csv_of(get('core.release-ignore', 'SKOPAX_RELEASE_IGNORE', '')),
+        log_format=log_setting(LOG_FORMAT_KEY, logs.FORMAT_ENV, logs.FORMATS, logs.TEXT),
+        log_color=log_color,
+        log_level=log_setting(LOG_LEVEL_KEY, logs.LEVEL_ENV, logs.LEVEL_NAMES, logs.DEFAULT_LEVEL),
+        roles_stale_max_minutes=bounded('roles.stale-max-minutes', get('roles.stale-max-minutes', 'SSO_ROLE_STALE_MAX_MINUTES', str(ROLES_STALE_MINUTES)).strip() or str(ROLES_STALE_MINUTES), 0, 1440,
+                                        ROLES_STALE_MINUTES),
     )

@@ -267,6 +267,7 @@ async function enterOpensTheCardOrThePage() {
   const card = [doc.getElementById('pal').hidden, doc.querySelector('#anoms article.inc.linked') && doc.querySelector('#anoms article.inc.linked').dataset.key];
   doc.getElementById('search-btn').click();
   type(w, doc, 'latency');
+  const coreMeta = options(doc, 'Pages').map((o) => o.querySelector('.pal-m').textContent);
   key(w, q(), 'Enter');
   const page = [doc.getElementById('pal').hidden, doc.getElementById('panel-lat').hidden, doc.getElementById('tab-lat').getAttribute('aria-current')];
   doc.getElementById('search-btn').click();
@@ -278,6 +279,7 @@ async function enterOpensTheCardOrThePage() {
   doc.getElementById('search-btn').click();
   type(w, doc, 'demo');
   const plugin = rows(doc, 'Pages');
+  const pluginMeta = options(doc, 'Pages').map((o) => o.querySelector('.pal-m').textContent);
   doc.querySelector('#pal-list [role="option"]').click();
 
   //then
@@ -285,6 +287,8 @@ async function enterOpensTheCardOrThePage() {
   assert.deepStrictEqual(page, [true, false, 'page'], 'Enter on a page shows that panel and marks its row');
   assert.deepStrictEqual(svc, [true, true, ['log|shop|ERROR|npe']], 'a service shows its cards');
   assert.deepStrictEqual(plugin, ['Demo board'], 'plug-in rows are pages too');
+  assert.deepStrictEqual(pluginMeta, ['plug-in'], 'and say they come from a plug-in');
+  assert.deepStrictEqual(coreMeta, [''], 'a core page says nothing of the kind');
   assert.ok(!doc.getElementById('panel-demo').hidden, 'a click opens a row as Enter does');
   assert.deepStrictEqual(errors, []);
   await close();

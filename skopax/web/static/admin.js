@@ -64,8 +64,9 @@ async function adminApi(method, path, body) {
   if (!r.ok) {
     var detail = null, field = null;
     try { var failure = await r.json(); detail = failure.detail; field = failure.field; } catch (e) {}
-    if (Array.isArray(detail)) detail = detail.map(function (d) { return d && d.msg; }).filter(Boolean).join('; ');
-    throw {code: r.status, detail: typeof detail === 'string' && detail ? detail : null, field: typeof field === 'string' ? field : null};
+    var list = Array.isArray(detail);
+    if (list) detail = detail.map(function (d) { return d && d.msg; }).filter(Boolean).join('; ');
+    throw {code: r.status, detail: typeof detail === 'string' && detail ? detail : null, field: typeof field === 'string' ? field : null, list: list};
   }
   if (r.status === 204) return null;
   return r.json();
@@ -755,6 +756,8 @@ function paintAiKey(said) {
 }
 
 var ACCESS = null, ACCESS_SEQ = 0, ACCESS_N = null, ACCESS_ROLES = ['viewer', 'operator', 'admin'], ACCESS_IDP = ['claim', 'resolver'], ACCESS_LINKS = ['pending', 'bound', 'expired'];
+var ACCESS_PW_MIN = 12, ACCESS_PW_MAX = 256, ACCESS_EMAIL = /^[^@\s]{1,64}@[^@\s]{1,189}$/, ACCESS_ROLE_LABELS = {viewer: 'Viewer', operator: 'Operator', admin: 'Admin'};
+var ACCESS_ADD_ID = 'acc-add-user', ACCESS_ADD_FIELDS = ['email', 'name', 'role', 'sso', 'password'], ACCESS_NEED_PW = 'Enter a password of ' + ACCESS_PW_MIN + '-' + ACCESS_PW_MAX + ' characters';
 function accText(tag, cls, text) {
   var e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -886,13 +889,24 @@ function renderAccess() {
   if (!box || !ACCESS) return;
   ACCESS_SEQ++;
   var lists = accShell(box);
+  var kept = lists.querySelector('.acc-add-user');
   lists.textContent = '';
   box = lists;
   var users = accSection('Users', ACCESS.users.length);
+  var head = accText('div', 'acc-users-h'), open = accText('button', 'btn small acc-add-open', 'Add user'), said = accText('span', 'adm-msg acc-users-msg');
+  open.type = 'button';
+  open.setAttribute('aria-expanded', kept ? 'true' : 'false');
+  open.setAttribute('aria-controls', ACCESS_ADD_ID);
+  said.setAttribute('role', 'status');
+  head.appendChild(users.querySelector('h3'));
+  head.appendChild(open);
+  head.appendChild(said);
+  users.insertBefore(head, users.firstChild);
   var ut = accTable(['Email', 'Name', 'Role', 'Source', 'Disabled', 'SSO link', '']);
   ACCESS.users.forEach(function (u) { ut.body.appendChild(accUserRow(u)); });
   users.appendChild(ut.wrap);
-  users.appendChild(accAddUser());
+  if (kept) { users.appendChild(kept); accAddSync(kept); }
+  open.addEventListener('click', function () { accAddOpen(users, open); });
   box.appendChild(users);
   var tokens = accSection('API tokens', ACCESS.tokens.length);
   tokens.appendChild(accText('div', 'acc-secret-slot'));
@@ -942,12 +956,20 @@ function accUserRow(u) {
   ctl.className = 'acc-ctl';
   var msg = accText('span', 'adm-msg');
   msg.setAttribute('role', 'status');
+  var fresh = u.source === 'sso' && u.opened === false;
   if (u.source !== 'sso') accLinkCell(linkCell, u, msg);
+  else if (fresh) linkCell.appendChild(accText('span', 'muted acc-not-yet', 'Not signed in yet'));
   sel.addEventListener('change', function () { accPatch(u, {role: sel.value}, msg, function () { sel.value = u.role; off.checked = !!u.disabled; }, 'Role set to ' + sel.value); });
   off.addEventListener('change', function () { accPatch(u, {disabled: off.checked}, msg, function () { sel.value = u.role; off.checked = !!u.disabled; }, off.checked ? 'Disabled' : 'Enabled'); });
-  if (u.source === 'sso') { ctl.appendChild(msg); return tr; }
-  var reset = accText('button', 'btn sec small acc-reset', 'Reset password');
+  if (u.source === 'sso') {
+    var only = accText('span', 'tag plain acc-sso-only', 'SSO only');
+    only.title = 'Signs in with SSO and has no password';
+    ctl.appendChild(only);
+    if (!fresh) { ctl.appendChild(msg); return tr; }
+  }
+  var reset = accText('button', 'btn sec small ' + (fresh ? 'acc-setpw' : 'acc-reset'), fresh ? 'Set password' : 'Reset password');
   reset.type = 'button';
+  if (fresh) reset.title = 'Give this account a password: it becomes a local account, and its SSO link waits 7 days for the first sign-in';
   var form = accText('span', 'acc-pw-form');
   form.hidden = true;
   var pw = accInput('password', 'password', 256, 'New password for ' + u.email);
@@ -965,7 +987,7 @@ function accUserRow(u) {
   ctl.appendChild(msg);
   reset.addEventListener('click', function () { form.hidden = !form.hidden; if (!form.hidden) pw.focus(); });
   cancel.addEventListener('click', function () { form.hidden = true; pw.value = ''; accMsg(msg, ''); });
-  save.addEventListener('click', function () { accPatch(u, {password: pw.value}, msg, null, 'Password reset'); });
+  save.addEventListener('click', function () { accPatch(u, {password: pw.value}, msg, null, fresh ? 'Password set' : 'Password reset'); });
   return tr;
 }
 function accLink(u) {
@@ -999,33 +1021,196 @@ function accLinkCell(cell, u, msg) {
   cell.appendChild(again);
   again.addEventListener('click', function () { again.disabled = true; accPatch(u, {ssoLink: true}, msg, function () { again.disabled = false; }, 'SSO link allowed again'); });
 }
+function accSsoOn() { return !!(SSO && SSO.active); }
+function accAddField(key, label, req, control, help) {
+  var id = 'acc-new-' + key, bool = key === 'sso';
+  var lab = bool || key === 'role' ? '<span class="int-lab" id="' + id + '-l">' + esc(label) + '</span>' : '<label for="' + id + '" id="' + id + '-l">' + esc(label) + (req ? '<span class="int-req"> *</span>' : '') + '</label>';
+  return '<div class="int-field" data-key="' + key + '"' + (bool ? ' data-kind="bool"' : '') + '><div class="int-lrow">' + lab + '</div>' + control +
+    '<p class="adm-help" id="' + id + '-h">' + esc(help) + '</p><p class="acc-ferr" id="' + id + '-err" role="alert" hidden></p></div>';
+}
+function accAddHtml(sso) {
+  var described = function (key) { return ' aria-describedby="acc-new-' + key + '-h acc-new-' + key + '-err"'; };
+  var seg = '<input type="hidden" name="role" value="viewer"><div class="int-seg" role="radiogroup" aria-labelledby="acc-new-role-l"' + described('role') + '>' +
+    ACCESS_ROLES.map(function (r) { return '<button type="button" class="int-seg-b" role="radio" data-value="' + r + '" aria-checked="false" tabindex="-1">' + ACCESS_ROLE_LABELS[r] + '</button>'; }).join('') + '</div>';
+  return '<div class="acc-add-head"><h4 id="acc-add-h">Add user</h4></div>' +
+    accAddField('email', 'Email', true, '<input id="acc-new-email" class="int-in" name="email" type="email" maxlength="254" autocomplete="off" spellcheck="false" autocapitalize="off"' + described('email') + '>', '') +
+    accAddField('name', 'Name', false, '<input id="acc-new-name" class="int-in" name="name" type="text" maxlength="120" autocomplete="off"' + described('name') + '>', 'Empty uses the part of the email before the @') +
+    accAddField('role', 'Role', true, seg, 'Viewers read, operators work cards, admins also manage users and settings') +
+    (sso ? accAddField('sso', 'Signs in with SSO', false, '<button type="button" id="acc-new-sso" class="int-switch int-tog" role="switch" aria-checked="true" aria-labelledby="acc-new-sso-l"' + described('sso') + '></button>',
+      'The first SSO sign-in with this email, verified by your provider, opens this account') : '') +
+    accAddField('password', 'Password', true, '<div class="int-sec-row"><input id="acc-new-password" class="int-in" name="password" type="password" maxlength="' + ACCESS_PW_MAX + '" autocomplete="new-password"' + described('password') + '>' +
+      '<button type="button" class="int-eye" aria-pressed="false" aria-controls="acc-new-password" aria-label="Show password">Show</button></div>', '') +
+    '<div class="int-foot"><span class="adm-msg int-form-msg" role="status"></span><div class="int-foot-row"><div class="int-acts int-foot-acts">' +
+    '<button type="button" class="btn sec small acc-add-cancel">Cancel</button><button type="submit" class="btn small acc-add-go">Add user</button></div></div></div>';
+}
+function accAddPart(f, key) { return f.querySelector('.int-field[data-key="' + key + '"]'); }
+function accAddInput(f, key) {
+  var w = accAddPart(f, key);
+  return w && (w.querySelector('input.int-in') || w.querySelector('[role=switch]') || w.querySelector('.int-seg-b[aria-checked="true"]') || w.querySelector('.int-seg-b'));
+}
+function accAddSso(f) {
+  var sw = f.querySelector('#acc-new-sso');
+  return !!sw && sw.getAttribute('aria-checked') === 'true';
+}
+function accAddMark(f, key, text) {
+  var w = accAddPart(f, key);
+  if (!w) return false;
+  var err = w.querySelector('.acc-ferr'), input = w.querySelector('input.int-in');
+  err.textContent = text || '';
+  err.hidden = !text;
+  if (input) { if (text) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid'); }
+  return true;
+}
+function accAddSay(f, text, bad) {
+  var m = f.querySelector('.int-form-msg');
+  m.textContent = text || '';
+  m.classList.toggle('bad', !!bad);
+  m.classList.toggle('ok', !bad && !!text);
+}
+function accAddSync(f) {
+  var sso = accSsoOn(), part = accAddPart(f, 'sso');
+  if (sso && !part) {
+    var box = document.createElement('div');
+    box.innerHTML = accAddHtml(true);
+    accAddPart(f, 'password').before(accAddPart(box, 'sso'));
+    accAddWireSso(f);
+  } else if (!sso && part) {
+    part.remove();
+  }
+  accAddPaint(f);
+}
+function accAddPaint(f) {
+  var need = !accAddSso(f), w = accAddPart(f, 'password'), label = w.querySelector('label'), mark = label.querySelector('.int-req');
+  if (need && !mark) label.appendChild(accText('span', 'int-req', ' *'));
+  if (!need && mark) mark.remove();
+  var input = w.querySelector('input.int-in');
+  if (need) input.setAttribute('aria-required', 'true'); else input.removeAttribute('aria-required');
+  w.querySelector('.adm-help').textContent = need ? ACCESS_PW_MIN + '-' + ACCESS_PW_MAX + ' characters' : 'Optional: leave empty for an SSO-only account';
+  var role = f.querySelector('[name=role]');
+  [].forEach.call(f.querySelectorAll('.int-seg-b'), function (b) {
+    var on = b.dataset.value === role.value;
+    b.setAttribute('aria-checked', String(on));
+    b.tabIndex = on ? 0 : -1;
+  });
+}
+function accAddProblems(f) {
+  var email = f.querySelector('[name=email]').value.trim(), name = f.querySelector('[name=name]').value.trim(), pw = f.querySelector('[name=password]').value, out = [];
+  if (!email) out.push(['email', 'Enter an email']);
+  else if (!ACCESS_EMAIL.test(email)) out.push(['email', 'Enter a valid email address']);
+  if (name.length > 120) out.push(['name', 'A name is at most 120 characters']);
+  if ((pw || !accAddSso(f)) && (pw.length < ACCESS_PW_MIN || pw.length > ACCESS_PW_MAX)) out.push(['password', ACCESS_NEED_PW]);
+  return out;
+}
+function accAddBody(f) {
+  var body = {email: f.querySelector('[name=email]').value.trim(), name: f.querySelector('[name=name]').value.trim(), role: f.querySelector('[name=role]').value}, pw = f.querySelector('[name=password]').value;
+  var sw = f.querySelector('#acc-new-sso');
+  if (pw || !accAddSso(f)) body.password = pw;
+  if (sw) body.sso = accAddSso(f);
+  return body;
+}
+function accAddFocus(f, key) {
+  var to = accAddInput(f, key);
+  if (to) to.focus();
+}
+function accAddClose(f, back) {
+  var open = document.querySelector('#access .acc-add-open');
+  f.remove();
+  if (open) open.setAttribute('aria-expanded', 'false');
+  if (back && open) open.focus();
+}
+function accAddOpen(section, open) {
+  var held = section.querySelector('.acc-add-user');
+  if (held) { accAddFocus(held, 'email'); return; }
+  var f = accAddUser();
+  section.appendChild(f);
+  open.setAttribute('aria-expanded', 'true');
+  accAddFocus(f, 'email');
+}
+function accAddWire(f) {
+  var role = f.querySelector('[name=role]'), bs = [].slice.call(f.querySelectorAll('.int-seg-b'));
+  var pick = function (b) { role.value = b.dataset.value; accAddPaint(f); b.focus(); };
+  bs.forEach(function (b) { b.addEventListener('click', function () { pick(b); }); });
+  f.querySelector('.int-seg').addEventListener('keydown', function (e) {
+    var at = bs.indexOf(e.target), n = bs.length, to = null;
+    if (at < 0) return;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') to = (at + 1) % n;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') to = (at - 1 + n) % n;
+    else if (e.key === 'Home') to = 0;
+    else if (e.key === 'End') to = n - 1;
+    else if (e.key === ' ' || e.key === 'Enter') to = at;
+    if (to === null) return;
+    e.preventDefault();
+    pick(bs[to]);
+  });
+  accAddWireSso(f);
+  var eye = f.querySelector('.int-eye'), pw = f.querySelector('[name=password]');
+  eye.addEventListener('click', function () {
+    var on = eye.getAttribute('aria-pressed') !== 'true';
+    pw.type = on ? 'text' : 'password';
+    eye.setAttribute('aria-pressed', String(on));
+    eye.setAttribute('aria-label', (on ? 'Hide' : 'Show') + ' password');
+    eye.textContent = on ? 'Hide' : 'Show';
+  });
+  f.addEventListener('input', function (e) {
+    var w = e.target.closest('.int-field');
+    if (w) accAddMark(f, w.dataset.key, '');
+  });
+  f.querySelector('.acc-add-cancel').addEventListener('click', function () { accAddClose(f, true); });
+}
+function accAddWireSso(f) {
+  var sw = f.querySelector('#acc-new-sso');
+  if (!sw) return;
+  sw.addEventListener('click', function () {
+    sw.setAttribute('aria-checked', String(!accAddSso(f)));
+    accAddMark(f, 'sso', '');
+    accAddMark(f, 'password', '');
+    accAddPaint(f);
+  });
+  sw.addEventListener('keydown', function (e) {
+    if (e.key !== ' ' && e.key !== 'Enter') return;
+    e.preventDefault();
+    sw.click();
+  });
+  sw.addEventListener('keyup', function (e) { if (e.key === ' ') e.preventDefault(); });
+}
 function accAddUser() {
-  var f = accText('form', 'acc-form acc-add-user');
-  var email = accInput('email', 'email', 254, 'Email'), name = accInput('name', 'text', 120, 'Name'), role = accRoleSelect('viewer', null, 'role'), pw = accInput('password', 'password', 256, 'Password');
-  var go = accText('button', 'btn small', 'Add user');
-  go.type = 'submit';
-  var msg = accText('span', 'adm-msg');
-  msg.setAttribute('role', 'status');
-  f.appendChild(accField('Email', email));
-  f.appendChild(accField('Name', name));
-  f.appendChild(accField('Role', role));
-  f.appendChild(accField('Password', pw));
-  f.appendChild(go);
-  f.appendChild(msg);
+  var f = accText('form', 'int-form acc-add-user');
+  f.id = ACCESS_ADD_ID;
+  f.noValidate = true;
+  f.setAttribute('aria-labelledby', 'acc-add-h');
+  f.innerHTML = accAddHtml(accSsoOn());
+  accAddPaint(f);
+  accAddWire(f);
+  var go = f.querySelector('.acc-add-go');
   f.addEventListener('submit', async function (e) {
     e.preventDefault();
+    ACCESS_ADD_FIELDS.forEach(function (k) { accAddMark(f, k, ''); });
+    accAddSay(f, '');
+    var bad = accAddProblems(f);
+    if (bad.length) {
+      bad.forEach(function (p) { accAddMark(f, p[0], p[1]); });
+      accAddFocus(f, bad[0][0]);
+      return;
+    }
     go.disabled = true;
-    accMsg(msg, 'Adding\u2026', false);
+    f.dataset.busy = '1';
+    accAddSay(f, 'Adding\u2026');
     try {
-      var made = await adminApi('POST', '/api/admin/users', {email: email.value.trim(), name: name.value.trim(), role: role.value, password: pw.value});
+      var made = await adminApi('POST', '/api/admin/users', accAddBody(f));
       accApply(function (a) { if (made && made.email) a.users = a.users.concat([made]); });
+      accAddClose(f, false);
       var fresh = await accReload();
       renderAccess();
       accStale(fresh);
-      accNote(accFormMsg('acc-add-user'), 'User added');
+      var said = document.querySelector('#access .acc-users-msg'), open = document.querySelector('#access .acc-add-open');
+      if (said) { said.textContent = 'User added'; said.classList.add('ok'); }
+      if (open) open.focus();
     } catch (err) {
-      accNote(accLive(msg, accFormMsg('acc-add-user')), accError(err, 'Not added, try again'), true);
+      delete f.dataset.busy;
       go.disabled = false;
+      var named = err && err.field && ACCESS_ADD_FIELDS.indexOf(err.field) >= 0 && err.detail && accAddMark(f, err.field, err.detail);
+      if (named) { accAddSay(f, ''); accAddFocus(f, err.field); }
+      else accAddSay(f, err && err.detail && !err.list ? err.detail : 'Not added, try again', true);
     }
   });
   return f;
@@ -1141,19 +1326,21 @@ function accShowToken(name, token) {
 }
 
 var SSO = null, SSO_TESTING = false, SSO_MAP_MAX = 50, SSO_VALUE_MAX = 4000, SSO_SEALED = 'client-secret', SSO_MAP = 'role-map', SSO_VERIFIED = 'require-verified-email', SSO_KEEP = '+sso', MCP_FAILED = false;
-var SSO_MAIN = ['issuer', 'client-id', 'client-secret', 'scope', 'claims', 'roles-claim', 'role-map', 'default-role', 'require-verified-email'];
+var SSO_MAIN = ['issuer', 'client-id', 'client-secret', 'scope', 'claims', 'roles-claim', 'role-map', 'default-role', 'require-verified-email', 'new-accounts', 'allowed-domains'];
 var SSO_ADVANCED = ['authorize-url', 'token-url', 'jwks-url', 'client-auth'];
 var SSO_LABELS = {issuer: 'Issuer URL', 'client-id': 'Client ID', 'client-secret': 'Client secret', scope: 'Scope', claims: 'Claims come from', 'roles-claim': 'Roles claim',
   'role-map': 'Role map', 'default-role': 'Default role', 'require-verified-email': 'Require verified email', 'authorize-url': 'Authorize URL', 'token-url': 'Token URL',
-  'jwks-url': 'Keys (JWKS) URL', 'client-auth': 'Client authentication'};
+  'jwks-url': 'Keys (JWKS) URL', 'client-auth': 'Client authentication', 'new-accounts': 'New accounts', 'allowed-domains': 'Allowed email domains'};
 var SSO_HELP = {issuer: 'Its /.well-known/openid-configuration document gives the endpoints.', 'client-secret': 'Saved sealed and never shown again.',
   scope: 'Separated by spaces; it includes openid unless the claims come from the access token.', 'roles-claim': 'A claim name such as roles or groups, or a dot path such as realm_access.roles.',
   'role-map': 'Claim values matched exactly; several matches give the highest role.',
   'default-role': 'For someone no plug-in, claim or Admin-set role gives a role.', 'require-verified-email': 'Refuses a sign-in whose token does not say the email is verified.',
   'authorize-url': 'Empty uses the one the provider lists.', 'token-url': 'Empty uses the one the provider lists.', 'jwks-url': 'Empty uses the one the provider lists.',
-  'client-auth': 'auto follows what the provider lists, post sends the secret in the form and basic in an Authorization header.'};
+  'client-auth': 'auto follows what the provider lists, post sends the secret in the form and basic in an Authorization header.',
+  'new-accounts': 'Added only lets in only people who already have an account, added here or by an earlier sign-in. With a public provider, such as a consumer Google sign-in, Anyone means any account there.',
+  'allowed-domains': 'Email domains such as example.com, separated by commas, matched exactly; empty lets every domain in. Checked before an account is made or used.'};
 var SSO_CHOICES = {claims: [['id-token', 'ID token'], ['access-token', 'access token']], 'client-auth': [['auto', 'auto'], ['post', 'post'], ['basic', 'basic']],
-  'default-role': [['viewer', 'viewer'], ['operator', 'operator']]};
+  'default-role': [['viewer', 'viewer'], ['operator', 'operator']], 'new-accounts': [['anyone', 'Anyone the provider signs in'], ['added-only', 'Added only']]};
 var SSO_REASONS = {discovery: 'did not answer with its settings', issuer: 'names a different issuer', unreachable: 'not reachable'};
 var SSO_STOP = 'Single sign-on sessions end within 30 seconds and stay ended after switching back on: people sign in again. MCP tokens issued before stay refused. API tokens made from single sign-on sessions are refused and stay refused after switching back on: make new ones afterwards. Password logins go on.';
 var SSO_CHECKS = {discovery: 'Discovery', issuer: 'Issuer', pkce: 'PKCE', keys: 'Signing keys', 'client-auth': 'Client authentication', redirect: 'Redirect URI', scope: 'Scope'};
@@ -1270,7 +1457,8 @@ function ssoField(name) {
     (help ? '<p class="adm-help">' + esc(help) + '</p>' : '') + '<p class="adm-msg sso-fmsg" role="status"></p></div>';
 }
 function renderSso(said) {
-  var box = document.getElementById('acc-sso');
+  var box = document.getElementById('acc-sso'), adding = document.querySelector('#access .acc-add-user');
+  if (adding) accAddSync(adding);
   if (!box) return;
   if (!SSO) { box.innerHTML = '<p class="muted">Single sign-on did not load; open the tab again.</p>'; return; }
   var pill = ssoPill(), prov = ssoProvider(), uri = SSO.redirectUri, stops = ssoResetStops();
@@ -1336,12 +1524,17 @@ function ssoTyped() {
     }
     var inp = document.getElementById('sso-in-' + name);
     if (!inp) return;
+    if (inp.tagName === 'SELECT' && ssoSelectKept(inp)) return;
     now = inp.type === 'checkbox' ? (inp.checked ? 'true' : 'false') : inp.value === inp.defaultValue ? ssoVal(name).value : inp.value.trim();
     if (now !== ssoVal(name).value) out[name] = now;
   });
   var secret = document.getElementById('sso-in-' + SSO_SEALED);
   if (secret && !secret.readOnly && secret.value.trim()) out[SSO_SEALED] = secret.value.trim();
   return refused ? null : out;
+}
+function ssoSelectKept(inp) {
+  var was = [].filter.call(inp.options, function (o) { return o.defaultSelected; })[0];
+  return was ? was.value === inp.value : inp.selectedIndex === 0;
 }
 function ssoRowsOf(card) {
   return [].map.call(card.querySelectorAll('.sso-map-row'), function (r) {

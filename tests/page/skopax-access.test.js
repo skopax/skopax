@@ -189,6 +189,7 @@ const rowOf = (doc, email) => [...doc.querySelectorAll('#access .acc-user')].fil
   console.log('PASS Reset password sends the password and shows 422 inline');
 
   //when
+  t.doc.querySelector('#access .acc-add-open').click();
   const form = t.doc.querySelector('#access .acc-add-user');
   setValue(form.querySelector('[name=email]'), 'dup@example.com');
   setValue(form.querySelector('[name=name]'), 'Dup');

@@ -401,7 +401,7 @@ function derive(data) {
     var out = '', unread = el.querySelector('.b-num:not([hidden])'), n = unread && unread.firstChild ? unread.firstChild.textContent : '';
     if (el.querySelector('.b-new')) out += ' \u00b7 New';
     if (n) out += ' \u00b7 ' + n + ' unread';
-    if (el.querySelector('.b-plug')) out += ' \u00b7 plug-in';
+    if (el.dataset.plugin) out += ' \u00b7 plug-in';
     return out;
   }
   function show(el) {

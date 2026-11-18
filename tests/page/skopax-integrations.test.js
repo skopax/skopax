@@ -147,7 +147,8 @@ async function theTilesShowEveryConnectedPluginWithItsStateHealthAndIcon() {
   assert.strictEqual(acme.querySelector('img.ico').getAttribute('alt'), '');
   assert.deepStrictEqual([acme.querySelector('.int-name').textContent, acme.querySelector('.int-cat').textContent], ['Acme metrics', 'Metrics']);
   assert.deepStrictEqual([acme.querySelector('.int-switch').getAttribute('role'), acme.querySelector('.int-switch').getAttribute('aria-checked'), acme.querySelector('.int-switch').getAttribute('aria-label')], ['switch', 'true', 'Switch Acme metrics']);
-  assert.strictEqual(acme.querySelector('.int-health').textContent, 'Healthy ' + DOT + ' 2 min ago');
+  assert.strictEqual(acme.querySelector('.int-health').textContent, '2 instances ' + DOT + ' Healthy ' + DOT + ' 2 min ago');
+  assert.strictEqual(acme.title, 'Healthy ' + DOT + ' 2 min ago', 'the full health text is in the tooltip');
   assert.ok(acme.querySelector('.int-dot.ok'), 'a green dot');
   assert.strictEqual(tile(doc, 'pager').querySelector('.int-health').textContent, 'Token rejected (403)');
   assert.ok(tile(doc, 'pager').querySelector('.int-dot.error'), 'the error text with a red dot');
@@ -219,7 +220,7 @@ async function aLockedSwitchIsDisabledAndShowsTheReason() {
 
   //then
   assert.deepStrictEqual([sw.getAttribute('aria-disabled'), sw.getAttribute('aria-checked'), sw.title], ['true', 'false', 'Gold board needs the Enterprise edition of Skopax']);
-  assert.strictEqual(gold.querySelector('.int-reason').textContent, 'Gold board needs the Enterprise edition of Skopax');
+  assert.ok(!gold.querySelector('.int-reason') && gold.title.split('\n').indexOf('Gold board needs the Enterprise edition of Skopax') >= 0, 'the tile keeps the reason in its tooltip');
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PUT'), [], 'an off switch that cannot be used sends nothing');
   assert.ok(!wrap(t.doc).hidden && inPanel(t.doc, '.int-reason').textContent === 'Gold board needs the Enterprise edition of Skopax', 'the panel says why');
   assert.ok(!inPanel(t.doc, '.int-add') && !inPanel(t.doc, '.int-form'), 'no instance can be added to a locked plug-in');
@@ -426,7 +427,8 @@ async function theAddFormShowsTokenOnlyForBearerAuth() {
   assert.strictEqual(field(t.doc, 'token').querySelector('.int-in').type, 'password');
   assert.strictEqual(field(t.doc, 'token').querySelector('.int-in').placeholder, 'not set');
   assert.ok(field(t.doc, 'name') && field(t.doc, 'url') && field(t.doc, 'auth'), 'the name and every field are there');
-  assert.deepStrictEqual([...panel(t.doc).querySelectorAll('.int-form button')].map((b) => b.textContent), ['Test connection', 'Save', 'Save & turn on', 'Cancel']);
+  assert.deepStrictEqual([...panel(t.doc).querySelectorAll('.int-form .int-foot button')].map((b) => b.textContent), ['Test connection', 'Cancel', 'Save', 'Save & turn on']);
+  assert.deepStrictEqual([...panel(t.doc).querySelectorAll('.int-form button')].filter((b) => !b.closest('.int-foot')).map((b) => b.className), ['int-seg-b', 'int-seg-b', 'int-eye'], 'the only other buttons are the field controls');
   assert.ok(inPanel(t.doc, '.int-add').getAttribute('aria-pressed') === 'true' && !inPanel(t.doc, '.int-itab[aria-selected="true"]'), 'the Add instance tab is the one shown');
   t.w.close();
   console.log('PASS Admin, Integrations: the add form shows token only for auth=bearer');
@@ -940,8 +942,10 @@ async function droppedPackTextsShowOneWarningLinePerLanguageOnTheCardAndInThePan
 
   //when
   await open(t);
-  const lines = [...tile(t.doc, 'acme').querySelectorAll('.int-drop')].map((p) => p.textContent);
-  const quiet = tile(t.doc, 'pager').querySelectorAll('.int-drop').length;
+  const tipLines = (id) => tile(t.doc, id).title.split('\n').filter((l) => l.indexOf('texts show in English') >= 0);
+  const lines = tipLines('acme');
+  const quiet = tipLines('pager').length;
+  const onTile = tile(t.doc, 'acme').querySelectorAll('.int-drop').length;
   openTile(t, 'acme');
   const inside = [...panel(t.doc).querySelectorAll('.int-drop')].map((p) => p.textContent);
 
@@ -951,8 +955,9 @@ async function droppedPackTextsShowOneWarningLinePerLanguageOnTheCardAndInThePan
     'one line per language: the text, the first five keys cut to 60 characters, and how many more');
   assert.deepStrictEqual(inside, lines, 'the side panel lists them too, for a plug-in reached from the catalog');
   assert.strictEqual(quiet, 0, 'a plug-in with nothing dropped shows no line');
+  assert.strictEqual(onTile, 0, 'the compact tile keeps the lines in its tooltip');
   assert.strictEqual(t.doc.querySelectorAll('img[onerror]').length, 0, 'a hostile key or language is text, never markup');
-  assert.ok([...tile(t.doc, 'acme').querySelectorAll('.int-drop')].every((p) => p.tagName === 'P' && !p.hidden && p.getAttribute('aria-hidden') !== 'true'), 'plain text a screen reader reads');
+  assert.ok([...panel(t.doc).querySelectorAll('.int-drop')].length === 2 && [...panel(t.doc).querySelectorAll('.int-drop')].every((p) => p.tagName === 'P' && !p.hidden && p.getAttribute('aria-hidden') !== 'true'), 'plain text a screen reader reads');
   assert.ok(/\.int-drop\s*\{[^}]*color:\s*var\(--warn\)/.test(TEMPLATE_CSS()), 'the warning colour comes from the theme token, so it follows light and dark');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
@@ -1012,7 +1017,8 @@ async function instanceNamesSourcesFieldsAndNotesAreEscapedToo() {
   assert.strictEqual(tab.textContent, EVIL);
   assert.ok(text.includes(EVIL), 'the hostile text shows as text in the panel');
   assert.strictEqual(tile(t.doc, 'lean').querySelector('.int-cat').textContent, EVIL, 'a category the page does not know shows as its id');
-  assert.strictEqual(tile(t.doc, 'lean').querySelector('.int-health').textContent, EVIL);
+  assert.strictEqual(tile(t.doc, 'lean').querySelector('.int-health').textContent, '2 instances ' + DOT + ' 1 needs attention');
+  assert.strictEqual(tile(t.doc, 'lean').title, EVIL, 'the hostile health text is the tooltip, as text');
   assert.strictEqual(tile(t.doc, 'gold').querySelector('.int-switch').title, EVIL);
   assert.ok(t.doc.getElementById('integrations').textContent.includes(EVIL), 'and on the tiles and in the catalog');
   assert.strictEqual(t.doc.querySelectorAll('#integrations img, #int-panel img').length, 0, 'nothing became markup');
@@ -1226,10 +1232,10 @@ async function theSidePanelIsAViewportOverlayAndFullScreenOnAPhone() {
 
   //then
   assert.ok(/\.int-wrap \{[^}]*position: fixed;[^}]*inset: 0;/.test(css), 'the wrap covers the viewport');
-  assert.ok(/\.int-panel \{[^}]*width: 340px;/.test(css), '340 px wide');
+  assert.ok(/\.int-panel \{[^}]*width: 420px;/.test(css), '420 px wide');
   assert.ok(/@media \(max-width: 768px\) \{[^@]*\.int-panel \{ width: 100%;/.test(css), 'full screen at 768 px and below');
   assert.ok(/<div class="int-wrap" id="int-wrap" hidden>/.test(css) && css.indexOf('id="int-wrap"') > css.indexOf('</main>'), 'outside the content, at body level');
-  console.log('PASS Admin, Integrations: the side panel is a fixed body-level overlay, 340 px wide, full screen on a phone');
+  console.log('PASS Admin, Integrations: the side panel is a fixed body-level overlay, 420 px wide, full screen on a phone');
 }
 
 async function aTileSwitchKeepsTheKeyboardFocusOnItsSwitch() {
@@ -1415,8 +1421,362 @@ async function noImageIsRenderedWithoutASource() {
   console.log('PASS Admin, Integrations: no img is rendered without a source, on the page, in the side panel or in the catalog');
 }
 
+function customCatalog() {
+  const c = catalog();
+  const by = (id) => c.plugins.filter((x) => x.id === id)[0];
+  Object.assign(by('acme'), {origin: 'builtin', author: 'Skopax', licence: 'Apache-2.0'});
+  Object.assign(by('pager'), {origin: 'package', module: 'acme_pager', author: 'Pat Pager', licence: 'MIT', version: '2.3.1'});
+  Object.assign(by('evil'), {origin: 'env', module: 'local.evil', author: 'Eve', licence: 'GPL-3.0', version: '0.0.1'});
+  Object.assign(by('prometheus'), {origin: 'package', module: 'acme_prom', author: 'Pat', licence: 'MIT', version: '1.0.0'});
+  Object.assign(by('cracked'), {origin: 'env'});
+  by('gold').origin = 'builtin';
+  return c;
+}
+
+async function aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin() {
+  //given
+  const t = await boot({catalog: customCatalog()});
+
+  //when
+  await open(t);
+  const {doc} = t;
+  const desc = (id) => { const open = tile(doc, id).querySelector('.int-open'); const ref = doc.getElementById(open.getAttribute('aria-describedby')); return [open.title, ref && ref.textContent]; };
+
+  //then
+  assert.deepStrictEqual(tiles(doc).map((x) => [x.dataset.id, x.dataset.origin]), [['acme', 'builtin'], ['pager', 'package'], ['gold', 'builtin'], ['cracked', 'env'], ['evil', 'env']]);
+  assert.strictEqual(tile(doc, 'acme').querySelector('.int-cat').textContent, 'Metrics', 'a built-in tile looks as before');
+  assert.ok(!tile(doc, 'acme').querySelector('.int-open').title && !tile(doc, 'acme').querySelector('.int-open').hasAttribute('aria-describedby'), 'no tooltip on a built-in');
+  assert.strictEqual(tile(doc, 'pager').querySelector('.int-cat').textContent, 'Alerts ' + DOT + ' Custom');
+  const said = 'Custom plug-in by Pat Pager, version 2.3.1, from acme_pager';
+  assert.deepStrictEqual(desc('pager'), [said, said]);
+  assert.strictEqual(tile(doc, 'evil').querySelector('.int-cat').textContent, 'Other ' + DOT + ' Custom');
+  const eve = 'Custom plug-in by Eve, version 0.0.1, from local.evil';
+  assert.deepStrictEqual(desc('evil'), [eve, eve]);
+  assert.strictEqual(tile(doc, 'cracked').querySelector('.int-cat').textContent, 'Other ' + DOT + ' Custom', 'a broken custom plug-in is marked too');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: a custom plug-in reads Custom on its tile with a tooltip and an accessible description, a built-in is unchanged');
+}
+
+async function theDrawerHeaderShowsOneMutedLineSayingBuiltInOrCustom() {
+  //given
+  const t = await boot({catalog: customCatalog()});
+  await open(t);
+
+  //when
+  openTile(t, 'acme');
+  const builtin = [inPanel(t.doc, '.int-meta').textContent, panel(t.doc).querySelectorAll('.int-meta').length, inPanel(t.doc, '.int-desc').nextElementSibling === inPanel(t.doc, '.int-meta')];
+  openTile(t, 'pager');
+  const custom = [inPanel(t.doc, '.int-meta').textContent, panel(t.doc).querySelectorAll('.int-meta').length];
+  openTile(t, 'evil');
+  const second = inPanel(t.doc, '.int-meta').textContent;
+
+  //then
+  assert.deepStrictEqual(builtin, ['Built-in ' + DOT + ' version 1.0.0', 1, true]);
+  assert.deepStrictEqual(custom, ['Custom plug-in ' + DOT + ' by Pat Pager ' + DOT + ' version 2.3.1 ' + DOT + ' MIT', 1]);
+  assert.strictEqual(second, 'Custom plug-in ' + DOT + ' by Eve ' + DOT + ' version 0.0.1 ' + DOT + ' GPL-3.0');
+  assert.ok(inPanel(t.doc, '.int-meta').classList.contains('muted'));
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: the drawer header shows one muted meta line, Built-in or Custom plug-in with author, version and licence');
+}
+
+async function theCustomChipAppearsOnlyWhenACustomPluginIsLoadedAndFiltersAlone() {
+  //given
+  const none = await boot();
+  await open(none);
+  const plain = [...none.doc.querySelectorAll('#integrations .int-chip')].map((c) => c.textContent);
+  none.w.close();
+  const t = await boot({catalog: customCatalog()});
+  await open(t);
+  const {doc} = t;
+  const chip = (label) => [...doc.querySelectorAll('#integrations .int-chip')].filter((c) => c.textContent === label)[0];
+
+  //when
+  const labels = [...doc.querySelectorAll('#integrations .int-chip')].map((c) => c.textContent);
+  chip('Metrics').click();
+  chip('Custom').click();
+  const custom = [shown(doc), chip('Custom').getAttribute('aria-pressed'), chip('Metrics').getAttribute('aria-pressed'), chip('All').getAttribute('aria-pressed')];
+  chip('Alerts').click();
+  const alerts = [shown(doc), chip('Custom').getAttribute('aria-pressed')];
+  chip('Custom').click();
+  chip('All').click();
+  const all = [shown(doc), chip('Custom').getAttribute('aria-pressed')];
+
+  //then
+  assert.ok(!plain.includes('Custom'), 'no custom plug-in loaded: no chip');
+  assert.deepStrictEqual(labels, ['All', 'Metrics', 'Alerts', 'Tickets', 'Other', 'Custom']);
+  assert.deepStrictEqual(custom, [['pager', 'cracked', 'evil'], 'true', 'false', 'false']);
+  assert.deepStrictEqual(alerts, [['pager'], 'false']);
+  assert.deepStrictEqual(all, [['acme', 'pager', 'gold', 'cracked', 'evil'], 'false']);
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: the Custom chip shows only when a custom plug-in is loaded and filters on its own, replacing the category');
+}
+
+async function theCatalogMarksACustomPluginQuietly() {
+  //given
+  const t = await boot({catalog: customCatalog()});
+  await open(t);
+
+  //when
+  addBtn(t.doc).click();
+  await wait(60);
+
+  //then
+  assert.strictEqual(pick(t.doc, 'prometheus').querySelector('.int-pick-c').textContent, 'Custom');
+  assert.ok(!pick(t.doc, 'acme').querySelector('.int-pick-c'), 'a built-in carries no mark');
+  assert.strictEqual(pick(t.doc, 'prometheus').dataset.origin, 'package');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: the add-integration catalog marks a custom plug-in with a quiet Custom label');
+}
+
+async function theSearchFiltersTheTilesByNameIdCategoryAndDescriptionWithoutCaseOrAccents() {
+  //given
+  const cat = catalog();
+  cat.plugins[1].name = '\u00c7a\u011fr\u0131 Pager';
+  cat.plugins[0].name = 'Acme Gr\u00f6\u00dfe';
+  const t = await boot({catalog: cat});
+  await open(t);
+  const {doc, w} = t;
+  const find = () => doc.querySelector('#integrations .int-find');
+  const none = () => doc.querySelector('#integrations .int-none');
+  const chip = (label) => [...doc.querySelectorAll('#integrations .int-chip')].filter((c) => c.textContent === label)[0];
+
+  //when
+  const box = [find().type, find().placeholder, find().getAttribute('aria-label'), find().closest('.int-top') !== null];
+  const by = {};
+  for (const q of ['ACME', 'gold', 'tickets', 'reads PAGES', 'cagri', 'grosse', 'Gr\u00f6sse', '\u00e7A\u011eRI']) {
+    setValue(w, find(), q);
+    by[q] = shown(doc);
+  }
+  setValue(w, find(), 'a');
+  const wide = shown(doc);
+  chip('Metrics').click();
+  const narrowed = shown(doc);
+  chip('All').click();
+  setValue(w, find(), 'zz<b>q');
+  const empty = [shown(doc), !none().hidden, none().querySelector('.int-none-t').textContent, none().querySelector('.int-none-clear').textContent, none().querySelectorAll('b').length];
+  none().querySelector('.int-none-clear').click();
+  const cleared = [find().value, shown(doc).length, none().hidden, doc.activeElement === find()];
+  setValue(w, find(), 'acme');
+  key(w, find(), 'Escape');
+  const escaped = [find().value, shown(doc).length, wrap(doc).hidden];
+  find().blur();
+  key(w, doc.body, '/');
+  const slashed = doc.activeElement === find();
+  setValue(w, find(), 'pager');
+  const typed = [key(w, find(), '/'), doc.activeElement === find()];
+  find().blur();
+  tile(doc, 'pager').querySelector('.int-switch').focus();
+  key(w, doc.activeElement, '/');
+  const fromSwitch = doc.activeElement === find();
+  find().focus();
+  tile(doc, 'pager').querySelector('.int-switch').click();
+  await wait(120);
+  const rerendered = [find().value, shown(doc), doc.activeElement === find()];
+  tile(doc, 'pager').querySelector('.int-open').click();
+  const opened = [!wrap(doc).hidden, intTileFound(w, 'pager')];
+  key(w, doc.activeElement, 'Escape');
+  const back = doc.activeElement === tile(doc, 'pager').querySelector('.int-open');
+
+  //then
+  assert.deepStrictEqual(box, ['search', 'Search integrations', 'Search integrations', true], 'a search box at the top of the page');
+  assert.deepStrictEqual(by, {ACME: ['acme'], gold: ['gold'], tickets: ['gold'], 'reads PAGES': ['pager'], cagri: ['pager'], grosse: ['acme'], 'Gr\u00f6sse': ['acme'], '\u00e7A\u011eRI': ['pager']},
+    'name, id, category label and description match, without case or accents');
+  assert.ok(wide.length > 1 && wide.indexOf('acme') >= 0 && wide.indexOf('pager') >= 0, 'a wide query keeps many tiles: ' + wide);
+  assert.deepStrictEqual(narrowed, ['acme'], 'the chip narrows and the search narrows further');
+  assert.deepStrictEqual(empty, [[], true, 'No integration matches "zz<b>q"', 'Clear', 0], 'no match says so as text, with a Clear button');
+  assert.deepStrictEqual(cleared, ['', 5, true, true], 'Clear empties the search, shows every tile and keeps the focus in the box');
+  assert.deepStrictEqual(escaped, ['', 5, true], 'Esc clears the search');
+  assert.ok(slashed, '/ focuses the search');
+  assert.deepStrictEqual(typed, [true, true], 'a / typed in the box is left to the box');
+  assert.ok(fromSwitch, 'a / on a tile switch, which is no input, focuses the search');
+  assert.deepStrictEqual(rerendered, ['pager', ['pager'], true], 'a reload keeps the query, the filter and the focus');
+  assert.deepStrictEqual(opened, [true, true], 'a filtered tile still opens and its controls are found');
+  assert.ok(back, 'Esc returns focus to the filtered tile');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: the search filters tiles by name, id, category and description, without case or accents, with the chips, Clear, Esc and /');
+}
+
+function intTileFound(w, id) { return !!w.intTileOpen(id) && !!w.intTileSwitch(id); }
+
+async function aSlashDoesNotStealFocusFromAFieldOrTheOpenDrawer() {
+  //given
+  const t = await boot();
+  await open(t);
+  const {doc, w} = t;
+  const find = () => doc.querySelector('#integrations .int-find');
+
+  //when
+  openTile(t, 'acme');
+  const field0 = doc.activeElement;
+  const inField = [key(w, field0, '/'), doc.activeElement === field0];
+  inPanel(doc, '.int-close').focus();
+  key(w, doc.activeElement, '/');
+  const drawer = [doc.activeElement === inPanel(doc, '.int-close'), doc.activeElement !== find()];
+  key(w, doc.activeElement, 'Escape');
+  addBtn(doc).click();
+  pick(doc, 'acme').focus();
+  key(w, doc.activeElement, '/');
+  const pop = doc.activeElement === pick(doc, 'acme');
+  key(w, doc.activeElement, 'Escape');
+  doc.getElementById('tab-settings').click();
+  await wait(80);
+  doc.body.focus();
+  const ev = new w.KeyboardEvent('keydown', {key: '/', bubbles: true, cancelable: true});
+  doc.body.dispatchEvent(ev);
+
+  //then
+  assert.deepStrictEqual(inField, [true, true], 'a / typed in a field is left to the field');
+  assert.deepStrictEqual(drawer, [true, true], 'the open drawer keeps the focus');
+  assert.ok(pop, 'the open picker keeps the focus');
+  assert.ok(!ev.defaultPrevented, 'off the Integrations page / does nothing');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: / leaves fields, the open drawer and the picker alone, and does nothing off the page');
+}
+
+async function theTilesAreCompactWithAStatusDotAShortHealthLineAndTheRestInTheTooltip() {
+  //given
+  const cat = catalog();
+  cat.plugins[0].instances.push(instance('west'));
+  cat.plugins[0].health = health('error', 'Token rejected (403)', iso(2), [{name: 'main', state: 'ok', text: 'Healthy', at: iso(2)}, {name: 'east', state: 'error', text: 'Token rejected (403)', at: iso(4)}, {name: 'west', state: 'ok', text: 'Healthy', at: iso(3)}]);
+  cat.plugins[0].localeDrops = [{lang: 'de', count: 2, text: '2 de texts show in English', keys: ['a', 'b'], more: 0}];
+  const t = await boot({catalog: cat});
+  const css = TEMPLATE_CSS();
+
+  //when
+  await open(t);
+  const {doc} = t;
+  const acme = tile(doc, 'acme'), gold = tile(doc, 'gold'), evil = tile(doc, 'evil'), pager = tile(doc, 'pager');
+  const row = (x) => [...x.querySelector('.int-tile-top').children].map((c) => c.className.split(' ')[0]);
+  const st = (x) => [x.querySelector('.int-row1 .int-st .int-dot').className, x.querySelector('.int-row1 .int-st .sr').textContent];
+  const line = (x) => [x.querySelector('.int-line .int-cat').textContent, x.querySelector('.int-line .int-health').textContent];
+
+  //then
+  assert.deepStrictEqual(row(acme), ['int-ico', 'int-open', 'int-switch'], 'one row: icon, name with its dot, and the switch');
+  assert.ok(acme.querySelector('.int-open .int-row1 .int-name') && acme.querySelector('.int-open .int-line'), 'the name row and a second line');
+  assert.deepStrictEqual(st(acme), ['int-dot error', 'Needs attention']);
+  assert.deepStrictEqual(st(pager), ['int-dot error', 'Needs attention']);
+  assert.deepStrictEqual(st(evil), ['int-dot off', 'Off']);
+  assert.deepStrictEqual(line(acme), ['Metrics', '3 instances ' + DOT + ' 1 needs attention'], 'more than one instance reads in short form');
+  assert.deepStrictEqual(line(pager), ['Alerts', 'Token rejected (403)'], 'one instance or none keeps its health text');
+  assert.ok(!doc.querySelector('#integrations .int-tile .int-reason') && !doc.querySelector('#integrations .int-tile .int-drop'), 'no reason and no drop line on a tile');
+  assert.strictEqual(gold.title, 'Off ' + DOT + ' set up, paused\nGold board needs the Enterprise edition of Skopax', 'the reason is in the tooltip');
+  assert.strictEqual(acme.title, 'Token rejected (403)\n2 de texts show in English: a, b', 'the full health and the drops are in the tooltip');
+  assert.ok(acme.classList.contains('need') && pager.classList.contains('need') && gold.classList.contains('need') && !evil.classList.contains('need'), 'a tile that needs attention is marked');
+  assert.ok(/\.int-tile\.need \{[^}]*border-left: 3px solid var\(--warn\);/.test(css), 'with a warn border on its left');
+  assert.ok(/\.int-grid \{[^}]*grid-template-columns: repeat\(auto-fill, minmax\(min\(100%, 230px\), 1fr\)\);[^}]*gap: 8px;/.test(css), 'more tiles per row');
+  assert.ok(/\.int-tile \.int-ico \{[^}]*width: 20px;[^}]*height: 20px;/.test(css), 'a 20 px icon');
+  assert.ok(/\.int-line \{[^}]*white-space: nowrap;/.test(css) && /\.int-name \{[^}]*white-space: nowrap;/.test(css), 'both lines stay one line high, so a late health text never moves the grid');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: tiles are compact, with a status dot, a short health line, a warn edge and the reason and drops in the tooltip');
+}
+
+async function thePickerListsRowsWithDescriptionsAndWhatIsAddedAndMovesByKeyboard() {
+  //given
+  const cat = catalog();
+  cat.plugins[0].instances.push(instance('west'));
+  const t = await boot({catalog: cat});
+  await open(t);
+  const {doc, w} = t;
+  const css = TEMPLATE_CSS();
+  const visible = () => [...doc.querySelectorAll('#int-pop .int-pick')].filter((b) => !b.hidden && !b.closest('[hidden]'));
+
+  //when
+  addBtn(doc).click();
+  const search = doc.querySelector('#int-pop .int-search');
+  const rows = {acme: [pick(doc, 'acme').querySelector('.int-pick-n').textContent, pick(doc, 'acme').querySelector('.int-pick-d').textContent, pick(doc, 'acme').querySelector('.int-has').textContent],
+    pager: pick(doc, 'pager').querySelector('.int-has').textContent, evil: [pick(doc, 'evil').querySelector('.int-has').textContent, pick(doc, 'evil').classList.contains('has')],
+    prometheus: [pick(doc, 'prometheus').querySelector('.int-pick-d').textContent, !pick(doc, 'prometheus').querySelector('.int-has')], gold: !pick(doc, 'gold').querySelector('.int-pick-d')};
+  key(w, search, 'ArrowDown');
+  const first = doc.activeElement === visible()[0];
+  key(w, doc.activeElement, 'ArrowDown');
+  const second = doc.activeElement === visible()[1];
+  key(w, doc.activeElement, 'ArrowUp');
+  key(w, doc.activeElement, 'ArrowUp');
+  const top = doc.activeElement === search;
+  setValue(w, search, 'latency');
+  const one = visible().map((b) => b.dataset.id);
+  key(w, search, 'Enter');
+  const entered = [doc.getElementById('int-pop').hidden, !wrap(doc).hidden, inPanel(doc, '.int-ph h2').textContent];
+  key(w, doc.activeElement, 'Escape');
+  addBtn(doc).click();
+  setValue(w, doc.querySelector('#int-pop .int-search'), 'e');
+  const many = visible().length;
+  key(w, doc.querySelector('#int-pop .int-search'), 'Enter');
+  const stayed = [doc.getElementById('int-pop').hidden, wrap(doc).hidden];
+  setValue(w, doc.querySelector('#int-pop .int-search'), 'gold');
+  key(w, doc.querySelector('#int-pop .int-search'), 'Enter');
+  const locked = [doc.getElementById('int-pop').hidden, wrap(doc).hidden];
+  key(w, doc.querySelector('#int-pop .int-search'), 'Escape');
+  const closed = [doc.getElementById('int-pop').hidden, doc.activeElement === addBtn(doc)];
+
+  //then
+  assert.deepStrictEqual(rows, {acme: ['Acme metrics', 'Reads Acme.', '\u2713 3 added'], pager: '\u2713 Added', evil: ['Added', false], prometheus: ['Errors and latency.', true], gold: true},
+    'each row: name, one-line description, and what is added already');
+  assert.deepStrictEqual([first, second, top], [true, true, true], 'the arrows move from the search through the rows and back');
+  assert.deepStrictEqual(one, ['prometheus'], 'the search reads the description too');
+  assert.deepStrictEqual(entered, [true, true, 'Prometheus'], 'Enter on a single result opens it');
+  assert.ok(many > 1 && stayed[0] === false && stayed[1] === true, 'Enter with more than one result opens nothing');
+  assert.deepStrictEqual(locked, [false, true], 'a single locked result stays inert');
+  assert.deepStrictEqual(closed, [true, true], 'Esc closes and returns focus to the button');
+  assert.ok(/\.int-pg \{[^}]*grid-template-columns: minmax\(0, 1fr\);/.test(css), 'entries are rows');
+  assert.ok(/@media \(max-width: 480px\) \{[^@]*\.int-pop \{[^}]*position: fixed;[^}]*left: 0;[^}]*right: 0;[^}]*width: auto;/.test(css), 'full width on a phone');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: the picker lists rows with a description and what is added, moves by arrows, and Enter opens a single result');
+}
+
+async function theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton() {
+  //given
+  const t = await boot();
+  await open(t);
+  const {doc} = t;
+  const cards = () => [...panel(doc).querySelectorAll('.int-ilist .int-icard')];
+
+  //when
+  openTile(t, 'acme');
+  const head = [inPanel(doc, '.int-ilist-h .int-ilist-t').textContent, inPanel(doc, '.int-ilist-h .int-add') === inPanel(doc, '.int-add'), inPanel(doc, '.int-add .int-add-i').getAttribute('aria-hidden')];
+  const listed = cards().map((c) => [c.querySelector('.int-itab').textContent, !!c.querySelector('.int-icard-p'), c.querySelector('.int-icard-s').textContent, c.querySelector('.int-dot').className,
+    c.querySelector('.int-icard-l').textContent, c.querySelector('.int-icard-e').textContent, c.classList.contains('sel')]);
+  const focused = doc.activeElement;
+  cards()[0].querySelector('.int-itab').click();
+  const same = [doc.activeElement === focused, cards()[0].classList.contains('sel')];
+  cards()[1].querySelector('.int-itab').click();
+  const east = [cards()[1].classList.contains('sel'), doc.activeElement === cards()[1].querySelector('.int-itab'), inPanel(doc, '.int-inst').dataset.name];
+  inPanel(doc, '.int-close').click();
+  addBtn(doc).click();
+  pick(doc, 'prometheus').click();
+  const empty = [inPanel(doc, '.int-ilist-t').textContent, inPanel(doc, '.int-iempty .int-iempty-t').textContent, inPanel(doc, '.int-iempty .int-iempty-d').textContent, !!inPanel(doc, '.int-iempty .int-add'),
+    cards().length, !!inPanel(doc, '.int-form'), doc.activeElement === inPanel(doc, '.int-name-in')];
+  inPanel(doc, '.int-add').click();
+  const added = doc.activeElement === inPanel(doc, '.int-name-in');
+
+  //then
+  assert.deepStrictEqual(head, ['Instances ' + DOT + ' 2', true, 'true'], 'the header counts the instances and holds the one Add button, with an icon');
+  assert.deepStrictEqual(listed, [['main', true, 'On', 'int-dot ok', 'Healthy ' + DOT + ' 2 min ago', 'Editing', true], ['east', false, 'On', 'int-dot ok', 'Healthy ' + DOT + ' 4 min ago', 'Edit', false]],
+    'each card: name, primary badge, state, health dot, last check and Edit');
+  assert.deepStrictEqual(same, [true, true], 'a click on the open card changes nothing');
+  assert.deepStrictEqual(east, [true, true, 'east'], 'a click on another card opens it');
+  assert.deepStrictEqual(empty, ['Instances', 'No instances yet', 'An instance is one connection to Prometheus, with its own address and sign-in. Add one for each server or account.', true, 0, true, true],
+    'no instance: an empty state with its Add button, and the form below');
+  assert.ok(added, 'its Add button goes to the form');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: the drawer lists instances as cards under a counted header with the Add button, or an empty state');
+}
+
 (async () => {
   await theTilesShowEveryConnectedPluginWithItsStateHealthAndIcon();
+  await aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin();
+  await theDrawerHeaderShowsOneMutedLineSayingBuiltInOrCustom();
+  await theCustomChipAppearsOnlyWhenACustomPluginIsLoadedAndFiltersAlone();
+  await theCatalogMarksACustomPluginQuietly();
   await anInstanceWithoutACheckReadsNoChecksGreyAndNeverConnected();
   await noImageIsRenderedWithoutASource();
   await theSubtitleCountsAndTheChipsFilterTheTiles();
@@ -1464,4 +1824,9 @@ async function noImageIsRenderedWithoutASource() {
   await theSidePanelIsAViewportOverlayAndFullScreenOnAPhone();
   await aNonAdminSeesNoIntegrationsTab();
   await testConnectionSendsTheTicksOnlyWhenTheFormChangedThem();
+  await theSearchFiltersTheTilesByNameIdCategoryAndDescriptionWithoutCaseOrAccents();
+  await aSlashDoesNotStealFocusFromAFieldOrTheOpenDrawer();
+  await theTilesAreCompactWithAStatusDotAShortHealthLineAndTheRestInTheTooltip();
+  await thePickerListsRowsWithDescriptionsAndWhatIsAddedAndMovesByKeyboard();
+  await theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

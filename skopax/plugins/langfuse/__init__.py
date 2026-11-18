@@ -152,8 +152,8 @@ PLUGIN = Plugin(
             Field('service', 'Service', 'text', default=SERVICE, help='Card service of the traced app; give each instance its own so their cards stay apart.'),
             Field('turn-name', 'Turn name', 'text', help='Name of the observation that is one turn of the app. Empty counts the root observation of each trace (needs a Langfuse version '
                                                        'that knows isRootObservation).'),
-            Field('ca', 'CA certificate', 'pem', help='PEM certificate to trust instead of the system roots.'),
-            Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),
+            Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),
+            Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), group='advanced', help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),
     test=test,
     checks=(Check(check.CHECK, 'Errors, traffic, latency and cost of traced turns', 900, 810, RAN, run, tool='langfuse', sections=(check.SECTION,), section_help=SECTION_HELP),),
     rules=(RuleSet('rules', 'Langfuse', dict(check.RULES), check.RULE_HELP),),

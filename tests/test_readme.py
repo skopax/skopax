@@ -20,7 +20,8 @@ LINK_TREES = ('github.com/skopax', 'ghcr.io/skopax')
 GENERATED_SECRET = '"$(openssl rand -hex 32)"'
 SECRET_NAME = r'[A-Z_]*(?:SECRET|TOKEN|PASSWORD|KEY)[A-Z_]*'
 DOCS = ('README.md', 'setup.md', 'configuration.md', 'sign-in.md', 'plugins.md', 'extending.md', 'operations.md', 'development.md')
-COMMUNITY = ('CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'TRADEMARKS.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'examples/hello-plugin/README.md')
+EXAMPLES = ('hello-plugin', 'couchbase-plugin', 'managed-redis-plugin')
+COMMUNITY = ('CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'TRADEMARKS.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'CHANGELOG.md', *(f'examples/{name}/README.md' for name in EXAMPLES))
 COMMUNITY_HOSTS = ('modeltrademarkguidelines.org', 'www.modeltrademarkguidelines.org', 'creativecommons.org', 'www.contributor-covenant.org', 'contributor-covenant.org', 'developercertificate.org')
 COMMUNITY_TREES = ('github.com/mozilla',)
 ENV_NAME = re.compile(r'`\$?\{?([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)(_\*)?')
@@ -71,7 +72,7 @@ def plugin_env_names() -> set[str]:
 def known_names() -> set[str]:
     code = '\n'.join(path.read_text(encoding='utf-8') for path in (ROOT / 'skopax').rglob('*.py'))
     constants = set(re.findall(r'^([A-Z][A-Z0-9_]*) = ', code, re.MULTILINE)) | set(re.findall(r"'([A-Z][A-Z0-9_]+)'", code))
-    args = set(re.findall(r'^ARG ([A-Z_]+)', read('Dockerfile') + read('examples/hello-plugin/Dockerfile'), re.MULTILINE))
+    args = set(re.findall(r'^ARG ([A-Z_]+)', read('Dockerfile') + ''.join(read(f'examples/{name}/Dockerfile') for name in EXAMPLES), re.MULTILINE))
     ci = set(re.findall(r'\b([A-Z][A-Z0-9_]+)\b', read('.github/workflows/ci.yml') + read('.github/workflows/image.yml')))
     runner = set(re.findall(r'process\.env\.([A-Z_]+)', read('tests/page/run.js')))
     return settings_env_names() | plugin_env_names() | constants | args | ci | runner | OUTSIDE_NAMES
@@ -275,6 +276,95 @@ def test_the_link_check_finds_a_missing_file_a_missing_anchor_and_an_absolute_pa
     assert 'pyprojecttoml-the-package-and-its-entry-point' in anchors(read('docs/extending.md'))
 
 
+def image_tags(text: str) -> list[tuple[str, dict[str, str]]]:
+    return [(m.group(1).lower(), {k.lower(): v for k, v in re.findall(r'([A-Za-z-]+)="([^"]*)"', m.group(2))}) for m in re.finditer(r'<(img|source)\b([^>]*)>', prose(text), re.IGNORECASE)]
+
+
+def image_targets(tag: str, attrs: dict[str, str]) -> list[str]:
+    if tag == 'img':
+        return [attrs.get('src', '')]
+    return [part.strip().split(' ')[0] for part in attrs.get('srcset', '').split(',')]
+
+
+def image_problems(texts: dict[str, str]) -> list[str]:
+    found = []
+    for rel, text in texts.items():
+        for tag, attrs in image_tags(text):
+            if tag == 'img' and not attrs.get('alt', '').strip():
+                found.append(f'{rel}: no alt text on {attrs.get("src", "")}')
+            for target in image_targets(tag, attrs):
+                file = (ROOT / rel).parent / target
+                if not target or re.match(r'[a-z]+:', target) or target.startswith('/') or not file.resolve().is_relative_to(ROOT) or not file.is_file():
+                    found.append(f'{rel}: {target}')
+    return found
+
+
+def pictures(text: str) -> list[tuple[str, str, str]]:
+    found = []
+    for block in re.findall(r'<picture>(.*?)</picture>', prose(text), re.DOTALL):
+        tags = image_tags(block)
+        dark = [a.get('srcset', '') for t, a in tags if t == 'source' and a.get('media') == '(prefers-color-scheme: dark)']
+        light = [a.get('srcset', '') for t, a in tags if t == 'source' and a.get('media') == '(prefers-color-scheme: light)']
+        img = [a.get('src', '') for t, a in tags if t == 'img']
+        found.append((dark[0] if len(dark) == 1 else '', light[0] if len(light) == 1 else '', img[0] if len(img) == 1 else ''))
+    return found
+
+
+def test_every_docs_image_resolves_has_alt_text_and_shows_the_theme_of_the_reader():
+    # given
+    texts = every_doc()
+    shown = [p for text in texts.values() for p in pictures(text)]
+
+    # when
+    problems = image_problems(texts)
+
+    # then
+    assert problems == []
+    assert len(shown) >= 5
+    assert sum(prose(text).count('<img') for text in texts.values()) == len(shown), 'every image sits in a picture with both themes'
+    for dark, light, img in shown:
+        assert img.endswith('-light.png') and light == img and dark == img.replace('-light.png', '-dark.png'), (dark, light, img)
+
+
+def test_the_image_check_finds_a_missing_file_a_missing_alt_and_an_outside_source():
+    # given
+    texts = {'README.md': '<img src="docs/images/nowhere.png" alt="x">\n<img src="LICENSE">\n<img src="LICENSE" alt=" ">\n<source srcset="https://example.com/a.png">\n<source srcset="/etc/hosts">\n'
+                          '<img src="LICENSE" alt="fine">\n`<img src="gone.png">`\n\n    <img src="gone-too.png">\n'}
+
+    # when
+    problems = image_problems(texts)
+
+    # then
+    assert problems == ['README.md: docs/images/nowhere.png', 'README.md: no alt text on LICENSE', 'README.md: no alt text on LICENSE', 'README.md: https://example.com/a.png', 'README.md: /etc/hosts']
+    assert pictures('<picture>\n<source media="(prefers-color-scheme: dark)" srcset="a-dark.png">\n<img src="a-light.png" alt="a">\n</picture>') == [('a-dark.png', '', 'a-light.png')]
+
+
+def test_the_docs_images_come_in_both_themes_are_all_shown_and_stay_small():
+    # given
+    images = sorted((ROOT / 'docs' / 'images').glob('*'))
+    names = {p.name for p in images}
+    shown = {Path(target).name for text in every_doc().values() for tag, attrs in image_tags(text) for target in image_targets(tag, attrs)}
+
+    # then
+    assert images and all(n.endswith(('-light.png', '-dark.png')) for n in names)
+    assert {n.removesuffix('-light.png') for n in names if n.endswith('-light.png')} == {n.removesuffix('-dark.png') for n in names if n.endswith('-dark.png')}
+    assert names <= shown, 'every image is shown somewhere in the docs'
+    assert [p.name for p in images if p.stat().st_size > 600 * 1024] == []
+    assert sum(p.stat().st_size for p in images) <= 6 * 1024 * 1024
+
+
+def test_the_readme_shows_the_board_after_the_intro_and_the_slack_thread_chat_and_card_under_what_it_looks_like():
+    # given
+    text = read('README.md')
+    start = text.find('## What it looks like')
+    section = text[start:text.index('\n## ', start + 1)] if start >= 0 else ''
+
+    # then
+    assert text.index('Every team has that one person') < text.find('docs/images/board-light.png') < text.index('## Quickstart')
+    assert [n for n in ('slack-thread', 'chat', 'card') if f'docs/images/{n}-light.png' in section] == ['slack-thread', 'chat', 'card']
+    assert section.index('slack-thread-light') < section.index('chat-light') < section.index('card-light')
+
+
 def test_every_community_file_link_resolves_and_points_only_at_the_allowed_hosts():
     # given
     texts = community()
@@ -324,13 +414,30 @@ def test_links_point_only_at_the_allowed_hosts():
 def test_readme_states_the_release_candidate_status():
     # given
     text = read('README.md')
+    flat = ' '.join(text.split())
+    image = ' '.join(read('docs/operations.md').split())
 
     # then
-    assert 'Status: Release candidate, not yet stable.' in text
-    assert 'pre-release, not ready for use' not in text
+    assert 'Status: Release candidate, not yet stable.' in flat and 'may still change before 0.1.0' in flat and '[CHANGELOG.md](CHANGELOG.md)' in flat
+    assert 'first stable release' not in text and 'pre-release, not ready for use' not in text
     assert re.search(rf'ghcr\.io/skopax/skopax:{re.escape(image_tag())}(?![\w.-])', text)
     assert 'docker.io/skopax/skopax' in text and 'comes with 0.1.0' in text
+    assert 'release candidates are published to ghcr only' in flat.lower()
+    assert 'from 0.1.0 the same tags go to the Docker Hub mirror' in image
     assert 'docker compose up --build' in text and '## First run' in text
+
+
+def test_the_changelog_starts_with_the_current_release_and_the_readme_links_it():
+    # given
+    text = read('CHANGELOG.md')
+    heads = re.findall(r'^## (\S+) \((unreleased|\d{4}-\d\d-\d\d)\)$', text, re.MULTILINE)
+
+    # then
+    assert text.startswith('# Changelog\n') and 'semantic versioning' in text
+    assert heads and heads[0][0] == image_tag()
+    assert len({tag for tag, _ in heads}) == len(heads) == len(re.findall(r'^## ', text, re.MULTILINE))
+    assert 'fill in' not in text.lower()
+    assert '](CHANGELOG.md)' in read('README.md')
 
 
 def test_docs_name_no_contact_but_hello_and_github():
@@ -356,7 +463,7 @@ def test_docs_name_no_contact_but_hello_and_github():
 
 def test_every_image_tag_and_git_tag_the_docs_name_is_the_current_release():
     # given
-    text = all_docs() + read('examples/hello-plugin/README.md')
+    text = all_docs() + ''.join(read(f'examples/{name}/README.md') for name in EXAMPLES)
     named = re.findall(r'ghcr\.io/skopax/skopax:([^\s`\'"]+)', text) + re.findall(r'SKOPAX_VERSION=([^\s`\'"]+)', text)
     refs = re.findall(r'git clone --branch (\S+) https://github\.com/skopax/skopax\b', text)
     bug = yaml.safe_load(read('.github/ISSUE_TEMPLATE/bug.yml'))
@@ -364,6 +471,7 @@ def test_every_image_tag_and_git_tag_the_docs_name_is_the_current_release():
 
     # then
     assert len(named) >= 4 and 'SKOPAX_VERSION=' in read('examples/hello-plugin/README.md')
+    assert all('SKOPAX_VERSION=' in read(f'examples/{name}/README.md') for name in EXAMPLES)
     assert set(named) == {image_tag()}
     assert refs and set(refs) == {release_version.release_tag(skopax.__version__)}
     assert placeholder == image_tag()
@@ -497,7 +605,7 @@ def test_the_development_page_matches_the_workflows_the_dockerfile_and_the_gitle
     assert writers == ['build', 'promote'] and f'`packages: write` in {" and ".join(f"`{job}`" for job in writers)} only' in flat
     assert 'as environment secrets of `release`, not repository secrets' in flat
     assert '`/var/lib/dpkg/status.d/`' in flat and 'Syft' in flat
-    assert 'the `SKOPAX_VERSION` defaults in `Dockerfile` and `examples/hello-plugin/Dockerfile`' in flat
+    assert 'the `SKOPAX_VERSION` defaults in `Dockerfile` and in the example Dockerfiles (`examples/hello-plugin/Dockerfile`, `examples/couchbase-plugin/Dockerfile` and `examples/managed-redis-plugin/Dockerfile`)' in flat
     tests_runs = [step['run'] for step in ci['jobs']['tests']['steps'] if 'run' in step and not step['run'].startswith('uv python install')]
     tests_bullet = flat[flat.index('- `tests`:'):flat.index('- `pages`:')]
     assert 'uv lock --check' in tests_runs and [run for run in tests_runs if f'`{run}`' in tests_bullet] == tests_runs

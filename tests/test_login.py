@@ -394,16 +394,14 @@ def test_a_lone_surrogate_password_is_an_input_error_not_a_crash(store: Store):
     changed = client.post('/api/me/password', content='{"current": "' + PASSWORD + '", "new": "' + lone + '"}')
 
     # then
-    assert (created.status_code, [e['loc'] for e in created.json()['detail']]) == (422, [['body', 'password']])
+    assert (created.status_code, created.json()) == (422, {'detail': msg('user.password_text'), 'field': 'password'})
     assert (changed.status_code, [e['loc'] for e in changed.json()['detail']]) == (422, [['body', 'new']])
     assert users.get('erin@example.com') is None and users.authenticate(ADMIN_EMAIL, PASSWORD) is not None
 
 
 @pytest.mark.parametrize('method, path, body', [
-    ('PATCH', '/api/admin/users/erin@example.com', {'password': SPILL * 200}),
-    ('POST', '/api/admin/users', {'email': 'erin@example.com', 'name': 'Erin', 'role': 'viewer', 'password': SPILL * 200}),
     ('PUT', '/api/admin/settings', {'key': 'slack.channel', 'value': SPILL * 1500}),
-], ids=['password on a user change', 'password on a new user', 'settings value'])
+], ids=['settings value'])
 def test_a_refused_body_never_comes_back_in_the_422(store: Store, method: str, path: str, body: dict):
     # given
     client = make_client(store)
@@ -415,6 +413,23 @@ def test_a_refused_body_never_comes_back_in_the_422(store: Store, method: str, p
     assert res.status_code == 422
     assert SPILL not in res.text
     assert [sorted(item) for item in res.json()['detail']] == [['loc', 'msg', 'type']], 'the 422 keeps where and why, never what was sent'
+
+
+@pytest.mark.parametrize('method, path, body', [
+    ('PATCH', '/api/admin/users/erin@example.com', {'password': SPILL * 200}),
+    ('POST', '/api/admin/users', {'email': 'erin@example.com', 'name': 'Erin', 'role': 'viewer', 'password': SPILL * 200}),
+], ids=['password on a user change', 'password on a new user'])
+def test_a_refused_user_body_never_comes_back_in_the_422(store: Store, method: str, path: str, body: dict):
+    # given
+    client = make_client(store)
+
+    # when
+    res = client.request(method, path, json=body, headers=AUTH)
+
+    # then
+    assert res.status_code == 422
+    assert SPILL not in res.text
+    assert res.json() == {'detail': msg('user.password_length', min=12, max=256), 'field': 'password'}, 'the 422 names the field and why, never what was sent'
 
 
 def test_an_unknown_field_is_named_in_the_422_but_its_value_is_not(store: Store):

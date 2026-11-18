@@ -443,8 +443,8 @@ def test_a_user_disabled_before_the_role_write_is_not_written(store: Store, monk
     real = Users.upsert_sso
     disabled = {}
 
-    def then_disabled(self, email, name, default_role):
-        found = real(self, email, name, default_role)
+    def then_disabled(self, email, name, default_role, **kw):
+        found = real(self, email, name, default_role, **kw)
         if email == 'carol@example.com' and not disabled:
             store.db['users'].update_one({'_id': email}, {'$set': {'disabled': True}})
             disabled['doc'] = raw(store, email)

@@ -85,7 +85,8 @@ function updateText(a) {
   return t.join(' ') || 'Update: ';
 }
 var AUTO_BY = 'auto · Claude draft';
-function draftBy(by) { return isTokenActor(by) ? tokenActorLabel(by, 'Claude') : !by || by === 'Claude' ? 'Claude' : by === AUTO_BY ? 'Claude · auto-sent' : String(by).split('@')[0]; }
+function autoSentBy(drafted) { var t = String(drafted == null ? '' : drafted), label = isTokenActor(t) && t !== 'token:bootstrap' ? tokenActorLabel(t, '') : ''; return (t === 'server' ? brandName() : label || 'Investigator') + ' \u00b7 auto-sent'; }
+function draftBy(by, drafted) { return isTokenActor(by) ? tokenActorLabel(by, 'Claude') : !by || by === 'Claude' ? 'Claude' : by === AUTO_BY ? autoSentBy(drafted) : String(by).split('@')[0]; }
 function autoArmed(x) {
   var s = x.autoSend, d = draftOf(x);
   return s && s.at && !s.holdBy && !s.claimedAt && d && s.draftAt === d.at && !draftSent(x) ? s : null;
@@ -129,7 +130,7 @@ function goneText(a) { return 'The page answers HTTP ' + a.gone.status + ' since
 function draftTag(a) {
   var d = draftOf(a), p = a.slackPost;
   if (!d) return '';
-  if (draftSent(a)) return '<span class="tag k-good slack-rec sent" title="' + esc('Posted to Slack ' + dayhm(p.at) + ' by ' + draftBy(p.by) + '\n\n' + d.text) + '">' + ICON_SEND + slackLink(p.permalink, 'Sent to Slack ' + dayhm(p.at)) + '</span>';
+  if (draftSent(a)) return '<span class="tag k-good slack-rec sent" title="' + esc('Posted to Slack ' + dayhm(p.at) + ' by ' + draftBy(p.by, d.by) + '\n\n' + d.text) + '">' + ICON_SEND + slackLink(p.permalink, 'Sent to Slack ' + dayhm(p.at)) + '</span>';
   if (!draftLive(a)) return '<span class="tag k-muted slack-rec stopped" title="' + esc('This card is handled, muted or cleared, so the draft is probably out of date; it is not counted under Slack drafts, and the auto-send is off. Send to Slack would still post it.\n\n' + d.text) + '">' + ICON_SEND + 'Draft (stopped)</span>';
   var armed = autoArmed(a);
   if (armed) return '<span class="tag k-act slack-rec armed" title="' + esc(armedTip(d, armed)) + '">' + ICON_SEND + esc(autoLabel(armed)) + '</span>';

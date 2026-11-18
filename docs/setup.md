@@ -13,6 +13,14 @@ The sidebar groups the pages. Board, Requests, Chat and Investigator come first.
 
 Each page has its own link, such as `#t=anoms` for the Board, which opens that page from a bookmark or a Slack message.
 
+The Chat page answers questions about prod from the connected integrations, such as metrics and logs, and names what it read. It needs Chat on in [Feature switches](#feature-switches).
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="images/chat-dark.png">
+<source media="(prefers-color-scheme: light)" srcset="images/chat-light.png">
+<img src="images/chat-light.png" alt="The Skopax Chat page answering a question about slow checkout with the latency rise, the timeout log lines, the cause and a next step">
+</picture>
+
 ## Admin
 
 Admin has six sections: General, Access & sign-in, Integrations, Features, Investigator and Changes. A notices strip above them lists what needs attention. The Admin row in the sidebar opens the section you used last (Integrations the first time) and shows a dot when a notice is a warning.

@@ -1,6 +1,7 @@
 import logging
 import re
 import threading
+from collections.abc import Sequence
 
 from skopax.contract import Knowledge, Plugin, ReadError, Tool
 from skopax.instances import Instance
@@ -191,8 +192,8 @@ class PluginTools:
         entry = self._entry(name)
         return None if entry is None else entry[1].per_run
 
-    def knowledge(self) -> list[Knowledge]:
-        return self.runtime.knowledge()
+    def knowledge(self, cards: Sequence[dict] = ()) -> list[Knowledge]:
+        return self.runtime.knowledge(cards)
 
     def catalog(self) -> dict[str, str]:
         return {tool.name: tool.kind for _, tool in held(self.runtime)} | {tool.name: tool.kind for _, tool, _ in self._offered()}

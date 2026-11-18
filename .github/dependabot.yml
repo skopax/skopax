@@ -22,6 +22,8 @@ updates:
     directories:
       - /
       - /examples/hello-plugin
+      - /examples/couchbase-plugin
+      - /examples/managed-redis-plugin
     schedule:
       interval: weekly
     cooldown:

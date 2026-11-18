@@ -44,6 +44,7 @@ async function boot(opts) {
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () {};
       if (opts.width) w.matchMedia = media(opts.width);
+      if (opts.calm) w.matchMedia = (q) => ({matches: /\(prefers-reduced-motion:\s*reduce\)/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}});
       Object.keys(opts.stored || {}).forEach((k) => w.localStorage.setItem(k, opts.stored[k]));
       w.fetch = async (path) => {
         const p = String(path);
@@ -66,6 +67,8 @@ const labels = (box) => [...box.querySelectorAll('a.tab:not([hidden]) .lbl')].ma
 const current = (doc) => [...doc.querySelectorAll('#side [aria-current="page"]')].map((a) => a.id);
 const visible = (doc) => { const b = doc.body.cloneNode(true); b.querySelectorAll('script, style').forEach((x) => x.remove()); return b.textContent; };
 const key = (w, el, k) => el.dispatchEvent(new w.KeyboardEvent('keydown', {key: k, bubbles: true, cancelable: true}));
+const css = (doc) => [...doc.styleSheets].flatMap((s) => [...s.cssRules]).map((r) => r.cssText).join('\n');
+const sized = (el, box) => ['scrollTop', 'clientHeight', 'scrollHeight'].forEach((k) => Object.defineProperty(el, k, {configurable: true, get: () => box[k], set: (v) => { box[k] = v; }}));
 
 async function theSidebarListsTheMapInOrder() {
   //given
@@ -165,6 +168,79 @@ async function moreFoldsAndOpensForItsRows() {
   assert.deepStrictEqual(errors.concat(review.errors, docs.errors), []);
   review.dom.window.close(); docs.dom.window.close();
   return 'More starts folded, a click unfolds and folds it, opening Review unfolds it, and Docs is a page with How this works and the API reference link';
+}
+
+async function openingMoreScrollsItsRowsIntoView() {
+  //given
+  const {dom, w, doc, errors} = await boot({hash: '#t=anoms'});
+  const calls = [];
+  w.Element.prototype.scrollIntoView = function (o) { calls.push([this.id, Object.assign({}, o)]); };
+  const more = doc.getElementById('side-more');
+
+  //when
+  more.click();
+  const opened = calls.slice();
+  more.click();
+  const closed = calls.slice();
+  more.click();
+  doc.getElementById('tab-review').click();
+  doc.getElementById('tab-docs').click();
+  const again = calls.slice();
+  dom.window.close();
+  const calm = await boot({hash: '#t=anoms', calm: true});
+  const quiet = [];
+  calm.w.Element.prototype.scrollIntoView = function (o) { quiet.push([this.id, Object.assign({}, o)]); };
+  calm.doc.getElementById('side-more').click();
+
+  //then
+  assert.deepStrictEqual(opened, [['side-more-list', {block: 'nearest', behavior: 'smooth'}]], 'opening More scrolls its rows into view in the nav');
+  assert.deepStrictEqual(closed, opened, 'closing it does not scroll');
+  assert.deepStrictEqual(again, opened.concat(opened), 'opening it again scrolls once more, and a page in More that is already open does not');
+  assert.deepStrictEqual(quiet, [['side-more-list', {block: 'nearest', behavior: 'auto'}]], 'with reduced motion the scroll is not smooth');
+  assert.deepStrictEqual(errors.concat(calm.errors), []);
+  calm.dom.window.close();
+  return 'opening More scrolls its rows into view, smoothly unless reduced motion is asked for, and closing it or opening one of its pages does not';
+}
+
+async function theNavFadesWhileRowsAreBelowTheFold() {
+  //given
+  const {dom, w, doc, errors} = await boot({hash: '#t=anoms'});
+  const nav = doc.getElementById('snav'), box = {scrollTop: 0, clientHeight: 400, scrollHeight: 400};
+  const faded = () => nav.classList.contains('more-below');
+  const scrolled = (top) => { box.scrollTop = top; nav.dispatchEvent(new w.Event('scroll')); return faded(); };
+  const start = faded();
+  sized(nav, box);
+
+  //when
+  const fits = scrolled(0);
+  box.scrollHeight = 600;
+  const steps = [scrolled(0), scrolled(198), scrolled(199), scrolled(200)];
+  box.scrollHeight = 400;
+  w.dispatchEvent(new w.Event('resize'));
+  const resized = faded();
+  box.scrollTop = 0;
+  box.scrollHeight = 700;
+  doc.getElementById('side-more').click();
+  await null;
+  const grown = faded();
+  box.scrollHeight = 400;
+  doc.getElementById('side-rail').click();
+  const railFits = faded();
+  box.scrollHeight = 650;
+  doc.getElementById('side-rail').click();
+  const fullBelow = faded();
+  const rules = css(doc);
+
+  //then
+  assert.deepStrictEqual([start, fits], [false, false], 'a nav whose rows all fit shows no fade');
+  assert.deepStrictEqual(steps, [true, true, false, false], 'the fade shows while the nav can scroll further down, and goes at the bottom');
+  assert.strictEqual(resized, false, 'a resize checks again');
+  assert.strictEqual(grown, true, 'rows that open below the fold bring the fade');
+  assert.deepStrictEqual([railFits, fullBelow], [false, true], 'switching between the rail and the full sidebar checks again');
+  assert.match(rules, /\.s-nav\.more-below\s*\{[^}]*mask-image:\s*linear-gradient/, 'the fade is a mask on the nav, so it catches no clicks and needs no colour');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'the nav gets more-below while it can scroll further down, checked on scroll, resize, opened rows and the rail toggle, and the fade is a mask';
 }
 
 async function theRailIsRememberedAndShowsLabelsAsTips() {
@@ -302,7 +378,11 @@ async function aPluginPageGetsARowAndASection() {
   assert.ok(row && observe.lastElementChild === row, 'the plug-in row ends its group');
   assert.strictEqual(row.querySelector('.lbl').textContent, EVIL, 'the label is text');
   assert.strictEqual(row.querySelector('.lbl').children.length, 0);
-  assert.strictEqual(row.querySelector('.b-plug').textContent, 'plug-in');
+  assert.strictEqual(row.querySelector('.b-plug'), null, 'the row carries no plug-in pill');
+  assert.ok(!/plug-in/.test(row.textContent), 'and no plug-in text');
+  assert.strictEqual(row.dataset.plugin, '1', 'it is marked as a plug-in row by an attribute');
+  assert.ok(!doc.getElementById('tab-svcs').hasAttribute('data-plugin'), 'a core row is not');
+  assert.ok(!css(doc).includes('b-plug'), 'the pill style is gone');
   assert.strictEqual(doc.getElementById('count-demo').textContent, '', 'no count until the plug-in sets one');
   const img = row.querySelector('img');
   assert.ok(img && img.getAttribute('src') === '/plugins/demo/icon.svg' && img.getAttribute('alt') === '' && !img.hasAttribute('onerror'), 'the icon is an img');
@@ -331,7 +411,7 @@ async function aPluginPageGetsARowAndASection() {
   assert.deepStrictEqual(current(doc), ['tab-anoms'], 'and its open page falls back to the Board');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-  return 'a plug-in page lands at the end of Observe with a plug-in tag, its label as text and its icon as an img, gets its own section, and goes away when the plug-in stops serving';
+  return 'a plug-in page lands at the end of Observe marked by data-plugin with no pill, its label as text and its icon as an img, gets its own section, and goes away when the plug-in stops serving';
 }
 
 async function aPluginPageCannotTakeAPageId() {
@@ -468,6 +548,8 @@ async function theFilterColumnStartsFoldedWhenTheContentIsNarrow() {
   console.log('PASS ' + await theSidebarListsTheMapInOrder());
   console.log('PASS ' + await aRowOpensItsPageAndMarksItself());
   console.log('PASS ' + await moreFoldsAndOpensForItsRows());
+  console.log('PASS ' + await openingMoreScrollsItsRowsIntoView());
+  console.log('PASS ' + await theNavFadesWhileRowsAreBelowTheFold());
   console.log('PASS ' + await theRailIsRememberedAndShowsLabelsAsTips());
   console.log('PASS ' + await aRailTipCarriesTheRowBadges());
   console.log('PASS ' + await onAPhoneTheHamburgerOpensTheDrawer());

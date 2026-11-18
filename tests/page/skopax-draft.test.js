@@ -607,7 +607,7 @@ async function slackTabJumpsToTheDraftAndListsWhatWentOut() {
   //then
   const out = [...doc.querySelectorAll('#slack-sent tbody tr')].map((tr) => cells(tr));
   assert.deepStrictEqual(out, [
-    [hhmm(sent.anomalies[1].slackPost.at), 'Warningcheckout-service / 5xx', 'Claude · auto-sent', 'draft'],
+    [hhmm(sent.anomalies[1].slackPost.at), 'Warningcheckout-service / 5xx', 'Investigator \u00b7 auto-sent', 'draft'],
     [hhmm(sent.anomalies[0].slackPost.at), 'Criticalorders-service / ERROR', 'Claude (on request)', 'draft'],
     [hhmm(rep.slackPost.at), 'ReportDeploy report · ' + hhmm(rep.windowFrom) + '–' + hhmm(rep.windowTo) + ' · clean', 'op', 'plain'],
   ], 'the last 24 hours of posts, newest first, with who sent it and whether the draft was the message');
@@ -662,8 +662,34 @@ async function slackTabJumpsToTheDraftAndListsWhatWentOut() {
   return 'Edit opens the draft form on its card and Open jumps to the report, the Sent section lists the last 24 hours (auto, Claude on request, a person; draft or plain, older posts left out), and the queue survives a live update while an armed confirm defers it';
 }
 
+async function autoSentPostsNameWhoDraftedThem() {
+  //given
+  const sent = queueState(5);
+  const post = (x, by, atMin) => { x.slackDraft.by = by; x.slackPost = {channel: 'C1', ts: '2.' + atMin, at: iso(atMin), by: AUTO_SENDER, draft: true}; x.slackDraft.at = iso(atMin + 100); };
+  post(sent.anomalies[0], 'Claude (pod)', 10);
+  post(sent.anomalies[1], 'server', 20);
+  post(sent.anomalies[2], 'token:release-bot', 30);
+  post(sent.anomalies[5], 'token', 40);
+  post(sent.anomalies[4], 'token:bootstrap', 50);
+  const serve = {rev: 5, state: sent, reports: []};
+
+  //when
+  const {doc, errors, dom} = await boot(serve);
+  await wait(100);
+  const out = [...doc.querySelectorAll('#slack-sent tbody tr')].map((tr) => cells(tr)[2]);
+  const tip = card(doc, ORDERS).querySelector('.slack-rec.sent').title;
+
+  //then
+  assert.deepStrictEqual(out, ['Investigator \u00b7 auto-sent', 'Skopax \u00b7 auto-sent', 'release-bot \u00b7 auto-sent', 'Investigator \u00b7 auto-sent', 'Investigator \u00b7 auto-sent'],
+    'the server under the product name, a token under its label, the investigator or anything else as Investigator');
+  assert.ok(tip.includes(' by Investigator \u00b7 auto-sent'), 'the card tag names the same sender');
+  assert.ok(!navigated(errors), errors.join(' | '));
+  dom.window.close();
+  return 'an auto-sent post names who drafted it: the product for the server, the token label for a token, Investigator for the rest';
+}
+
 (async () => {
-  for (const t of [draftIsShownOnTheCard, editSurvivesALiveUpdateAndSaves, emptySaveRemovesTheDraftAndGuestsCannotEdit, pillFiltersWaitingDraftsAndSentOnesSaySo, postUpdateRepliesInTheThread, armedDraftCountsDownAndHoldStopsIt, slackTabQueuesEveryUnsentDraft, slackTabSendsHoldsAndDiscards, slackTabJumpsToTheDraftAndListsWhatWentOut]) {
+  for (const t of [autoSentPostsNameWhoDraftedThem, draftIsShownOnTheCard, editSurvivesALiveUpdateAndSaves, emptySaveRemovesTheDraftAndGuestsCannotEdit, pillFiltersWaitingDraftsAndSentOnesSaySo, postUpdateRepliesInTheThread, armedDraftCountsDownAndHoldStopsIt, slackTabQueuesEveryUnsentDraft, slackTabSendsHoldsAndDiscards, slackTabJumpsToTheDraftAndListsWhatWentOut]) {
     console.log('PASS ' + (await t()));
   }
 })().catch((e) => { console.error('FAIL', e.message); process.exit(1); });

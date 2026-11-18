@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from skopax.mcptools import presets
 from skopax.registry import ATTR, BUILTIN, describe
 
 FAULTY = 'tests.plugins.walker_faults'
@@ -79,3 +80,52 @@ def test_the_walkers_report_a_help_key_without_a_default_a_manifest_that_is_not_
 
     # then
     assert found == ([('rates', [], ['gone'])], 'ValueError', ['knowledge.md'])
+
+
+def fields_of(path: str) -> dict:
+    return {f.key: f for f in plugin_of(path).fields}
+
+
+def test_the_mcp_server_form_is_grouped_and_its_choices_read_as_words():
+    # given
+    fields = fields_of('skopax.plugins.mcp_tools')
+    names = {p.id: p.name for p in presets.load() if not p.soon}
+
+    # then
+    assert {k: f.group for k, f in fields.items()} == {'url': 'connection', 'preset': 'connection', 'auth': 'sign-in', 'header-name': 'sign-in', 'header-value': 'sign-in', 'oauth-scopes': 'sign-in',
+                                                     'oauth-client-id': 'sign-in', 'oauth-client-secret': 'sign-in', 'chat-role': 'access', 'knowledge': 'access', 'ca': 'advanced'}
+    assert fields['auth'].choice_labels == {'none': 'No sign-in', 'header': 'Token in a header', 'oauth': 'OAuth'}
+    assert fields['chat-role'].choice_labels == {'viewer': 'Everyone', 'operator': 'Operators', 'admin': 'Admins only'}
+    assert dict(fields['preset'].choice_labels) == {k: v for k, v in names.items() if k in fields['preset'].choices} and set(fields['preset'].choices) <= set(names)
+
+
+def test_the_prometheus_form_is_grouped_and_its_sign_in_reads_as_words():
+    # given
+    fields = fields_of('skopax.plugins.prometheus')
+
+    # then
+    assert fields['auth'].choice_labels == {'none': 'None', 'bearer': 'Bearer token', 'basic': 'Username and password'}
+    assert [(k, f.group) for k, f in fields.items()] == [('url', 'connection'), ('ui-url', 'connection'), ('auth', 'sign-in'), ('token', 'sign-in'), ('username', 'sign-in'), ('password', 'sign-in'),
+                                                         ('ca', 'advanced'), ('ca-pinned', 'advanced'), ('namespaces', 'scope'), ('ingress-exclude', 'scope'), ('profiles', 'scope')]
+
+
+@pytest.mark.parametrize('path', BUILTIN)
+def test_certificate_and_relay_fields_of_a_built_in_plugin_sit_under_advanced(path):
+    # when
+    keys = {f.key: f.group for f in plugin_of(path).fields if f.kind == 'pem' or f.key in ('ca-pinned', 'via')}
+
+    # then
+    assert all(g == 'advanced' for g in keys.values()), keys
+
+
+@pytest.mark.parametrize('path, key, labels', [
+    ('skopax.plugins.kubernetes', 'mode', {'in-cluster': 'This cluster', 'agent': 'Through an agent'}),
+    ('skopax.plugins.argocd', 'mode', {'api': 'Argo CD API', 'in-cluster': 'This cluster'}),
+    ('skopax.plugins.teams', 'min-sev', {'info': 'Info', 'warn': 'Warning', 'crit': 'Critical'}),
+])
+def test_mode_and_severity_choices_read_as_words(path, key, labels):
+    # when
+    found = fields_of(path)[key].choice_labels
+
+    # then
+    assert dict(found) == labels

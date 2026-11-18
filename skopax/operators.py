@@ -3,6 +3,8 @@ import time
 from typing import Callable
 
 from skopax.errkind import Authored, kind as error_kind
+from skopax.messages import msg
+from skopax.roles import ResolverError
 from skopax.slack import SlackError, reason_of
 
 log = logging.getLogger('skopax.operators')
@@ -17,6 +19,7 @@ class Operators:
     def __init__(self, lookup: Callable[[str], bool] | None, slack, settings, clock=time.time):
         self.lookup = lookup
         self.slack = slack
+        self.settings = settings
         self.role = settings.operator_role
         self.admin_role = getattr(settings, 'admin_role', None)
         self.cache_s = settings.slack_operator_cache_s
@@ -61,13 +64,23 @@ class Operators:
             try:
                 allowed = self.lookup(principal)
             except Exception as e:
-                log.warning('role lookup failed: %s', error_kind(e))
-                raise OperatorUnknown(error_kind(e)) from None
+                minutes = self.stale_minutes(hit, now) if isinstance(e, ResolverError) else None
+                text = e.line if isinstance(e, ResolverError) else f'role lookup failed: {error_kind(e)}'
+                log.warning('%s', text if minutes is None else msg('roles.last_known', error=text, minutes=minutes))
+                if minutes is None:
+                    raise OperatorUnknown(error_kind(e)) from None
+                return hit[1]
             if allowed:
                 found = (principal, True)
                 break
         self._verdicts[key] = (now, found)
         return found
+
+    def stale_minutes(self, hit: tuple[float, tuple[str | None, bool]] | None, now: float) -> int | None:
+        limit = int(getattr(self.settings, 'roles_stale_max_minutes', 0) or 0)
+        if hit is None or not limit or not 0 <= now - hit[0] <= limit * 60:
+            return None
+        return int((now - hit[0]) // 60)
 
     def principal_for(self, email: str) -> str | None:
         principal, operator = self.access_of(email)

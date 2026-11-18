@@ -145,10 +145,17 @@ function sideGroupBox(id) {
 function sideMore(open) {
   var more = document.getElementById('side-more'), list = document.getElementById('side-more-list');
   if (!more) return;
+  var shown = open && list.hidden;
   list.hidden = !open;
   more.setAttribute('aria-expanded', open ? 'true' : 'false');
   sideMarkMore();
+  if (shown && typeof list.scrollIntoView === 'function') list.scrollIntoView({block: 'nearest', behavior: sideCalm() ? 'auto' : 'smooth'});
 }
+function sideFade() {
+  var nav = document.getElementById('snav');
+  if (nav) nav.classList.toggle('more-below', nav.scrollTop + nav.clientHeight < nav.scrollHeight - 1);
+}
+function sideCalm() { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
 function sideMarkMore() {
   var more = document.getElementById('side-more'), list = document.getElementById('side-more-list');
   if (!more) return;
@@ -309,6 +316,7 @@ function sideLayout() {
   if (!phone) sideCloseDrawer(false);
   if (window.__skopaxTipHide) window.__skopaxTipHide();
   if (typeof applyNavOff === 'function' && curTab) applyNavOff();
+  sideFade();
 }
 function sideRail(on, keep) {
   sideRailOn = !!on;
@@ -365,7 +373,8 @@ function sidePlugins(pages) {
   list.forEach(function (p) {
     if (had[p.tab]) return;
     var icon = typeof p.icon === 'string' && SIDE_PAGE_ICON.test(p.icon) ? '<img class="i" alt="" width="16" height="16">' : navIcon('board');
-    var row = sideLink(p.tab, p.label, icon, sideCount(p.tab, true) + '<span class="b-plug">plug-in</span>');
+    var row = sideLink(p.tab, p.label, icon, sideCount(p.tab, true));
+    row.dataset.plugin = '1';
     var img = row.querySelector('img');
     if (img) img.setAttribute('src', p.icon);
     sideGroupBox(p.group).appendChild(row);
@@ -377,6 +386,7 @@ function sidePlugins(pages) {
   });
   if (curTab && !TABS.some(function (t) { return t.id === curTab; })) showTab('anoms');
   sideMarkMore();
+  sideFade();
   if (SIDE_WANTED) {
     var wanted = SIDE_WANTED;
     SIDE_WANTED = null;
@@ -411,6 +421,10 @@ function sideRender() {
   document.getElementById('side-rail').addEventListener('click', function () { if (sidePhone()) sideCloseDrawer(true); else sideRail(!sideRailOn, true); });
   document.getElementById('theme-btn').addEventListener('click', function () { sideTheme(true); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && document.body.classList.contains('drawer-open')) sideCloseDrawer(true); });
+  var nav = document.getElementById('snav');
+  nav.addEventListener('scroll', sideFade, {passive: true});
+  window.addEventListener('resize', sideFade);
+  if (typeof MutationObserver === 'function') new MutationObserver(sideFade).observe(nav, {childList: true, subtree: true, attributes: true, attributeFilter: ['hidden']});
   if (window.matchMedia) {
     var phone = window.matchMedia(SIDE_PHONE);
     if (phone.addEventListener) phone.addEventListener('change', sideLayout);

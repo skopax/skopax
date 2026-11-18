@@ -97,6 +97,8 @@ NUMBER_TYPES = frozenset({'integer', 'number'})
 RESERVED_KEYS = frozenset({'name', 'primary', 'enabled', 'plugin'})
 INSTANCE_WORDS = ('primary', 'all', 'no-data')
 FIELD_KEY = re.compile(r'[a-z][a-z0-9-]{0,30}')
+FIELD_GROUP = re.compile(r'[a-z][a-z0-9-]{0,23}')
+CHOICE_LABEL_MAX = 40
 SECTION_NAME = re.compile(r'[a-z][a-zA-Z0-9-]{0,30}')
 AGENT_FIELD_KEY = re.compile(r'[a-z][a-z0-9.-]{0,60}')
 AGENT_HOST_FIELDS = ('mode', 'url', 'token', 'via')
@@ -625,6 +627,7 @@ def _check(plugin: Plugin, directory: Path | None) -> None:
         keys.add(f.key)
         if f.kind not in FIELD_KINDS:
             raise _why('field_kind', key=f.key, kind=f.kind)
+        _field_look(f)
     declared = {f.key: f for f in plugin.fields}
     for read in plugin.agent_reads:
         for f in read.fields:
@@ -636,6 +639,7 @@ def _check(plugin: Plugin, directory: Path | None) -> None:
             keys.add(f.key)
             if f.kind not in FIELD_KINDS:
                 raise _why('field_kind', key=f.key, kind=f.kind)
+            _field_look(f)
     for f in plugin.fields:
         if f.show_if is not None and (len(f.show_if) != 2 or f.show_if[0] not in keys):
             raise _why('show_if', key=f.key, other=f.show_if[0] if f.show_if else '')
@@ -1139,6 +1143,18 @@ def _pname(plugin: Plugin, label: str) -> str:
     return plugin.name if _name_ok(plugin.name) else label
 
 
+def _label_ok(text: object) -> bool:
+    return isinstance(text, str) and 1 <= len(text) <= CHOICE_LABEL_MAX and text.isprintable() and bool(text.strip())
+
+
+def _field_look(f) -> None:
+    labels = f.choice_labels
+    if not isinstance(labels, Mapping) or (labels and f.kind != 'choice') or any(k not in f.choices or not _label_ok(v) for k, v in labels.items()):
+        raise _why('field_labels', key=f.key, limit=CHOICE_LABEL_MAX)
+    if not isinstance(f.group, str) or (f.group and not FIELD_GROUP.fullmatch(f.group)):
+        raise _why('field_group', key=f.key, group=str(f.group)[:30])
+
+
 def describe(plugin: Plugin, icon: bool | None = None) -> dict:
     caps = plugin.capabilities
     return {
@@ -1161,4 +1177,4 @@ def describe(plugin: Plugin, icon: bool | None = None) -> dict:
 
 def field_view(f) -> dict:
     return {'key': f.key, 'label': f.label, 'kind': f.kind, 'required': f.required, 'default': f.default, 'help': f.help, 'choices': list(f.choices), 'low': f.low, 'high': f.high,
-            'showIf': list(f.show_if) if f.show_if else None, 'ui': f.ui}
+            'showIf': list(f.show_if) if f.show_if else None, 'ui': f.ui, 'choiceLabels': dict(f.choice_labels), 'group': f.group}

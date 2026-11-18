@@ -149,7 +149,7 @@
     S.forEach(function (s) { out.push({kind: 'Services', raw: true, label: String(s.svc || ''), hay: s.ns, meta: s.ns || 'service', icon: 'server', run: function () { showSvcCards(s); }}); });
     [].forEach.call(document.querySelectorAll('#snav a.tab, #pinned a.tab'), function (a) {
       if (a.hidden || a.getAttribute('aria-disabled') === 'true' || !(a.dataset.tab || a.dataset.go)) return;
-      out.push({kind: 'Pages', label: a.dataset.label || '', meta: a.querySelector('.b-plug') ? 'plug-in' : '', node: a.querySelector('.i'), run: function () { a.click(); }});
+      out.push({kind: 'Pages', label: a.dataset.label || '', meta: a.dataset.plugin ? 'plug-in' : '', node: a.querySelector('.i'), run: function () { a.click(); }});
     });
     out.push({kind: 'Settings', label: 'Appearance', hay: 'theme mode text size density language', meta: 'Settings', icon: 'monitor', run: function () { pickTab('prefs'); }});
     if (me.user) out.push({kind: 'Settings', label: 'Account', hay: 'password sign out', meta: 'Settings', icon: 'key', run: function () { pickTab('prefs'); }});

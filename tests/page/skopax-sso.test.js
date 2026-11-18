@@ -28,9 +28,10 @@ function makeSso(over) {
       claims: v('id-token', 'default'), 'client-auth': v('auto', 'default'), 'require-verified-email': v('false', 'default'),
       'authorize-url': v('', 'default'), 'token-url': v('', 'default'), 'jwks-url': v('', 'default'), 'roles-claim': v('roles', 'default'),
       'role-map': v('[{"value":"ops-admins","role":"admin"},{"value":"ops-operators","role":"operator"}]', 'admin'), 'default-role': v('viewer', 'default'),
+      'new-accounts': v('anyone', 'default'), 'allowed-domains': v('', 'default'),
     },
     bases: {issuer: 'environment', 'client-id': 'default', scope: 'default', claims: 'default', 'client-auth': 'default', 'require-verified-email': 'default', 'authorize-url': 'default',
-      'token-url': 'default', 'jwks-url': 'default', 'roles-claim': 'default', 'role-map': 'default', 'default-role': 'default'},
+      'token-url': 'default', 'jwks-url': 'default', 'roles-claim': 'default', 'role-map': 'default', 'default-role': 'default', 'new-accounts': 'default', 'allowed-domains': 'default'},
     switch: {value: 'false', source: 'default', from: null, base: 'default', baseValue: false}, secretNote: null,
     secret: {set: false, from: null, unreadable: false, updatedBy: null, updatedAt: null}, roleMapInUse: [], mcpBase: 'https://skopax.example.com',
   }, over || {});
@@ -1166,8 +1167,35 @@ async function theClientSecretFieldIsMaskedOnScreen() {
   return 'the client secret field is masked on screen by exactly one page rule and no inline style';
 }
 
+async function aSelectTheServerSentNoValueForIsNotSavedByItself() {
+  //given
+  const view = makeSso();
+  delete view.values['new-accounts'];
+  const t = await boot({sso: view});
+  await openAccess(t);
+
+  //when
+  setValue(field(t.doc, 'scope').querySelector('.sso-in'), 'openid email');
+  button(t.doc, 'sso-save').click();
+  await wait(80);
+  const first = puts(t)[0];
+  const pick = field(t.doc, 'new-accounts').querySelector('.sso-in');
+  pick.value = 'added-only';
+  pick.dispatchEvent(new t.w.Event('change', {bubbles: true}));
+  button(t.doc, 'sso-save').click();
+  await wait(80);
+
+  //then
+  assert.deepStrictEqual(first, {values: {scope: 'openid email'}});
+  assert.deepStrictEqual(puts(t)[1].values['new-accounts'], 'added-only');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'a select the server sent no value for is not saved by itself, and is saved once it is changed';
+}
+
 (async () => {
   console.log('PASS ' + await rendersValuesWithSourceLabels());
+  console.log('PASS ' + await aSelectTheServerSentNoValueForIsNotSavedByItself());
   console.log('PASS ' + await aSourceOwnedSecretIsReadOnly());
   console.log('PASS ' + await theTypedSecretIsSentOnce());
   console.log('PASS ' + await testConnectionListsSevenChecks());

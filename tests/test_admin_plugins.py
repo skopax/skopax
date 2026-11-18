@@ -99,7 +99,41 @@ def test_catalog_lists_every_plugin_with_state_and_reason(store):
     assert rows['demo']['category'] == 'other' and rows['demo']['edition'] == 'community'
     assert rows['enterprise-demo']['state'] == 'locked' and rows['enterprise-demo']['reason'] == msg('plugins.needs_edition', name='Enterprise demo', edition='Enterprise')
     broken = rows['tests.plugins.broken_plugin']
-    assert 'ImportError' in broken['reason'] and set(broken) == {'id', 'module', 'reason'}
+    assert 'ImportError' in broken['reason'] and set(broken) == {'id', 'module', 'reason', 'origin'} and broken['origin'] == 'env'
+
+
+def test_each_plugin_row_says_where_it_came_from_and_only_custom_ones_name_the_module(store):
+    # given
+    base = Registry.load({'SKOPAX_PLUGINS': 'tests.plugins.demo_plugin,tests.plugins.broken_plugin'}, builtin=('tests.plugins.linker_plugin',), entry_points=False)
+    package = dataclasses.replace(Registry.load({}, builtin=('tests.plugins.enterprise_plugin',), entry_points=False).loaded()[0], origin='entry-point')
+    registry = Registry(base.loaded() + [package])
+
+    # when
+    with served(store, registry=registry) as c:
+        rows = listed(c)
+        put = c.put('/api/admin/plugins/demo', json={'enabled': False}, headers=AUTH).json()
+    builtin = rows['linker']
+
+    # then
+    assert builtin['origin'] == 'builtin' and 'module' not in builtin
+    assert rows['demo']['origin'] == 'env' and rows['demo']['module'] == 'tests.plugins.demo_plugin'
+    assert rows['enterprise-demo']['origin'] == 'package' and rows['enterprise-demo']['module'] == 'tests.plugins.enterprise_plugin'
+    assert rows['tests.plugins.broken_plugin']['origin'] == 'env' and rows['tests.plugins.broken_plugin']['module'] == 'tests.plugins.broken_plugin'
+    assert put['origin'] == 'env' and put['module'] == 'tests.plugins.demo_plugin'
+
+
+def test_a_broken_builtin_and_a_broken_package_carry_their_origin(store):
+    # given
+    base = Registry.load({}, builtin=('tests.plugins.broken_plugin',), entry_points=False)
+    package = dataclasses.replace(Registry.load({'SKOPAX_PLUGINS': 'tests.plugins.broken_plugin'}, builtin=(), entry_points=False).loaded()[0], id='broken-pkg', origin='entry-point')
+
+    # when
+    with served(store, registry=Registry(base.loaded() + [package])) as c:
+        rows = listed(c)
+
+    # then
+    assert rows['tests.plugins.broken_plugin']['origin'] == 'builtin'
+    assert rows['broken-pkg']['origin'] == 'package'
 
 
 def test_switching_on_a_locked_plugin_is_409(store):
@@ -911,8 +945,8 @@ def test_a_plugin_broken_after_it_loaded_still_says_whether_it_is_switched_on(st
         off = c.put('/api/admin/plugins/demo', json={'enabled': False}, headers=AUTH)
 
     # then
-    assert set(row) == {'id', 'module', 'reason', 'enabled'} and row['enabled'] is True
-    assert off.status_code == 200 and set(off.json()) == {'id', 'module', 'reason', 'enabled'} and off.json()['enabled'] is False
+    assert set(row) == {'id', 'module', 'reason', 'enabled', 'origin'} and row['enabled'] is True
+    assert off.status_code == 200 and set(off.json()) == {'id', 'module', 'reason', 'enabled', 'origin'} and off.json()['enabled'] is False
 
 
 def test_an_instance_made_again_under_the_same_name_runs_every_check_it_watches_at_once(store):
