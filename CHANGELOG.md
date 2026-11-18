@@ -2,7 +2,7 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
-## 0.1.0-rc.3 (unreleased)
+## 0.1.0-rc.3 (2026-11-18)
 
 **Upgrade note:** logs are now readable lines by default, in colour. To keep the JSON lines of earlier releases for a log store, set `SKOPAX_LOG_FORMAT=log4j` (the same fields as before) or `json` (a new flat shape), or pick Log format in Admin > General.
 
