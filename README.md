@@ -20,14 +20,6 @@ Status: 0.1.0 is the first stable release. From here, settings and the plug-in c
 
 ## What it looks like
 
-A card as Skopax posts it to a Slack channel, and its answer to a question in the thread (an illustration, drawn from the message Skopax sends):
-
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/slack-thread-dark.png">
-<source media="(prefers-color-scheme: light)" srcset="docs/images/slack-thread-light.png">
-<img src="docs/images/slack-thread-light.png" alt="A chat channel where Skopax posted critical card 42, checkout p95 latency, with its draft, numbers and links, and a thread where bob asks whether only checkout is slow and Skopax answers from the metrics and logs">
-</picture>
-
 The Chat page, where you ask about prod in plain words and the answer names the metrics and logs it read:
 
 <picture>
@@ -42,6 +34,14 @@ A card opened from the Board, with the investigator's suspects, recommendation, 
 <source media="(prefers-color-scheme: dark)" srcset="docs/images/card-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="docs/images/card-light.png">
 <img src="docs/images/card-light.png" alt="Card 42, checkout p95 latency, open in a drawer: suspects, a recommendation to roll back, the code line that changed, the investigation note and two merged cards">
+</picture>
+
+The Integrations page, where every connection uses the same form; here an outside MCP server with the tools it may use:
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/integrations-dark.png">
+<source media="(prefers-color-scheme: light)" srcset="docs/images/integrations-light.png">
+<img src="docs/images/integrations-light.png" alt="Admin, Integrations: connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches">
 </picture>
 
 ## Quickstart

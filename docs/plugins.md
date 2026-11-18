@@ -256,13 +256,7 @@ Atlassian Cloud only, through the same gateway, with its own email and API token
 
 ### Slack
 
-Skopax posts a card to the channel, keeps the post up to date, and answers questions asked in its thread (an illustration, drawn from the message Skopax sends):
-
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="images/slack-thread-dark.png">
-<source media="(prefers-color-scheme: light)" srcset="images/slack-thread-light.png">
-<img src="images/slack-thread-light.png" alt="A chat channel where Skopax posted critical card 42, checkout p95 latency, and a thread where bob asks whether only checkout is slow and Skopax answers from the metrics and logs">
-</picture>
+Skopax posts a card to the channel, keeps the post up to date, and answers questions asked in its thread.
 
 - **Creating the Slack app:** at api.slack.com/apps choose "Create New App", then "From a manifest", pick your workspace and paste [`examples/slack-app-manifest.yaml`](../examples/slack-app-manifest.yaml). It turns on Socket Mode, buttons and dialogs, the events the listener reads (mentions, and messages in channels, private channels and direct messages) and every bot scope listed below, plus `im:history`, `reactions:write` and `app_mentions:read`. Install the app, copy the bot token (`xoxb-...`), and create an app-level token with the `connections:write` scope under Basic Information (`xapp-...`).
 - **Fields:** `bot-token` (`xoxb-...`) and `app-token` (`xapp-...`, for Socket Mode, which the Slack listener needs). The channel that cards and deploy reports go to is the setting Channel in Admin > General > Slack (`slack.channel`, or `SLACK_CHANNEL`).
