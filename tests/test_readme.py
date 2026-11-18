@@ -282,7 +282,7 @@ def image_tags(text: str) -> list[tuple[str, dict[str, str]]]:
 
 def image_targets(tag: str, attrs: dict[str, str]) -> list[str]:
     if tag == 'img':
-        return [attrs.get('src', '')]
+        return [attrs.get('src', '').removesuffix('#gh-dark-mode-only').removesuffix('#gh-light-mode-only')]
     return [part.strip().split(' ')[0] for part in attrs.get('srcset', '').split(',')]
 
 
@@ -310,20 +310,32 @@ def pictures(text: str) -> list[tuple[str, str, str]]:
     return found
 
 
+def theme_pairs(text: str) -> list[tuple[str, str]]:
+    found = []
+    srcs = [a.get('src', '') for t, a in image_tags(text) if t == 'img']
+    for dark, light in zip(srcs, srcs[1:]):
+        if dark.endswith('-dark.png#gh-dark-mode-only'):
+            found.append((dark, light))
+    return found
+
+
 def test_every_docs_image_resolves_has_alt_text_and_shows_the_theme_of_the_reader():
     # given
     texts = every_doc()
     shown = [p for text in texts.values() for p in pictures(text)]
+    paired = [p for text in texts.values() for p in theme_pairs(text)]
 
     # when
     problems = image_problems(texts)
 
     # then
     assert problems == []
-    assert len(shown) >= 5
-    assert sum(prose(text).count('<img') for text in texts.values()) == len(shown), 'every image sits in a picture with both themes'
+    assert len(shown) + len(paired) >= 5
+    assert sum(prose(text).count('<img') for text in texts.values()) == len(shown) + 2 * len(paired), 'every image shows the theme of the reader'
     for dark, light, img in shown:
         assert img.endswith('-light.png') and light == img and dark == img.replace('-light.png', '-dark.png'), (dark, light, img)
+    for dark, light in paired:
+        assert light == dark.replace('-dark.png#gh-dark-mode-only', '-light.png#gh-light-mode-only'), (dark, light)
 
 
 def test_the_image_check_finds_a_missing_file_a_missing_alt_and_an_outside_source():
@@ -353,14 +365,14 @@ def test_the_docs_images_come_in_both_themes_are_all_shown_and_stay_small():
     assert sum(p.stat().st_size for p in images) <= 6 * 1024 * 1024
 
 
-def test_the_readme_shows_the_board_after_the_intro_and_the_chat_card_and_integrations_under_what_it_looks_like():
+def test_the_readme_shows_no_picture_above_what_it_looks_like_and_the_chat_card_and_integrations_under_it():
     # given
     text = read('README.md')
     start = text.find('## What it looks like')
     section = text[start:text.index('\n## ', start + 1)] if start >= 0 else ''
 
     # then
-    assert text.index('Every team has that one person') < text.find('docs/images/board-light.png') < text.index('## Quickstart')
+    assert start > 0 and '<img' not in text[:start]
     assert [n for n in ('chat', 'card', 'integrations') if f'docs/images/{n}-light.png' in section] == ['chat', 'card', 'integrations']
     assert section.index('chat-light') < section.index('card-light') < section.index('integrations-light')
     assert 'slack-thread' not in text and 'an illustration' not in text

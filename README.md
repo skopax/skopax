@@ -4,14 +4,6 @@
 
 Every team has that one person who always knows why things are happening and what to do. Skopax is that person, for the whole team, at any hour.
 
-<a href="docs/images/board-light.png">
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.png">
-<source media="(prefers-color-scheme: light)" srcset="docs/images/board-light.png">
-<img width="420" src="docs/images/board-light.png" alt="The Skopax Board: open, in progress, done and muted columns of cards for a shop's checkout, payments, search, inventory and notifications services, with critical, warning and info cards and their assignees">
-</picture>
-</a>
-
 Its AI investigator keeps an eye on production. When something breaks, it reads your metrics, logs and recent deploys, then tells you why it broke and what to do next, in plain words. You can also chat with it about prod on its own chat page, ask it in Slack, or reach it from your own AI assistant over MCP.
 
 Behind it, alerts and errors are grouped into one card per problem, so the team can see who is on it.
@@ -26,39 +18,21 @@ Status: 0.1.0 is the first stable release. From here, settings and the plug-in c
 <tr>
 <td width="33%" valign="top">
 
-<a href="docs/images/chat-light.png">
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/chat-dark.png">
-<source media="(prefers-color-scheme: light)" srcset="docs/images/chat-light.png">
-<img width="280" src="docs/images/chat-light.png" alt="The Skopax Chat page answering Why is checkout slow since 14:00 with the latency rise, the timeout log lines, the cause in checkout 2.14.0 and a next step">
-</picture>
-</a>
+<a href="docs/images/chat-dark.png#gh-dark-mode-only"><img width="280" src="docs/images/chat-dark.png#gh-dark-mode-only" alt="The Skopax Chat page answering Why is checkout slow since 14:00 with the latency rise, the timeout log lines, the cause in checkout 2.14.0 and a next step"></a><a href="docs/images/chat-light.png#gh-light-mode-only"><img width="280" src="docs/images/chat-light.png#gh-light-mode-only" alt="The Skopax Chat page answering Why is checkout slow since 14:00 with the latency rise, the timeout log lines, the cause in checkout 2.14.0 and a next step"></a>
 
 <b>Chat</b>: ask about prod in plain words; the answer names the metrics and logs it read.
 
 </td>
 <td width="33%" valign="top">
 
-<a href="docs/images/card-light.png">
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/card-dark.png">
-<source media="(prefers-color-scheme: light)" srcset="docs/images/card-light.png">
-<img width="280" src="docs/images/card-light.png" alt="Card 42, checkout p95 latency, open in a drawer: suspects, a recommendation to roll back, the code line that changed, the investigation note and two merged cards">
-</picture>
-</a>
+<a href="docs/images/card-dark.png#gh-dark-mode-only"><img width="280" src="docs/images/card-dark.png#gh-dark-mode-only" alt="Card 42, checkout p95 latency, open in a drawer: suspects, a recommendation to roll back, the code line that changed, the investigation note and two merged cards"></a><a href="docs/images/card-light.png#gh-light-mode-only"><img width="280" src="docs/images/card-light.png#gh-light-mode-only" alt="Card 42, checkout p95 latency, open in a drawer: suspects, a recommendation to roll back, the code line that changed, the investigation note and two merged cards"></a>
 
 <b>Investigation</b>: a card with its suspects, a recommendation, the code lead and the merged cards.
 
 </td>
 <td width="33%" valign="top">
 
-<a href="docs/images/integrations-light.png">
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/integrations-dark.png">
-<source media="(prefers-color-scheme: light)" srcset="docs/images/integrations-light.png">
-<img width="280" src="docs/images/integrations-light.png" alt="Admin, Integrations: connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches">
-</picture>
-</a>
+<a href="docs/images/integrations-dark.png#gh-dark-mode-only"><img width="280" src="docs/images/integrations-dark.png#gh-dark-mode-only" alt="Admin, Integrations: connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches"></a><a href="docs/images/integrations-light.png#gh-light-mode-only"><img width="280" src="docs/images/integrations-light.png#gh-light-mode-only" alt="Admin, Integrations: connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches"></a>
 
 <b>Integrations</b>: every connection uses the same form, here an outside MCP server and its tools.
 
@@ -70,13 +44,7 @@ Status: 0.1.0 is the first stable release. From here, settings and the plug-in c
 
 Everything Skopax watches comes through plug-ins, and 30 of them ship in the image, ready to switch on in Admin > Integrations:
 
-<a href="docs/images/plugins-light.png">
-<picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/plugins-dark.png">
-<source media="(prefers-color-scheme: light)" srcset="docs/images/plugins-light.png">
-<img width="420" src="docs/images/plugins-light.png" alt="Admin, Integrations: all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health">
-</picture>
-</a>
+<a href="docs/images/plugins-dark.png#gh-dark-mode-only"><img width="420" src="docs/images/plugins-dark.png#gh-dark-mode-only" alt="Admin, Integrations: all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a><a href="docs/images/plugins-light.png#gh-light-mode-only"><img width="420" src="docs/images/plugins-light.png#gh-light-mode-only" alt="Admin, Integrations: all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a>
 
 | Area | Plug-ins |
 |---|---|
