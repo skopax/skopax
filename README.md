@@ -4,11 +4,13 @@
 
 Every team has that one person who always knows why things are happening and what to do. Skopax is that person, for the whole team, at any hour.
 
+<a href="docs/images/board-light.png">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="docs/images/board-light.png">
-<img width="640" src="docs/images/board-light.png" alt="The Skopax Board: open, in progress, done and muted columns of cards for a shop's checkout, payments, search, inventory and notifications services, with critical, warning and info cards and their assignees">
+<img width="420" src="docs/images/board-light.png" alt="The Skopax Board: open, in progress, done and muted columns of cards for a shop's checkout, payments, search, inventory and notifications services, with critical, warning and info cards and their assignees">
 </picture>
+</a>
 
 Its AI investigator keeps an eye on production. When something breaks, it reads your metrics, logs and recent deploys, then tells you why it broke and what to do next, in plain words. You can also chat with it about prod on its own chat page, ask it in Slack, or reach it from your own AI assistant over MCP.
 
@@ -24,39 +26,72 @@ Status: 0.1.0 is the first stable release. From here, settings and the plug-in c
 <tr>
 <td width="33%" valign="top">
 
+<a href="docs/images/chat-light.png">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="docs/images/chat-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="docs/images/chat-light.png">
 <img width="280" src="docs/images/chat-light.png" alt="The Skopax Chat page answering Why is checkout slow since 14:00 with the latency rise, the timeout log lines, the cause in checkout 2.14.0 and a next step">
 </picture>
+</a>
 
 <b>Chat</b>: ask about prod in plain words; the answer names the metrics and logs it read.
 
 </td>
 <td width="33%" valign="top">
 
+<a href="docs/images/card-light.png">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="docs/images/card-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="docs/images/card-light.png">
 <img width="280" src="docs/images/card-light.png" alt="Card 42, checkout p95 latency, open in a drawer: suspects, a recommendation to roll back, the code line that changed, the investigation note and two merged cards">
 </picture>
+</a>
 
 <b>Investigation</b>: a card with its suspects, a recommendation, the code lead and the merged cards.
 
 </td>
 <td width="33%" valign="top">
 
+<a href="docs/images/integrations-light.png">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="docs/images/integrations-dark.png">
 <source media="(prefers-color-scheme: light)" srcset="docs/images/integrations-light.png">
 <img width="280" src="docs/images/integrations-light.png" alt="Admin, Integrations: connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches">
 </picture>
+</a>
 
 <b>Integrations</b>: every connection uses the same form, here an outside MCP server and its tools.
 
 </td>
 </tr>
 </table>
+
+## Plug-ins: connect what you already run
+
+Everything Skopax watches comes through plug-ins, and 30 of them ship in the image, ready to switch on in Admin > Integrations:
+
+<a href="docs/images/plugins-light.png">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/plugins-dark.png">
+<source media="(prefers-color-scheme: light)" srcset="docs/images/plugins-light.png">
+<img width="420" src="docs/images/plugins-light.png" alt="Admin, Integrations: all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health">
+</picture>
+</a>
+
+| Area | Plug-ins |
+|---|---|
+| Metrics, logs and alerts | Prometheus, Elasticsearch, Grafana |
+| Infrastructure | Kubernetes, Argo CD, Kafka, Redis, PMM (Postgres, MongoDB), Airbyte, Capacity |
+| Web and edge | Website, Cloudflare, Varnish, Chrome UX Report, CSP reports, Safe Browsing |
+| Apps | App stores, Crashlytics |
+| Marketing and analytics | Google Ads, Google Analytics 4, Google Tag Manager, Umami, VWO |
+| Code, tickets and docs | GitLab, Jira, Confluence |
+| Chat and AI | Slack, Microsoft Teams, Langfuse |
+
+- **Any MCP server.** Connect an outside MCP server and pick which of its tools the investigator may use. The catalog has ready entries for Atlassian, Notion, GitHub and Google Drive.
+- **Several of each.** Every plug-in can have more than one instance, such as two Prometheus servers or a Kubernetes cluster per region, each with its own checks and thresholds.
+- **Shape it without code.** Admin switches whole features on and off, turns single checks on or off per instance, sets their thresholds, and changes branding and language. Settings can also come from a file or a settings source, so an install can be configured as code.
+- **Write your own.** A plug-in is a small Python package against a documented contract: checks that make cards, tools for the investigator, settings and an Admin form, all from one definition. Ship it in your own image built `FROM` Skopax. Start from `examples/hello-plugin`, or from the fuller `examples/couchbase-plugin` and `examples/managed-redis-plugin`. See [Integrations](docs/plugins.md) and [Extending Skopax](docs/extending.md).
 
 ## Quickstart
 
