@@ -736,6 +736,8 @@ def test_dependabot_watches_actions_uv_docker_and_npm_weekly():
     assert found['docker']['groups'] == {'docker': {'group-by': 'dependency-name'}}
     assert found['npm']['directory'] == '/tests/page'
     assert {u['cooldown']['default-days'] for u in found.values()} == {14}
+    assert found['uv']['allow'] == [{'dependency-type': 'direct'}]
+    assert {u['commit-message']['prefix'] for u in found.values()} == {'chore(deps)'}
 
 
 def test_gitleaks_extends_the_default_rules_and_allowlists_only_named_fixture_values():
