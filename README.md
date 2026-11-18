@@ -63,7 +63,7 @@ The full guide is in [docs/](docs/README.md):
 
 ## Contributing
 
-Issues are welcome now. Pull requests from outside open with 0.1.0; until then, please open an issue instead. From 0.1.0, contributions come in under Apache-2.0, the licence they go out under, and every commit carries a `Signed-off-by` line under the Developer Certificate of Origin 1.1 (`git commit -s`). There is no separate agreement to sign.
+Issues and pull requests are welcome. Contributions come in under Apache-2.0, the licence they go out under, and every commit carries a `Signed-off-by` line under the Developer Certificate of Origin 1.1 (`git commit -s`). There is no separate agreement to sign. A pull request title follows Conventional Commits, such as `fix: ...` or `feat(slack): ...`.
 
 - [CONTRIBUTING.md](CONTRIBUTING.md): what we accept, the project rules and the sign-off.
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md): the Contributor Covenant 2.1. Report a conduct problem to hello@skopax.io.

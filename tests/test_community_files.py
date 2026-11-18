@@ -108,7 +108,7 @@ def test_the_contact_check_rejects_strays_and_keeps_fixtures_to_their_files():
     assert found == ['other.md: name' + '@host.tld', 'x.md: bob' + '@gmail.com', 'x.md: security' + '@skopax.io']
 
 
-def test_contributing_says_pull_requests_open_at_0_1_0_with_dco_sign_off():
+def test_contributing_welcomes_pull_requests_with_conventional_titles_and_dco_sign_off():
     # given
     text = read('CONTRIBUTING.md')
 
@@ -117,7 +117,13 @@ def test_contributing_says_pull_requests_open_at_0_1_0_with_dco_sign_off():
 
     # then
     assert 'Issues are welcome' in flat
-    assert 'Pull requests from outside open with 0.1.0' in flat
+    assert 'Pull requests are welcome' in flat
+    assert 'open with 0.1.0' not in flat
+    assert 'link each one to an issue' in flat
+    assert 'Conventional Commits' in flat
+    assert 'type: summary' in flat
+    assert all(f'`{kind}`' in flat for kind in ('feat', 'fix', 'docs', 'ci', 'test', 'chore', 'build', 'perf', 'refactor'))
+    assert 'becomes the squash commit' in flat
     assert 'Apache License, Version 2.0' in flat
     assert 'Developer Certificate of Origin' in flat
     assert 'https://developercertificate.org' in flat
@@ -224,7 +230,10 @@ def test_issue_forms_and_the_pull_request_template_carry_no_comments_or_secrets_
     # then
     assert comment_lines == {}
     assert 'git commit -s' in template
-    assert 'open with 0.1.0' in template
+    assert 'open with 0.1.0' not in template
+    assert 'Pull requests are welcome' in template
+    assert 'Conventional Commits' in template and 'type: summary' in template
+    assert 'Closes #' in template and 'linked to an issue' in template
     assert 'CLA' not in template
 
 

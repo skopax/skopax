@@ -96,7 +96,9 @@ The workflows are in `.github/workflows/`. Every action is pinned by a full comm
 
 Every Debian library copied into the image has a dpkg status entry under `/var/lib/dpkg/status.d/`, so image scanners and the SBOM list it; Syft lists every one of them. A library whose package the distroless base already ships at the same version is used from the base and not copied, so the base's own entry stays; another version of that package stops the build. The C library, libgcc, libstdc++, OpenSSL and zlib are never copied: each of them must come from a package the distroless base ships, with the same file in that package, or the build stops. A native library that a Python wheel bundles in its own `<name>.libs/` folder needs a reviewed `[bundled."<name>.libs/<file>"]` entry in `tools/licence_overrides.toml`, or the build stops; the reviewed ones are listed in `third-party-bundled.md`, which the image carries only when a wheel bundles one.
 
-Fork pull requests run `ci` only. They get no secrets and publish nothing.
+Fork pull requests run `ci` and `pr` only. They get no secrets and publish nothing.
+
+Every pull request also runs the `pr` workflow (`pr.yml`), with read-only permissions and no secrets, in two jobs. `title` checks that the pull request title is a Conventional Commit title (`type: summary`, see `CONTRIBUTING.md`). `dco` checks that every commit of the pull request, merge commits aside, carries a `Signed-off-by: Name <email>` line whose email matches the commit's author email; commits by `dependabot[bot]` and `github-actions[bot]` are exempt. A failing `dco` job lists the commits to fix. Run `git commit --amend -s --no-edit` for the last commit or `git rebase --signoff` for several, then push again with `git push --force-with-lease`. Run `python3 tools/dco_check.py <base> <head>` to check a range locally. Editing the title re-runs `title`.
 
 Before the first release tag, the owner creates an environment named `release` in the repository settings, limited to `v*` tags, and adds the two Docker Hub secrets to it as environment secrets of `release`, not repository secrets:
 

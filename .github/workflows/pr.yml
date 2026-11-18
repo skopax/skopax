@@ -1,0 +1,49 @@
+name: pr
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  title:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check the pull request title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          re='^(feat|fix|docs|ci|test|chore|build|perf|refactor)(\([a-z0-9._/-]+\))?!?: .+'
+          if [[ ! "$TITLE" =~ $re ]]; then
+            echo "The title must look like 'type: summary' or 'type(scope): summary', with type feat, fix, docs, ci, test, chore, build, perf or refactor, and '!' before the colon for a breaking change."
+            exit 1
+          fi
+
+  dco:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the sign-off of every commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 tools/dco_check.py "$BASE_SHA" "$HEAD_SHA"
