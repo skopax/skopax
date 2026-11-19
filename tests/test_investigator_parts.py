@@ -398,7 +398,7 @@ def test_process_prompt_is_neutral():
     text = (Path(prompt.__file__).with_name('process.md')).read_text()
 
     # then
-    assert {'how-to-work', 'writing-back', 'untrusted-input', 'slack-asks', 'deploy-assessment'} <= set(re.findall(r'\{#([a-z-]+)\}', text))
+    assert {'how-to-work', 'writing-back', 'untrusted-input', 'slack-asks', 'deploy-assessment', 'common-traps'} <= set(re.findall(r'\{#([a-z-]+)\}', text))
 
 
 def test_the_untrusted_input_section_says_every_tool_answer_and_card_text_is_written_by_others():
@@ -448,7 +448,8 @@ def test_the_slack_prompt_keeps_its_sections_and_drops_the_writing_ones():
     slack = prompt.slack_system_prompt()
 
     # then
-    assert slack.startswith('# ') and all(f'\n## {h}\n' in slack for h in ('How to work', 'Slack asks', 'Untrusted input'))
+    assert slack.startswith('# ') and all(f'\n## {h}\n' in slack for h in ('How to work', 'Slack asks', 'Common traps', 'Untrusted input'))
+    assert 'An error that looks like a 500 can be a 429' in slack
     assert '## Kubernetes' not in slack
     assert '## Writing back' not in slack and '## Deploy report assessment' not in slack and '## Ask runs' not in slack
     assert slack == prompt.slack_sections(list(prompt.SLACK_SECTIONS))
@@ -462,7 +463,7 @@ def test_the_system_prompt_is_the_process_file_in_plain_english():
     assert prompt.PROCESS == Path(prompt.__file__).with_name('process.md')
     assert len(text) > 2000 and text.isascii() and '{#' not in text
     assert not re.search(r'UTC[+-]\d', text) and not re.search(r'\d\d:\d\d [A-Z]{2}\b', text)
-    assert all(f'## {h}\n' in text for h in ('How to work', 'Writing back', 'Ask runs', 'Slack asks', 'Deploy report assessment', 'Untrusted input'))
+    assert all(f'## {h}\n' in text for h in ('How to work', 'Writing back', 'Ask runs', 'Slack asks', 'Deploy report assessment', 'Untrusted input', 'Common traps'))
     assert '## Kubernetes' not in text
 
 
