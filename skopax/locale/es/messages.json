@@ -246,5 +246,7 @@
  "pagescan.digest.layouts_one": "{count} página con problemas de diseño",
  "pagescan.digest.layouts_many": "{count} páginas con problemas de diseño",
  "pagescan.digest.notes_one": "{count} página con una nota",
- "pagescan.digest.notes_many": "{count} páginas con notas"
+ "pagescan.digest.notes_many": "{count} páginas con notas",
+ "autosend.post_now.warn_last": "El investigador revisará esta tarjeta en su próxima ejecución; los hallazgos llegarán a este hilo.",
+ "autosend.post_now.info_last": "Las tarjetas de info no tienen investigación automática; alguien puede abrir la tarjeta para revisarla."
 }

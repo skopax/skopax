@@ -246,5 +246,7 @@
  "pagescan.digest.layouts_one": "{count} Seite mit Layoutproblemen",
  "pagescan.digest.layouts_many": "{count} Seiten mit Layoutproblemen",
  "pagescan.digest.notes_one": "{count} Seite mit einem Hinweis",
- "pagescan.digest.notes_many": "{count} Seiten mit Hinweisen"
+ "pagescan.digest.notes_many": "{count} Seiten mit Hinweisen",
+ "autosend.post_now.warn_last": "Der Investigator sieht sich diese Karte bei seinem nächsten Lauf an; die Ergebnisse kommen in diesen Thread.",
+ "autosend.post_now.info_last": "Für Info-Karten läuft keine automatische Untersuchung; jemand kann die Karte öffnen und nachsehen."
 }

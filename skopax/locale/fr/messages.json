@@ -246,5 +246,7 @@
 "pagescan.digest.layouts_one": "{count} page avec des problèmes de mise en page",
 "pagescan.digest.layouts_many": "{count} pages avec des problèmes de mise en page",
 "pagescan.digest.notes_one": "{count} page avec une note",
-"pagescan.digest.notes_many": "{count} pages avec des notes"
+"pagescan.digest.notes_many": "{count} pages avec des notes",
+"autosend.post_now.warn_last": "L'enquêteur examinera cette carte à sa prochaine exécution ; les résultats arriveront dans ce fil.",
+"autosend.post_now.info_last": "Aucune enquête automatique ne porte sur les cartes info ; quelqu'un peut ouvrir la carte pour l'examiner."
 }

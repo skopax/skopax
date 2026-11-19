@@ -246,5 +246,7 @@
  "pagescan.digest.layouts_one": "{count} sayfada görünüm sorunu",
  "pagescan.digest.layouts_many": "{count} sayfada görünüm sorunu",
  "pagescan.digest.notes_one": "{count} sayfada not",
- "pagescan.digest.notes_many": "{count} sayfada not"
+ "pagescan.digest.notes_many": "{count} sayfada not",
+ "autosend.post_now.warn_last": "Investigator bu kartı bir sonraki çalışmasında inceler; bulgular bu thread'e gelecek.",
+ "autosend.post_now.info_last": "Info kartlarında otomatik inceleme çalışmaz; bakmak için biri kartı açabilir."
 }
