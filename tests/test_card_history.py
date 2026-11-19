@@ -196,7 +196,7 @@ def test_auto_resolve_records_auto_resolved(store: Store):
     seeded(store, card_of(KEY, status='cleared', first=5 * DAY, clearedAt=ago(4 * DAY)))
 
     # when
-    apply(store, [], NOW, auto_resolve_days=3)
+    apply(store, [], NOW, auto_resolve_hours=72)
 
     # then
     [doc] = docs(store)

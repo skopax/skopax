@@ -153,7 +153,7 @@ def test_elasticsearch_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('elasticsearch').state == 'ok'
     assert json.loads(json.dumps(manifest)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'Elasticsearch', '0.1.0', 'logs', 'Skopax', 'Apache-2.0', '>=0.1,<0.2', 'community')
+        'Elasticsearch', '0.1.0', 'logs', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url', '@apm-url', '@ui-url'], 'secrets': ['api-key', 'apm-api-key', 'elastic.logging-api-key', 'elastic.apm-api-key'], 'agentReads': True}
     assert manifest['uses'] == [] and manifest['description'].endswith('.')
     assert manifest['checks'] == [{'id': 'logs', 'label': manifest['checks'][0]['label'], 'period': 900, 'offset': 180, 'ran': ['logs']},
@@ -179,9 +179,10 @@ def test_elasticsearch_defaults_are_neutral():
     # then
     assert defaults == {'url': '', 'api-key': '', 'apm-url': '', 'apm-api-key': '', 'ca': '', 'ca-pinned': 'false', 'ui-url': '', 'data-view': '', 'log-index': 'logs-*', 'apm-index': 'traces-apm*',
                         'index-namespace': '', 'namespace-field': 'kubernetes.namespace', 'service-field': 'service.name', 'level-field': 'log.level', 'message-field': 'message',
-                        'error-field': 'error.message'}
+                        'error-field': 'error.message', 'logflow-index': '', 'message-mask': '', 'apm-p95-overrides': '', 'discover-columns': ''}
     assert kinds == {'url': 'url', 'api-key': 'secret', 'apm-url': 'url', 'apm-api-key': 'secret', 'ca': 'pem', 'ca-pinned': 'bool', 'ui-url': 'url', 'data-view': 'text', 'log-index': 'text', 'apm-index': 'text',
-                     'index-namespace': 'regex', 'namespace-field': 'text', 'service-field': 'text', 'level-field': 'text', 'message-field': 'text', 'error-field': 'text'}
+                     'index-namespace': 'regex', 'namespace-field': 'text', 'service-field': 'text', 'level-field': 'text', 'message-field': 'text', 'error-field': 'text',
+                     'logflow-index': 'text', 'message-mask': 'regex', 'apm-p95-overrides': 'text', 'discover-columns': 'text'}
     assert [f.key for f in elasticsearch.PLUGIN.fields if f.required] == ['url'] and [f.key for f in elasticsearch.PLUGIN.fields if f.ui] == ['ui-url']
     assert elasticsearch.PLUGIN.settings == ()
     error_help = {f.key: f.help for f in elasticsearch.PLUGIN.fields}['error-field']

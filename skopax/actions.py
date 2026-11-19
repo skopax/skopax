@@ -14,6 +14,9 @@ DEFAULT_MUTE_HOURS = 24
 RESULT_WHY = 160
 HANDLED_SEVERITIES = ('warn', 'info')
 SEV_NAMES = {'crit': 'Critical', 'warn': 'Warning', 'info': 'Info', 'auto': 'auto'}
+PRESET = 'presetReason'
+KNOWN_REASONS = {'chat': 'marked as known noise from a chat answer'}
+KNOWN_REASON = 'marked as known noise on the page'
 
 
 class Refused(Authored, ValueError):
@@ -22,8 +25,18 @@ class Refused(Authored, ValueError):
 
 def note_under(note, why: str, by: str | None, verb: str) -> str:
     finding = str((note.get('text') if isinstance(note, dict) else note) or '').strip()
-    who = token_label(by) if is_token(by) else 'Claude' if not by or by == 'Claude' else str(by).split('@')[0]
+    who = token_label(by) if is_token(by) else 'Investigator' if not by or by == 'Claude' else str(by).split('@')[0]
     return f'{finding}\n\n{verb} by {who}: {why}' if finding else why
+
+
+def default_reason(action: dict) -> str:
+    if action.get('type') == 'mute':
+        return f'muted on the page for {(action.get("hours") or DEFAULT_MUTE_HOURS):g} h'
+    return KNOWN_REASONS.get(action.get('via'), KNOWN_REASON)
+
+
+def preset_reason(action: dict) -> bool:
+    return not action.get('reason') or action.get(PRESET) is True
 
 
 def resolution(store: Store, action: dict) -> dict:
@@ -56,10 +69,10 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
     if kind == 'mute':
         hours = action.get('hours') or DEFAULT_MUTE_HOURS
         until = utc_now() + dt.timedelta(hours=hours)
-        store.mute(key, action.get('reason') or f'muted on the page for {hours:g} h', iso(until), 'mute')
+        store.mute(key, action.get('reason') or default_reason(action), iso(until), 'mute', preset=preset_reason(action))
         return f"muted until {clock.date(until)} {clock.label(until)}"
     if kind == 'known':
-        store.mute(key, action.get('reason') or 'marked as known noise on the page', None, 'known')
+        store.mute(key, action.get('reason') or default_reason(action), None, 'known', preset=preset_reason(action))
         return 'known noise'
     if kind == 'unmute':
         store.unmute(key)

@@ -53,7 +53,7 @@
   function resolution(c) { var r = c.resolution; return r && RES_NAMES[r.kind] ? r : null; }
   function resolvedName(r) { return !r ? 'Resolved' : r.kind === 'duplicate' && r.ref ? RES_NAMES.duplicate + ': ' + r.ref : RES_NAMES[r.kind] + (r.ref ? ' (' + r.ref + ')' : ''); }
   function resolvedBy(r) {
-    var by = String(r.by || ''), who = RES_BY[by] || (isTokenActor(by) ? tokenActorLabel(by, 'Claude') : by === 'Claude' ? 'Claude' : by.split('@')[0]);
+    var by = String(r.by || ''), who = RES_BY[by] || (isTokenActor(by) ? tokenActorLabel(by, 'Investigator') : by === 'Claude' ? 'Investigator' : by.split('@')[0]);
     return [RES_VIA[r.via], who ? {data: who} : ''];
   }
   function state(c) {
@@ -62,20 +62,23 @@
     if (!c.live) return ['Closed', 'clear', ['last seen ' + when(c.lastSeen || c.clearedAt)]];
     if (c.triage === 'handled') {
       var how = c.triagedBy === 'auto' ? null : r;
-      return [resolvedName(how), 'good', (how ? resolvedBy(how) : []).concat([c.status === 'cleared' ? 'fixed ' + when(c.clearedAt) : 'first seen ' + when(c.firstSeen)])];
+      return [resolvedName(how), 'good', (how ? resolvedBy(how) : []).concat([c.status === 'cleared' ? (afterEvent(c) ? 'stopped after the event ' : 'fixed ') + when(c.clearedAt) : 'first seen ' + when(c.firstSeen)])];
     }
-    var since = c.status === 'cleared' ? 'stopped ' + when(c.clearedAt) : 'first seen ' + when(c.firstSeen);
+    var since = c.status === 'cleared' ? (afterEvent(c) ? 'stopped after the event ' : 'stopped ') + when(c.clearedAt) : 'first seen ' + when(c.firstSeen);
     if (c.triage === 'progress') return ['In progress', 'info', [c.ticket ? {data: c.ticket} : '', since]];
     if (c.muted) return ['Muted', 'clear', [since]];
-    if (c.status === 'cleared' && !waiting(c)) return ['Fixed', 'good', [when(c.clearedAt)]];
+    if (c.status === 'cleared' && !waiting(c)) return [afterEvent(c) ? 'Stopped after the event' : 'Fixed', afterEvent(c) ? 'clear' : 'good', [when(c.clearedAt)]];
     return ['Open', sev, [since, INVESTIGATION[c.triage], waiting(c) ? WAITING : '']];
   }
+  function afterEvent(c) { return !!(c.cause && c.cause.kind === 'event' && c.cause.what); }
   function waiting(c) { return (c.status === 'cleared' && (c.sev === 'warn' || c.sev === 'crit')) || (c.status === 'open' && c.triage === 'dived'); }
   function tech(c) {
     var parts = [];
     if (c.what) parts.push('<p data-no-tx>' + esc(c.what) + '</p>');
+    if (c.cause && c.cause.what && (c.cause.kind === 'event' || c.cause.kind === 'recurring')) parts.push('<p class="cause">Cause: ' + (c.cause.kind === 'event' ? 'an event' : 'recurring') + ' \u00b7 <span data-no-tx>' + esc(c.cause.what) + '</span></p>');
     if (c.now != null) parts.push('<p class="nums">Now ' + esc(amount(c.now, c.unit)) + (c.d1 != null ? ' \u00b7 yesterday ' + esc(amount(c.d1, c.unit)) : '') + (c.d7 != null ? ' \u00b7 last week ' + esc(amount(c.d7, c.unit)) : '') + '</p>');
     if (c.note && c.note.text) parts.push('<h3>Investigation \u00b7 ' + esc(when(c.note.at)) + '</h3><p data-no-tx>' + esc(c.note.text) + '</p>');
+    if (c.clearNote && c.clearNote.text) parts.push('<h3>Cleared \u00b7 <span data-no-tx>' + esc(c.clearNote.by || '') + '</span> \u00b7 ' + esc(when(c.clearNote.at)) + '</h3><p data-no-tx>' + esc(c.clearNote.text) + '</p>');
     if ((c.suspects || []).length) parts.push('<h3>Suspects</h3><ul data-no-tx>' + c.suspects.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>');
     if (c.recommend) parts.push('<h3>Recommended step</h3><p data-no-tx>' + esc(c.recommend) + '</p>');
     parts.push('<p class="key" data-no-tx>' + esc(c.key || '') + '</p>');
@@ -85,7 +88,7 @@
   function lastLine(c) {
     var l = c.last;
     if (!l) return '';
-    var by = String(l.requestedBy || ''), who = isTokenActor(by) ? tokenActorLabel(by, 'Claude') : by === 'Claude' ? 'Claude' : by.split('@')[0];
+    var by = String(l.requestedBy || ''), who = isTokenActor(by) ? tokenActorLabel(by, 'Investigator') : by === 'Claude' ? 'Investigator' : by.split('@')[0];
     var back = Date.parse(c.firstSeen || ''), did = Date.parse(l.doneAt || l.requestedAt || ''), old = l.status === 'done' && !isNaN(back) && !isNaN(did) && did < back;
     var head = (old ? 'Last action (before the card fired again ' + when(c.firstSeen) + '): ' : 'Last action: ') + (ACT_NAMES[l.type] || l.type) + ' \u00b7 ' + (ACT_STATES[l.status] || l.status) + (l.requestedAt ? ' \u00b7 ' + when(l.requestedAt) : '');
     return '<span class="act-last' + (l.status === 'failed' ? ' bad' : old ? ' old' : '') + '">' + line([head, who ? {data: who} : '', l.result && l.status !== 'done' ? {data: l.result} : '']) + '</span>';
@@ -162,10 +165,10 @@
       '<div class="act-form" id="form-take" hidden>' + (me.jira ? '<input id="take-ticket" type="text" maxlength="100" placeholder="Jira key, or a task name to search (optional)" aria-label="Jira key">' : '') + '<input id="take-why" type="text" maxlength="300" placeholder="Note (optional)" aria-label="Start progress note"><button type="button" class="btn small" id="take-go">Start progress</button></div>' +
       '<div class="act-form" id="form-link" hidden><input id="link-ticket" type="text" maxlength="100" placeholder="Jira key, or words from the task title" aria-label="Jira ticket"><button type="button" class="btn small" id="link-go">Link</button><span class="act-note" id="link-msg"></span></div>' +
       '<div class="act-form" id="form-resolve" hidden><div class="res-kinds" role="group" aria-label="How it was resolved">' + RES_KINDS.map(function (k) {
-        return '<button type="button" class="btn sec small res-kind" id="resolve-' + k[0] + '" data-kind="' + k[0] + '" aria-pressed="' + (k[0] === resPick) + '">' + k[1] + '</button>';
-      }).join('') + '</div>' +
-      '<input id="resolve-why" type="text" maxlength="300" placeholder="Why (optional, becomes a card note)" aria-label="Why it was resolved"' + (resPick === 'duplicate' ? ' hidden' : '') + '>' +
-      '<input id="resolve-dup" type="text" maxlength="200" placeholder="The other card: its number (like 12) or key" aria-label="Duplicate of"' + (resPick === 'duplicate' ? '' : ' hidden') + '>' +
+        return '<button type="button" class="btn sec small sev-pick res-kind" id="resolve-' + k[0] + '" data-kind="' + k[0] + '" aria-pressed="' + (k[0] === resPick) + '">' + k[1] + '</button>';
+      }).join('') + '<p class="res-hint" id="resolve-hint">' + esc(resHint(resPick)) + '</p></div>' +
+      '<input id="resolve-why" type="text" maxlength="300" placeholder="' + RES_PLACEHOLDER_WHY + '" title="' + esc(RES_TITLE_WHY) + '" aria-label="Why it was resolved"' + (resPick === 'duplicate' ? ' hidden' : '') + '>' +
+      '<input id="resolve-dup" type="text" maxlength="200" placeholder="' + RES_PLACEHOLDER_DUP + '" title="' + esc(RES_TITLE_DUP) + '" aria-label="Duplicate of"' + (resPick === 'duplicate' ? '' : ' hidden') + '>' +
       '<button type="button" class="btn small" id="resolve-go">Resolve</button></div>' +
       '</div>';
   }
@@ -283,6 +286,7 @@
     [].forEach.call(box.querySelectorAll('#form-resolve .res-kind'), function (k) {
       k.addEventListener('click', function () {
         resPick = k.dataset.kind;
+        document.getElementById('resolve-hint').textContent = resHint(resPick);
         [].forEach.call(box.querySelectorAll('#form-resolve .res-kind'), function (x) { x.setAttribute('aria-pressed', String(x === k)); });
         why.hidden = resPick === 'duplicate';
         dup.hidden = resPick !== 'duplicate';
@@ -353,6 +357,7 @@
     box.innerHTML = '<p class="empty">' + esc(text) + '</p>';
     document.title = brandName();
   }
+  var shownSig = '';
   async function load(force) {
     if (!num) { missing('There is no card number in this address.'); return; }
     if (!force && typing()) return;
@@ -360,8 +365,13 @@
       var r = await fetch('/api/cards/' + num, {headers: {'Accept': 'application/json'}, credentials: 'same-origin'});
       if (r.status === 404) { missing('Card #' + num + ' not found.'); return; }
       if (!r.ok) throw new Error(String(r.status));
-      current = await r.json();
+      var next = await r.json(), sig = JSON.stringify(next);
+      current = next;
+      if (sig === shownSig && box.querySelector('h1')) { var upd = document.getElementById('upd'); if (upd) upd.textContent = 'Updated ' + when(new Date().toISOString()); return; }
+      shownSig = sig;
+      var y = window.scrollY;
       render(current);
+      if (y) window.scrollTo(0, y);
     } catch (e) {
       if (!box.querySelector('h1')) missing('The card could not be loaded; reload the page.');
     }

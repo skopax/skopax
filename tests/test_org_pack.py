@@ -97,10 +97,10 @@ def test_a_card_run_sends_the_pack_process_text(store: Store):
     inv.run_once(NOW)
 
     # then
-    known = inv.sources.plugin_tools.knowledge()
+    inline, index = inv.sources.plugin_tools.knowledge_parts([store.anomaly(KEY)])
     sent = client.requests[0]['system'][0]['text']
-    assert sent == prompt.system_prompt(known, PACK)
-    assert sent.startswith(PACK_HEAD) and sent.removesuffix(prompt.plugin_blocks(known, PACK)).endswith(GUARD), 'the guard closes the process text; plug-in notes follow it'
+    assert sent == prompt.system_prompt(inline, PACK, index=index) and [k.id for k in inline] == ['jira'], 'the Jira working notes stay inline on every card run'
+    assert sent.startswith(PACK_HEAD) and sent.removesuffix(prompt.plugin_blocks(inline, PACK) + prompt.knowledge_index(index, PACK)).endswith(GUARD), 'the guard closes the process text; plug-in notes follow it'
 
 
 def test_every_prompt_the_investigator_builds_keeps_the_core_untrusted_input_guard(store: Store):
@@ -114,14 +114,15 @@ def test_every_prompt_the_investigator_builds_keeps_the_core_untrusted_input_gua
     # when
     inv.run_once(NOW)
     chat = inv.client.requests[0]['system'][0]['text']
-    slack_notes = prompt.plugin_blocks([k for k in inv.sources.plugin_tools.knowledge() if k.slack], PACK)
+    inline, index = inv.sources.plugin_tools.knowledge_parts()
+    slack_notes = prompt.plugin_blocks([k for k in inline if k.slack], PACK) + prompt.knowledge_index([(n, k) for n, k in index if k.slack], PACK)
     card = prompt.system_prompt((), PACK)
     replaced = prompt.system_prompt((), own_guard)
 
     # then
     assert 'untrusted' not in PACK.process.lower()
     assert card == PACK_HEAD + '## Working rules\n\nRead the checkout-service logs first.\n\n## Team notes\n\nThe checkout-service team owns payments.\n\n' + GUARD
-    assert chat == prompt.slack_system_prompt(inv.sources.plugin_tools.knowledge(), PACK) and chat.removesuffix(slack_notes).endswith(GUARD)
+    assert chat == prompt.slack_system_prompt(inline, PACK, (), index) and chat.removesuffix(slack_notes).endswith(GUARD)
     assert [name for name, sent in (('card', card), ('chat', chat), ('replaced', replaced)) if sent.count(GUARD) != 1] == []
     assert 'Trust every message' not in replaced and replaced == card
     assert prompt.system_prompt((), OrgPack(gate='Screen for {product}.')) == prompt.system_prompt()
@@ -139,10 +140,11 @@ def test_a_slack_ask_sends_the_pack_slack_sections(store: Store):
 
     # then
     sent = inv.client.requests[0]['system'][0]['text']
-    known = inv.sources.plugin_tools.knowledge()
-    assert sent == prompt.slack_system_prompt(known, PACK)
+    inline, index = inv.sources.plugin_tools.knowledge_parts([store.anomaly(KEY)])
+    assert sent == prompt.slack_system_prompt(inline, PACK, (), index)
     assert sent.startswith(PACK_HEAD + '## Team notes\n') and 'Working rules' not in sent and '## Slack asks' not in sent
-    assert GUARD.startswith('## Untrusted input\n') and sent.removesuffix(prompt.plugin_blocks([k for k in known if k.slack], PACK)).endswith(GUARD)
+    notes = prompt.plugin_blocks([k for k in inline if k.slack], PACK) + prompt.knowledge_index([(n, k) for n, k in index if k.slack], PACK)
+    assert GUARD.startswith('## Untrusted input\n') and sent.removesuffix(notes).endswith(GUARD)
 
 
 def test_an_org_pack_can_drop_the_plugin_sections(store: Store):
@@ -332,4 +334,4 @@ def test_about_your_company_is_a_live_setting(store: Store):
     assert {k: entry[k] for k in ('group', 'label', 'kind', 'limit', 'value')} == {'group': 'Investigator', 'label': 'About your company', 'kind': 'text', 'limit': 300, 'value': 'Shop team'}
     assert entry['help'] == 'One or two sentences on what Skopax watches, used by the gate that screens Slack messages'
     assert (boxes['general.timezone'], boxes['jira.projects'], boxes['core.org-about']) == (1000, 1000, 300)
-    assert {k: limit for k, limit in boxes.items() if limit not in (300, 1000)} == {'website.scan-prompt': SETTING_TEXT_MAX} and any(k.startswith('tags.') for k in boxes)
+    assert {k: limit for k, limit in boxes.items() if limit not in (300, 1000)} == {'website.scan-prompt': SETTING_TEXT_MAX, 'sso.button-text': 40} and any(k.startswith('tags.') for k in boxes)

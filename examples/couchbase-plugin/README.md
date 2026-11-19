@@ -2,6 +2,8 @@
 
 Couchbase reads a Couchbase cluster through a Prometheus instance that scrapes the Couchbase exporters, and opens cards for down nodes, restarts, connection jumps, index memory, rebalances, auto-failovers and N1QL errors, timeouts and time. It is the fuller sibling of [Hello](../hello-plugin/README.md): where Hello shows each part of the plug-in contract once, this example shows the parts a real integration needs, such as a peer instance, baselines, rules, card types, links, a page and an investigator tool. Read Hello first.
 
+The `couchbase` preset of [custom checks](../../docs/custom-checks.md#presets) now covers the common case without a plug-in; this example stays as an example of a full plug-in.
+
 ## What is in it
 
 | File | What it shows |
@@ -43,7 +45,7 @@ From the root of the Skopax repository:
 As for Hello, the layer image installs the plug-in in a Python build stage and copies it into the Skopax image's `site-packages`:
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.1.0 -t skopax-couchbase examples/couchbase-plugin
+docker build --build-arg SKOPAX_VERSION=0.2.0 -t skopax-couchbase examples/couchbase-plugin
 ```
 
 Pin `SKOPAX_VERSION` to the Skopax release you run. Couchbase is then listed in Admin > Integrations; add a Prometheus instance first, then one Couchbase instance per cluster.

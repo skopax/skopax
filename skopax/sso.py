@@ -33,7 +33,7 @@ RESERVED_HEADERS = ('authorization',)
 SECRET_ID = 'sso.client-secret'
 SECRET_MAX = 2000
 FIELDS: tuple[str, ...] = ('issuer', 'client-id', 'client-secret', 'scope', 'claims', 'client-auth', 'require-verified-email', 'authorize-url', 'token-url', 'jwks-url',
-                           'roles-claim', 'role-map', 'default-role', 'new-accounts', 'allowed-domains')
+                           'roles-claim', 'role-map', 'default-role', 'new-accounts', 'allowed-domains', 'button-text', 'button-icon')
 SECRET_FIELD = 'client-secret'
 VALUE_MAX = 4000
 TEST_TIMEOUT_S = 15

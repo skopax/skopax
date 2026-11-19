@@ -313,7 +313,7 @@ async function pagesAreTheVisibleSidebarRows() {
   //then
   assert.deepStrictEqual(noChat, [], 'a hidden row is not a page');
   assert.deepStrictEqual(docs, ['Docs'], 'a row inside the folded More is');
-  assert.ok(viewer.doc.getElementById('side-more-list').hidden, 'More stays folded');
+  assert.ok(viewer.doc.getElementById('side-more-list').classList.contains('folded'), 'More stays folded');
   assert.deepStrictEqual(adminRow, ['Admin'], 'the pinned Admin row is a page for an admin');
   assert.deepStrictEqual(viewer.errors.concat(admin.errors), []);
   await viewer.close(); await admin.close();

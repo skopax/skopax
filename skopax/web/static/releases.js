@@ -11,7 +11,7 @@ function initReports() {
   var KEYS_SHOWN = 6, SHA = /^[0-9a-f]{7,40}$/;
   var ICON_GITLAB = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M23.955 13.587l-1.342-4.135-2.664-8.189a.455.455 0 0 0-.867 0L16.418 9.45H7.582L4.919 1.263a.455.455 0 0 0-.867 0L1.388 9.452.046 13.587a.924.924 0 0 0 .331 1.023L12 23.054l11.623-8.443a.92.92 0 0 0 .332-1.024"/></svg>';
   var RELEASE_GAP = 2 * 3600000, SETTLE = 20 * 60000, ONGOING = 3 * 3600000, RECENT = 2 * 3600000, flipAt = 0;
-  function who(r) { return isTokenActor(r.requestedBy) ? tokenActorLabel(r.requestedBy, 'Claude') : r.requestedBy ? r.requestedBy.split('@')[0] : 'Claude'; }
+  function who(r) { return isTokenActor(r.requestedBy) ? tokenActorLabel(r.requestedBy, 'Investigator') : r.requestedBy ? r.requestedBy.split('@')[0] : 'Investigator'; }
   function issueLink(k) { return jiraHref(k) ? '<a href="' + jiraHref(k) + '" target="_blank" rel="noopener">' + esc(k) + '</a>' : '<span class="ikey">' + esc(k) + '</span>'; }
   function keyList(keys) {
     var rest = keys.slice(KEYS_SHOWN);
@@ -177,7 +177,7 @@ function initReports() {
     var d = draftOf(r), p = r.slackPost, s = autoArmed(r), t;
     if (d && !draftSent(r)) {
       t = el('span', 'tag k-act slack-rec' + (s ? ' armed' : ''), ICON_SEND + esc(s ? autoLabel(s) : 'Slack recommended'));
-      t.title = d.text + '\n\n' + draftBy(d.by) + ' · ' + dayhm(d.at) + (s ? ' · posts itself to Slack within 30 s of ' + hm(s.at) + ' unless someone presses Hold' :' · Copy and Edit next to Send draft to Slack') + autoNote(r);
+      t.title = d.text + '\n\n' + draftBy(d.by) + ' \u00b7 ' + dayhm(d.at) + (s ? ' \u00b7 posts itself to Slack within 30 s of ' + hm(s.at) + ' unless someone presses Hold' :' \u00b7 Copy and Edit next to Send draft to Slack') + statusTip(r, false);
     } else if (p) {
       t = el('span', 'tag k-good slack-rec sent', ICON_SEND + slackLink(p.permalink, 'Sent to Slack ' + dayhm(p.at)));
       t.title = 'Posted to Slack ' + dayhm(p.at) + ' by ' + draftBy(p.by) + (p.draft && d ? '\n\n' + d.text : '');

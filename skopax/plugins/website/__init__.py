@@ -10,7 +10,7 @@ from skopax.contract import (Capabilities, Check, Context, Field, HttpError, Ins
                              Transport, anomaly, iso)
 from skopax.kit import connection
 from skopax.kit.browser import CONNECT_S, MAX_HEIGHT, VIEWPORTS, Browser, BrowserDown, endpoint
-from skopax.kit.web import CHALLENGE, FIND_LIMIT, KEPT_HEADERS, MAX_HOPS, TIMEOUT, PageCheck, Site, challenged, clean, host_list, host_of, refusal, site_pacer, suffix_entries, under
+from skopax.kit.web import CHALLENGE, FIND_LIMIT, KEPT_HEADERS, MAX_HOPS, TIMEOUT, PageCheck, Site, agent_of, challenged, clean, host_list, host_of, refusal, site_pacer, suffix_entries, under
 from skopax.plugins.website import pagescan
 
 ID = 'website'
@@ -100,6 +100,9 @@ def test(ctx: Context) -> TestResult:
 
     def ask() -> str:
         sent = pagescan.headers_of(config.get('scan-headers'))
+        agent = str(config.get('user-agent') or '').strip()
+        if agent and not agent_of(agent):
+            raise ReadError(400, 'User-Agent must be plain printable ASCII of at most 200 characters')
         suffixes = suffix_entries(config.get('hosts'))
         if suffixes:
             raise ReadError(400, f"more hosts: {', '.join(suffixes)} is a public suffix, not a site host; list the site's own hosts")
@@ -211,7 +214,7 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='web', description='Reads pages of your website, takes screenshots through a browser service, watches that browser and scans pages for typos and layout problems.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community',
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
     capabilities=Capabilities(hosts=('@url', '@browser-url', '*'), secrets=('scan-headers',)), uses=('umami',), client=client,
     fields=(Field('url', 'Site URL', 'url', required=True, help='The base URL of the site, https, for example https://www.example.com. The tools open only its host, its subdomains and the more hosts below.', ui=True),
             Field('hosts', 'More hosts', 'text', address='hosts', hosts_of=honoured_hosts, help='More hosts of the same site, separated by commas, for example example.net; their subdomains count too.'),
@@ -226,6 +229,18 @@ PLUGIN = Plugin(
                   help='Optional "Name: value" headers sent by the page scan, the screenshots and Test connection, separated by semicolons, for example a '
                        'firewall bypass header. They go only to the site URL host and the more hosts, never to their subdomains or other hosts; names starting with '
                        'x-skopax- are refused.'),
+            Field('tracking-params', 'More tracking parameters', 'text',
+                  help='Query parameter names, separated by commas, that count as ad tracking on top of utm_*, gclid, fbclid and msclkid, so the tools refuse a url that carries them; '
+                       'end a name with * to take every parameter that starts with it, for example pk_*, mc_cid.'),
+            Field('kept-headers', 'More response headers', 'text',
+                  help='Response header names, separated by commas, that the page tool returns on top of its usual ones, for example x-cache, x-served-by. '
+                       'Cookie and authorization headers are never returned.'),
+            Field('scan-skip', 'Page scan skips', 'text',
+                  help='Path prefixes, separated by commas, that the page scan never reads on top of its built-in ones (/_next, /api, /static and the like), for example /checkout, /account; '
+                       'a prefix also skips the paths below it.'),
+            Field('user-agent', 'User-Agent', 'text',
+                  help='Sent by the page tool and Test connection instead of the built-in one; the screenshot browser keeps its own browser identity and takes this as its closing product token. '
+                       'Plain printable ASCII, at most 200 characters. Empty keeps the built-in one.'),
             Field('internal-subdomains', 'Subdomains may be internal', 'bool', default='false',
                   help='Off: the tools and the browser open a subdomain that is not the site URL host or one of the more hosts only when it resolves to public addresses. '
                        'On: any subdomain is opened, internal ones too.')),

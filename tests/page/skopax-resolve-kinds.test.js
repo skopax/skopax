@@ -209,6 +209,29 @@ async function cardPage(num, card, who) {
   return {w: dom.window, doc: dom.window.document, errors, posts};
 }
 
+async function theCardPageKeepsItsDomWhileTheCardIsUnchanged() {
+  //given
+  const data = {num: 153, key: NEW, svc: 'checkout-service', label: 'ERROR lines', sev: 'warn', status: 'open', firstSeen: AT, live: true};
+  const t = await cardPage(153, data, {user: NINA, operator: true});
+  const first = t.doc.querySelector('h1');
+
+  //when
+  t.doc.getElementById('upd').textContent = '';
+  await t.w.__cardLoad();
+  const same = t.doc.querySelector('h1') === first;
+  const stamped = /^Updated /.test(t.doc.getElementById('upd').textContent);
+  data.label = 'WARN lines';
+  await t.w.__cardLoad();
+
+  //then
+  assert.strictEqual(same, true, 'a poll with the same card redraws nothing');
+  assert.ok(stamped, 'but the Updated time moves');
+  assert.notStrictEqual(t.doc.querySelector('h1'), first, 'a changed card is drawn again');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS the card page redraws only when the card changed');
+}
+
 async function theCardPageSaysHowAndAsksTheKind() {
   //given
   const live = await cardPage(160, {num: 160, key: FIXED, svc: 'inventory-service', label: 'ERROR lines', sev: 'warn', status: 'cleared', clearedAt: '2026-11-09T18:10:00Z', firstSeen: AT, live: true,
@@ -222,7 +245,9 @@ async function theCardPageSaysHowAndAsksTheKind() {
   //when
   d.getElementById('act-resolve').click();
   const first = [...d.querySelectorAll('#form-resolve .res-kind')].map((b) => b.dataset.kind + ':' + b.getAttribute('aria-pressed'));
+  const cardForm = [d.getElementById('resolve-hint').textContent, d.getElementById('resolve-why').placeholder, d.getElementById('resolve-dup').placeholder, d.getElementById('resolve-why').title.length > 20];
   d.getElementById('resolve-duplicate').click();
+  const dupHint = d.getElementById('resolve-hint').textContent;
   const swapped = [d.getElementById('resolve-why').hidden, d.getElementById('resolve-dup').hidden];
   d.getElementById('resolve-go').click();
   await wait(30);
@@ -237,16 +262,88 @@ async function theCardPageSaysHowAndAsksTheKind() {
   assert.strictEqual(statusOf(old.doc), 'Resolved \u00b7 fixed ' + short(STOPPED), 'an old resolve without a kind reads Resolved');
   assert.deepStrictEqual(first, ['fixed:true', 'handled:false', 'duplicate:false']);
   assert.deepStrictEqual(swapped, [true, false]);
+  assert.deepStrictEqual(cardForm, ['The cause is gone because something was changed, such as a deploy, a config change or a rollback.', 'Note (optional)', 'Card number or key', true], 'the card page form reads like the menu form');
+  assert.strictEqual(dupHint, 'The same problem as another card, which carries it on.');
   assert.deepStrictEqual(empty, [0, 'true']);
   assert.deepStrictEqual(op.posts, [{type: 'resolve', kind: 'duplicate', ref: '12', label: 'Resolve checkout-service / ERROR lines (duplicate of 12)', key: NEW, target: NEW}]);
   [live, gone, old, op].forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
   console.log('PASS the card page says Fixed, Duplicate or No action needed with where and who, an old resolve reads Resolved, and its Resolve asks the kind');
 }
 
+function solid(doc) {
+  const colours = {'--btn-bg': '#111111', '--btn-fg': '#eeeeee', '--surface': '#ffffff', '--line-2': '#cccccc', '--fg': '#222222', '--raised': '#f4f4f4'};
+  doc.querySelectorAll('style').forEach((st) => { st.textContent = st.textContent.replace(/var\((--[a-z0-9-]+)\)/g, (m, name) => colours[name] || m); });
+}
+
+async function thePickedOutcomeLooksPickedAndTheFormIsSegmentedHintedAndFullWidth() {
+  //given
+  const {w, doc, errors, posted} = await boot('#t=anoms/all');
+  const card = article(doc, NEW);
+  const bg = (el) => w.getComputedStyle(el).backgroundColor;
+  const css = require('fs').readFileSync(TEMPLATE, 'utf8');
+  solid(doc);
+
+  //when
+  iconOf(card, 'Resolve').click();
+  const form = card.querySelector('.res-form');
+  const fixedBtn = form.querySelector('.res-kind[data-kind="fixed"]'), handled = form.querySelector('.res-kind[data-kind="handled"]'), dupBtn = form.querySelector('.res-kind[data-kind="duplicate"]');
+  const look = [bg(fixedBtn) !== bg(handled), bg(fixedBtn) === bg(dupBtn) ? 'same' : 'differs'];
+  const hintFixed = form.querySelector('.res-hint').textContent;
+  dupBtn.click();
+  const afterDup = [bg(dupBtn) !== bg(fixedBtn), form.querySelector('.res-hint').textContent, form.querySelector('input[id^="dup-"]').placeholder, form.querySelector('input[id^="dup-"]').hidden, form.querySelector('input[id^="why-"]').hidden];
+  const why = form.querySelector('input[id^="why-"]');
+  form.querySelector('.res-kind[data-kind="handled"]').click();
+  const bodies = {};
+  why.value = 'harmless';
+  [...form.querySelectorAll('button')].find((b) => b.textContent === 'Resolve').click();
+  await wait(60);
+  bodies.handled = posted.splice(0);
+
+  //then
+  assert.deepStrictEqual(look, [true, 'differs'], 'the picked outcome is drawn differently from the others');
+  assert.ok(/^The cause is gone/.test(hintFixed), hintFixed);
+  assert.deepStrictEqual(afterDup, [true, 'The same problem as another card, which carries it on.', 'Card number or key', false, true], 'Duplicate shows the card field and hides the note');
+  assert.strictEqual(why.placeholder, 'Note (optional)');
+  assert.ok(why.title.length > why.placeholder.length, 'the longer hint is the title');
+  assert.deepStrictEqual(bodies.handled.map((b) => [b.kind, b.reason]), [[undefined, 'harmless']], 'No action needed sends the note and no kind');
+  assert.ok(/\.res-kinds \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/.test(css), 'three equal parts');
+  assert.ok(/\.res-form > input, \.res-form > \.btn \{[^}]*width: 100%/.test(css), 'the note and the submit are full width');
+  assert.ok(/\.btn\.sev-pick\[aria-pressed="true"\]/.test(css), 'the pressed style outranks .btn.sec');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS the Resolve form draws the picked outcome, shows a hint, swaps note and card field, and sends each outcome');
+}
+
+async function theResolveDialogDrawsThePickedOutcomeToo() {
+  //given
+  const {w, doc, errors} = await boot('#t=anoms/all', {view: 'board'});
+  drag(w, doc, WAIT, 'done');
+  const dialog = doc.querySelector('.resolve-pick');
+  solid(doc);
+  const bg = (el) => w.getComputedStyle(el).backgroundColor;
+
+  //when
+  const a = dialog.querySelector('.res-kind[data-kind="fixed"]'), b = dialog.querySelector('.res-kind[data-kind="handled"]');
+  const before = bg(a) !== bg(b);
+  b.click();
+  const after = [bg(b) !== bg(a), dialog.querySelector('.res-hint').textContent, dialog.querySelector('.rp-why').placeholder];
+
+  //then
+  assert.strictEqual(before, true);
+  assert.ok(!a.title && !b.title, 'no tooltip repeats the hint line under the choices');
+  assert.deepStrictEqual(after, [true, 'Harmless or a one-off, nothing was changed.', 'Note (optional)']);
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS the Resolve dialog draws the picked outcome and shows its hint');
+}
+
 (async () => {
+  await thePickedOutcomeLooksPickedAndTheFormIsSegmentedHintedAndFullWidth();
+  await theResolveDialogDrawsThePickedOutcomeToo();
   await theResolveControlOffersThreeKindsAndSendsTheOnePicked();
   await draggingToDoneAsksHowAndUnmutesFirst();
   await aResolvedCardSaysHowViaAndWhoAndAnOldOneReadsResolved();
   await theClosedViewFiltersByTheNewKindsAndSaysHowEachRowEnded();
+  await theCardPageKeepsItsDomWhileTheCardIsUnchanged();
   await theCardPageSaysHowAndAsksTheKind();
 })().then(() => process.exit(0), (e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

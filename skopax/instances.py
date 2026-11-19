@@ -15,7 +15,7 @@ from pymongo.errors import DuplicateKeyError
 
 from skopax.actors import SYSTEM
 from skopax.agentproto import KEYS_MAX, VALUE_LIMIT
-from skopax.bounded import HOOK_TIMEOUT_S, Bound
+from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
 from skopax.contract import Field, InstanceInfo, Plugin, SourceData
 from skopax.errkind import InvalidInstance, SourceOwned, kind
 from skopax.messages import msg
@@ -41,6 +41,10 @@ ANY_VALUE = '*'
 TRUST_FIELD = 'ca'
 SEALABLE = ('secret', 'text')
 PINNED_FIELD = 'ca-pinned'
+FIELD_CHECK_S = 5
+FIELD_CHECK_TEXT_MAX = 200
+SECRET_RUN = 8
+FIELD_CHECK_READ = 4
 
 
 class InstanceExists(Exception):
@@ -326,6 +330,20 @@ def validate(plugin: Plugin, values: Mapping, partial: bool = False, extra: Iter
     return out
 
 
+def leaked(value: str, text: str) -> bool:
+    return any(value[i:i + SECRET_RUN] in text for i in range(len(value) - SECRET_RUN + 1))
+
+
+def check_text(f: Field, value: str, said: str) -> str | None:
+    secret = f.kind == 'secret' and bool(value)
+    text = said[:FIELD_CHECK_READ * FIELD_CHECK_TEXT_MAX + (len(value) if secret else 0)]
+    flat = ' '.join(value.split()) if secret else ''
+    text = ' '.join((text.replace(value, '***') if secret else text).split())
+    text = text.replace(flat, '***') if flat else text
+    text = text if len(text) <= FIELD_CHECK_TEXT_MAX else text[:FIELD_CHECK_TEXT_MAX - 1] + '\u2026'
+    return None if secret and (leaked(value, text) or leaked(flat, text)) else text
+
+
 def checks_off(plugin: Plugin, off: Iterable[str]) -> frozenset[str]:
     known = {c.id for c in plugin.checks}
     chosen = frozenset(off)
@@ -359,6 +377,7 @@ class Instances:
         self.db = db
         self.source_timeout = source_timeout
         self._bound = Bound('settings-source')
+        self._field_calls = Bound('field-check')
         self.col = db['instances']
         self.moves = db['primary_moves']
         self.registry = registry
@@ -521,7 +540,36 @@ class Instances:
         with self._guard:
             self._move_warned = {k for k in self._move_warned if k[0] != plugin}
 
+    def _field_checks(self, plugin: str, values: Mapping) -> None:
+        found = self.registry.get(plugin)
+        if found is None or found.state != 'ok':
+            return
+        extra = self.extra_fields(plugin)
+        fields = {f.key: f for f in effective_fields(found.plugin, extra)}
+        given = {k: v for k, v in values.items() if k in fields and fields[k].check is not None and v is not None}
+        if not given:
+            return
+        try:
+            clean = validate(found.plugin, given, partial=True, extra=extra)
+        except InvalidInstance:
+            return
+        for key, value in clean.items():
+            f = fields[key]
+            try:
+                said = self._field_calls.call((plugin, key), lambda f=f, value=value: f.check(value), FIELD_CHECK_S)
+            except TimedOut:
+                raise InvalidInstance(key, msg('instances.invalid.check_slow', field=f.label)) from None
+            except Exception as e:
+                log.warning('the check of field %s of plug-in %s failed: %s', key, plugin, kind(e))
+                raise InvalidInstance(key, msg('instances.invalid.check_failed', field=f.label)) from None
+            if said is None or said == '':
+                continue
+            if not isinstance(said, str) or not check_text(f, value, said):
+                raise InvalidInstance(key, msg('instances.invalid.check_failed', field=f.label))
+            raise InvalidInstance(key, check_text(f, value, said))
+
     def create(self, plugin: str, name: str, values: Mapping, enabled: bool, by: str, off_checks: Iterable[str] = (), kept: Mapping[str, str] | None = None) -> Instance:
+        self._field_checks(plugin, values)
         with self._write:
             found = self.registry.get(plugin)
             if found is None or found.state != 'ok':
@@ -556,6 +604,7 @@ class Instances:
             return self.get(plugin, name)
 
     def update(self, plugin: str, name: str, values: Mapping, by: str, kept: Mapping[str, str] | None = None) -> Instance:
+        self._field_checks(plugin, values)
         with self._write:
             self._reload(live=False)
             current = self._need(plugin, name)

@@ -1,4 +1,3 @@
-import copy
 import fnmatch
 import json
 import logging
@@ -150,9 +149,53 @@ def asked_each(hook: Callable[[dict], str | None], cards: list[dict], said: list
         if time.monotonic() >= end:
             return
         try:
-            said.append((True, hook(copy.deepcopy(card))))
+            said.append((True, hook(card)))
         except Exception as e:
             said.append((False, e))
+
+
+def _refused(*args, **kwargs):
+    raise TypeError('a card given to a plug-in hook is read-only; change a copy of it')
+
+
+def thawed(value: object) -> object:
+    if isinstance(value, dict):
+        return {k: thawed(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [thawed(v) for v in value]
+    return value
+
+
+class FrozenList(list):
+    __slots__ = ()
+    __setitem__ = __delitem__ = __iadd__ = __imul__ = append = extend = insert = remove = pop = clear = sort = reverse = _refused
+
+    def __copy__(self) -> list:
+        return thawed(self)
+
+    def __deepcopy__(self, memo: dict) -> list:
+        return thawed(self)
+
+
+class FrozenCard(dict):
+    __slots__ = ()
+    __setitem__ = __delitem__ = __ior__ = update = pop = popitem = setdefault = clear = _refused
+
+    def __copy__(self) -> dict:
+        return thawed(self)
+
+    def __deepcopy__(self, memo: dict) -> dict:
+        return thawed(self)
+
+
+def frozen(value: object) -> object:
+    if isinstance(value, (FrozenCard, FrozenList)):
+        return value
+    if isinstance(value, dict):
+        return FrozenCard((k, frozen(v)) for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return FrozenList(frozen(v) for v in value)
+    return value
 
 
 def warn_text(owner: str, failed: set[str], why: str) -> None:
@@ -165,6 +208,7 @@ def rule_texts(cards: list[dict], hooks: list[tuple[str, Callable[[dict], str | 
     if hooks is None:
         return [SKIPPED] * len(cards)
     out: list[object] = [None] * len(cards)
+    cards = [frozen(card) for card in cards] if hooks else cards
     waiting = list(range(len(cards)))
     failed: set[str] = set()
     for owner, hook in hooks:
@@ -233,7 +277,8 @@ def card_texts(cards: list[dict], rules: tuple, at: str) -> dict[str, tuple[str,
 
 def texts_with(cards: list[dict], rules: tuple, at: str, hooks: list[tuple[str, Callable[[dict], str | None]]] | None) -> dict[str, tuple[str, object]]:
     wanted = []
-    for a in copy.deepcopy(cards):
+    for card in cards:
+        a = dict(card)
         _ruled(a, rules, at)
         if _wants_text(a):
             wanted.append(a)

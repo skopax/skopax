@@ -131,9 +131,9 @@ def test_redis_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('redis').state == 'ok'
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'Redis', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.2', 'community')
+        'Redis', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
     assert manifest['uses'] == ['prometheus'] and manifest['capabilities'] == {'hosts': [], 'secrets': [], 'agentReads': False}
-    assert [(f['key'], f['kind'], f['required'], f['choices']) for f in manifest['fields']] == [('prometheus', 'instance', True, ['prometheus']), ('selector', 'text', False, [])]
+    assert [(f['key'], f['kind'], f['required'], f['choices']) for f in manifest['fields']] == [('prometheus', 'instance', True, ['prometheus']), ('selector', 'text', False, []), ('peer-names', 'text', False, [])]
     assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('redis', 900, 780, ['redis'])]
     assert (check.sections, check.tool) == (('redis',), 'redis')
     assert (tool.name, tool.kind, tool.per_run, tool.scan, tool.instance_input) == ('redis', 'read', 6, True, 'instance')
@@ -149,7 +149,7 @@ def test_redis_defaults_are_neutral():
     rules = {r.id: dict(r.defaults) for r in redis.PLUGIN.rules}
 
     # then
-    assert fields == {'prometheus': '', 'selector': ''}
+    assert fields == {'prometheus': '', 'selector': '', 'peer-names': ''}
     assert redis.PLUGIN.settings == ()
     assert rules == {'rules': {'app_times': 3, 'app_floor_ms': 5, 'app_min_calls': 300, 'app_errors': 10}}
 

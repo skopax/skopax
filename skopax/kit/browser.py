@@ -103,6 +103,21 @@ OVERFLOW = r"""((limit) => {
   const vw = document.documentElement.clientWidth;
   const items = [], taken = [];
   const hides = o => o === 'hidden' || o === 'clip';
+  const identity = [[1, 0, 0, 1, 0, 0], [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]];
+  const moved = t => {
+    if (t === 'none') return false;
+    const m = /^matrix(?:3d)?\(([^)]*)\)$/.exec(t);
+    if (!m) return true;
+    const v = m[1].split(',').map(Number);
+    return !identity.some(i => i.length === v.length && i.every((x, n) => x === v[n]));
+  };
+  const track = q => {
+    const kids = [...q.children].map(k => k.getBoundingClientRect()).filter(k => k.width > 0 && k.height > 0);
+    if (kids.length < 2) return false;
+    const room = Math.min(vw, q.parentElement ? q.parentElement.getBoundingClientRect().width : vw);
+    const left = Math.min(...kids.map(k => k.left)), right = Math.max(...kids.map(k => k.right));
+    return right - left > room + 2 && kids.every(k => k.width <= room + 2);
+  };
   const lost = (el, clips) => {
     const box = el.getBoundingClientRect();
     if (box.width <= 2 || box.height <= 2) return false;
@@ -115,7 +130,7 @@ OVERFLOW = r"""((limit) => {
         const qs = getComputedStyle(q);
         if (q.getAttribute('aria-hidden') === 'true' || (qs.textOverflow === 'ellipsis' && qs.overflowX !== 'visible')) return true;
         if (clips.includes(q)) return false;
-        if (q instanceof SVGElement || qs.transform !== 'none' || qs.animationName !== 'none' || qs.opacity === '0') return true;
+        if (q instanceof SVGElement || moved(qs.transform) || (qs.transform !== 'none' && track(q)) || qs.animationName !== 'none' || qs.opacity === '0') return true;
         if ((qs.overflowX === 'auto' || qs.overflowX === 'scroll') && !out(q.getBoundingClientRect())) return true;
       }
       return false;
@@ -135,9 +150,11 @@ OVERFLOW = r"""((limit) => {
     }
     return false;
   };
-  let kept = 0;
+  let kept = 0, short = false;
+  const started = performance.now();
   for (const el of document.body.querySelectorAll('*')) {
-    if (kept >= limit || items.length >= limit * 8) break;
+    if (kept >= limit) break;
+    if (performance.now() - started > 3000) { short = true; break; }
     if (taken.some(t => t.contains(el))) continue;
     const r = el.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0 || r.right <= 1 || r.left >= vw - 1) continue;
@@ -165,7 +182,7 @@ OVERFLOW = r"""((limit) => {
     kept++;
     taken.push(el);
   }
-  return {vw: vw, items: items};
+  return {vw: vw, items: items, cutShort: short};
 })"""
 SCROLL = r"""((index) => {
   const el = document.querySelector('[data-page-check-overflow="' + index + '"]');
@@ -458,6 +475,7 @@ class Shot:
         self.mitigated = False
         self.dialogs: list[str] = []
         self.geometry: dict = {}
+        self.cut_short = False
 
     def go_on(self, conn: Connection, rid: object, req: dict, url: str) -> None:
         names = {k.lower() for k in self.headers}
@@ -573,6 +591,7 @@ class Shot:
         if vw is None or not isinstance(found.get('items'), list):
             return None
         judged = [(item['i'], v, scrolls_inside(item)) for item in found['items'] for v in (verdict(item, vw),) if v]
+        self.cut_short = found.get('cutShort') is True
         self.geometry = {item['i']: g for item in found['items'] if isinstance(item, dict) for g in (box_of(item),) if g is not None}
         return judged[:OVERFLOW_MAX]
 
@@ -630,7 +649,7 @@ class Shot:
             conn.on('Page.frameNavigated', self.navigated)
             conn.on('Page.loadEventFired', self.load)
             conn.on('Page.javascriptDialogOpening', lambda p, session: self.dialog(conn, p, session))
-            ua = (PHONE_UA if mobile else DESKTOP_UA).format(version=version, token=user_agent())
+            ua = (PHONE_UA if mobile else DESKTOP_UA).format(version=version, token=self.site.agent or user_agent())
             for method, params in (('Page.enable', {}), ('Network.enable', {}), ('Network.setBypassServiceWorker', {'bypass': True}),
                                    ('Emulation.setDeviceMetricsOverride', {'width': width, 'height': height, 'deviceScaleFactor': 1, 'mobile': mobile}),
                                    ('Emulation.setScrollbarsHidden', {'hidden': True}),
@@ -685,6 +704,8 @@ class Shot:
             entries = [{'verdict': judged, 'revealed': [], 'offscreen': []} | ({'box': self.geometry[i]} if judged in ('cut', 'page') and i in self.geometry else {}) for i, judged, _ in boxes]
             self.names(conn, s, deadline, boxes, entries)
             facts['overflow'] = entries
+            if self.cut_short:
+                facts['overflowCutShort'] = True
             shown = base | {'status': self.status, 'title': title[:TITLE_LIMIT]}
             return Picture(facts, data, scrolled=self.scrolls(conn, s, deadline, boxes, entries, shown, (width, height, content), hidden_done))
         except CdpError as e:

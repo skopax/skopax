@@ -5,16 +5,19 @@ import logging
 import re
 import threading
 import time
+import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from skopax import tags
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
 from skopax.cardlink import card_url, chat_url
+from skopax.contract import ECHO_FIELD
 from skopax.engine import iso as epoch_iso, parse_iso
 from skopax.errkind import Authored, kind
 from skopax.kit.links import sendable
 from skopax.messages import msg
+from skopax.slack import ENTITY_CUT, SLACK_MARKS, cut, esc
 from skopax.store import NotFound
 
 log = logging.getLogger('skopax.routes')
@@ -40,7 +43,20 @@ GONE = 'it no longer serves'
 STOPPED = 'the server stopped before it was posted'
 NOT_TRIED = (BUSY, GONE, STOPPED)
 EMAIL = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
+ECHO_LINE_MAX = 2900
+ECHO_TTL_S = 86400
+ECHO_PASS_S = 30.0
+ECHO_WAIT_S = 300.0
+ECHO_WAIT_MAX_S = 21600.0
+ECHO_TRIES = 5
 MD_LINK = re.compile(r'\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\(([^)]*)\)')
+
+
+@dataclass(frozen=True)
+class Echo:
+    post: Callable[[str], dict | None]
+    say: Callable[[dict, str], None]
+    ready: Callable[[dict], bool] = lambda card: True
 
 
 class Refused(Authored, Exception):
@@ -131,6 +147,7 @@ class Route:
     link: str | None
     keys: tuple[str, ...] = ()
     min_sev: str = ''
+    echo: str = ''
 
     @property
     def tagged(self) -> bool:
@@ -200,7 +217,8 @@ def route_of(plugin, item) -> Parsed:
     if not kept and not keys:
         return Parsed(None, msg('integrations.route_empty'), unknown, dropped)
     sev = str(values.get(hook.sev_field) or '') if hook.sev_field else ''
-    route = Route(f'{plugin.id}/{item.name}', item.name, plugin.id, item.name, kept, mentions, link, keys, sev if sev in SEV_RANK else '')
+    echo = str(values.get(ECHO_FIELD) or '')
+    route = Route(f'{plugin.id}/{item.name}', item.name, plugin.id, item.name, kept, mentions, link, keys, sev if sev in SEV_RANK else '', echo if echo in ('on', 'off') else '')
     return Parsed(route, None, unknown, dropped)
 
 
@@ -216,6 +234,9 @@ class Routes:
         self.timeout = timeout
         self._bound = Bound('outbound')
         self.autostart = autostart
+        self.echo: Echo | None = None
+        self.echo_budget = ECHO_PASS_S
+        self.holder = uuid.uuid4().hex[:8]
         self._lock = threading.Lock()
         self._idle = threading.Condition(self._lock)
         self._queued: dict[str, tuple[dict[str, dict], dict[str, dict]]] = {}
@@ -248,6 +269,133 @@ class Routes:
     def info(self) -> list[dict]:
         return [{'id': r.id, 'name': r.name, 'tags': ordered(r.tags), 'tagged': r.tagged, 'business': r.business, 'plugin': self.runtime.plugin_name(r.plugin)}
                 for r in self.runtime.routes()]
+
+    def echoing(self, route: Route) -> bool:
+        return route.echo == 'on' or (route.echo != 'off' and getattr(self.settings, 'routes_slack_echo', False) is True)
+
+    def inert(self, text: object) -> str:
+        return esc(text).translate(SLACK_MARKS)
+
+    def echo_entry(self, card: dict, route: Route, now: float) -> dict:
+        mine = tags.ids(card)
+        return {'id': route.id, 'route': route.name, 'plugin': self.runtime.plugin_name(route.plugin), 'tags': [t for t in ordered(route.tags) if t in mine], 'at': epoch_iso(now)}
+
+    def echo_text(self, entries: list[dict]) -> str:
+        items = []
+        for e in sorted(entries, key=lambda e: str(e.get('id'))):
+            named = [self.inert(t) for t in e.get('tags') or []]
+            suffix = msg('routes.echo_tag' if len(named) == 1 else 'routes.echo_tags', tags=', '.join(named)) if named else ''
+            items.append(msg('routes.echo_item', route=self.inert(e.get('route')), plugin=self.inert(e.get('plugin')), tags=suffix))
+        return ENTITY_CUT.sub('\u2026', cut(msg('routes.echo_line', routes='; '.join(items)), ECHO_LINE_MAX))
+
+    def _pend(self, sent: dict[str, list[str]], live: list[Route], now: float) -> None:
+        if self.echo is None or not sent:
+            return
+        known = {r.id: r for r in live}
+        told: dict[str, list[Route]] = {}
+        for route_id, keys in sent.items():
+            route = known.get(route_id)
+            if route is None or not self.echoing(route):
+                continue
+            for key in keys:
+                told.setdefault(key, []).append(route)
+        for key, group in told.items():
+            try:
+                card = self.store.anomaly(key)
+                self.store.route_echo_pend(key, [self.echo_entry(card, r, now) for r in group])
+            except Exception as e:
+                log.warning('route post of %s not queued for the Slack echo: %s', key, kind(e))
+
+    def nudge(self) -> None:
+        if self.autostart:
+            self.later([], self.clock())
+
+    def _drain_echo(self, now: float) -> None:
+        if self.echo is None:
+            return
+        try:
+            keys = self.store.route_echo_keys()
+        except Exception as e:
+            log.warning('route echoes to Slack not read: %s', kind(e))
+            return
+        deadline = time.monotonic() + self.echo_budget
+        for key in keys:
+            if time.monotonic() >= deadline:
+                break
+            try:
+                self._echo_one(key, now)
+            except Exception as e:
+                log.warning('route echo of %s to Slack skipped: %s', key, kind(e))
+
+    def _expired(self, entry: dict, now: float) -> bool:
+        try:
+            return now - parse_iso(str(entry.get('at') or '')) > ECHO_TTL_S
+        except (TypeError, ValueError):
+            return True
+
+    def _echo_failed(self, key: str, ids: list[str], e: BaseException, kind_: str = 'post') -> None:
+        fails = self.store.route_echo_fail(key, self.clock(), kind_)
+        log.warning('route echo of %s to Slack failed: %s', key, kind(e))
+        if fails >= ECHO_TRIES and ids:
+            self.store.route_echo_drop(key, ids, reset=True)
+            log.info('route echo of %s for %s dropped after %d failed tries', key, ', '.join(ids), fails)
+            return
+        try:
+            self.store.add_activity(ACTIVITY, 'server', msg('routes.echo_failed', tries=fails, limit=ECHO_TRIES), keys=[key])
+        except Exception as err:
+            log.warning('the failed Slack echo of %s was not recorded: %s', key, kind(err))
+
+    def _echo_post(self, key: str, ids: list[str], now: float) -> dict | None:
+        echo = self.echo
+        if not self.store.route_echo_claim(key, self.holder, self.clock(), 2 * self.timeout):
+            return None
+        try:
+            post = self.store.anomaly(key).get('slackPost') or {}
+            if not (post.get('ts') and post.get('channel')):
+                post = self._bound.call(('echo', key), lambda: echo.post(key), self.timeout)
+        except TimedOut as e:
+            self._echo_failed(key, ids, e)
+            return None
+        except Exception as e:
+            self.store.route_echo_release(key, self.holder)
+            self._echo_failed(key, ids, e)
+            return None
+        self.store.route_echo_release(key, self.holder)
+        return post if isinstance(post, dict) and post.get('ts') and post.get('channel') else None
+
+    def _echo_one(self, key: str, now: float) -> None:
+        echo = self.echo
+        card = self.store.anomaly(key)
+        state = card.get('routeEcho') or {}
+        entries = [p for p in state.get('pending') or [] if isinstance(p, dict) and p.get('id')]
+        stale = [p['id'] for p in entries if self._expired(p, now)]
+        if stale:
+            log.info('route echo of %s for %s was not told to Slack within a day', key, ', '.join(stale))
+            self.store.route_echo_drop(key, stale)
+            entries = [p for p in entries if p['id'] not in stale]
+        if not entries:
+            return
+        ids = [p['id'] for p in entries]
+        post = card.get('slackPost') or {}
+        fails = int(state.get('fails') or 0)
+        if fails and (state.get('failKind') == 'line' or not (post.get('ts') and post.get('channel'))) and self.clock() < float(state.get('failedAt') or 0) + min(ECHO_WAIT_S * 2 ** (fails - 1), ECHO_WAIT_MAX_S):
+            return
+        if not (post.get('ts') and post.get('channel')):
+            if not echo.ready(card):
+                return
+            post = self._echo_post(key, ids, now)
+            if post is None:
+                return
+        if not self._bound.free(('echo', key)):
+            return
+        fresh = self.store.route_echo_name(key, post['ts'], ids)
+        if not fresh:
+            return
+        text = self.echo_text(fresh)
+        try:
+            self._bound.call(('echo', key), lambda: echo.say(post, text), self.timeout)
+        except Exception as e:
+            self._echo_failed(key, [], e, 'line')
 
     def _base(self) -> str:
         return str((self.base() if self.base is not None else getattr(self.settings, 'base_url', '')) or '').rstrip('/')
@@ -646,12 +794,18 @@ class Routes:
         return sent
 
     def deliver(self, changed: list[dict], now: float, pushed: list[dict] = (), by: str = 'server') -> int:
+        sent = self._deliver(changed, now, pushed, by)
+        self._drain_echo(now)
+        return sent
+
+    def _deliver(self, changed: list[dict], now: float, pushed: list[dict], by: str) -> int:
         try:
             live = self.routes()
             if not live:
                 return 0
             records = self._records(now)
             sent = self._again(live, by, now, records) | (self.push(list(pushed), by=by, now=now, live=live, records=records) if pushed else {}) | self.tagged(list(changed), by, now, live, records)
+            self._pend(sent, live, now)
         except Exception as e:
             log.warning('route delivery skipped: %s', kind(e))
             return 0
@@ -747,6 +901,9 @@ class Routes:
         sent = self.push([card], picked, by, failed=failed)
         for route_id in sent:
             self._done(None, [route_id], key)
+        self._pend(sent, picked, self.clock())
+        if sent:
+            self.nudge()
         if not sent:
             route = picked[0]
             raise Refused(502, msg('integrations.route_failed', plugin=self.runtime.plugin_name(route.plugin), reason=failed.get(route.id) or GONE))

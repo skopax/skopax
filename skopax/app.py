@@ -29,12 +29,14 @@ from starlette.concurrency import run_in_threadpool
 
 from skopax.cardlink import card_url, chat_url
 from skopax.cardposts import CardPosts, drawn_sig
+from skopax.codehosts import CodeHosts
 from skopax.auth import LOGIN_COOKIE, LOGIN_SECONDS, SESSION_COOKIE, bearer_token, safe_next
 from skopax import actions as page_actions
-from skopax import __version__, backfill, brand, clock as clocks, costs, drafts, history, messages, redact as redaction, tags, toolusage
+from skopax import __version__, backfill, brand, causes, clock as clocks, costs, drafts, history, messages, redact as redaction, tags, toolusage
 from skopax.jiralinks import JiraLinks
 from skopax.kube import Kube
 from skopax import mcpserver
+from skopax import mutemarks
 from skopax.mcpauth import McpAuth
 from skopax.mcptools import PLUGIN_ID as MCPTOOLS_ID
 from skopax.mcptools import routes as mcptools_routes
@@ -48,7 +50,7 @@ from skopax.oidc import OidcError
 from skopax.operators import OperatorUnknown, Operators
 from skopax.postdeploy import JOB_OFFSET as POSTDEPLOY_OFFSET, JOB_PERIOD as POSTDEPLOY_PERIOD, SERVER_BY, PostDeploy
 from skopax.attach import Attacher
-from skopax.autosend import AutoSend, CritNow, Fallback
+from skopax.autosend import AutoSend, CritNow, Fallback, waiting as auto_send_waiting
 from skopax.config import ConfigurationError, Settings
 from skopax.contract import CodeHost, OrgPack, SourceDown
 from skopax.engine import Applied, PassResult, apply, iso as epoch_iso, new_pushes
@@ -84,7 +86,7 @@ from skopax.slackevents import Clicks, Intake, Listener, Replier, TicketRefused,
 from skopax.clearnotes import ClearNotes
 from skopax.notices import Notices
 from skopax.reminders import Reminders
-from skopax.routes import TRIES, Refused as RouteRefused, Routes
+from skopax.routes import TRIES, Echo, Refused as RouteRefused, Routes
 from skopax.models import RouteSendIn, SsoIn, SsoTestIn
 from skopax.statenotes import StateNotes, who_of
 from skopax.slack import anomaly_message, fix_hash, fix_message, AUTO_BY, same_person, built_link, cut, esc, esc_keep_mentions, menu_kinds, NoThread, opening, reason_of, recurring_line, report_message, Slack, SlackError
@@ -99,6 +101,8 @@ from skopax.plugintools import PluginTools
 from skopax.runtime import Runtime
 from skopax.monitor import rules_of as monitor_rules
 from skopax.probe import CERT_RULES, Probe, cert_pass, public as public_reach, summary as probe_summary
+from skopax import promqlroutes
+from skopax.promqlchecks import JOB_OFFSET as CUSTOM_CHECKS_OFFSET, JOB_PERIOD as CUSTOM_CHECKS_PERIOD, PASS as CUSTOM_CHECKS, CustomChecks
 from skopax.sweepout import Outputs
 from skopax.sweeps import Reads, Sweeper, owned, pass_name, watched
 from skopax.sealer import Sealer, master_key, stored_key
@@ -107,12 +111,14 @@ from skopax.remote import Transport
 from skopax.sessions import LOGIN_KIND, SESSION_KIND, Sessions, User, role_at_least, session_secret
 from skopax.roles import Resolvers, role_map
 from skopax.signin import Refused, SignIn
+from skopax import ssobutton
+from skopax.ssoicon import ICON_MAX as SSO_ICON_MAX, IconRefused, SsoIcon, check as icon_check
 from skopax.sso import FIELDS as SSO_FIELDS, SECRET_FIELD as SSO_SECRET_FIELD, SECRET_ID as SSO_SECRET_ID, SECRET_MAX as SSO_SECRET_MAX, InvalidSecret, SignOn, SourceOwned as SecretOwned, SsoConfig, SsoHttp, SsoSecret, TestBusy as SsoTestBusy
 from skopax.throttle import Throttle
 from skopax.store import ActionMoved, ChatPrivate, Conflict, NotFound, Store, iso, new_id, utc_now
 
 OPEN_PATHS = ('/actuator/health', '/actuator/health/*', '/static/*', '/icons/*', '/plugins/*', '/manifest.webmanifest', '/setup', '/login', '/login/sso', '/authorized', '/logout', '/mcp',
-              '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/*')
+              '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/*', '/login/sso-icon')
 READ_METHODS = ('GET', 'HEAD')
 FORM_BODY_MAX = 16384
 LOGIN_PAGE = Path(__file__).parent / 'web' / 'login.html'
@@ -141,7 +147,7 @@ WEB = Path(__file__).parent / 'web'
 TEMPLATE = WEB / 'template.html'
 CARD_PAGE = WEB / 'card.html'
 CARD_FIELDS = ('num', 'key', 'svc', 'label', 'sub', 'sev', 'status', 'muted', 'triage', 'ticket', 'owner', 'assigned', 'firstSeen', 'lastSeen', 'clearedAt', 'what', 'note', 'business',
-               'tags', 'url', 'gone', 'now', 'd1', 'd7', 'unit', 'recommend', 'suspects', 'outcome', 'resolution', 'triagedBy', 'autoResolvedAt')
+               'tags', 'url', 'gone', 'now', 'd1', 'd7', 'unit', 'recommend', 'suspects', 'outcome', 'resolution', 'triagedBy', 'autoResolvedAt', 'clearNote')
 PLACEHOLDER = '/*__SKOPAX_DATA__*/'
 PLUGIN_SLOT = '<script type="text/plain" id="plugin-scripts"></script>'
 PEOPLE_MIN = 2
@@ -219,6 +225,15 @@ def load_icons() -> dict[str, tuple[bytes, str]]:
 
 
 ICONS = load_icons()
+
+
+def load_sso_icons() -> dict[str, bytes]:
+    return {f.name: f.read_bytes() for f in sorted(ssobutton.ICON_DIR.iterdir()) if f.suffix == '.svg'}
+
+
+SSO_ICONS = load_sso_icons()
+SSO_ICON_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+SSO_ICON_CACHE = 'public, max-age=31536000, immutable'
 APP_DARK = '#0e1420'
 MANIFEST = {'id': '/', 'start_url': '/', 'scope': '/', 'display': 'standalone',
             'description': 'Production health board', 'theme_color': APP_DARK, 'background_color': APP_DARK,
@@ -267,8 +282,11 @@ def render_card_page(plugin_scripts: list[str] = ()) -> str:
 MERGED_FIELDS = ('num', 'key', 'svc', 'label', 'sub', 'sev', 'status', 'url', 'what', 'business')
 
 
-def card_view(card: dict, live: bool, merged: list[dict] = ()) -> dict:
+def card_view(card: dict, live: bool, merged: list[dict] = (), parent: dict | None = None) -> dict:
     out = {k: card[k] for k in CARD_FIELDS if card.get(k) not in (None, '', [])}
+    cause = causes.cause_of(card, {parent['key']: parent} if parent else {})
+    if cause:
+        out['cause'] = cause
     shots = (card.get('slackPost') or {}).get('screenshots') or (card.get('slackDraft') or {}).get('screenshots') or card.get('screenshots') or []
     kids = [{k: c[k] for k in MERGED_FIELDS if c.get(k) not in (None, '', [])} for c in merged]
     return out | {'live': live, 'screenshots': list(shots)[:3]} | ({'merged': kids} if kids else {})
@@ -276,6 +294,7 @@ def card_view(card: dict, live: bool, merged: list[dict] = ()) -> dict:
 
 TICKET_HITS = 8
 ROUTES_STOP_S = 5
+MARKS_STOP_S = 10
 TICKET_KEY = re.compile(r'[A-Za-z][A-Za-z0-9]+-\d+')
 TICKET_WORD = re.compile(r'[^\w]+', re.UNICODE)
 
@@ -332,12 +351,13 @@ def same_origin(request: Request) -> bool:
     return not origin or urlsplit(origin).netloc == request.url.netloc
 
 
-def render_login(error: str = '', email: str = '', next_page: str = '/', sso_link: bool = False) -> str:
+def render_login(error: str = '', email: str = '', next_page: str = '/', sso_link: bool = False, button: dict | None = None) -> str:
     target = safe_next(next_page)
+    shown = button or ssobutton.button('', '', 'auto', None)
     values = {key: html.escape(msg(f'login.{key}')) for key in LOGIN_FIELDS}
     values |= {'error': f'<p class="error" role="alert">{html.escape(error)}</p>' if error else '',
                'wordmark': brand.wordmark_html(), 'emailvalue': html.escape(email, quote=True), 'nextvalue': html.escape(target, quote=True), 'footer': brand.footer_html(),
-               'sso': f'<p class="sso"><a href="/login/sso?next={quote(target, safe="")}">{html.escape(msg("login.sso"))}</a></p>' if sso_link else ''}
+               'sso': f'<p class="sso-or"><span>{html.escape(msg("login.or"))}</span></p><p class="sso">{ssobutton.button_html(shown, "/login/sso?next=" + quote(target, safe=""))}</p>' if sso_link else ''}
     return LOGIN_SLOT.sub(lambda m: values.get(m.group(1), ''), LOGIN_PAGE.read_text(encoding='utf-8'))
 
 
@@ -566,6 +586,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     not_added_guard = threading.Lock()
     signin = SignIn(users, settings, resolvers, clock=clock, on_bound=note_bound)
     api_tokens = ApiTokens(db, clock=clock)
+    sso_icon = SsoIcon(db)
     setup_gate = SetupGate(db, users)
     sessions_box: list[Sessions] = []
     user_cache: dict[str, tuple[float, dict | None]] = {}
@@ -601,7 +622,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     link = SlackLink(runtime)
     slack = slack or Slack(link.token, lambda: settings.slack_channel, known_channel=lambda: last_post_channel(store))
     slack.attribution = chat_attribution
-    gitlab = gitlab if gitlab is not None else runtime.proxy('gitlab')
+    gitlab = CodeHosts((gitlab if gitlab is not None else runtime.proxy('gitlab'), runtime.proxy('github')))
     jira = jira if jira is not None else runtime.proxy('jira')
 
     def jira_site() -> str:
@@ -650,7 +671,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     operators = Operators(operators_lookup or slack_operator, slack, settings)
 
-    def send_anomaly_to_slack(key: str, by: str, base: str = '') -> dict:
+    def parent_of(card: dict) -> dict | None:
+        if not card.get('parent') or card['parent'] == card.get('key'):
+            return None
+        try:
+            return store.anomaly(card['parent'])
+        except NotFound:
+            return None
+
+    def post_anomaly_to_slack(key: str, by: str, base: str = '') -> dict:
         anomaly = store.anomaly(key)
         link = card_url(base_url or base, key, anomaly.get('num'))
         draft = (anomaly.get('slackDraft') or {}).get('text') or None
@@ -660,7 +689,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         buttons = card_posts.new_menu(key, by) if started_at_boot('slack-socket') else None
         head, mute = opening(by) | {'at': iso(utc_now())}, card_posts.mute_of(key)
         message = anomaly_message(anomaly, link, by, draft, buttons['id'] if buttons else None, chat_url(base_url or base, key, anomaly.get('num')), head=head,
-                                  attribution=None if thread else slack.signature(), mute=mute, kinds=menu_kinds(anomaly, mute), shots=shots, base=base_url) | ({'channel': thread['channel'], 'thread_ts': thread['ts']} if thread else {})
+                                  attribution=None if thread else slack.signature(), mute=mute, kinds=menu_kinds(anomaly, mute), shots=shots, base=base_url,
+                                  parent=parent_of(anomaly)) | ({'channel': thread['channel'], 'thread_ts': thread['ts']} if thread else {})
         try:
             posted = slack.post(message, sign=False)
         except SlackError as e:
@@ -688,6 +718,36 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except Exception as e:
             log.warning('suggested fix of %s not posted in its thread: %s', key, kind(e))
         return done
+
+    posting: set[str] = set()
+
+    def send_anomaly_to_slack(key: str, by: str, base: str = '') -> dict:
+        posting.add(key)
+        try:
+            return post_anomaly_to_slack(key, by, base)
+        finally:
+            posting.discard(key)
+
+    def echo_ready(card: dict) -> bool:
+        return bool(slack.enabled and features.on('slack-autosend') and not card.get('muted') and auto.live(card) and not auto_send_waiting(card) and card.get('key') not in posting)
+
+    def echo_to_slack(key: str) -> dict | None:
+        card = store.anomaly(key)
+        post = card.get('slackPost') or {}
+        if post.get('ts'):
+            return post
+        if not echo_ready(card):
+            return None
+        send_anomaly_to_slack(key, SERVER_BY)
+        posted = store.anomaly(key).get('slackPost') or None
+        if posted is None:
+            raise RuntimeError('the Slack post was not recorded on the card')
+        return posted
+
+    def echo_in_thread(post: dict, text: str) -> None:
+        slack.post({'text': text, 'channel': post['channel'], 'thread_ts': post['ts']}, sign=False)
+
+    routes.echo = Echo(echo_to_slack, echo_in_thread, echo_ready)
 
     def post_fixes(key: str, base: str = '') -> int:
         if not slack.enabled:
@@ -934,10 +994,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             store.add_check_runs([{'name': r.name, 'check': check or r.name, 'ok': r.ok, 'ms': ms, 'error': None if r.ok else r.status} for r in results])
         except PyMongoError as e:
             log.warning('check runs not recorded: %s', kind(e))
-        applied = apply(store, results, now, links, dm=pusher.enabled, after=after, auto_resolve_days=settings.auto_resolve_days,
-                        recurring_count=settings.recurring_count, recurring_days=settings.recurring_days, tag_rules=tags.rules(settings.tag_rules), alert_twins=settings.alert_twins, screen=screen, clusters=clusters)
+        applied = apply(store, results, now, links, dm=pusher.enabled, after=after, auto_resolve_hours=settings.auto_resolve_hours,
+                        recurring_count=settings.recurring_count, recurring_days=settings.recurring_days, tag_rules=tags.rules(settings.tag_rules), alert_twins=settings.alert_twins, screen=screen, clusters=clusters, kind_windows=runtime.auto_windows())
         if applied and applied.resolved:
-            notes.auto_resolved([r['key'] for r in applied.resolved], settings.auto_resolve_days)
+            for r in applied.resolved:
+                notes.auto_resolved([r['key']], r.get('hours') or settings.auto_resolve_hours, r.get('since'), {r['key']} if r.get('event') else ())
             notices.auto_resolved([r['key'] for r in applied.resolved])
         if applied:
             notices.fired(applied.events, applied.cards)
@@ -1078,7 +1139,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except Exception as e:
             log.warning('%s', msg('probe.start_failed', error=kind(e)))
 
-    sweeper = Sweeper(runtime, store, server_apply, enrich=enrich_keys, outputs=Outputs(store, slack, attacher, base_url, lambda: settings.screenshot_max_per_day))
+    sweeper = Sweeper(runtime, store, server_apply, enrich=enrich_keys, outputs=Outputs(store, slack, attacher, base_url, lambda: settings.screenshot_max_per_day, auto=lambda: features.on('slack-autosend')))
+    custom_checks = CustomChecks(store, runtime, server_apply)
 
     def refresh_languages() -> None:
         locales = [locale for _, locale in runtime.locales()]
@@ -1112,6 +1174,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         Job('slack-clear-notes', CLEAR_NOTE_PERIOD, CLEAR_NOTE_OFFSET, clear_notes.run_once, lambda: clear_notes.enabled),
         Job('self-review', DAY_S, lambda now, hour=max(settings.selfreview_hour, 0): review_slot_offset(hour, now), self_review.scheduled, lambda: self_review.configured, background=True),
         Job('probe', PROBE_PERIOD, PROBE_OFFSET, probe_run, enabled=lambda: settings.probe),
+        Job(CUSTOM_CHECKS, CUSTOM_CHECKS_PERIOD, CUSTOM_CHECKS_OFFSET, custom_checks.run_once, custom_checks.enabled),
     ]
     scheduler = Scheduler(store, boot=investigator.owner, jobs=lambda: core_jobs + [Job('postdeploy', POSTDEPLOY_PERIOD, POSTDEPLOY_OFFSET, lambda now: postdeploy.run_once(now), postdeploy.enabled)] + sweeper.jobs())
 
@@ -1134,7 +1197,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         tiles = []
         queued = scheduler.queued()
         for plugin in runtime.active():
-            if plugin.id == MCPTOOLS_ID:
+            if plugin.id == MCPTOOLS_ID or not (plugin.fields or plugin.checks or plugin.panels):
                 continue
             found = instances.all(plugin.id)
             if not found and plugin.fields:
@@ -1351,6 +1414,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         jobs = asyncio.create_task(scheduler.loop())
         ticking = asyncio.create_task(runtime.loop(instances.every))
         first_probe = asyncio.create_task(asyncio.to_thread(probe_at_start))
+        marked = threading.Event()
+
+        def marks_job() -> None:
+            try:
+                mutemarks.run_once(store)
+            finally:
+                marked.set()
+
+        threading.Thread(target=marks_job, name='skopax-mute-marks', daemon=True).start()
 
         async def follow_sources() -> None:
             while True:
@@ -1382,6 +1454,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 await asyncio.to_thread(investigator_shutdown)
             except Exception as e:
                 log.warning('investigator shutdown cleanup failed: %s', kind(e))
+            if not await asyncio.to_thread(marked.wait, MARKS_STOP_S):
+                log.info('the mute marks are still running at shutdown; they are left to finish, and an unfinished run starts again next time')
             if started_at_boot('slack-socket'):
                 try:
                     await asyncio.to_thread(listener.stop)
@@ -1770,7 +1844,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if key is None:
             raise HTTPException(status_code=404, detail=f'no card #{num}')
         try:
-            return card_view(store.anomaly(key), True, store.children(key)) | {'last': store.last_action(key)}
+            card = store.anomaly(key)
+            return card_view(card, True, store.children(key), parent_of(card)) | {'last': store.last_action(key)}
         except NotFound:
             past = store.last_past_card(key)
             return card_view(past | {'num': num}, False) if past else {'num': num, 'key': key, 'live': False}
@@ -1809,8 +1884,40 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
         return Response(body, media_type=ICON_TYPES[Path(name).suffix], headers=headers)
 
+    def sso_icon_version() -> str | None:
+        if settings.sso_button_icon != 'company':
+            return None
+        try:
+            return sso_icon.status()['version']
+        except PyMongoError as e:
+            log.warning('the single sign-on button icon could not be read: %s', kind(e))
+            return None
+
+    def login_button() -> dict:
+        return ssobutton.button(settings.sso_issuer, settings.sso_button_text, settings.sso_button_icon, sso_icon_version())
+
     def login_page(error: str = '', email: str = '', next_page: str | None = None, status_code: int = status.HTTP_200_OK) -> HTMLResponse:
-        return HTMLResponse(render_login(error, email, next_page or '/', signon.active()), status_code=status_code, headers={'Cache-Control': 'no-store'})
+        active = signon.active()
+        return HTMLResponse(render_login(error, email, next_page or '/', active, login_button() if active else None), status_code=status_code, headers={'Cache-Control': 'no-store'})
+
+    @app.get('/icons/sso/{name}')
+    def sso_mark_icon(name: str) -> Response:
+        if name not in SSO_ICONS:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, 'no such file')
+        return Response(SSO_ICONS[name], media_type='image/svg+xml', headers={'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': SSO_ICON_CSP})
+
+    @app.get('/login/sso-icon')
+    def sso_company_icon(v: str = '') -> Response:
+        try:
+            version = sso_icon.status()['version']
+            held = sso_icon.data(version) if version and (not v or v == version) else None
+        except PyMongoError as e:
+            log.warning('the single sign-on button icon could not be read: %s', kind(e))
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, msg('sso.icon_unavailable')) from None
+        if held is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, 'no icon')
+        cache = SSO_ICON_CACHE if v == version else 'no-cache'
+        return Response(held[0], media_type=held[1], headers={'Cache-Control': cache, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': SSO_ICON_CSP})
 
     @app.get('/login', response_model=None)
     def login_form(next_page: Annotated[str | None, Query(alias='next')] = None) -> HTMLResponse:
@@ -2437,20 +2544,24 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if to_local:
             user_field(clean_password, 'password', body.password)
         if body.ssoLink and not sso_domain_allowed(key):
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_domain'))
+            raise FieldRefused('ssoLink', msg('access.sso_domain'))
         if leaves_admin(fields) and users.is_last_admin(key):
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_admin'))
 
-    def sso_to_local(key: str, body: UserPatch, by: str) -> dict:
+    def sso_to_local(key: str, body: UserPatch, fields: dict, by: str) -> dict:
+        link = sso_domain_allowed(key)
         try:
-            made = users.make_local(key, body.password, by)
+            made = users.make_local(key, body.password, by, fields, link)
+        except LastAdmin:
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_admin')) from None
         finally:
             user_cache.pop(key, None)
             mcp_auth.forget(key)
         if made is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_password'))
         store.add_activity(ACCESS_KIND, by, msg('access.user_password', email=key))
-        store.add_activity(ACCESS_KIND, by, msg('access.sso_linked', email=key, days=LINK_PENDING_S // 86400))
+        if link:
+            store.add_activity(ACCESS_KIND, by, msg('access.sso_linked', email=key, days=LINK_PENDING_S // 86400))
         return made
 
     @app.patch('/api/admin/users/{email}')
@@ -2460,15 +2571,17 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if current is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, msg('access.unknown_user'))
         checked_patch(key, body, current)
-        if body.password is not None and current.get('source') == 'sso':
-            current = sso_to_local(key, body, by)
-            body = body.model_copy(update={'password': None})
         try:
             fields, unset = users.prepare_change(body.role, body.disabled, body.password, current)
         except InvalidUser as e:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, e.text) from e
         except IdpManaged:
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.role_from_idp')) from None
+        if body.password is not None and current.get('source') == 'sso':
+            fields.pop('pw', None)
+            current = sso_to_local(key, body, fields, by)
+            log_change(key, body.model_copy(update={'password': None}), by)
+            fields = {}
         if fields:
             change_user(key, fields, unset, body, by)
         if body.ssoLink is not None:
@@ -2500,6 +2613,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         finally:
             user_cache.pop(key, None)
             mcp_auth.forget(key)
+        log_change(key, body, by)
+
+    def log_change(key: str, body: UserPatch, by: str) -> None:
         if body.role is not None:
             store.add_activity(ACCESS_KIND, by, msg('access.user_role', email=key, role=body.role))
         if body.disabled is not None:
@@ -2522,7 +2638,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def post_admin_token(body: TokenIn, request: Request, by: Annotated[str, Depends(require_admin)], authorization: Annotated[str | None, Header()] = None) -> dict:
         actor: Actor = request.state.actor
         try:
-            token, doc = api_tokens.create(body.name, body.role, actor.creator, via='sso' if 'sso' in (actor.via, session_source(request, authorization)) else None)
+            token, doc = api_tokens.create(body.name, body.role, actor.creator, via='sso' if 'sso' in (actor.via, session_source(request, authorization)) else None, expires_days=body.expiresDays)
         except TokenNameError as e:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg(e.key)) from e
         except InvalidUser as e:
@@ -2575,6 +2691,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 'switch': {'value': held['value'], 'source': held['source'], 'from': held.get('from'), 'base': sso_layer(switch_t, held), 'baseValue': bool(live.base.sso_on)},
                 'roleMapInUse': [] if (settings.sso_role_map or '').strip() else [{'value': value, 'role': role} for value, role in role_map(settings)],
                 'mcpBase': mcp_auth.base_url.rstrip('/'),
+                'icon': sso_icon.status(),
+                'button': {'defaultText': msg('login.sso'), 'textMax': ssobutton.TEXT_MAX, 'iconMax': SSO_ICON_MAX, 'marks': ssobutton.rules(), 'branded': ssobutton.branded()},
                 'secretNote': msg('sso.secret_unreadable_note') if secret['unreadable'] and not secret['set'] else None}
 
     def sso_proposal(values: dict[str, str | None], enabled: bool | None, testing: bool) -> tuple[SsoConfig, dict[str, str | None], str | None]:
@@ -2668,6 +2786,48 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if switch is not None and bool(settings.sso_on) == switch:
             store.add_activity(ACCESS_KIND, by, msg('sso.switched_on' if switch else 'sso.switched_off'))
             log.info('single sign-on switched %s by %s', 'on' if switch else 'off', by)
+        return sso_view()
+
+    @app.put('/api/admin/sso/icon')
+    async def put_admin_sso_icon(request: Request, by: Annotated[str, Depends(require_admin)]) -> dict:
+        declared = request.headers.get('content-length', '')
+        if declared.isdigit() and int(declared) > SSO_ICON_MAX:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, msg('sso.icon_too_big', max=SSO_ICON_MAX // 1024))
+        raw = bytearray()
+        async for chunk in request.stream():
+            if len(raw) + len(chunk) > SSO_ICON_MAX:
+                raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, msg('sso.icon_too_big', max=SSO_ICON_MAX // 1024))
+            raw += chunk
+        try:
+            kind_of = await run_in_threadpool(icon_check, bytes(raw))
+        except IconRefused as e:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE if e.key == 'sso.icon_too_big' else status.HTTP_422_UNPROCESSABLE_CONTENT,
+                                msg(e.key, max=SSO_ICON_MAX // 1024) if e.key == 'sso.icon_too_big' else msg(e.key)) from None
+        try:
+            await run_in_threadpool(sso_icon.set, bytes(raw), kind_of, by)
+        except PyMongoError as e:
+            log.warning('the single sign-on button icon was not stored: %s', kind(e))
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, msg('sso.icon_unavailable')) from None
+        try:
+            await run_in_threadpool(store.add_activity, ACCESS_KIND, by, msg('sso.icon_saved', type=kind_of, size=len(raw)))
+        except PyMongoError as e:
+            log.warning('the single sign-on button icon upload was not written to the history: %s', kind(e))
+        log.info('single sign-on button icon uploaded by %s (%s, %d bytes)', by, kind_of, len(raw))
+        return await run_in_threadpool(sso_view)
+
+    @app.delete('/api/admin/sso/icon')
+    def delete_admin_sso_icon(by: Annotated[str, Depends(require_admin)]) -> dict:
+        try:
+            gone = sso_icon.clear()
+        except PyMongoError as e:
+            log.warning('the single sign-on button icon was not removed: %s', kind(e))
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, msg('sso.icon_unavailable')) from None
+        if gone:
+            log.info('single sign-on button icon removed by %s', by)
+            try:
+                store.add_activity(ACCESS_KIND, by, msg('sso.icon_removed'))
+            except PyMongoError as e:
+                log.warning('the single sign-on button icon removal was not written to the history: %s', kind(e))
         return sso_view()
 
     @app.post('/api/admin/sso/test')
@@ -2970,6 +3130,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return {'ok': False, 'summary': msg('integrations.test_failed', error=kind(e)), 'ms': 0}
 
     mcptools_routes.mount(app, mcptools_deps, require_admin)
+    promqlroutes.mount(app, custom_checks, require_admin, lambda by, text: store.add_activity(ADMIN_KIND, by, text), lambda: scheduler.nudge(CUSTOM_CHECKS))
 
     @app.get('/api/jira/search')
     def jira_search(q: Annotated[str, Query(max_length=120)], by: Annotated[str, Depends(require_operator)], type: Annotated[str, Query(max_length=10)] = '',
@@ -3390,7 +3551,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise chatui.Refused('That proposal cannot be applied.', 'bad')
         try:
             body = ActionIn(type=kind, key=key, target=key, label=f'{kind} from chat', hours=proposed.get('hours') if kind == 'mute' else None,
-                            ticket=proposed.get('ticket') if kind == 'take' else None, reason='marked as known noise from a chat answer' if kind == 'known' else None,
+                            ticket=proposed.get('ticket') if kind == 'take' else None,
                             kind=(proposed.get('kind') or 'handled') if kind == 'resolve' else None, ref=proposed.get('ref') if kind == 'resolve' else None)
         except ValidationError:
             raise chatui.Refused('That proposal cannot be applied.', 'bad') from None

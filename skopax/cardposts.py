@@ -262,6 +262,14 @@ class CardPosts:
             return self.new_menu(card['key'], SYSTEM)['id'], kinds
         return menu, ()
 
+    def _parent(self, card: dict) -> dict | None:
+        if not card.get('parent') or card['parent'] == card.get('key'):
+            return None
+        try:
+            return self.store.anomaly(card['parent'])
+        except NotFound:
+            return None
+
     def _rewrite(self, card: dict, post: dict, head: dict | None, mute: str | None) -> int | None:
         key = card['key']
         if head is not None:
@@ -280,7 +288,8 @@ class CardPosts:
         try:
             menu, kinds = self._menu(card, ask_of(post), mute)
             message = anomaly_message(shown, card_url(self.base, key, card.get('num')), post.get('by') or SYSTEM, draft, menu, chat_url(self.base, key, card.get('num')),
-                                      head=head or post['head'], attribution=None if threaded else self.slack.signature(), mute=mute, kinds=kinds, shots=post.get('screenshots'), base=self.base)
+                                      head=head or post['head'], attribution=None if threaded else self.slack.signature(), mute=mute, kinds=kinds, shots=post.get('screenshots'), base=self.base,
+                                      parent=self._parent(card))
             self.slack.update(post['channel'], ts, message['text'], message['blocks'])
         except SlackDown as e:
             log.warning('the Slack post of %s was not rewritten and the rest of this batch waits, Slack did not answer: %s', key, error_kind(e))

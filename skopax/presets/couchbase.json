@@ -1,0 +1,254 @@
+{
+  "id": "couchbase",
+  "name": "Couchbase",
+  "summary": "A Couchbase cluster: down and missing nodes, restarts, connection jumps, index memory, auto-failover, rebalances and N1QL errors, timeouts, time and queue.",
+  "source": "prometheus",
+  "needs": "A Prometheus instance that scrapes the Couchbase exporter (Couchbase Server 7 metrics such as up, kv_uptime_seconds and n1ql_requests).",
+  "placeholders": [
+    {
+      "key": "instance",
+      "kind": "instance",
+      "label": "Prometheus",
+      "help": "The Prometheus instance that scrapes the Couchbase exporter.",
+      "example": "main"
+    },
+    {
+      "key": "cluster",
+      "kind": "name",
+      "label": "Cluster",
+      "help": "A short name for this cluster in the check names, ids and card texts, such as orders-prod.",
+      "example": "orders-prod"
+    },
+    {
+      "key": "selector",
+      "kind": "matchers",
+      "label": "Selector",
+      "default": "job=~\".*couchbase.*\"",
+      "max": 100,
+      "help": "The label matchers that pick this cluster in every query, such as job=~\".*couchbase.*\",env=\"prod\". Each one is label, operator, quoted value.",
+      "example": "job=~\".*couchbase.*\",env=\"prod\""
+    }
+  ],
+  "checks": [
+    {
+      "key": "down",
+      "id": "cb-${cluster}-down",
+      "name": "Couchbase ${cluster} node down",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "max by (instance) (up{${selector}})",
+      "op": "<",
+      "threshold": 0.5,
+      "severity": "crit",
+      "by": [
+        "instance"
+      ],
+      "title": "{instance} down",
+      "text": "Couchbase node {instance} in ${cluster} is down: up is 0, Prometheus cannot reach its metrics endpoint."
+    },
+    {
+      "key": "not-scraped",
+      "id": "cb-${cluster}-not-scraped",
+      "name": "Couchbase ${cluster} node not scraped",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "(max by (instance) (up{${selector}} offset 1d) unless on (instance) max by (instance) (up{${selector}})) and on () (count(up{${selector}}) > 0)",
+      "op": ">=",
+      "threshold": 0,
+      "severity": "warn",
+      "by": [
+        "instance"
+      ],
+      "title": "{instance} not scraped",
+      "text": "Prometheus had an up sample for Couchbase node {instance} in ${cluster} a day ago and has none now: its scrape target is gone or the node left the cluster."
+    },
+    {
+      "key": "restart",
+      "id": "cb-${cluster}-restart",
+      "name": "Couchbase ${cluster} node restarted",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "max by (instance) (kv_uptime_seconds{${selector}}) and on (instance) (max by (instance) (up{${selector}}) >= 0.5)",
+      "op": "<",
+      "threshold": 3600,
+      "severity": "warn",
+      "by": [
+        "instance"
+      ],
+      "title": "{instance} restarted",
+      "text": "Couchbase node {instance} in ${cluster} has been up for only {value} s: its data service restarted in the last hour."
+    },
+    {
+      "key": "conn-jump",
+      "id": "cb-${cluster}-conn-jump",
+      "name": "Couchbase ${cluster} connection jump",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "(max by (instance) (max_over_time(kv_curr_connections{${selector}}[60m])) > 1.5 * max by (instance) (label_replace(max by (instance) (max_over_time(kv_curr_connections{${selector}}[60m] offset 1d)), \"base\", \"1d\", \"\", \"\") or label_replace(max by (instance) (max_over_time(kv_curr_connections{${selector}}[60m] offset 7d)), \"base\", \"7d\", \"\", \"\"))) and (max by (instance) (max_over_time(kv_curr_connections{${selector}}[60m])) > max by (instance) (label_replace(max by (instance) (max_over_time(kv_curr_connections{${selector}}[60m] offset 1d)), \"base\", \"1d\", \"\", \"\") or label_replace(max by (instance) (max_over_time(kv_curr_connections{${selector}}[60m] offset 7d)), \"base\", \"7d\", \"\", \"\")) + 200) and on (instance) (max by (instance) (up{${selector}}) >= 0.5)",
+      "op": ">",
+      "threshold": 0,
+      "severity": "warn",
+      "by": [
+        "instance"
+      ],
+      "title": "{instance} connections jumped to {value}",
+      "text": "Couchbase node {instance} in ${cluster} peaked at {value} client connections in the last 60 min: more than 1.5 times, and 200 more than, the peak of the same window 1 day or 1 week earlier."
+    },
+    {
+      "key": "index-memory",
+      "id": "cb-${cluster}-index-memory",
+      "name": "Couchbase ${cluster} index memory",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "100 * max by (instance) (index_memory_used_total{${selector}}) / max by (instance) (index_memory_quota{${selector}}) and on (instance) (max by (instance) (up{${selector}}) >= 0.5)",
+      "op": ">=",
+      "threshold": 90,
+      "severity": "info",
+      "by": [
+        "instance"
+      ],
+      "title": "{instance} index memory {value} % of quota",
+      "text": "The index service on {instance} in ${cluster} uses {value} % of its memory quota; this stays info, because a full index quota slows index builds and scans before it fails them."
+    },
+    {
+      "key": "failover",
+      "id": "cb-${cluster}-failover",
+      "name": "Couchbase ${cluster} auto-failover",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "max(increase(cm_auto_failover_count{${selector}}[60m]))",
+      "op": ">",
+      "threshold": 0,
+      "severity": "crit",
+      "by": [],
+      "title": "auto-failover in ${cluster}",
+      "text": "Couchbase cluster ${cluster} failed over a node automatically in the last 60 min: a node stopped answering and its data moved to the replicas."
+    },
+    {
+      "key": "rebalance-stuck",
+      "id": "cb-${cluster}-rebalance-stuck",
+      "name": "Couchbase ${cluster} rebalance stuck",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "max(cm_rebalance_stuck{${selector}})",
+      "op": ">",
+      "threshold": 0,
+      "severity": "crit",
+      "by": [],
+      "title": "rebalance stuck in ${cluster}",
+      "text": "Couchbase reports a stuck rebalance in ${cluster}: moving data between the nodes stopped making progress."
+    },
+    {
+      "key": "rebalance",
+      "id": "cb-${cluster}-rebalance",
+      "name": "Couchbase ${cluster} rebalance running",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "max(cm_rebalance_in_progress{${selector}}) unless on () (max(cm_rebalance_stuck{${selector}}) > 0)",
+      "op": ">",
+      "threshold": 0,
+      "severity": "info",
+      "by": [],
+      "title": "rebalance running in ${cluster}",
+      "text": "A rebalance is running in Couchbase cluster ${cluster}; expect slower queries until it finishes."
+    },
+    {
+      "key": "n1ql-errors",
+      "id": "cb-${cluster}-n1ql-errors",
+      "name": "Couchbase ${cluster} N1QL errors",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "(100 * sum(increase(n1ql_errors{${selector}}[60m])) / (sum(increase(n1ql_requests{${selector}}[60m])) > 0) > ((max(label_replace(100 * sum(increase(n1ql_errors{${selector}}[60m] offset 1d)) / (sum(increase(n1ql_requests{${selector}}[60m] offset 1d)) > 0), \"base\", \"1d\", \"\", \"\") or label_replace(100 * sum(increase(n1ql_errors{${selector}}[60m] offset 7d)) / (sum(increase(n1ql_requests{${selector}}[60m] offset 7d)) > 0), \"base\", \"7d\", \"\", \"\")) + clamp_min(max(label_replace(100 * sum(increase(n1ql_errors{${selector}}[60m] offset 1d)) / (sum(increase(n1ql_requests{${selector}}[60m] offset 1d)) > 0), \"base\", \"1d\", \"\", \"\") or label_replace(100 * sum(increase(n1ql_errors{${selector}}[60m] offset 7d)) / (sum(increase(n1ql_requests{${selector}}[60m] offset 7d)) > 0), \"base\", \"7d\", \"\", \"\")), 0.5)) or on () vector(1))) and on () (sum(increase(n1ql_errors{${selector}}[60m])) >= 20)",
+      "op": "<",
+      "threshold": 5,
+      "severity": "warn",
+      "by": [],
+      "title": "N1QL error share {value} % in ${cluster}",
+      "text": "N1QL queries on ${cluster} failed at {value} % in the last 60 min: at least 20 errors, and more than 1 % while no baseline exists, else more than twice and 0.5 points above the share of the same window 1 day or 1 week earlier."
+    },
+    {
+      "key": "n1ql-errors-crit",
+      "id": "cb-${cluster}-n1ql-errors-crit",
+      "name": "Couchbase ${cluster} N1QL errors critical",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "(100 * sum(increase(n1ql_errors{${selector}}[60m])) / (sum(increase(n1ql_requests{${selector}}[60m])) > 0) > ((max(label_replace(100 * sum(increase(n1ql_errors{${selector}}[60m] offset 1d)) / (sum(increase(n1ql_requests{${selector}}[60m] offset 1d)) > 0), \"base\", \"1d\", \"\", \"\") or label_replace(100 * sum(increase(n1ql_errors{${selector}}[60m] offset 7d)) / (sum(increase(n1ql_requests{${selector}}[60m] offset 7d)) > 0), \"base\", \"7d\", \"\", \"\")) + clamp_min(max(label_replace(100 * sum(increase(n1ql_errors{${selector}}[60m] offset 1d)) / (sum(increase(n1ql_requests{${selector}}[60m] offset 1d)) > 0), \"base\", \"1d\", \"\", \"\") or label_replace(100 * sum(increase(n1ql_errors{${selector}}[60m] offset 7d)) / (sum(increase(n1ql_requests{${selector}}[60m] offset 7d)) > 0), \"base\", \"7d\", \"\", \"\")), 0.5)) or on () vector(1))) and on () (sum(increase(n1ql_errors{${selector}}[60m])) >= 20)",
+      "op": ">=",
+      "threshold": 5,
+      "severity": "crit",
+      "by": [],
+      "title": "N1QL error share {value} % in ${cluster}",
+      "text": "N1QL queries on ${cluster} failed at {value} % in the last 60 min: at least 20 errors, and more than 1 % while no baseline exists, else more than twice and 0.5 points above the share of the same window 1 day or 1 week earlier."
+    },
+    {
+      "key": "n1ql-timeouts",
+      "id": "cb-${cluster}-n1ql-timeouts",
+      "name": "Couchbase ${cluster} N1QL timeouts",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "sum(increase(n1ql_timeouts{${selector}}[60m])) unless on () (sum(increase(n1ql_timeouts{${selector}}[60m])) <= 2 * max(label_replace(sum(increase(n1ql_timeouts{${selector}}[60m] offset 1d)), \"base\", \"1d\", \"\", \"\") or label_replace(sum(increase(n1ql_timeouts{${selector}}[60m] offset 7d)), \"base\", \"7d\", \"\", \"\")))",
+      "op": ">=",
+      "threshold": 5,
+      "severity": "warn",
+      "by": [],
+      "title": "{value} N1QL timeouts in ${cluster}",
+      "text": "{value} N1QL queries on ${cluster} timed out in the last 60 min, more than twice the same window 1 day or 1 week earlier; each one is an error for its caller."
+    },
+    {
+      "key": "n1ql-latency",
+      "id": "cb-${cluster}-n1ql-latency",
+      "name": "Couchbase ${cluster} N1QL time",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "(sum(increase(n1ql_request_time{${selector}}[60m])) / (sum(increase(n1ql_requests{${selector}}[60m])) > 0) / 1e6 > ((max(label_replace(sum(increase(n1ql_request_time{${selector}}[60m] offset 1d)) / (sum(increase(n1ql_requests{${selector}}[60m] offset 1d)) > 0) / 1e6, \"base\", \"1d\", \"\", \"\") or label_replace(sum(increase(n1ql_request_time{${selector}}[60m] offset 7d)) / (sum(increase(n1ql_requests{${selector}}[60m] offset 7d)) > 0) / 1e6, \"base\", \"7d\", \"\", \"\")) + clamp_min(max(label_replace(sum(increase(n1ql_request_time{${selector}}[60m] offset 1d)) / (sum(increase(n1ql_requests{${selector}}[60m] offset 1d)) > 0) / 1e6, \"base\", \"1d\", \"\", \"\") or label_replace(sum(increase(n1ql_request_time{${selector}}[60m] offset 7d)) / (sum(increase(n1ql_requests{${selector}}[60m] offset 7d)) > 0) / 1e6, \"base\", \"7d\", \"\", \"\")), 50)) or on () vector(200))) and on () (sum(increase(n1ql_requests{${selector}}[60m])) >= 300)",
+      "op": ">",
+      "threshold": 0,
+      "severity": "warn",
+      "by": [],
+      "title": "N1QL average {value} ms in ${cluster}",
+      "text": "N1QL queries on ${cluster} averaged {value} ms in the last 60 min over at least 300 queries: more than 200 ms while no baseline exists, else more than twice and 50 ms above the average of the same window 1 day or 1 week earlier."
+    },
+    {
+      "key": "n1ql-queue",
+      "id": "cb-${cluster}-n1ql-queue",
+      "name": "Couchbase ${cluster} N1QL queue",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "max(max_over_time(n1ql_queued_requests{${selector}}[60m]))",
+      "op": ">",
+      "threshold": 20,
+      "severity": "warn",
+      "by": [],
+      "title": "{value} N1QL queries queued in ${cluster}",
+      "text": "Up to {value} N1QL queries waited in the query service queue on ${cluster} in the last 60 min: the query service is short of workers."
+    },
+    {
+      "key": "auth-fail",
+      "id": "cb-${cluster}-auth-fail",
+      "name": "Couchbase ${cluster} REST auth failures",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "sum(increase(cm_rest_request_auth_failure_total{${selector}}[60m]))",
+      "op": ">=",
+      "threshold": 20,
+      "severity": "info",
+      "by": [],
+      "title": "{value} REST auth failures in ${cluster}",
+      "text": "{value} Couchbase REST requests failed authentication on ${cluster} in the last 60 min: a client with a wrong or rotated password, or someone probing the admin port."
+    },
+    {
+      "key": "no-series",
+      "id": "cb-${cluster}-no-series",
+      "name": "Couchbase ${cluster} no series",
+      "source": "prometheus",
+      "instance": "${instance}",
+      "query": "absent(up{${selector}})",
+      "op": ">",
+      "threshold": 0,
+      "severity": "crit",
+      "by": [],
+      "title": "no Couchbase series for ${cluster}",
+      "text": "The selector of the Couchbase preset for ${cluster} matches no up series in Prometheus, so every other check of this preset is quiet: check the selector and that Prometheus scrapes the Couchbase exporter."
+    }
+  ]
+}

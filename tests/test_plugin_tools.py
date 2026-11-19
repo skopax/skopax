@@ -22,7 +22,7 @@ from skopax.settingsources import boot
 from skopax.plugintools import PluginTools
 from skopax.messages import msg
 from skopax.registry import ATTR, BUILTIN, Registry
-from skopax.runtime import KNOWLEDGE_TOTAL, Runtime, knowledge_size, shown_knowledge
+from skopax.runtime import Runtime, shown_knowledge
 from skopax.sealer import Sealer, master_key
 from skopax.sweeps import Sweeper
 from tests.conftest import anomaly, settings, state
@@ -457,8 +457,8 @@ def test_the_investigator_prompt_carries_plugin_knowledge(store, rig):
     first = client.requests[0]
 
     # then
-    assert '{#demo-notes}' in first['system'][0]['text']
-    assert 'demo_echo' in [t['name'] for t in first['tools']]
+    assert '- `demo-notes`: Demo notes (plug-in Demo)' in first['system'][0]['text']
+    assert 'demo_echo' in [t['name'] for t in first['tools']] and 'plugin_knowledge' in [t['name'] for t in first['tools']]
 
 
 def test_a_plugin_cannot_take_a_core_tool_name_or_prompt_section():
@@ -584,17 +584,18 @@ def test_a_tool_whose_definition_went_away_is_a_fixed_error(rig, monkeypatch):
     assert failed and out == 'no tool named where_am_i'
 
 
-def test_the_knowledge_total_counts_the_rendered_blocks(rig):
+def test_every_knowledge_entry_is_kept_and_none_is_cut(rig):
     # given
     tiny = minimal('tiny', 'Tiny', knowledge=tuple(Knowledge(f'note-{i}', 'N', 'x' * 10) for i in range(2000)))
     other = Rig(rig.store, tiny)
 
     # when
     kept = other.runtime.knowledge()
+    inline, index = other.runtime.knowledge_parts()
 
     # then
-    assert 0 < len(kept) < 2000
-    assert len(prompt.knowledge_blocks(kept)) <= KNOWLEDGE_TOTAL < len(prompt.knowledge_blocks(kept + [kept[0]] * 60))
+    assert [k.id for k in kept] == [f'note-{i}' for i in range(2000)]
+    assert inline == [] and [k.id for _, k in index] == [k.id for k in kept] and all(name == 'Tiny' for name, _ in index)
 
 
 def test_each_knowledge_block_says_which_plugin_wrote_it_and_a_forged_title_cannot_hide_that(rig):
@@ -613,27 +614,7 @@ def left_out_lines(caplog) -> list[str]:
     return [r.getMessage() for r in caplog.records if r.name == 'skopax.runtime' and 'knowledge' in r.getMessage()]
 
 
-def test_plugin_knowledge_is_capped_in_total_whole_entries_only_and_one_info_line_lists_what_was_left_out(rig, caplog):
-    # given
-    big = tuple(Knowledge(f'part-{i}', f'Part {i}', f'{i:02d}' + 'x' * 7998) for i in range(11))
-    crowded = minimal('crowded', 'Crowded', knowledge=big)
-    late = minimal('late', 'Late', knowledge=(Knowledge('late-note', 'Late note', 'small'),))
-    other = Rig(rig.store, crowded, late)
-
-    # when
-    with caplog.at_level(logging.INFO):
-        first = other.runtime.knowledge()
-        second = other.runtime.knowledge()
-
-    # then
-    assert [k.id for k in first] == [f'part-{i}' for i in range(9)] and [k.id for k in second] == [k.id for k in first]
-    assert [k.text for k in first] == [f'From plug-in Crowded.\n\n{k.text}' for k in big[:9]], 'an entry is kept whole or left out whole'
-    assert len(prompt.knowledge_blocks(first)) <= KNOWLEDGE_TOTAL
-    assert left_out_lines(caplog) == [msg('plugins.knowledge.left_out', limit=KNOWLEDGE_TOTAL, plugins='Crowded, Late')]
-    assert [r.levelno for r in caplog.records if r.name == 'skopax.runtime'] == [logging.INFO]
-
-
-def test_the_plugin_that_owns_the_card_comes_first_and_the_summary_is_said_when_the_set_changes(rig, caplog):
+def test_the_plugin_that_owns_the_card_is_inlined_whole_the_rest_listed_in_load_order_and_no_summary_is_logged(rig, caplog):
     # given
     early = minimal('early', 'Early', knowledge=tuple(Knowledge(f'early-{i}', f'Early {i}', 'e' * 8000) for i in range(10)))
     owner = minimal('owner', 'Owner', knowledge=(Knowledge('owner-note', 'Owner note', 'how to read owner cards'),))
@@ -642,18 +623,15 @@ def test_the_plugin_that_owns_the_card_comes_first_and_the_summary_is_said_when_
 
     # when
     with caplog.at_level(logging.INFO):
-        plain = other.runtime.knowledge()
-        again = other.runtime.knowledge()
-        about = other.tools.knowledge([card])
-        about_again = other.runtime.knowledge([card])
-        unowned = other.runtime.knowledge([{'key': 'x|y', 'src': 'nobody'}])
+        plain = other.runtime.knowledge_parts()
+        about = other.tools.knowledge_parts([card])
+        unowned = other.runtime.knowledge_parts([{'key': 'x|y', 'src': 'nobody'}])
 
     # then
-    assert [k.id for k in plain] == [k.id for k in again] == [k.id for k in unowned] == [f'early-{i}' for i in range(9)]
-    assert [k.id for k in about] == [k.id for k in about_again] == ['owner-note'] + [f'early-{i}' for i in range(9)]
-    assert left_out_lines(caplog) == [msg('plugins.knowledge.left_out', limit=KNOWLEDGE_TOTAL, plugins='Early, Owner'),
-                                      msg('plugins.knowledge.left_out', limit=KNOWLEDGE_TOTAL, plugins='Early'),
-                                      msg('plugins.knowledge.left_out', limit=KNOWLEDGE_TOTAL, plugins='Early, Owner')], 'a set is said again whenever it differs from the last one said'
+    assert plain == unowned and plain[0] == [] and [k.id for _, k in plain[1]] == [f'early-{i}' for i in range(10)] + ['owner-note']
+    assert [k.id for k in about[0]] == ['owner-note'] and [k.id for _, k in about[1]] == [f'early-{i}' for i in range(10)]
+    assert about[0][0].text == 'From plug-in Owner.\n\nhow to read owner cards', 'an inlined entry is whole'
+    assert left_out_lines(caplog) == []
 
 
 def test_nothing_is_logged_when_all_knowledge_fits(rig, caplog):
@@ -668,7 +646,7 @@ def test_nothing_is_logged_when_all_knowledge_fits(rig, caplog):
     assert [k.id for k in kept] == ['small-note'] and left_out_lines(caplog) == []
 
 
-def test_a_card_run_puts_the_knowledge_of_the_card_owner_first_and_chat_keeps_the_serving_order(store):
+def test_a_card_run_inlines_the_knowledge_of_the_card_owner_and_lists_the_rest_in_the_serving_order(store):
     # given
     early = minimal('early', 'Early', knowledge=(Knowledge('early-note', 'Early note', 'early words'),))
     owner = minimal('owner', 'Owner', knowledge=(Knowledge('owner-note', 'Owner note', 'owner words', slack=True),))
@@ -685,19 +663,21 @@ def test_a_card_run_puts_the_knowledge_of_the_card_owner_first_and_chat_keeps_th
     system = client.requests[0]['system'][0]['text']
 
     # then
-    assert system.index('{#owner-note}') < system.index('{#early-note}')
+    assert '## Owner note {#owner-note}\n\nFrom plug-in Owner.\n\nowner words' in system
+    assert '{#early-note}' not in system and 'early words' not in system and '- `early-note`: Early note (plug-in Early)' in system
     assert prompt.system_prompt(rig.runtime.knowledge()).index('{#early-note}') < prompt.system_prompt(rig.runtime.knowledge()).index('{#owner-note}')
 
 
-def test_the_built_in_plugins_alone_fit_the_knowledge_total():
+def test_the_index_of_every_built_in_plugin_s_knowledge_stays_small():
     # given
     plugins = [getattr(importlib.import_module(path), ATTR) for path in BUILTIN]
 
     # when
-    used = sum(knowledge_size(shown_knowledge(p, k)) for p in plugins for k in p.knowledge)
+    full = sum(len(prompt.knowledge_blocks([shown_knowledge(p, k)])) for p in plugins for k in p.knowledge)
+    index = prompt.knowledge_index([(p.name, shown_knowledge(p, k)) for p in plugins for k in p.knowledge], None)
 
     # then
-    assert 40000 < used <= KNOWLEDGE_TOTAL
+    assert full > 40000 and len(index) < full // 8
 
 
 def test_a_plugin_tool_runs_through_an_investigation_and_shows_in_tool_usage(store, tmp_path):
@@ -718,7 +698,7 @@ def test_a_plugin_tool_runs_through_an_investigation_and_shows_in_tool_usage(sto
     # then
     row = next(t for t in usage['tools'] if t['name'] == 'demo_echo')
     assert record is not None and 'demo_echo' in [t['name'] for t in client.requests[0]['tools']]
-    assert '{#demo-notes}' in client.requests[0]['system'][0]['text']
+    assert '- `demo-notes`: Demo notes (plug-in Demo)' in client.requests[0]['system'][0]['text']
     assert (row['kind'], row['runs'], row['description']) == ('read', 1, 'Echo text back')
     assert row['calls'] == 3 and row['errors'] == 1 and row['byCheck']['pulse-east'] == {'runs': 1, 'errors': 1}
     assert usage['checkRuns'] == 2

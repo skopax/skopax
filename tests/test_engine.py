@@ -375,7 +375,7 @@ def test_a_waiting_card_nobody_acted_on_for_three_days_is_auto_resolved_with_a_n
     seeded(store, waiting(CART), waiting('log|payments-api|ERROR|x', YOUNG))
 
     # when
-    apply(store, [], NOW, auto_resolve_days=3)
+    apply(store, [], NOW, auto_resolve_hours=72)
     by = {a['key']: a for a in store.load()['anomalies']}
     lines = auto_lines(store)
 
@@ -393,7 +393,7 @@ def test_the_auto_note_is_written_only_on_a_card_without_a_note(store: Store):
     seeded(store, waiting(CART), waiting('log|payments-api|ERROR|x', triage='dived', triagedBy='pod', note={'text': 'one client retried 40 times', 'at': ago(OLD)}))
 
     # when
-    apply(store, [], NOW, auto_resolve_days=3)
+    apply(store, [], NOW, auto_resolve_hours=72)
     bare, noted = store.anomaly(CART), store.anomaly('log|payments-api|ERROR|x')
 
     # then
@@ -403,12 +403,12 @@ def test_the_auto_note_is_written_only_on_a_card_without_a_note(store: Store):
     assert len(auto_lines(store)) == 2
 
 
-def test_the_note_names_the_configured_number_of_days(store: Store):
+def test_the_note_names_the_configured_window_in_days_when_it_divides_by_24(store: Store):
     # given
     seeded(store, waiting(CART, cleared=DAY + 60))
 
     # when
-    apply(store, [], NOW, auto_resolve_days=1)
+    apply(store, [], NOW, auto_resolve_hours=24)
 
     # then
     assert store.anomaly(CART)['note']['text'] == 'Auto-resolved: cleared 16 Oct 07:59, nobody acted in 1 day'
@@ -434,7 +434,7 @@ def test_auto_resolve_leaves_info_muted_addressed_investigating_and_merged_cards
     ]}
 
     # when
-    done = auto_resolve(state, NOW, 3)
+    done = auto_resolve(state, NOW, 72)
     by = {a['key']: a for a in state['anomalies']}
 
     # then
@@ -446,12 +446,12 @@ def test_auto_resolve_leaves_info_muted_addressed_investigating_and_merged_cards
     assert by['log|i|ERROR|kid'].get('triage') is None and by['log|k|ERROR|kid'].get('triage') is None
 
 
-def test_zero_days_turns_auto_resolve_off(store: Store):
+def test_zero_hours_turns_auto_resolve_off(store: Store):
     # given
     seeded(store, waiting(CART, cleared=30 * DAY))
 
     # when
-    apply(store, [], NOW, auto_resolve_days=0)
+    apply(store, [], NOW, auto_resolve_hours=0)
 
     # then
     assert store.anomaly(CART).get('triage') is None
@@ -574,10 +574,10 @@ def test_a_tracked_card_stays_until_its_ticket_closes_then_24_hours_under_action
 def test_a_second_pass_does_not_resolve_or_log_again(store: Store):
     # given
     seeded(store, waiting(CART))
-    apply(store, [], NOW, auto_resolve_days=3)
+    apply(store, [], NOW, auto_resolve_hours=72)
 
     # when
-    apply(store, [], NOW + 600, auto_resolve_days=3)
+    apply(store, [], NOW + 600, auto_resolve_hours=72)
     card = store.anomaly(CART)
 
     # then
@@ -590,7 +590,7 @@ def test_the_summary_stops_counting_an_auto_resolved_card_as_waiting(store: Stor
     seeded(store, waiting(CART))
 
     # when
-    apply(store, [], NOW, auto_resolve_days=3)
+    apply(store, [], NOW, auto_resolve_hours=72)
 
     # then
     assert store.load()['summary'] == {'headline': 'All clear', 'points': [], 'level': 'ok', 'at': iso(NOW)}
@@ -714,12 +714,12 @@ def test_a_hand_resolved_card_under_a_mute_or_known_noise_that_fires_again_stays
     assert push == []
 
 
-def test_the_server_passes_auto_resolve_with_the_configured_days(store: Store):
+def test_the_server_passes_auto_resolve_with_the_configured_hours(store: Store):
     # given
     seeded(store, waiting(CART))
 
     # when
-    with TestClient(create_app(dataclasses.replace(settings(), auto_resolve_days=0), store)) as c:
+    with TestClient(create_app(dataclasses.replace(settings(), auto_resolve_hours=0), store)) as c:
         c.app.state.server_apply([], NOW, None)
     off = store.anomaly(CART).get('triage')
     with TestClient(create_app(settings(), store)) as c:

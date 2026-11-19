@@ -60,7 +60,7 @@ def make_client(info: InstanceInfo, transport: Transport) -> GitLab:
 
 PLUGIN = Plugin(
     id=ID, name='GitLab', version='0.1.0', category='code', description='Commits, code, merge requests and pipelines of one GitLab group, for deploy authors, tickets and code links.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),
     client=make_client, max_instances=1,
     fields=(Field('url', 'URL', 'url', required=True, default=GITLAB_URL, ui=True, help='Address of GitLab; its API is read under /api/v4.'),
             Field('token', 'Token', 'secret', required=True, help='An access token with the read_api scope.'),
@@ -68,5 +68,5 @@ PLUGIN = Plugin(
             Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),
             Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), group='advanced', help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),
     env_instances=env_instances, test=test, tools=TOOLS,
-    knowledge=(Knowledge('gitlab', 'GitLab', (Path(__file__).parent / 'gitlab.md').read_text(encoding='utf-8'), slack=True),),
+    knowledge=(Knowledge('gitlab', 'GitLab', (Path(__file__).parent / 'gitlab.md').read_text(encoding='utf-8'), slack=True, inline=True),),
 )

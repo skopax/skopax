@@ -45,6 +45,11 @@ def armed_for(x: dict) -> dict | None:
     return draft if same else None
 
 
+def waiting(x: dict) -> bool:
+    auto = x.get('autoSend') or {}
+    return bool((x.get('slackDraft') or {}).get('text')) and not sent(x) or bool(auto.get('holdBy')) or bool(auto.get('claimedAt'))
+
+
 class AutoSend:
     def __init__(self, store: Store, send_anomaly: Callable[[str], dict], send_report: Callable[[str], dict], interval: float = INTERVAL_SECONDS, on: Callable[[], bool] = lambda: True):
         self.store = store
@@ -52,6 +57,7 @@ class AutoSend:
         self.send_report = send_report
         self.interval = interval
         self.on = on
+        self.told_off = False
 
     def merged(self, a: dict) -> bool:
         parent = a.get('parent')
@@ -106,7 +112,11 @@ class AutoSend:
 
     def run_once(self) -> int:
         if not self.on():
+            if not self.told_off:
+                self.told_off = True
+                log.info('Slack drafts wait for a person: auto-send is off')
             return 0
+        self.told_off = False
         now = iso(utc_now())
         count = sum(self._anomaly(a, now) for a in self.store.due_anomaly_auto_sends(now))
         return count + sum(self._report(r, now) for r in self.store.due_report_auto_sends(now))

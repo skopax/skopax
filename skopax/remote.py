@@ -43,10 +43,11 @@ TEXT_ACCEPT = 'text/plain, text/html, */*;q=0.1'
 
 
 class HttpError(Exception):
-    def __init__(self, code: int, where: str, body: str = ''):
+    def __init__(self, code: int, where: str, body: str = '', headers: dict[str, str] | None = None):
         super().__init__(f'HTTP {code} on {where}')
         self.code = code
         self.body = body[:BODY_LIMIT]
+        self.headers = {str(k).lower(): str(v) for k, v in (headers or {}).items()}
 
 
 class Unreachable(Exception):
@@ -507,7 +508,7 @@ def sender(context: ssl.SSLContext | None = None, follow: bool = True, limit: in
             if expired.is_set():
                 raise TimeoutError
         except urllib.error.HTTPError as e:
-            raise HttpError(e.code, where, error_body(e)) from None
+            raise HttpError(e.code, where, error_body(e), dict(e.headers.items()) if e.headers is not None else None) from None
         except (http.client.HTTPException, OSError, ValueError) as e:
             if expired.is_set():
                 raise TimedOut(f'{where} gave no full answer within {budget:g} s') from None

@@ -87,10 +87,14 @@ button.btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; 
 .tsg-list .tsg-none { color: var(--muted); cursor: default; }
 .act-form input { flex: 1 1 200px; min-width: 0; font: inherit; font-size: 0.88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 10px; }
 .act-form input[aria-invalid="true"] { border-color: var(--crit); }
-.res-kinds { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+.res-kinds { flex-basis: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.res-kinds .res-kind { width: 100%; min-width: 0; justify-content: center; white-space: normal; font-size: 0.78rem; line-height: 1.15; text-align: center; padding: 3px 4px; }
+.res-kinds .res-hint { grid-column: 1 / -1; margin: 2px 0 0; font-size: 0.78rem; line-height: 1.35; color: var(--muted); }
+#form-resolve > input { flex: 1 1 100%; }
+#form-resolve > .btn { flex: 1 1 100%; justify-content: center; }
 .btn.sec { background: var(--surface); color: var(--fg); border: 1px solid var(--line-2); }
 .btn.sec:hover { background: var(--sunken); }
-.btn.res-kind[aria-pressed="true"] { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--btn-bg); }
+.btn.res-kind[aria-pressed="true"], .btn.res-kind[aria-pressed="true"]:hover { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--btn-bg); }
 .shots { display: grid; gap: 10px; }
 .shots img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; display: block; background: var(--sunken); }
 .shot { margin: 0; display: grid; gap: 4px; }

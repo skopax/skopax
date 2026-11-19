@@ -33,9 +33,10 @@ BACKFILL_ID = 'card-history-backfill'
 ASK_EVENT = 'slack-ask'
 ADDRESSED = ('progress', 'handled')
 CARD_FIELDS = ('key', 'num', 'svc', 'label', 'sub', 'ns', 'src', 'sev', 'unit', 'firstSeen', 'lastSeen', 'clearedAt', 'peak', 'triage', 'ticket', 'owner', 'triagedBy', 'autoResolvedAt', 'parent', 'teamsPosts', 'resolution')
-STORED_FIELDS = {f: 1 for f in CARD_FIELDS + ('note', 'recommend', 'muted', 'status', 'slackPost', 'autoSend', 'pushedAt', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts')}
+MUTED_PRESET = 'mutedPreset'
+STORED_FIELDS = {f: 1 for f in CARD_FIELDS + ('note', 'recommend', 'muted', MUTED_PRESET, 'status', 'slackPost', 'autoSend', 'pushedAt', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'clearNote', 'routeEcho')}
 PAST_FIELDS = ('key', 'num', 'svc', 'label', 'sub', 'ns', 'src', 'sev', 'unit', 'firstSeen', 'lastSeen', 'clearedAt', 'peak', 'outcome', 'triage', 'ticket', 'owner', 'triagedBy',
-               'muted', 'note', 'recommend', 'runId', 'recap', 'reopens', 'asks', 'said', 'backfill', 'resolution')
+               'muted', 'note', 'recommend', 'runId', 'recap', 'reopens', 'asks', 'said', 'backfill', 'resolution', 'clearNote')
 ASK_FIELDS = ('at', 'by', 'question', 'answer', 'thread', 'usd', 'runId')
 ROW_FIELDS = {'key': 1, 'firstSeen': 1, 'lastSeen': 1, 'clearedAt': 1, 'outcome': 1, 'ticket': 1, 'lastAsk': 1, 'resolution': 1}
 CLOSED_FIELDS = ('key', 'num', 'svc', 'ns', 'label', 'sub', 'sev', 'src', 'firstSeen', 'lastSeen', 'clearedAt', 'outcome', 'ticket', 'owner', 'reopens', 'resolution')
@@ -87,7 +88,7 @@ def who_text(by) -> str:
     by = str(by or '').strip()
     if by in MACHINE_BY:
         return MACHINE_BY[by]
-    return token_label(by) if is_token(by) else 'Claude' if not by or by == 'Claude' else by.split('@')[0]
+    return token_label(by) if is_token(by) else 'Investigator' if not by or by == 'Claude' else by.split('@')[0]
 
 
 def via_text(via) -> str | None:
@@ -171,6 +172,10 @@ def snapshot(card: dict) -> dict:
     if card.get('recommend'):
         out['recommend'] = cut(card['recommend'], TEXT_LIMIT)
     out['muted'] = cut(card['muted'], MUTED_LIMIT) if card.get('muted') else None
+    out[MUTED_PRESET] = True if card.get('muted') and card.get(MUTED_PRESET) else None
+    said = card.get('clearNote')
+    if isinstance(said, dict) and said.get('text'):
+        out['clearNote'] = {k: cut(said[k], TEXT_LIMIT) if k == 'text' else said[k] for k in ('text', 'by', 'plugin', 'at') if said.get(k)}
     return out
 
 

@@ -706,7 +706,7 @@ def test_a_down_resolver_refuses_beyond_the_limit_a_new_person_and_with_the_limi
     assert Users(store.db).get(CAROL) is None, 'a new person is not created while the resolver is down'
 
 
-def test_the_stale_limit_is_a_general_setting_from_0_to_1440_minutes(store: Store):
+def test_the_stale_limit_is_a_sign_in_setting_from_0_to_1440_minutes(store: Store):
     # given
     live = tunables.Live(settings(), tunables.TunableStore(store.db))
 
@@ -715,7 +715,7 @@ def test_the_stale_limit_is_a_general_setting_from_0_to_1440_minutes(store: Stor
     loaded = load_settings(env={})
 
     # then
-    assert (item['group'], item['kind'], item['low'], item['high'], item['value']) == ('General', 'int', 0, 1440, '60')
+    assert (item['group'], item['kind'], item['low'], item['high'], item['value']) == ('Sign-in', 'int', 0, 1440, '60')
     assert loaded.roles_stale_max_minutes == 60
     with pytest.raises(tunables.Invalid):
         live.set('roles.stale-max-minutes', '1441', ALICE)

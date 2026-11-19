@@ -34,7 +34,7 @@ def test_known_noise_on_a_card_whose_key_holds_a_star_mutes_that_card_only_now_a
     # then
     assert right_after[EVERY_5['key']]['muted'] and not right_after[OFFICE['key']]['muted']
     assert later[EVERY_5['key']]['muted'] and not later[OFFICE['key']]['muted'] and not later[NIGHT['key']]['muted']
-    assert store.load()['muted'][0] | {'at': None} == {'pattern': EVERY_5['key'], 'until': None, 'reason': 'marked as known noise on the page', 'kind': 'known', 'at': None, 'exact': True}
+    assert store.load()['muted'][0] | {'at': None} == {'pattern': EVERY_5['key'], 'until': None, 'reason': 'marked as known noise on the page', 'kind': 'known', 'at': None, 'exact': True, 'preset': True}
 
 
 def test_a_star_pattern_that_names_no_card_still_mutes_every_card_it_fits_and_unmute_lifts_each_kind(store: Store):

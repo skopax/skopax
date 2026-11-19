@@ -285,7 +285,7 @@ function loadInvestigations() {
       var s = INV_SPEND[k] || (INV_SPEND[k] = {n: 0, usd: 0});
       s.n += 1; s.usd += Number(r.usd || 0);
     }); });
-    if (sig !== INV_SIG) { INV_SIG = sig; renderPodRuns(); liveness(); repaintCards(); }
+    if (sig !== INV_SIG) { INV_SIG = sig; bumpRender(); renderPodRuns(); liveness(); repaintCards(); }
   }, function () {});
 }
 var CARDS_RETRY = 0;

@@ -8,12 +8,12 @@ from typing import Callable, Mapping
 
 from pymongo.errors import PyMongoError
 
-from skopax import clock, history, summary, tags
+from skopax import causes, clock, history, summary, tags
 from skopax.actors import SYSTEM
 from skopax.errkind import kind as error_kind
 from skopax.jiralinks import ticket_pattern
 from skopax.messages import msg
-from skopax.store import Conflict, Store, glob_match, mute_matches
+from skopax.store import MUTED_PRESET, Conflict, Store, glob_match, mute_matches
 
 log = logging.getLogger('skopax.engine')
 
@@ -27,7 +27,7 @@ POD_REOPEN = ('dived',) + HANDLED
 HISTORY_KEEP = 300
 SEV_RANK = {'info': 0, 'warn': 1, 'crit': 2}
 OFFER_MARKS = ('takeOffered', 'resolveOffered', 'knownOffered', 'muteOffered', 'ticketOffered')
-CARRY = ('note', 'suspects', 'recommend', 'assessedAt', 'triage', 'ticket', 'owner', 'absorb', 'code', 'slackDraft', 'slackPost', 'autoSend', 'slackFallback', 'triagedBy', 'investigator', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'num', 'assigned', 'sevSet', 'resolution')
+CARRY = ('note', 'suspects', 'recommend', 'assessedAt', 'triage', 'ticket', 'owner', 'absorb', 'code', 'slackDraft', 'slackPost', 'autoSend', 'slackFallback', 'triagedBy', 'investigator', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'num', 'assigned', 'sevSet', 'resolution', 'cause')
 POST_LISTS = ('teamsPosts', 'fixPosts')
 SHOTS = 'screenshots'
 NO_SERVICE = (None, '', '-', '?')
@@ -35,7 +35,7 @@ PUSH_LIMIT = 200
 PUSH_FRESH_S = 3600
 SERVER_PUSH_KEEP = 10
 APPLY_ATTEMPTS = 5
-AUTO_RESOLVE_DAYS = 3
+AUTO_RESOLVE_HOURS = 6
 RESOLVED_KEEP_S = 24 * 3600
 AUTO_RESOLVED_BY = 'auto'
 SYSTEM_VIA = SYSTEM
@@ -93,11 +93,30 @@ def push_group(a: dict) -> tuple | None:
     return (a['svc'],)
 
 
+def mute_live(m: dict, now: float) -> bool:
+    return m.get('until') is None or parse_iso(m['until']) > now
+
+
 def mute_for(state: dict, key: str, now: float) -> dict | None:
     for m in state.get('muted', []):
-        if (m.get('until') is None or parse_iso(m['until']) > now) and mute_matches(m, key):
+        if mute_live(m, now) and mute_matches(m, key):
             return m
     return None
+
+
+def flap_cause(a: dict, now: float, t: str) -> dict | None:
+    cause = causes.own(a)
+    if cause is None or not a.get('clearedAt') or now - parse_iso(a['clearedAt']) > REOPEN_QUIET_S:
+        return None
+    return cause | {'firstSeen': t}
+
+
+def set_muted(a: dict, m: dict | None) -> None:
+    a['muted'] = m['reason'] if m else None
+    if m and m.get('preset'):
+        a[MUTED_PRESET] = True
+    else:
+        a.pop(MUTED_PRESET, None)
 
 
 def duplicate_of(a: dict, prev: dict) -> dict | None:
@@ -117,9 +136,9 @@ def follow_original(state: dict, a: dict, original: dict, firing: set, now: floa
     if om and live:
         cap = now + DUPLICATE_MUTE_S
         until = om.get('until') if om.get('until') and parse_iso(om['until']) <= cap else iso(cap)
-        entry = {'pattern': a['key'], 'exact': True, 'until': until, 'reason': f"follows {ref}: {om.get('reason') or 'muted'}", 'kind': 'mute', 'at': iso(now)}
+        entry = {'pattern': a['key'], 'exact': True, 'until': until, 'reason': f"follows {ref}: {om.get('reason') or 'muted'}", 'kind': 'mute', 'at': iso(now)} | ({'preset': True} if om.get('preset') else {})
         state['muted'] = [m for m in state['muted'] if m.get('pattern') != a['key']] + [entry]
-        a['muted'] = entry['reason']
+        set_muted(a, entry)
         return 'muted'
     if original.get('triage') == 'progress':
         a.update(triage='progress', ticket=original.get('ticket'), owner=original.get('owner'), triagedBy=None, resolution=None)
@@ -157,14 +176,15 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
             continue
         seen.add(k)
         a = prev.get(k)
-        m = mute_for(state, k, now)
-        f['muted'] = m['reason'] if m else None
+        set_muted(f, mute_for(state, k, now))
+        f.pop('cause', None)
         if a is None:
             a = dict(f, firstSeen=t, lastSeen=t, peak=f['now'], status='open', pushedAt=None, pushedSev=None, pushedPeak=None, note=None)
             prev[k] = a
             ev = 'new'
         elif a['status'] == 'cleared':
             carried = {x: a.get(x) for x in CARRY if x not in POST_LISTS or a.get(x) is not None}
+            carried['cause'] = flap_cause(a, now, t)
             pushed = (a.get('pushedAt'), a.get('pushedSev'), a.get('pushedPeak'))
             a.clear()
             a.update(f, **carried)
@@ -238,8 +258,7 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
         events.append(dict(t=t, key=k, ev='cleared', sev=a['sev'], text=a['short'], muted=bool(a.get('muted'))))
     for k, a in prev.items():
         if a['status'] == 'cleared':
-            m = mute_for(state, k, now)
-            a['muted'] = m['reason'] if m else None
+            set_muted(a, mute_for(state, k, now))
 
     def settled(a: dict) -> bool:
         m = mute_for(state, a['key'], now)
@@ -347,7 +366,7 @@ def follow_parents(state: dict, now: float) -> list[dict]:
             head, why = 'Auto-resolved', f'its parent {pk} was ' + ('handled and has left the page' if p is None else 'marked no action needed')
         if not a.get('note'):
             a['note'] = {'text': f'{head}: {why}', 'at': t}
-        out.append({'key': a['key'], 'text': f"{head.lower()} {a.get('svc')} {a.get('label')} · {why}"})
+        out.append({'key': a['key'], 'text': f"{head.lower()} {a.get('svc')} {a.get('label')} \u00b7 {why}", 'since': 'parent'})
     return out
 
 
@@ -363,26 +382,66 @@ def auto_close_info(state: dict, now: float, days: int = INFO_CLOSE_DAYS) -> lis
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
             a['note'] = {'text': f'Auto-resolved: {why}', 'at': t}
-        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} · {why}"})
+        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': days * 24, 'since': 'info'})
     return out
 
 
-def auto_resolve(state: dict, now: float, days: int) -> list[dict]:
-    if days <= 0:
+def window_text(hours: int) -> str:
+    if hours > 0 and hours % 24 == 0:
+        days = hours // 24
+        return msg('engine.window.day' if days == 1 else 'engine.window.days', n=days)
+    return msg('engine.window.hour' if hours == 1 else 'engine.window.hours', n=hours)
+
+
+def window_for(a: dict, windows: tuple) -> int | None:
+    names = daily_names(a)
+    return next((hours for found, sig, hours in windows if a.get('sig') == sig and found & names), None)
+
+
+def acted_on(a: dict) -> bool:
+    return bool(a.get('triage') in ADDRESSED_TRIAGE + ('investigating',) or a.get('ticket') or a.get('owner') or a.get('muted'))
+
+
+def auto_resolve_kinds(state: dict, now: float, windows: tuple) -> list[dict]:
+    if not windows:
         return []
     t = iso(now)
     out = []
-    for a in summary.waiting_cards(state.get('anomalies') or []):
-        if a.get('triage') == 'investigating' or a.get('autoResolvedAt') or not a.get('clearedAt'):
+    for a in state.get('anomalies') or []:
+        hours = window_for(a, windows)
+        if not hours or hours <= 0 or acted_on(a) or a.get('parent') or not a.get('firstSeen'):
             continue
-        cleared = parse_iso(a['clearedAt'])
-        if now - cleared <= days * 86400:
+        first = parse_iso(a['firstSeen'])
+        if now - first <= hours * 3600:
             continue
-        why = f"cleared {clock.date(cleared)}, nobody acted in {days} day{'' if days == 1 else 's'}"
+        why = f"first seen {clock.date(first)}, nobody acted in {window_text(hours)}"
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
             a['note'] = {'text': f'Auto-resolved: {why}', 'at': t}
-        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} · {why}"})
+        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': hours, 'since': 'first'})
+    return out
+
+
+def auto_resolve(state: dict, now: float, hours: int, windows: tuple = ()) -> list[dict]:
+    if hours <= 0:
+        return []
+    t = iso(now)
+    out = []
+    cards = state.get('anomalies') or []
+    by_key = {a['key']: a for a in cards}
+    for a in summary.waiting_cards(cards):
+        if a.get('triage') == 'investigating' or a.get('autoResolvedAt') or not a.get('clearedAt') or window_for(a, windows):
+            continue
+        cleared = parse_iso(a['clearedAt'])
+        event = causes.event(a, by_key) and not a.get('ticket')
+        waited = hours + (causes.EVENT_EXTRA_HOURS if event else 0)
+        if now - cleared <= waited * 3600:
+            continue
+        why = msg('engine.auto.event') if event else f"cleared {clock.date(cleared)}, nobody acted in {window_text(hours)}"
+        a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
+        if not a.get('note'):
+            a['note'] = {'text': why if event else f'Auto-resolved: {why}', 'at': t}
+        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': waited} | ({'event': True} if event else {}))
     return out
 
 
@@ -524,10 +583,10 @@ def _merged(state: dict, all_results: list[PassResult], now: float, alert_twins:
 
 
 def apply(store: Store, results: list[PassResult], now: float, links: Callable[[dict], list[dict] | None] | None = None, dm: bool = False,
-          attempts: int = APPLY_ATTEMPTS, after: Callable[[dict], None] | None = None, auto_resolve_days: int = AUTO_RESOLVE_DAYS,
+          attempts: int = APPLY_ATTEMPTS, after: Callable[[dict], None] | None = None, auto_resolve_hours: int = AUTO_RESOLVE_HOURS,
           recurring_count: int = history.RECURRING_COUNT, recurring_days: int = history.RECURRING_DAYS, tag_rules: tuple | None = None,
           alert_twins: tuple[str, ...] = (), screen: Callable[[dict, list[PassResult]], list[PassResult]] | None = None,
-          clusters: Mapping[str, tuple[str | None, ...]] | None = None) -> Applied | None:
+          clusters: Mapping[str, tuple[str | None, ...]] | None = None, kind_windows: tuple = ()) -> Applied | None:
     all_results = results
     hooks = tags.text_hooks() if tag_rules is not None else []
     texts = None
@@ -559,7 +618,8 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
         state['serverPasses'] = runs
         if after:
             after(state)
-        resolved = auto_resolve(state, now, auto_resolve_days) + (follow_parents(state, now) + auto_close_info(state, now) if auto_resolve_days > 0 else [])
+        resolved = (auto_resolve_kinds(state, now, kind_windows) + auto_resolve(state, now, auto_resolve_hours, kind_windows)
+                    + (follow_parents(state, now) + auto_close_info(state, now) if auto_resolve_hours > 0 else []))
         rows = store.history_rows([a['key'] for a in state['anomalies']])
         if rows is not None:
             try:

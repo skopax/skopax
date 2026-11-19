@@ -13,6 +13,7 @@ log = logging.getLogger('skopax.investigator.toolset')
 
 CORE_OWNER = 'core'
 TAG = 'tag'
+KNOWLEDGE = 'plugin_knowledge'
 CONFIRM_TIMEOUT_S = 30
 SUMMARY_LIMIT = 300
 CARD_WRITES = ('assess', 'note', 'triage', 'group', 'tag')
@@ -57,6 +58,7 @@ CORE: dict[str, Spec] = {s.name: s for s in (
     _core('self_review', 'read', per_run=2),
     _core('past_runs', 'read'),
     _core('pass_table', 'read', scan=True),
+    _core(KNOWLEDGE, 'read'),
     _core('assess', 'write'),
     _core('note', 'write'),
     _core('triage', 'write'),

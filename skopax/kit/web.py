@@ -40,6 +40,11 @@ CHARSET = re.compile(r'charset=["\']?([\w.:-]+)', re.I)
 URL_SAFE = "/%:@&=+$,;~!*'()?"
 SLASHES = re.compile(r'/{2,}')
 PINS = 3
+HEADER_NAME = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]{1,100}")
+USER_AGENT = re.compile(r'[\x20-\x7e]{1,200}')
+NEVER_KEPT = frozenset({'set-cookie', 'set-cookie2', 'cookie', 'authorization', 'proxy-authorization'})
+OPTION_MAX = 20
+SECRETISH = re.compile(r'token|secret|session|auth|cookie|password|credential', re.I)
 INTERNAL_NAMES = ('.internal', '.local', '.localhost', '.svc', '.cluster.local', '.home.arpa')
 NAT64 = ipaddress.ip_network('64:ff9b::/96')
 COMPATIBLE = ipaddress.ip_network('::/96')
@@ -70,13 +75,18 @@ class Site:
     api_paths: tuple[str, ...] = ()
     refused_paths: tuple[str, ...] = ()
     internal: bool = False
+    tracking: tuple[str, ...] = ()
+    kept: tuple[str, ...] = ()
+    skip: tuple[str, ...] = ()
+    agent: str = ''
 
     @classmethod
     def of(cls, config: Mapping[str, str]) -> 'Site':
         base = host_of(config.get('url') or '')
         hosts = tuple(dict.fromkeys(([base] if base else []) + [h for h in host_list(config.get('hosts')) if h not in SUFFIXES]))
         return cls(hosts, tuple(host_list(config.get('login-hosts'))), path_list(config.get('login-paths')), path_list(config.get('api-paths')),
-                   path_list(config.get('refused-paths')), str(config.get('internal-subdomains') or '').strip().lower() == 'true')
+                   path_list(config.get('refused-paths')), str(config.get('internal-subdomains') or '').strip().lower() == 'true',
+                   name_list(config.get('tracking-params'), param_ok), header_list(config.get('kept-headers')), prefix_list(config.get('scan-skip')), agent_of(config.get('user-agent')))
 
     def exact(self, host: str) -> bool:
         return str(host or '').rstrip('.').lower() in self.hosts
@@ -160,6 +170,38 @@ def path_list(raw: object) -> tuple[str, ...]:
     return tuple(found[:LIST_LIMIT])
 
 
+def param_ok(name: str) -> bool:
+    return bool(re.fullmatch(r'[a-z0-9_.\-]{1,60}\*?', name))
+
+
+def name_list(raw: object, ok: Callable[[str], bool]) -> tuple[str, ...]:
+    found = []
+    for item in str(raw or '').split(','):
+        name = item.strip().lower()
+        if name and ok(name) and name not in found:
+            found.append(name)
+    return tuple(found[:OPTION_MAX])
+
+
+def header_list(raw: object) -> tuple[str, ...]:
+    return name_list(raw, lambda n: HEADER_NAME.fullmatch(n) is not None and n not in NEVER_KEPT and SECRETISH.search(n) is None)
+
+
+def prefix_list(raw: object) -> tuple[str, ...]:
+    found = []
+    for item in str(raw or '').split(','):
+        text = decoded(item.strip())
+        path = normal(text.strip('/')) if text.strip('/') else ''
+        if path and path != '/' and path not in found:
+            found.append(path)
+    return tuple(found[:OPTION_MAX])
+
+
+def agent_of(raw: object) -> str:
+    text = str(raw or '').strip()
+    return text if USER_AGENT.fullmatch(text) else ''
+
+
 def decoded(text: str) -> str:
     for _ in range(3):
         once = unquote(text)
@@ -226,10 +268,14 @@ def refusal(url: str, site: Site) -> str | None:
         return f'login pages are refused ({shown(site.login_paths)})'
     if site.refused_paths and hits(path, site.refused_paths):
         return f'pages whose every load counts as a click are refused ({shown(site.refused_paths)})'
-    tracked = sorted({decoded(k) for k, _ in parse_qsl(parts.query, keep_blank_values=True) if TRACKING.fullmatch(decoded(k))})
+    tracked = sorted({decoded(k) for k, _ in parse_qsl(parts.query, keep_blank_values=True) if tracking(decoded(k), site.tracking)})
     if tracked:
         return 'ad-tracking parameters are refused: ' + ', '.join(tracked)
     return None
+
+
+def tracking(name: str, extra: tuple[str, ...] = ()) -> bool:
+    return TRACKING.fullmatch(name) is not None or any(name == x or (x.endswith('*') and name.startswith(x[:-1])) for x in extra)
 
 
 def clean(url: str) -> str:
@@ -241,8 +287,8 @@ def user_agent() -> str:
     return ' '.join(msg('website.user_agent').split())
 
 
-def headers() -> dict[str, str]:
-    return {'User-Agent': user_agent(), 'Accept': ACCEPT, 'Accept-Encoding': 'identity'}
+def headers(agent: str = '') -> dict[str, str]:
+    return {'User-Agent': agent or user_agent(), 'Accept': ACCEPT, 'Accept-Encoding': 'identity'}
 
 
 def reason(error: BaseException) -> str:
@@ -331,8 +377,8 @@ def hop(url: str, page: Page) -> dict:
     return out | ({'timings': page.timings} if page.timings else {})
 
 
-def kept(found: dict[str, str]) -> dict[str, str]:
-    return {k: found[k] for k in KEPT_HEADERS if k in found}
+def kept(found: dict[str, str], extra: tuple[str, ...] = ()) -> dict[str, str]:
+    return {k: found[k] for k in (*KEPT_HEADERS, *(x for x in extra if x not in KEPT_HEADERS)) if k in found}
 
 
 class Pacer:
@@ -408,7 +454,7 @@ class PageCheck:
         started = self.clock()
         try:
             own = self.site.exact(urlsplit(url).hostname or '')
-            reply = call_page(self.transport, url, headers() | (self.extra if own else {}), TIMEOUT, BODY_LIMIT, pin)
+            reply = call_page(self.transport, url, headers(self.site.agent) | (self.extra if own else {}), TIMEOUT, BODY_LIMIT, pin)
         finally:
             self.pacer.done()
         ms = round((self.clock() - started) * 1000)
@@ -439,7 +485,7 @@ class PageCheck:
             if challenged(page):
                 chain.append({'url': current, 'challenge': f'HTTP {page.status}'})
                 return out | {'status': None, 'challenge': f"{CHALLENGE} (HTTP {page.status}): that is the answer of Cloudflare to the page check, not the page's status",
-                              'chain': chain, 'headers': kept(page.headers)}
+                              'chain': chain, 'headers': kept(page.headers, self.site.kept)}
             chain.append(hop(current, page))
             location = chain[-1].get('location')
             if not location:
@@ -459,7 +505,7 @@ class PageCheck:
                 break
             current, page = clean(target), nxt
         text = text_of(page, page.body[:BODY_LIMIT])
-        out |= {'status': page.status, 'chain': chain, 'headers': kept(page.headers)} | ({'timings': page.timings} if page.timings else {})
+        out |= {'status': page.status, 'chain': chain, 'headers': kept(page.headers, self.site.kept)} | ({'timings': page.timings} if page.timings else {})
         out['body'] = body_facts(page, text)
         if find:
             out['find'] = find_in(text, find, len(page.body) > BODY_LIMIT)

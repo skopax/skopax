@@ -39,6 +39,8 @@ function intMoved(f, inst) {
 function intFieldHtml(p, f, inst) {
   var id = 'int-' + p.id + '-' + (inst ? inst.name : 'new') + '-' + f.key;
   var init = intInit(f, inst);
+  var plain = f.kind === 'choice' && f.key === 'slack-echo' && intList(f.choices).indexOf('default') >= 0;
+  if (plain && init === '') init = 'default';
   var owned = !!(inst && (inst.owned || []).indexOf(f.key) >= 0);
   var show = f.showIf ? ' data-show-key="' + esc(f.showIf[0]) + '" data-show-val="' + esc(f.showIf[1]) + '"' : '';
   var input, tag = 'label', extra = '', side = '';
@@ -59,7 +61,7 @@ function intFieldHtml(p, f, inst) {
     var opts = f.kind === 'instance' ? intPeerNames(f) : intList(f.choices).slice();
     if (f.kind === 'instance' && init !== '' && opts.indexOf(init) < 0) opts.unshift(init);
     var entry = p.id === INT_MCP && f.key === 'preset';
-    if (init === '' || (f.kind === 'choice' && !f.required && !f.default)) opts.unshift('');
+    if (!plain && (init === '' || (f.kind === 'choice' && !f.required && !f.default))) opts.unshift('');
     var text = function (c) { return f.kind === 'instance' ? c : intChoiceText(f, c, entry ? 'No catalog entry' : ''); };
     if (f.kind === 'choice' && !entry && opts.length >= 2 && opts.length <= INT_SEG_MAX) {
       tag = 'span';
@@ -99,12 +101,16 @@ function intMetaOf(p) {
   return ['Custom plug-in', p.author ? 'by ' + p.author : '', p.version ? 'version ' + p.version : '', p.licence || ''].filter(Boolean).join(' \u00b7 ');
 }
 function intCatLabel(c) { return Object.prototype.hasOwnProperty.call(INT_CATS, c) ? INT_CATS[c] : c; }
+function intOutside(p) {
+  return !!p && intUsable(p) && !intList(p.fields).length && Array.isArray(p.checks) && !p.checks.length && Array.isArray(p.panels) && !p.panels.length;
+}
 function intTiled(p) {
   if (!intUsable(p)) return p.enabled === true || intList(p.instances).length > 0;
+  if (intOutside(p)) return false;
   return intList(p.instances).length > 0 || (!intList(p.fields).length && p.enabled === true);
 }
 function intConnected(p) {
-  return !!p && intUsable(p) && p.enabled === true && (!intList(p.fields).length || intList(p.instances).some(function (i) { return i && i.enabled === true && !i.problem; }));
+  return !!p && intUsable(p) && !intOutside(p) && p.enabled === true && (!intList(p.fields).length || intList(p.instances).some(function (i) { return i && i.enabled === true && !i.problem; }));
 }
 function intAttention(p) { return !intUsable(p) || !!(p.health && (p.health.state === 'error' || p.health.state === 'warn')); }
 function intChecks(p) { return intList(p.checks).filter(function (c) { return c && typeof c.id === 'string' && c.id; }); }
@@ -144,6 +150,7 @@ function intHealthEl(h, cls) {
   line.appendChild(accText('span', 'int-health-t', h.text));
   return line;
 }
+var INT_DARK_ICONS = ['kafka', 'umami'];
 function intIcon(p) {
   var box = accText('span', 'int-ico');
   if (p.icon === true) {
@@ -152,6 +159,7 @@ function intIcon(p) {
     img.setAttribute('src', '/plugins/' + encodeURIComponent(p.id) + '/icon.svg');
     img.setAttribute('alt', '');
     box.appendChild(img);
+    if (INT_DARK_ICONS.indexOf(p.id) >= 0) box.classList.add('int-ico-dark');
   } else {
     box.classList.add('int-mono');
     box.textContent = intName(p).charAt(0).toUpperCase();
@@ -193,6 +201,10 @@ function intShort(p, h) {
   var bad = intList(p.health && p.health.instances).filter(function (r) { return r && (r.state === 'error' || r.state === 'warn'); }).length;
   return n + ' instances \u00b7 ' + (bad ? bad + (bad === 1 ? ' needs attention' : ' need attention') : h.text);
 }
+function intWhy(p) {
+  var rows = intList(p.health && p.health.instances).filter(function (r) { return r && (r.state === 'error' || r.state === 'warn') && typeof r.text === 'string' && r.text; });
+  return rows.length ? rows[0].text : '';
+}
 function intTip(p, h) {
   return [h ? h.text : '', p.state && !intUsable(p) && p.reason ? String(p.reason) : ''].concat(intDropTexts(p)).filter(Boolean).join('\n');
 }
@@ -216,8 +228,10 @@ function intTile(p) {
   row.appendChild(dot);
   open.appendChild(row);
   var custom = intIsCustom(p);
-  line.appendChild(accText('span', 'int-cat', intCatLabel(intCatOf(p)) + (custom ? ' \u00b7 Custom' : '')));
+  if (!need || custom) line.appendChild(accText('span', 'int-cat', need ? 'Custom' : intCatLabel(intCatOf(p)) + (custom ? ' \u00b7 Custom' : '')));
   if (h) line.appendChild(accText('span', 'int-health', intShort(p, h)));
+  var why = need && h && intList(p.instances).length > 1 ? intWhy(p) : '';
+  if (why) line.appendChild(accText('span', 'int-why', why));
   open.appendChild(line);
   if (custom) {
     var said = intCustomSaid(p), note = accText('span', 'int-custom-d', said);
@@ -429,7 +443,8 @@ function intPick(p) {
   if (typeof p.description === 'string' && p.description) words.appendChild(accText('span', 'int-pick-d', p.description));
   b.appendChild(words);
   if (intIsCustom(p)) b.appendChild(accText('span', 'muted int-pick-c', 'Custom'));
-  if (connected || n) b.appendChild(accText('span', 'int-has' + (connected ? '' : ' idle'), (connected ? '\u2713 ' : '') + (n > 1 ? n + ' added' : 'Added')));
+  if (intOutside(p)) b.appendChild(accText('span', 'int-has idle', 'Set up outside Admin'));
+  else if (connected || n) b.appendChild(accText('span', 'int-has' + (connected ? '' : ' idle'), (connected ? '\u2713 ' : '') + (n > 1 ? n + ' added' : 'Added')));
   if (connected) {
     b.classList.add('has');
     b.title = 'Connected: opens its setup';
@@ -473,7 +488,7 @@ function intPopOpen() {
   var search = document.createElement('input');
   search.type = 'search';
   search.className = 'int-search';
-  search.placeholder = 'Search integrations\u2026';
+  search.placeholder = 'Search integrations';
   search.setAttribute('aria-label', 'Search integrations');
   search.setAttribute('autocomplete', 'off');
   search.setAttribute('spellcheck', 'false');

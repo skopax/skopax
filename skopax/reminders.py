@@ -2,6 +2,7 @@ import logging
 import time
 from typing import Callable
 
+from skopax import causes
 from skopax.cardlink import card_url
 from skopax.clearnotes import recurs
 from skopax.engine import iso, mute_for, parse_iso
@@ -41,8 +42,8 @@ def who_text(card: dict) -> str:
     return msg('reminder.owned', owner=esc(owner)) if owner else msg('reminder.nobody')
 
 
-def state_text(card: dict) -> str:
-    return msg('reminder.still' if card.get('status') == 'open' else 'reminder.quiet' if recurs(card) else 'reminder.calmed')
+def state_text(card: dict, by_key: dict | None = None) -> str:
+    return msg('reminder.still' if card.get('status') == 'open' else 'reminder.event' if causes.event(card, by_key or {}) else 'reminder.quiet' if recurs(card) else 'reminder.calmed')
 
 
 def age_text(hours: float) -> str:
@@ -56,6 +57,7 @@ class Reminders:
         self.hours = hours
         self.base_url = base_url.rstrip('/')
         self.clock = clock
+        self.by_key: dict = {}
 
     @property
     def enabled(self) -> bool:
@@ -66,6 +68,7 @@ class Reminders:
         state = self.store.load()
         cards = state.get('anomalies') or []
         by_key = {c['key']: c for c in cards}
+        self.by_key = by_key
         due = [c for c in cards if waiting(c, by_key, state, now) and now - last_nudge(c) >= self.hours * 3600]
         threads: dict[tuple, list[dict]] = {}
         for card in due:
@@ -90,7 +93,7 @@ class Reminders:
         for card in cards:
             is_open = card.get('status') == 'open'
             owner = msg('reminder.group.owner', owner=esc(str(card['owner']).strip())) if str(card.get('owner') or '').strip() else ''
-            line = msg('reminder.group.line', name=esc(card_name(card)), owner=owner, state=state_text(card), link=self._link(card))
+            line = msg('reminder.group.line', name=esc(card_name(card)), owner=owner, state=state_text(card, self.by_key), link=self._link(card))
             call = {'key': card['key'], 'action': 'take' if is_open else 'resolve'}
             offer = self.store.add_action({'type': REMINDER_TYPE, 'source': 'slack', 'key': card['key'], 'target': card['key'], 'label': f"Slack reminder: {card['key']}"[:300],
                                            'requestedBy': 'server', 'cardAction': call, 'slack': {'where': 'card', 'channel': post['channel'], 'threadTs': post['ts']}})
@@ -116,7 +119,7 @@ class Reminders:
     def _remind(self, card: dict, now: float) -> bool:
         key, post = card['key'], card['slackPost']
         is_open = card.get('status') == 'open'
-        text = msg('reminder.card', age=age_text((now - waiting_since(card)) / 3600), who=who_text(card), state=state_text(card), link=self._link(card))
+        text = msg('reminder.card', age=age_text((now - waiting_since(card)) / 3600), who=who_text(card), state=state_text(card, self.by_key), link=self._link(card))
         call = {'key': key, 'action': 'take' if is_open else 'resolve'}
         offer = self.store.add_action({'type': REMINDER_TYPE, 'source': 'slack', 'key': key, 'target': key, 'label': f'Slack reminder: {key}'[:300], 'requestedBy': 'server',
                                        'cardAction': call, 'slack': {'where': 'card', 'channel': post['channel'], 'threadTs': post['ts']}})

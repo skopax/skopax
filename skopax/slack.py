@@ -8,7 +8,7 @@ import urllib.request
 from typing import Callable
 from urllib.parse import quote, urlencode, urlsplit
 
-from skopax import brand, clock
+from skopax import brand, causes, clock
 from skopax.cardlink import card_url
 from skopax.errkind import Authored, kind as error_kind
 from skopax.actors import BOOTSTRAP_TOKEN, SYSTEM, is_token, token_label
@@ -42,6 +42,7 @@ CARD_ACTION = 'card_action'
 PROPOSAL_CONFIRM = 'proposal_confirm'
 BUTTON_LIMIT = 75
 POST_ACTIONS = ('take', 'resolve', 'known')
+SLACK_MARKS = str.maketrans({'*': '\u2217', '_': '\u02cd', '~': '\u223c', '`': '\u02cb'})
 DRAFT_LINES = 3
 EMOJI = {'crit': ':red_circle:', 'warn': ':large_orange_circle:', 'info': ':large_blue_circle:', 'ok': ':large_green_circle:'}
 SEVS = ('crit', 'warn', 'info')
@@ -598,9 +599,14 @@ def card_menu(buttons: str | None, kinds: tuple[str, ...], chat: str | None) -> 
     return {'type': 'overflow', 'action_id': CARD_MENU, 'options': options[:MENU_LIMIT]} if options else None
 
 
-def facts_line(a: dict, mute: str | None, drafted_by: str = '') -> str:
+def parents(parent: dict | None) -> dict:
+    return {parent['key']: parent} if isinstance(parent, dict) and parent.get('key') else {}
+
+
+def facts_line(a: dict, mute: str | None, drafted_by: str = '', parent: dict | None = None) -> str:
     sev = a.get('sev', 'info')
-    parts = [msg(f'slack.status.{status_of(a, mute)}'), sev_label(sev, esc(sev))]
+    status = status_of(a, mute)
+    parts = [msg('slack.status.event' if status == 'cleared' and causes.event(a, parents(parent)) else f'slack.status.{status}'), sev_label(sev, esc(sev))]
     if a.get('owner'):
         parts.append(msg('slack.bar.assignee', name=esc(actor(a['owner']))))
     named = [tags.label(t) for t in tags.ids(a) if t in tags.all_tags()]
@@ -655,7 +661,8 @@ def attribution_mark(line: dict) -> str:
 
 
 def anomaly_message(a: dict, link: str, by: str, draft: str | None = None, buttons: str | None = None, chat: str | None = None, *, head: dict | None = None,
-                    attribution: dict | None = None, mute: str | None = None, kinds: tuple[str, ...] = POST_ACTIONS, shots: list | None = None, base: str = '') -> dict:
+                    attribution: dict | None = None, mute: str | None = None, kinds: tuple[str, ...] = POST_ACTIONS, shots: list | None = None, base: str = '',
+                    parent: dict | None = None) -> dict:
     sev = a.get('sev', 'info')
     cleared = a.get('status') == 'cleared'
     top = {'type': 'section', 'text': {'type': 'mrkdwn', 'text': head_text(a, head or opening(by))}}
@@ -670,9 +677,9 @@ def anomaly_message(a: dict, link: str, by: str, draft: str | None = None, butto
     if a.get('msg'):
         blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': f"`{esc(cut(a['msg'], SHORT_LIMIT).replace('`', "'"))}`"}]})
     drafted_by = sender(by, (a.get('slackDraft') or {}).get('by')) if draft and by == AUTO_BY else ''
-    bar = [facts_line(a, mute, drafted_by), numbers_line(a), links_line(a.get('links')), shot_links(shots, base) if base else ''] + ([attribution_mark(attribution)] if attribution else [])
+    bar = [facts_line(a, mute, drafted_by, parent), numbers_line(a), links_line(a.get('links')), shot_links(shots, base) if base else ''] + ([attribution_mark(attribution)] if attribution else [])
     blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': t} for t in bar if t]})
-    fallback = f"{msg('slack.cleared') if cleared else sev_label(sev, sev)} \u00b7 {a.get('svc', '?')} / {a.get('label', '?')}" + (f" \u00b7 {a['sub']}" if a.get('sub') else '')
+    fallback = f"{(msg('slack.status.event') if causes.event(a, parents(parent)) else msg('slack.cleared')) if cleared else sev_label(sev, sev)} \u00b7 {esc(a.get('svc', '?'))} / {esc(a.get('label', '?'))}" + (f" \u00b7 {esc(a['sub'])}" if a.get('sub') else '')
     return {'text': (f'{esc(summary)}\n' if summary else '') + esc_keep_mentions(draft) if draft else fallback, 'blocks': blocks}
 
 

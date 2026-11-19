@@ -109,15 +109,16 @@ def file_source(path: str, env: Mapping[str, str]) -> SourceData | None:
         raise ConfigurationError(msg('settings.file.value', path=path, where='file', expected='a mapping of single values')) from None
 
 
-def _hook_data(plugin: Plugin, env: Mapping[str, str]) -> SourceData:
+def _hook_data(plugin: Plugin, env: Mapping[str, str]) -> SourceData | None:
     try:
-        return SourceData.of(plugin.hooks.settings_source(dict(env)), plugin.name)
+        raw = plugin.hooks.settings_source(dict(env))
+        return None if raw is None else SourceData.of(raw, plugin.name)
     except Exception as e:
         raise ConfigurationError(msg('settings.hook.failed', plugin=plugin.name, error=type(e).__name__)) from None
 
 
 def hook_sources(registry: Registry, env: Mapping[str, str]) -> list[SourceData]:
-    return [_hook_data(p, env) for p in registry.usable() if p.hooks.settings_source is not None]
+    return [d for d in (_hook_data(p, env) for p in registry.usable() if p.hooks.settings_source is not None) if d is not None]
 
 
 def merged(sources: list[SourceData]) -> dict[str, str]:

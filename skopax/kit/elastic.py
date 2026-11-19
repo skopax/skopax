@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping
 
 from skopax.contract import HttpError, InstanceInfo, PassResult, ReadError, Sweep, Transport, Unreachable, anomaly, call, send
 from skopax.kit import access
+from skopax.kit.options import entries
 from skopax.remote import TimedOut
 
 SAFE = "()':,!*-._~"
@@ -23,16 +24,20 @@ LOG_DEFAULTS = {'service': 'service.name', 'level': 'log.level', 'message': 'mes
 FALLBACK = {'service-field': LOG_DEFAULTS['service'], 'level-field': LOG_DEFAULTS['level'], 'message-field': LOG_DEFAULTS['message'], 'log-index': 'logs-*', 'apm-index': 'traces-apm*'}
 LEVELS = ('ERROR', 'WARN')
 UNKNOWN_COLUMN = re.compile(r'Unknown column \[([^\]]+)\]')
+ERROR_TYPE = re.compile(r'[a-z_]{1,64}')
 NS_GROUP = 'ns'
 NS_MISSING = 'index-namespace needs a group named ns, such as app-(?P<ns>.+)-logs-.*'
 DISCOVER = '/app/discover#/'
 KEY = 'API key'
 KEY_MIN = 8
+COLUMN_MAX = 100
+COLUMNS_MAX = 10
 
 
 class ElasticError(ReadError):
-    def __init__(self, reason: str, detail: str = '', status: int = 0, missing: bool = False, unknown: tuple[str, ...] = (), denied: bool = False, timed_out: bool = False):
+    def __init__(self, reason: str, detail: str = '', status: int = 0, missing: bool = False, unknown: tuple[str, ...] = (), denied: bool = False, timed_out: bool = False, code: str = ''):
         super().__init__(status, reason)
+        self.code = code if ERROR_TYPE.fullmatch(code) else ''
         self.timed_out = timed_out
         self.reason = reason
         self.detail = detail
@@ -141,7 +146,7 @@ class Elastic:
         kind, reason = parse_error(body)
         missing = kind == 'index_not_found_exception' or (kind == 'verification_exception' and 'Unknown index' in reason)
         unknown = tuple(dict.fromkeys(self._masked(x) if len(self.api_key) >= KEY_MIN else x for x in UNKNOWN_COLUMN.findall(reason))) if kind == 'verification_exception' else ()
-        return ElasticError(f'{what} HTTP {code}', self._masked(reason), code, missing, unknown, code in REJECTED or kind == 'security_exception')
+        return ElasticError(f'{what} HTTP {code}', self._masked(reason), code, missing, unknown, code in REJECTED or kind == 'security_exception', code=kind)
 
 
 class Budget:
@@ -234,6 +239,8 @@ def cluster_of(config: Mapping[str, str], cluster: str) -> tuple[str, str]:
 
 
 def index_of(config: Mapping[str, str], cluster: str) -> str:
+    if cluster == 'logflow':
+        return str(config.get('logflow-index') or '').strip() or setting(config, 'log-index')
     return setting(config, 'apm-index' if cluster == 'apm' else 'log-index')
 
 
@@ -299,10 +306,14 @@ def kql_levels(field: str, levels: tuple[str, ...]) -> str:
     return f'{field}:(' + ' or '.join(kql_text(x) for x in level_variants(levels)) + ')'
 
 
+def extra_columns(config: Mapping[str, str]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(x for x in entries(config.get('discover-columns')) if len(x) <= COLUMN_MAX))[:COLUMNS_MAX]
+
+
 def columns_of(config: Mapping[str, str]) -> tuple[str, ...]:
     named = log_fields(config)
     error = str(config.get('error-field') or '').strip()
-    return tuple(dict.fromkeys(x for x in (named['level'], named['service'], named['message'], error) if x))
+    return tuple(dict.fromkeys(x for x in (named['level'], named['service'], named['message'], error, *extra_columns(config)) if x))
 
 
 def discover(ui: str, data_view: str, kql: str, since: str, columns: tuple[str, ...], until: str | None = None) -> str:

@@ -9,7 +9,7 @@ def is_token(by) -> bool:
     return text == LEGACY_TOKEN or text.startswith(TOKEN_PREFIX)
 
 
-def token_label(by, legacy: str = 'Claude') -> str:
+def token_label(by, legacy: str = 'Investigator') -> str:
     text = str(by or '')
     if not text.startswith(TOKEN_PREFIX):
         return legacy

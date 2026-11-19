@@ -13,3 +13,4 @@ Query tips:
 - first and last are reserved words: name such columns oldest and newest.
 - A field compared with a number that answers "is [text]" needs a quoted value or its .keyword field.
 - Times are UTC.
+- Instance options change what a card means: logflow-index (the index the log flow check reads, else log-index), message-mask (matches are replaced by <masked> in the first 400 characters of a line before grouping, so a pattern key can end at <masked>), apm-p95-overrides (a service with its own p95 factor and floor) and discover-columns (extra columns in Discover links).

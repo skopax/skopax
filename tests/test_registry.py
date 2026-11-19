@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 import skopax
-from skopax import contract, engine, jiraaccess, probe, registry, selfreview, slackhealth
+from skopax import contract, engine, jiraaccess, probe, promqlchecks, registry, selfreview, slackhealth
 from skopax.contract import AgentRead, Capabilities, Check, Field, Hooks, Knowledge, PassResult, ReadError, Sweep, Tool
 from skopax.registry import Registry
 from tests.plugins import demo_plugin, enterprise_plugin, entitled_plugin, gold_plugin, old_core_plugin, order_a, order_b, order_c
@@ -174,7 +174,7 @@ def test_core_version_range_is_checked():
 
     # then
     assert loaded.state == 'incompatible'
-    assert skopax.__version__ == '0.1.0' and '0.1.0' in loaded.reason and '>=9' in loaded.reason
+    assert skopax.__version__ == '0.2.0' and '0.2.0' in loaded.reason and '>=9' in loaded.reason
     assert [p.id for p in reg.usable()] == ['demo']
 
 
@@ -488,7 +488,7 @@ def test_reserved_names_leave_out_broken_plugins():
 
 def test_core_ran_literals_match_the_core_passes():
     # given
-    expected = ('manual', slackhealth.PASS, selfreview.PASS, probe.PASS, jiraaccess.PASS)
+    expected = ('manual', slackhealth.PASS, selfreview.PASS, probe.PASS, jiraaccess.PASS, promqlchecks.PASS)
 
     # then
     assert registry.CORE_RAN == expected
@@ -692,7 +692,7 @@ def test_the_registry_import_closure_is_the_allowlist():
 
     root = Path(__file__).resolve().parent.parent
     code = 'import sys; sys.path.insert(0, sys.argv[1]); import skopax.registry; print(sorted(m for m in sys.modules if m.startswith("skopax")))'
-    allowed = {'skopax', 'skopax.actors', 'skopax.bounded', 'skopax.brand', 'skopax.cardlink', 'skopax.chattext', 'skopax.clock', 'skopax.contract', 'skopax.engine', 'skopax.errkind', 'skopax.history', 'skopax.jiralinks', 'skopax.messages', 'skopax.redact', 'skopax.registry', 'skopax.remote',
+    allowed = {'skopax', 'skopax.actors', 'skopax.bounded', 'skopax.brand', 'skopax.cardlink', 'skopax.causes', 'skopax.chattext', 'skopax.clock', 'skopax.contract', 'skopax.engine', 'skopax.errkind', 'skopax.history', 'skopax.jiralinks', 'skopax.messages', 'skopax.redact', 'skopax.registry', 'skopax.remote',
                'skopax.settle', 'skopax.store', 'skopax.summary', 'skopax.tags'}
 
     # when

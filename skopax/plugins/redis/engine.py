@@ -4,6 +4,7 @@ from collections.abc import Mapping
 
 from skopax.contract import anomaly
 from skopax.kit import access
+from skopax.kit.options import pairs
 from skopax.kit.promql import Prometheus, graph
 
 ID = 'redis'
@@ -23,6 +24,18 @@ def matchers(selector: str, *more: str) -> str:
     given = (selector or '').strip().strip('{}').strip()
     parts = [p for p in (given, *more) if p]
     return '{' + ','.join(parts) + '}' if parts else ''
+
+
+def peer_names(raw: object) -> tuple[dict[str, str], list[str]]:
+    found, bad = pairs(raw)
+    return {k.lower(): v for k, v in found.items()}, bad
+
+
+def friendly(addr: object, names: Mapping[str, str]) -> object:
+    if not names or not isinstance(addr, str) or not addr:
+        return addr
+    lowered = addr.lower()
+    return names.get(lowered) or names.get(lowered.rsplit(':', 1)[0] if lowered.count(':') == 1 else lowered) or addr
 
 
 def place(ns: str) -> str:
@@ -71,7 +84,7 @@ def capped(rows: list[dict]) -> list[dict]:
     return sorted(first, key=lambda x: (x['ns'], x['name']))
 
 
-def app_rows(p: Prometheus, selector: str, now: float) -> list[dict]:
+def app_rows(p: Prometheus, selector: str, now: float, names: Mapping[str, str] | None = None) -> list[dict]:
     sel, failing = matchers(selector), matchers(selector, 'error!="none"')
     rows: dict[tuple, dict] = {}
 
@@ -79,7 +92,7 @@ def app_rows(p: Prometheus, selector: str, now: float) -> list[dict]:
         for m, v in p.vec(expr, now):
             if m.get('job'):
                 k = (m.get('namespace') or '-', m['job'], m.get('net_sock_peer_addr'))
-                rows.setdefault(k, {'ns': k[0], 'job': k[1], 'redis': k[2]})[key] = round(v, digits)
+                rows.setdefault(k, {'ns': k[0], 'job': k[1], 'redis': friendly(k[2], names or {})})[key] = round(v, digits)
 
     for label, offset in (('ms', ''), ('d1', ' offset 1d'), ('d7', ' offset 7d')):
         put(f'1000 * sum by ({BY}) (rate(lettuce_seconds_sum{sel}[{WINDOW}]{offset})) / sum by ({BY}) (rate(lettuce_seconds_count{sel}[{WINDOW}]{offset}))', label)

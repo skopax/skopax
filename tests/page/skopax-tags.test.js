@@ -71,7 +71,7 @@ async function cardsShowTheirBusinessTagsAndTheTagRowFiltersThem() {
   assert.ok(cardOf(doc, TYPO).querySelector('.biz-tag').title.includes('tagged by rule') && cardOf(doc, TYPO).querySelector('.biz-tag').title.includes(SENTENCE));
   assert.ok(cardOf(doc, LOG).querySelector('.biz-tag').title.includes('No action written yet'));
   assert.strictEqual(cardOf(doc, PLAIN).querySelector('.biz-tag'), null);
-  assert.deepStrictEqual(chips(), ['Business development 1', 'Marketing 0', 'SEO 1', 'Product 0', 'Developer 0', 'Data 0', 'Infrastructure 0', 'Analyst 0']);
+  assert.deepStrictEqual(chips(), ['Business development 1', 'Marketing 0', 'SEO 1', 'Product 0', 'Developer 0', 'Data 0', 'Infrastructure 0', 'Analyst 0', 'Untagged 1']);
   assert.strictEqual(row.querySelector('.tab-sub-l').textContent, 'Tags');
 
   //when
@@ -218,11 +218,11 @@ async function theTagNamesComeFromTheServerOnly() {
   const labels = (t) => [...t.doc.querySelectorAll('#tab-sub-anoms .tags-g button.tab-sub-i .lbl')].map((l) => l.textContent);
 
   //then
-  assert.deepStrictEqual(labels(plain), ['Developer', 'Data', 'Infrastructure', 'Analyst']);
+  assert.deepStrictEqual(labels(plain), ['Developer', 'Data', 'Infrastructure', 'Analyst', 'Untagged']);
   assert.ok(!/Business development|Marketing|SEO|Product/.test(plain.doc.getElementById('tab-sub-anoms').textContent), 'no tag the server did not send');
   assert.deepStrictEqual([...cardOf(plain.doc, 'log|odd-service|ERROR|x').querySelectorAll('.biz-tag')].map((t) => t.textContent), [odd]);
   assert.strictEqual(cardOf(plain.doc, 'log|odd-service|ERROR|x').querySelectorAll('.biz-tag b').length, 0, 'an unknown tag id stays text');
-  assert.deepStrictEqual(labels(plugged), ['Developer', 'Data', 'Infrastructure', 'Analyst', 'Release gate']);
+  assert.deepStrictEqual(labels(plugged), ['Developer', 'Data', 'Infrastructure', 'Analyst', 'Release gate', 'Untagged']);
   assert.deepStrictEqual(labels(silent), [], 'before the server answers the page invents no tags');
   assert.deepStrictEqual(plain.errors.concat(plugged.errors), []);
   plain.w.close();
@@ -231,7 +231,49 @@ async function theTagNamesComeFromTheServerOnly() {
   console.log('PASS the tag row and card tags show only the tags the server sends, with its labels, and an unknown id as escaped text');
 }
 
+async function anUntaggedEntryEndsTheTagRowAndFiltersCardsWithNoTag() {
+  //given
+  const {w, doc, errors} = await boot();
+  const btn = () => doc.querySelector('#tab-sub-anoms .tags-g [data-type="tag:-"]');
+
+  //then
+  assert.strictEqual(btn().querySelector('.lbl').textContent, 'Untagged');
+  assert.strictEqual(btn().querySelector('.count').textContent, '1');
+  assert.strictEqual(btn().parentNode.lastElementChild, btn(), 'the last entry of the Tags group');
+  assert.strictEqual(btn().getAttribute('aria-pressed'), 'false');
+
+  //when
+  btn().click();
+  await wait(20);
+
+  //then
+  assert.deepStrictEqual(shown(doc), [PLAIN]);
+  assert.strictEqual(btn().getAttribute('aria-pressed'), 'true');
+  assert.ok(decodeURIComponent(w.location.hash).endsWith('/tag:-'), w.location.hash);
+  assert.ok(doc.querySelector('.filter-note').textContent.includes('Untagged'));
+
+  //when
+  btn().click();
+  await wait(20);
+
+  //then
+  assert.deepStrictEqual(shown(doc).sort(), [LOG, PLAIN, TYPO].sort());
+  assert.strictEqual(btn().getAttribute('aria-pressed'), 'false');
+
+  //when
+  w.location.hash = '#t=anoms/all/tag:-';
+  await wait(60);
+
+  //then
+  assert.deepStrictEqual(shown(doc), [PLAIN], 'a link with the filter opens it');
+  assert.strictEqual(btn().getAttribute('aria-pressed'), 'true');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS an Untagged entry ends the Tags row, counts and filters the cards with no tag, toggles off, and round-trips through the link');
+}
+
 (async () => {
+  await anUntaggedEntryEndsTheTagRowAndFiltersCardsWithNoTag();
   await cardsShowTheirBusinessTagsAndTheTagRowFiltersThem();
   await theDeveloperTagShowsOnTheCardNeedsNoSentenceAndItsRouteShowsOnlyOnTaggedCards();
   await anOperatorTagsAndWritesTheSentenceAndOnlyTaggedCardsOfferTheBusinessChannel();

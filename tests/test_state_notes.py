@@ -329,7 +329,7 @@ def test_auto_resolve_replies_once_on_a_posted_card(store: Store):
     transport = Transport()
 
     # when
-    with app(store, transport) as client:
+    with app(store, transport, auto_resolve_hours=72) as client:
         client.app.state.server_apply([], now, None)
         client.app.state.server_apply([], now + 60, None)
 

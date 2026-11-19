@@ -5,7 +5,7 @@ from skopax.contract import AgentRead, Capabilities, Check, Context, Field, Http
 from skopax.kit import connection
 from skopax.kit.elastic import TEST_TIMEOUT, Budget, Elastic, ElasticError, client_for, cluster_of, index_of, indices_of, namespace_problem, native, no_read, quoted
 from skopax.messages import msg
-from skopax.plugins.elasticsearch.checks import APM_HELP, APM_RULES, LOG_HELP, links, row_links, run_apm, run_logs
+from skopax.plugins.elasticsearch.checks import APM_HELP, APM_RULES, LOG_HELP, MASKED, links, literal, mask_of, mask_problem, p95_overrides, row_links, run_apm, run_logs
 from skopax.plugins.elasticsearch.esql import AGENT_FIELDS, DESCRIPTION, KEYS, SCHEMA, TIMEOUT_S, agent_esql, agent_sources, run_esql
 from skopax.plugins.elasticsearch.logflow import HELP as FLOW_HELP, RULES as FLOW_RULES, SECTION_HELP as FLOW_SECTION_HELP, run_logflow
 
@@ -68,11 +68,31 @@ def error_field(client: Elastic, config: Mapping[str, str], budget: Budget) -> s
     return None
 
 
+def mask_accepted(client: Elastic, config: Mapping[str, str], budget: Budget) -> None:
+    problem = mask_problem(config)
+    if problem:
+        raise SourceDown(problem)
+    mask = mask_of(config)
+    if not mask:
+        return
+    try:
+        client.query(f'ROW m = "x" | EVAL r = REPLACE(m, {literal(mask)}, "{MASKED}") | KEEP r', timeout=budget.left(TEST_TIMEOUT))
+    except ElasticError as e:
+        if e.denied or e.missing or e.status in (401, 404):
+            return
+        raise SourceDown(f"Elasticsearch does not accept message-mask as a REPLACE pattern{f' ({e.code})' if e.code else ''}; check the pattern in ES|QL") from None
+
+
+def option_notes(config: Mapping[str, str]) -> list[str]:
+    bad = p95_overrides(config)[1]
+    return [f"apm-p95-overrides ignores {', '.join(bad)}"] if bad else []
+
+
 def namespace_field(client: Elastic, config: Mapping[str, str], budget: Budget) -> None:
     field = str(config.get('namespace-field') or '').strip()
     if str(config.get('index-namespace') or '').strip() or not field:
         return
-    index = index_of(config, 'logs')
+    index = index_of(config, 'logflow')
     try:
         client.query(f'FROM {index} | KEEP {quoted(field)} | LIMIT 1', timeout=budget.left(TEST_TIMEOUT))
     except ElasticError as e:
@@ -89,15 +109,21 @@ def test(ctx: Context) -> TestResult:
         if problem:
             raise SourceDown(problem)
         budget = Budget(TEST_TIMEOUT, spent=TEST_SPENT)
-        logs, apm = bool({'logs', 'logflow'} - off), 'apm' not in off
+        logs, flow, apm = 'logs' not in off, 'logflow' not in off, 'apm' not in off
         parts = [version(ctx.http(), *cluster_of(config, 'logs'), budget)]
         if str(config.get('apm-url') or '') and apm:
             parts.append('APM ' + version(ctx.http(), *cluster_of(config, 'apm'), budget))
-        notes = [readable(client_for(ctx.instance, ctx.http()), index_of(config, 'logs'), 'logs and log flow checks read', budget) if logs else None,
+        logs_index, flow_index = index_of(config, 'logs'), index_of(config, 'logflow')
+        shared = logs_index == flow_index
+        notes = [readable(client_for(ctx.instance, ctx.http()), logs_index, 'logs and log flow checks read' if shared else 'logs check reads', budget) if (logs or flow) and (shared or logs) else None,
+                 readable(client_for(ctx.instance, ctx.http()), flow_index, 'log flow check reads', budget) if flow and not shared else None,
                  readable(client_for(ctx.instance, ctx.http(), 'apm'), index_of(config, 'apm'), 'APM check reads', budget) if apm else None,
-                 error_field(client_for(ctx.instance, ctx.http()), config, budget) if 'logs' not in off else None]
-        if 'logflow' not in off:
+                 error_field(client_for(ctx.instance, ctx.http()), config, budget) if logs else None]
+        if logs:
+            mask_accepted(client_for(ctx.instance, ctx.http()), config, budget)
+        if flow:
             namespace_field(client_for(ctx.instance, ctx.http()), config, budget)
+        notes += option_notes(config) if apm else []
         return ', '.join(parts + [n for n in notes if n])
 
     return connection.result(ask)
@@ -112,7 +138,7 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 PLUGIN = Plugin(
     id=ID, name='Elasticsearch', version='0.1.0', category='logs', description='New and growing error and warning log patterns, APM latency and failures, and the log flow per namespace, read from Elasticsearch with ES|QL.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community',
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
     capabilities=Capabilities(hosts=('@url', '@apm-url', '@ui-url'), secrets=('api-key', 'apm-api-key', 'elastic.logging-api-key', 'elastic.apm-api-key'), agent_reads=True),
     client=client,
     fields=(Field('url', 'URL', 'url', required=True, help='Base URL of the Elasticsearch cluster that holds the logs.'),
@@ -130,7 +156,11 @@ PLUGIN = Plugin(
             Field('service-field', 'Service field', 'text', default='service.name', help='Log field that holds the service name.'),
             Field('level-field', 'Level field', 'text', default='log.level', help='Log field that holds the level, such as ERROR or WARN.'),
             Field('message-field', 'Message field', 'text', default='message', help='Log field that holds the log line.'),
-            Field('error-field', 'Error field', 'text', default='error.message', help='Log field read before the message. When the log index has not mapped it, the logs check reads the message only, and Test connection says so.')),
+            Field('error-field', 'Error field', 'text', default='error.message', help='Log field read before the message. When the log index has not mapped it, the logs check reads the message only, and Test connection says so.'),
+            Field('logflow-index', 'Log flow index', 'text', help='Index pattern the log flow check reads. Empty means the log index.'),
+            Field('message-mask', 'Message mask', 'regex', help='Pattern whose matches are replaced by <masked> in the first 400 characters of a log line before the logs check groups lines, for example a request body: body=.*. Elasticsearch runs it (Java syntax), so Test connection tries it. Empty masks nothing.'),
+            Field('apm-p95-overrides', 'APM p95 overrides', 'text', help='Comma-separated service=times:floor_ms entries that replace the APM rule set for one service, for example checkout=3:500, search=4 or batch=:1000. A missing part keeps the rule set value.'),
+            Field('discover-columns', 'Extra Discover columns', 'text', help='Comma-separated log fields added to the columns of every Discover link, after the level, service, message and error fields. At most 10.')),
     test=test,
     checks=(Check('logs', 'Error and warning log patterns', 900, 180, ('logs',), run_logs, tool='esql', sections=('logTop',), section_help=LOG_HELP),
             Check('apm', 'APM latency and failures', 900, 180, ('apm',), run_apm, tool='esql'),

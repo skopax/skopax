@@ -338,7 +338,8 @@ def test_a_page_ask_never_calls_the_slack_reply(store: Store):
     request = inv.client.requests[0]
     assert (request['model'], request['output_config']) == (inv.model, {'effort': inv.effort})
     assert request['system'][0]['cache_control'] == {'type': 'ephemeral'}
-    assert request['system'][0]['text'] == prompt.system_prompt(inv.sources.plugin_tools.knowledge())
+    inline, index = inv.sources.plugin_tools.knowledge_parts()
+    assert request['system'][0]['text'] == prompt.system_prompt(inline, index=index)
     assert seen == []
 
 

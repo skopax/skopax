@@ -129,6 +129,18 @@ SOFTWARE.
 
 Each plug-in's `icon.svg` is a two-letter monogram drawn for Skopax; no third-party source.
 
+## Sign-in button marks
+
+The single sign-on button on the login page shows one of the files in `skopax/web/icons/sso/`.
+
+| File | Source | Licence and terms |
+|---|---|---|
+| `microsoft.svg` | The Microsoft logo (`ms-symbollockup_mssymbol_19.svg`), unchanged, from "Sign in with Microsoft branding guidelines" (learn.microsoft.com/en-us/entra/identity-platform/howto-add-branding-in-apps), downloaded 2026-11-19 | Microsoft trademark. Used under those guidelines: unaltered, only with the text "Sign in with Microsoft" and the light (#FFFFFF, #8C8C8C border, #5E5E5E text) or dark (#2F2F2F, white text) button the guideline assets use. With any other button text Skopax shows `key.svg` instead. |
+| `google.svg`, `okta.svg`, `auth0.svg`, `onelogin.svg`, `jumpcloud.svg`, `zitadel.svg`, `authentik.svg`, `gitlab.svg`, `keycloak.svg` | One-letter tiles drawn for Skopax; no third-party artwork | Same licence as Skopax. They are not the providers' logos. Google's guidelines (developers.google.com/identity/branding-guidelines) allow the Google "G" only inside a button with Google's wording and colours, and other uses need Google's written consent. Its sign-in bundle (signin-assets.zip, checked 2026-11-19: 133 files) holds only whole buttons, PNG at 1x to 4x and SVG, Light, Dark and Neutral, with or without text, pill or square, for Android + Web and iOS, and no standalone G; the SVGs are Figma exports with foreignObject. So Skopax ships a letter tile, not the Google mark. The other providers' brand rules for sign-in buttons were not checked, so they get letter tiles too. |
+| `key.svg` | A key tile drawn for Skopax | Same licence as Skopax. |
+
+Names of identity providers are trademarks of their owners and are used only to describe which provider an issuer belongs to.
+
 ## Fonts
 
 None bundled. The page, card page, login, setup and chat use the system font stacks.

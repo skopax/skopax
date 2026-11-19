@@ -1,5 +1,6 @@
 import contextlib
 import datetime as dt
+import functools
 import logging
 import re
 import hashlib
@@ -13,7 +14,7 @@ from pymongo.database import Database
 from pymongo.errors import BulkWriteError, DuplicateKeyError, OperationFailure, PyMongoError
 from pymongo.results import UpdateResult
 
-from skopax import history
+from skopax import causes, history
 from skopax.actors import is_token
 from skopax.errkind import Authored, kind as error_kind
 from skopax.tags import FIELDS as TAG_FIELDS
@@ -30,6 +31,8 @@ FIX_KEEP = 20
 CARD_COUNTER = 'card'
 CARD_ACTION_TYPES = ('dive', 'take', 'resolve', 'mute', 'unmute', 'reopen', 'link', 'severity', 'known', 'group', 'ticket')
 POST_STAMPS = ('reminder', 'clearNote', 'update', 'stateNote', 'head', 'drawn')
+ECHO_KEEP = 20
+MUTED_PRESET = history.MUTED_PRESET
 PROBE_ID = 'probe'
 PROXY_ID = 'proxy-warning'
 SLACK_SCOPES_ID = 'slack-scopes'
@@ -186,6 +189,8 @@ def keep_slack_state(incoming: dict, stored: dict) -> dict:
         out['teamsPosts'] = stored['teamsPosts']
     elif stored:
         out.pop('teamsPosts', None)
+    if 'routeEcho' in stored:
+        out['routeEcho'] = stored['routeEcho']
     if len(stored.get('fixPosts') or []) > len(incoming.get('fixPosts') or []):
         out['fixPosts'] = stored['fixPosts']
     if (stored.get('tagsAt') or '') > (incoming.get('tagsAt') or ''):
@@ -299,8 +304,21 @@ def glob_match(pattern: str, key: str) -> bool:
     return re.fullmatch('.*'.join(re.escape(p) for p in pattern.split('*')), key, re.S) is not None
 
 
+@functools.lru_cache(maxsize=1024)
+def glob_rx(pattern: str) -> re.Pattern:
+    return re.compile('.*'.join(re.escape(p) for p in pattern.split('*')), re.S)
+
+
+def mute_matcher(mute: dict) -> Callable[[str], bool]:
+    pattern = mute['pattern']
+    if mute.get('exact') or '*' not in pattern:
+        return lambda key: key == pattern
+    rx = glob_rx(pattern)
+    return lambda key: key == pattern or rx.fullmatch(key) is not None
+
+
 def mute_matches(mute: dict, key: str) -> bool:
-    return mute['pattern'] == key if mute.get('exact') else glob_match(mute['pattern'], key)
+    return mute_matcher(mute)(key)
 
 
 def _counts(anomalies: list[dict]) -> dict:
@@ -646,13 +664,14 @@ class Store:
             self.anomalies.update_one({'_id': doc['_id']}, update)
             return rev
 
-    def note(self, key: str, text: str, by: str | None = None) -> int:
+    def note(self, key: str, text: str, by: str | None = None, cause: dict | None = None, drop_cause: bool = False) -> int:
         doc = self._anomaly(key)
         kept = ['progress', 'handled'] if by == 'pod' else ['progress']
         dived = {'$set': {'triage': 'dived', 'triagedBy': 'pod'}, '$unset': {'resolution': ''}} if by == 'pod' else {'$set': {'triage': 'dived'}, '$unset': {'triagedBy': '', 'resolution': ''}}
         with self._locked():
             rev, _ = self._claim(None)
-            self.anomalies.update_one({'_id': doc['_id']}, {'$set': {'note': {'text': text, 'at': iso(utc_now())}}})
+            self.anomalies.update_one({'_id': doc['_id']}, {'$set': {'note': {'text': text, 'at': iso(utc_now())}} | ({'cause': causes.recorded(cause, doc.get('firstSeen'))} if cause else {})}
+                                      | ({'$unset': {'cause': ''}} if drop_cause else {}))
             self.anomalies.update_one({'_id': doc['_id'], 'triage': {'$nin': kept}}, dived)
             return rev
 
@@ -729,17 +748,19 @@ class Store:
             return [key]
         return [a['_id'] for a in self.anomalies.find({}, {'_id': 1}) if glob_match(key, a['_id'])]
 
-    def mute(self, key: str, reason: str, until: str | None, kind: str) -> int:
+    def mute(self, key: str, reason: str, until: str | None, kind: str, preset: bool = False) -> int:
         exact = '*' in key and self.anomalies.find_one({'_id': key}, {'_id': 1}) is not None
         hit = self._mute_hits(key, exact)
         if not hit:
             raise NotFound(f'no anomaly with key {key}')
-        entry = {'pattern': key, 'until': until, 'reason': reason, 'kind': kind, 'at': iso(utc_now())} | ({'exact': True} if exact else {})
+        entry = {'pattern': key, 'until': until, 'reason': reason, 'kind': kind, 'at': iso(utc_now())} | ({'exact': True} if exact else {}) | ({'preset': True} if preset else {})
         with self._locked():
             kept = [m for m in self._meta().get('muted') or [] if m.get('pattern') != key]
-            update: dict = {'$set': {'muted': reason}}
+            update: dict = {'$set': {'muted': reason} | ({MUTED_PRESET: True} if preset else {})}
+            if not preset:
+                update['$unset'] = {MUTED_PRESET: ''}
             if kind == 'known':
-                update['$unset'] = {'slackDraft': '', 'autoSend': ''}
+                update['$unset'] = update.get('$unset', {}) | {'slackDraft': '', 'autoSend': ''}
             rev, _ = self._claim(None)
             self.meta.update_one({'_id': STATE_ID}, {'$set': {'muted': kept + [entry]}})
             self.anomalies.update_many({'_id': {'$in': hit}}, update)
@@ -756,7 +777,7 @@ class Store:
             rev, _ = self._claim(None)
             self.meta.update_one({'_id': STATE_ID}, {'$set': {'muted': kept}})
             if hit:
-                self.anomalies.update_many({'_id': {'$in': hit}}, {'$set': {'muted': None}})
+                self.anomalies.update_many({'_id': {'$in': hit}}, {'$set': {'muted': None}, '$unset': {MUTED_PRESET: ''}})
             return rev
 
     def claim_card(self, key: str, run_id: str) -> bool:
@@ -910,6 +931,29 @@ class Store:
         except PyMongoError as e:
             log.warning('card history not read: %s', error_kind(e))
             return None
+
+    def mute_entries(self) -> list:
+        return list(self._meta().get('muted') or [])
+
+    def mark_preset_mutes(self, marks: list[tuple]) -> int | None:
+        wanted = set(marks)
+        with self._locked():
+            muted = self._meta().get('muted') or []
+            out = [m | {'preset': True} if isinstance(m, dict) and not m.get('preset') and (m.get('kind'), m.get('pattern'), m.get('at')) in wanted else m for m in muted]
+            hit = sum(1 for a, b in zip(muted, out) if a is not b)
+            if not hit:
+                return 0
+            self._claim(None)
+            if self.meta.update_one({'_id': STATE_ID, 'muted': muted}, {'$set': {'muted': out}}).matched_count == 0:
+                log.info('mute marks skipped: the mute list changed while they were written; the next start tries again')
+                return None
+            return hit
+
+    def mark_preset_rows(self, ids: list[str]) -> int:
+        return self.card_history.update_many({'_id': {'$in': list(ids)}, MUTED_PRESET: {'$ne': True}}, {'$set': {MUTED_PRESET: True}}).modified_count
+
+    def preset_muted(self, ids: list[str]) -> set[str]:
+        return {d['_id'] for d in self.card_history.find({'_id': {'$in': list(ids)}, MUTED_PRESET: True}, {'_id': 1})} if ids else set()
 
     def past_cards(self, key: str | None = None, service: str | None = None, text: str | None = None, limit: int = history.PAST_DEFAULT) -> list[dict]:
         limit = max(1, min(int(limit or history.PAST_DEFAULT), history.PAST_LIMIT))
@@ -1496,6 +1540,47 @@ class Store:
             self._claim(None)
             return bool(self.anomalies.update_one({'_id': key, 'slackPost.ts': post_ts}, {'$set': {'slackPost.head': head}}).matched_count)
 
+    def route_echo_pend(self, key: str, entries: list[dict]) -> bool:
+        if self.anomalies.find_one({'_id': key}, {'_id': 1}) is None:
+            return False
+        ids = [e['id'] for e in entries]
+        self.anomalies.update_one({'_id': key}, {'$pull': {'routeEcho.pending': {'id': {'$in': ids}}}})
+        self.anomalies.update_one({'_id': key}, {'$push': {'routeEcho.pending': {'$each': list(entries), '$slice': -ECHO_KEEP}}})
+        return True
+
+    def route_echo_keys(self) -> list[str]:
+        docs = list(self.anomalies.find({'routeEcho.pending': {'$exists': True, '$ne': []}}, {'routeEcho.pending': 1}))
+        return [d['_id'] for d in sorted(docs, key=lambda d: min((str(p.get('at') or '') for p in d['routeEcho']['pending'] if isinstance(p, dict)), default=''))]
+
+    def route_echo_name(self, key: str, ts: str, ids: list[str]) -> list[dict]:
+        before = self.anomalies.find_one_and_update({'_id': key}, {'$pull': {'routeEcho.pending': {'id': {'$in': list(ids)}}}, '$set': {'routeEcho.fails': 0}}, return_document=ReturnDocument.BEFORE)
+        if before is None:
+            return []
+        echo = before.get('routeEcho') or {}
+        named = set(echo.get('routes') or []) if echo.get('ts') == ts else set()
+        chosen = [p for p in echo.get('pending') or [] if isinstance(p, dict) and p.get('id') in ids and p['id'] not in named]
+        if chosen:
+            if echo.get('ts') == ts:
+                self.anomalies.update_one({'_id': key}, {'$addToSet': {'routeEcho.routes': {'$each': [p['id'] for p in chosen]}}})
+            else:
+                self.anomalies.update_one({'_id': key}, {'$set': {'routeEcho.routes': sorted(p['id'] for p in chosen), 'routeEcho.ts': ts}})
+        return chosen
+
+    def route_echo_drop(self, key: str, ids: list[str], reset: bool = False) -> bool:
+        update = {'$pull': {'routeEcho.pending': {'id': {'$in': list(ids)}}}} | ({'$set': {'routeEcho.fails': 0}} if reset else {})
+        return self.anomalies.update_one({'_id': key}, update).matched_count == 1
+
+    def route_echo_fail(self, key: str, now: float, kind: str = 'post') -> int:
+        doc = self.anomalies.find_one_and_update({'_id': key}, {'$inc': {'routeEcho.fails': 1}, '$set': {'routeEcho.failedAt': now, 'routeEcho.failKind': kind}}, return_document=ReturnDocument.AFTER)
+        return int(((doc or {}).get('routeEcho') or {}).get('fails') or 0)
+
+    def route_echo_claim(self, key: str, holder: str, now: float, lease: float) -> bool:
+        free = {'$or': [{'routeEcho.posting.until': {'$exists': False}}, {'routeEcho.posting.until': {'$lte': now}}]}
+        return self.anomalies.update_one({'_id': key, **free}, {'$set': {'routeEcho.posting': {'by': holder, 'until': now + lease}}}).matched_count == 1
+
+    def route_echo_release(self, key: str, holder: str) -> None:
+        self.anomalies.update_one({'_id': key, 'routeEcho.posting.by': holder}, {'$unset': {'routeEcho.posting': ''}})
+
     def slack_post_drawn(self, key: str, post_ts: str, drawn: dict) -> bool:
         return bool(self.anomalies.update_one({'_id': key, 'slackPost.ts': post_ts}, {'$set': {'slackPost.drawn': drawn}}).matched_count)
 
@@ -1570,6 +1655,10 @@ class Store:
         elif exclude_source is not None:
             query['source'] = {'$ne': exclude_source}
         return self.actions.count_documents(query)
+
+    def action_done_at(self, kind: str, target: str) -> str | None:
+        doc = next(iter(self.actions.find({'type': kind, 'target': target, 'status': 'done'}, {'doneAt': 1}, sort=[('doneAt', DESCENDING), ('_id', DESCENDING)], limit=1)), None)
+        return doc.get('doneAt') if doc else None
 
     def add_action(self, action: dict, status: str = 'requested', result: str | None = None) -> dict:
         now = iso(utc_now())

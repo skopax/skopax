@@ -101,7 +101,7 @@ def test(ctx: HostContext) -> TestResult:
 
 PLUGIN = Plugin(
     id=ID, name='Kubernetes', version='0.1.0', category='infrastructure', description='Read-only access to the Kubernetes API of this cluster, or of another cluster through a remote agent.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community', capabilities=Capabilities(hosts=('@url', 'kubernetes.default.svc'), secrets=('token',)),
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url', 'kubernetes.default.svc'), secrets=('token',)),
     fields=(Field('mode', 'Mode', 'choice', required=True, default='agent', choices=('in-cluster', 'agent'), choice_labels={'in-cluster': 'This cluster', 'agent': 'Through an agent'}, help='Read the cluster this service runs in, or a cluster through a remote agent.'),
             Field('url', 'URL', 'url', required=True, show_if=('mode', 'agent'), help='Address of the remote agent.'),
             Field('token', 'Token', 'secret', required=True, show_if=('mode', 'agent'), help='Bearer token the remote agent expects.'),

@@ -468,7 +468,7 @@ def test_gtm_identity_and_manifest():
     assert 'skopax.plugins.gtm' in BUILTIN and found is not None and found.state == 'ok' and found.plugin is gtm.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'gtm', 'Google Tag Manager', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.2', 'community')
+        'gtm', 'Google Tag Manager', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
     assert manifest['capabilities'] == {'hosts': ['tagmanager.googleapis.com', 'oauth2.googleapis.com'], 'secrets': ['credentials'], 'agentReads': False}
     assert manifest['uses'] == []
     assert [(f.key, f.kind, f.required) for f in gtm.PLUGIN.fields] == [('container', 'text', True), ('credentials', 'secret', True)]

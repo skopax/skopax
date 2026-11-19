@@ -1,9 +1,9 @@
 import logging
 import re
 import threading
-from collections.abc import Sequence
+from collections.abc import MutableMapping, Sequence
 
-from skopax.contract import Knowledge, Plugin, ReadError, Tool
+from skopax.contract import Knowledge, Plugin, ReadError, RunState, Tool
 from skopax.instances import Instance
 from skopax.investigator.tools import ERROR_LIMIT, READ_LIMIT_ROWS, ToolError, render, test_cluster, test_error
 from skopax.investigator.toolset import held, primary_of, runnable
@@ -147,7 +147,7 @@ class PluginTools:
             raise self._refuse(f'{field} must be one of {names}', asked)
         return chosen
 
-    def call(self, name: str, args: dict, now: float, rendered: bool = False) -> object:
+    def call(self, name: str, args: dict, now: float, rendered: bool = False, states: MutableMapping[str, RunState] | None = None) -> object:
         entry = self._entry(name)
         if entry is None:
             raise ToolError(f'no tool named {name}')
@@ -155,7 +155,7 @@ class PluginTools:
         given = dict(args or {})
         instance = self._instance(plugin, tool, found, given)
         try:
-            out = self._bounded(tool.run, self.runtime.context(plugin, instance, now), given)
+            out = self._bounded(tool.run, self.runtime.context(plugin, instance, now, run_state=None if states is None else states.setdefault(plugin.id, RunState())), given)
             if rendered and tool.scan and tool.kind == 'read':
                 out = masked(out, sorted((s for s in (instance.secrets.values() if instance is not None else ()) if isinstance(s, str) and s), key=len, reverse=True))
             if rendered and isinstance(out, dict) and isinstance(out.get('image'), dict):
@@ -174,14 +174,14 @@ class PluginTools:
             log.warning('%s', msg('plugintools.failed', tool=name, plugin=plugin.id, error=type(e).__name__))
             raise ToolError(f'{type(e).__name__}: the {name} tool failed') from None
 
-    def proposal(self, name: str, args: dict, now: float) -> dict:
+    def proposal(self, name: str, args: dict, now: float, states: MutableMapping[str, RunState] | None = None) -> dict:
         entry = self._entry(name)
         if entry is None:
             raise ToolError(f'no tool named {name}')
         plugin, tool, found = entry
         given = dict(args or {})
         instance = self._instance(plugin, tool, found, given)
-        out = self.call(name, args, now)
+        out = self.call(name, args, now, states=states)
         return {'tool': name, 'plugin': plugin.id, 'instance': None if instance is None else instance.name, 'args': given, 'out': out}
 
     def scan(self, name: str) -> bool:
@@ -192,8 +192,11 @@ class PluginTools:
         entry = self._entry(name)
         return None if entry is None else entry[1].per_run
 
-    def knowledge(self, cards: Sequence[dict] = ()) -> list[Knowledge]:
-        return self.runtime.knowledge(cards)
+    def knowledge(self) -> list[Knowledge]:
+        return self.runtime.knowledge()
+
+    def knowledge_parts(self, cards: Sequence[dict] = ()) -> tuple[list[Knowledge], list[tuple[str, Knowledge]]]:
+        return self.runtime.knowledge_parts(cards)
 
     def catalog(self) -> dict[str, str]:
         return {tool.name: tool.kind for _, tool in held(self.runtime)} | {tool.name: tool.kind for _, tool, _ in self._offered()}

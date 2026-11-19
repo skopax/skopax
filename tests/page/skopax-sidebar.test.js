@@ -81,7 +81,7 @@ async function theSidebarListsTheMapInOrder() {
   assert.deepStrictEqual(groups.slice(1, 4).map((g) => g.querySelector('.g-h').textContent), ['Observe', 'Activity', 'Connect']);
   assert.deepStrictEqual(groups.slice(1, 4).map((g) => g.getAttribute('aria-labelledby')), groups.slice(1, 4).map((g) => g.querySelector('.g-h').id));
   assert.deepStrictEqual(groups.map(labels), [['Board', 'Requests', 'Chat', 'Investigator'], ['Services', 'Latency', 'Releases', 'Deploy reports'], ['Notifications', 'Events', 'History', 'Costs'], ['Tools', 'Connect MCP'], ['Review', 'Docs']]);
-  assert.deepStrictEqual(labels(doc.getElementById('pinned')), ['Settings'], 'Settings is pinned at the foot; Admin waits for the role');
+  assert.deepStrictEqual(labels(doc.getElementById('pinned')), [], 'a signed-in person has Settings and Admin in the user menu, not as rows');
   const ids = ['anoms', 'reqs', 'chat', 'inv', 'svcs', 'lat', 'rels', 'reps', 'slack', 'hist', 'acts', 'costs', 'tools', 'mcp', 'review', 'docs', 'prefs'];
   assert.deepStrictEqual([...doc.querySelectorAll('#side a.tab[data-tab]')].map((a) => a.id), ids.map((id) => 'tab-' + id), 'every row is tab-<id>');
   assert.ok(ids.every((id) => doc.getElementById('count-' + id) && doc.getElementById('tab-' + id).contains(doc.getElementById('count-' + id))), 'and carries count-<id>');
@@ -93,7 +93,7 @@ async function theSidebarListsTheMapInOrder() {
   assert.strictEqual(doc.querySelector('#tab-svcs svg.i').innerHTML, drawn('server'), 'icons come from icons.js');
   assert.strictEqual(doc.querySelector('#tab-anoms svg.i').innerHTML, drawn('board'));
   assert.ok(doc.querySelector('#tab-svcs svg').classList.contains('i'), 'a row icon carries the icon class');
-  assert.deepStrictEqual([...doc.querySelectorAll('#side a.tab, #side-more')].filter((a) => { const i = a.querySelector('svg.i'); return !i || !i.children.length; }).map((a) => a.id), [], 'every sidebar row draws a known icon');
+  assert.deepStrictEqual([...doc.querySelectorAll('#side a.tab')].filter((a) => { const i = a.querySelector('svg.i'); return !i || !i.children.length; }).map((a) => a.id), [], 'every sidebar row draws a known icon');
   const iconRule = [...doc.styleSheets].flatMap((s) => [...s.cssRules]).filter((r) => r.selectorText === '.i').map((r) => r.style)[0];
   assert.ok(iconRule, 'the stylesheet carries the .i rule');
   assert.deepStrictEqual(['stroke', 'fill', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'width', 'height'].map((p) => iconRule.getPropertyValue(p)), ['currentcolor', 'none', '1.8', 'round', 'round', '16px', '16px'], 'stroked like the nav icons');
@@ -144,13 +144,13 @@ async function moreFoldsAndOpensForItsRows() {
   //given
   const {dom, doc, errors} = await boot({hash: '#t=anoms'});
   const more = doc.getElementById('side-more'), list = doc.getElementById('side-more-list');
-  const folded = {expanded: more.getAttribute('aria-expanded'), hidden: list.hidden, controls: more.getAttribute('aria-controls')};
+  const folded = {expanded: more.getAttribute('aria-expanded'), hidden: list.classList.contains('folded'), controls: more.getAttribute('aria-controls')};
 
   //when
   more.click();
-  const opened = {expanded: more.getAttribute('aria-expanded'), hidden: list.hidden};
+  const opened = {expanded: more.getAttribute('aria-expanded'), hidden: list.classList.contains('folded')};
   more.click();
-  const shut = list.hidden;
+  const shut = list.classList.contains('folded');
   dom.window.close();
   const review = await boot({hash: '#t=review'});
   const docs = await boot({hash: '#t=docs'});
@@ -159,7 +159,7 @@ async function moreFoldsAndOpensForItsRows() {
   assert.deepStrictEqual(folded, {expanded: 'false', hidden: true, controls: 'side-more-list'}, 'More starts folded');
   assert.deepStrictEqual(opened, {expanded: 'true', hidden: false}, 'a click unfolds it');
   assert.ok(shut, 'and folds it again');
-  assert.ok(!review.doc.getElementById('side-more-list').hidden && review.doc.getElementById('side-more').getAttribute('aria-expanded') === 'true', 'opening Review unfolds More');
+  assert.ok(review.doc.getElementById('side-more-list').classList.contains('folded') && review.doc.getElementById('tab-review').getAttribute('aria-current') === 'page', 'opening Review keeps More folded; the active row stays visible by the fold rule');
   assert.deepStrictEqual(current(review.doc), ['tab-review']);
   assert.ok(!docs.doc.getElementById('panel-docs').hidden, 'Docs has its own page');
   assert.match(docs.doc.getElementById('panel-docs').textContent, /How this works/);
@@ -167,7 +167,7 @@ async function moreFoldsAndOpensForItsRows() {
   assert.strictEqual(docs.doc.querySelector('details.foot'), null, 'the foot of the page no longer holds the explainer');
   assert.deepStrictEqual(errors.concat(review.errors, docs.errors), []);
   review.dom.window.close(); docs.dom.window.close();
-  return 'More starts folded, a click unfolds and folds it, opening Review unfolds it, and Docs is a page with How this works and the API reference link';
+  return 'More starts folded, a click unfolds and folds it, opening Review leaves it folded with the row current, and Docs is a page with How this works and the API reference link';
 }
 
 async function openingMoreScrollsItsRowsIntoView() {
@@ -356,9 +356,9 @@ async function theAdminRowShowsForAdminsOnly() {
 
   //then
   assert.ok(viewer.doc.getElementById('side-admin').hidden, 'a viewer sees no Admin row');
-  assert.ok(!row.hidden && row.closest('#pinned') && row.querySelector('.lbl').textContent === 'Admin', 'an admin sees Admin beside Settings');
+  assert.ok(row.hidden && !admin.doc.getElementById('um-admin').hidden && viewer.doc.getElementById('um-admin').hidden, 'an admin has Admin in the user menu, a viewer does not');
   assert.ok(!admin.doc.getElementById('panel-integrations').hidden, 'the first time it opens Integrations');
-  assert.deepStrictEqual(current(admin.doc), ['side-admin'], 'and is marked current');
+  assert.deepStrictEqual(current(admin.doc), ['side-admin', 'user-btn'], 'and the user button is marked current');
   assert.strictEqual(admin.doc.getElementById('crumb-page').textContent, 'Admin \u203a Integrations');
   assert.deepStrictEqual([...admin.doc.querySelectorAll('#adm-nav a.tab')].map((a) => [a.id, a.querySelector('.lbl').textContent]), [['tab-settings', 'General'], ['tab-access', 'Access & sign-in'], ['tab-integrations', 'Integrations'], ['tab-features', 'Features'], ['tab-ai', 'Investigator'], ['tab-changes', 'Changes']], 'the admin pages keep their tab ids');
   assert.ok(!admin.doc.getElementById('adm-shell').hidden && viewer.doc.getElementById('adm-shell').hidden, 'their sub-nav shows only on an admin page');
@@ -400,7 +400,7 @@ async function aPluginPageGetsARowAndASection() {
   doc.getElementById('side-more').click();
   doc.getElementById('side-more').click();
   w.setPlugins([Object.assign({}, plugins[0], {instances: [{name: 'main', primary: true, pass: 'demo', status: 'ok'}]})]);
-  const quiet = {more: doc.getElementById('side-more-list').hidden, current: current(doc).join(), pages: [...(w.__pages || [])].length};
+  const quiet = {more: doc.getElementById('side-more-list').classList.contains('folded'), current: current(doc).join(), pages: [...(w.__pages || [])].length};
   w.setPlugins([]);
   await wait(20);
 

@@ -12,7 +12,7 @@ from tests.test_autosend import KEY, seed
 from tests.test_chat import chat_action
 from tests.sso_kit import FakeIdp, app_client, idp_settings, log_in
 from tests.test_auth import Clock
-from skopax import history, notices
+from skopax import clock, history, notices
 from skopax.apitokens import ApiTokens, TokenNameError
 from skopax.app import create_app
 from skopax.actors import is_token, token_label
@@ -384,11 +384,22 @@ def test_a_named_token_is_a_token_actor_everywhere(store: Store):
     assert 'token:ci' not in AUTO_SEND_BY
 
 
+def test_an_actor_with_no_name_reads_investigator_in_notes_history_and_notices():
+    # given
+    from skopax import actions, statenotes
+
+    # when
+    texts = [actions.note_under('seen', 'why', None, 'Muted'), statenotes.who_of(''), history.who_text('Claude'), notices.who_text('')]
+
+    # then
+    assert texts == ['seen\n\nMuted by Investigator: why', 'Investigator', 'Investigator', 'Investigator']
+
+
 def test_the_label_of_a_token_actor_is_the_token_name(store: Store):
     # then
-    assert token_label('token:ci') == 'ci' and token_label('token') == 'Claude' and token_label('token:') == 'Claude' and token_label('token:bootstrap') == 'bootstrap'
-    assert history.who_text('token:ci') == 'ci' and history.who_text('token') == 'Claude'
-    assert notices.who_text('token:ci') == 'ci' and notices.who_text('token') == 'Claude'
+    assert token_label('token:ci') == 'ci' and token_label('token') == 'Investigator' and token_label('token:') == 'Investigator' and token_label('token:bootstrap') == 'bootstrap'
+    assert history.who_text('token:ci') == 'ci' and history.who_text('token') == 'Investigator'
+    assert notices.who_text('token:ci') == 'ci' and notices.who_text('token') == 'Investigator'
 
 
 def test_the_actions_source_is_api_for_a_named_token(store: Store):
@@ -892,3 +903,61 @@ def test_a_token_minted_on_a_lagging_pod_after_the_stop_is_refused_while_sso_is_
     assert off_on_b == refused
     assert on_a == refused and on_b == refused, 'and the one minted after the stop stays refused after switching back on'
     assert off_rows == on_rows == {'early': True, 'late': True, 'plain': False}
+
+
+def test_a_token_with_an_expiry_works_until_then_and_is_refused_after(store: Store):
+    # given
+    now = [1_000_000.0]
+    tokens = ApiTokens(store.db, clock=lambda: now[0])
+    token, doc = tokens.create('short', 'viewer', ADMIN_EMAIL, expires_days=7)
+    forever, _ = tokens.create('long', 'viewer', ADMIN_EMAIL)
+
+    # when
+    early = tokens.resolve(token)
+    now[0] += 7 * 86400 - 1
+    last = tokens.resolve(token)
+    now[0] += 1
+    late = tokens.resolve(token)
+    kept = tokens.resolve(forever)
+    listed = {row['name']: row for row in tokens.list()}
+
+    # then
+    assert doc['expiresAt'] == clock.stamp(1_000_000.0 + 7 * 86400)
+    assert early is not None and last is not None and late is None and kept is not None
+    assert listed['short']['expiresAt'] == doc['expiresAt'] and 'expiresTs' not in listed['short']
+    assert listed['long'].get('expiresAt') is None
+
+
+def test_the_admin_api_takes_an_optional_expiry_in_days(store: Store):
+    # given
+    admin = admin_client(store)
+
+    # when
+    made = admin.post('/api/admin/tokens', json={'name': 'week', 'role': 'viewer', 'expiresDays': 7})
+    plain = admin.post('/api/admin/tokens', json={'name': 'plain', 'role': 'viewer'})
+    zero = admin.post('/api/admin/tokens', json={'name': 'zero', 'role': 'viewer', 'expiresDays': 0})
+    huge = admin.post('/api/admin/tokens', json={'name': 'huge', 'role': 'viewer', 'expiresDays': 3651})
+    text = admin.post('/api/admin/tokens', json={'name': 'text', 'role': 'viewer', 'expiresDays': '7'})
+    listed = {row['name']: row for row in admin.get('/api/admin/tokens').json()}
+
+    # then
+    assert made.status_code == 201 and isinstance(made.json()['expiresAt'], str)
+    assert plain.status_code == 201 and plain.json().get('expiresAt') is None
+    assert (zero.status_code, huge.status_code, text.status_code) == (422, 422, 422)
+    assert listed['week']['expiresAt'] == made.json()['expiresAt'] and 'expiresTs' not in listed['week']
+    assert set(listed) == {'week', 'plain'}
+
+
+def test_the_last_admin_cannot_be_demoted_or_disabled_over_the_api(store: Store):
+    # given
+    admin = admin_client(store)
+
+    # when
+    demoted = admin.patch(f'/api/admin/users/{ADMIN_EMAIL}', json={'role': 'viewer'})
+    disabled = admin.patch(f'/api/admin/users/{ADMIN_EMAIL}', json={'disabled': True})
+    held = Users(store.db).get(ADMIN_EMAIL)
+
+    # then
+    assert (demoted.status_code, demoted.json()['detail']) == (409, msg('access.last_admin'))
+    assert (disabled.status_code, disabled.json()['detail']) == (409, msg('access.last_admin'))
+    assert (held['role'], held['disabled']) == ('admin', False)

@@ -39,6 +39,12 @@ jobs:
       - run: uv lock --check
       - run: uv sync --frozen
       - run: uv run --frozen pytest -q -n auto
+      - name: Preset checks for promtool
+        run: uv run --frozen python -m tests.presets_promtool "$RUNNER_TEMP/presets"
+      - name: Preset checks in promtool
+        run: docker run --rm -v "$RUNNER_TEMP/presets:/work:ro" -w /work --entrypoint promtool "$PROMETHEUS_IMAGE" test rules presets-test.yml
+        env:
+          PROMETHEUS_IMAGE: prom/prometheus:v3.1.0@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218
 
   pages:
     runs-on: ubuntu-24.04

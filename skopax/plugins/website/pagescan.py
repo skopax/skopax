@@ -263,7 +263,7 @@ def page_urls(busy: list[str], extra: list[str], limit: int, site: Site, origin:
         path = p.path or '/'
         if p.query or p.fragment or not p.hostname:
             continue
-        if any(path == x or path.startswith(x + '/') for x in SKIP_PREFIXES) or '.' in path.rsplit('/', 1)[-1]:
+        if any(path.lower() == x or path.lower().startswith(x + '/') for x in (*SKIP_PREFIXES, *site.skip)) or '.' in path.rsplit('/', 1)[-1]:
             continue
         url = f"https://{p.hostname.rstrip('.').lower()}{path.rstrip('/') or '/'}"
         if len(url) > URL_MAX or refusal(url, site) or url in out:

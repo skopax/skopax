@@ -2,8 +2,9 @@ from urllib.parse import urlencode
 
 from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, PassResult, Panel, Peer, Plugin, ReadError, RuleSet, Sweep, TestResult, call
 from skopax.kit import access, connection
-from skopax.kit.promql import bounded, client_for, credential
+from skopax.kit.promql import PrometheusError, bounded, client_for, credential
 from skopax.plugins.capacity.capacity import FS, NAME, RULES, run_pass
+from skopax.plugins.capacity.pmm import PmmMetrics
 
 ID = 'capacity'
 CHECK = 'capacity'
@@ -40,7 +41,16 @@ def test(ctx: Context) -> TestResult:
             raise
         if not isinstance(body, dict) or body.get('status') != 'success':
             raise ReadError(502, 'Prometheus answered an error')
-        return f'Prometheus {peer.info.name} answers'
+        found = f'Prometheus {peer.info.name} answers'
+        disks = ctx.peer('disks-pmm') if ctx.instance.config.get('host-disks') != 'false' else None
+        if disks is None:
+            return found
+        try:
+            PmmMetrics(disks.info.config, disks.http()).vec('vector(1)', ctx.now)
+        except PrometheusError as e:
+            said = access.tested(NAME, 'host disks', e.code, credential='token')
+            raise ReadError(e.code or 502, said or e.reason) from None
+        return f'{found}, host disks from PMM {disks.info.name}'
 
     return connection.result(ask)
 
@@ -50,8 +60,16 @@ def run(ctx: Context) -> Sweep:
     if peer is None:
         return Sweep(PassResult(CHECK, False, f'error: {NO_PEER}'))
     config = ctx.instance.config
+    disk_client, disk_error = None, ''
+    if config.get('host-disks') != 'false' and config.get('disks-pmm'):
+        try:
+            found = ctx.peer('disks-pmm')
+            disk_client = None if found is None else PmmMetrics(found.info.config, bounded(found.http(), BUDGET_S))
+        except ReadError as e:
+            disk_error = e.message
     result, rows = run_pass(client_for(peer.info, bounded(peer.http(), BUDGET_S)), ctx.now, {**RULES, **ctx.rules('rules')}, source=peer.info.name, ui=_ui(peer),
-                            credential=credential(peer.info.config), jvm=config.get('jvm') != 'false', host_disks=config.get('host-disks') != 'false', volume_selector=(config.get('volume-selector') or '').strip(), fs_selector=(config.get('fs-selector') or FS).strip())
+                            credential=credential(peer.info.config), jvm=config.get('jvm') != 'false', host_disks=config.get('host-disks') != 'false', volume_selector=(config.get('volume-selector') or '').strip(), fs_selector=(config.get('fs-selector') or FS).strip(),
+                            disk_client=disk_client, disk_error=disk_error)
     return Sweep(result, sections={'capacity': rows} if result.ok else {})
 
 
@@ -64,12 +82,14 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 
 PLUGIN = Plugin(
     id=ID, name='Capacity', version='0.1.0', category='infrastructure', description='Volume, host disk, autoscaler and JVM heap headroom read through a Prometheus instance.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community', capabilities=Capabilities(), uses=('prometheus',),
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(), uses=('prometheus', 'pmm'),
     fields=(Field('prometheus', 'Prometheus', 'instance', required=True, choices=('prometheus',), help='The Prometheus instance to read.'),
             Field('jvm', 'JVM heap', 'bool', default='true', help='Read the JVM heap of Micrometer services. Switched off, its open cards close at the next check.'),
             Field('host-disks', 'Host disks', 'bool', default='true',
                   help='Read the disks node_exporter reports (node_filesystem_* series). On a Kubernetes Prometheus, node root disks are usually covered by the '
                        "cluster's own DiskPressure checks, so you may switch this off there. Switched off, its open cards close at the next check."),
+            Field('disks-pmm', 'Host disks from PMM', 'instance', choices=('pmm',),
+                  help='A PMM instance whose metrics data source holds the node_filesystem_* series of the hosts, for hosts that Prometheus does not scrape. Empty reads the host disks from Prometheus.'),
             Field('volume-selector', 'Volume selector', 'text', help='Extra label matchers for kubelet_volume_stats_* series, for example namespace!="scratch".'),
             Field('fs-selector', 'Host disk selector', 'text', default=FS, help='Label matchers for node_filesystem_* series; the default leaves out pseudo file systems and container mounts.')),
     test=test,

@@ -4,7 +4,7 @@ from skopax.contract import Check, Context, Field, HttpError, Knowledge, Panel, 
 from skopax.kit import access, connection
 from skopax.kit.promql import Late, PrometheusError, bounded, client_for, credential, graph, instant, number, ui_of
 from skopax.monitor import failed
-from skopax.plugins.redis.engine import (APP_ROWS, BUDGET_S, ID, OPS, RULES, app_cards, app_rows, call_graph, capped, card_urls, exporter_cards, exporter_rows, links, matchers, status_of)
+from skopax.plugins.redis.engine import (APP_ROWS, BUDGET_S, ID, OPS, RULES, app_cards, app_rows, call_graph, capped, card_urls, exporter_cards, exporter_rows, links, matchers, peer_names, status_of)
 
 NAME = 'Redis'
 NO_PEER = 'no Prometheus instance is set'
@@ -32,8 +32,15 @@ def selector_of(ctx: Context) -> str:
     return ctx.instance.config.get('selector') or ''
 
 
+def names_of(ctx: Context) -> dict[str, str]:
+    return peer_names(ctx.instance.config.get('peer-names'))[0]
+
+
 def test(ctx: Context) -> TestResult:
     def ask() -> str:
+        bad = peer_names(ctx.instance.config.get('peer-names'))[1]
+        if bad:
+            raise ReadError(400, f"Peer names needs address=name entries; {', '.join(bad)} cannot be read")
         peer = ctx.peer('prometheus')
         if peer is None:
             raise ReadError(400, NO_PEER)
@@ -59,7 +66,7 @@ def run(ctx: Context) -> Sweep:
         return Sweep(PassResult(ID, False, f'error: {NO_PEER}'))
     client = client_for(peer.info, bounded(peer.http(), BUDGET_S))
     selector, rules, ui = selector_of(ctx), ctx.rules('rules'), ui_of(peer.info.config)
-    reads = {'exporter': lambda: exporter_rows(client, selector, ctx.now), 'app': lambda: app_rows(client, selector, ctx.now)}
+    reads = {'exporter': lambda: exporter_rows(client, selector, ctx.now), 'app': lambda: app_rows(client, selector, ctx.now, names_of(ctx))}
     found, ran, errors, empty, rows, answered, refused, reached = [], [], [], [], [], 0, [], []
     for part in PARTS:
         try:
@@ -122,7 +129,7 @@ def read(ctx: Context, args: dict) -> object:
             kept = capped(found)
             more = f'first {len(kept)} of {len(found)} instances, down and role-less ones first; ' if len(kept) < len(found) else ''
             return {'instances': kept, 'note': more + INSTANCES_NOTE}
-        rows = [dict(r, source=peer.info.name) for r in app_rows(client, selector_of(ctx), ctx.now) if not job or r['job'] == job]
+        rows = [dict(r, source=peer.info.name) for r in app_rows(client, selector_of(ctx), ctx.now, names_of(ctx)) if not job or r['job'] == job]
         return {'apps': rows[:APP_ROWS], 'note': APPS_NOTE}
     except PrometheusError as e:
         if access.denied(e.code):
@@ -132,9 +139,10 @@ def read(ctx: Context, args: dict) -> object:
 
 PLUGIN = Plugin(
     id=ID, name='Redis', version='0.1.0', category='infrastructure', description='Redis instances and the Redis calls of each service, read from redis_exporter and Lettuce series in Prometheus.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community', uses=('prometheus',),
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', uses=('prometheus',),
     fields=(Field('prometheus', 'Prometheus', 'instance', required=True, choices=('prometheus',), help='The Prometheus instance that holds the redis_exporter and Lettuce client series.'),
-            Field('selector', 'Selector', 'text', help='Extra label matchers added to every Redis query, such as env="prod". Empty reads every series.')),
+            Field('selector', 'Selector', 'text', help='Extra label matchers added to every Redis query, such as env="prod". Empty reads every series.'),
+            Field('peer-names', 'Redis names', 'text', help='Comma-separated address=name entries that show a friendly name for the Redis address a service calls, for example 10.0.4.12:6379=sessions-cache, 10.0.4.13=queue. An address without a port matches any port. Empty shows the address.')),
     test=test,
     checks=(Check(ID, 'Redis instances and service calls', 900, 780, (ID,), run, tool=ID, sections=(ID,), section_help=SECTION_HELP),),
     rules=(RuleSet('rules', 'Redis thresholds', dict(RULES), RULE_HELP),),

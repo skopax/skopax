@@ -3,7 +3,7 @@ from pathlib import Path
 from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Panel, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, Unreachable
 from skopax.kit import access, connection
 from skopax.plugins.airbyte.engine import (DENIED, HEALTH, INVALID, JOBS_MAX, OPS, PAGE, PAGES, RULE_HELP, RULES, TOKEN, TOOL_JOBS, TOOL_JOBS_DEFAULT, Airbyte, AirbyteError, AirbyteRun,
-                                           airbyte_pass, evaluate, links_for, page_of, token_of, watched_of)
+                                           airbyte_pass, evaluate, links_for, name_pattern, page_of, severities_of, token_of, watched_of, workspaces_of)
 
 ID = 'airbyte'
 CHECK = 'airbyte'
@@ -34,8 +34,18 @@ def client_of(ctx: Context, budget: float | None = None) -> Airbyte:
     return Airbyte.of(ctx.instance.config, ctx.http(), budget)
 
 
+def option_problem(config) -> str | None:
+    if (config.get('connection-match') or '').strip() and name_pattern(config.get('connection-match')) is None:
+        return 'Connection name pattern is not a valid pattern'
+    bad = severities_of(config.get('severities'))[1]
+    return f"Severities needs name=info, warn or crit entries; {', '.join(bad)} cannot be read" if bad else None
+
+
 def test(ctx: Context) -> TestResult:
     def ask() -> str:
+        problem = option_problem(ctx.instance.config)
+        if problem:
+            raise ReadError(400, problem)
         client = client_of(ctx, TEST_BUDGET_S)
         try:
             token = token_of(client)
@@ -71,16 +81,19 @@ def run(ctx: Context) -> Sweep:
     info = ctx.instance
     rules = ctx.rules('rules')
     held = ctx.open_cards()
+    if (info.config.get('connection-match') or '').strip() and name_pattern(info.config.get('connection-match')) is None:
+        return Sweep(PassResult(CHECK, False, 'error: connection-match is not a valid pattern'))
     probe = any(a.get('src') == ID and a.get('sig') == access.SIG and a.get('sub') == 'jobs' for a in held)
     try:
-        got = airbyte_pass(client_of(ctx), watched_of(info.config.get('connections') or ''), max(1, min(int(rules['jobs']), JOBS_MAX)), probe=probe)
+        got = airbyte_pass(client_of(ctx), watched_of(info.config.get('connections') or ''), max(1, min(int(rules['jobs']), JOBS_MAX)), probe=probe,
+                           pattern=name_pattern(info.config.get('connection-match')), workspaces=workspaces_of(info.config.get('workspaces')))
     except AirbyteError as e:
         if not e.denied:
             return Sweep(PassResult(CHECK, False, f'error: connections: {e.reason}'))
         return Sweep(PassResult(CHECK, True, access.status('ok', ['connections']), [access_card('connections', e.code, e.reason.startswith(f'POST {TOKEN} '))], {},
                                 (f'{CHECK}:access:connections',)))
     kept = {a['connId']: a['svc'] for a in held if isinstance(a.get('connId'), str) and isinstance(a.get('svc'), str)}
-    found, rows = evaluate(got.data, ctx.now, info.config.get('url') or '', rules, kept)
+    found, rows = evaluate(got.data, ctx.now, info.config.get('url') or '', rules, kept, severities_of(info.config.get('severities'))[0])
     unlisted = [d['conn']['name'] for d in got.data if d.get('missing')]
     read = len(got.data) - len(unlisted)
     refused = [part for part, code in got.access.items() if code is not None]
@@ -131,11 +144,14 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 PLUGIN = Plugin(
     id=ID, name='Airbyte', version='0.1.0', category='infrastructure', description='Failed and unusually long Airbyte sync jobs, read from the Airbyte public API.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('client-secret',)),
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('client-secret',)),
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Address of the Airbyte web app; the public API is under /api/public/v1.'),
             Field('client-id', 'Client id', 'text', required=True, help='Client id of an Airbyte application with read access.'),
             Field('client-secret', 'Client secret', 'secret', required=True, help='Client secret of that application.'),
             Field('connections', 'Connections', 'text', help='Comma-separated names or ids of the connections to watch. Empty watches every connection.'),
+            Field('connection-match', 'Connection name pattern', 'regex', help='Pattern that also watches every connection whose name it matches, on top of the names and ids above. With the list empty, only the matching connections are watched. Empty adds nothing.'),
+            Field('severities', 'Severity per connection', 'text', help='Comma-separated name=severity entries, the connection name or id and info, warn or crit, for example nightly-orders=crit, test-sync=info. Other connections stay warn.'),
+            Field('workspaces', 'Workspaces', 'text', help='Comma-separated workspace ids; only connections of these workspaces are watched. Empty watches every workspace.'),
             Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),
             Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), group='advanced', help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),
     test=test,

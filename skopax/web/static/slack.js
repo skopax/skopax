@@ -1,24 +1,20 @@
 var slackActs = null;
-var SQ_EMPTY = 'No Slack drafts waiting. Claude writes one when an anomaly or a deploy report is worth telling the channel.';
+var SQ_EMPTY = 'No Slack drafts waiting. The investigator writes one when an anomaly or a deploy report is worth telling the channel.';
 var SQ_SENT_EMPTY = 'Nothing posted to Slack in the last 24 hours.';
 var SQ_STOPPED = {progress: 'card in progress', handled: 'card marked no action needed'};
-var SQ_STOPPED_TIP = 'The auto-send job skips a card that is in progress or marked as no action needed, and disarms it: this draft goes out only with Send now. A draft that sat here unsent was most likely stopped this way.';
-var SQ_ARMED_TIP = 'Posts itself to the channel within 30 s of this time unless someone presses Hold. Claude writes every draft, on any card or deploy report, as a message that is about to go out.';
-var SQ_HELD_TIP = 'The auto-send was stopped, so this draft waits for Send now.';
-var SQ_MANUAL_TIP = 'Claude’s drafts arm the auto-send, which posts them within 30 s; a draft an operator edited, and an info draft saved before 19.10, wait for Send now.';
 function sqReports() { return reports && reports.list ? reports.list() : []; }
 function sqTitle(x) { return reports && reports.title ? reports.title(x) : x.summary || 'Deploy report'; }
 function sqArmedAt(r) { return r.st.armed ? Date.parse(r.st.armed.at) : 0; }
 function sqState(r) {
-  var x = r.x, s = x.autoSend || {}, armed = autoArmed(x);
-  if (r.kind === 'card' && done(x)) return {k: 'k-warn', text: 'Stopped: ' + SQ_STOPPED[x.triage] + ', won’t auto-send', tip: SQ_STOPPED_TIP};
-  if (armed) return {k: 'k-info', armed: armed, text: autoLabel(armed), tip: SQ_ARMED_TIP};
-  if (s.holdBy) return {k: 'k-muted', text: 'Held by ' + draftBy(s.holdBy) + ' ' + hm(s.holdAt), tip: SQ_HELD_TIP};
-  if (s.failedAt) return {k: 'k-warn', text: 'Auto-send failed ' + hm(s.failedAt), tip: 'Slack refused it' + (s.error ? ': ' + s.error : '') + '; it does not retry by itself.'};
-  if (r.d.notAutoSent) return {k: 'k-warn', text: 'Manual (not auto-sent)', tip: 'The run that wrote it read ' + r.d.notAutoSent + ', so it waits for a person: read it, then Send now or Discard.'};
+  var x = r.x, s = x.autoSend || {}, armed = autoArmed(x), why = draftStatus(x, r.kind === 'card');
+  if (r.kind === 'card' && done(x)) return {k: 'k-warn', text: 'Stopped: ' + SQ_STOPPED[x.triage] + ', won\u2019t auto-send', tip: why};
+  if (armed) return {k: 'k-info', armed: armed, text: autoLabel(armed), tip: why};
+  if (s.holdBy) return {k: 'k-muted', text: 'Held by ' + draftBy(s.holdBy) + ' ' + hm(s.holdAt), tip: why};
+  if (s.failedAt) return {k: 'k-warn', text: 'Auto-send failed ' + hm(s.failedAt), tip: why};
+  if (r.d.notAutoSent) return {k: 'k-warn', text: 'Manual (not auto-sent)', tip: why};
   var by = r.d.by, edited = by && by !== 'Claude' && !isTokenActor(by) && by !== AUTO_BY;
-  if (edited) return {k: 'k-muted', text: 'Manual (edited by ' + draftBy(by) + ')', tip: SQ_MANUAL_TIP};
-  return {k: 'k-muted', text: r.kind === 'card' && x.sev === 'info' ? 'Manual (info)' : 'Manual', tip: SQ_MANUAL_TIP};
+  if (edited) return {k: 'k-muted', text: 'Manual (edited by ' + draftBy(by) + ')', tip: why};
+  return {k: 'k-muted', text: r.kind === 'card' && x.sev === 'info' ? 'Manual (info)' : 'Manual', tip: why};
 }
 function sqDrafts() {
   var rows = [];
@@ -42,7 +38,7 @@ function sqWhat(r) {
   if (r.kind === 'report') return '<span class="state k-info">Report</span><span class="svc">' + esc(sqTitle(r.x)) + '</span>';
   return state(r.x.sev) + '<span class="svc">' + esc(r.x.svc + ' / ' + r.x.label) + '</span>';
 }
-function sqSender(by, drafted) { return by === AUTO_BY ? draftBy(by, drafted) : isTokenActor(by) ? tokenActorLabel(by, 'Claude') + ' (on request)' : !by || by === 'Claude' ? 'Claude (on request)' : String(by).split('@')[0]; }
+function sqSender(by, drafted) { return by === AUTO_BY ? draftBy(by, drafted) : isTokenActor(by) ? tokenActorLabel(by, 'Investigator') + ' (on request)' : !by || by === 'Claude' ? 'Investigator (on request)' : String(by).split('@')[0]; }
 function sqFirstLine(t) { return String(t).split('\n').filter(function (l) { return l.trim(); })[0] || ''; }
 function slackTabState() {
   var rows = sqDrafts(), armed = rows.filter(function (r) { return r.st.armed; });
@@ -58,7 +54,7 @@ function renderSlackSent() {
   rows.forEach(function (r) {
     var tr = el('tr');
     tr.innerHTML = '<td class="when">' + slackLink(r.p.permalink, dayhm(r.p.at)) + '</td><td>' + sqWhat({kind: r.kind, x: r.x}) + '</td><td>' + esc(sqSender(r.p.by, (r.x.slackDraft || {}).by)) + '</td>' +
-      '<td><span class="tag ' + (r.p.draft ? 'k-act' : 'plain') + '" title="' + esc(r.p.draft ? 'Claude’s draft was the message' : 'The standard message built from the card or the report') + '">' + (r.p.draft ? 'draft' : 'plain') + '</span></td>';
+      '<td><span class="tag ' + (r.p.draft ? 'k-act' : 'plain') + '" title="' + esc(r.p.draft ? 'Investigator\u2019s draft was the message' : 'The standard message built from the card or the report') + '">' + (r.p.draft ? 'draft' : 'plain') + '</span></td>';
     tb.appendChild(tr);
   });
 }

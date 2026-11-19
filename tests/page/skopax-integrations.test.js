@@ -349,7 +349,7 @@ async function theCatalogSearchesGroupsAndOpensWhatIsPicked() {
   const connected = [inPanel(doc, '.int-ph h2').textContent, inPanel(doc, '.int-itab[aria-selected="true"]').dataset.name];
 
   //then
-  assert.deepStrictEqual(opened, {hidden: false, expanded: 'true', focus: true, placeholder: 'Search integrations\u2026',
+  assert.deepStrictEqual(opened, {hidden: false, expanded: 'true', focus: true, placeholder: 'Search integrations',
     groups: [['Metrics', ['acme', 'prometheus']], ['Alerts', ['pager']], ['Infrastructure', ['relic']], ['Tickets', ['gold']], ['Other', ['evil']]]});
   assert.ok(!pick(doc, 'cracked') && !pick(doc, 'odd.module'), 'a broken plug-in is not listed');
   assert.deepStrictEqual(marks, {acme: [true, true], prometheus: false, gold: ['Enterprise', 'true', 'Gold board needs the Enterprise edition of Skopax'], relic: ['true', 'Relic needs core >=9 (this is 0.1.0)', false], icon: '/plugins/acme/icon.svg'});
@@ -800,6 +800,30 @@ async function saveAndTurnOnWhoseChecksChangeConflictsSaysItStaysOff() {
   console.log('PASS Admin, Integrations: Save & turn on whose checks change conflicts says the instance is saved but stays off');
 }
 
+async function aPluginSetUpOutsideAdminIsNeitherConnectedNorNeedingAttention() {
+  //given
+  const cat = catalog();
+  cat.plugins = [cat.plugins[0], cat.plugins[1],
+    {id: 'outside', name: 'Outside source', version: '1.0.0', category: 'infrastructure', description: 'Settings read from a server.', edition: 'community', icon: false, state: 'ok', reason: null, enabled: true,
+      fields: [], checks: [], panels: [], instances: [], health: health('none', 'No checks')}];
+  const t = await boot({catalog: cat});
+
+  //when
+  await open(t);
+  addBtn(t.doc).click();
+  const row = pick(t.doc, 'outside');
+
+  //then
+  assert.deepStrictEqual(tiles(t.doc).map((x) => x.dataset.id), ['acme', 'pager'], 'no tile among the connected ones');
+  assert.strictEqual(t.doc.querySelector('#integrations .int-sub').textContent, '2 connected ' + DOT + ' 1 needs attention');
+  assert.strictEqual(t.doc.getElementById('count-integrations').textContent, '2');
+  assert.strictEqual(row.querySelector('.int-has').textContent, 'Set up outside Admin');
+  assert.ok(!row.classList.contains('has') && row.querySelector('.int-has').classList.contains('idle'), 'neutral: no tick and not connected');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: a plug-in with no fields, checks or panels reads Set up outside Admin and counts as neither connected nor needing attention');
+}
+
 async function theConnectedCountIsOneDefinitionForTheSubNavAndTheSubtitle() {
   //given
   const cat = catalog();
@@ -1000,6 +1024,7 @@ async function instanceNamesSourcesFieldsAndNotesAreEscapedToo() {
     {id: 'lean', name: 'Lean', version: '1.0.0', category: EVIL, description: '', edition: 'community', icon: false, state: 'ok', reason: null, enabled: true, fields, checks: [{id: 'tick', label: EVIL}],
       instances: [instance(EVIL, {source: EVIL, owned: ['url', 'token'], values: {url: EVIL, mode: EVIL}, secrets: {token: {set: true, from: EVIL}}}), instance('main')],
       health: health('error', EVIL, iso(1), [{name: EVIL, state: 'error', text: EVIL, at: iso(1)}])},
+    {id: 'calm', name: 'Calm', version: '1.0.0', category: EVIL, description: '', edition: 'community', icon: false, state: 'ok', reason: null, enabled: true, fields, checks: [], instances: [instance('main')], health: health('ok', 'Healthy', iso(1), [{name: 'main', state: 'ok', text: 'Healthy', at: iso(1)}])},
     {id: 'gold', name: 'Gold', version: '1.0.0', category: 'other', description: '', edition: 'enterprise', icon: false, state: 'locked', reason: EVIL, enabled: true, fields: [], instances: []},
     {id: 'odd.module', module: 'odd.module', reason: EVIL}]};
   const t = await boot({catalog: cat});
@@ -1016,7 +1041,9 @@ async function instanceNamesSourcesFieldsAndNotesAreEscapedToo() {
   assert.strictEqual(tab.dataset.name, EVIL);
   assert.strictEqual(tab.textContent, EVIL);
   assert.ok(text.includes(EVIL), 'the hostile text shows as text in the panel');
-  assert.strictEqual(tile(t.doc, 'lean').querySelector('.int-cat').textContent, EVIL, 'a category the page does not know shows as its id');
+  assert.strictEqual(tile(t.doc, 'lean').dataset.cat, EVIL, 'a category the page does not know is kept as its id');
+  assert.strictEqual(tile(t.doc, 'calm').querySelector('.int-cat').textContent, EVIL, 'a healthy tile shows the unknown category as text');
+  assert.strictEqual(tile(t.doc, 'calm').querySelector('.int-cat').children.length, 0, 'and never as markup');
   assert.strictEqual(tile(t.doc, 'lean').querySelector('.int-health').textContent, '2 instances ' + DOT + ' 1 needs attention');
   assert.strictEqual(tile(t.doc, 'lean').title, EVIL, 'the hostile health text is the tooltip, as text');
   assert.strictEqual(tile(t.doc, 'gold').querySelector('.int-switch').title, EVIL);
@@ -1143,6 +1170,47 @@ async function aChoiceWhoseDefaultIsEmptyCanBeSetBackToEmpty() {
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
   console.log('PASS Admin, Integrations: a choice whose default is empty keeps its empty option, so a saved value can be cleared again');
+}
+
+async function aRouteEchoChoiceShowsExactlyThreeOptionsAndStartsOnTheDefault() {
+  //given
+  const fields = [FIELDS[0], {key: 'slack-echo', label: 'Also post to Slack', kind: 'choice', required: false, default: '', help: '', choices: ['default', 'on', 'off'], choiceLabels: {default: 'Use the default', on: 'On', off: 'Off'}, low: null, high: null, showIf: null, ui: false}];
+  const cat = {edition: 'community', secretsKey: 'env', plugins: [{id: 'lean', name: 'Lean', version: '1.0.0', category: 'chat', description: '', edition: 'community', icon: false, state: 'ok', reason: null, enabled: true, fields,
+    instances: [instance('main', {values: {url: 'https://main.example.com'}, secrets: {}})]}]};
+  const t = await boot({catalog: cat});
+  await open(t);
+
+  //when
+  openInstance(t, 'lean', 'main');
+  const buttons = [...field(t.doc, 'slack-echo').querySelectorAll('.int-seg-b')];
+  inPanel(t.doc, '.int-save').click();
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual(buttons.map((b) => b.textContent), ['Use the default', 'On', 'Off']);
+  assert.deepStrictEqual(buttons.filter((b) => b.getAttribute('aria-checked') === 'true').map((b) => b.textContent), ['Use the default']);
+  assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PATCH').map((c) => c[2]), [], 'an untouched choice is not sent');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: a route echo choice shows Use the default, On and Off, starts on the default and sends nothing untouched');
+}
+
+async function anotherPluginsChoiceWithADefaultOptionKeepsItsBlankOption() {
+  //given
+  const fields = [FIELDS[0], {key: 'mode', label: 'Mode', kind: 'choice', required: false, default: '', help: '', choices: ['default', 'fast'], choiceLabels: {}, low: null, high: null, showIf: null, ui: false}];
+  const cat = {edition: 'community', secretsKey: 'env', plugins: [{id: 'lean', name: 'Lean', version: '1.0.0', category: 'chat', description: '', edition: 'community', icon: false, state: 'ok', reason: null, enabled: true, fields,
+    instances: [instance('main', {values: {url: 'https://main.example.com'}, secrets: {}})]}]};
+  const t = await boot({catalog: cat});
+  await open(t);
+
+  //when
+  openInstance(t, 'lean', 'main');
+  const buttons = [...field(t.doc, 'mode').querySelectorAll('.int-seg-b')].map((b) => b.dataset.value);
+
+  //then
+  assert.deepStrictEqual(buttons, ['', 'default', 'fast']);
+  t.w.close();
+  console.log('PASS Admin, Integrations: only the route echo choice drops its blank option; another plug-in keeps it');
 }
 
 async function anInstanceFieldPicksAnInstanceOfTheUsedPlugin() {
@@ -1446,13 +1514,13 @@ async function aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin() {
   assert.deepStrictEqual(tiles(doc).map((x) => [x.dataset.id, x.dataset.origin]), [['acme', 'builtin'], ['pager', 'package'], ['gold', 'builtin'], ['cracked', 'env'], ['evil', 'env']]);
   assert.strictEqual(tile(doc, 'acme').querySelector('.int-cat').textContent, 'Metrics', 'a built-in tile looks as before');
   assert.ok(!tile(doc, 'acme').querySelector('.int-open').title && !tile(doc, 'acme').querySelector('.int-open').hasAttribute('aria-describedby'), 'no tooltip on a built-in');
-  assert.strictEqual(tile(doc, 'pager').querySelector('.int-cat').textContent, 'Alerts ' + DOT + ' Custom');
+  assert.strictEqual(tile(doc, 'pager').querySelector('.int-cat').textContent, 'Custom', 'a tile that needs attention keeps only the Custom marker');
   const said = 'Custom plug-in by Pat Pager, version 2.3.1, from acme_pager';
   assert.deepStrictEqual(desc('pager'), [said, said]);
   assert.strictEqual(tile(doc, 'evil').querySelector('.int-cat').textContent, 'Other ' + DOT + ' Custom');
   const eve = 'Custom plug-in by Eve, version 0.0.1, from local.evil';
   assert.deepStrictEqual(desc('evil'), [eve, eve]);
-  assert.strictEqual(tile(doc, 'cracked').querySelector('.int-cat').textContent, 'Other ' + DOT + ' Custom', 'a broken custom plug-in is marked too');
+  assert.strictEqual(tile(doc, 'cracked').querySelector('.int-cat').textContent, 'Custom', 'a broken custom plug-in is marked too');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
   console.log('PASS Admin, Integrations: a custom plug-in reads Custom on its tile with a tooltip and an accessible description, a built-in is unchanged');
@@ -1654,7 +1722,7 @@ async function theTilesAreCompactWithAStatusDotAShortHealthLineAndTheRestInTheTo
   const acme = tile(doc, 'acme'), gold = tile(doc, 'gold'), evil = tile(doc, 'evil'), pager = tile(doc, 'pager');
   const row = (x) => [...x.querySelector('.int-tile-top').children].map((c) => c.className.split(' ')[0]);
   const st = (x) => [x.querySelector('.int-row1 .int-st .int-dot').className, x.querySelector('.int-row1 .int-st .sr').textContent];
-  const line = (x) => [x.querySelector('.int-line .int-cat').textContent, x.querySelector('.int-line .int-health').textContent];
+  const line = (x) => [x.querySelector('.int-line .int-cat') ? x.querySelector('.int-line .int-cat').textContent : '', x.querySelector('.int-line .int-health').textContent];
 
   //then
   assert.deepStrictEqual(row(acme), ['int-ico', 'int-open', 'int-switch'], 'one row: icon, name with its dot, and the switch');
@@ -1662,8 +1730,8 @@ async function theTilesAreCompactWithAStatusDotAShortHealthLineAndTheRestInTheTo
   assert.deepStrictEqual(st(acme), ['int-dot error', 'Needs attention']);
   assert.deepStrictEqual(st(pager), ['int-dot error', 'Needs attention']);
   assert.deepStrictEqual(st(evil), ['int-dot off', 'Off']);
-  assert.deepStrictEqual(line(acme), ['Metrics', '3 instances ' + DOT + ' 1 needs attention'], 'more than one instance reads in short form');
-  assert.deepStrictEqual(line(pager), ['Alerts', 'Token rejected (403)'], 'one instance or none keeps its health text');
+  assert.deepStrictEqual(line(acme), ['', '3 instances ' + DOT + ' 1 needs attention'], 'more than one instance reads in short form');
+  assert.deepStrictEqual(line(pager), ['', 'Token rejected (403)'], 'one instance or none keeps its health text');
   assert.ok(!doc.querySelector('#integrations .int-tile .int-reason') && !doc.querySelector('#integrations .int-tile .int-drop'), 'no reason and no drop line on a tile');
   assert.strictEqual(gold.title, 'Off ' + DOT + ' set up, paused\nGold board needs the Enterprise edition of Skopax', 'the reason is in the tooltip');
   assert.strictEqual(acme.title, 'Token rejected (403)\n2 de texts show in English: a, b', 'the full health and the drops are in the tooltip');
@@ -1675,6 +1743,52 @@ async function theTilesAreCompactWithAStatusDotAShortHealthLineAndTheRestInTheTo
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
   console.log('PASS Admin, Integrations: tiles are compact, with a status dot, a short health line, a warn edge and the reason and drops in the tooltip');
+}
+
+async function aTileThatNeedsAttentionDropsItsCategoryAndAMultiInstanceTileShowsTheFirstServerText() {
+  //given
+  const cat = catalog();
+  cat.plugins[0].instances.push(instance('west'));
+  cat.plugins[0].health = health('error', 'Token rejected (403)', iso(2), [{name: 'main', state: 'ok', text: 'Healthy', at: iso(2)}, {name: 'east', state: 'error', text: 'Token rejected (403)', at: iso(4)}, {name: 'west', state: 'error', text: 'Timed out', at: iso(3)}]);
+  cat.plugins[1].origin = 'package';
+  const t = await boot({catalog: cat});
+  const css = TEMPLATE_CSS();
+
+  //when
+  await open(t);
+  const {doc} = t;
+  const line = (x) => [...x.querySelectorAll('.int-line > span')].map((c) => c.className.split(' ')[0] + ':' + c.textContent);
+
+  //then
+  assert.deepStrictEqual(line(tile(doc, 'acme')), ['int-health:3 instances ' + DOT + ' 2 need attention', 'int-why:Token rejected (403)'], 'no category, and the first failing server text is on the tile');
+  assert.deepStrictEqual(line(tile(doc, 'pager')), ['int-cat:Custom', 'int-health:Token rejected (403)'], 'a custom marker stays, the category goes');
+  assert.deepStrictEqual(line(tile(doc, 'evil')), ['int-cat:Other', 'int-health:' + OFF], 'a tile that is fine keeps its category');
+  assert.ok(!tile(doc, 'pager').querySelector('.int-why'), 'a single instance has no extra text');
+  assert.ok(/\.int-line \.int-cat \+ \.int-health::before/.test(css), 'the dot separator only follows a category');
+  assert.ok(/\.int-line \.int-why::before/.test(css), 'the server text has its own separator');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: a tile that needs attention drops the category and a multi-instance tile shows the first server text');
+}
+
+async function darkBrandIconsGetALightBackplateInDarkModeOnly() {
+  //given
+  const cat = catalog();
+  cat.plugins.push({id: 'kafka', name: 'Kafka', version: '1.0.0', category: 'infrastructure', description: '', edition: 'community', icon: true, state: 'ok', reason: null, enabled: true, fields: FIELDS, checks: [], instances: [instance('main', {primary: true})], health: health('ok', 'Healthy', iso(1))});
+  const t = await boot({catalog: cat});
+  const css = TEMPLATE_CSS();
+
+  //when
+  await open(t);
+
+  //then
+  assert.ok(tile(t.doc, 'kafka').querySelector('.int-ico').classList.contains('int-ico-dark'), 'a dark brand icon is marked');
+  assert.ok(!tile(t.doc, 'acme').querySelector('.int-ico').classList.contains('int-ico-dark'), 'other icons are not');
+  assert.ok(/prefers-color-scheme: dark\) \{[\s\S]*?:root:not\(\[data-theme="light"\]\) \.int-ico-dark \{ background: #[0-9a-f]{6}; \}/i.test(css), 'dark mode gives it a light backplate');
+  assert.ok(/:root\[data-theme="dark"\] \.int-ico-dark \{ background: #[0-9a-f]{6}; \}/i.test(css), 'also when dark is picked by hand');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: dark brand icons get a light backplate in dark mode');
 }
 
 async function thePickerListsRowsWithDescriptionsAndWhatIsAddedAndMovesByKeyboard() {
@@ -1809,6 +1923,7 @@ async function theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton() {
   await saveAndTurnOnWhoseChecksChangeConflictsSaysItStaysOff();
   await aRefusedCheckShowsByWhatItWatchesAsText();
   await theConnectedCountIsOneDefinitionForTheSubNavAndTheSubtitle();
+  await aPluginSetUpOutsideAdminIsNeitherConnectedNorNeedingAttention();
   await escAndFocusStayWithThePanelWhateverHasFocus();
   await instanceControlsSwitchPromoteAndDeleteWithConfirmation();
   await droppedPackTextsShowOneWarningLinePerLanguageOnTheCardAndInThePanel();
@@ -1816,6 +1931,8 @@ async function theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton() {
   await instanceNamesSourcesFieldsAndNotesAreEscapedToo();
   await anUntouchedSelectIsNeverSent();
   await aChoiceWhoseDefaultIsEmptyCanBeSetBackToEmpty();
+  await aRouteEchoChoiceShowsExactlyThreeOptionsAndStartsOnTheDefault();
+  await anotherPluginsChoiceWithADefaultOptionKeepsItsBlankOption();
   await anInstanceFieldPicksAnInstanceOfTheUsedPlugin();
   await aRefusalOnAHiddenFieldStillShowsAMessage();
   await dottedFieldKeysEditAndCarryTheirRefusal();
@@ -1827,6 +1944,8 @@ async function theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton() {
   await theSearchFiltersTheTilesByNameIdCategoryAndDescriptionWithoutCaseOrAccents();
   await aSlashDoesNotStealFocusFromAFieldOrTheOpenDrawer();
   await theTilesAreCompactWithAStatusDotAShortHealthLineAndTheRestInTheTooltip();
+  await aTileThatNeedsAttentionDropsItsCategoryAndAMultiInstanceTileShowsTheFirstServerText();
+  await darkBrandIconsGetALightBackplateInDarkModeOnly();
   await thePickerListsRowsWithDescriptionsAndWhatIsAddedAndMovesByKeyboard();
   await theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

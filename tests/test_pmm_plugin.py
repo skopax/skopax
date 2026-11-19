@@ -240,12 +240,13 @@ def test_pmm_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('pmm').state == 'ok'
     assert json.loads(json.dumps(manifest)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'PMM (Postgres, MongoDB)', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.2', 'community')
+        'PMM (Postgres, MongoDB)', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url'], 'secrets': ['token'], 'agentReads': False} and manifest['uses'] == []
     assert [(f['key'], f['kind'], f['required'], f['ui']) for f in manifest['fields']] == [
         ('url', 'url', True, True), ('token', 'secret', True, False), ('ca', 'pem', False, False), ('ca-pinned', 'bool', False, False), ('metrics-datasource', 'text', False, False),
         ('qan-datasource', 'text', False, False), ('postgres-services', 'regex', False, False), ('mongo-services', 'regex', False, False),
-        ('replica-set', 'text', False, False), ('exclude-users', 'text', False, False)]
+        ('replica-set', 'text', False, False), ('exclude-users', 'text', False, False), ('split-users', 'text', False, False), ('qan-app', 'regex', False, False),
+        ('host-header', 'text', False, False), ('link-base', 'url', False, True)]
     assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('pmm', 900, 360, ['pmm']), ('qan', 900, 360, ['qan']), ('mongo', 900, 360, ['mongo'])]
     assert [(c.id, c.sections, c.tool) for c in pmm.PLUGIN.checks] == [('pmm', ('pmm',), 'pmm_query'), ('qan', ('qan',), 'qan'), ('mongo', ('mongo',), 'pmm_query')]
     assert [(t['name'], t['kind']) for t in manifest['tools']] == [('pmm_query', 'read'), ('qan', 'read')]
@@ -264,7 +265,7 @@ def test_pmm_defaults_are_neutral():
 
     # then
     assert fields == {'url': '', 'token': '', 'ca': '', 'ca-pinned': 'false', 'metrics-datasource': '', 'qan-datasource': '', 'postgres-services': '.*', 'mongo-services': '.*',
-                      'replica-set': '', 'exclude-users': 'pmm'}
+                      'replica-set': '', 'exclude-users': 'pmm', 'split-users': '', 'qan-app': '', 'host-header': '', 'link-base': ''}
     assert pmm.PLUGIN.settings == ()
     assert rules == {
         'postgres': dict(sat_warn=70, sat_crit=85, jump=1.5, jump_slack=200, idletx=20, longtx=600, lag=60, lock=5, lock_x=2, lock_slack=2),

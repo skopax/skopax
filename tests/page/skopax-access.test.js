@@ -130,7 +130,7 @@ const rowOf = (doc, email) => [...doc.querySelectorAll('#access .acc-user')].fil
   assert.deepStrictEqual([...box.querySelectorAll('.acc-user')].map((r) => r.dataset.email), ['alice@example.com', 'bob@example.com', 'carol@example.com']);
   const bob = rowOf(t.doc, 'bob@example.com');
   assert.strictEqual(bob.querySelector('select.acc-role').value, 'viewer');
-  assert.ok(/sso/i.test(bob.querySelector('.acc-src').textContent) && /local/i.test(rowOf(t.doc, 'alice@example.com').querySelector('.acc-src').textContent), 'source badges');
+  assert.ok(/sso/i.test(bob.querySelector('.acc-src').textContent) && /password/i.test(rowOf(t.doc, 'alice@example.com').querySelector('.acc-src').textContent), 'sign-in method badges');
   assert.strictEqual(rowOf(t.doc, 'carol@example.com').querySelector('input.acc-off').checked, true);
   assert.ok(!bob.querySelector('.acc-reset') && !bob.querySelector('.acc-pw-form'), 'an SSO user has no Reset password');
   assert.ok(rowOf(t.doc, 'alice@example.com').querySelector('.acc-reset') && rowOf(t.doc, 'carol@example.com').querySelector('.acc-reset'), 'local users have Reset password');
@@ -217,7 +217,7 @@ const rowOf = (doc, email) => [...doc.querySelectorAll('#access .acc-user')].fil
   assert.ok(/alice@example\.com/.test(toks[0].textContent));
   const createdBy = (id) => t.doc.querySelector('#access .acc-token[data-id="' + id + '"]').children[3].textContent;
   assert.strictEqual(createdBy('c9d8e7f6'), 'ci', 'a token creator shows the token name');
-  assert.strictEqual(createdBy('11223344'), 'Claude', 'the legacy bare token reads Claude, like token_label on the server');
+  assert.strictEqual(createdBy('11223344'), 'Investigator', 'the legacy bare token reads Investigator, like token_label on the server');
   assert.deepStrictEqual(toks.map((r) => [...r.querySelectorAll('.acc-stop')].map((x) => [x.textContent, x.classList.contains('tag'), x.title])), [[], [], [['Refused by the SSO stop', true,
     'Made from a single sign-on session and refused by the SSO stop: it stays refused after SSO is switched back on, so make a new token']], []],
     'only a live token with endedByStop true is tagged as refused by the SSO stop, never a revoked one');
@@ -264,6 +264,7 @@ const rowOf = (doc, email) => [...doc.querySelectorAll('#access .acc-user')].fil
 
   //when
   t.doc.querySelector('#access .acc-token[data-id="a1b2c3d4"] .acc-revoke').click();
+  t.doc.getElementById('cf-yes').click();
   await wait(100);
 
   //then
@@ -298,6 +299,7 @@ const rowOf = (doc, email) => [...doc.querySelectorAll('#access .acc-user')].fil
 
   //when
   r.doc.querySelector('#access .acc-token[data-id="a1b2c3d4"] .acc-revoke').click();
+  r.doc.getElementById('cf-yes').click();
   await wait(100);
 
   //then
@@ -361,13 +363,13 @@ const rowOf = (doc, email) => [...doc.querySelectorAll('#access .acc-user')].fil
   assert.strictEqual(ev("isTokenActor('token:ci')"), true);
   assert.strictEqual(ev("isTokenActor('alice@example.com')"), false);
   assert.strictEqual(ev("isTokenActor('tokenx')"), false);
-  assert.strictEqual(ev("tokenActorLabel('token:deploy-bot', 'Claude')"), 'deploy-bot');
-  assert.strictEqual(ev("tokenActorLabel('token', 'Claude')"), 'Claude');
+  assert.strictEqual(ev("tokenActorLabel('token:deploy-bot', 'Investigator')"), 'deploy-bot');
+  assert.strictEqual(ev("tokenActorLabel('token', 'Investigator')"), 'Investigator');
   assert.strictEqual(ev("tokenActorLabel('token:', 'API')"), 'API');
   assert.strictEqual(ev("draftBy('token:ci')"), 'ci');
-  assert.strictEqual(ev("draftBy('token')"), 'Claude');
+  assert.strictEqual(ev("draftBy('token')"), 'Investigator');
   assert.strictEqual(ev("resWho('token:ci')"), 'ci');
-  assert.strictEqual(ev("resWho('token')"), 'Claude');
+  assert.strictEqual(ev("resWho('token')"), 'Investigator');
   assert.strictEqual(ev("costBy('token:ci')"), 'ci');
   assert.strictEqual(ev("costBy('token')"), 'API calls');
   assert.strictEqual(ev("sourceLabel({requestedBy: 'token:ci'})"), 'API');
@@ -385,6 +387,7 @@ const rowOf = (doc, email) => [...doc.querySelectorAll('#access .acc-user')].fil
   const cellsBefore = [...tokenRow(x.doc, EVIL).children].map((c) => c.textContent);
   const plainBy = tokenRow(x.doc, 'b0b0b0b0').children[3].textContent;
   tokenRow(x.doc, EVIL).querySelector('.acc-revoke').click();
+  x.doc.getElementById('cf-yes').click();
   await wait(100);
 
   //then
@@ -519,7 +522,7 @@ const rowOf = (doc, email) => [...doc.querySelectorAll('#access .acc-user')].fil
   const stateOf = (email) => rowOf(l.doc, email).querySelector('.acc-link-state').textContent;
 
   //then
-  assert.deepStrictEqual([...l.doc.querySelectorAll('#access .acc-table')][0].querySelector('thead').textContent, 'EmailNameRoleSourceDisabledSSO link');
+  assert.deepStrictEqual([...l.doc.querySelectorAll('#access .acc-table')][0].querySelector('thead').textContent, 'PersonRoleSign-inLast sign-inDisabledSSO link');
   assert.deepStrictEqual([linkOf('alice@example.com').getAttribute('role'), linkOf('alice@example.com').getAttribute('aria-checked'), stateOf('alice@example.com')], ['switch', 'false', 'Off']);
   assert.deepStrictEqual([linkOf('dave@example.com').getAttribute('aria-checked'), stateOf('dave@example.com')], ['true', 'Linked ' + short(BOUND_AT)]);
   assert.ok(!rowOf(l.doc, 'bob@example.com').querySelector('.acc-link') && !rowOf(l.doc, 'frank@example.com').querySelector('.acc-link'), 'no link switch on SSO users');
@@ -595,7 +598,7 @@ const rowOf = (doc, email) => [...doc.querySelectorAll('#access .acc-user')].fil
 
   //when
   setValue(mcpRow('mcp.audience').querySelector('.adm-in'), 'api://skopax');
-  mcpRow('mcp.audience').querySelector('.adm-save').click();
+  mcpBox.querySelector('.acc-mcp-save').click();
   await wait(100);
 
   //then

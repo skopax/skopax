@@ -244,9 +244,10 @@ def test_capacity_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('capacity').state == 'ok'
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'capacity', 'Capacity', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.2', 'community')
-    assert manifest['uses'] == ['prometheus'] and manifest['capabilities'] == {'hosts': [], 'secrets': [], 'agentReads': False}
-    assert [(f['key'], f['kind'], f['required']) for f in manifest['fields']] == [('prometheus', 'instance', True), ('jvm', 'bool', False), ('host-disks', 'bool', False), ('volume-selector', 'text', False), ('fs-selector', 'text', False)]
+        'capacity', 'Capacity', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
+    assert manifest['uses'] == ['prometheus', 'pmm'] and manifest['capabilities'] == {'hosts': [], 'secrets': [], 'agentReads': False}
+    assert [(f['key'], f['kind'], f['required']) for f in manifest['fields']] == [('prometheus', 'instance', True), ('jvm', 'bool', False), ('host-disks', 'bool', False), ('disks-pmm', 'instance', False), ('volume-selector', 'text', False),
+                                                                                                    ('fs-selector', 'text', False)]
     assert manifest['fields'][0]['choices'] == ['prometheus']
     assert manifest['checks'] == [{'id': 'capacity', 'label': 'Volumes, autoscalers, JVM heap and host disks', 'period': 900, 'offset': 600, 'ran': ['capacity']}]
     assert capacity.PLUGIN.checks[0].sections == ('capacity',) and capacity.PLUGIN.checks[0].tool is None
@@ -288,7 +289,7 @@ def test_capacity_defaults_are_neutral():
     defaults = {f.key: f.default for f in capacity.PLUGIN.fields}
 
     # then
-    assert defaults == {'prometheus': '', 'jvm': 'true', 'host-disks': 'true', 'volume-selector': '', 'fs-selector': FS_DEFAULT}
+    assert defaults == {'prometheus': '', 'jvm': 'true', 'host-disks': 'true', 'disks-pmm': '', 'volume-selector': '', 'fs-selector': FS_DEFAULT}
     assert 'DiskPressure' in next(f for f in capacity.PLUGIN.fields if f.key == 'host-disks').help
     assert {s.key: s.default for s in capacity.PLUGIN.settings} == {}
 

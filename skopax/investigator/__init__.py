@@ -422,10 +422,12 @@ class Investigator:
             self.store.add_investigation(record)
             self.store.add_activity('run', 'investigator', f"assessing deploy report · {report.get('summary')}" if report else 'chat message · private' + (' · via MCP' if mcp else '') if chat_ask else f"{'slack ' if slack_ask else ''}ask by {action.get('requestedBy')} · {prompt.flat(ask)[:ASK_LINE]}" if ask else f"run started · {mode} · {', '.join(keys)}" + (f" · via MCP by {action.get('requestedBy')}" if mcp else ''), runId=run_id)
             if keys or ask or report:
-                sections = self.sources.plugin_tools.knowledge(() if chat_ask else cards) if self.sources.plugin_tools is not None else ()
+                sections, index = self.sources.plugin_tools.knowledge_parts(() if chat_ask else cards) if self.sources.plugin_tools is not None else ([], [])
+                pack = self.pack()
+                readable = [k for _, k in index] if pack is None or pack.plugin_sections else []
                 toolbox = Toolbox(self.sources, self.store, self.effects, keys, mode, now, self.base_url, run_id=run_id, ask=bool(ask), report_id=report_id or None, read_only=quick,
                                   strict=self.strict_tools, asker=action.get('requestedBy') if ask and not quick else None, chat=chat_ask, language=self.language,
-                                  web=web_from(self.web_domains, self.web_searches, self.web_fetches), settings=self.settings, role=self.role_of(action))
+                                  web=web_from(self.web_domains, self.web_searches, self.web_fetches), settings=self.settings, role=self.role_of(action), knowledge=readable)
                 if quick:
                     config = RunConfig(quick_model, self.slack_effort, self.slack_max_tool_calls, cache_ttl='1h')
                     blocks, images = self._images(action) if action.get('images') else ([], '')
@@ -445,7 +447,7 @@ class Investigator:
                     extra = toolbox.start_bridge().knowledge()
                     runner = Runner(client, self.store, config, tag=tag)
                     first = [{'type': 'text', 'text': brief}] + blocks if quick and blocks else brief
-                    system = prompt.slack_system_prompt(sections, self.pack(), extra) if quick else prompt.system_prompt(sections, self.pack(), extra)
+                    system = prompt.slack_system_prompt(sections, pack, extra, index) if quick else prompt.system_prompt(sections, pack, extra, index)
                     result = runner.run(toolbox, system, first, day, lambda: self.halt(day, lease))
         except BaseException as e:
             crash = e

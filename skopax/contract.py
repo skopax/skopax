@@ -1,4 +1,6 @@
+import json
 import re
+import threading
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -24,9 +26,13 @@ __all__ = [
     'card_key',
     'Peer',
     'TestResult',
+    'Digest',
+    'Cleared',
+    'CLEAR_OUTCOMES',
     'Sweep',
     'Check',
     'CardType',
+    'AutoResolve',
     'RuleSet',
     'Setting',
     'Tool',
@@ -42,6 +48,8 @@ __all__ = [
     'InvalidInstance',
     'SourceOwned',
     'Outbound',
+    'ECHO_FIELD',
+    'ROUTE_ECHO',
     'AgentRead',
     'ReadError',
     'SourceDown',
@@ -52,6 +60,13 @@ __all__ = [
     'SourceData',
     'Hooks',
     'Context',
+    'RunState',
+    'RUN_STATE_KEYS',
+    'RUN_STATE_KEY_MAX',
+    'RUN_STATE_VALUE_MAX',
+    'KNOWLEDGE_INLINE_MAX',
+    'KNOWLEDGE_INLINE_TOTAL',
+    'KNOWLEDGE_OWNER_TOTAL',
     'AiClient',
     'Plugin',
     'PassResult',
@@ -73,6 +88,13 @@ SETTING_KINDS = ('int', 'float', 'bool', 'text', 'choice', 'list')
 TOOL_KINDS = ('read', 'write', 'propose')
 CHANNELS = ('page', 'slack', 'mcp')
 KEY_SEGMENT = '@'
+RUN_STATE_KEYS = 500
+CLEAR_OUTCOMES = ('fixed', 'handled')
+RUN_STATE_KEY_MAX = 200
+RUN_STATE_VALUE_MAX = 64 * 1024
+KNOWLEDGE_INLINE_MAX = 2000
+KNOWLEDGE_INLINE_TOTAL = 6000
+KNOWLEDGE_OWNER_TOTAL = 16000
 
 
 @dataclass(frozen=True)
@@ -99,6 +121,7 @@ class Field:
     hosts_of: Callable[[str, Mapping[str, str]], list[str]] | None = None
     choice_labels: Mapping[str, str] = field(default_factory=dict)
     group: str = ''
+    check: Callable[[str], str | None] | None = None
 
 
 @dataclass(frozen=True)
@@ -130,6 +153,18 @@ class TestResult:
     ms: int
 
 
+@dataclass(frozen=True)
+class Digest:
+    title: str
+    lines: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Cleared:
+    note: str = ''
+    outcome: str = ''
+
+
 @dataclass
 class Sweep:
     result: PassResult
@@ -138,6 +173,8 @@ class Sweep:
     shots: list[dict] = field(default_factory=list)
     posts: list[dict] = field(default_factory=list)
     memos: dict[str, dict] = field(default_factory=dict)
+    digest: Digest | None = None
+    cleared: dict[str, Cleared] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -164,6 +201,14 @@ class CardType:
     sig: str
     label: str
     alias: str = ''
+
+
+@dataclass(frozen=True)
+class AutoResolve:
+    check: str
+    sig: str
+    hours: int
+    setting: str = ''
 
 
 @dataclass(frozen=True)
@@ -209,6 +254,7 @@ class Knowledge:
     title: str
     text: str
     slack: bool = False
+    inline: bool = False
 
 
 @dataclass(frozen=True)
@@ -288,6 +334,12 @@ class Outbound:
     link_field: str | None = None
     keys_field: str | None = None
     sev_field: str | None = None
+
+
+ECHO_FIELD = 'slack-echo'
+ROUTE_ECHO = Field(ECHO_FIELD, 'Also post to Slack', 'choice', choices=('default', 'on', 'off'),
+                   choice_labels={'default': 'Use the default', 'on': 'On', 'off': 'Off'},
+                   help='On posts a card this route takes to Slack too, when Slack has not posted it yet, and says in its Slack thread which channel got it; Off never does; Use the default (or not set) follows the install-wide Slack echo setting.')
 
 
 @dataclass(frozen=True)
@@ -380,6 +432,55 @@ class Hooks:
     entitlement: Callable[[], str] | None = None
 
 
+class RunState:
+    def __init__(self) -> None:
+        self._guard = threading.Lock()
+        self._held: dict[str, object] = {}
+
+    @staticmethod
+    def _key(key: object) -> str:
+        if not isinstance(key, str) or not key or len(key) > RUN_STATE_KEY_MAX:
+            raise ValueError(f'a run state key is a text of 1 to {RUN_STATE_KEY_MAX} characters')
+        return key
+
+    def _keep(self, key: str, value: object) -> None:
+        self._held.pop(key, None)
+        self._held[key] = value
+        while len(self._held) > RUN_STATE_KEYS:
+            del self._held[next(iter(self._held))]
+
+    def get(self, key: str, default: object = None) -> object:
+        with self._guard:
+            return self._held.get(self._key(key), default)
+
+    def put(self, key: str, value: object) -> None:
+        key = self._key(key)
+        try:
+            written = json.dumps(value, allow_nan=False)
+        except (TypeError, ValueError):
+            raise ValueError(f'a run state value is JSON data (dicts with text keys, lists, texts, numbers, true, false, null); {key} is not') from None
+        if len(written) > RUN_STATE_VALUE_MAX:
+            raise ValueError(f'a run state value is at most 64 KiB once written as JSON; {key} is larger')
+        with self._guard:
+            self._keep(key, json.loads(written))
+
+    def count(self, key: str, by: int = 1) -> int:
+        key = self._key(key)
+        if not isinstance(by, int) or isinstance(by, bool):
+            raise ValueError('a run state count goes up by a whole number')
+        with self._guard:
+            had = self._held.get(key, 0)
+            if not isinstance(had, int) or isinstance(had, bool):
+                raise ValueError(f'the run state key {key} holds something other than a count')
+            if by:
+                self._keep(key, had + by)
+            return had + by
+
+    def __len__(self) -> int:
+        with self._guard:
+            return len(self._held)
+
+
 class AiClient(Protocol):
     def complete(self, system: str, messages: list[dict], max_tokens: int, schema: dict | None = None, effort: str = 'medium') -> dict | None: ...
 
@@ -387,6 +488,7 @@ class AiClient(Protocol):
 class Context(Protocol):
     now: float
     instance: InstanceInfo | None
+    run_state: RunState
 
     def http(self) -> Transport: ...
 
@@ -482,3 +584,4 @@ class Plugin:
     redactions: tuple[Redaction, ...] = ()
     card_types: tuple[CardType, ...] = ()
     card_text: Callable[[dict], str | None] | None = None
+    auto_resolve: tuple[AutoResolve, ...] = ()

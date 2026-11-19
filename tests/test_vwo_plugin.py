@@ -69,9 +69,9 @@ def test_vwo_identity_and_manifest():
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert 'skopax.plugins.vwo' in BUILTIN and (loaded.state, loaded.reason) == ('ok', None)
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'vwo', 'VWO', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.2', 'community')
+        'vwo', 'VWO', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
     assert manifest['capabilities'] == {'hosts': ['app.wingify.com'], 'secrets': ['api-token'], 'agentReads': False}
-    assert manifest['uses'] == [] and manifest['maxInstances'] is None and manifest['rules'] == [] and manifest['settings'] == [] and manifest['panels'] == []
+    assert manifest['uses'] == [] and manifest['maxInstances'] is None and manifest['rules'] == [] and [s['key'] for s in manifest['settings']] == ['auto-resolve-hours'] and manifest['panels'] == []
     assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('wingify', 300, 225, ['wingify']), ('wingify-verdict', 3600, 1560, ['wingify-verdict'])]
     checks = {c.id: c for c in plugin.checks}
     assert (checks['wingify'].sections, checks['wingify'].tool, checks['wingify'].once) == (('wingify',), 'wingify', False)
@@ -148,7 +148,7 @@ def test_vwo_defaults_are_neutral():
 
     # then
     assert defaults == {'api-token': '', 'account-id': 'current'}
-    assert {s.key: s.default for s in vwo.PLUGIN.settings} == {}
+    assert {s.key: s.default for s in vwo.PLUGIN.settings} == {'auto-resolve-hours': '24'}
 
 
 def test_vwo_second_instance_is_scoped(store: Store):

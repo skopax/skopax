@@ -29,6 +29,13 @@ function paint(data) {
 
 paint(JSON.parse(document.getElementById('skopax-data').textContent || '{}'));
 setInterval(liveness, 60000);
+document.querySelectorAll('a.s-mark').forEach(function (a) {
+  a.addEventListener('click', function (e) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
+    e.preventDefault();
+    pickTab('anoms');
+  });
+});
 var hash = (location.hash || '').replace('#', '');
 showTab(TABS.some(function (t) { return t.id === hash; }) ? hash : defaultTab());
 setFilter('all');

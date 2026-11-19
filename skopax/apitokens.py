@@ -22,7 +22,8 @@ RESERVED = ('bootstrap',)
 USED_EVERY_SECONDS = 60
 ID_TRIES = 5
 TOKEN = re.compile(r'^skopax_([0-9a-f]{8})_([A-Za-z0-9_-]{16,64})$')
-HIDDEN = ('hash', 'usedAt')
+HIDDEN = ('hash', 'usedAt', 'expiresTs')
+DAY_S = 86400
 
 
 class UnknownToken(LookupError):
@@ -75,7 +76,7 @@ class ApiTokens:
     def stamp(self) -> str:
         return clock.stamp(self.clock())
 
-    def create(self, name: str, role: str, by: str, via: str | None = None) -> tuple[str, dict]:
+    def create(self, name: str, role: str, by: str, via: str | None = None, expires_days: int | None = None) -> tuple[str, dict]:
         label = clean_token_name(name)
         kind = clean_role(role)
         if self.col.find_one({'name': label}):
@@ -83,7 +84,7 @@ class ApiTokens:
         for attempt in range(ID_TRIES):
             token_id = secrets.token_hex(4)
             token = f'{PREFIX}{token_id}_{secrets.token_urlsafe(24)}'
-            doc = {'_id': token_id, 'hash': digest(token), 'name': label, 'role': kind, 'createdBy': str(by), 'createdAt': self.stamp(), 'lastUsed': None, 'usedAt': None, 'revoked': False} | ({'via': via} if via else {})
+            doc = {'_id': token_id, 'hash': digest(token), 'name': label, 'role': kind, 'createdBy': str(by), 'createdAt': self.stamp(), 'lastUsed': None, 'usedAt': None, 'revoked': False} | ({'via': via} if via else {}) | self.expiry(expires_days)
             try:
                 self.col.insert_one(doc)
             except DuplicateKeyError as e:
@@ -99,9 +100,11 @@ class ApiTokens:
         doc = self.col.find_one({'_id': found.group(1)}) if found else None
         expected = (doc or {}).get('hash') or DUMMY
         same = hmac.compare_digest(digest(token or '').encode(), expected.encode())
-        if not found or not doc or not same or doc.get('revoked') or refused(doc):
-            return None
         now = self.clock()
+        ends = doc.get('expiresTs') if doc else None
+        expired = isinstance(ends, (int, float)) and not isinstance(ends, bool) and now >= ends
+        if not found or not doc or not same or doc.get('revoked') or expired or refused(doc):
+            return None
         used = doc.get('usedAt')
         if used is None or used <= now - USED_EVERY_SECONDS:
             try:
@@ -109,6 +112,12 @@ class ApiTokens:
             except PyMongoError as e:
                 log.warning('API token %s: last use not recorded: %s', doc['_id'], error_kind(e))
         return public(doc)
+
+    def expiry(self, days: int | None) -> dict:
+        if not days:
+            return {}
+        ends = self.clock() + days * DAY_S
+        return {'expiresAt': clock.stamp(ends), 'expiresTs': ends}
 
     def list(self) -> list[dict]:
         return [public(d) for d in self.col.find().sort('createdAt', ASCENDING)]
