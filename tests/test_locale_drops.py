@@ -40,6 +40,7 @@ def left_out(plugin: str, part: str, reason: str) -> str:
     return msg('locales.part_dropped', lang='de', plugin=plugin, part=part, reason=reason)
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_a_bad_chat_text_is_left_out_while_the_plugin_check_runs_and_its_other_texts_apply(store, caplog):
     # given
     ran = []
@@ -222,6 +223,7 @@ def test_a_control_character_in_a_pack_key_or_language_cannot_forge_a_log_line(c
     assert [('\n' in line or '\r' in line, '\\n' in line) for line in lines] == [(False, True)] * 3, lines
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_a_bad_text_in_one_plugin_leaves_another_plugin_untouched(store, caplog):
     # given
     alpha = minimal('alpha', 'Alpha', locales=(Locale('de', {'Resolved': 'Erledigt'}, {'slack.cancel': 'Abbrechen'}, chat={'working': 'Arbeite...'}),))

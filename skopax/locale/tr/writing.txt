@@ -1,0 +1,1 @@
+Kartların ve raporların metinlerini Türkçe, sade ve kısa yaz. Servis adlarını, key'leri, kodu, log satırlarını, metrik adlarını, sorguları ve sayıları olduğu gibi bırak; bunları çevirme. Tarihlerde Türkçe ay adlarını kullan (Oca, Şub, Mar, Nis, May, Haz, Tem, Ağu, Eyl, Eki, Kas, Ara).

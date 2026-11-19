@@ -117,7 +117,7 @@ RELEASE_CHARS = 200
 RELEASE_ITEMS = 20
 RELEASE_DEPTH = 4
 ASSET_TYPES = {'.js': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8'}
-PAGE_PACK = '(function (all, lang, pack) { var held = all[lang] = all[lang] || {}; Object.keys(pack).forEach(function (k) { var v = pack[k], was = held[k]; held[k] = k === "@rules" || k === "@tails" ? (Array.isArray(was) ? was : []).concat(v) : k === "@months" || k === "@days" || k === "@th" ? Object.assign({}, was, v) : v; }); })(window.SKOPAX_I18N = window.SKOPAX_I18N || {}, %s, %s);'
+PAGE_PACK = '(function (all, lang, pack) { var held = all[lang] = all[lang] || {}; Object.keys(pack).forEach(function (k) { var v = pack[k], was = held[k]; held[k] = k === "@rules" || k === "@tails" ? (function (base) { var n = base.core || 0, out = base.slice(0, base.length - n).concat(v, base.slice(base.length - n)); out.core = n; return out; })(Array.isArray(was) ? was : []) : k === "@months" || k === "@days" || k === "@th" ? Object.assign({}, was, v) : v; }); })(window.SKOPAX_I18N = window.SKOPAX_I18N || {}, %s, %s);'
 PROTECTED_HEADERS = ('accept', 'content-type', 'host', 'content-length', 'transfer-encoding', 'connection')
 HEADER_NAME = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 HEADER_VALUE = re.compile(r'[^\x00-\x08\x0a-\x1f\x7f]*')

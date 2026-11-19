@@ -1025,7 +1025,7 @@ async function initActions() {
       var edit = btn('Edit', 'sec small op-btn');
       edit.dataset.tip = edit.title = 'Open the draft’s edit form on its ' + (row.kind === 'report' ? 'report' : 'card');
       edit.addEventListener('click', function () { sqJump(row, true); });
-      var go = btn('Open', 'sec small free');
+      var go = btn('View', 'sec small free');
       go.title = row.kind === 'report' ? 'Open this deploy report' : 'Open this anomaly card';
       go.addEventListener('click', function () { sqJump(row, false); });
       box.append(drop, edit, go);

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from skopax import locales, messages
 from skopax.autosend import Fallback
 from skopax.contract import InstanceInfo, Peer, Planted, ReadError
 from skopax.engine import iso
@@ -1390,3 +1391,25 @@ def test_the_same_visual_sentence_twice_is_one_finding_on_the_card():
     [card] = sweep.result.found
     assert [(f['wrong'], f['where']) for f in card['findings']] == [('The banner text overlaps the price', 'Price table, phone'), ('The footer logo is blurry', 'Price table, phone'),
                                                                      ('The footer logo is blurry', 'Footer, phone')]
+
+
+@pytest.mark.parametrize('lang', ['en', 'tr', 'de', 'es', 'fr'])
+def test_the_digest_title_counts_one_and_many_pages_with_one_key_each(lang: str):
+    # given
+    packs = [(locale.lang, locale.messages) for locale in locales.packs()]
+    messages.set_catalogs(packs)
+    pack = dict(packs).get(lang, messages.MESSAGES)
+    typo = lambda n: ps.typo_card(f'{SITE}/p{n}', [{'wrong': 'Chiars', 'fix': 'Chairs', 'where': ''}]) | {'status': 'open'}
+    note = ps.layout_card(CHAIRS, [{'kind': 'swipe', 'wrong': 'On the phone view a box ... reachable by swiping', 'where': ''}]) | {'status': 'open'}
+    problem = lambda url: ps.layout_card(url, [{'kind': 'cut', 'wrong': 'cut', 'where': ''}]) | {'status': 'open'}
+
+    # when
+    with messages.speaking(lang):
+        one = ps.digest_post([typo(1), note, problem(TABLES)], NOW)['title']
+        many = ps.digest_post([typo(1), typo(2), problem(TABLES), problem(CHAIRS)], NOW)['title']
+
+    # then
+    assert one.endswith(', '.join(pack[f'pagescan.digest.{name}_one'].format(count=1) for name in ('typos', 'layouts', 'notes')))
+    assert many.endswith(', '.join(pack[f'pagescan.digest.{name}_many'].format(count=2) for name in ('typos', 'layouts')))
+    if lang == 'en':
+        assert one.endswith(': 1 page with typos, 1 page with layout problems, 1 page with a note') and many.endswith(': 2 pages with typos, 2 pages with layout problems')

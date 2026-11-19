@@ -35,6 +35,7 @@ from skopax import actions as page_actions
 from skopax import __version__, backfill, brand, causes, clock as clocks, costs, drafts, history, messages, redact as redaction, tags, toolusage
 from skopax.jiralinks import JiraLinks
 from skopax.kube import Kube
+from skopax import locales as core_locales
 from skopax import mcpserver
 from skopax import mutemarks
 from skopax.mcpauth import McpAuth
@@ -213,6 +214,8 @@ def load_assets() -> dict[str, tuple[bytes, str]]:
     for f in sorted((WEB / 'static').glob('*.js')):
         body = f.read_bytes()
         assets[f.name] = (body, hashlib.sha256(body).hexdigest()[:12])
+    for name, body in core_locales.page_files().items():
+        assets[name] = (body, hashlib.sha256(body).hexdigest()[:12])
     return assets
 
 
@@ -265,6 +268,10 @@ def fill_brand(page: str) -> str:
     return json_in_html(brand.page_info()).join(fill_slots(part) for part in page.split(BRAND_PLACEHOLDER))
 
 
+def core_packs() -> list[str]:
+    return [f'/static/{name}?v={ASSETS[name][1]}' for name in core_locales.page_files() if name in ASSETS]
+
+
 def plugin_script_tags(paths: list[str]) -> str:
     return ''.join(f'<script src="{html.escape(path, quote=True)}"></script>' for path in paths)
 
@@ -272,13 +279,13 @@ def plugin_script_tags(paths: list[str]) -> str:
 def render_page(state: dict, plugin_scripts: list[str] = ()) -> str:
     blob = json.dumps(state, ensure_ascii=False).replace('<', '\\u003c')
     page = SCRIPT_SRC.sub(lambda m: f'<script src="/static/{m[1]}?v={ASSETS[m[1]][1]}"></script>', TEMPLATE.read_text(encoding='utf-8'))
-    page = page.replace(PLUGIN_SLOT, plugin_script_tags(list(plugin_scripts)))
+    page = page.replace(PLUGIN_SLOT, plugin_script_tags(core_packs() + list(plugin_scripts)))
     return blob.join(fill_brand(part) for part in page.split(PLACEHOLDER))
 
 
 def render_card_page(plugin_scripts: list[str] = ()) -> str:
     page = SCRIPT_SRC.sub(lambda m: f'<script src="/static/{m[1]}?v={ASSETS[m[1]][1]}"></script>', CARD_PAGE.read_text(encoding='utf-8'))
-    return fill_brand(page.replace(PLUGIN_SLOT, plugin_script_tags(list(plugin_scripts))))
+    return fill_brand(page.replace(PLUGIN_SLOT, plugin_script_tags(core_packs() + list(plugin_scripts))))
 
 
 MERGED_FIELDS = ('num', 'key', 'svc', 'label', 'sub', 'sev', 'status', 'url', 'what', 'business')
@@ -1148,10 +1155,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     custom_checks = CustomChecks(store, runtime, server_apply)
 
     def refresh_languages() -> None:
-        locales = [locale for _, locale in runtime.locales()]
+        core = list(core_locales.packs())
+        added = [locale for _, locale in runtime.locales()]
+        locales = core + added
+        trees = core_locales.chainlit_trees(core, added)
         messages.set_catalogs([(locale.lang, locale.messages) for locale in locales])
-        set_chat_texts([(locale.lang, locale.chat) for locale in locales], [(locale.lang, locale.chainlit) for locale in locales])
-        chatui.set_translations([(locale.lang, locale.chainlit) for locale in locales])
+        set_chat_texts([(locale.lang, locale.chat) for locale in locales], trees)
+        chatui.set_translations(trees)
         writing[0] = {locale.lang: locale.writing for locale in locales if locale.writing}
         outbound_language()
 

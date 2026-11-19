@@ -1020,9 +1020,7 @@ def digest_post(cards: list[dict], now: float) -> dict:
     typos = [a for a in cards if a['key'].startswith(TYPOS)]
     notes = [a for a in cards if not a['key'].startswith(TYPOS) and note_only(a)]
     layouts = [a for a in cards if not a['key'].startswith(TYPOS) and not note_only(a)]
-    counts = ([msg('pagescan.digest.typos', count=len(typos), plural='' if len(typos) == 1 else 's')] if typos else [])
-    counts += ([msg('pagescan.digest.layouts', count=len(layouts), plural='' if len(layouts) == 1 else 's')] if layouts else [])
-    counts += ([msg('pagescan.digest.notes', count=len(notes), plural='' if len(notes) == 1 else 's', article='a ' if len(notes) == 1 else '')] if notes else [])
+    counts = [msg(f"pagescan.digest.{name}_{'one' if len(found) == 1 else 'many'}", count=len(found)) for name, found in (('typos', typos), ('layouts', layouts), ('notes', notes)) if found]
     title = msg('pagescan.digest.title', date=clock.date(now, False), counts=', '.join(counts))
     lines = [{'key': a['key'], 'text': msg('pagescan.digest.typo' if a['key'].startswith(TYPOS) else 'pagescan.digest.layout', page=a.get('svc') or short(a['url']),
                                            finding=finding_line(a))} for a in cards[:DIGEST_LINES]]
