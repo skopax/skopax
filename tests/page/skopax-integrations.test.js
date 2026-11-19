@@ -1501,6 +1501,158 @@ function customCatalog() {
   return c;
 }
 
+function knowCatalog(over) {
+  over = over || {};
+  const c = customCatalog();
+  const docsField = {key: 'docs', label: 'Docs repository', kind: 'text', required: false, default: '', help: '', choices: [], low: null, high: null, showIf: null, ui: false};
+  c.plugins.push(
+    {id: 'sharepoint', name: 'SharePoint', version: '1.0.0', category: 'other', description: 'Reads a library.', edition: 'community', origin: 'builtin', icon: true, state: 'ok', reason: null, enabled: true, fields: FIELDS, checks: [],
+      companyKnowledge: 'always', instances: over.sharepoint === false ? [] : [instance('docs')], health: health('ok', 'Healthy', iso(2))},
+    {id: 'github', name: 'GitHub', version: '1.0.0', category: 'tickets', description: 'Reads repos.', edition: 'community', origin: 'builtin', icon: true, state: 'ok', reason: null, enabled: true, fields: FIELDS.concat([docsField]), checks: [],
+      companyKnowledge: 'docs', instances: [instance('main', {values: {url: 'https://github.com', docs: over.docs === undefined ? 'runbooks' : over.docs}})], health: health('ok', 'Healthy', iso(2))},
+    {id: 'mcp-tools', name: 'MCP servers', version: '1.0.0', category: 'other', description: 'Outside tools.', edition: 'community', origin: 'builtin', icon: true, state: 'ok', reason: null, enabled: true, fields: FIELDS, checks: [],
+      companyKnowledge: '', instances: [instance('drive', {values: {url: 'https://mcp.example.com', knowledge: over.mcp === undefined ? 'true' : over.mcp}})], health: health('ok', 'Healthy', iso(2))});
+  return c;
+}
+
+async function companyKnowledgeLeadsAsItsOwnGroupAndEachTileSitsInOneGroup() {
+  //given
+  const t = await boot({catalog: knowCatalog()});
+  await open(t);
+  const {doc} = t;
+  const groups = () => [...doc.querySelectorAll('#integrations .int-group')];
+
+  //when
+  const read = groups().map((g) => [g.dataset.group, g.querySelector('.int-group-h').textContent, [...g.querySelectorAll('.int-tile')].map((x) => x.dataset.id)]);
+  const know = groups()[0];
+  const sub = know.querySelector('.int-group-sub');
+  const everyTile = groups().reduce((all, g) => all.concat([...g.querySelectorAll('.int-tile')].map((x) => x.dataset.id)), []);
+  const accents = groups().map((g) => g.classList.contains('int-group-know'));
+  const named = groups().map((g) => doc.getElementById(g.getAttribute('aria-labelledby')) === g.querySelector('.int-group-h'));
+
+  //then
+  assert.deepStrictEqual(read, [['knowledge', 'Company knowledge 3', ['sharepoint', 'github', 'mcp-tools']], ['custom', 'Custom plug-ins 3', ['pager', 'cracked', 'evil']], ['builtin', 'Built-in plug-ins 2', ['acme', 'gold']]]);
+  assert.strictEqual(sub.textContent, 'Runbooks, postmortems and design docs the investigator searches and cites');
+  assert.ok(sub.classList.contains('muted') && !know.querySelector('.int-group-h').contains(sub), 'a muted line under the heading');
+  assert.deepStrictEqual(accents, [true, false, false], 'only the Company knowledge group carries the accent');
+  assert.deepStrictEqual(named, [true, true, true]);
+  assert.strictEqual(new Set(everyTile).size, everyTile.length, 'a tile sits in exactly one group');
+  assert.strictEqual(tiles(doc).length, everyTile.length);
+  const css = TEMPLATE_CSS();
+  assert.ok(/\.int-group-know \{[^}]*border-left: 3px solid var\(--brand\)/.test(css) && /\.int-group-know \{[^}]*color-mix\(in srgb, var\(--brand\)/.test(css), 'the accent uses the brand variable, which both themes share');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: Company knowledge is the first group with its muted line and quiet accent, and each tile sits in exactly one group');
+}
+
+async function aTileIsKnowledgeOnlyWhenItsSourceIsSetAndWithoutKnowledgeOrCustomThereAreNoGroups() {
+  //given
+  const unset = await boot({catalog: knowCatalog({docs: '', mcp: 'false'})});
+  await open(unset);
+  const blank = await boot({catalog: knowCatalog({docs: '   ', mcp: 'false', sharepoint: false})});
+  await open(blank);
+  const flat = await boot({catalog: (() => { const c = knowCatalog({docs: '', mcp: 'false', sharepoint: false}); c.plugins = c.plugins.filter((x) => !['pager', 'cracked', 'evil', 'prometheus'].includes(x.id)); c.plugins.forEach((x) => { x.origin = 'builtin'; }); return c; })()});
+  await open(flat);
+  const read = (t) => [...t.doc.querySelectorAll('#integrations .int-group')].map((g) => [g.dataset.group, [...g.querySelectorAll('.int-tile')].map((x) => x.dataset.id)]);
+  const chips = (t) => [...t.doc.querySelectorAll('#integrations .int-chip')].map((c) => c.textContent);
+
+  //then
+  assert.deepStrictEqual(read(unset), [['knowledge', ['sharepoint']], ['custom', ['pager', 'cracked', 'evil']], ['builtin', ['acme', 'gold', 'github', 'mcp-tools']]], 'with SharePoint present only it is knowledge');
+  assert.ok(!chips(blank).includes('Knowledge'), 'no knowledge tile: no Knowledge chip');
+  assert.deepStrictEqual(read(blank), [['custom', ['pager', 'cracked', 'evil']], ['builtin', ['acme', 'gold', 'github', 'mcp-tools']]], 'GitHub with a blank Docs field and mcp-tools with the knowledge switch off are not knowledge');
+  assert.deepStrictEqual([read(flat), flat.doc.querySelectorAll('#integrations .int-grid').length, chips(flat).includes('Knowledge')], [[], 1, false], 'no knowledge and no custom tile: one plain grid');
+  [unset, blank, flat].forEach((t) => { assert.deepStrictEqual(t.errors, []); t.w.close(); });
+  console.log('PASS Admin, Integrations: GitHub counts only with its Docs set, mcp-tools only with a knowledge instance, and with no knowledge or custom tile there are no groups');
+}
+
+async function theKnowledgeChipSitsAfterAllFiltersWithSearchAndHidesEmptyGroups() {
+  //given
+  const t = await boot({catalog: knowCatalog()});
+  await open(t);
+  const {doc, w} = t;
+  const chip = (label) => [...doc.querySelectorAll('#integrations .int-chip')].filter((c) => c.textContent === label)[0];
+  const groupsShown = () => [...doc.querySelectorAll('#integrations .int-group')].filter((g) => !g.hidden).map((g) => g.dataset.group);
+  const find = doc.getElementById('int-find');
+
+  //when
+  const labels = [...doc.querySelectorAll('#integrations .int-chip')].map((c) => c.textContent);
+  chip('Knowledge').click();
+  const only = [shown(doc), groupsShown(), chip('Knowledge').getAttribute('aria-pressed'), chip('All').getAttribute('aria-pressed')];
+  find.value = 'git';
+  find.dispatchEvent(new w.Event('input'));
+  const searched = [shown(doc), groupsShown()];
+  find.value = 'acme';
+  find.dispatchEvent(new w.Event('input'));
+  const missed = [shown(doc), groupsShown()];
+  find.value = '';
+  find.dispatchEvent(new w.Event('input'));
+  chip('Custom').click();
+  const custom = [shown(doc), groupsShown(), chip('Knowledge').getAttribute('aria-pressed')];
+  chip('All').click();
+  const all = groupsShown();
+
+  //then
+  assert.deepStrictEqual(labels.slice(0, 3), ['All', 'Knowledge', 'Metrics']);
+  assert.deepStrictEqual(only, [['sharepoint', 'github', 'mcp-tools'], ['knowledge'], 'true', 'false']);
+  assert.deepStrictEqual(searched, [['github'], ['knowledge']], 'the chip works with the search');
+  assert.deepStrictEqual(missed, [[], []], 'a group with nothing shown hides');
+  assert.deepStrictEqual(custom, [['pager', 'cracked', 'evil'], ['custom'], 'false'], 'the Custom chip replaces the Knowledge chip and hides the knowledge group');
+  assert.deepStrictEqual(all, ['knowledge', 'custom', 'builtin']);
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: the Knowledge chip follows All, filters to knowledge tiles with the search, and empty groups hide');
+}
+
+async function theCatalogLeadsWithCompanyKnowledgeAndListsEachPluginOnce() {
+  //given
+  const t = await boot({catalog: knowCatalog()});
+  await open(t);
+  const {doc, w} = t;
+  const groups = () => [...doc.querySelectorAll('#int-pop .int-cat-grp')].filter((g) => !g.hidden).map((g) => [g.querySelector('.int-cat-h').textContent, [...g.querySelectorAll('.int-pick')].filter((b) => !b.hidden).map((b) => b.dataset.id)]);
+
+  //when
+  addBtn(doc).click();
+  await wait(60);
+  const start = groups();
+  const note = pick(doc, 'github').querySelector('.int-pick-k').textContent;
+  const quiet = !pick(doc, 'sharepoint').querySelector('.int-pick-k');
+  const every = picks(doc).map((b) => b.dataset.id);
+  const search = doc.querySelector('#int-pop .int-search');
+  search.value = 'sharepoint';
+  search.dispatchEvent(new w.Event('input', {bubbles: true}));
+  const found = groups();
+
+  //then
+  assert.deepStrictEqual(start[0], ['Company knowledge', ['sharepoint', 'github']], 'the first group lists the native knowledge plug-ins');
+  assert.ok(start.slice(1).every((g) => !g[1].includes('sharepoint') && !g[1].includes('github')), 'they are in no other group');
+  assert.strictEqual(note, 'with its Docs field');
+  assert.ok(quiet, 'an always-on source carries no note');
+  assert.strictEqual(new Set(every).size, every.length, 'no entry appears twice');
+  assert.deepStrictEqual(found, [['Company knowledge', ['sharepoint']]], 'the catalog search still finds it');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: the add-integration catalog leads with Company knowledge, notes the GitHub Docs field and lists nothing twice');
+}
+
+async function aCustomKnowledgePluginSitsOnlyInCompanyKnowledgeAndABrokenOneStaysOut() {
+  //given
+  const c = customCatalog();
+  const by = (id) => c.plugins.filter((x) => x.id === id)[0];
+  by('pager').companyKnowledge = 'always';
+  by('cracked').companyKnowledge = 'always';
+  const t = await boot({catalog: c});
+  await open(t);
+
+  //when
+  const read = [...t.doc.querySelectorAll('#integrations .int-group')].map((g) => [g.dataset.group, [...g.querySelectorAll('.int-tile')].map((x) => x.dataset.id)]);
+
+  //then
+  assert.deepStrictEqual(read, [['knowledge', ['pager']], ['custom', ['cracked', 'evil']], ['builtin', ['acme', 'gold']]], 'a custom knowledge plug-in is only in Company knowledge, and a broken one is not knowledge');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: a custom knowledge plug-in sits only in Company knowledge and a broken one stays out');
+}
+
 async function aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin() {
   //given
   const t = await boot({catalog: customCatalog()});
@@ -2050,4 +2202,9 @@ async function thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne() 
   await thePickerListsRowsWithDescriptionsAndWhatIsAddedAndMovesByKeyboard();
   await theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton();
   await thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne();
+  await companyKnowledgeLeadsAsItsOwnGroupAndEachTileSitsInOneGroup();
+  await aTileIsKnowledgeOnlyWhenItsSourceIsSetAndWithoutKnowledgeOrCustomThereAreNoGroups();
+  await theKnowledgeChipSitsAfterAllFiltersWithSearchAndHidesEmptyGroups();
+  await theCatalogLeadsWithCompanyKnowledgeAndListsEachPluginOnce();
+  await aCustomKnowledgePluginSitsOnlyInCompanyKnowledgeAndABrokenOneStaysOut();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

@@ -186,6 +186,16 @@ The admin listing serves both with each field, as `group` and `choiceLabels`. A 
 
 A plug-in whose setup breaks these rules does not load, with a reason that says so, as for any other rule. The admin listing serves it as `setup` (`steps`, `docs`, `docsLabel`), or null.
 
+### Company knowledge
+
+`company_knowledge` marks a plug-in as a source of company knowledge, such as runbooks, postmortems and design docs. It is a text:
+
+- `''` (the default) is not a knowledge source.
+- `'always'` is always one. The plug-in decides when it has anything to offer: Confluence, for one, offers its tool only once its Spaces field is set.
+- The key of one of the plug-in's own fields makes it a knowledge source for each instance where that field is set, such as `company_knowledge='docs'` for a plug-in with a `docs` field.
+
+Any other value breaks the plug-in, with a reason that says so. Admin > Integrations shows a tile of a knowledge source in the Company knowledge group, with a Knowledge chip, and lists the plug-in first in "+ Add integration". The admin listing serves it as `companyKnowledge`.
+
 ### Peers, clients and state
 
 - **Peers.** A plug-in that reads through another plug-in's connection, for example a check that queries a Prometheus, names it in `uses` and adds a field of kind `instance` whose one choice is that plug-in: `Field('source', 'Prometheus', 'instance', choices=('prometheus',))`. Admin shows the field as a list of that plug-in's instances, and saving refuses a name that is not one of them. At run time `ctx.peer('source')` gives that instance (`info`) and a transport to it (`http()`), and `ctx.peers('prometheus')` lists every runnable instance of a used plug-in, primary first. If the peer is switched off, deleted or parked, only the reading instance's pass fails, with a text that names the peer. A used plug-in that is missing or broken never stops the reader from loading. A peer also carries `off_checks`, the checks an admin switched off on that instance. A plug-in that skips work because a peer covers it skips only while the peer's own check is on: Grafana skips a datasource of a Prometheus instance, and Kafka leaves out that instance's namespaces, only while its `prom` check is on (Kafka also needs its `kube` profile). When the check is switched off they raise the cards themselves, and when it is switched on again their copies close at their next pass.
