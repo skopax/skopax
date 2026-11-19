@@ -87,4 +87,5 @@ PLUGIN = Plugin(
         'In Graph Explorer read the site id with GET https://graph.microsoft.com/v1.0/sites/contoso.sharepoint.com:/sites/ops, then send POST https://graph.microsoft.com/v1.0/sites/{site-id}/permissions with roles ["read"] and grantedToIdentities holding the application id (the Client ID).',
         'Fill in Site URL and Folder (and Library when it is not the default one), then choose Test connection.',
     ), docs=LEARN, docs_label='Microsoft Learn: selected permissions'),
+    company_knowledge='always',
 )

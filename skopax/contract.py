@@ -594,3 +594,4 @@ class Plugin:
     card_text: Callable[[dict], str | None] | None = None
     auto_resolve: tuple[AutoResolve, ...] = ()
     setup: Setup | None = None
+    company_knowledge: str = ''
