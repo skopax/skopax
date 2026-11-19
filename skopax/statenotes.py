@@ -72,7 +72,7 @@ def known_text(who: str) -> str:
 
 
 def muted_text(who: str, hours: float) -> str:
-    return msg('notes.state.muted', hours=hours, who=esc(who))
+    return msg('notes.state.muted', hours=f'{hours:g}', who=esc(who))
 
 
 def auto_text(hours: int, since: str | None = None) -> str:

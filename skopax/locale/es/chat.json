@@ -1,0 +1,62 @@
+{
+ "room": "Esperando una sala libre…",
+ "halted": "En espera: el investigador está {why}.",
+ "halted_stopped": "detenido",
+ "halted_capped": "en su límite",
+ "working": "Trabajando…",
+ "call": "Trabajando · {n} llamada a herramienta{last}…",
+ "calls": "Trabajando · {n} llamadas a herramientas{last}…",
+ "last": ", la última {tool}",
+ "still": "Sigue trabajando; vuelve a abrir este chat en un momento.",
+ "answered": "Respondida",
+ "none": "Sin respuesta",
+ "role_tip": "Requiere el rol operator",
+ "queued": "Investigación en cola; sus hallazgos estarán en la tarjeta.",
+ "done": "Hecho: {what}.",
+ "starters": [
+  [
+   "¿Qué requiere atención ahora?",
+   "¿Qué tarjetas abiertas requieren atención ahora mismo, y por qué?"
+  ],
+  [
+   "¿Algo inusual en la última hora?",
+   "¿Hay algo inusual en prod en la última hora?"
+  ],
+  [
+   "¿Qué encontró la última investigación?",
+   "¿Qué encontró la investigación más reciente, y cuál es el siguiente paso?"
+  ]
+ ],
+ "actions": {
+  "investigate": "Investigar",
+  "resolve": "Resolver",
+  "take": "Tomar",
+  "known": "Marcar como ruido conocido",
+  "mute": "Silenciar"
+ },
+ "apply": "Aplicar",
+ "kinds": {
+  "fixed": "Corregida",
+  "duplicate": "Duplicada de {ref}"
+ },
+ "hours": "{n} h",
+ "continue": "Esta es una instantánea de un chat compartido.",
+ "continue_link": "Continúalo en tu propio chat privado ↗",
+ "private_share": "Este chat empezó en un mensaje directo de Slack, así que sigue siendo privado y no se puede compartir.",
+ "untitled": "Chat",
+ "investigator_off": "El investigador de IA está desactivado en Admin › Funciones.",
+ "chat_off": "El chat está desactivado en Admin › Funciones.",
+ "feature_off": "{feature} está desactivado en Admin › Funciones.",
+ "login": "Para chatear se necesita un inicio de sesión activo en {product} con el rol operator. Vuelve a iniciar sesión o pide el rol a un admin.",
+ "not_ready": "El investigador de IA aún no está configurado, así que este mensaje no recibiría respuesta. {needs}",
+ "refused_cap": "El límite es de {cap} mensajes de chat al día; se reinicia a medianoche.",
+ "refused_off": "El chat está desactivado.",
+ "refused_busy": "Espera la respuesta a tu último mensaje.",
+ "refused_missing": "No tienes ningún chat así.",
+ "refused_long": "Un mensaje tiene como máximo {limit} caracteres.",
+ "refused_empty": "Escribe primero un mensaje.",
+ "refused_role": "Esto requiere el rol operator.",
+ "refused_bad": "Esa propuesta no se puede aplicar.",
+ "refused_failed": "No se aplicó: {reason}.",
+ "refused": "No se pudo hacer."
+}

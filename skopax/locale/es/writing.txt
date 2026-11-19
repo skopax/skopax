@@ -1,0 +1,1 @@
+Escribe los textos de las tarjetas y los informes en español, de forma clara y breve. Deja tal cual los nombres de servicios, las claves, el código, las líneas de log, los nombres de métricas, las queries y los números; no los traduzcas. En las fechas usa los nombres de mes en español (ene, feb, mar, abr, may, jun, jul, ago, sep, oct, nov, dic).

@@ -494,7 +494,7 @@ async function slackTabQueuesEveryUnsentDraft() {
   //then
   const g = rows(guest.doc)[0];
   assert.deepStrictEqual([...g.querySelectorAll('.sq-acts button')].map((b) => [b.textContent.trim(), b.getAttribute('aria-disabled')]),
-    [['Send now', 'true'], ['Hold', 'true'], ['Discard', 'true'], ['Edit', 'true'], ['Open', null]], 'guests see the acting buttons greyed out, Open still works');
+    [['Send now', 'true'], ['Hold', 'true'], ['Discard', 'true'], ['Edit', 'true'], ['View', null]], 'guests see the acting buttons greyed out, View still works');
   assert.strictEqual(sqBtn(g, 'Send now').title, 'Log in to use this', 'with the reason');
   guest.dom.window.close();
   return 'the Slack tab (#t=slack) queues every unsent draft on cards and deploy reports: armed first and soonest first, then newest first, each with its first line, full text as tooltip and what happens next — Auto-send HH:MM, Held by, Manual (info / edited) and the amber Stopped: card in progress; the tab is blue and hot with N queued · next auto-send, N waiting otherwise; guests see the buttons greyed out';
@@ -628,10 +628,10 @@ async function slackTabJumpsToTheDraftAndListsWhatWentOut() {
   //when
   w.showTab('slack');
   const repRow = rows(doc).find((tr) => cells(tr)[0].startsWith('ReportDeploy report'));
-  sqBtn(repRow, 'Open').click();
+  sqBtn(repRow, 'View').click();
 
   //then
-  assert.strictEqual(doc.querySelector('a.tab[data-tab][aria-current="page"]').dataset.tab, 'reps', 'Open jumps to the report');
+  assert.strictEqual(doc.querySelector('a.tab[data-tab][aria-current="page"]').dataset.tab, 'reps', 'View jumps to the report');
   assert.ok(doc.getElementById('rep-' + REPORT_ID).open, 'and opens its card');
 
   //given
@@ -660,7 +660,7 @@ async function slackTabJumpsToTheDraftAndListsWhatWentOut() {
   assert.strictEqual(rows(doc).length, 6, 'five cards and the report');
   assert.ok(!navigated(errors), errors.join(' | '));
   dom.window.close();
-  return 'Edit opens the draft form on its card and Open jumps to the report, the Sent section lists the last 24 hours (auto, Claude on request, a person; draft or plain, older posts left out), and the queue survives a live update while an armed confirm defers it';
+  return 'Edit opens the draft form on its card and View jumps to the report, the Sent section lists the last 24 hours (auto, Claude on request, a person; draft or plain, older posts left out), and the queue survives a live update while an armed confirm defers it';
 }
 
 async function autoSentPostsNameWhoDraftedThem() {

@@ -131,7 +131,7 @@ def test_a_mapping_proxy_tree_is_written_as_plain_json_and_the_language_step_sti
     # then
     assert type(kept) is dict and type(kept['common']) is dict
     assert read(tmp_path, 'fr') == over_english({'common': {'actions': {'cancel': 'Annuler'}}})
-    assert notes == {'fr': 'Write short French sentences.'}
+    assert notes['fr'] == 'Write short French sentences.'
 
 
 def test_an_unserialisable_tree_drops_only_its_own_locale_files(tmp_path, monkeypatch, caplog):

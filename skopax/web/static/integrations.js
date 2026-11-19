@@ -228,7 +228,7 @@ function intFieldHtml(p, f, inst) {
         opts.map(function (c) { return '<button type="button" class="int-seg-b" role="radio" data-value="' + esc(c) + '" aria-checked="false" tabindex="-1">' + esc(intChoiceText(f, c, 'Not set')) + '</button>'; }).join('') + '</div>';
     } else {
       input = '<select id="' + esc(id) + '" class="int-in' + (entry ? '' : ' int-sel') + '"' + (entry ? ' hidden' : '') + '>' + opts.map(function (c) { return '<option value="' + esc(c) + '"' + (c === init ? ' selected' : '') + '>' + esc(text(c)) + '</option>'; }).join('') + '</select>';
-      if (entry) input = '<div class="int-entry"><span class="int-entry-chip"><span class="int-entry-n"></span><button type="button" class="int-entry-change">Change</button>' +
+      if (entry) input = '<div class="int-entry"><span class="int-entry-chip"><span class="int-entry-n"></span><button type="button" class="int-entry-change">Change\u2026</button>' +
         '<button type="button" class="int-entry-clear" aria-label="No catalog entry" title="No catalog entry">\u2715</button></span>' + input + '</div>';
     }
   } else if (f.kind === 'int') {

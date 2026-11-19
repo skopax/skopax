@@ -7,19 +7,20 @@ const {JSDOM, VirtualConsole} = require('jsdom');
 const TEMPLATE = process.argv[2];
 const RUNTIME = path.join(path.dirname(TEMPLATE), '..', 'runtime.py');
 const PAGE_PACK = /^PAGE_PACK = '(.+)'$/m.exec(fs.readFileSync(RUNTIME, 'utf8'))[1];
+const CORE_PACK = /^CORE_PACK = '(.+)'$/m.exec(fs.readFileSync(path.join(path.dirname(TEMPLATE), '..', 'locales.py'), 'utf8'))[1];
 const SLOT = '<script type="text/plain" id="plugin-scripts"></script>';
 const DOT = ' \u00b7 ';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
 const EVIL = '<img src=x onerror=alert(1)>';
 
-function snippet(lang, pack) {
+function snippet(lang, pack, wrapper) {
   const args = [JSON.stringify(lang), JSON.stringify(pack).replace(/</g, '\\u003c')];
-  return PAGE_PACK.replace(/%s/g, () => args.shift());
+  return (wrapper || PAGE_PACK).replace(/%s/g, () => args.shift());
 }
 
-function served(lang, pack) {
-  return '<script>' + snippet(lang, pack) + '</script>';
+function served(lang, pack, wrapper) {
+  return '<script>' + snippet(lang, pack, wrapper) + '</script>';
 }
 
 function state() {
@@ -32,7 +33,7 @@ async function boot(packs, lang, navLang, appearance) {
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
   vc.on('warn', (...args) => warned.push(args.join(' ')));
-  const html = pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state())).replace(SLOT, () => packs.map(([l, p]) => served(l, p)).join(''));
+  const html = pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state())).replace(SLOT, () => packs.map(([l, p, core]) => served(l, p, core ? CORE_PACK : null)).join(''));
   const dom = new JSDOM(html, {
     url: 'https://skopax.example.com/#t=anoms/all', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
@@ -66,6 +67,38 @@ async function shown(doc, markup) {
   doc.body.appendChild(box);
   await wait(20);
   return box;
+}
+
+function builtIn(lang) {
+  const raw = JSON.parse(fs.readFileSync(path.join(path.dirname(TEMPLATE), '..', 'locale', lang, 'page.json'), 'utf8'));
+  return Object.assign({}, raw.page, {'@rules': raw.rules, '@months': raw.months, '@days': raw.days, '@tails': raw.tails, '@th': raw.headers});
+}
+
+async function builtInPacksTranslateTheRoomLinesAndTheSplitTexts() {
+  for (const lang of ['tr', 'de', 'es', 'fr']) {
+    //given
+    const pack = builtIn(lang);
+    const {w, doc, errors} = await boot([[lang, pack, true]], lang);
+    const room = {id: 'investigator-room-0', name: 'Room 1', takes: 'questions, Investigate clicks and deploy assessments', pod: null, run: null};
+    const cards = {id: 'investigator', name: 'Cards', takes: 'new and escalated cards, and the queue when the rooms are full', pod: null, run: null};
+    const other = {id: 'investigator-room-9', name: 'Room 9', takes: 'reports', pod: null, run: null};
+
+    //when
+    const box = await shown(doc, w.invRoom(room) + w.invRoom(cards) + w.invRoom(other) + '<div class="words"><button type="button">View</button><span class="tag">Open</span><button type="button" class="int-entry-change">Change\u2026</button><span>Change</span></div>');
+    const lines = [...box.querySelectorAll('.inv-meta')].map((p) => p.textContent);
+    const words = [...box.querySelectorAll('.words > *')].map((e) => e.textContent);
+
+    //then
+    assert.deepStrictEqual(lines, [pack['Takes questions, Investigate clicks and deploy assessments.'], pack['Takes new and escalated cards, and the queue when the rooms are full.'],
+      pack['@rules'].find((r) => r[0] === '^Takes (.+)\\.$')[1].replace('$1', 'reports')], lang);
+    assert.deepStrictEqual(words, [pack['View'], pack['Open'], pack['Change\u2026'], pack['Change']], lang);
+    assert.notStrictEqual(pack['View'], pack['Open'], lang + ': the View button and the Open status are told apart');
+    assert.notStrictEqual(pack['Change\u2026'], pack['Change'], lang + ': the Change button and the Change header are told apart');
+    assert.ok(!lines.concat(words).some((s) => /\bTakes\b/.test(s)), lang);
+    assert.deepStrictEqual(errors, []);
+    w.close();
+  }
+  console.log('PASS the built-in packs translate both room lines, fall back to the Takes rule, and keep the View/Open and Change button/header texts apart');
 }
 
 async function rulesTranslateShapedText() {
@@ -284,6 +317,30 @@ async function twoPluginPacksMergeInLoadOrder() {
   console.log('PASS the served packs of two plug-ins merge in load order: rules and tails add up, months, days and headers merge, later keys win');
 }
 
+async function aPluginPackWinsTextByTextOverTheCorePack() {
+  //given
+  const base = {'Open': 'Core open', 'Board': 'Core board', '@rules': [['^Seen (\\d+)$', 'Core seen $1'], ['^Gone (.+)$', 'Core gone $1']],
+    '@tails': [[DOT + 'auto-resolved', DOT + 'core auto']], '@months': {'Mar': 'CoreMar', 'Dec': 'CoreDec'}, '@th': {'Requests': 'Core requests'}};
+  const one = {'Open': 'Plugin open', '@rules': [['^Seen (\\d+)$', 'Plugin seen $1']], '@tails': [[DOT + 'auto-resolved', DOT + 'plugin auto']], '@months': {'Mar': 'PlugMar'}};
+  const two = {'@rules': [['^Seen (\\d+)$', 'Second seen $1'], ['^Left (\\d+)$', 'Second left $1']]};
+  const {w, errors} = await boot([['de', base, true], ['de', one], ['de', two]], 'de');
+
+  //then
+  assert.strictEqual(w.tx('Open'), 'Plugin open', 'a plug-in key wins over the core key');
+  assert.strictEqual(w.tx('Board'), 'Core board', 'a core key the plug-in leaves out stays');
+  assert.strictEqual(w.tx('Seen 3'), 'Plugin seen 3', 'plug-in rules come before core rules, in plug-in load order');
+  assert.strictEqual(w.tx('Gone 4'), 'Core gone 4');
+  assert.strictEqual(w.tx('Left 5'), 'Second left 5');
+  assert.strictEqual(w.tx('Board' + DOT + 'auto-resolved'), 'Core board' + DOT + 'plugin auto', 'a plug-in tail comes before the core tail');
+  assert.strictEqual(w.tx('Gone 1 Mar'), 'Core gone 1 PlugMar');
+  assert.strictEqual(w.tx('Gone 1 Dec'), 'Core gone 1 CoreDec');
+  assert.strictEqual(w.tx('Requests', 'th'), 'Core requests');
+  assert.deepStrictEqual(Array.from(w.SKOPAX_I18N.de['@rules'], (r) => r[1]), ['Plugin seen $1', 'Second seen $1', 'Second left $1', 'Core seen $1', 'Core gone $1']);
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS a plug-in pack wins text by text over the core pack that loads first: keys, rules, tails and names');
+}
+
 async function theStepsRunInTheirOrder() {
   //given
   const pack = {'Done 3': 'Genau', 'Done {0}': 'Form {0}', 'Resolved': 'Erledigt', 'Resolved {0}': 'Form {0}', '@tails': [[' 5', ' fuenf']], '@rules': [['^Done (\\d+)$', 'Regel $1'], ['^Late (\\d+)$', 'Regel $1']]};
@@ -376,8 +433,10 @@ async function aRegionalTagIsKeptInTheLanguageCookie() {
   await aFlatKeyWithADayNameStillMatches();
   await evilPackValuesAreText();
   await twoPluginPacksMergeInLoadOrder();
+  await aPluginPackWinsTextByTextOverTheCorePack();
   await theStepsRunInTheirOrder();
   await aRegionalTagPicksItsOwnPackBeforeThePrimaryLanguage();
   await theBrowserLanguagesAreWalkedInOrderAsTheChatDoes();
   await aRegionalTagIsKeptInTheLanguageCookie();
+  await builtInPacksTranslateTheRoomLinesAndTheSplitTexts();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

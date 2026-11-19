@@ -1,0 +1,62 @@
+{
+ "room": "Boş bir oda bekleniyor…",
+ "halted": "Bekliyor: investigator şu an çalışmıyor ({why}).",
+ "halted_stopped": "durduruldu",
+ "halted_capped": "limit doldu",
+ "working": "Çalışıyor…",
+ "call": "Çalışıyor · {n} tool call{last}…",
+ "calls": "Çalışıyor · {n} tool call{last}…",
+ "last": ", son {tool}",
+ "still": "Hâlâ çalışıyor; bu sohbeti birazdan tekrar açın.",
+ "answered": "Cevaplandı",
+ "none": "Cevap yok",
+ "role_tip": "Operator rolü gerekir",
+ "queued": "Investigation sıraya alındı; bulguları kartta olacak.",
+ "done": "Tamam: {what}.",
+ "starters": [
+  [
+   "Şu an neye bakmak lazım?",
+   "Şu an hangi açık kartlar ilgi istiyor, neden?"
+  ],
+  [
+   "Son bir saatte olağan dışı bir şey var mı?",
+   "Prod'da son bir saatte olağan dışı bir şey var mı?"
+  ],
+  [
+   "Son investigation ne buldu?",
+   "En son investigation ne buldu, sıradaki adım ne?"
+  ]
+ ],
+ "actions": {
+  "investigate": "İncele",
+  "resolve": "Çözüldü yap",
+  "take": "Üstlen",
+  "known": "Bilinen gürültü yap",
+  "mute": "Sessize al"
+ },
+ "apply": "Uygula",
+ "kinds": {
+  "fixed": "Düzeltildi",
+  "duplicate": "{ref} ile mükerrer"
+ },
+ "hours": "{n} saat",
+ "continue": "Bu, paylaşılan bir sohbetin anlık görüntüsü.",
+ "continue_link": "Kendi özel sohbetinizde devam edin ↗",
+ "private_share": "Bu sohbet bir Slack özel mesajında başladı; özel kalır ve paylaşılamaz.",
+ "untitled": "Sohbet",
+ "investigator_off": "AI investigator, Yönetim › Özellikler altında kapalı.",
+ "chat_off": "Sohbet, Yönetim › Özellikler altında kapalı.",
+ "feature_off": "{feature}, Yönetim › Özellikler altında kapalı.",
+ "login": "Sohbet için operator rolüyle aktif bir {product} girişi gerekir. Tekrar giriş yapın ya da bir admin'den rolü isteyin.",
+ "not_ready": "AI investigator henüz kurulmadı, bu yüzden bu mesaj cevapsız kalır. {needs}",
+ "refused_cap": "Günlük limit {cap} mesaj; gece yarısı yeniden başlar.",
+ "refused_off": "Sohbet kapalı.",
+ "refused_busy": "Son mesajınızın cevabını bekleyin.",
+ "refused_missing": "Böyle bir sohbetiniz yok.",
+ "refused_long": "Bir mesaj en fazla {limit} karakter olabilir.",
+ "refused_empty": "Önce bir mesaj yazın.",
+ "refused_role": "Bunun için operator rolü gerekir.",
+ "refused_bad": "Bu öneri uygulanamıyor.",
+ "refused_failed": "Uygulanmadı: {reason}.",
+ "refused": "Bu yapılamadı."
+}

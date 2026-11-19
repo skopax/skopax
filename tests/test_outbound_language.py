@@ -104,6 +104,7 @@ def test_no_message_is_looked_up_at_import():
     assert found == []
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_outbound_text_follows_the_outbound_language(store):
     # given
     with served(store, DEMO, language='de') as client:
@@ -161,6 +162,7 @@ def test_a_canned_reply_follows_the_askers_language(store, reply, key):
     assert msg(key, cap=1) == english
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_bad_locale_entries_are_dropped_with_one_warning(store, caplog):
     # given
     bad = {'no.such.key': 'Hallo', 'slackevents.click.refused': 'Konnte die Aufgabe nicht anlegen', 'slackevents.user_capped': 'Hoechstens {cap} Fragen {x}',
@@ -190,6 +192,7 @@ def test_bad_locale_entries_are_dropped_with_one_warning(store, caplog):
     assert len(warned) == 9
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_missing_translations_fall_back_to_english(store):
     # given
     with served(store, DEMO, language='de'):
@@ -228,6 +231,7 @@ def test_a_slow_heal_does_not_hold_back_a_language_change(store, monkeypatch):
     assert (english, german) == ('Open in Skopax', GERMAN_OPEN)
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_outbound_language_lists_registered_languages(store):
     # given
     with served(store, DEMO) as client:
@@ -268,6 +272,7 @@ def test_a_stored_outbound_language_applies_after_a_restart(store):
     assert said == GERMAN_OPEN, 'the stored language is read before any pack loads, and it still applies once the pack is there'
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_writing_language_comes_from_locale_packs(store, caplog):
     # given
     long_note = dataclasses.replace(DEMO, locales=(Locale('de', {'Demo': 'Demo'}, writing='x' * 1001),))
@@ -301,6 +306,7 @@ def test_writing_language_comes_from_locale_packs(store, caplog):
                                                                                              reason=msg('plugins.why.locale', limit=registry.WRITING_MAX))]
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_a_regional_language_matches_its_pack_whatever_its_case(store):
     # given
     regional = dataclasses.replace(DEMO, locales=(Locale('pt-BR', {}, {'slack.open': 'Abrir no {product}'}, writing='Escreva em portugues do Brasil.'),))

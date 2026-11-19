@@ -13,7 +13,7 @@ import mongomock
 import pytest
 from fastapi.testclient import TestClient
 
-from skopax import agent, app as app_module, brand, clock, engine, messages, probe, redact, sections, tags, versioncheck
+from skopax import agent, app as app_module, brand, clock, engine, locales, messages, probe, redact, sections, tags, versioncheck
 from skopax.remote import Unreachable
 from skopax.app import create_app
 from skopax.chatui.text import reset as reset_chat_texts
@@ -63,6 +63,11 @@ def default_brand():
     yield
     brand.use('Skopax')
     brand.use_hidden(None)
+
+
+@pytest.fixture
+def no_core_packs(monkeypatch):
+    monkeypatch.setattr(locales, 'packs', lambda: ())
 
 
 @pytest.fixture(autouse=True)

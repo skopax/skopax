@@ -6,7 +6,7 @@ import re
 import string
 import sys
 import threading
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -405,22 +405,27 @@ def _escaped(text: str) -> str:
     return ''.join(ch if ch.isprintable() else repr(ch)[1:-1] for ch in text)
 
 
-def _kept_locales(plugin: Plugin) -> tuple[Plugin, tuple[Drop, ...], tuple[tuple[str, int], ...]]:
-    if not isinstance(plugin.locales, (tuple, list)):
-        return plugin, (), ()
+def kept_packs(owner: str, packs: Sequence[object]) -> tuple[list[Locale], list[Drop], dict[str, int]]:
     kept: list[Locale] = []
     drops: list[Drop] = []
     counts: dict[str, int] = {}
-    for index, item in enumerate(plugin.locales):
+    for index, item in enumerate(packs):
         clean, dropped, lang = _kept_pack(item, index)
         shown = _escaped(lang)
         for part, label, (code, reason), size in dropped:
-            log.warning('%s', _escaped(msg('locales.part_dropped', lang=lang, plugin=plugin.id, part=label, reason=reason)))
+            log.warning('%s', _escaped(msg('locales.part_dropped', lang=lang, plugin=owner, part=label, reason=reason)))
             counts[shown] = counts.get(shown, 0) + size
             if len(drops) < DROPS_MAX:
-                drops.append(Drop(plugin.id, shown, part, _escaped(label), code))
+                drops.append(Drop(owner, shown, part, _escaped(label), code))
         if clean is not None:
             kept.append(clean)
+    return kept, drops, counts
+
+
+def _kept_locales(plugin: Plugin) -> tuple[Plugin, tuple[Drop, ...], tuple[tuple[str, int], ...]]:
+    if not isinstance(plugin.locales, (tuple, list)):
+        return plugin, (), ()
+    kept, drops, counts = kept_packs(plugin.id, plugin.locales)
     changed = counts or any(a is not b for a, b in zip(kept, plugin.locales))
     return (replace(plugin, locales=tuple(kept)) if changed else plugin), tuple(drops), tuple(counts.items())
 

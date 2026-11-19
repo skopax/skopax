@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from pymongo.errors import ServerSelectionTimeoutError
 
 from tests.conftest import AUTH, anomaly, settings, state
+from skopax import locales
 from skopax.app import WEB, create_app
 from skopax.messages import msg
 
@@ -117,11 +118,13 @@ def test_page_loads_every_script_file_with_its_content_hash(client: TestClient):
     res = client.get('/')
 
     # then
+    core = locales.page_files()
     linked = re.findall(r'<script src="/static/([\w.-]+)\?v=(\w+)"></script>', res.text)
-    names = [name for name, _ in linked]
+    names = [name for name, _ in linked if name not in core]
+    assert core and set(core) <= {name for name, _ in linked}
     assert names[:4] == ['actors.js', 'icons.js', 'i18n.js', 'core.js'] and names[-1] == 'main.js'
     card = re.findall(r'<script src="/static/([\w.-]+)\?v=(\w+)"></script>', client.get('/c/1').text)
-    assert [name for name, _ in card] == ['actors.js', 'i18n.js', 'suggest.js', 'card.js']
+    assert [name for name, _ in card if name not in core] == ['actors.js', 'i18n.js', 'suggest.js', 'card.js']
     assert sorted(set(names) | {'card.js'}) == sorted(f.name for f in (WEB / 'static').glob('*.js'))
     assert '<script src="/static/' not in re.sub(r'<script src="/static/[\w.-]+\?v=\w+"></script>', '', res.text)
     for name, digest in linked:
@@ -129,7 +132,7 @@ def test_page_loads_every_script_file_with_its_content_hash(client: TestClient):
         assert js.status_code == 200
         assert js.headers['content-type'] == 'text/javascript; charset=utf-8'
         assert js.headers['cache-control'] == 'no-cache'
-        assert js.content == (WEB / 'static' / name).read_bytes()
+        assert js.content == (core[name] if name in core else (WEB / 'static' / name).read_bytes())
         assert hashlib.sha256(js.content).hexdigest()[:12] == digest
 
 

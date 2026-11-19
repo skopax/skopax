@@ -9,7 +9,7 @@ import mongomock
 import pytest
 from fastapi.testclient import TestClient
 
-from skopax import history, messages, redact, statenotes, tags, tunables
+from skopax import history, locales, messages, redact, statenotes, tags, tunables
 from skopax.app import create_app
 from skopax.contract import Hooks, Locale, Panel, PassResult, Plugin, TagRule
 from skopax.engine import anomaly
@@ -30,6 +30,7 @@ from tests.test_engine import NOW
 DEMO = demo_plugin.PLUGIN
 HERE = Path(__file__).parent / 'plugins'
 GOOD = {'url': 'https://demo.example.com', 'token': 'pw'}
+CORE_PACKS = [f'/static/i18n-{lang}.js' for lang in locales.langs()]
 
 
 def boot(store, *plugins, add: bool = True) -> Runtime:
@@ -275,6 +276,7 @@ def test_plugin_tag_rules_join_the_defaults(store, monkeypatch):
     assert [t['id'] for t in stored['tags']] == ['marketing']
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_locale_page_pack_is_served_and_messages_registered(store):
     # given
     other = dataclasses.replace(minimal('german', 'German'), locales=(Locale('de', {'Other': 'Andere'}, {'slack.cancel': 'Abbrechen', 'german.bye': 'Tschuess'}), Locale('fr', {'Demo': 'Demo!'}, {})))
@@ -288,12 +290,13 @@ def test_locale_page_pack_is_served_and_messages_registered(store):
     # then
     assert res.status_code == 200 and res.headers['cache-control'] == 'no-cache' and res.headers['content-type'].startswith('text/javascript')
     assert res.text == ('(function (all, lang, pack) { var held = all[lang] = all[lang] || {}; Object.keys(pack).forEach(function (k) { var v = pack[k], was = held[k]; '
-                        'held[k] = k === "@rules" || k === "@tails" ? (Array.isArray(was) ? was : []).concat(v) : k === "@months" || k === "@days" || k === "@th" ? Object.assign({}, was, v) : v; }); })'
+                        'held[k] = k === "@rules" || k === "@tails" ? (function (base) { var n = base.core || 0, out = base.slice(0, base.length - n).concat(v, base.slice(base.length - n)); '
+                        'out.core = n; return out; })(Array.isArray(was) ? was : []) : k === "@months" || k === "@days" || k === "@th" ? Object.assign({}, was, v) : v; }); })'
                         '(window.SKOPAX_I18N = window.SKOPAX_I18N || {}, "de", {"Demo": "Demo"});')
     assert fr.status_code == 200
     assert catalog == dict(DEMO.locales[0].messages) | {'slack.cancel': 'Abbrechen'}
     assert messages.catalog('xx') == {}
-    assert 'german.bye' not in messages.MESSAGES and messages.languages() == ('en', 'de')
+    assert 'german.bye' not in messages.MESSAGES and messages.languages() == ('en',) + tuple(sorted({'de', *(pack.lang for pack in locales.packs())}))
 
 
 PAGE_RULES = (('^Seen before: (\\d+) times$', 'Schon $1 mal gesehen'),)
@@ -382,8 +385,8 @@ def test_card_page_loads_the_locale_packs_of_serving_plugins(store):
         off = pattern.findall(client.get('/c/1').text)
 
     # then
-    assert on == ['/static/actors.js', '/static/i18n.js', '/plugins/demo/i18n-de.js', '/static/suggest.js', '/static/card.js'], 'packs only, never the panel scripts'
-    assert off == ['/static/actors.js', '/static/i18n.js', '/static/suggest.js', '/static/card.js']
+    assert on == ['/static/actors.js', '/static/i18n.js', *CORE_PACKS, '/plugins/demo/i18n-de.js', '/static/suggest.js', '/static/card.js'], 'packs only, never the panel scripts'
+    assert off == ['/static/actors.js', '/static/i18n.js', *CORE_PACKS, '/static/suggest.js', '/static/card.js']
 
 
 def test_probe_targets_come_from_runnable_instances(store):
