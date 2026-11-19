@@ -21,7 +21,7 @@ VENDOR_DOCS = ('argo-cd.readthedocs.io', 'developer.chrome.com', 'developers.clo
                'support.microsoft.com', 'www.elastic.co')
 VENDOR_REPOS = ('github.com/oliver006/redis_exporter', 'github.com/danielqsj/kafka_exporter', 'github.com/chromedp/docker-headless-shell')
 LINK_HOSTS = ('skopax.io', 'docs.astral.sh', 'localhost:8080') + VENDOR_DOCS
-LINK_TREES = ('github.com/skopax', 'ghcr.io/skopax') + VENDOR_REPOS
+LINK_TREES = ('github.com/skopax', 'ghcr.io/skopax', 'img.shields.io/github/v/release/skopax/skopax', 'img.shields.io/github/license/skopax/skopax') + VENDOR_REPOS
 GENERATED_SECRET = '"$(openssl rand -hex 32)"'
 SECRET_NAME = r'[A-Z_]*(?:SECRET|TOKEN|PASSWORD|KEY)[A-Z_]*'
 DOCS = ('README.md', 'setup.md', 'configuration.md', 'sign-in.md', 'plugins.md', 'custom-checks.md', 'extending.md', 'operations.md', 'development.md')
