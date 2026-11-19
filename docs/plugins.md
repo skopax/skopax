@@ -100,7 +100,7 @@ The check ids and ran keys of these plug-ins cannot name an instance of any plug
 
 **Set it up:**
 
-1. Enter the base address of the Prometheus API in `URL`, for example https://prometheus.example.com. Skopax reads `/api/v1`; the checks need series from Micrometer, KrakenD, ingress-nginx, kube-state-metrics or `kafka_exporter`, as set in `Profiles`.
+1. Enter the base address of the Prometheus API in `URL`, for example `https://prometheus.example.com`. Skopax reads `/api/v1`; the checks need series from Micrometer, KrakenD, ingress-nginx, kube-state-metrics or `kafka_exporter`, as set in `Profiles`.
 2. Authentication `None`: nothing else to do. `Username and password`: Prometheus checks it only if started with `--web.config.file` holding `basic_auth_users` (bcrypt hashes); enter that user in `Username` and `Password`.
 3. Authentication `Bearer token`: Prometheus does not check bearer tokens itself, so use it only behind a proxy that does; paste the token into `Token`. Press `Test connection` to see the Prometheus version.
 
@@ -401,7 +401,7 @@ A connection is always an instance, never a setting. The keys `gitlab.token`, `g
 1. In GitLab choose your avatar > Edit profile > Access > Personal access tokens, then Generate token > Legacy token. Or, as a group Owner, open the group > Settings > Access tokens > Add new token.
 2. Name it, set an expiration date, and select only the read_api scope. For a group token choose a role that can read the projects, such as Reporter.
 3. Create the token, copy it at once (GitLab shows it once) and paste it into `Token`.
-4. In `URL` keep https://gitlab.com or give your GitLab address. Enter the path of the group whose projects Skopax reads in `Group`, such as acme, then choose Test connection.
+4. In `URL` keep `https://gitlab.com` or give your GitLab address. Enter the path of the group whose projects Skopax reads in `Group`, such as acme, then choose Test connection.
 
 Vendor guide: [GitLab: personal access tokens](https://docs.gitlab.com/user/profile/personal_access_tokens/)
 
@@ -419,7 +419,7 @@ GitHub.com, or a GitHub Enterprise Server through the `url` field, read with a f
 2. Under Resource owner pick the organization or user you will enter as `Owner`. Under Repository access choose Only select repositories (or All repositories) for the repositories Skopax should read.
 3. Under Repository permissions set Metadata, Contents, Pull requests, Checks, Commit statuses and Deployments to Read-only. Leave every other permission at No access.
 4. Choose Generate token, copy it, and paste it into `Token`. If the organization requires approval, an owner must approve it first.
-5. In `URL` keep https://github.com, or give the address of your GitHub Enterprise Server. Enter the organization or user in `Owner`, then choose Test connection.
+5. In `URL` keep `https://github.com`, or give the address of your GitHub Enterprise Server. Enter the organization or user in `Owner`, then choose Test connection.
 
 Vendor guide: [GitHub: managing personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
 
@@ -437,10 +437,10 @@ Jira Cloud only: calls go through the Atlassian API gateway, `api.atlassian.com`
 
 **Set it up:**
 
-1. Sign in as the account Skopax will use and open https://id.atlassian.com/manage-profile/security/api-tokens. Choose Create API token with scopes, name it and set an expiry (1 to 365 days).
+1. Sign in as the account Skopax will use and open `https://id.atlassian.com/manage-profile/security/api-tokens`. Choose Create API token with scopes, name it and set an expiry (1 to 365 days).
 2. Pick Jira as the app and select the scopes read:jira-work and read:jira-user. The account also needs Browse projects and Browse users and groups in Jira.
 3. Create the token, copy it and paste it into `API token`. Enter that account's address in `Email`.
-4. In `Site` give your Jira Cloud address, such as https://example.atlassian.net. Leave `Cloud id` empty unless asked, then choose Test connection.
+4. In `Site` give your Jira Cloud address, such as `https://example.atlassian.net`. Leave `Cloud id` empty unless asked, then choose Test connection.
 5. A token made with the plain Create API token button also works, but it carries all the account's access.
 
 Vendor guide: [Atlassian: manage API tokens](https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/)
@@ -456,10 +456,10 @@ Atlassian Cloud only, through the same gateway, with its own email and API token
 
 **Set it up:**
 
-1. Sign in as the account Skopax will use and open https://id.atlassian.com/manage-profile/security/api-tokens. Choose Create API token with scopes, name it and set an expiry (1 to 365 days).
+1. Sign in as the account Skopax will use and open `https://id.atlassian.com/manage-profile/security/api-tokens`. Choose Create API token with scopes, name it and set an expiry (1 to 365 days).
 2. Pick Confluence as the app and select the scopes search:confluence, read:page:confluence and read:space:confluence. The account must be able to view the spaces you list.
 3. Create the token, copy it and paste it into `API token`. Enter that account's address in `Email`. Use a token of its own, not the one Jira uses.
-4. In `URL` give your Atlassian Cloud address, such as https://example.atlassian.net. In `Spaces` list the space keys the tool may read, such as ENG, OPS.
+4. In `URL` give your Atlassian Cloud address, such as `https://example.atlassian.net`. In `Spaces` list the space keys the tool may read, such as ENG, OPS.
 5. Choose Test connection. It names any listed space the account cannot see.
 
 Vendor guide: [Atlassian: manage API tokens](https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/)
@@ -512,7 +512,7 @@ Skopax posts a card to the channel, keeps the post up to date, and answers quest
 
 **Set it up:**
 
-1. At https://api.slack.com/apps choose Create New App > From a manifest, pick your workspace and paste examples/slack-app-manifest.yaml from the Skopax repository. It sets the bot scopes, events and Socket Mode.
+1. At `https://api.slack.com/apps` choose Create New App > From a manifest, pick your workspace and paste examples/slack-app-manifest.yaml from the Skopax repository. It sets the bot scopes, events and Socket Mode.
 2. Choose Install to Workspace, then Allow. Under OAuth & Permissions copy the bot token (xoxb-...) and paste it into `Bot token`.
 3. Under Basic Information, in the App-level tokens section, generate a token (Socket Mode needs one; if asked for a scope, choose connections:write) and paste the xapp-... token into `App token`.
 4. Choose Test connection, then Save & turn on. Restart Skopax once: an app token added or changed later is read only at start.
@@ -561,9 +561,9 @@ Skopax also ships Website, Umami, Chrome UX Report, Safe Browsing, App stores, C
 
   **Set it up:**
 
-  1. No account is needed. Set Site URL to the https address of the site, for example https://www.example.com. Only https on port 443 is read.
+  1. No account is needed. Set Site URL to the https address of the site, for example `https://www.example.com`. Only https on port 443 is read.
   2. List other hosts of the site in More hosts, and hosts behind a login or APIs in Login hosts, Login paths and API paths: they are never opened.
-  3. For screenshots, run a headless Chrome service that exposes the DevTools endpoint and set Browser URL to it, for example http://browser:9222. Empty means no screenshots.
+  3. For screenshots, run a headless Chrome service that exposes the DevTools endpoint and set Browser URL to it, for example `http://browser:9222`. Empty means no screenshots.
   4. If a firewall or bot rule blocks the page read, add the header it expects (Name: value) in Scan headers, and ask the site owner to allow the Skopax address.
   5. Optionally link your Umami instance in Umami instance so the page scan reads the busiest paths. Test connection reads the page, then the browser.
 
@@ -576,7 +576,7 @@ Skopax also ships Website, Umami, Chrome UX Report, Safe Browsing, App stores, C
   **Set it up:**
 
   1. Umami Cloud: sign in, click the profile button in the side navigation, choose Settings, API keys, Create key, and copy the key.
-  2. Umami Cloud: set URL to https://api.umami.is/v1 and paste the key into API key. Leave Token, Username and Password empty. Set UI URL to your dashboard address, or cards carry no link.
+  2. Umami Cloud: set URL to `https://api.umami.is/v1` and paste the key into API key. Leave Token, Username and Password empty. Set UI URL to your dashboard address, or cards carry no link.
   3. Own server: set URL to the server address. Token takes a bearer token: an API key (Settings, API keys, if your version has them) or a login token. Without Token, Username and Password log in and renew themselves.
   4. Whichever you use, the key or user must own the website, be an admin, or be in the team that holds it. Use a user with view access only.
   5. Website ID: copy the UUID from the website settings page, in the tracking code (data-website-id), and paste it into Website ID.
@@ -671,7 +671,7 @@ Skopax also ships Website, Umami, Chrome UX Report, Safe Browsing, App stores, C
 
   **Set it up:**
 
-  1. Sign in to VWO as an admin of the account (API access depends on the plan) and open https://app.wingify.com/#/developers/tokens.
+  1. Sign in to VWO as an admin of the account (API access depends on the plan) and open `https://app.wingify.com/#/developers/tokens`.
   2. Create a token and choose the lowest permission level: Browse is enough, because Skopax never changes anything.
   3. Copy the token and paste it into API token.
   4. Leave Account id as current to use the account the token belongs to, or enter the account number. Test connection reads the account, then a campaign.
