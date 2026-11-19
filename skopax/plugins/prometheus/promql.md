@@ -12,6 +12,7 @@ How the checks compare:
 - Every window is 60 minutes. The same window is read one day and one week earlier as the baseline.
 - Counters are compared with `increase(metric[60m])`, which gives the total added in the window. Use `rate(metric[5m])` only to see a per-second shape inside the window; do not compare a rate with a card's count.
 - A rate card opens when the current count is more than twice the baseline and above the baseline plus a floor set in the rate floors rule set.
+- A failed outbound call card (out-err) counts 5xx answers, calls that ended in an exception with no answer (timeout, connection), and cancelled calls (outcome="UNKNOWN", exception="none") only when they ran long, which means a timeout cancelled them; fast cancellations (a visitor leaving, a sibling call failing) are left out. Break it down with sum by (clientName, uri, status, exception) (increase(http_client_requests_seconds_count{namespace="shop",job="checkout-service",outcome=~"SERVER_ERROR|UNKNOWN"}[60m])). Spring times every WebClient call including its filters, so an exception a filter throws before the request leaves counts as a failed outbound call.
 
 Query tips:
 - Select a service with `namespace="shop",job="checkout-service"`.
