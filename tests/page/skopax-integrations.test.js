@@ -1443,7 +1443,7 @@ async function thePinSwitchShowsOnlyOnceACertificateIsPasted() {
   console.log('PASS Admin, Integrations: the certificate pin switch shows only once a certificate is pasted');
 }
 
-async function anInstanceWithoutACheckReadsNoChecksGreyAndNeverConnected() {
+async function anInstanceWithoutACheckShowsNoHealthTextAndNeverConnected() {
   //given
   const one = catalog();
   const neutral = {name: 'main', state: 'none', text: 'No checks', at: null};
@@ -1452,20 +1452,45 @@ async function anInstanceWithoutACheckReadsNoChecksGreyAndNeverConnected() {
 
   //when
   await open(t);
-  const onTile = [tile(t.doc, 'gitlab').querySelector('.int-health').textContent, tile(t.doc, 'gitlab').querySelector('.int-dot').className];
+  const onTile = [tile(t.doc, 'gitlab').querySelector('.int-health'), tile(t.doc, 'gitlab').querySelector('.int-dot').className, tile(t.doc, 'gitlab').textContent.includes('No checks')];
   const sub = t.doc.querySelector('#integrations .int-sub').textContent;
   openInstance(t, 'gitlab', 'main');
   await wait(60);
-  const inDrawer = [inPanel(t.doc, '.int-ihealth').textContent, inPanel(t.doc, '.int-ihealth .int-dot').className];
+  const inDrawer = [inPanel(t.doc, '.int-ihealth'), panel(t.doc).textContent.includes('No checks'), panel(t.doc).textContent.includes('Not checked yet')];
 
   //then
-  assert.deepStrictEqual(onTile, ['No checks', 'int-dot off'], 'the tile reads the neutral state with a grey dot');
-  assert.deepStrictEqual(inDrawer, ['No checks', 'int-dot off'], 'the instance reads the same');
+  assert.deepStrictEqual(onTile, [null, 'int-dot off', false], 'the tile says nothing about checks and keeps a grey dot');
+  assert.deepStrictEqual(inDrawer, [null, false, false], 'the instance says nothing about checks either');
   assert.ok(/ 0 need attention$/.test(sub), sub);
   assert.ok(!t.doc.getElementById('integrations').textContent.includes('Connected'), 'nothing says Connected without a check behind it');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: an instance without a check reads No checks with a grey dot, as on the board, never Connected');
+  console.log('PASS Admin, Integrations: an instance without a check shows no health text, only a grey dot, and never Connected');
+}
+
+async function twoInstancesWithoutChecksShowTheCountOnlyAndNotCheckedYetOnlyWhereNoHealthEntryExists() {
+  //given
+  const cat = catalog();
+  const neutral = {name: 'main', state: 'none', text: 'No checks', at: null};
+  cat.plugins = [Object.assign({}, cat.plugins[0], {id: 'gitlab', name: 'GitLab', category: 'code', checks: [], instances: [instance('main', {primary: true}), instance('east')], health: health('none', 'No checks', null, [neutral])})];
+  const t = await boot({catalog: cat});
+
+  //when
+  await open(t);
+  const tl = tile(t.doc, 'gitlab');
+  openInstance(t, 'gitlab', 'main');
+  await wait(60);
+  const cards = [...panel(t.doc).querySelectorAll('.int-ilist .int-icard')];
+
+  //then
+  assert.strictEqual(tl.querySelector('.int-health').textContent, '2 instances');
+  assert.strictEqual(tl.querySelector('.int-dot').className, 'int-dot off');
+  assert.strictEqual(cards.length, 2);
+  assert.strictEqual(cards[0].querySelector('.int-icard-l'), null, 'a neutral instance has no health label');
+  assert.strictEqual(cards[1].querySelector('.int-icard-l').textContent, 'Not checked yet');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: two instances without checks show only the count, and Not checked yet only without a health entry');
 }
 
 async function noImageIsRenderedWithoutASource() {
@@ -2134,6 +2159,10 @@ async function thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne() 
   assert.strictEqual(odd.querySelector('a'), null, 'only https links are linked');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
+  const css = TEMPLATE_CSS();
+  assert.ok(/\.int-setup > summary::before \{[^}]*border-right:[^}]*transform: rotate\(-45deg\)/.test(css), 'a chevron marks the folded summary as clickable');
+  assert.ok(/\.int-setup\[open\] > summary::before \{[^}]*rotate\(45deg\)/.test(css), 'and turns down when open');
+  assert.ok(/\.int-setup > summary:hover \{[^}]*var\(--fg\)/.test(css), 'and the summary darkens on hover');
   console.log('PASS Admin, Integrations: the setup guide is open without instances, closed with one, escaped, and links only https docs');
 }
 
@@ -2144,7 +2173,8 @@ async function thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne() 
   await theCustomChipAppearsOnlyWhenACustomPluginIsLoadedAndFiltersAlone();
   await customAndBuiltInPluginsSitInTheirOwnGroupsThatFollowTheFilter();
   await theCatalogMarksACustomPluginQuietly();
-  await anInstanceWithoutACheckReadsNoChecksGreyAndNeverConnected();
+  await anInstanceWithoutACheckShowsNoHealthTextAndNeverConnected();
+  await twoInstancesWithoutChecksShowTheCountOnlyAndNotCheckedYetOnlyWhereNoHealthEntryExists();
   await noImageIsRenderedWithoutASource();
   await theSubtitleCountsAndTheChipsFilterTheTiles();
   await aRefusedPluginShowsNoAccessAndNeedsAttention();

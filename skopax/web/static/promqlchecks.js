@@ -2,6 +2,7 @@ var PQC = null, PQC_SEQ = 0, PQC_EDIT = null, PQC_FORM = null, PQC_PATH = '/api/
 var PQC_STATES = {ok: ['ok', 'k-ok'], failing: ['failing', 'k-warn'], off: ['off', 'plain']};
 var PQC_SEV = {info: 'k-info', warn: 'k-warn', crit: 'k-crit'};
 var PQC_BASE = {'1d': '1 day ago', '1w': '1 week ago'};
+var PQC_OPEN = {}, PQC_GSEQ = 0;
 var PQC_PRESETS = null, PQC_PICK = null, PQC_PICK_FORM = null, PQC_PICK_RUN = null, PQC_SOURCE_NAMES = {prometheus: 'Prometheus', grafana: 'Grafana datasource'};
 
 function pqcEl(tag, cls, text) {
@@ -90,15 +91,7 @@ function pqcRender(said) {
     if (!byKey[key]) { byKey[key] = {preset: String(d.preset), values: d.presetValues || {}, items: []}; groups.push(byKey[key]); }
     byKey[key].items.push(d);
   });
-  groups.forEach(function (g) {
-    var known = pqcList(PQC.presets).filter(function (x) { return x && x.id === g.preset; })[0];
-    var head = pqcEl('li', 'pqc-group');
-    head.appendChild(pqcEl('span', 'tag pqc-chip', known ? known.name : g.preset));
-    head.appendChild(pqcEl('span', 'pqc-gname', known && g.values[known.nameKey] != null ? g.values[known.nameKey] : ''));
-    head.appendChild(pqcEl('span', 'pqc-m', g.items.length + (g.items.length === 1 ? ' check' : ' checks')));
-    list.appendChild(head);
-    g.items.forEach(function (d) { list.appendChild(pqcRow(d)); });
-  });
+  groups.forEach(function (g) { list.appendChild(pqcGroup(g)); });
   box.appendChild(list);
 }
 async function pqcPick(id) {
@@ -276,10 +269,78 @@ async function pqcPresetAdd(f, preset, b, msg) {
     b.disabled = false;
   }
 }
-function pqcRow(d) {
+function pqcRowState(d) {
+  var run = d.run && typeof d.run === 'object' ? d.run : null;
+  return !d.enabled ? 'off' : run ? String(run.state || '') : '';
+}
+function pqcCards(d) {
+  var run = d.run && typeof d.run === 'object' ? d.run : null;
+  return d.enabled && run && run.state === 'ok' ? Number(run.cards) || 0 : 0;
+}
+function pqcSummary(items) {
+  var n = {failing: 0, fresh: 0, off: 0}, cards = 0;
+  items.forEach(function (d) {
+    var st = pqcRowState(d);
+    if (st === 'failing') n.failing++;
+    else if (st === 'off') n.off++;
+    else if (st !== 'ok') n.fresh++;
+    cards += pqcCards(d);
+  });
+  var parts = [];
+  if (n.failing) parts.push(n.failing + ' failing');
+  if (n.fresh) parts.push(n.fresh + ' not run yet');
+  if (n.off) parts.push(n.off + ' off');
+  return {text: parts.length ? parts.join(' \u00b7 ') : 'all ok', cards: cards, failing: n.failing > 0, bad: n.failing > 0 || cards > 0};
+}
+function pqcWords(name) { return String(name || '').split(/\s+/).filter(Boolean); }
+function pqcPrefix(names, label) {
+  var lists = names.map(pqcWords), most = Math.min.apply(null, lists.map(function (w) { return w.length; })) - 1;
+  if (!(most >= 2)) return 0;
+  var head = pqcWords(label), n = head.length;
+  if (n >= 2 && n <= most && lists.every(function (w) { return w.slice(0, n).join(' ') === head.join(' '); })) return n;
+  if (names.length < 2) return 0;
+  var k = 0;
+  while (k < most && lists.every(function (w) { return w[k] === lists[0][k]; })) k++;
+  return k >= 2 ? k : 0;
+}
+function pqcGroup(g) {
+  var known = pqcList(PQC.presets).filter(function (x) { return x && x.id === g.preset; })[0];
+  var chip = String(known ? known.name : g.preset), gname = known && g.values[known.nameKey] != null ? String(g.values[known.nameKey]) : '';
+  var key = g.preset + '|' + JSON.stringify(g.values), sum = pqcSummary(g.items), id = 'pqc-g' + (++PQC_GSEQ);
+  var open = PQC_OPEN.hasOwnProperty(key) ? PQC_OPEN[key] : sum.bad;
+  var li = pqcEl('li', 'pqc-group'), btn = pqcEl('button', 'pqc-ghead');
+  btn.type = 'button';
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  btn.setAttribute('aria-controls', id);
+  btn.appendChild(pqcEl('span', 'pqc-caret')).setAttribute('aria-hidden', 'true');
+  btn.appendChild(pqcEl('span', 'tag pqc-chip', chip));
+  btn.appendChild(pqcEl('span', 'pqc-gname', gname));
+  btn.appendChild(pqcEl('span', 'pqc-m pqc-gcount', pqcCount(g.items.length, 'check', 'checks')));
+  btn.appendChild(pqcEl('span', 'pqc-gsum' + (sum.failing ? ' bad' : ''), sum.text));
+  if (sum.cards > 0) btn.appendChild(pqcEl('span', 'pqc-gcards', pqcCount(sum.cards, 'card', 'cards')));
+  var rows = pqcEl('ul', 'pqc-grows'), skip = pqcPrefix(g.items.map(function (d) { return d.name; }), chip + ' ' + gname);
+  rows.id = id;
+  rows.hidden = !open;
+  g.items.forEach(function (d) { rows.appendChild(pqcRow(d, skip)); });
+  btn.addEventListener('click', function () {
+    var now = btn.getAttribute('aria-expanded') !== 'true';
+    PQC_OPEN[key] = now;
+    btn.setAttribute('aria-expanded', now ? 'true' : 'false');
+    rows.hidden = !now;
+  });
+  li.appendChild(btn);
+  li.appendChild(rows);
+  return li;
+}
+function pqcRow(d, skip) {
   var li = pqcEl('li', 'pqc-row'), run = d.run && typeof d.run === 'object' ? d.run : null;
   li.dataset.id = String(d.id || '');
-  li.appendChild(pqcEl('span', 'pqc-n', d.name));
+  var full = String(d.name == null ? '' : d.name), short = skip ? pqcWords(full).slice(skip).join(' ') : full, nm = pqcEl('span', 'pqc-n', short || full);
+  if (short && short !== full) {
+    nm.title = full;
+    li.appendChild(pqcEl('span', 'pqc-sr', pqcWords(full).slice(0, skip).join(' ') + ' '));
+  }
+  li.appendChild(nm);
   var state = !d.enabled ? 'off' : run ? run.state : '', kind = PQC_STATES[state] || ['not run yet', 'plain'];
   var tag = pqcEl('span', 'tag pqc-state ' + kind[1], kind[0] + (state === 'failing' && run.reason ? ': ' + run.reason : ''));
   li.appendChild(tag);
@@ -288,6 +349,7 @@ function pqcRow(d) {
   li.appendChild(pqcEl('span', 'pqc-m', meta));
   var edit = pqcEl('button', 'btn small pqc-edit', 'Edit');
   edit.type = 'button';
+  edit.setAttribute('aria-label', 'Edit ' + full);
   edit.addEventListener('click', function () { pqcEdit(d); var f = pqcBox().querySelector('.pqc-form [name="name"]'); if (f) f.focus(); });
   li.appendChild(edit);
   return li;

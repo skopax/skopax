@@ -397,8 +397,12 @@ async function theListGroupsPresetChecksUnderAChipAndTheyStayEditable() {
   const {doc, errors, calls} = await boot({items: [tag(a)[0], item(), tag(b)[0], tag(a)[1], Object.assign(item({id: 'gone', name: 'Old preset'}), {preset: 'removed', presetValues: {x: 'y'}})]});
 
   //when
-  const parts = [...box(doc).querySelectorAll('.pqc-list > li')].map((li) => li.classList.contains('pqc-group') ? ('group ' + li.querySelector('.pqc-chip').textContent + ' ' +
-    li.querySelector('.pqc-gname').textContent).trim() : li.querySelector('.pqc-n').textContent);
+  const parts = [];
+  [...box(doc).querySelectorAll('.pqc-list > li')].forEach((li) => {
+    if (!li.classList.contains('pqc-group')) { parts.push(li.querySelector('.pqc-n').textContent); return; }
+    parts.push(('group ' + li.querySelector('.pqc-chip').textContent + ' ' + li.querySelector('.pqc-gname').textContent).trim());
+    li.querySelectorAll('.pqc-grows .pqc-n').forEach((n) => parts.push(n.textContent));
+  });
   box(doc).querySelectorAll('.pqc-row .pqc-edit')[1].click();
   await wait(20);
   box(doc).querySelector('.pqc-form [name="threshold"]').value = '0.4';
@@ -406,8 +410,8 @@ async function theListGroupsPresetChecksUnderAChipAndTheyStayEditable() {
   await wait(60);
 
   //then
-  assert.deepStrictEqual(parts, ['Redis memory', 'group Docstore orders-prod', 'Docstore orders-prod node down', 'Docstore orders-prod N1QL queue', 'group Docstore search-prod',
-    'Docstore search-prod node down', 'group removed', 'Old preset']);
+  assert.deepStrictEqual(parts, ['Redis memory', 'group Docstore orders-prod', 'node down', 'N1QL queue', 'group Docstore search-prod',
+    'node down', 'group removed', 'Old preset']);
   const put = calls.filter((c) => c[0] === 'PUT');
   assert.deepStrictEqual(put.map((c) => c[1]), ['/api/admin/custom-checks/cb-orders-prod-down']);
   assert.strictEqual(put[0][2].threshold, '0.4');
@@ -490,8 +494,126 @@ async function cancelStopsARunningPreviewAndASourceWithoutInstancesSaysSo() {
   console.log('PASS cancel stops a running preview and a source without instances says so');
 }
 
+const tagged = (values, runs) => rendered(values).map((d, i) => Object.assign(d, {preset: 'couchbase', presetValues: values, run: runs ? runs[i] : {state: 'ok', series: 2, cards: 0, at: iso(1)}}));
+const OKV = {instance: 'main', cluster: 'orders-prod', selector: 'job="a"'};
+const head = (doc) => box(doc).querySelector('.pqc-ghead');
+const rowsOf = (doc) => box(doc).querySelector('.pqc-grows');
+
+async function aPresetGroupIsFoldedWhenAllChecksAreOkAndItsHeaderSummarisesIt() {
+  //given
+  const {doc, errors} = await boot({items: tagged(OKV)});
+
+  //when
+  const h = head(doc);
+
+  //then
+  assert.strictEqual(h.tagName, 'BUTTON');
+  assert.strictEqual(h.getAttribute('aria-expanded'), 'false');
+  assert.strictEqual(h.getAttribute('aria-controls'), rowsOf(doc).id);
+  assert.strictEqual(rowsOf(doc).hidden, true);
+  assert.strictEqual(h.querySelector('.pqc-chip').textContent, 'Docstore');
+  assert.strictEqual(h.querySelector('.pqc-gname').textContent, 'orders-prod');
+  assert.strictEqual(h.querySelector('.pqc-gcount').textContent, '2 checks');
+  assert.strictEqual(h.querySelector('.pqc-gsum').textContent, 'all ok');
+  assert.strictEqual(h.querySelector('.pqc-gcards'), null);
+  assert.deepStrictEqual(errors, []);
+  const caretCss = fs.readFileSync(TEMPLATE, 'utf8');
+  assert.ok(/\.pqc-caret \{[^}]*width: 7px;[^}]*border-right: 2px solid[^}]*rotate\(-45deg\)/.test(caretCss), 'the fold arrow is a visible chevron pointing right');
+  assert.ok(/\.pqc-ghead\[aria-expanded="true"\] \.pqc-caret \{[^}]*rotate\(45deg\)/.test(caretCss), 'and points down when open');
+  console.log('PASS a preset group is folded when all checks are ok and its header summarises it');
+}
+
+async function aGroupOpensByItselfOnAFailingCheckOrAnOpenCard() {
+  //given
+  const failing = boot({items: tagged(OKV, [{state: 'failing', reason: 'HTTP 400', at: iso(1), pending: {}}, {state: 'ok', series: 1, cards: 0, at: iso(1)}])});
+  const carded = boot({items: tagged(OKV, [{state: 'ok', series: 1, cards: 1, at: iso(1)}, {state: 'ok', series: 1, cards: 0, at: iso(1)}])});
+  const idle = boot({items: tagged(OKV, [null, null])});
+
+  //when
+  const [a, b, c] = [await failing, await carded, await idle];
+
+  //then
+  assert.strictEqual(head(a.doc).getAttribute('aria-expanded'), 'true');
+  assert.strictEqual(rowsOf(a.doc).hidden, false);
+  assert.strictEqual(head(a.doc).querySelector('.pqc-gsum').textContent, '1 failing');
+  assert.strictEqual(head(b.doc).getAttribute('aria-expanded'), 'true');
+  assert.strictEqual(head(b.doc).querySelector('.pqc-gsum').textContent, 'all ok');
+  assert.strictEqual(head(b.doc).querySelector('.pqc-gcards').textContent, '1 card');
+  assert.deepStrictEqual([head(a.doc).querySelector('.pqc-gsum').classList.contains('bad'), head(b.doc).querySelector('.pqc-gsum').classList.contains('bad')], [true, false], 'only a failing check colours the summary; an open card colours only its own count');
+  assert.strictEqual(head(c.doc).getAttribute('aria-expanded'), 'false');
+  assert.strictEqual(head(c.doc).querySelector('.pqc-gsum').textContent, '2 not run yet');
+  assert.deepStrictEqual(a.errors.concat(b.errors, c.errors), []);
+  console.log('PASS a group opens by itself on a failing check or an open card');
+}
+
+async function aToggleWinsOverTheAutoRuleAndIsRememberedAcrossRerenders() {
+  //given
+  const {w, doc, errors} = await boot({items: tagged(OKV).concat(tagged({instance: 'main', cluster: 'search-prod', selector: 'job="b"'}, [{state: 'failing', reason: 'x', at: iso(1), pending: {}}, {state: 'ok', series: 1, cards: 0, at: iso(1)}]))});
+  const heads = () => [...box(doc).querySelectorAll('.pqc-ghead')];
+  const before = heads().map((h) => h.getAttribute('aria-expanded'));
+
+  //when
+  heads()[0].click();
+  heads()[1].click();
+  const toggled = heads().map((h) => h.getAttribute('aria-expanded'));
+  w.adminShow('integrations');
+  await wait(80);
+  const kept = heads().map((h) => h.getAttribute('aria-expanded'));
+  const hiddenAfter = [...box(doc).querySelectorAll('.pqc-grows')].map((u) => u.hidden);
+
+  //then
+  assert.deepStrictEqual(before, ['false', 'true']);
+  assert.deepStrictEqual(toggled, ['true', 'false']);
+  assert.deepStrictEqual(kept, ['true', 'false'], 'the choice survives a re-render and beats the auto rule');
+  assert.deepStrictEqual(hiddenAfter, [false, true]);
+  assert.deepStrictEqual(errors, []);
+  console.log('PASS a toggle wins over the auto rule and is remembered across re-renders');
+}
+
+async function theRepeatedPrefixIsDroppedButTheFullNameStaysInTitleAndAccessibleNameAndNeverEmpty() {
+  //given
+  const lone = Object.assign(tagged({instance: 'main', cluster: 'solo', selector: 'x'})[0], {name: 'Docstore solo'});
+  const same = tagged({instance: 'main', cluster: 'twin', selector: 'y'}).map((d) => Object.assign(d, {name: 'Docstore twin'}));
+  const {doc, errors} = await boot({items: tagged(OKV).concat([lone], same)});
+
+  //when
+  const groups = [...box(doc).querySelectorAll('.pqc-group')];
+  const first = groups[0].querySelector('.pqc-row');
+  const names = groups.map((g) => [...g.querySelectorAll('.pqc-n')].map((n) => n.textContent));
+
+  //then
+  assert.deepStrictEqual(names, [['node down', 'N1QL queue'], ['Docstore solo'], ['Docstore twin', 'Docstore twin']]);
+  assert.strictEqual(first.querySelector('.pqc-n').title, 'Docstore orders-prod node down');
+  assert.strictEqual(first.querySelector('.pqc-edit').getAttribute('aria-label'), 'Edit Docstore orders-prod node down');
+  assert.strictEqual(first.querySelector('.pqc-sr').textContent, 'Docstore orders-prod ');
+  assert.strictEqual(groups[1].querySelector('.pqc-n').title, '');
+  assert.deepStrictEqual(errors, []);
+  console.log('PASS the repeated prefix is dropped, the full name stays in title and accessible name, never empty');
+}
+
+async function handWrittenChecksStayFlatAndNoEmptyGapElementSitsBeforeTheList() {
+  //given
+  const {doc, errors} = await boot({items: [item()]});
+  const css = fs.readFileSync(TEMPLATE, 'utf8').split('<style>')[1].split('</style>')[0];
+
+  //when
+  const kids = [...box(doc).children].map((c) => c.tagName + '.' + c.className);
+  const row = box(doc).querySelector('.pqc-list > .pqc-row');
+
+  //then
+  assert.ok(row && row.querySelector('.pqc-n').textContent === 'Redis memory' && !row.querySelector('.pqc-sr'));
+  assert.strictEqual(box(doc).querySelector('.pqc-group'), null);
+  assert.ok(kids.indexOf('UL.pqc-list') === kids.length - 1);
+  assert.ok(/\.pqc-box \{[^}]*gap: 0;/.test(css), 'the grid gap no longer pads the section');
+  assert.ok(/\.pqc-box > \.adm-msg:empty \{ margin: 0; \}/.test(css), 'the empty status line takes no room');
+  assert.ok(/\.pqc-row \{[^}]*padding: 3px 14px; min-height: 32px;/.test(css), 'rows are about 32 px high');
+  assert.deepStrictEqual(errors, []);
+  console.log('PASS hand-written checks stay flat and no empty gap element sits before the list');
+}
+
 (async () => {
-  for (const t of [theKeyboardPathMovesFocusIntoThePickerAndBackOut, cancelStopsARunningPreviewAndASourceWithoutInstancesSaysSo, anAdminPicksAPresetFillsItsPlaceholdersPreviewsEachCheckAndAddsIt, refusedPlaceholdersAndATwiceAddedPresetShowTheReasonAsText,
+  for (const t of [aPresetGroupIsFoldedWhenAllChecksAreOkAndItsHeaderSummarisesIt, aGroupOpensByItselfOnAFailingCheckOrAnOpenCard, aToggleWinsOverTheAutoRuleAndIsRememberedAcrossRerenders,
+    theRepeatedPrefixIsDroppedButTheFullNameStaysInTitleAndAccessibleNameAndNeverEmpty, handWrittenChecksStayFlatAndNoEmptyGapElementSitsBeforeTheList, theKeyboardPathMovesFocusIntoThePickerAndBackOut, cancelStopsARunningPreviewAndASourceWithoutInstancesSaysSo, anAdminPicksAPresetFillsItsPlaceholdersPreviewsEachCheckAndAddsIt, refusedPlaceholdersAndATwiceAddedPresetShowTheReasonAsText,
     theListGroupsPresetChecksUnderAChipAndTheyStayEditable, theAddFromPresetButtonIsOffAtTheCap, theIntegrationsPageListsTheCustomChecksWithTheirStateAsText, anAdminFillsInANewCheckPreviewsItAndSavesIt, aRefusedPreviewShowsTheReasonAndAnEditSavesWithPut,
     deleteAsksOnceMoreBeforeItDeletes, aBoardCardFromACustomCheckShowsItsLabelValuesAsText, anOpenEditorKeepsWhatWasTypedWhenTheIntegrationsPageLoadsAgain, aViewerNeverLoadsTheChecks, theStylesUseThemeColoursAndStackAtPhoneWidth]) {
     try { await t(); } catch (e) { console.log('FAIL ' + t.name + '\n' + (e && e.stack || e)); process.exitCode = 1; }

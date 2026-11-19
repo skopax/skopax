@@ -812,3 +812,11 @@ def test_the_hide_switch_is_live_without_restart(store):
     # then
     assert (on.status_code, on.json()['on'], off.status_code, off.json()['on']) == (200, True, 200, False)
     assert carries(before) and bare(hidden) and carries(back) and LINE in back
+
+
+def test_the_sign_in_and_setup_pages_centre_the_attribution_line():
+    # given
+    pages = {name: (Path(brand.__file__).parent / 'web' / name).read_text(encoding='utf-8') for name in ('login.html', 'setup.html')}
+
+    # then
+    assert {name: '.attribution{margin-top:40px;font-size:.8rem;text-align:center}' in text for name, text in pages.items()} == {'login.html': True, 'setup.html': True}
