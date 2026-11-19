@@ -26,8 +26,6 @@ updates:
       - /examples/managed-redis-plugin
     schedule:
       interval: weekly
-    cooldown:
-      default-days: 14
     commit-message:
       prefix: chore(deps)
     groups:
