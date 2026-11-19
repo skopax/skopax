@@ -1,5 +1,10 @@
 # Skopax
 
+[![ci](https://github.com/skopax/skopax/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/skopax/skopax/actions/workflows/ci.yml)
+[![image](https://github.com/skopax/skopax/actions/workflows/image.yml/badge.svg)](https://github.com/skopax/skopax/actions/workflows/image.yml)
+[![release](https://img.shields.io/github/v/release/skopax/skopax)](https://github.com/skopax/skopax/releases/latest)
+[![licence](https://img.shields.io/github/license/skopax/skopax)](LICENSE)
+
 **The AI lookout for your production systems.**
 
 Every team has that one person who always knows why things are happening and what to do. Skopax is that person, for the whole team, at any hour.
