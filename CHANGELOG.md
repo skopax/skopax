@@ -2,7 +2,7 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-11-19)
 
 Custom PromQL checks with presets, native GitHub and SonarQube plug-ins, Spring Cloud Config as a settings source, a Teams to Slack echo, a redesigned Access page, and a vulnerability scan of every release image.
 
