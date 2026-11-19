@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping
 from skopax.contract import HttpError, InstanceInfo, PassResult, ReadError, Sweep, Transport, Unreachable, anomaly, call, send
 from skopax.kit import access
 from skopax.kit.options import entries
-from skopax.remote import TimedOut
+from skopax.remote import TimedOut, TooLarge
 
 SAFE = "()':,!*-._~"
 QUERY_TIMEOUT = 120
@@ -32,13 +32,15 @@ KEY = 'API key'
 KEY_MIN = 8
 COLUMN_MAX = 100
 COLUMNS_MAX = 10
+KIBANA_TIME = re.compile(r'\?(start|end)\b')
 
 
 class ElasticError(ReadError):
-    def __init__(self, reason: str, detail: str = '', status: int = 0, missing: bool = False, unknown: tuple[str, ...] = (), denied: bool = False, timed_out: bool = False, code: str = ''):
+    def __init__(self, reason: str, detail: str = '', status: int = 0, missing: bool = False, unknown: tuple[str, ...] = (), denied: bool = False, timed_out: bool = False, code: str = '', too_large: bool = False):
         super().__init__(status, reason)
         self.code = code if ERROR_TYPE.fullmatch(code) else ''
         self.timed_out = timed_out
+        self.too_large = too_large
         self.reason = reason
         self.detail = detail
         self.missing = missing
@@ -100,17 +102,21 @@ class Elastic:
     def headers(self) -> dict[str, str]:
         return {'Authorization': f'ApiKey {self.api_key}'} if self.api_key else {}
 
-    def query(self, esql: str, timeout: float = QUERY_TIMEOUT) -> list[dict]:
+    def query(self, esql: str, timeout: float = QUERY_TIMEOUT, params: list[dict] | None = None, limit: int | None = None) -> list[dict]:
+        return self.answer(esql, timeout, params, limit)[1]
+
+    def answer(self, esql: str, timeout: float = QUERY_TIMEOUT, params: list[dict] | None = None, limit: int | None = None) -> tuple[list[str], list[dict]]:
+        sent = {'query': esql} | ({'params': params} if params else {})
         try:
-            body = call(self.transport, 'POST', f'{self.url}/_query', self.headers(), {'query': esql}, timeout=timeout).body
+            body = call(self.transport, 'POST', f'{self.url}/_query', self.headers(), sent, timeout=timeout, limit=limit).body
         except HttpError as e:
             raise self._refused(e.code, e.body) from None
         except Unreachable as e:
-            raise ElasticError('ES|QL unreachable', timed_out=isinstance(e, TimedOut)) from None
+            raise ElasticError('ES|QL unreachable', timed_out=isinstance(e, TimedOut), too_large=isinstance(e, TooLarge)) from None
         if not isinstance(body, dict):
             raise ElasticError('ES|QL answered without rows')
         names = [c.get('name') if isinstance(c, dict) else None for c in body.get('columns') or []]
-        return [dict(zip(names, row)) for row in body.get('values') or [] if isinstance(row, list)]
+        return [n for n in names if isinstance(n, str)], [dict(zip(names, row)) for row in body.get('values') or [] if isinstance(row, list)]
 
     def shards(self, index: str, timeout: float = TEST_TIMEOUT) -> int:
         try:
@@ -324,6 +330,14 @@ def discover(ui: str, data_view: str, kql: str, since: str, columns: tuple[str, 
     source = f'dataSource:(dataViewId:{rison(data_view)},type:dataView),' if data_view else ''
     a = ('(columns:!(' + ','.join(rison(c) for c in columns) + '),' + source +
          f"filters:!(),interval:auto,query:(language:kuery,query:{rison(kql)}),sort:!(!('@timestamp',desc)))")
+    return ui.rstrip('/') + DISCOVER + '?_g=' + urllib.parse.quote(g, safe=SAFE) + '&_a=' + urllib.parse.quote(a, safe=SAFE)
+
+
+def esql_discover(ui: str, esql: str, minutes: int) -> str:
+    if not ui.startswith('https://'):
+        return ''
+    g = f'(filters:!(),refreshInterval:(pause:!t,value:60000),time:(from:now-{int(minutes)}m,to:now))'
+    a = f'(dataSource:(type:esql),query:(esql:{rison(KIBANA_TIME.sub(lambda m: "?_t" + m[1], esql))}))'
     return ui.rstrip('/') + DISCOVER + '?_g=' + urllib.parse.quote(g, safe=SAFE) + '&_a=' + urllib.parse.quote(a, safe=SAFE)
 
 

@@ -15,6 +15,7 @@ NAME = re.compile(r'[a-z][a-z0-9-]*[a-z0-9]')
 MATCHER = r' *[a-zA-Z_][a-zA-Z0-9_]* *(?:=~|!~|!=|=) *"(?:[^"\\\n]|\\.)*" *'
 MATCHERS = re.compile(f'{MATCHER}(?:,{MATCHER})*')
 PREFIX = re.compile(r'[a-zA-Z_:][a-zA-Z0-9_:]*')
+INDEX = re.compile(r'[a-zA-Z0-9_.*:-]+(?:,[a-zA-Z0-9_.*:-]+)*')
 KINDS = {
     'instance': ('instance',),
     'datasource': ('datasource',),
@@ -22,8 +23,9 @@ KINDS = {
     'matchers': ('query',),
     'prefix': ('query', 'text'),
     'label': ('query', 'by', 'title', 'text'),
+    'index': ('query',),
 }
-MAXES = {'instance': INSTANCE_MAX, 'datasource': DATASOURCE_MAX, 'name': 20, 'matchers': 300, 'prefix': 100, 'label': 100}
+MAXES = {'instance': INSTANCE_MAX, 'datasource': DATASOURCE_MAX, 'name': 20, 'matchers': 300, 'prefix': 100, 'label': 100, 'index': 200}
 ONE_OF = ('instance', 'name')
 PRESET_KEYS = frozenset({'id', 'name', 'summary', 'source', 'needs', 'placeholders', 'checks'})
 PLACEHOLDER_KEYS = frozenset({'key', 'kind', 'label', 'help', 'example', 'default', 'optional', 'max'})
@@ -47,6 +49,8 @@ def _shaped(v: str, p: dict) -> bool:
         return bool(PREFIX.fullmatch(v))
     if kind == 'label':
         return bool(LABEL.fullmatch(v)) and v not in RESERVED and not v.startswith('__')
+    if kind == 'index':
+        return bool(INDEX.fullmatch(v))
     return bool(v) and not LINE_BREAKS.search(v)
 
 
@@ -57,6 +61,7 @@ SHAPES = {
     'matchers': 'label matchers such as {example}: label, operator, quoted value, joined by commas',
     'prefix': 'the start of a metric name, such as {example}',
     'label': 'a label name, such as {example}',
+    'index': 'an index pattern such as {example}: letters, digits and - _ . * : only, several joined by commas',
 }
 
 
@@ -190,7 +195,7 @@ def _sample(p: dict, longest: bool) -> str:
         return p['example']
     most = p['max']
     return {'matchers': 'a="' + 'x' * (most - 4) + '"', 'prefix': 'p' * most, 'label': 'l' * most, 'name': 'n' + 'x' * (most - 1), 'instance': 'i' * most,
-            'datasource': 'd' * most}[p['kind']]
+            'datasource': 'd' * most, 'index': 'x' * most}[p['kind']]
 
 
 def _preset(raw: object, stem: str) -> Preset:

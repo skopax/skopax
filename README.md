@@ -156,7 +156,7 @@ The full guide is in [docs/](docs/README.md):
 - [Configuration](docs/configuration.md): settings, the config file and settings sources, branding and languages.
 - [Sign-in](docs/sign-in.md): single sign-on, roles, local accounts and the MCP server.
 - [Integrations](docs/plugins.md): the plug-ins that ship with Skopax, their instances and outside MCP servers.
-- [Custom checks](docs/custom-checks.md): PromQL checks written in Admin, without a plug-in, and the presets for Couchbase and managed Redis.
+- [Custom checks](docs/custom-checks.md): PromQL and ES|QL checks written in Admin, without a plug-in, and the presets for Couchbase, managed Redis and CSP reports.
 - [Extending Skopax](docs/extending.md): writing a plug-in, starting from the example in `examples/hello-plugin`, with three fuller examples next to it: `examples/couchbase-plugin`, `examples/managed-redis-plugin` and `examples/batch-jobs-plugin`.
 - [Operations](docs/operations.md): the image, logs, agent mode, the probe, proxies and recovery.
 - [Development](docs/development.md): the tests, continuous integration, the licence gate and releases.

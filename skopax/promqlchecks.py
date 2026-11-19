@@ -13,6 +13,7 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from skopax.contract import HttpError, InstanceInfo, PassResult, Transport, Unreachable, anomaly, call, iso
 from skopax.errkind import Authored, kind
+from skopax.kit.elastic import ElasticError, client_for as elastic_client, esql_discover, refused_text, sources_of
 from skopax.kit.grafana import Datasource, DatasourceError, explore, said_of
 from skopax.kit.promql import Late, auth_headers, bounded, graph, ui_of, with_headers
 from skopax.messages import msg
@@ -29,6 +30,10 @@ CHECKS_MAX = 50
 QUERY_TIME_S = 20
 PASS_TIME_S = 240
 SERIES_MAX = 500
+ROWS_MAX = 1000
+WINDOW = 60
+WINDOW_MIN = 5
+WINDOW_MAX = 1440
 CARDS_MAX = 20
 BODY_MAX = 8 * 1024 * 1024
 FOR_MAX = 12
@@ -48,17 +53,20 @@ COMPARISONS = ('>', '>=', '<', '<=', '==', '!=')
 HOLDS = {'>': operator.gt, '>=': operator.ge, '<': operator.lt, '<=': operator.le, '==': operator.eq, '!=': operator.ne}
 BASELINES = {'1d': 86400, '1w': 604800}
 BASELINE_WORDS = {'1d': 'custom_checks.day_ago', '1w': 'custom_checks.week_ago'}
-EVALUATED = ('source', 'instance', 'datasource', 'query', 'op', 'threshold', 'baselines', 'baselineMode', 'by')
+EVALUATED = ('source', 'instance', 'datasource', 'query', 'window', 'op', 'threshold', 'baselines', 'baselineMode', 'by')
 MODES = ('ratio', 'difference')
-SOURCES = ('prometheus', 'grafana')
+SOURCES = ('prometheus', 'grafana', 'elasticsearch')
 SEVERITIES = ('info', 'warn', 'crit')
 ID = re.compile(r'[a-z][a-z0-9-]{1,40}')
 LABEL = re.compile(r'[a-zA-Z_][a-zA-Z0-9_]*')
 PLACEHOLDER = re.compile(r'\{([a-zA-Z_][a-zA-Z0-9_]*)\}')
 CONTROL = re.compile(r'[\x00-\x08\x0b-\x1f\x7f]')
 LINE_BREAKS = re.compile(r'[\x00-\x1f\x7f]+')
+ESQL_FROM = re.compile(r'\s*FROM\s', re.I)
+TIME_PARAM = re.compile(r'\?(start|end)\b')
+NO_TIME = 'query has no ?start/?end: reads every document'
 INERT = str.maketrans({'*': '\u2217', '`': "'"})
-FIELDS = ('id', 'name', 'enabled', 'source', 'instance', 'datasource', 'query', 'op', 'threshold', 'baselines', 'baselineMode', 'severity', 'by', 'for', 'title', 'text')
+FIELDS = ('id', 'name', 'enabled', 'source', 'instance', 'datasource', 'query', 'window', 'op', 'threshold', 'baselines', 'baselineMode', 'severity', 'by', 'for', 'title', 'text')
 STAMPS = ('createdBy', 'createdAt', 'updatedBy', 'updatedAt')
 TAGS = ('preset', 'presetValues')
 
@@ -84,10 +92,11 @@ class Leftover(Authored, Exception):
 
 
 class Failed(Exception):
-    def __init__(self, reason: str, down: bool = False):
+    def __init__(self, reason: str, down: bool = False, slow: bool = False):
         super().__init__(reason)
         self.reason = reason
         self.down = down
+        self.slow = slow
 
 
 def flat(text: str) -> str:
@@ -169,6 +178,16 @@ def _count(value: object) -> int:
     return got
 
 
+def _window(value: object) -> int:
+    said = f'the window must be a whole number of minutes from {WINDOW_MIN} to {WINDOW_MAX}'
+    if isinstance(value, bool) or not isinstance(value, (int, str)) or not str(value).strip().isascii() or not str(value).strip().isdigit():
+        raise Invalid(said)
+    got = int(value)
+    if not WINDOW_MIN <= got <= WINDOW_MAX:
+        raise Invalid(said)
+    return got
+
+
 def _given(raw: dict, name: str, default: object) -> object:
     value = raw.get(name)
     return default if value is None or value == '' else value
@@ -193,6 +212,9 @@ def clean(raw: object) -> dict:
     instance = _text(raw, 'instance', INSTANCE_MAX, True)
     datasource = _text(raw, 'datasource', DATASOURCE_MAX, True) if source == 'grafana' else ''
     query = _text(raw, 'query', QUERY_MAX, True, lines=True)
+    if source == 'elasticsearch' and not ESQL_FROM.match(query):
+        raise Invalid('an Elasticsearch query must start with FROM <index>')
+    window = {'window': _window(_given(raw, 'window', WINDOW))} if source == 'elasticsearch' else {}
     op = raw.get('op')
     if not isinstance(op, str) or op not in COMPARISONS:
         raise Invalid(f"the comparison must be one of {' '.join(COMPARISONS)}")
@@ -209,7 +231,7 @@ def clean(raw: object) -> dict:
     by = _given(raw, 'by', [])
     if not isinstance(by, list) or len(by) > SPLIT_MAX or any(not isinstance(b, str) or not LABEL.fullmatch(b) or len(b) > LABEL_MAX for b in by):
         raise Invalid(f'split by at most {SPLIT_MAX} label names such as instance or job')
-    return {'id': check_id, 'name': name, 'enabled': enabled, 'source': source, 'instance': instance, 'datasource': datasource, 'query': query, 'op': op,
+    return {'id': check_id, 'name': name, 'enabled': enabled, 'source': source, 'instance': instance, 'datasource': datasource, 'query': query, **window, 'op': op,
             'threshold': threshold, 'baselines': [b for b in BASELINES if b in baselines], 'baselineMode': mode, 'severity': severity, 'by': list(dict.fromkeys(by)),
             'for': _count(raw.get('for', 1)), 'title': _template(raw, 'title', TITLE_MAX), 'text': _template(raw, 'text', TEXT_MAX)}
 
@@ -242,6 +264,7 @@ class Outcome:
     read: int
     skipped: int
     missing: int = 0
+    warnings: list = field(default_factory=list)
 
     def firing(self) -> list[Group]:
         return [g for g in self.groups if g.fires]
@@ -295,9 +318,9 @@ def rank(op: str, g: Group) -> tuple:
 
 
 def evaluate(d: dict, asker: 'Asker', now: float) -> Outcome:
-    series, total, skipped = series_of(asker.data(d['query'], now))
+    series, total, skipped = asker.series(d, now)
     groups = grouped(series, d['by'], d['op'])
-    bases = {o: grouped(series_of(asker.data(d['query'], now - BASELINES[o]))[0], d['by'], d['op']) for o in d['baselines']} if groups else {}
+    bases = {o: grouped(asker.series(d, now - BASELINES[o])[0], d['by'], d['op']) for o in d['baselines']} if groups else {}
     hold = HOLDS[d['op']]
     out, missing = [], 0
     for values, (labels, v) in groups.items():
@@ -310,7 +333,7 @@ def evaluate(d: dict, asker: 'Asker', now: float) -> Outcome:
         g.fires = all(c is not None and hold(c, d['threshold']) for c in g.compared.values()) if d['baselines'] else hold(v, d['threshold'])
         out.append(g)
     out.sort(key=lambda g: rank(d['op'], g))
-    return Outcome(out, total, len(series) + skipped, skipped, missing)
+    return Outcome(out, total, len(series) + skipped, skipped, missing, list(asker.warnings))
 
 
 def joined(parts: list[str]) -> str:
@@ -362,9 +385,13 @@ def cards_of(d: dict, ready: list[Group], link: Callable[[], dict | None], held:
 
 class Asker:
     name = ''
+    warnings: tuple = ()
 
     def data(self, expr: str, at: float) -> dict:
         raise NotImplementedError
+
+    def series(self, d: dict, at: float) -> tuple[list[tuple[dict, float]], int, int]:
+        return series_of(self.data(d['query'], at))
 
     def link(self, expr: str) -> dict | None:
         return None
@@ -429,6 +456,83 @@ class GrafanaAsker(Asker):
     def link(self, expr: str) -> dict | None:
         url = explore(self.info.config.get('url') or '', self.source.found or '', expr)
         return {'label': msg('custom_checks.link_grafana'), 'url': url} if url else None
+
+
+def label_text(value: object) -> str:
+    if value is None:
+        return ''
+    if isinstance(value, list):
+        return ', '.join(label_text(x) for x in value)[:LABEL_MAX]
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    if isinstance(value, float) and math.isfinite(value):
+        return shown(value)
+    return flat(str(value))[:LABEL_MAX]
+
+
+def not_a_number(value: object) -> str:
+    return 'true or false' if isinstance(value, bool) else 'a list' if isinstance(value, list) else 'text' if isinstance(value, str) else 'an object'
+
+
+def rows_of(columns: list[str], rows: list[dict], by: list[str]) -> tuple[list[tuple[dict, float]], int, int]:
+    if 'value' not in columns:
+        raise Failed('the query returns no column named value: name the number value, such as STATS value = COUNT(*)')
+    lacking = next((b for b in by if b not in columns), None)
+    if lacking is not None:
+        raise Failed(f'the query returns no column named {lacking}, which by names')
+    total = len(rows)
+    out = []
+    for r in rows:
+        v = r['value']
+        if v is None:
+            raise Failed('the value column is null in a row: drop such rows with WHERE value IS NOT NULL')
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise Failed(f'the value column must hold numbers, not {not_a_number(v)}')
+        if not math.isfinite(v):
+            raise Failed('the value column holds a number that is not finite')
+        names = list(dict.fromkeys(list(by) + sorted(str(k) for k in r if k != 'value')))[:LABELS_MAX]
+        out.append(({k[:LABEL_MAX]: label_text(r.get(k)) for k in names}, float(v)))
+    out.sort(key=lambda x: json.dumps(x[0], sort_keys=True))
+    return out[:ROWS_MAX], total, 0
+
+
+class ElasticAsker(Asker):
+    def __init__(self, info: InstanceInfo, transport: Transport, window: int):
+        self.es = elastic_client(info, bounded(transport, QUERY_TIME_S))
+        self.ui = str(info.config.get('ui-url') or '')
+        self.window = window
+        self.name = f'Elasticsearch {info.name}'
+        self.warnings: list[str] = []
+
+    def rows(self, query: str, at: float) -> tuple[list[str], list[dict]]:
+        named = set(TIME_PARAM.findall(query))
+        params = [{k: v} for k, v in (('start', iso(at - self.window * 60)), ('end', iso(at))) if k in named]
+        try:
+            return self.es.answer(query, timeout=QUERY_TIME_S, params=params, limit=BODY_MAX)
+        except Late:
+            raise Failed(late().reason, slow=True) from None
+        except ElasticError as e:
+            if e.timed_out:
+                raise Failed(late().reason, slow=True) from None
+            if e.too_large:
+                raise Failed(f'{self.name} answered more than {BODY_MAX // 1048576} MB: aggregate with STATS or keep fewer columns') from None
+            if not e.status and e.reason.endswith('unreachable'):
+                raise Failed(f'{self.name} is unreachable', True) from None
+            if not e.status:
+                raise Failed(f'{self.name} did not answer with a query result') from None
+            said = refused_text(e.status, sources_of(query)).removesuffix(f' (HTTP {e.status})') if e.denied else e.detail
+            raise Failed(f'{self.name} answered HTTP {e.status}' + (f': {said}' if said else '')) from None
+
+    def series(self, d: dict, at: float) -> tuple[list[tuple[dict, float]], int, int]:
+        columns, got = self.rows(d['query'], at)
+        series, total, skipped = rows_of(columns, got, d['by'])
+        if total >= ROWS_MAX and not self.warnings:
+            self.warnings.append(f'the answer has {total} rows: Elasticsearch gives at most {ROWS_MAX} rows unless the query sets a higher LIMIT, and at most {ROWS_MAX} are read')
+        return series, total, skipped
+
+    def link(self, expr: str) -> dict | None:
+        url = esql_discover(self.ui, expr, self.window)
+        return {'label': msg('custom_checks.link_kibana'), 'url': url} if url else None
 
 
 class Definitions:
@@ -558,6 +662,8 @@ class CustomChecks:
             raise Failed(f"no {d['source']} instance named {d['instance']}")
         info = found.info()
         transport = self.runtime.transport_for(plugin, info)
+        if d['source'] == 'elasticsearch':
+            return ElasticAsker(info, transport, d.get('window') or WINDOW)
         return PromAsker(info, transport) if d['source'] == 'prometheus' else GrafanaAsker(info, transport, d['datasource'], listings)
 
     def _one(self, d: dict, listings: dict, now: float, old: dict | None = None, held: frozenset = frozenset()) -> tuple[Outcome, dict, list[dict]]:
@@ -584,6 +690,7 @@ class CustomChecks:
         deadline = self.monotonic() + PASS_TIME_S
         listings: dict = {}
         down: dict[tuple[str, str], bool] = {}
+        slow: set[tuple[str, str]] = set()
         found, ran, writes = [], [], {}
         for d in sorted(defs, key=lambda d: (str((states.get(d['id']) or {}).get('ranAt') or ''), d['id'])):
             was = states.get(d['id']) or {}
@@ -602,8 +709,10 @@ class CustomChecks:
                 old = was.get('pending') if isinstance(was.get('pending'), dict) else {}
                 outcome, pending, made = self._one(d, listings, now, old, held)
             except Failed as e:
-                if e.down:
+                if e.down or (e.slow and where in slow):
                     down[where] = True
+                elif e.slow:
+                    slow.add(where)
                 writes[d['id']] = {**was, 'state': 'failing', 'reason': redact_text(e.reason, REASON_MAX), 'at': iso(now), 'pending': {}} | ({'ranAt': iso(now)} if tried else {})
                 continue
             found += made
@@ -644,7 +753,9 @@ class CustomChecks:
         try:
             outcome, pending, made = self._one(d, {}, now)
         except Failed as e:
-            return {'ok': False, 'reason': redact_text(e.reason, REASON_MAX), 'cards': [], 'series': 0, 'read': 0, 'skipped': 0, 'noBaseline': 0, 'firing': 0, 'for': d['for']}
-        return {'ok': True, 'reason': '', 'series': outcome.total, 'read': outcome.read, 'skipped': outcome.skipped, 'noBaseline': outcome.missing, 'firing': len(pending),
+            return {'ok': False, 'reason': redact_text(e.reason, REASON_MAX), 'cards': [], 'series': 0, 'read': 0, 'skipped': 0, 'noBaseline': 0, 'firing': 0, 'for': d['for'],
+                    'warnings': []}
+        warnings = ([NO_TIME] if d['source'] == 'elasticsearch' and 'start' not in TIME_PARAM.findall(d['query']) else []) + [redact_text(w, REASON_MAX) for w in outcome.warnings]
+        return {'ok': True, 'reason': '', 'warnings': warnings, 'series': outcome.total, 'read': outcome.read, 'skipped': outcome.skipped, 'noBaseline': outcome.missing, 'firing': len(pending),
                 'for': d['for'], 'cards': [{'key': c['key'], 'sev': c['sev'], 'title': c['label'], 'text': c['what'], 'value': c['now'], 'd1': c['d1'], 'd7': c['d7'], 'labels': c['checkLabels'],
                            'links': c.get('links') or [], 'more': int(c['now']) if c['key'].endswith('|more') else 0} for c in made]}
