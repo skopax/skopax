@@ -184,11 +184,11 @@ def connection_of(runtime: Runtime, name: str = 'main'):
     return cloudflare.test(runtime.context(cloudflare.PLUGIN, runtime.instances.get('cloudflare', name), NOW))
 
 
-def app_with(store: Store, http, slack: Slack | None = None, push_user: str = '', **instances: dict) -> TestClient:
+def app_with(store: Store, http, slack: Slack | None = None, push_user: str = '', post_sev: str = 'warn', **instances: dict) -> TestClient:
     key = master_key(store.db, settings())
     for index, (name, values) in enumerate(instances.items()):
         add_instance(store, cloudflare.PLUGIN, name, sealer_key=key, primary=index == 0, **({'token': TOKEN, 'zones': SHOP} | values))
-    return TestClient(create_app(dataclasses.replace(settings(), slack_push_user=push_user), store, transport=http, **({'slack': slack} if slack else {})))
+    return TestClient(create_app(dataclasses.replace(settings(), slack_push_user=push_user, slack_post_sev=post_sev), store, transport=http, **({'slack': slack} if slack else {})))
 
 
 def sweep(c: TestClient, *check_ids: str, now: float = NOW):
@@ -717,7 +717,7 @@ def test_a_cf_pass_push_is_sent_as_a_dm_and_marked_on_the_state(store: Store):
     store.save_state({'anomalies': [], 'initialized': True}, None)
 
     # when
-    with app_with(store, http, slack=Slack('xoxb-test', '#ops', transport, FakeSlackApi()), push_user=PUSH_USER, main={'status-components': SEEN}) as c:
+    with app_with(store, http, slack=Slack('xoxb-test', '#ops', transport, FakeSlackApi()), push_user=PUSH_USER, post_sev='crit', main={'status-components': SEEN}) as c:
         applied = sweep(c, 'cf')[0]
         sweep(c, 'edge')
         state = c.get('/api/state').json()
@@ -728,7 +728,8 @@ def test_a_cf_pass_push_is_sent_as_a_dm_and_marked_on_the_state(store: Store):
     posts = [p for _, p in transport.calls if p['channel'] != PUSH_USER]
     crit = {a['key'] for a in applied.push if a['sev'] == 'crit'}
     assert len(dms) == 1 and dms[0]['text'].startswith(f'Skopax: CRIT api-origin {SHOP} health check; ')
-    assert len(posts) == len(crit) and all(msg('autosend.crit_now.last') in json.dumps(p) for p in posts), 'each critical card is posted to the channel at once with its numbers'
+    assert len(posts) == len(crit) and all('Ongoing since' in p['text'] for p in posts), 'each critical card is posted to the channel at once with its numbers'
+    assert not any(msg('autosend.crit_now.last') in json.dumps(p) for p in posts), 'the investigator is off here, so no post promises an investigation'
     assert {k for k in crit if (store.anomaly(k).get('slackPost') or {}).get('at')} == crit
     assert state['serverPushes'][0]['dm'] is True
     assert state['sources']['cf'] == 'ok'

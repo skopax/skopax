@@ -225,6 +225,7 @@ async function loadChanges() {
   }
 }
 function adminSource(i) {
+  if (i.oldSwitch) return '<span class="tag ' + (i.source === 'admin' ? 'k-act' : 'plain') + '" title="' + esc('From the old Critical cards at once switch (' + i.oldSwitch + ')' + (i.source === 'admin' ? ', set by ' + draftBy(i.by) + ' ' + dayhm(i.at) + '; Reset or saving a value here clears it' : ' in the service configuration; a value saved here wins over it')) + '">old switch</span>';
   if (i.source === 'admin') return '<span class="tag k-act" title="' + esc('Set on this page by ' + draftBy(i.by) + ' ' + dayhm(i.at) + (i.base !== i.value ? '\nWithout it: ' + (i.base || 'empty') : '')) + '">Set by ' + esc(draftBy(i.by)) + ' ' + esc(dayhm(i.at)) + '</span>';
   if (i.source === 'config') return '<span class="tag plain" title="From the service configuration; a value saved here wins over it">config</span>';
   return '<span class="tag plain" title="The built-in default">default</span>';
@@ -232,7 +233,7 @@ function adminSource(i) {
 function adminId(key) { return 'adm-' + key.replace(/[^a-z0-9]/gi, '-'); }
 function adminControl(i) {
   var id = adminId(i.key), named = ' aria-labelledby="' + esc(id + '-l') + '"';
-  if (i.kind === 'choice') return '<select id="' + esc(id) + '" class="adm-in"' + named + '>' + i.choices.map(function (c) { return '<option value="' + esc(c) + '"' + (c === i.value ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select>';
+  if (i.kind === 'choice') return '<select id="' + esc(id) + '" class="adm-in"' + named + '>' + i.choices.map(function (c) { return '<option value="' + esc(c) + '"' + (c === i.value ? ' selected' : '') + '>' + esc((i.choiceLabels || {})[c] || c) + '</option>'; }).join('') + '</select>';
   if (i.kind === 'bool') return '<select id="' + esc(id) + '" class="adm-in"' + named + '><option value="true"' + (i.value === 'true' ? ' selected' : '') + '>true</option><option value="false"' + (i.value === 'false' ? ' selected' : '') + '>false</option></select>';
   if (i.kind === 'int' || i.kind === 'float') return '<input id="' + esc(id) + '" class="adm-in"' + named + ' type="number" inputmode="decimal" step="' + (i.kind === 'int' ? '1' : 'any') + '" min="' + esc(i.low) + '" max="' + esc(i.high) + '" value="' + esc(i.value) + '">';
   if (i.kind === 'rules') {
@@ -350,7 +351,7 @@ function adminHistory() {
     var shownR = function (v) { return v == null ? '<span class="muted">' + (h.route ? 'none' : h.source || h.secret ? 'not set' : 'config / default') + '</span>' : shown(v); };
     var change = h.seen ? '<span class="muted">workflow link shown</span>' : shownR(h.old) + ' → ' + shownR(h.new);
     return '<tr><td>' + esc(dayhm(h.at)) + '</td><td>' + esc(draftBy(h.by)) + '</td><td title="' + esc(h.key) + '">' + esc(name) + '</td><td class="adm-ch">' + change + '</td>' +
-      '<td>' + (h.route || h.source || h.secret || h.talk ? '' : '<button type="button" class="btn sec small adm-revert" data-id="' + esc(h.id) + '" title="Put back the value before this change">Revert</button>') + '</td></tr>';
+      '<td>' + (h.route || h.source || h.secret || h.talk || h.legacy ? '' : '<button type="button" class="btn sec small adm-revert" data-id="' + esc(h.id) + '" title="Put back the value before this change">Revert</button>') + '</td></tr>';
   }).join('') + '</tbody></table>' + (rest > 0 ? '<p class="adm-hist-more"><button type="button" class="btn sec small adm-more">Show ' + Math.min(rest, ADMIN_HIST_STEP) + ' more</button><span class="muted">' + Math.min(ADMIN_HIST_SHOW, ADMIN_HIST.length) + ' of ' + ADMIN_HIST.length + '</span></p>' : ADMIN_HIST.length >= ADMIN_HIST_MAX ? '<p class="muted adm-hist-more">The latest ' + ADMIN_HIST_MAX + ' changes; older ones stay stored.</p>' : '');
 }
 async function adminRevert(h, b) {

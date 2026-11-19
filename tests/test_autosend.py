@@ -9,8 +9,8 @@ from tests.conftest import AUTH, anomaly, settings, state
 from tests.test_deploy_reports import report
 from tests.test_slack import KEY, FakeSlack, client_with
 from skopax.app import create_app
-from skopax.autosend import CritNow, Fallback, fallback_text
-from skopax.engine import parse_iso
+from skopax.autosend import PostNow, Fallback, fallback_text, fresh
+from skopax.engine import Applied, parse_iso
 from skopax.messages import msg
 from skopax.slack import AUTO_BY, Slack, SlackDown
 from skopax.store import NotFound, Store, iso, utc_now
@@ -615,8 +615,8 @@ def test_a_critical_card_is_posted_at_once_with_its_numbers_and_the_investigatio
 
     # when
     cards = store.load()['anomalies']
-    posted = CritNow(store, sent.append, lambda: True).run(cards, cards, now)
-    again = CritNow(store, sent.append, lambda: True).run(cards, store.load()['anomalies'], now)
+    posted = PostNow(store, sent.append, lambda: 'crit').run(cards, cards, now)
+    again = PostNow(store, sent.append, lambda: 'crit').run(cards, store.load()['anomalies'], now)
 
     # then
     assert posted == [KEY] and sent == [KEY], 'only the open, unmuted, untaken, unposted critical card'
@@ -634,9 +634,189 @@ def test_many_critical_cards_at_once_are_left_to_the_investigator_and_the_switch
     sent = []
 
     # when
-    burst = CritNow(store, sent.append, lambda: True).run(cards, cards, parse_iso('2026-11-12T05:17:20Z'))
-    off = CritNow(store, sent.append, lambda: False).run(cards[:1], cards, parse_iso('2026-11-12T05:17:20Z'))
+    burst = PostNow(store, sent.append, lambda: 'crit').run(cards, cards, parse_iso('2026-11-12T05:17:20Z'))
+    off = PostNow(store, sent.append, lambda: 'off').run(cards[:1], cards, parse_iso('2026-11-12T05:17:20Z'))
 
     # then
     assert (burst, off, sent) == ([], [], []), 'four critical cards in one pass look like a release or a cluster event; the investigator groups them first'
-    assert any('4 critical cards opened together' in r['text'] for r in store.list_activity(None, 10))
+    assert any('4 cards opened together (4 critical)' in r['text'] for r in store.list_activity(None, 10))
+
+
+AT_ONCE = parse_iso('2026-11-12T05:17:20Z')
+
+
+def sev_card(key: str, sev: str, **extra) -> dict:
+    return anomaly(key, sev=sev, svc=key.split('|')[1], **({'pushedAt': '2026-11-12T05:17:11Z'} | extra))
+
+
+@pytest.mark.parametrize('floor, expected', [
+    ('crit', ['log|a|ERROR|x']),
+    ('warn', ['log|a|ERROR|x', 'log|b|WARN|x']),
+    ('info', ['log|a|ERROR|x', 'log|b|WARN|x', 'log|c|INFO|x']),
+    ('off', []),
+])
+def test_cards_at_or_above_the_chosen_severity_post_at_once(store: Store, floor, expected):
+    # given
+    store.save(state(sev_card('log|a|ERROR|x', 'crit'), sev_card('log|b|WARN|x', 'warn'), sev_card('log|c|INFO|x', 'info')), None)
+    cards = store.load()['anomalies']
+    sent = []
+
+    # when
+    posted = PostNow(store, sent.append, lambda: floor).run(cards, cards, AT_ONCE)
+
+    # then
+    assert posted == expected and sent == expected
+    assert all(store.anomaly(k)['slackDraft']['by'] == 'server' for k in expected)
+    assert all(not store.anomaly(k).get('slackDraft') for k in {c['key'] for c in cards} - set(expected)), 'cards below the line wait for the investigator or a person'
+
+
+@pytest.mark.parametrize('investigating, crit_line, warn_line', [
+    (True, 'autosend.crit_now.last', 'autosend.post_now.warn_last'),
+    (False, None, None),
+])
+def test_each_post_at_once_ends_with_a_line_that_is_true_for_its_severity(store: Store, investigating, crit_line, warn_line):
+    # given
+    store.save(state(sev_card('log|a|ERROR|x', 'crit'), sev_card('log|b|WARN|x', 'warn'), sev_card('log|c|INFO|x', 'info')), None)
+    cards = store.load()['anomalies']
+
+    # when
+    PostNow(store, lambda key: None, lambda: 'info', lambda: investigating).run(cards, cards, AT_ONCE)
+    text = {k: store.anomaly(k)['slackDraft']['text'] for k in ('log|a|ERROR|x', 'log|b|WARN|x', 'log|c|INFO|x')}
+
+    # then
+    lines = {msg('autosend.crit_now.last'), msg('autosend.post_now.warn_last'), msg('autosend.post_now.info_last')}
+    for key, line in (('log|a|ERROR|x', crit_line), ('log|b|WARN|x', warn_line)):
+        if line:
+            assert text[key].endswith('\n' + msg(line))
+        else:
+            assert not any(x in text[key] for x in lines) and text[key].endswith('.'), 'no investigation is promised while the investigator does not run on cards'
+    assert text['log|c|INFO|x'].endswith(msg('autosend.post_now.info_last'))
+    assert msg('autosend.post_now.warn_last') == 'The investigator looks at this card on its next run; findings will arrive in this thread.'
+    assert any(r['text'] == 'Card posted to Slack at once with its numbers \u00b7 log|b|WARN|x' for r in store.list_activity(None, 10))
+
+
+def test_an_info_only_burst_does_not_say_the_investigator_groups_it(store: Store):
+    # given
+    keys = [f'log|s{i}|INFO|x' for i in range(4)]
+    store.save(state(*[sev_card(k, 'info') for k in keys]), None)
+    cards = store.load()['anomalies']
+
+    # when
+    burst = PostNow(store, lambda key: None, lambda: 'info').run(cards, cards, AT_ONCE)
+
+    # then
+    assert burst == []
+    assert [r['text'] for r in store.list_activity(None, 10) if 'opened together' in r['text']] == ['4 cards opened together (4 info); not posted at once']
+
+
+def test_the_burst_counts_only_the_cards_due_and_names_their_severities(store: Store):
+    # given
+    keys = ['log|a|ERROR|1', 'log|b|ERROR|2', 'log|c|WARN|3', 'log|d|WARN|4']
+    store.save(state(*[sev_card(k, 'crit' if 'ERROR' in k else 'warn') for k in keys]), None)
+    cards = store.load()['anomalies']
+    sent = []
+
+    # when
+    burst = PostNow(store, sent.append, lambda: 'warn').run(cards, cards, AT_ONCE)
+    crit_only = PostNow(store, sent.append, lambda: 'crit').run(cards, store.load()['anomalies'], AT_ONCE)
+
+    # then
+    assert burst == [], 'four cards due in one pass look like a release or a cluster event'
+    assert any(r['text'] == '4 cards opened together (2 critical, 2 warning); not posted at once, the investigator groups them first' for r in store.list_activity(None, 10))
+    assert crit_only == ['log|a|ERROR|1', 'log|b|ERROR|2'] and sent == crit_only, 'with Critical only two are due, under the burst'
+
+
+def test_a_card_posted_at_once_gets_no_fallback_draft_even_when_the_post_failed(store: Store):
+    # given
+    store.save(state(sev_card('log|a|ERROR|x', 'crit', firstSeen=FIRED), sev_card('log|b|WARN|x', 'warn', firstSeen=FIRED)), None)
+    store.anomalies.update_many({}, {'$set': {'pushedAt': FIRED}})
+    loaded = store.load()
+    loaded['history'] = [{'t': FIRED, 'key': k, 'ev': 'new'} for k in ('log|a|ERROR|x', 'log|b|WARN|x')]
+    cards = loaded['anomalies']
+
+    def down(key):
+        raise SlackDown('down')
+
+    # when
+    before = [a['key'] for a, _ in Fallback(store, 15).due(loaded, [], FB_NOW)]
+    posted = PostNow(store, down, lambda: 'warn').run(cards, cards, AT_ONCE)
+    after = store.load()
+    after['history'] = loaded['history']
+    picked = Fallback(store, 15).due(after, [], FB_NOW)
+
+    # then
+    assert before == ['log|a|ERROR|x'], 'without the post at once the fallback would draft the critical card'
+    assert posted == [], 'Slack was down, the armed draft retries through auto-send'
+    assert picked == [], 'the numbers are drafted once; the fallback does not draft them again'
+    assert {store.anomaly(k)['slackDraft']['by'] for k in ('log|a|ERROR|x', 'log|b|WARN|x')} == {'server'}
+
+
+def test_fresh_cards_are_the_pushed_ones_plus_new_info_cards_after_the_first_pass():
+    # given
+    now = parse_iso('2026-11-12T05:17:20Z')
+    crit = anomaly('log|a|ERROR|x', sev='crit', svc='a')
+    info, old_info = anomaly('log|c|INFO|x', sev='info', svc='c'), anomaly('log|d|INFO|x', sev='info', svc='d')
+    events = [{'key': 'log|a|ERROR|x', 'ev': 'new'}, {'key': 'log|c|INFO|x', 'ev': 'new'}, {'key': 'log|d|INFO|x', 'ev': 'reopened'}]
+    cards = [crit, info, old_info]
+
+    # when
+    later = fresh(Applied(rev=2, events=events, push=[crit], cards=cards), now)
+    first = fresh(Applied(rev=1, events=events, push=[], cards=cards, first=True), now)
+
+    # then
+    assert [a['key'] for a in later] == ['log|a|ERROR|x', 'log|c|INFO|x']
+    assert first == [], 'the first pass after a fresh start posts nothing'
+
+
+def test_a_new_info_card_keeps_the_same_service_quiet_window():
+    # given
+    now = parse_iso('2026-11-12T05:17:20Z')
+    warned = anomaly('log|shop|WARN|x', sev='warn', svc='shop', pushedAt='2026-11-12T05:00:00Z', pushedSev='warn')
+    posted = anomaly('log|cart|INFO|old', sev='info', svc='cart', slackPost={'at': '2026-11-12T05:10:00Z'})
+    stale = anomaly('log|pay|WARN|x', sev='warn', svc='pay', pushedAt='2026-11-12T04:00:00Z', pushedSev='warn')
+    news = [anomaly(f'log|{svc}|INFO|new', sev='info', svc=svc) for svc in ('shop', 'cart', 'pay')]
+    events = [{'key': a['key'], 'ev': 'new'} for a in news]
+
+    # when
+    got = fresh(Applied(rev=2, events=events, push=[], cards=[warned, posted, stale] + news), now)
+
+    # then
+    assert [a['key'] for a in got] == ['log|pay|INFO|new'], 'a service pushed or posted in the last 30 minutes is not posted again for an info card'
+
+
+def test_two_new_info_cards_of_one_service_in_one_pass_post_once():
+    # given
+    now = parse_iso('2026-11-12T05:17:20Z')
+    news = [anomaly(f'log|shop|INFO|{i}', sev='info', svc='shop') for i in range(2)] + [anomaly('log|cart|INFO|0', sev='info', svc='cart')]
+
+    # when
+    got = fresh(Applied(rev=2, events=[{'key': a['key'], 'ev': 'new'} for a in news], push=[], cards=news), now)
+
+    # then
+    assert [a['key'] for a in got] == ['log|shop|INFO|0', 'log|cart|INFO|0'], 'one info post per service in a pass'
+
+
+@pytest.mark.parametrize('mode, investigated', [('live', True), ('shadow', False)])
+def test_the_app_promises_an_investigation_only_while_the_investigator_runs_live(store: Store, mode, investigated):
+    # given
+    from tests.fake_anthropic import FakeAnthropic
+    from tests.test_engine import item
+    from tests.test_slack import FakeSlackApi
+    from skopax.engine import PassResult
+    import time
+    s = dataclasses.replace(settings(), anthropic_api_key='sk-test', investigate_mode=mode)
+    store.save_state({'anomalies': [], 'initialized': True}, None)
+    found = [item('cf-health|shop', sev='crit'), item('cf-health|cart', sev='warn')]
+
+    # when
+    with TestClient(create_app(s, store, slack=Slack('xoxb-test', '#ops', FakeSlack(), FakeSlackApi()), anthropic_client=FakeAnthropic([]))) as c:
+        c.app.state.server_apply([PassResult('cf', True, 'ok', found, {}, ('cf',))], time.time(), None)
+        texts = {a['key']: (a.get('slackDraft') or {}).get('text', '') for a in store.load()['anomalies']}
+
+    # then
+    crit, warn = texts['cf-health|shop'], texts['cf-health|cart']
+    assert 'Ongoing since' in crit and 'Ongoing since' in warn, 'both post at once with their numbers'
+    assert crit.endswith(msg('autosend.crit_now.last')) is investigated
+    assert warn.endswith(msg('autosend.post_now.warn_last')) is investigated
+    if not investigated:
+        assert crit.endswith('.') and msg('autosend.crit_now.last') not in crit and msg('autosend.post_now.warn_last') not in warn

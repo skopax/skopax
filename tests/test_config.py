@@ -23,7 +23,7 @@ ENV = ('MONGO_URI', 'MONGO_DB', 'SKOPAX_TOKEN', 'TICK_RETENTION_DAYS', 'VAULT_ON
        'INVESTIGATE_MAX_TOOL_CALLS', 'SLACK_APP_TOKEN', 'SLACK_LISTEN', 'SLACK_ASK_CAP', 'SLACK_OPERATOR_CACHE_SECONDS',
        'ROLES_URL', 'ROLES_CLIENT_ID', 'ROLES_CLIENT_SECRET', 'ROLES_CHANNEL', 'ROLES_SCOPE', 'INVESTIGATE_GATE_MODEL',
        'INVESTIGATE_SLACK_MODEL', 'INVESTIGATE_SLACK_EFFORT', 'INVESTIGATE_SLACK_MAX_TOOL_CALLS', 'SKOPAX_AUTO_RESOLVE_DAYS', 'SKOPAX_AUTO_RESOLVE_HOURS',
-       'INVESTIGATE_STRICT_TOOLS', 'SSO_SESSION_IDLE_HOURS', 'SSO_SESSION_MAX_DAYS', 'JIRA_TITLE_PREFIX', 'SKOPAX_ENV_LABEL')
+       'INVESTIGATE_STRICT_TOOLS', 'SSO_SESSION_IDLE_HOURS', 'SSO_SESSION_MAX_DAYS', 'JIRA_TITLE_PREFIX', 'SKOPAX_ENV_LABEL', 'SLACK_POST_SEV', 'SLACK_CRIT_NOW')
 
 
 @pytest.fixture(autouse=True)
@@ -291,6 +291,140 @@ def test_admin_lists_the_hours_setting_in_the_cards_group_and_hides_the_deprecat
     assert live.current().auto_resolve_hours == 10
     with pytest.raises(KeyError):
         live.set('core.auto-resolve-days', '2', 'alice@example.com')
+
+
+def test_post_at_once_from_defaults_to_warning_and_takes_each_severity_or_off(monkeypatch, caplog):
+    # given
+    caplog.set_level(logging.WARNING, logger='skopax.config')
+
+    # when
+    default = load_settings(lambda: {})
+    chosen = [load_settings(lambda: {'slack.post-sev': f' {v.upper()} '}).slack_post_sev for v in ('crit', 'warn', 'info', 'off')]
+    odd = load_settings(lambda: {'slack.post-sev': 'loud'})
+    monkeypatch.setenv('SLACK_POST_SEV', 'crit')
+    env = load_settings(lambda: {})
+
+    # then
+    assert (default.slack_post_sev, default.slack_post_sev_set) == ('warn', False)
+    assert chosen == ['crit', 'warn', 'info', 'off']
+    assert (odd.slack_post_sev, env.slack_post_sev, env.slack_post_sev_set) == ('warn', 'crit', True)
+    assert [r.getMessage() for r in caplog.records] == ["slack.post-sev 'loud' is not one of crit, warn, info, off; using warn"]
+
+
+def test_the_old_critical_at_once_switch_still_counts_until_post_at_once_from_is_set(monkeypatch, caplog):
+    # given
+    from skopax import config
+    monkeypatch.setattr(config, 'TOLD', set())
+    caplog.set_level(logging.INFO, logger='skopax.config')
+
+    # when
+    old_off = [load_settings(lambda: {'slack.crit-now': v}).slack_post_sev for v in (' False ', '0', 'no', 'off', 'OFF')]
+    old_on = load_settings(lambda: {'slack.crit-now': ' TRUE '})
+    both = load_settings(lambda: {'slack.crit-now': 'false', 'slack.post-sev': 'info'})
+    monkeypatch.setenv('SLACK_CRIT_NOW', '0')
+    env_off = load_settings(lambda: {})
+
+    # then
+    assert old_off == ['off'] * 5, 'anything but true turned the old switch off, as before'
+    assert (old_on.slack_post_sev, old_on.slack_crit_now, both.slack_post_sev, env_off.slack_post_sev) == ('warn', True, 'info', 'off')
+    told = [r.getMessage() for r in caplog.records if 'slack.crit-now' in r.getMessage()]
+    assert len(told) == 1 and 'replaced by slack.post-sev' in told[0], 'one line per process names the new key'
+    assert 'SLACK_CRIT_NOW' in settings_env_names() and 'SLACK_POST_SEV' in settings_env_names()
+
+
+def test_a_stored_admin_critical_at_once_switch_maps_to_off_unless_post_at_once_from_is_set_anywhere():
+    # given
+    from skopax.tunables import apply
+
+    # when
+    stored_off = apply(load_settings(lambda: {}), {'slack.crit-now': 'false'})
+    stored_on = apply(load_settings(lambda: {'slack.crit-now': 'false'}), {'slack.crit-now': 'true'})
+    stored_both = apply(load_settings(lambda: {}), {'slack.crit-now': 'false', 'slack.post-sev': 'crit'})
+    config_new = apply(load_settings(lambda: {'slack.post-sev': 'info'}), {'slack.crit-now': 'false'})
+    env_old_admin_new = apply(load_settings(lambda: {'slack.crit-now': 'false'}), {'slack.post-sev': 'warn'})
+
+    # then
+    assert (stored_off.slack_post_sev, stored_on.slack_post_sev, stored_both.slack_post_sev) == ('off', 'warn', 'crit')
+    assert (config_new.slack_post_sev, env_old_admin_new.slack_post_sev) == ('info', 'warn')
+
+
+def test_admin_offers_post_at_once_from_with_named_choices_and_hides_the_old_switch(store, caplog):
+    # given
+    from skopax.tunables import Live, TunableStore
+    store.db['tunables'].insert_one({'_id': 'slack.crit-now', 'value': 'false', 'by': 'alice@example.com', 'at': '2026-11-01T10:00:00Z'})
+    caplog.set_level(logging.INFO, logger='skopax.tunables')
+
+    # when
+    live = Live(load_settings(lambda: {}), TunableStore(store.db))
+    listed = {e['key']: e for e in live.entries()}
+    live.current()
+    live.refresh(force=True)
+    old = live.current().slack_post_sev
+    saved, _ = live.set('slack.post-sev', 'info', 'bob@example.com')
+
+    # then
+    entry = listed['slack.post-sev']
+    assert (entry['group'], entry['label'], entry['kind'], entry['default']) == ('Slack', 'Post at once from', 'choice', 'warn')
+    assert entry['choices'] == ['crit', 'warn', 'info', 'off']
+    assert entry['choiceLabels'] == {'crit': 'Critical', 'warn': 'Warning', 'info': 'Info', 'off': 'Off'}
+    assert (entry['value'], entry['source'], entry['by'], entry['oldSwitch']) == ('off', 'admin', 'alice@example.com', 'slack.crit-now'), 'the row says the value comes from the old switch'
+    assert 'slack.crit-now' not in listed
+    assert old == 'off' and live.current().slack_post_sev == 'info'
+    assert 'oldSwitch' not in saved and store.db['tunables'].find_one({'_id': 'slack.crit-now'}) is None, 'saving the new setting clears the old switch'
+    told = [r.getMessage() for r in caplog.records if 'slack.crit-now' in r.getMessage()]
+    assert len(told) == 1 and 'slack.post-sev' in told[0], 'the stored old key is named once, not on every refresh'
+    with pytest.raises(KeyError):
+        live.set('slack.crit-now', 'true', 'alice@example.com')
+
+
+def test_reset_on_post_at_once_from_clears_the_old_switch_and_a_config_old_switch_is_named(store):
+    # given
+    from skopax.tunables import Live, TunableStore
+    store.db['tunables'].insert_one({'_id': 'slack.crit-now', 'value': 'false', 'by': 'alice@example.com', 'at': '2026-11-01T10:00:00Z'})
+    live = Live(load_settings(lambda: {}), TunableStore(store.db))
+
+    # when
+    reset, change = live.set('slack.post-sev', None, 'bob@example.com')
+    from_config = {e['key']: e for e in Live(load_settings(lambda: {'slack.crit-now': 'no'}), TunableStore(store.db)).entries()}['slack.post-sev']
+
+    # then
+    assert (reset['value'], reset['source'], 'oldSwitch' in reset) == ('warn', 'default', False)
+    assert store.db['tunables'].find_one({'_id': 'slack.crit-now'}) is None and live.current().slack_post_sev == 'warn'
+    assert (from_config['value'], from_config['source'], from_config['oldSwitch']) == ('off', 'config', 'slack.crit-now')
+
+
+def test_the_changes_history_of_post_at_once_from_reverts_to_what_was_in_effect(store):
+    # given
+    from skopax.tunables import Live, TunableStore
+    store.db['tunables'].insert_one({'_id': 'slack.crit-now', 'value': 'false', 'by': 'alice@example.com', 'at': '2026-11-01T10:00:00Z'})
+    live = Live(load_settings(lambda: {}), TunableStore(store.db))
+
+    # when
+    _, saved = live.set('slack.post-sev', 'info', 'bob@example.com')
+    rows = live.tunables.history()
+    live.set('slack.post-sev', saved['old'], 'bob@example.com')
+    reverted = live.current().slack_post_sev
+
+    # then
+    old_row = next(r for r in rows if r['key'] == 'slack.crit-now')
+    assert (old_row['old'], old_row['new'], old_row.get('legacy')) == ('false', None, True), 'the old switch row is marked so the page offers no Revert for it'
+    assert (saved['old'], saved['new']) == ('off', 'info'), 'the post-sev row records Off, the value in effect, so Revert puts Off back'
+    assert reverted == 'off'
+
+
+def test_reset_with_only_the_old_switch_stored_writes_no_empty_post_at_once_row(store):
+    # given
+    from skopax.tunables import Live, TunableStore
+    store.db['tunables'].insert_one({'_id': 'slack.crit-now', 'value': 'false', 'by': 'alice@example.com', 'at': '2026-11-01T10:00:00Z'})
+    live = Live(load_settings(lambda: {}), TunableStore(store.db))
+
+    # when
+    _, change = live.set('slack.post-sev', None, 'bob@example.com')
+    rows = live.tunables.history()
+
+    # then
+    assert [(r['key'], r['old'], r['new']) for r in rows] == [('slack.crit-now', 'false', None)]
+    assert change['key'] == 'slack.crit-now' and live.current().slack_post_sev == 'warn'
 
 
 def test_slack_fallback_minutes_default_to_fifteen_and_zero_turns_it_off(monkeypatch):

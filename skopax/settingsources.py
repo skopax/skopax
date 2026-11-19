@@ -336,6 +336,8 @@ class Follower:
             else:
                 restart.append(key)
         base = self.live.base
+        if 'slack_post_sev' in fields:
+            fields.add('slack_post_sev_set')
         if fields:
             try:
                 fresh = load_settings(fetch=lambda: after, env=self.env)

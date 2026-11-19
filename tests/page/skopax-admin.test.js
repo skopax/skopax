@@ -18,14 +18,14 @@ function items() {
   ];
 }
 
-async function boot(admin, hash, history) {
+async function boot(admin, hash, history, extra) {
   const errors = [], calls = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
   const state = {rev: 1, updatedAt: iso(0), sweptIso: iso(1), nextIso: new Date(Date.now() + 3600000).toISOString(), sources: {prom: 'ok'}, summary: {level: 'ok', headline: 'x', points: [], at: iso(1)},
     anomalies: [], services: [], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
   const html = pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state));
-  let list = items();
+  let list = items().concat(extra || []);
   let routes = [{name: 'tech', label: 'tech', match: ['*'], minSev: 'crit', business: false, webhook: 'default.environment.api.powerplatform.com', source: 'config', inConfig: true, by: null, at: null, removed: false}];
   let secret = {key: 'wingify.api-token', label: 'Wingify (VWO) API token', group: 'Wingify', help: 'A token with Browse permission', set: false, by: null, at: null};
   const hist = history || [{id: 'h1', seq: 1, key: 'investigate.daily-usd', old: null, new: '40', by: 'dora.lane@example.com', at: iso(30)}];
@@ -289,8 +289,69 @@ async function settingsStartFoldedAndChangesShowTenAtATime() {
   console.log('PASS General starts with every group folded, Changes is its own section that lists 10 changes and 20 more per click with long values cut, a search opens and then refolds groups, and a reload folds everything again');
 }
 
+async function aChoiceWithNamedValuesShowsTheNamesAndSavesTheValue() {
+  //given
+  const postSev = {key: 'slack.post-sev', group: 'Slack', label: 'Post at once from', help: 'Cards at or above this severity post at once', kind: 'choice', live: true, value: 'warn', base: 'warn', default: 'warn',
+    source: 'default', by: null, at: null, choices: ['crit', 'warn', 'info', 'off'], choiceLabels: {crit: 'Critical', warn: 'Warning', info: 'Info', off: 'Off'}};
+  const {w, doc, errors, calls} = await boot(true, '#t=settings', null, [postSev]);
+  const select = () => row(doc, 'slack.post-sev').querySelector('select');
+
+  //then
+  assert.deepStrictEqual([...select().options].map((o) => o.value + '=' + o.textContent), ['crit=Critical', 'warn=Warning', 'info=Info', 'off=Off']);
+  assert.strictEqual(select().value, 'warn');
+
+  //when
+  select().value = 'crit';
+  select().dispatchEvent(new w.Event('input'));
+  row(doc, 'slack.post-sev').querySelector('.adm-save').click();
+  await wait(40);
+
+  //then
+  assert.deepStrictEqual(calls.filter((c) => c[0] === 'PUT').map((c) => c[2]), [{key: 'slack.post-sev', value: 'crit'}]);
+  assert.strictEqual(select().selectedOptions[0].textContent, 'Critical');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+
+  //given
+  const fromOld = Object.assign({}, postSev, {value: 'off', source: 'admin', by: 'alice@example.com', at: iso(60), oldSwitch: 'slack.crit-now'});
+  const old = await boot(true, '#t=settings', null, [fromOld]);
+  const oldRow = row(old.doc, 'slack.post-sev');
+
+  //then
+  const tag = oldRow.querySelector('.adm-n .tag');
+  assert.strictEqual(tag.textContent, 'old switch');
+  assert.ok(tag.title.startsWith('From the old Critical cards at once switch (slack.crit-now), set by ') && tag.title.endsWith('Reset or saving a value here clears it'), tag.title);
+  assert.strictEqual(oldRow.querySelector('select').selectedOptions[0].textContent, 'Off');
+
+  //when
+  oldRow.querySelector('.adm-reset').click();
+  await wait(40);
+
+  //then
+  assert.deepStrictEqual(old.calls.filter((c) => c[0] === 'DELETE').map((c) => c[1]), ['/api/admin/settings?key=slack.post-sev']);
+  assert.deepStrictEqual(old.errors, []);
+  old.w.close();
+
+  //given
+  const hist = [{id: 'h2', seq: 2, key: 'slack.crit-now', old: 'false', new: null, by: 'dora.lane@example.com', at: iso(1), legacy: true},
+    {id: 'h1', seq: 1, key: 'slack.post-sev', old: 'off', new: 'info', by: 'dora.lane@example.com', at: iso(1)}];
+  const changes = await boot(true, '#t=settings', hist, [postSev]);
+
+  //when
+  changes.doc.getElementById('tab-changes').click();
+  await wait(60);
+
+  //then
+  const rows = [...changes.doc.querySelectorAll('#changes .adm-hist tbody tr')];
+  assert.deepStrictEqual(rows.map((r) => !!r.querySelector('.adm-revert')), [false, true], 'the cleared old switch row offers no Revert, the post-sev row does');
+  assert.deepStrictEqual(changes.errors, []);
+  changes.w.close();
+  console.log('PASS a choice setting with named values, such as Post at once from, shows Critical, Warning, Info and Off and saves crit, warn, info or off; a value from the old switch is tagged old switch and Reset clears it');
+}
+
 (async () => {
   await theAdminTabIsHiddenForEveryoneElse();
+  await aChoiceWithNamedValuesShowsTheNamesAndSavesTheValue();
   await anAdminSeesTheSettingsByGroupAndSavesResetsAndReverts();
   await settingsStartFoldedAndChangesShowTenAtATime();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });
