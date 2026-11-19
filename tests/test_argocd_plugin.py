@@ -76,7 +76,7 @@ def test_argocd_identity_and_manifest():
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert 'skopax.plugins.argocd' in BUILTIN and loaded.state == 'ok'
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'argocd', 'Argo CD', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
+        'argocd', 'Argo CD', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url', 'kubernetes.default.svc'], 'secrets': ['token'], 'agentReads': False}
     assert manifest['uses'] == [] and manifest['maxInstances'] is None and manifest['rules'] == [] and manifest['settings'] == [] and manifest['panels'] == []
     assert manifest['checks'] == [{'id': 'argo', 'label': 'Argo CD applications', 'period': 300, 'offset': 105, 'ran': ['argo']}]

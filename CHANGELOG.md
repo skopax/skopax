@@ -2,6 +2,31 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.3.0 (2026-11-19)
+
+Custom checks that read Elasticsearch with ES|QL and a CSP reports preset, built-in language packs, Slack posts from a severity you choose, a batch jobs example plug-in, and sharper investigator prompts.
+
+**Upgrade notes:**
+
+- Warning cards now post to the main Slack channel at once by default, like critical cards. Set Post at once from (Admin > General > Slack) to Critical for the old behaviour. A stored or environment `slack.crit-now` / `SLACK_CRIT_NOW` that is not `true` still turns posting at once off until Post at once from is set.
+- With Language on Auto (the default), people whose browser prefers Turkish, German, Spanish or French now see the page and the chat in it; English stays one click away in Settings > Appearance.
+- A Slack reply to one person (an off-topic answer, a small-talk or ask limit notice) now follows that person's language when a built-in pack covers it. Channel posts, tickets and the card language stay English until an admin picks another.
+- Deprecated: the CSP reports plug-in. Use the CSP reports preset under custom checks instead; the plug-in leaves in 0.4.
+- Plug-ins built for 0.2 keep loading only if their `core` range allows 0.3; the built-in plug-ins and the examples now declare `>=0.1,<0.4`.
+
+New:
+
+- Custom checks can read Elasticsearch with ES|QL (source `elasticsearch`): a query that returns a numeric `value` column and optional `by` columns, run for a window of 5 to 1440 minutes passed as `?start` and `?end`, with the same comparisons, 1 day and 1 week baselines, Preview, presets and editor as PromQL checks, and a Kibana link when the instance has an https UI address.
+- A CSP reports preset: a newly blocked host (first seen within a day, at least 10 reports in the window) and a report jump (at least 100 reports and 5 times the larger of a day and a week ago). It reads compact, spaced and escaped report JSON and leaves out browser extensions.
+- Built-in language packs for `tr`, `de`, `es` and `fr` (`de`, `es` and `fr` are a preview), always on; a plug-in's pack for the same language wins text by text. `tools/locale_source.py` prints the English source texts for translators. A text a pack does not translate yet is shown or sent in English.
+- A batch jobs example plug-in, `examples/batch-jobs-plugin`: failing, missed and slow scheduled jobs read from one Prometheus timer per job, against the same hour 1 and 7 days earlier, with a page and investigator knowledge.
+
+Changed:
+
+- Slack's Critical cards at once switch is now Post at once from (`slack.post-sev`, `SLACK_POST_SEV`): Critical, Warning (the default), Info or Off. Each post ends with a line that is true for its severity and promises an investigation only while the investigator runs live. Admin marks a value that still comes from the old switch, and saving or Reset clears it.
+- The investigator prompt has a Common traps section (a slow outside dependency, a p95 moved by the request mix, provider HTML error pages behind JSON parse errors, 429s that look like 500s), also used for Slack questions. How to work covers short baselines, jumps from outside sends and the team's own probes, and a card that clears is no longer called fixed without a cause. The deploy assessment reads new ERROR lines and user-side numbers in a stated order and skips stale cached copies. Plug-in knowledge gained working notes for ES|QL, Prometheus, Kubernetes, Kafka, PMM and Website.
+- Two English labels changed so language packs can translate them apart: the open button of a Slack queue row is now View, and the catalog entry button is now Change... (the Open status and the Change column keep their names).
+
 ## 0.2.2 (2026-11-19)
 
 Plug-in fields you pick from a list, starting with Cloudflare, names that follow single sign-on and can be edited, Access & sign-in as tabs, and compact custom checks.

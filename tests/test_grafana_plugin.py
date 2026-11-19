@@ -146,7 +146,7 @@ def test_grafana_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('grafana').state == 'ok'
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'Grafana', '0.1.0', 'alerts', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
+        'Grafana', '0.1.0', 'alerts', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url'], 'secrets': ['token'], 'agentReads': False} and manifest['uses'] == ['prometheus']
     assert [(f['key'], f['kind']) for f in manifest['fields']] == [('url', 'url'), ('token', 'secret'), ('ca', 'pem'), ('ca-pinned', 'bool'), ('skip-datasources', 'text')]
     assert [(f.key, f.required, f.ui) for f in grafana.PLUGIN.fields] == [('url', True, True), ('token', True, False), ('ca', False, False), ('ca-pinned', False, False), ('skip-datasources', False, False)]

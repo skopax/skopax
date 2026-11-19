@@ -153,7 +153,7 @@ def test_elasticsearch_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('elasticsearch').state == 'ok'
     assert json.loads(json.dumps(manifest)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'Elasticsearch', '0.1.0', 'logs', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
+        'Elasticsearch', '0.1.0', 'logs', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url', '@apm-url', '@ui-url'], 'secrets': ['api-key', 'apm-api-key', 'elastic.logging-api-key', 'elastic.apm-api-key'], 'agentReads': True}
     assert manifest['uses'] == [] and manifest['description'].endswith('.')
     assert manifest['checks'] == [{'id': 'logs', 'label': manifest['checks'][0]['label'], 'period': 900, 'offset': 180, 'ran': ['logs']},

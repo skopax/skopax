@@ -153,7 +153,7 @@ PLUGIN = Plugin(
         docs_label='Airbyte: configuring API access',
     ),
     id=ID, name='Airbyte', version='0.1.0', category='infrastructure', description='Failed and unusually long Airbyte sync jobs, read from the Airbyte public API.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('client-secret',)),
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.4', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('client-secret',)),
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Address of the Airbyte web app; the public API is under /api/public/v1.'),
             Field('client-id', 'Client id', 'text', required=True, help='Client id of an Airbyte application with read access.'),
             Field('client-secret', 'Client secret', 'secret', required=True, help='Client secret of that application.'),

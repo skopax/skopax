@@ -354,7 +354,7 @@ PLUGIN = Plugin(
     ),
     id=ID, name='PMM (Postgres, MongoDB)', version='0.1.0', category='infrastructure',
     description='Postgres servers, slow queries and MongoDB members read from Percona Monitoring and Management.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.4', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Address of the PMM server, also used for dashboard links.'),
             Field('token', 'Token', 'secret', required=True, help='A PMM service-account token that can query the data sources; finding them when a uid is empty also needs the right to list data sources.'),
             Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),

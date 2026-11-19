@@ -329,7 +329,7 @@ def test_prometheus_identity_and_manifest():
     assert (loaded.state, loaded.reason) == ('ok', None) and 'skopax.plugins.prometheus' in BUILTIN
     assert Registry.load({}, entry_points=False).get('prometheus').state == 'ok'
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'Prometheus', '0.1.0', 'metrics', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
+        'Prometheus', '0.1.0', 'metrics', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url', '@ui-url'], 'secrets': ['token', 'password'], 'agentReads': False}
     assert [(f['key'], f['kind']) for f in manifest['fields']] == [('url', 'url'), ('ui-url', 'url'), ('auth', 'choice'), ('token', 'secret'), ('username', 'text'), ('password', 'secret'), ('ca', 'pem'), ('ca-pinned', 'bool'), ('namespaces', 'regex'), ('ingress-exclude', 'regex'), ('profiles', 'text')]
     assert manifest['checks'] == [{'id': 'prom', 'label': 'Errors, latency, restarts and alerts', 'period': 900, 'offset': 120, 'ran': ['prom', 'kube', 'alert']}]
