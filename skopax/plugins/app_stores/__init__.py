@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool
+from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, RuleSet, Setup, Sweep, TestResult, Tool
 from skopax.kit.google import GoogleAuth, GoogleError, access_key, bounded, connection_test
 from skopax.messages import msg
 from skopax.plugins.app_stores.engine import (APPSTORE, APPSTORE_OFF, BUDGET_S, BY, DOT, MAX_DAYS, OPS, PART_NEEDS, PARTS, PLAY, PLAY_OFF, PLAY_REVIEWS, PLAY_SCOPES, RULE_HELP, RULES,
@@ -140,5 +140,13 @@ PLUGIN = Plugin(
     rules=(RuleSet('rules', 'App store ratings and Play vitals', dict(RULES), RULE_HELP),),
     tools=(Tool('stores', DESCRIPTION, SCHEMA, stores, per_run=PER_RUN, scan=True),),
     links=links,
+    setup=Setup(steps=(
+                   'App Store ratings need no credential: enter the digits after id in the App Store link in App Store app id. The steps below are for Google Play only.',
+                   'In Google Cloud console, open APIs & Services > Library, enable Google Play Developer Reporting API and Google Play Android Developer API.',
+                   'In Google Cloud console, open IAM & Admin > Service accounts, pick your project and click Create service account. Name it and click Done; no project role is needed.',
+                   'Open the account, Keys tab, Add key, Create new key, JSON, Create. Paste the whole downloaded file into Service account key.',
+                   'Copy the account email (client_email in the key). In Play Console, Users and permissions, Invite new users, enter that email, grant App permissions on the app with View app information (read-only), then Invite user. If Play is still refused, an owner may need to grant more.',
+                   'Enter the Android package name, such as com.example.app, in Google Play package. Empty skips Google Play, so no Play data is read.'),
+                docs='https://support.google.com/googleplay/android-developer/answer/9844686', docs_label='Play Console: invite users and set permissions'),
     knowledge=(Knowledge('app-stores', 'App stores', (Path(__file__).parent / 'app_stores.md').read_text(encoding='utf-8'), slack=True),),
 )

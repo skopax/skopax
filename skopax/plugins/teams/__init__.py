@@ -1,4 +1,4 @@
-from skopax.contract import Capabilities, Context, Field, HttpError, Outbound, Plugin, ReadError, Setting, TestResult, call
+from skopax.contract import Capabilities, Context, Field, HttpError, Outbound, Plugin, Setup, ReadError, Setting, TestResult, call
 from skopax.kit import connection
 from skopax.kit.links import sendable
 from skopax.messages import msg
@@ -64,4 +64,10 @@ PLUGIN = Plugin(
                       'choice', 'warn', choices=SEVS),
               Setting('fixed-posts', 'Teams fixed posts', 'Posts a fixed message to a business channel when a card it was told about as info closes after that post', 'bool', 'false')),
     test=test, outbound=Outbound(post, 'tags', 'mentions', link_field='webhook', keys_field='keys', sev_field='min-sev'),
+    setup=Setup(steps=(
+        "In Teams open Workflows (the Workflows app, or a channel's More options > Workflows) and create a flow that receives a webhook request and posts to a channel. Pick the team and channel, then Save.",
+        'Each flow type has its own rule for who may trigger it; pick one that lets the Skopax server post.',
+        "On the flow's details page copy the HTTP POST URL and paste it into Webhook. The URL is a secret: anyone who has it can post to the channel.",
+        'Fill in Card tags or Card keys, since a route needs one of them, then choose Test connection. The workflow owner must be allowed to post in that channel.',
+    ), docs='https://support.microsoft.com/en-us/teams/apps-service/create-incoming-webhooks-with-workflows-for-microsoft-teams', docs_label='Microsoft Teams: webhooks with Workflows'),
 )

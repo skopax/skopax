@@ -1,6 +1,6 @@
 from urllib.parse import urlencode
 
-from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, PassResult, Panel, Peer, Plugin, ReadError, RuleSet, Sweep, TestResult, call
+from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, PassResult, Panel, Peer, Plugin, ReadError, RuleSet, Sweep, TestResult, call, Setup
 from skopax.kit import access, connection
 from skopax.kit.promql import PrometheusError, bounded, client_for, credential
 from skopax.plugins.capacity.capacity import FS, NAME, RULES, run_pass
@@ -81,6 +81,15 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 
 
 PLUGIN = Plugin(
+    setup=Setup(
+        steps=(
+            'No credential of its own: Capacity reads through a Prometheus instance. Add that Prometheus instance first and pick it in Prometheus; it signs in as set there.',
+            'That Prometheus must hold kubelet_volume_stats_* (volumes), kube_horizontalpodautoscaler_* (autoscalers), jvm_gc_live_data_size_bytes and jvm_gc_max_data_size_bytes (JVM heap) and node_exporter node_filesystem_* (host disks). A part with no series gives no data.',
+            'Host disks of machines Prometheus does not scrape: add the PMM instance first and pick it in Host disks from PMM.',
+        ),
+        docs='https://prometheus.io/docs/prometheus/latest/querying/api/',
+        docs_label='Prometheus: HTTP API',
+    ),
     id=ID, name='Capacity', version='0.1.0', category='infrastructure', description='Volume, host disk, autoscaler and JVM heap headroom read through a Prometheus instance.', icon='icon.svg',
     author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(), uses=('prometheus', 'pmm'),
     fields=(Field('prometheus', 'Prometheus', 'instance', required=True, choices=('prometheus',), help='The Prometheus instance to read.'),

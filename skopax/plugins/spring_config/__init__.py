@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping
 from urllib.parse import quote, urlsplit
 
 from skopax.contract import HttpError, Plugin, Hooks, Transport, call, send
+from skopax.contract import Setup as PluginSetup
 from skopax import remote
 
 ID = 'spring-config'
@@ -330,6 +331,14 @@ class SpringConfig:
 
 
 PLUGIN = Plugin(
+    setup=PluginSetup(
+        steps=(
+            'This plug-in has no form. Set SPRING_CONFIG_URL to the config server address and SPRING_CONFIG_APP to the application name; SPRING_CONFIG_PROFILE and SPRING_CONFIG_LABEL are optional.',
+            'If the server asks for a sign-in, set SPRING_CONFIG_USER and SPRING_CONFIG_PASSWORD together. Set SPRING_CONFIG_MAP to the comma list of config key=Skopax target entries to read, then restart Skopax.',
+        ),
+        docs='https://docs.spring.io/spring-cloud-config/reference/server.html',
+        docs_label='Spring Cloud Config Server',
+    ),
     id=ID, name=NAME, version='0.1.0', category='infrastructure', description='Settings and instances read from a Spring Cloud Config server, set by environment variables.',
     icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.2,<0.3', edition='community',
     hooks=Hooks(settings_source=SpringConfig()),

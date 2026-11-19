@@ -4,7 +4,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from skopax import remote
-from skopax.contract import AgentRead, Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, iso
+from skopax.contract import AgentRead, Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, iso, Setup
 from skopax.kit import access, connection
 from skopax.messages import msg
 from skopax.plugins.langfuse import check
@@ -141,6 +141,15 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 
 PLUGIN = Plugin(
+    setup=Setup(
+        steps=(
+            'In Langfuse open the project and go to Settings > API Keys, then Create new API keys. Name the key and under Permissions choose Viewer (read-only); Skopax only reads. A key cannot be changed later.',
+            'Copy the public key into Public key and the secret key into Secret key. The secret key is shown only once.',
+            'Leave URL as it is for Langfuse Cloud, or enter the address of your own server. Press Test connection.',
+        ),
+        docs='https://langfuse.com/docs/administration/rbac',
+        docs_label='Langfuse: roles and project API key permissions',
+    ),
     id=ID, name='Langfuse', version='0.1.0', category='other', description='Errors, traffic, latency and cost of the turns an AI app traces to Langfuse, and a read-only trace tool.',
     icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
     capabilities=Capabilities(hosts=('@url',), secrets=('secret-key', 'langfuse.secret-key'), agent_reads=True),

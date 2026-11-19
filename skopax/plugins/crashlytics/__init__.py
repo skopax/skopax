@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool
+from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, RuleSet, Setup, Sweep, TestResult, Tool
 from skopax.kit.google import GoogleAuth, GoogleError, bounded, connection_test
 from skopax.plugins.crashlytics.engine import (APPS, CHECK, COMPARES, HOUR, MAX_HOURS, MAX_ROWS, NEEDS, NO_APPS, REPORTS, ROWS, RULE_HELP, RULES, SCOPES, TYPES, Crashlytics,
                                                crash_pass, interval, links_for, read, request)
@@ -104,5 +104,12 @@ PLUGIN = Plugin(
     rules=(RuleSet('rules', 'Crash and ANR spikes', dict(RULES), RULE_HELP),),
     tools=(Tool('crashes', DESCRIPTION, SCHEMA, crashes, per_run=PER_RUN, scan=True),),
     links=links,
+    setup=Setup(steps=(
+                   'In Google Cloud console, select your Firebase project, open APIs & Services > Library, search Firebase Crashlytics API and click Enable.',
+                   'In Google Cloud console, open IAM & Admin > Service accounts, pick your project and click Create service account. Name it and click Done; no project role is needed.',
+                   'Open the account, Keys tab, Add key, Create new key, JSON, Create. Paste the whole downloaded file into Service account key.',
+                   'Copy the account email (client_email in the key). Open IAM & Admin > IAM on the same project, click Grant access, enter that email and pick the role Firebase Crashlytics Viewer.',
+                   'Enter the Firebase app ids of your apps in Android app id and iOS app id. An empty one skips that app.'),
+                docs='https://firebase.google.com/docs/projects/iam/roles-predefined-product', docs_label='Firebase: predefined IAM roles'),
     knowledge=(Knowledge('crashlytics', 'Crashlytics', (Path(__file__).parent / 'crashlytics.md').read_text(encoding='utf-8'), slack=True),),
 )

@@ -96,7 +96,7 @@ def test_catalog_lists_every_plugin_with_state_and_reason(store):
     assert body['edition'] == 'community' and body['secretsKey'] == 'generated' and 'secretsNote' not in body and 'sources' not in body
     assert (rows['demo']['state'], rows['demo']['reason'], rows['demo']['enabled'], rows['demo']['icon']) == ('ok', None, True, True)
     assert [f['key'] for f in rows['demo']['fields']] == ['url', 'token', 'ca', 'mode'] and rows['demo']['instances'] == []
-    assert rows['demo']['category'] == 'other' and rows['demo']['edition'] == 'community'
+    assert rows['demo']['category'] == 'other' and rows['demo']['edition'] == 'community' and rows['demo']['setup'] is None
     assert rows['enterprise-demo']['state'] == 'locked' and rows['enterprise-demo']['reason'] == msg('plugins.needs_edition', name='Enterprise demo', edition='Enterprise')
     broken = rows['tests.plugins.broken_plugin']
     assert 'ImportError' in broken['reason'] and set(broken) == {'id', 'module', 'reason', 'origin'} and broken['origin'] == 'env'
@@ -1108,3 +1108,16 @@ def test_the_integrations_page_names_every_plugin_category():
 
     # then
     assert keys == list(CATEGORIES)
+
+
+def test_catalog_serves_a_plugin_setup_guide(store):
+    # given
+    from skopax.contract import Setup
+    guide = Setup(steps=('Open Settings', 'Copy the token'), docs='https://docs.example.com/tokens', docs_label='Example: tokens')
+
+    # when
+    with served(store, dataclasses.replace(DEMO, setup=guide)) as c:
+        row = listed(c)['demo']
+
+    # then
+    assert row['setup'] == {'steps': ['Open Settings', 'Copy the token'], 'docs': 'https://docs.example.com/tokens', 'docsLabel': 'Example: tokens'}

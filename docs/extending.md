@@ -176,6 +176,16 @@ A third option checks a value when it is saved:
 
 The admin listing serves both with each field, as `group` and `choiceLabels`. A `bool` shows as a switch and still submits `true` or `false`. A `choice` with two or three options, counting the empty one of a field that may stay empty, shows as segments that the arrow keys move through, and a longer one as a list. A `secret` has a Show button for what was typed and a chip that says it is set and where it comes from. Test connection, Cancel and Save stay at the bottom of the drawer while the form scrolls. A plug-in whose labels or group break these rules does not load, with a reason that names the field, as for any other field rule.
 
+### The setup guide
+
+`setup=Setup(steps, docs, docs_label)` tells an admin how to create what the plug-in needs, such as an API key or a service account. Admin > Integrations shows it in the plug-in's side panel, in a folded "How to set it up" section right under the description and the version line. The section is open while the plug-in has no instance and closed once it has one, and it shows for built-in and custom plug-ins alike. A plug-in without `setup` (the default, None) shows nothing.
+
+- **`steps`** is a tuple of 1 to 10 texts, each non-blank, printable and at most 400 characters. They are shown as a numbered list, as plain text: no markup or link in a step is interpreted.
+- **`docs`** is empty or an `https://` link of at most 500 characters with no whitespace, best the vendor's official guide. It shows as a link that opens in a new tab with `noopener noreferrer`.
+- **`docs_label`** is the link text, at most 60 printable characters; the page shows "Setup guide" when it is empty. It needs `docs`.
+
+A plug-in whose setup breaks these rules does not load, with a reason that says so, as for any other rule. The admin listing serves it as `setup` (`steps`, `docs`, `docsLabel`), or null.
+
 ### Peers, clients and state
 
 - **Peers.** A plug-in that reads through another plug-in's connection, for example a check that queries a Prometheus, names it in `uses` and adds a field of kind `instance` whose one choice is that plug-in: `Field('source', 'Prometheus', 'instance', choices=('prometheus',))`. Admin shows the field as a list of that plug-in's instances, and saving refuses a name that is not one of them. At run time `ctx.peer('source')` gives that instance (`info`) and a transport to it (`http()`), and `ctx.peers('prometheus')` lists every runnable instance of a used plug-in, primary first. If the peer is switched off, deleted or parked, only the reading instance's pass fails, with a text that names the peer. A used plug-in that is missing or broken never stops the reader from loading. A peer also carries `off_checks`, the checks an admin switched off on that instance. A plug-in that skips work because a peer covers it skips only while the peer's own check is on: Grafana skips a datasource of a Prometheus instance, and Kafka leaves out that instance's namespaces, only while its `prom` check is on (Kafka also needs its `kube` profile). When the check is switched off they raise the cards themselves, and when it is switched on again their copies close at their next pass.

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Check, Context, Field, Knowledge, Plugin, ReadError, RuleSet, SourceDown, TestResult
+from skopax.contract import Check, Context, Field, Knowledge, Plugin, ReadError, RuleSet, SourceDown, TestResult, Setup
 from skopax.kit import connection
 from skopax.kit.elastic import REJECTED, TEST_TIMEOUT, Budget, ElasticError, client_for, indices_of, native, no_read, refusal
 from skopax.plugins.varnish.checks import CACHE_HELP, HELP, RULES, SECTION_HELP, links, listed, needed, number, probe_query, run_cache, run_varnish, target_of, tolerant
@@ -39,6 +39,14 @@ def test(ctx: Context) -> TestResult:
 
 
 PLUGIN = Plugin(
+    setup=Setup(
+        steps=(
+            'No credential of its own: Varnish reads logs through an Elasticsearch instance. Add that instance first and pick it in Elasticsearch; its API key needs read on the Varnish index.',
+            "Set Index if the Varnish logs are not in that instance's log index. The log lines need the fields varnish.method, varnish.cache_status and varnish.path (keyword); Test connection names any that are missing.",
+        ),
+        docs='https://www.elastic.co/docs/deploy-manage/api-keys/elasticsearch-api-keys',
+        docs_label='Elastic: API keys',
+    ),
     id=ID, name='Varnish', version='0.1.0', category='web',
     description='Varnish cache hit ratio against the day and the week before, and a daily list of the paths that miss the cache most, read from Varnish logs in Elasticsearch.',
     icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',

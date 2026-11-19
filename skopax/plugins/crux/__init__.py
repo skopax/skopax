@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, PassResult, Plugin, RuleSet, Sweep, TestResult, Tool, iso
+from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, PassResult, Plugin, RuleSet, Setup, Sweep, TestResult, Tool, iso
 from skopax.kit import connection
 from skopax.plugins.crux import crux as engine
 from skopax.plugins.crux.crux import (ACCESS, DOT, ID, MAX_PERIODS, METRICS, NAME, NO_DATA, PART, PASS, REFUSED, RULE_HELP, RULES, SECTION, TOOL_BUDGET_S, TOOL_FORMS,
@@ -96,5 +96,10 @@ PLUGIN = Plugin(
     rules=(RuleSet('rules', 'Page speed (CrUX)', dict(RULES), RULE_HELP),),
     tools=(Tool('crux', DESCRIPTION, SCHEMA, crux_tool, per_run=PER_RUN, scan=True),),
     links=links,
+    setup=Setup(steps=(
+                   'In Google Cloud console, open APIs & Services > Library, search Chrome UX Report API and click Enable.',
+                   'Open APIs & Services > Credentials > Create credentials > API key. Under API restrictions choose Restrict key, select only Chrome UX Report API, and save.',
+                   'Paste the key into API key.'),
+                docs='https://developer.chrome.com/docs/crux/api', docs_label='Chrome UX Report API'),
     knowledge=(Knowledge('crux', 'Chrome UX Report', (Path(__file__).parent / 'crux.md').read_text(encoding='utf-8'), slack=True),),
 )

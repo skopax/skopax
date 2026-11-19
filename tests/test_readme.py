@@ -15,8 +15,13 @@ from tools import release_version
 ROOT = Path(__file__).resolve().parent.parent
 SIDEBAR = (ROOT / 'skopax' / 'web' / 'static' / 'sidebar.js').read_text(encoding='utf-8')
 NUMBERS = dict(enumerate(('zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve')))
-LINK_HOSTS = ('skopax.io', 'docs.astral.sh', 'localhost:8080')
-LINK_TREES = ('github.com/skopax', 'ghcr.io/skopax')
+VENDOR_DOCS = ('argo-cd.readthedocs.io', 'developer.chrome.com', 'developers.cloudflare.com', 'developers.google.com', 'docs.airbyte.com', 'docs.github.com', 'docs.gitlab.com',
+               'docs.percona.com', 'docs.slack.dev', 'docs.sonarsource.com', 'docs.spring.io', 'docs.umami.is', 'firebase.google.com', 'grafana.com', 'help.wingify.com',
+               'kubernetes.io', 'langfuse.com', 'learn.microsoft.com', 'modelcontextprotocol.io', 'prometheus.io', 'support.atlassian.com', 'support.google.com',
+               'support.microsoft.com', 'www.elastic.co')
+VENDOR_REPOS = ('github.com/oliver006/redis_exporter', 'github.com/danielqsj/kafka_exporter', 'github.com/chromedp/docker-headless-shell')
+LINK_HOSTS = ('skopax.io', 'docs.astral.sh', 'localhost:8080') + VENDOR_DOCS
+LINK_TREES = ('github.com/skopax', 'ghcr.io/skopax') + VENDOR_REPOS
 GENERATED_SECRET = '"$(openssl rand -hex 32)"'
 SECRET_NAME = r'[A-Z_]*(?:SECRET|TOKEN|PASSWORD|KEY)[A-Z_]*'
 DOCS = ('README.md', 'setup.md', 'configuration.md', 'sign-in.md', 'plugins.md', 'custom-checks.md', 'extending.md', 'operations.md', 'development.md')
@@ -470,7 +475,7 @@ def test_docs_name_no_contact_but_hello_and_github():
     assert strays == []
     assert skopax_addresses == {'hello@skopax.io'}
     assert mailto <= {'hello@skopax.io'}
-    assert github <= {'skopax'}
+    assert github <= {'skopax'} | {repo.split('/')[1] for repo in VENDOR_REPOS}
     assert foreign_links(texts) == []
     assert 'private vulnerability reporting' in ' '.join(read('README.md').split())
 

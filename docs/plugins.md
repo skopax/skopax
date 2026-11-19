@@ -98,6 +98,14 @@ The check ids and ran keys of these plug-ins cannot name an instance of any plug
 
 ### Prometheus
 
+**Set it up:**
+
+1. Enter the base address of the Prometheus API in `URL`, for example `https://prometheus.example.com`. Skopax reads `/api/v1`; the checks need series from Micrometer, KrakenD, ingress-nginx, kube-state-metrics or `kafka_exporter`, as set in `Profiles`.
+2. Authentication `None`: nothing else to do. `Username and password`: Prometheus checks it only if started with `--web.config.file` holding `basic_auth_users` (bcrypt hashes); enter that user in `Username` and `Password`.
+3. Authentication `Bearer token`: Prometheus does not check bearer tokens itself, so use it only behind a proxy that does; paste the token into `Token`. Press `Test connection` to see the Prometheus version.
+
+Vendor guide: [Prometheus: basic authentication](https://prometheus.io/docs/guides/basic-auth/)
+
 - **Fields:** `url`, `ui-url` (the address people open for graph links), `auth` (`none`, `bearer` with `token`, or `basic` with `username` and `password`), `ca`, `namespaces` (a pattern, default `.*`) and `profiles`.
 - **Profiles** pick the metric families the check reads, as a comma list: `spring` (Micrometer HTTP, log and Hikari metrics), `krakend` (KrakenD gateway), `ingress` (ingress-nginx), `kube` (kube-state-metrics restarts, pod states, nodes and image changes) and `kafka` (consumer lag). All five are on by default, and an empty list means all five. Alerts are always read. Switching `kube` off also stops image-change detection, so Releases, the deploy rows and the warm-up after a deploy get nothing from this instance.
 - **Ingress exclusion pattern** (`ingress-exclude`, a regular expression) leaves out ingresses whose name matches it from the `ingress` profile. Empty, the default, leaves none out.
@@ -107,6 +115,14 @@ The check ids and ran keys of these plug-ins cannot name an instance of any plug
 ### Capacity
 
 Volume, autoscaler, JVM heap and host disk headroom, read through a Prometheus instance.
+
+**Set it up:**
+
+1. No credential of its own: Capacity reads through a Prometheus instance. Add that Prometheus instance first and pick it in `Prometheus`; it signs in as set there.
+2. That Prometheus must hold `kubelet_volume_stats_*` (volumes), `kube_horizontalpodautoscaler_*` (autoscalers), `jvm_gc_live_data_size_bytes` and `jvm_gc_max_data_size_bytes` (JVM heap) and node_exporter `node_filesystem_*` (host disks). A part with no series gives no data.
+3. Host disks of machines Prometheus does not scrape: add the PMM instance first and pick it in `Host disks from PMM`.
+
+Vendor guide: [Prometheus: HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api/)
 
 - **Fields:** `prometheus`; `jvm` (default on) reads the heap of Micrometer services; `host-disks` (default on) reads the disks that node_exporter reports in `node_filesystem_*` series; `volume-selector` adds label matchers to the `kubelet_volume_stats_*` series (empty by default); `fs-selector` holds the `node_filesystem_*` matchers, by default leaving out pseudo file systems and container mounts.
 - Switching `jvm` or `host-disks` off closes that part's cards at the next pass. On a Kubernetes Prometheus, node root disks are usually covered by the cluster's own DiskPressure checks, so you may switch `host-disks` off there.
@@ -118,6 +134,13 @@ Volume, autoscaler, JVM heap and host disk headroom, read through a Prometheus i
 
 Redis instances from redis_exporter and the Redis calls of each service from Lettuce client series.
 
+**Set it up:**
+
+1. No credential of its own: Redis reads through a Prometheus instance. Add that Prometheus instance first and pick it in `Prometheus`; it signs in as set there.
+2. That Prometheus must hold the redis_exporter series (`redis_up`, `redis_memory_used_bytes` and others) and, for the Redis calls of each service, the `lettuce_seconds_*` series of the Lettuce client. Use `Selector` to narrow what is read.
+
+Vendor guide: [redis_exporter](https://github.com/oliver006/redis_exporter)
+
 - **Fields:** `prometheus`; `selector`, label matchers added to every Redis query, such as `env="prod"` (empty reads every series).
 - **Friendly names:** `peer-names` holds comma-separated `address=name` entries, such as `10.0.4.12:6379=sessions-cache, 10.0.4.13=queue`. The address a service calls, which Lettuce reports as `net_sock_peer_addr`, is shown as the name on the Services table, on cards and in the tool; an entry without a port matches any port. Empty shows the address. Test connection refuses an entry it cannot read, and a duplicate address keeps its first entry.
 - **Check** `redis` (section `redis`). **Tool** `redis`. **Rules** `redis.rules`. **Page** Redis.
@@ -127,6 +150,13 @@ Redis instances from redis_exporter and the Redis calls of each service from Let
 
 Brokers, partitions, consumer groups and the Kafka calls of each service, from kafka_exporter and Spring Kafka series.
 
+**Set it up:**
+
+1. No credential of its own: Kafka reads through a Prometheus instance. Add that Prometheus instance first and pick it in `Prometheus`; it signs in as set there.
+2. That Prometheus must hold the kafka_exporter series (`kafka_consumergroup_lag_sum`, `kafka_brokers` and others) and, for the calls of each service, the `spring_kafka_*` timers. Use `Preset` strimzi for Strimzi clusters, otherwise kafka-exporter.
+
+Vendor guide: [kafka_exporter](https://github.com/danielqsj/kafka_exporter)
+
 - **Fields:** `prometheus`; `preset`, `kafka-exporter` (default; clusters grouped by the exporter job) or `strimzi` (clusters grouped by namespace, with broker disks and pod restarts); `namespaces`, a pattern for the namespaces of the Kafka clusters (default `.*`). A preset changes only label and metric names, never thresholds. Under `kafka-exporter` the status adds that broker disks need the `strimzi` preset.
 - **Check** `kafka` (section `kafka`). **Tool** `kafka`. **Rules** `kafka.rules`. **Page** Kafka.
 - **Access:** reads with the Prometheus instance's credential. Refused parts are `clusters`, `groups` and `app`.
@@ -134,6 +164,15 @@ Brokers, partitions, consumer groups and the Kafka calls of each service, from k
 ### Grafana
 
 Alerts firing on the Prometheus datasources of Grafana.
+
+**Set it up:**
+
+1. In Grafana open Administration > Users and access > Service accounts > Add service account. Give it a display name and the Viewer role, then Create.
+2. Open the new service account and choose Add service account token. Name it, leave the expiry as you prefer, and choose Generate token.
+3. Paste the token into `Token`. It needs `datasources:read` and `datasources:query` on each Prometheus datasource and `alert.rules:read`. Viewer alone may not reach every datasource; if `Test connection` or a card names a missing right, add it by role or datasource permission.
+4. Enter the Grafana address in `URL` (also used for links to alert rules). Press `Test connection`.
+
+Vendor guide: [Grafana: service accounts](https://grafana.com/docs/grafana/latest/administration/service-accounts/)
 
 - **Fields:** `url` (also used for links to the alert rules), `token` (a service account token), `ca` and `skip-datasources` (comma-separated datasource names). Grafana reads at most 12 datasources a pass and says `read <n> of <m> datasources` past that. A datasource it stops watching, because it is skipped or because a Prometheus instance now covers it, has its cards closed at the next pass.
 - **Check** `grafana` (sub-keys `grafana:<datasource>`; section `grafanaAlerts`). **Tool** `grafana_alerts`.
@@ -143,6 +182,53 @@ Alerts firing on the Prometheus datasources of Grafana.
 
 The Kubernetes plug-in's node and agent heartbeat.
 
+**Set it up:**
+
+1. Mode `This cluster`: Skopax reads with the service account of its own pod. Bind that account to a ClusterRole that allows get and list on nodes and pods, get on `pods/log`, list on events, get on deployments and daemonsets and list on replicasets.
+2. A Role per namespace covers pods, events and rollouts, but the node checks and the node read need nodes, and pods and events in all namespaces, so those stay in a ClusterRole.
+3. Mode `Through an agent`: run the agent image in the other cluster with `SKOPAX_MODE=agent`, `SKOPAX_AGENT_TOKEN` and a service account with the same permissions. Enter the agent address in `URL` and its token in `Token`.
+4. `Relay` (advanced): name another agent instance that passes the calls to this agent. Press `Test connection`.
+
+Vendor guide: [Kubernetes: using RBAC authorization](https://kubernetes.io/docs/reference/access-authn-authz/rbac/)
+
+Example RBAC for mode `This cluster` (and for an agent's service account); change the names and namespace to yours:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: skopax-reader
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: skopax-reader
+subjects:
+  - kind: ServiceAccount
+    name: skopax
+    namespace: skopax
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: skopax-reader
+```
+
 - **Check** `nodes`, every 5 minutes, runs once, on the primary Kubernetes instance, and reaches every Kubernetes instance from there, so its keys are `nodes:<agent>` whichever instance is primary. Every Kubernetes instance that is switched on is pinged, whatever its own "What it watches" says; switch the instance off to stop it. Switching an agent off, deleting it, parking it or moving it to `in-cluster` closes its node card at the next pass. Turned back on, it starts like a new agent: an agent that has never answered gets its card after 24 hours, one that answered before after 5 minutes down. Section `nodes`; page Nodes.
 - **Access:** `list on nodes` in each cluster (part `nodes of <instance>`). An in-cluster primary raises the warn card; an agent whose own cluster read is refused shows `cluster not read` on its Nodes row instead of a card.
 - **Local instance:** inside a cluster the environment adds the in-cluster primary `local`; `SKOPAX_KUBE_LOCAL_NAME` names it otherwise (see [Agent mode](operations.md#agent-mode)).
@@ -150,6 +236,15 @@ The Kubernetes plug-in's node and agent heartbeat.
 ### Elasticsearch
 
 New and growing error and warning log patterns, APM latency and failures, and the log flow per namespace, read with ES|QL.
+
+**Set it up:**
+
+1. In Kibana open the API keys page, choose Create API key and pick a user key. Creating it needs the `manage_own_api_key` or `manage_api_key` privilege.
+2. Under access configuration use custom privileges: read on the `Log index` (default logs-*), the `APM index` (default traces-apm*) and the `Log flow index` if you set one. Add the cluster privilege monitor if you want `Test connection` to show the version.
+3. Copy the encoded key and paste it into `API key`. If the APM data is in another cluster, enter its address in `APM URL` and its own key in `APM API key`; empty means the log cluster and its key.
+4. Enter the cluster address in `URL`. A cluster without security needs no key. Press `Test connection`.
+
+Vendor guide: [Elastic: API keys](https://www.elastic.co/docs/deploy-manage/api-keys/elasticsearch-api-keys)
 
 - **Fields:** `url` and `api-key` for the log cluster; `apm-url` and `apm-api-key` for the APM cluster, each defaulting to the log cluster's; `ca`; `ui-url` (Kibana) and `data-view` for the Discover links on cards and rows.
 - **Log fields** default to ECS names: `log-index` `logs-*`, `apm-index` `traces-apm*`, `namespace-field` `kubernetes.namespace`, `service-field` `service.name`, `level-field` `log.level`, `message-field` `message` and `error-field` `error.message`. When the log index has not mapped the error field, the logs check reads the message only and Test connection says so.
@@ -166,6 +261,13 @@ New and growing error and warning log patterns, APM latency and failures, and th
 
 The Varnish cache hit ratio against the day and the week before, and a daily list of the paths that miss the cache most, from Varnish logs in Elasticsearch.
 
+**Set it up:**
+
+1. No credential of its own: Varnish reads logs through an Elasticsearch instance. Add that instance first and pick it in `Elasticsearch`; its `API key` needs read on the Varnish index.
+2. Set `Index` if the Varnish logs are not in that instance's log index. The log lines need the fields `varnish.method`, `varnish.cache_status` and `varnish.path` (keyword); `Test connection` names any that are missing.
+
+Vendor guide: [Elastic: API keys](https://www.elastic.co/docs/deploy-manage/api-keys/elasticsearch-api-keys)
+
 - **Fields:** `elasticsearch`; `index` (empty means that instance's log index); `namespace` (empty: the cards show `-`) and `service` (default `varnish`) for the cards; `personal-paths`, a pattern for sign-in or checkout flows whose misses are expected.
 - **Log fields:** `varnish.method.keyword`, `varnish.cache_status.keyword` and `varnish.path.keyword` are required; `varnish.query_string`, `varnish.query_params._rsc.keyword` and `varnish.response_code.keyword` add hints when present.
 - **Checks** `varnish` (section `varnish`) and `varnish-cache`, once a day (section `varnishCache`). **Rules** `varnish.rules`.
@@ -175,6 +277,13 @@ The Varnish cache hit ratio against the day and the week before, and a daily lis
 
 Content Security Policy violation reports in the logs: hosts the browsers block for the first time, and jumps in the hourly count.
 
+**Set it up:**
+
+1. No credential of its own: CSP reports reads logs through an Elasticsearch instance. Add that instance first and pick it in `Elasticsearch`; its `API key` needs read on the indices the query names.
+2. Write `Query` as ES|QL that selects the report lines, such as `FROM logs-* | WHERE message LIKE "*csp-report*"`. Each report is read from the message column. Press `Test connection`.
+
+Vendor guide: [Elastic: ES|QL](https://www.elastic.co/docs/reference/query-languages/esql)
+
 - **Fields:** `elasticsearch`; `query`, the ES|QL source and filter that select the report lines, such as `FROM logs-* | WHERE message LIKE "*csp-report*"`; `namespace` (empty: the cards show `-`) and `service` (default `csp`) for the cards.
 - **Check** `csp` (section `csp`). **Rules** `csp.rules`.
 - **Access:** the read privilege on the indices the query names (part `reports`).
@@ -182,6 +291,14 @@ Content Security Policy violation reports in the logs: hosts the browsers block 
 ### PMM
 
 Postgres servers, slow queries and MongoDB members, read from Percona Monitoring and Management.
+
+**Set it up:**
+
+1. In PMM open the Grafana service accounts page (Administration > Users and access > Service accounts), add a service account with the Viewer role and generate a token for it.
+2. Paste the token into `Token` and the PMM address into `URL`. Viewer can query the metrics and Query Analytics data sources.
+3. Leave `Metrics data source` and `QAN data source` empty only if the token may list data sources (the Admin role or `datasources:read`). Otherwise enter the data source uids so Skopax need not list them.
+
+Vendor guide: [PMM: service accounts and authentication](https://docs.percona.com/percona-monitoring-and-management/3/api/authentication.html)
 
 - **Fields:** `url` (also used for dashboard links), `token`, `ca`, `metrics-datasource` and `qan-datasource` (data source uids), `postgres-services` and `mongo-services` (patterns), `replica-set` and `exclude-users` (default `pmm`).
 - **CA certificate:** a PMM with its own certificate authority is verified against the `ca` field. A wrong CA fails Test connection with the TLS sentence. `ca-pinned` (Trust this certificate as it is), shown once `ca` is set, is for a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. The chain, name and date checks are then off, and every other certificate is refused, also one signed by a certificate in `ca`, so a CA certificate does not work with the switch on. A pasted bundle of server certificates accepts each of them. With `ca` empty the switch has no effect, and saving with `ca` empty drops it. A new `ca`, or switching `ca-pinned` off, asks for the token again (see [Instances](#instances)). PMM, Elasticsearch, Prometheus, Grafana, Airbyte, Langfuse, GitLab, Argo CD and Umami all have it.
@@ -198,6 +315,17 @@ Postgres servers, slow queries and MongoDB members, read from Percona Monitoring
 
 Health checks, certificate packs, status-page components and the edge 5xx share of Cloudflare zones.
 
+**Set it up:**
+
+1. In the Cloudflare dashboard open My Profile, API Tokens and choose Create Token (an account owned token under Manage Account, API Tokens works too).
+2. Start from scratch with a custom token and name it, for example Skopax read-only.
+3. Add a Zone policy with four Read permissions, each picked as Zone, name, Read: Zone, Zone, Read; Zone, Analytics, Read; Zone, SSL and Certificates, Read; Zone, Health Checks, Read.
+4. Set Zone Resources to the zones you will list in Zones (or all zones of the account). Add no Edit permission.
+5. Continue to summary, then Create Token, and copy the secret: Cloudflare shows it once.
+6. Paste it into API token, then list the zone names in Zones. Test connection reports which permission is missing.
+
+Vendor guide: [Cloudflare: create an API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
+
 - **Fields:** `token`, `zones` (comma-separated zone names; their ids are looked up), `account` (empty means the account of the first zone) and `status-components` (semicolon-separated, written as the status page shows them). The status-page check runs only when components are set.
 - **Checks per zone:** `zone-checks` holds comma-separated `zone=checks` entries, where checks is `cf` (health checks and certificates), `edge` (edge 5xx), `cf+edge` or `none`, such as `example.org=edge, example.net=none`. A zone that is not listed runs both. The cards of a check a zone no longer runs close at the next pass. The status components are not per zone. Test connection refuses an entry it cannot read, a mix of `none` with a check, and a zone that is not in `zones`.
 - **Checks** `cf` (health checks, certificates and status; sub-keys `cf:<zone>:checks` and `cf:<zone>:certs`; section `cloudflare`) and `edge` (sub-keys `edge:<zone>`; section `edge`). **Tools** `edge` and `cloudflare_graphql`. **Rules** `cloudflare.edge`. **Page** Cloudflare.
@@ -206,6 +334,14 @@ Health checks, certificate packs, status-page components and the edge 5xx share 
 ### Airbyte
 
 Failed and unusually long Airbyte sync jobs, from the Airbyte public API.
+
+**Set it up:**
+
+1. In Airbyte open your user menu > User settings > Applications. In Airbyte Cloud choose Create an application, name it and Submit; on Core the default application is already there. Reveal the client secret.
+2. Copy the client id into `Client id` and the secret into `Client secret`. An application has the permissions of the user it belongs to, so use a user who can read the workspaces to watch.
+3. Enter the address of the Airbyte web app in `URL`; Skopax calls its public API under `/api/public/v1`. Press `Test connection`.
+
+Vendor guide: [Airbyte: configuring API access](https://docs.airbyte.com/platform/using-airbyte/configuring-api-access)
 
 - **Fields:** `url`, `client-id` and `client-secret` of an Airbyte application, `connections` (comma-separated names or ids; empty watches every connection) and `ca`. At most 500 connections are read, and the status says so past that.
 - **Connections list:** an entry in `connections` that names no connection makes the status say `no data for <entry>` and holds the open cards of a connection with that name or id, so a renamed connection keeps its cards until the entry is fixed.
@@ -220,9 +356,28 @@ Failed and unusually long Airbyte sync jobs, from the Airbyte public API.
 
 Errors, traffic, latency and cost of the turns an AI app traces to Langfuse.
 
+**Set it up:**
+
+1. In Langfuse open the project and go to Settings > API Keys, then Create new API keys. Name the key and under Permissions choose Viewer (read-only); Skopax only reads. A key cannot be changed later.
+2. Copy the public key into `Public key` and the secret key into `Secret key`. The secret key is shown only once.
+3. Leave `URL` as it is for Langfuse Cloud, or enter the address of your own server. Press `Test connection`.
+
+Vendor guide: [Langfuse: roles and project API key permissions](https://langfuse.com/docs/administration/rbac)
+
 - **Fields:** `url` (default `https://cloud.langfuse.com`), `public-key` and `secret-key` of the project, `environment` (empty reads every one), `namespace` (empty: the cards show `-`) and `service` (default `langfuse`) for the cards, `turn-name` and `ca`. With `turn-name` empty, a turn is the root observation of each trace, which needs a Langfuse version that knows `isRootObservation`; on an older server, set `turn-name` to the name of the observation that is one turn.
 - **Check** `langfuse` (section `langfuseCheck`). **Tool** `langfuse`, which also serves agent reads. **Rules** `langfuse.rules`.
 - **Access:** a project key pair with read access to the project. Refused parts are `metrics` and `observations`.
+
+### Spring Cloud Config
+
+Settings and instances read from a Spring Cloud Config server; see [Spring Cloud Config](configuration.md#spring-cloud-config) for every variable.
+
+**Set it up:**
+
+1. This plug-in has no form. Set `SPRING_CONFIG_URL` to the config server address and `SPRING_CONFIG_APP` to the application name; `SPRING_CONFIG_PROFILE` and `SPRING_CONFIG_LABEL` are optional.
+2. If the server asks for a sign-in, set `SPRING_CONFIG_USER` and `SPRING_CONFIG_PASSWORD` together. Set `SPRING_CONFIG_MAP` to the comma list of config key=Skopax target entries to read, then restart Skopax.
+
+Vendor guide: [Spring Cloud Config Server](https://docs.spring.io/spring-cloud-config/reference/server.html)
 
 ## Code, tickets and chat
 
@@ -241,6 +396,15 @@ A connection is always an instance, never a setting. The keys `gitlab.token`, `g
 
 ### GitLab
 
+**Set it up:**
+
+1. In GitLab choose your avatar > Edit profile > Access > Personal access tokens, then Generate token > Legacy token. Or, as a group Owner, open the group > Settings > Access tokens > Add new token.
+2. Name it, set an expiration date, and select only the read_api scope. For a group token choose a role that can read the projects, such as Reporter.
+3. Create the token, copy it at once (GitLab shows it once) and paste it into `Token`.
+4. In `URL` keep `https://gitlab.com` or give your GitLab address. Enter the path of the group whose projects Skopax reads in `Group`, such as acme, then choose Test connection.
+
+Vendor guide: [GitLab: personal access tokens](https://docs.gitlab.com/user/profile/personal_access_tokens/)
+
 - **Fields:** `url` (default `https://gitlab.com`; the API is read under `/api/v4`), `token` (an access token with the `read_api` scope), `group` (the path of the group whose projects are read), `ca` and `ca-pinned` (as for PMM).
 - **What uses it:** deploy enrichment (the tickets, commits and authors of each deploy on Releases), the code links the investigator writes, which must point under the group, and the read-only tools `gitlab_search`, `gitlab_file`, `gitlab_blame`, `gitlab_compare`, `gitlab_mrs` and `gitlab_pipelines`. The tools take a project's name or its full path at any depth; the group may be a subgroup path such as `acme/platform`. Deploy enrichment finds a project by the service name one subgroup below the group (`<group>/<subgroup>/<service>`), or deeper when no project of that name sits there; a project right under the group is not matched, and a deploy with no such project says so. While GitLab is off, deploy enrichment is skipped with one log line, and Releases says "not read: GitLab is off" in the Tickets cell of a deploy with no tickets. With GitLab on, a deploy not read yet says "not read from GitLab yet" during the 7 days that enrichment reads it, and "not read from GitLab" after that.
 - **Access:** reads need the `read_api` scope or a role that can read the projects, such as Reporter. Test connection reads `/version`, then the group's projects. A refused read names the part (`projects`, `code`, `merge requests` or `pipelines`) and the permission. GitLab answers 404 for a group or a private project the token cannot see, so a 404 is worded as "no such item, or the token lacks" the permission. A read refused during deploy enrichment shows on Releases as "not read:" and the reason. A refused project marks only its own deploys, named with its path, and the sweep goes on; a refused group listing stops the sweep and marks every deploy it left. The mark stays until a later read of that deploy succeeds, and a deploy older than the 7-day enrichment window is not read again.
@@ -248,6 +412,16 @@ A connection is always an instance, never a setting. The keys `gitlab.token`, `g
 ### GitHub
 
 GitHub.com, or a GitHub Enterprise Server through the `url` field, read with a fine-grained personal access token.
+
+**Set it up:**
+
+1. In GitHub open your profile menu > Settings > Developer settings > Personal access tokens > Fine-grained tokens, then Generate new token. Name it and set an expiration.
+2. Under Resource owner pick the organization or user you will enter as `Owner`. Under Repository access choose Only select repositories (or All repositories) for the repositories Skopax should read.
+3. Under Repository permissions set Metadata, Contents, Pull requests, Checks, Commit statuses and Deployments to Read-only. Leave every other permission at No access.
+4. Choose Generate token, copy it, and paste it into `Token`. If the organization requires approval, an owner must approve it first.
+5. In `URL` keep `https://github.com`, or give the address of your GitHub Enterprise Server. Enter the organization or user in `Owner`, then choose Test connection.
+
+Vendor guide: [GitHub: managing personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
 
 - **Fields:** `url` (default `https://github.com`, whose API is `https://api.github.com`, also for `https://www.github.com`; GitHub Enterprise Cloud with data residency, `https://<name>.ghe.com`, is read at `https://api.<name>.ghe.com`; any other address is a GitHub Enterprise Server, read under `<url>/api/v3`, and its GraphQL under `<url>/api/graphql`), `token` (a fine-grained personal access token), `owner` (the organization or user whose repositories are read), `repos` (optional: the repositories whose deployments and releases the `github` check tracks, by name and comma separated, at most 20), `docs` (optional: a repository of the owner with an optional folder, such as `acme/handbook/runbooks`, read as company knowledge), `ca` and `ca-pinned` (as for PMM).
 - **What uses it:** deploy enrichment (the tickets, commits and authors of each deploy on Releases), the code links the investigator writes, which must point under the owner on the `url` host, and the read-only tools `github_search`, `github_file`, `github_blame`, `github_compare`, `github_prs` and `github_checks`, with GitHub's notes for the investigator. The tools take a repository's name or `owner/name`; repositories of other owners are not read, and a search that names its own scope (`repo:`, `org:`, `user:` and the like) or holds a backslash is refused; pull request search results of another repository are dropped. Deploy enrichment finds the repository by the service name under the owner. `github_checks` reads the check runs (GitHub Actions jobs among them) and the commit statuses of one commit; `github_prs` tells merged from closed without merging. Blame is read through GitHub's GraphQL API, since its REST API has none.
@@ -261,6 +435,16 @@ GitHub.com, or a GitHub Enterprise Server through the `url` field, read with a f
 
 Jira Cloud only: calls go through the Atlassian API gateway, `api.atlassian.com`, with an account's email and API token.
 
+**Set it up:**
+
+1. Sign in as the account Skopax will use and open `https://id.atlassian.com/manage-profile/security/api-tokens`. Choose Create API token with scopes, name it and set an expiry (1 to 365 days).
+2. Pick Jira as the app and select the scopes read:jira-work and read:jira-user. The account also needs Browse projects and Browse users and groups in Jira.
+3. Create the token, copy it and paste it into `API token`. Enter that account's address in `Email`.
+4. In `Site` give your Jira Cloud address, such as `https://example.atlassian.net`. Leave `Cloud id` empty unless asked, then choose Test connection.
+5. A token made with the plain Create API token button also works, but it carries all the account's access.
+
+Vendor guide: [Atlassian: manage API tokens](https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/)
+
 - **Fields:** `url` (the site, such as `https://example.atlassian.net`), `email`, `api-token` and `cloud-id` (optional; read from the site when empty).
 - **What uses it:** Create task on cards, ticket links, the `jira-links` pass that moves a card to In progress when a ticket names it (`core.jira-links`), the released issues on deploy reports, and the investigator's `jira_search`, `jira_issue` and `propose_ticket`, with Jira's notes for the investigator. With Jira off, the prompt names none of these tools, and `triage` offers only `handled`. The project, the fields and the other behaviour settings are in Admin > General, under Jira.
 - **Release names:** `jira.release-name` (Release name in Admin > General, or `JIRA_RELEASE_NAME`) names the Jira release of a deploy day, and deploy reports look up the issues of these releases. The default is `{project} {yyyy}-{mm}-{dd}`. The placeholders are `{project}`, `{yyyy}`, `{mm}` and `{dd}`, in the local time zone; each may appear at most once, and `{project}`, `{mm}` and `{dd}` are needed. A double quote or a backslash is refused, since the name goes into a Jira search. Admin refuses a value that breaks this, and such a value in the environment or the config file stops the start.
@@ -270,11 +454,30 @@ Jira Cloud only: calls go through the Atlassian API gateway, `api.atlassian.com`
 
 Atlassian Cloud only, through the same gateway, with its own email and API token, not Jira's.
 
+**Set it up:**
+
+1. Sign in as the account Skopax will use and open `https://id.atlassian.com/manage-profile/security/api-tokens`. Choose Create API token with scopes, name it and set an expiry (1 to 365 days).
+2. Pick Confluence as the app and select the scopes search:confluence, read:page:confluence and read:space:confluence. The account must be able to view the spaces you list.
+3. Create the token, copy it and paste it into `API token`. Enter that account's address in `Email`. Use a token of its own, not the one Jira uses.
+4. In `URL` give your Atlassian Cloud address, such as `https://example.atlassian.net`. In `Spaces` list the space keys the tool may read, such as ENG, OPS.
+5. Choose Test connection. It names any listed space the account cannot see.
+
+Vendor guide: [Atlassian: manage API tokens](https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/)
+
 - **Fields:** `url` (the site), `email`, `api-token` and `spaces`, a comma list of the space keys the tool may read.
 - **Tool** `confluence` searches and reads the pages of the allowed spaces, read only, with passwords, keys, tokens and personal data masked. With no space listed it is not offered and reads nothing.
 - **Access:** search needs the scope `search:confluence`, pages `read:page:confluence` and spaces `read:space:confluence`. Test connection reads the allowed spaces and fails naming any the account cannot see, then runs a one-page search in them. A 403 names the scope, and so does a 401 after that first read worked or one that says "scope does not match". A page that answers 404 is named as missing or not viewable (the View permission on its space), and an empty search names the allowed spaces the account cannot see.
 
 ### Argo CD
+
+**Set it up:**
+
+1. With `Mode` set to This cluster no token is needed. Give the service account Skopax runs as get and list on applications.argoproj.io in the namespace in `Namespace` (default argocd), then enter the Argo CD address in `URL` for the links.
+2. With `Mode` set to Argo CD API, in the argocd-cm ConfigMap add a local account that can use API keys, such as accounts.skopax: apiKey.
+3. In argocd-rbac-cm add the policy p, skopax, applications, get, */*, allow (or a project, such as my-project/*).
+4. Create the token with argocd account generate-token --account skopax --expires-in 90d and paste it into `Token`. Enter the Argo CD address in `URL`, then choose Test connection.
+
+Vendor guide: [Argo CD: user management](https://argo-cd.readthedocs.io/en/stable/operator-manual/user-management/)
 
 - **Modes:** `api` reads the Argo CD API with a token; `in-cluster` reads the Application objects of the cluster Skopax runs in, with its service account. Several Argo CD instances can be added.
 - **Fields:** `mode`, `url` (the Argo CD server, and the address of the links people open), `token` (api mode), `ca`, `ca-pinned` (as for PMM), `namespace` (default `argocd`: where the Application objects are read in in-cluster mode, and the namespace of the links), `projects` (a comma list; empty means all) and `app-suffix` (a suffix the application names carry after the service name, left out of the service on cards).
@@ -289,6 +492,15 @@ Atlassian Cloud only, through the same gateway, with its own email and API token
 
 A card for each SonarQube project whose quality gate starts to fail, from the SonarQube web API with a read-only token. It takes one instance per SonarQube.
 
+**Set it up:**
+
+1. In SonarQube open the account menu > My account > Security. Under Generate Tokens choose the type User, set an expiration and choose Generate.
+2. Use an account that has the Browse permission on the projects to watch (Project settings > Permissions of each project). The token reads only what that account may browse.
+3. Copy the token at once (SonarQube shows it once) and paste it into `Token`.
+4. In `URL` give your SonarQube address. In `Projects` list project keys or names to watch (* matches any characters), or leave it empty for all browsable projects. Choose Test connection.
+
+Vendor guide: [SonarQube: managing tokens](https://docs.sonarsource.com/sonarqube-server/latest/user-guide/managing-tokens/)
+
 - **Fields:** `url` (the SonarQube address, also the address of the links), `token` (a user or project analysis token that can browse the projects; it is sent as the user name of a basic sign-in), `projects` (a comma list of project keys or names, where `*` matches any characters; empty watches every project the token can browse), `ca` and `ca-pinned` (as for PMM). At most 5000 projects are read, and the status says so past that.
 - **Check** `sonarqube`, once a day. Its first run records which projects fail now, silently, and opens no card; the first state is kept in the plug-in's memo. After that, a card `sonar-gate|-/<project key>` opens for a project whose gate fails and did not fail at the first run, lists up to 5 failed conditions, and clears when the gate passes. A project that already failed at the first run stays quiet until its gate has passed once; a project first seen later and already failing gets a card. Only a failed gate (`ERROR`) makes a card.
 - **How it reads:** the project list (`/api/components/search`), then the public `/api/qualitygates/project_status` of each watched project, one call each, which gives the gate state and its failed conditions. The whole pass has a 200 second budget, Test connection 12 seconds. A pass whose list cannot be read, or in which no gate can be read, fails and changes nothing: no card opens or clears, and the memo is not written. A timeout, a spent budget, a 403 on one project or an answer without a gate leaves those projects unread: the others are judged, only cards of read projects clear, and the status says `<n> not read`. Cards link to the project dashboard, for an `https://` address.
@@ -297,6 +509,16 @@ A card for each SonarQube project whose quality gate starts to fail, from the So
 ### Slack
 
 Skopax posts a card to the channel, keeps the post up to date, and answers questions asked in its thread.
+
+**Set it up:**
+
+1. At `https://api.slack.com/apps` choose Create New App > From a manifest, pick your workspace and paste examples/slack-app-manifest.yaml from the Skopax repository. It sets the bot scopes, events and Socket Mode.
+2. Choose Install to Workspace, then Allow. Under OAuth & Permissions copy the bot token (xoxb-...) and paste it into `Bot token`.
+3. Under Basic Information, in the App-level tokens section, generate a token (Socket Mode needs one; if asked for a scope, choose connections:write) and paste the xapp-... token into `App token`.
+4. Choose Test connection, then Save & turn on. Restart Skopax once: an app token added or changed later is read only at start.
+5. Invite the bot to the channel (/invite @Skopax) and set that channel in Admin > General > Slack > Channel.
+
+Vendor guide: [Slack: app settings](https://docs.slack.dev/app-management/quickstart-app-settings)
 
 - **Creating the Slack app:** at api.slack.com/apps choose "Create New App", then "From a manifest", pick your workspace and paste [`examples/slack-app-manifest.yaml`](../examples/slack-app-manifest.yaml). It turns on Socket Mode, buttons and dialogs, the events the listener reads (mentions, and messages in channels, private channels and direct messages) and every bot scope listed below, plus `im:history`, `reactions:write` and `app_mentions:read`. Install the app, copy the bot token (`xoxb-...`), and create an app-level token with the `connections:write` scope under Basic Information (`xapp-...`).
 - **Fields:** `bot-token` (`xoxb-...`) and `app-token` (`xapp-...`, for Socket Mode, which the Slack listener needs). The channel that cards and deploy reports go to is the setting Channel in Admin > General > Slack (`slack.channel`, or `SLACK_CHANNEL`).
@@ -313,6 +535,15 @@ Skopax posts a card to the channel, keeps the post up to date, and answers quest
 
 Each Teams instance is one route: the Workflows URL of a channel and the cards it takes.
 
+**Set it up:**
+
+1. In Teams open Workflows (the Workflows app, or a channel's More options > Workflows) and create a flow that receives a webhook request and posts to a channel. Pick the team and channel, then Save.
+2. Each flow type has its own rule for who may trigger it; pick one that lets the Skopax server post.
+3. On the flow's details page copy the HTTP POST URL and paste it into `Webhook`. The URL is a secret: anyone who has it can post to the channel.
+4. Fill in `Card tags` or `Card keys`, since a route needs one of them, then choose Test connection. The workflow owner must be allowed to post in that channel.
+
+Vendor guide: [Microsoft Teams: webhooks with Workflows](https://support.microsoft.com/en-us/teams/apps-service/create-incoming-webhooks-with-workflows-for-microsoft-teams)
+
 - **Fields:** `webhook` (the https address Teams Workflows gives for posting to the channel; kept secret), `tags` (card tags, such as `seo, developer`), `keys` (card key patterns with `*` and `?`, such as `log|checkout-*|*`), `mentions` (e-mail addresses mentioned in each post), `min-sev` (the route's own lowest severity; empty uses `teams.min-sev`) and `slack-echo` (core adds this field to every route plug-in: `default`, `on` or `off`; see [Echo to Slack](extending.md#echo-to-slack)). A route needs a known card tag or a key pattern; Admin shows the instance's health as an error without one. Test connection refuses a route with neither filled in, or with an address it cannot post to, before it posts a test card.
 - **What it posts:** a route with tags only posts the open cards that carry one of them and are at or above `teams.min-sev`; a route for a business team posts a card once its business sentence is written, by the investigator, an operator or a plug-in (see [Card sentences](extending.md#card-sentences)). A route with key patterns posts the new and escalated cards whose key matches one of them, or that carry one of its tags. Routes that are not for a business team also skip cards below their own `min-sev`; a key route's own value replaces the setting, higher or lower. Card texts reach Teams as plain text, never as links. A business post leads with the why, then "Recommended:" and the action; an info post says what is happening. Two tag routes on the same address post a card tagged for both once.
 - **Settings** (Admin > General, under Microsoft Teams): `teams.repeat-days` (default 7: days before a card already posted to a channel is posted there again; 0 posts every time), `teams.min-sev` (default `warn`: the lowest severity a tag route posts, and the default of a key route with no `min-sev` of its own) and `teams.fixed-posts` (default off: a fixed message to a business channel when a card it was told about as info closes).
@@ -327,40 +558,131 @@ Each Teams instance is one route: the Workflows URL of a channel and the cards i
 Skopax also ships Website, Umami, Chrome UX Report, Safe Browsing, App stores, Crashlytics, Google Analytics 4, Google Tag Manager, Google Ads and VWO. As with the observability plug-ins, each does nothing until an admin adds an instance, a check runs every 15 minutes unless its entry says otherwise, its id is also its pass name, and a refused read follows [When a credential lacks a permission](#when-a-credential-lacks-a-permission). Their check ids and ran keys are reserved instance names in the same way (`browser`, `pagescan`, `pagescan-digest`, `umami`, `crux`, `safebrowsing`, `appstore`, `play`, `play-reviews`, `crashlytics`, `ga`, `gtm`, `gads`, `gads-policy`, `wingify` and `wingify-verdict`), and a VWO instance also cannot be named `verdict`.
 
 - **Website:** the `page` tool reads a page of your site as a visitor without cookies sees it, the `screenshot` tool shows it to the investigator as a picture, and `page_scan` reads one page as the page scan does. They open only the host of `url`, its subdomains and `hosts`, never a login, API or click-counting path. A subdomain that is not the `url` host or a `hosts` entry is opened only when it resolves to public addresses, and a page read connects to the address that was checked; switch on `internal-subdomains` ("Subdomains may be internal") when such subdomains live on your internal network. Page reads honour `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`: through a proxy they open a CONNECT tunnel to the checked address, so the pin holds, and a proxy that refuses the tunnel is named in the error. The proxy must be an `http://` URL (an `https://` proxy URL is refused), and `NO_PROXY` is matched against the host name, not the checked address. In the browser the check is best-effort: Chrome looks the name up again, so Skopax also refuses a shot whose page or frame on such a subdomain answered from a private address. That address check assumes no proxy sits in front of the browser service; behind one, Chrome reports the proxy's address. A bare public suffix such as `co.uk` is never a site host, and Test connection names it. Check `browser` (every 5 minutes) watches the browser service. Checks `pagescan` and `pagescan-digest` are the page scan. The check, the tools and the page scan open only https sites on port 443, so the demo stack, which serves plain http on its own port, cannot serve the plug-in a page: point it at a real https site.
+
+  **Set it up:**
+
+  1. No account is needed. Set Site URL to the https address of the site, for example `https://www.example.com`. Only https on port 443 is read.
+  2. List other hosts of the site in More hosts, and hosts behind a login or APIs in Login hosts, Login paths and API paths: they are never opened.
+  3. For screenshots, run a headless Chrome service that exposes the DevTools endpoint and set Browser URL to it, for example `http://browser:9222`. Empty means no screenshots.
+  4. If a firewall or bot rule blocks the page read, add the header it expects (Name: value) in Scan headers, and ask the site owner to allow the Skopax address.
+  5. Optionally link your Umami instance in Umami instance so the page scan reads the busiest paths. Test connection reads the page, then the browser.
+
+  Vendor guide: [chromedp headless-shell image](https://github.com/chromedp/docker-headless-shell)
   - **Fields:** `url` (required: the site, https), `hosts` (more hosts of the site; their subdomains count too), `login-hosts`, `login-paths`, `api-paths` and `refused-paths` (comma lists of hosts and path segments or paths that are never opened; `/api/` is always refused), `browser-url`, `description` (one or two sentences on the site, for the page scan), `umami` (the Umami instance whose busiest paths the page scan reads), `scan-headers` and `internal-subdomains` (default off). Settings (Admin > General, under Website): `website.page-scan`, `website.scan-hours`, `website.recheck-days`, `website.pages`, `website.extra`, `website.ignore` (words never reported as typos), `website.model`, `website.digest-hour` and `website.scan-prompt` (see [The page scan](#the-page-scan)).
   - **Options**, each empty by default, and an empty option changes nothing: `tracking-params` (comma-separated query parameter names that count as ad tracking on top of `utm_*`, `gclid`, `fbclid` and `msclkid`; a trailing `*` takes every parameter with that start, such as `pk_*`; the tools refuse such a url, exactly as they refuse `utm_*`, and never strip the parameter and fetch), `kept-headers` (comma-separated response header names the `page` tool returns on top of its usual ones; cookie and authorization headers, and any name that contains token, secret, session, auth, cookie, password or credential, are never returned), `scan-skip` (comma-separated path prefixes the page scan never reads, on top of its built-in ones, and the paths below them; case is ignored and a missing leading slash is added) and `user-agent` (printable ASCII, at most 200 characters: sent by the `page` tool and Test connection instead of the built-in one, and used as the closing product token of the screenshot browser's identity; Test connection refuses one a header cannot carry).
   - **Access:** no credential. Test connection reads the `url` page, with `scan-headers`, then the browser's version; a site that answers 401 or 403, or a browser that refuses, fails it. Check `browser` opens the access card `browser:access:browser` when the browser refuses the version read. The page scan opens `pagescan:access:site` when the site answers 401 or 403 to the pages it scans (fix it with `scan-headers`), and `pagescan:access:umami` when the linked Umami instance refuses its busiest paths (the Umami credential needs view access to the website).
 - **Umami:** pageviews and one tracked event of a website, hour by hour against 1 and 7 days earlier (check and tool `umami`). Umami Cloud takes an API key; your own server takes a token, or the username and password of a user that can view the website, and its `ca` and `ca-pinned` work as for PMM. A drop card names the latest Google Tag Manager publish of the 48 hours before it.
+
+  **Set it up:**
+
+  1. Umami Cloud: sign in, click the profile button in the side navigation, choose Settings, API keys, Create key, and copy the key.
+  2. Umami Cloud: set URL to `https://api.umami.is/v1` and paste the key into API key. Leave Token, Username and Password empty. Set UI URL to your dashboard address, or cards carry no link.
+  3. Own server: set URL to the server address. Token takes a bearer token: an API key (Settings, API keys, if your version has them) or a login token. Without Token, Username and Password log in and renew themselves.
+  4. Whichever you use, the key or user must own the website, be an admin, or be in the team that holds it. Use a user with view access only.
+  5. Website ID: copy the UUID from the website settings page, in the tracking code (data-website-id), and paste it into Website ID.
+  6. Leave Event empty to watch pageviews only, or name a tracked event. Test connection reads the website.
+
+  Vendor guide: [Umami: API key](https://docs.umami.is/docs/cloud/api-key)
   - **Fields:** `url` (required: `https://api.umami.is/v1` for Umami Cloud, or the address of your server), `ui-url` (the address people open for links; Umami Cloud needs it for cards to carry a link), `api-key` (Umami Cloud), or `token`, or `username` and `password` (your own server), `website-id` (required: the UUID of the website), `site` (the service name on cards; empty uses the domain Umami reports), `event` (one tracked event; empty watches pageviews only), `properties` (default `type`: event-data properties; the first one splits the event into one count per value), `ca` and `ca-pinned`.
   - **Access:** the API key, token or user must be able to view the website. Test connection signs in and reads the website. A refusal opens the access card for the part `website`.
 - **Chrome UX Report:** INP, LCP and CLS that real Chrome users had on your origins, once a day against a week earlier (check and tool `crux`), with a Google API key.
+  - **Set it up:**
+
+    1. In Google Cloud console, open APIs & Services > Library, search Chrome UX Report API and click Enable.
+    2. Open APIs & Services > Credentials > Create credentials > API key. Under API restrictions choose Restrict key, select only Chrome UX Report API, and save.
+    3. Paste the key into API key.
+
+    Vendor guide: [Chrome UX Report API](https://developer.chrome.com/docs/crux/api)
   - **Fields:** `api-key` (required) and `origins` (required: a comma list of origins; a bare host name means https, and a path is ignored).
   - **Access:** the key needs the Chrome UX Report API enabled. A 403 names that and opens the access card for the part `origins`.
 - **Safe Browsing:** whether Google lists your hosts as unsafe (check and tool `safebrowsing`). With an API key it asks the Safe Browsing API; without one it reads the public site status page, and the tool is offered only from an instance that has a key.
+  - **Set it up:**
+
+    1. Optional: without a key, Skopax reads the public site status page. For the API, open APIs & Services > Library in Google Cloud console, search Safe Browsing API and click Enable.
+    2. Open APIs & Services > Credentials > Create credentials > API key. Under API restrictions choose Restrict key, select only Safe Browsing API, and save.
+    3. Paste the key into API key.
+
+    Vendor guide: [Safe Browsing API: get started](https://developers.google.com/safe-browsing/v4/get-started)
   - **Fields:** `api-key` (optional) and `hosts` (required: a comma list of host names).
   - **Access:** with a key, the key needs the Safe Browsing API enabled; a 403 names that and opens the access card for the part `hosts`. Without a key the status page is read one host every few seconds.
 - **App stores:** App Store ratings (check `appstore`) and Google Play vitals and reviews (check `play`), tool `stores`. An empty app id or package skips that store, and Test connection also skips a store whose check is switched off.
+  - **Set it up:**
+
+    1. App Store ratings need no credential: enter the digits after id in the App Store link in App Store app id. The steps below are for Google Play only.
+    2. In Google Cloud console, open APIs & Services > Library, enable Google Play Developer Reporting API and Google Play Android Developer API.
+    3. In Google Cloud console, open IAM & Admin > Service accounts, pick your project and click Create service account. Name it and click Done; no project role is needed.
+    4. Open the account, Keys tab, Add key, Create new key, JSON, Create. Paste the whole downloaded file into Service account key.
+    5. Copy the account email (`client_email` in the key). In Play Console, Users and permissions, Invite new users, enter that email, grant App permissions on the app with View app information (read-only), then Invite user. If Play is still refused, an owner may need to grant more.
+    6. Enter the Android package name, such as com.example.app, in Google Play package. Empty skips Google Play, so no Play data is read.
+
+    Vendor guide: [Play Console: invite users and set permissions](https://support.google.com/googleplay/android-developer/answer/9844686)
   - **Fields:** `apple-app-id` (the digits after `id` in the App Store link), `countries` (default `us`: at most 10 two-letter countries whose ratings are read), `play-package` (the Android package name, such as `com.example.app`) and `credentials` (needed for Google Play only).
   - **Access:** App Store ratings need no credential. Google Play needs the service account with View app information (read-only) in Play Console; a refused part (Play vitals or Play reviews) opens its own access card, and the other part is still read.
 - **Crashlytics:** crash and freeze spikes and new crashes of the mobile apps (check `crashlytics`, tool `crashes`).
+  - **Set it up:**
+
+    1. In Google Cloud console, select your Firebase project, open APIs & Services > Library, search Firebase Crashlytics API and click Enable.
+    2. In Google Cloud console, open IAM & Admin > Service accounts, pick your project and click Create service account. Name it and click Done; no project role is needed.
+    3. Open the account, Keys tab, Add key, Create new key, JSON, Create. Paste the whole downloaded file into Service account key.
+    4. Copy the account email (`client_email` in the key). Open IAM & Admin > IAM on the same project, click Grant access, enter that email and pick the role Firebase Crashlytics Viewer.
+    5. Enter the Firebase app ids of your apps in Android app id and iOS app id. An empty one skips that app.
+
+    Vendor guide: [Firebase: predefined IAM roles](https://firebase.google.com/docs/projects/iam/roles-predefined-product)
   - **Fields:** `project` (the Firebase project id, shown in the Test result), `android-app-id` and `ios-app-id` (Firebase app ids, such as `1:<project number>:android:<hex>`; an empty one skips that app) and `credentials` (required).
   - **Access:** the Firebase Crashlytics Viewer role (`roles/firebasecrashlytics.viewer`). A refused app opens an access card for that app, and the other app is still read.
 - **Google Analytics 4:** daily drops in key events and active users (check `ga`, once a day; tool `analytics`). A web drop card names the latest GTM publish from two days before its day to a day after it, which covers a property whose time zone runs behind the server's.
+  - **Set it up:**
+
+    1. In Google Cloud console, open APIs & Services > Library for your project, search Google Analytics Data API and click Enable.
+    2. In Google Cloud console, open IAM & Admin > Service accounts, pick your project and click Create service account. Name it and click Done; no project role is needed.
+    3. Open the account, Keys tab, Add key, Create new key, JSON, Create. Paste the whole downloaded file into Service account key.
+    4. Copy the account email (`client_email` in the key). In Google Analytics, Admin > Property access management, click +, Add users, enter that email, choose Viewer, click Add.
+    5. Put the numeric property id (Admin > Property settings) in Web property id. Use App property id only for a separate app property.
+
+    Vendor guide: [Google Analytics: add users to a property](https://support.google.com/analytics/answer/9305788)
   - **Fields:** `property-id` (required: the numeric id of the web property), `app-property-id` (a separate property of the mobile apps, read by the tool only; empty when the apps report into the web property), `site` (the service name on cards; empty shows the property id) and `credentials` (required).
   - **Access:** the Viewer role on the GA4 property. A refusal opens the access card for the part `web`.
 - **Google Tag Manager:** a new live container version opens an info card (check `gtm`, every 5 minutes; tool `gtm`), and each publish is listed beside the deploys under Releases.
+  - **Set it up:**
+
+    1. In Google Cloud console, open APIs & Services > Library for your project, search Tag Manager API and click Enable.
+    2. In Google Cloud console, open IAM & Admin > Service accounts, pick your project and click Create service account. Name it and click Done; no project role is needed.
+    3. Open the account, Keys tab, Add key, Create new key, JSON, Create. Paste the whole downloaded file into Service account key.
+    4. Copy the account email (`client_email` in the key). In Tag Manager, Admin, Container column, User Management, click +, Add users, enter that email and give it Read on the container. Send the invitation.
+    5. Enter the public id such as GTM-ABC1234 in Container id.
+
+    Vendor guide: [Tag Manager: add users and permissions](https://support.google.com/tagmanager/answer/6107011)
   - **Fields:** `container` (required: the public id, such as `GTM-ABC1234`) and `credentials` (required).
   - **Access:** Read on the container. A refusal opens the access card for the part `container`.
 - **Google Ads:** check `gads` opens the final URL of every enabled ad and opens a card when the page is broken (404, 410 or 5xx) or redirects elsewhere. Without a Website instance in its `website` field it opens only public addresses, and connects to the address it checked: link a Website instance when your own site resolves to internal addresses inside your network. With a Website instance, only that site's hosts are opened, so ads that point at other domains, such as a campaign site, are not checked. Check `gads-policy` raises one warning card per campaign with disapproved ads, naming the ads and their policy topics; the card clears when the ads are approved again, paused or removed. Tool `google_ads`. Disapproved-ads cards (`ad-disapproved`) close as auto-resolved 24 hours after they first appeared, firing or not, unless someone acted on them; Admin > General, under Google Ads, lists `google-ads.auto-resolve-hours` (0 to 720, default 24; 0 uses the general [auto-resolve rule](configuration.md#settings)).
-  - **Fields:** `customer-id` (required: the 10-digit account id), `login-customer-id` (only when the service account reaches the account through a manager account: that account's id), `developer-token` (required: the developer token from the API Center of the manager account; Explorer access is enough for these reads), `credentials` (required), `api-version` (default `v26`; raise it when Google retires a version) and `website` (the Website instance whose hosts the ad-link check follows).
-  - **Access:** the service account as a Read only user of the account, and a developer token Google accepts. A refusal opens the access card for the part `account`.
+  - **Set it up:**
+
+    1. In Google Cloud console, open APIs & Services > Library for your project, search Google Ads API and click Enable.
+    2. In Google Cloud console, open IAM & Admin > Service accounts, pick your project and click Create service account. Name it and click Done; no project role is needed.
+    3. Open the account, Keys tab, Add key, Create new key, JSON, Create. Paste the whole downloaded file into Service account key.
+    4. Copy the account email (`client_email` in the key). In Google Ads, Admin > Access and security, add that email with the access level Read only, and send the invitation.
+    5. No developer token is needed since Google ended them on 9 Sep 2026; leave Developer token empty. Production accounts need Explorer access: Google Cloud console, Google Ads API Overview, apply for the Cloud project that owns the service account.
+    6. Enter the 10-digit id in Customer id. If the account is reached through a manager account, put that account's id in Manager account id.
+
+    Vendor guide: [Google Ads API: access levels](https://developers.google.com/google-ads/api/docs/api-policy/developer-token)
+  - **Fields:** `customer-id` (required: the 10-digit account id), `login-customer-id` (only when the service account reaches the account through a manager account: that account's id), `developer-token` (optional: Google ended developer tokens on 9 September 2026 and ignores them; leave it empty, or enter an existing token of 10 to 100 letters, digits, `-` or `_`, which is then sent; production accounts need Explorer access for the Cloud project), `credentials` (required), `api-version` (default `v26`; raise it when Google retires a version) and `website` (the Website instance whose hosts the ad-link check follows).
+  - **Access:** the service account as a Read only user of the account, and a Cloud project with Google Ads API access (Explorer for production accounts). A refusal opens the access card for the part `account`.
 - **VWO:** A/B tests that start, stop or change (check `wingify`, every 5 minutes) and the results VWO decided on (check `wingify-verdict`, hourly), tool `wingify`. An API token with Browse permission is enough. A/B result cards (`ab-verdict`) close as auto-resolved 24 hours after they first appeared, firing or not, unless someone acted on them; Admin > General, under VWO, lists `vwo.auto-resolve-hours` (0 to 720, default 24; 0 uses the general [auto-resolve rule](configuration.md#settings)).
+
+  **Set it up:**
+
+  1. Sign in to VWO as an admin of the account (API access depends on the plan) and open `https://app.wingify.com/#/developers/tokens`.
+  2. Create a token and choose the lowest permission level: Browse is enough, because Skopax never changes anything.
+  3. Copy the token and paste it into API token.
+  4. Leave Account id as current to use the account the token belongs to, or enter the account number. Test connection reads the account, then a campaign.
+
+  Vendor guide: [VWO: how to access the API](https://help.wingify.com/hc/en-us/articles/58822048638489-How-to-Access-Wingify-API)
   - **Fields:** `api-token` (required) and `account-id` (default `current`: the account the token belongs to).
   - **Access:** Browse permission; nothing is ever changed. A refused part (the account, campaigns or campaign results) opens its own access card.
 
 ### Google service accounts
 
-App stores (for Google Play), Crashlytics, Google Analytics 4, Google Tag Manager and Google Ads each have their own `credentials` field: the JSON key of a Google service account, at most 4000 characters. You may paste the same key into each or use one account per plug-in; no plug-in reads another's key. Give the account read access in each product: View app information in Play Console, the Firebase Crashlytics Viewer role, the Viewer role on the GA4 property, Read on the Tag Manager container, and a Read only user in Google Ads. Google Ads also needs its `developer-token`, from the API Center of the manager account (see Google Ads above). A malformed or refused key fails Test connection with a fixed sentence, and the key never appears in a response, a log line or an error.
+App stores (for Google Play), Crashlytics, Google Analytics 4, Google Tag Manager and Google Ads each have their own `credentials` field: the JSON key of a Google service account, at most 4000 characters. You may paste the same key into each or use one account per plug-in; no plug-in reads another's key. Give the account read access in each product: View app information in Play Console, the Firebase Crashlytics Viewer role, the Viewer role on the GA4 property, Read on the Tag Manager container, and a Read only user in Google Ads. Google Ads needs no developer token (see Google Ads above: Google ended developer tokens on 9 September 2026 and ignores them). A malformed or refused key fails Test connection with a fixed sentence, and the key never appears in a response, a log line or an error.
 
 ### The browser service
 
@@ -392,6 +714,16 @@ The page scan is off by default; switch it on with `website.page-scan`. It needs
 ## Outside MCP servers
 
 The MCP server plug-in, which ships with Skopax, lets investigator runs and chat answers use the tools of an outside MCP server, such as Atlassian, Notion or GitHub. It is the other direction from the MCP server switch and Connect MCP, which let AI assistants call Skopax.
+
+**Set it up:**
+
+1. Get the streamable HTTP address of the MCP server from its vendor or your platform team and paste it into URL. It must be https.
+2. Token in a header: create an access token on the server with read permissions only. Set Method to Token in a header, keep Header name as Authorization, and write Bearer, a space and the token in Header value.
+3. OAuth: set Method to OAuth and save, then choose Connect in the connection panel and sign in as an account that can read what the investigator should see. Skopax finds the sign-in details the server publishes.
+4. OAuth scopes: list scopes separated by spaces, or leave it empty. If the server does not register clients itself, create an OAuth client in its admin console, register `<SKOPAX_BASE_URL>/api/admin/mcp-tools/oauth/callback` as the redirect address, and enter OAuth client id and OAuth client secret.
+5. Test connection lists the tools. Then turn on only the read tools you want in the panel; a new connection starts off.
+
+Vendor guide: [MCP: authorization](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization)
 
 A connection's panel in Admin > Integrations, with its access, the tools it can look up and its knowledge source:
 

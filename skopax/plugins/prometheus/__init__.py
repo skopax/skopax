@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, PassResult, Panel, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, call
+from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, PassResult, Panel, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, call, Setup
 from skopax.kit import access, connection
 from skopax.kit.promql import CHECK, ID, PrometheusError, auth_headers, client_for, credential, ranged, with_headers
 from skopax.plugins.prometheus.engine import FLOORS, PROFILES, deploy_docs, evaluate_prom, links_for, profiles_of, prom_pass
@@ -105,6 +105,15 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 
 PLUGIN = Plugin(
+    setup=Setup(
+        steps=(
+            'Enter the base address of the Prometheus API in URL, for example https://prometheus.example.com. Skopax reads /api/v1; the checks need series from Micrometer, KrakenD, ingress-nginx, kube-state-metrics or kafka_exporter, as set in Profiles.',
+            'Authentication None: nothing else to do. Username and password: Prometheus checks it only if started with --web.config.file holding basic_auth_users (bcrypt hashes); enter that user in Username and Password.',
+            'Authentication Bearer token: Prometheus does not check bearer tokens itself, so use it only behind a proxy that does; paste the token into Token. Press Test connection to see the Prometheus version.',
+        ),
+        docs='https://prometheus.io/docs/guides/basic-auth/',
+        docs_label='Prometheus: basic authentication',
+    ),
     id=ID, name='Prometheus', version='0.1.0', category='metrics', description='Errors, latency, restarts, alerts and image changes read from Prometheus.', icon='icon.svg',
     author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url', '@ui-url'), secrets=('token', 'password')),
     fields=(Field('url', 'URL', 'url', required=True, group='connection', help='Base URL of the Prometheus API.'),

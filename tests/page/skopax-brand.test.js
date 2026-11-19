@@ -122,6 +122,7 @@ async function theDefaultNameGivesTheShortAttributionLine() {
   assert.strictEqual(doc.querySelector('h1 a.home').textContent, 'Skopax');
   assert.strictEqual(doc.getElementById('attribution').textContent, 'Skopax 0.1.0 · skopax.io');
   assert.strictEqual(doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
+  assert.ok(/footer\.attribution \{[^}]*justify-content: center;/.test(require('fs').readFileSync(CARD_PAGE, 'utf8')), 'the card page centres the attribution line');
   console.log('PASS the default name shows the short attribution line');
 }
 

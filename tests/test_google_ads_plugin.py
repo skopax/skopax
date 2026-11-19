@@ -784,7 +784,7 @@ def test_google_ads_identity_and_manifest():
     assert 'only that site' in next(f for f in google_ads.PLUGIN.fields if f.key == 'website').help
     assert manifest['uses'] == ['website']
     assert [(f.key, f.kind, f.required) for f in google_ads.PLUGIN.fields] == [('customer-id', 'text', True), ('login-customer-id', 'text', False),
-                                                                            ('developer-token', 'secret', True), ('credentials', 'secret', True),
+                                                                            ('developer-token', 'secret', False), ('credentials', 'secret', True),
                                                                             ('api-version', 'text', False), ('website', 'instance', False)]
     assert (gads.id, gads.period, gads.offset, gads.ran, gads.sections, gads.tool, gads.once, gads.timeout, gads.background) == (
         'gads', 900, 750, ('gads',), ('adLinks',), 'google_ads', False, 900, True)
@@ -1136,3 +1136,31 @@ def test_ads_in_a_paused_ad_group_are_neither_opened_nor_listed():
     assert [r['url'] for r in swept.sections['adLinks'] if r['part'] == 'url'] == [f'{SITE}/garden/chairs']
     assert [a['adId'] for a in listed['ads']] == ['1']
     assert "ad_group.status = 'ENABLED'" in engine.ads_query('', 10)
+
+
+def test_no_developer_token_works_through_both_checks_and_sends_no_header():
+    # given
+    http = google()
+    values = {k: v for k, v in VALUES.items() if k != 'developer-token'}
+
+    # when
+    out = [run(Ctx(values, http)).result for run in (links, google_ads.run_policy)]
+
+    # then
+    assert all(r.ok for r in out)
+    assert http.hits(SEARCH) and all('developer-token' not in h[2] for h in http.hits(SEARCH))
+
+
+def test_connection_test_without_a_developer_token_is_ok_and_a_malformed_one_is_refused(store):
+    # given
+    values = {k: v for k, v in VALUES.items() if k != 'developer-token'}
+    http = google()
+
+    # when
+    ok = tool_runtime(store, http, instances={}).connection_test(google_ads.PLUGIN, None, dict(values), 5, NOW)
+    bad = tool_runtime(store, google(), instances={}).connection_test(google_ads.PLUGIN, None, dict(values, **{'developer-token': 'two words'}), 5, NOW)
+
+    # then
+    assert (ok['ok'], ok['summary']) == (True, 'Google Ads \u00b7 Example Shop')
+    assert http.hits(SEARCH) and all('developer-token' not in h[2] for h in http.hits(SEARCH))
+    assert (bad['ok'], bad['summary']) == (False, engine.BAD_TOKEN)

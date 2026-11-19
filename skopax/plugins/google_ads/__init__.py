@@ -3,7 +3,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from skopax.contract import AutoResolve, Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, Setting, Sweep, TestResult, Tool
+from skopax.contract import AutoResolve, Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, Setting, Setup, Sweep, TestResult, Tool
 from skopax.kit.google import GoogleAuth, GoogleError, bounded, connection_test
 from skopax.kit.web import Pacer, PageCheck, Site, site_pacer
 from skopax.plugins.google_ads.engine import (BROKEN, CAMPAIGN_ROWS, DEADLINE_S, DISAPPROVED, DOT, LINKS, MAX_DAYS, MAX_ROWS, MOVED, NEEDS, OPS, POLICY, POLICY_QUERY, SCOPES,
@@ -126,8 +126,8 @@ PLUGIN = Plugin(
     fields=(Field('customer-id', 'Customer id', 'text', required=True, help='The 10-digit id of the Google Ads account, with or without dashes, as shown at the top right in Google Ads.'),
             Field('login-customer-id', 'Manager account id', 'text',
                   help='Only when the service account reaches the account through a manager account: that manager account\'s 10-digit id. Empty otherwise.'),
-            Field('developer-token', 'Developer token', 'secret', required=True,
-                  help='The developer token from the API Center of the manager account. Explorer access is enough for these reads.'),
+            Field('developer-token', 'Developer token', 'secret',
+                  help='Optional. Google ended developer tokens on 9 Sep 2026 and ignores them. Leave it empty, or enter an existing token (10 to 100 letters, digits, - or _), which is then sent.'),
             Field('credentials', 'Service account key', 'secret', required=True,
                   help='The JSON key of a Google service account added to the Google Ads account as a Read only user (Admin, Access and security).'),
             Field('api-version', 'API version', 'text', default='v26', help='The Google Ads API version in the request path, such as v26. Raise it when Google retires the version.'),
@@ -142,5 +142,13 @@ PLUGIN = Plugin(
     settings=(Setting('auto-resolve-hours', 'Auto-resolve disapproved ads after (hours)', RESOLVE_HELP, 'int', '24', 0, 720),),
     auto_resolve=(AutoResolve(POLICY, DISAPPROVED, 24, 'auto-resolve-hours'),),
     links=links,
+    setup=Setup(steps=(
+                   'In Google Cloud console, open APIs & Services > Library for your project, search Google Ads API and click Enable.',
+                   'In Google Cloud console, open IAM & Admin > Service accounts, pick your project and click Create service account. Name it and click Done; no project role is needed.',
+                   'Open the account, Keys tab, Add key, Create new key, JSON, Create. Paste the whole downloaded file into Service account key.',
+                   'Copy the account email (client_email in the key). In Google Ads, Admin > Access and security, add that email with the access level Read only, and send the invitation.',
+                   'No developer token is needed since Google ended them on 9 Sep 2026; leave Developer token empty. Production accounts need Explorer access: Google Cloud console, Google Ads API Overview, apply for the Cloud project that owns the service account.',
+                   "Enter the 10-digit id in Customer id. If the account is reached through a manager account, put that account's id in Manager account id."),
+                docs='https://developers.google.com/google-ads/api/docs/api-policy/developer-token', docs_label='Google Ads API: access levels'),
     knowledge=(Knowledge('google-ads', 'Google Ads', (Path(__file__).parent / 'google_ads.md').read_text(encoding='utf-8'), slack=True),),
 )

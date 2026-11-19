@@ -4,7 +4,7 @@ from typing import Protocol
 
 from skopax import kube as cluster
 from skopax.agent import OPS, REQUIRED, RemoteAgent, run_kube, status_of
-from skopax.contract import Capabilities, Check, Context, Field, HttpError, Knowledge, Panel, Plugin, ReadError, SourceDown, TestResult, Tool
+from skopax.contract import Capabilities, Check, Context, Field, HttpError, Knowledge, Panel, Plugin, ReadError, SourceDown, TestResult, Tool, Setup
 from skopax.kit import access, connection
 from skopax.kube import LOG_TAIL_MAX, OFF, Kube, KubeError
 from skopax.messages import msg
@@ -100,6 +100,16 @@ def test(ctx: HostContext) -> TestResult:
 
 
 PLUGIN = Plugin(
+    setup=Setup(
+        steps=(
+            'Mode This cluster: Skopax reads with the service account of its own pod. Bind that account to a ClusterRole that allows get and list on nodes and pods, get on pods/log, list on events, get on deployments and daemonsets and list on replicasets.',
+            'A Role per namespace covers pods, events and rollouts, but the node checks and the node read need nodes, and pods and events in all namespaces, so those stay in a ClusterRole.',
+            'Mode Through an agent: run the agent image in the other cluster with SKOPAX_MODE=agent, SKOPAX_AGENT_TOKEN and a service account with the same permissions. Enter the agent address in URL and its token in Token.',
+            'Relay (advanced): name another agent instance that passes the calls to this agent. Press Test connection.',
+        ),
+        docs='https://kubernetes.io/docs/reference/access-authn-authz/rbac/',
+        docs_label='Kubernetes: using RBAC authorization',
+    ),
     id=ID, name='Kubernetes', version='0.1.0', category='infrastructure', description='Read-only access to the Kubernetes API of this cluster, or of another cluster through a remote agent.', icon='icon.svg',
     author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url', 'kubernetes.default.svc'), secrets=('token',)),
     fields=(Field('mode', 'Mode', 'choice', required=True, default='agent', choices=('in-cluster', 'agent'), choice_labels={'in-cluster': 'This cluster', 'agent': 'Through an agent'}, help='Read the cluster this service runs in, or a cluster through a remote agent.'),

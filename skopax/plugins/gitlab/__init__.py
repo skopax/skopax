@@ -3,7 +3,7 @@ from pathlib import Path
 from time import monotonic
 from urllib.parse import quote, urlencode
 
-from skopax.contract import Capabilities, Context, Field, HttpError, InstanceInfo, Knowledge, Plugin, ReadError, TestResult, Transport, call
+from skopax.contract import Capabilities, Context, Field, HttpError, InstanceInfo, Knowledge, Plugin, Setup, ReadError, TestResult, Transport, call
 from skopax.kit import connection
 from skopax.kit.env import env_set
 from skopax.messages import msg
@@ -69,4 +69,10 @@ PLUGIN = Plugin(
             Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), group='advanced', help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),
     env_instances=env_instances, test=test, tools=TOOLS,
     knowledge=(Knowledge('gitlab', 'GitLab', (Path(__file__).parent / 'gitlab.md').read_text(encoding='utf-8'), slack=True, inline=True),),
+    setup=Setup(steps=(
+        'In GitLab choose your avatar > Edit profile > Access > Personal access tokens, then Generate token > Legacy token. Or, as a group Owner, open the group > Settings > Access tokens > Add new token.',
+        'Name it, set an expiration date, and select only the read_api scope. For a group token choose a role that can read the projects, such as Reporter.',
+        'Create the token, copy it at once (GitLab shows it once) and paste it into Token.',
+        'In URL keep https://gitlab.com or give your GitLab address. Enter the path of the group whose projects Skopax reads in Group, such as acme, then choose Test connection.',
+    ), docs='https://docs.gitlab.com/user/profile/personal_access_tokens/', docs_label='GitLab: personal access tokens'),
 )

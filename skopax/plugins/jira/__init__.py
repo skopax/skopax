@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit
 
-from skopax.contract import Capabilities, Context, Field, HttpError, InstanceInfo, Knowledge, Plugin, ReadError, TestResult, Transport, call
+from skopax.contract import Capabilities, Context, Field, HttpError, InstanceInfo, Knowledge, Plugin, Setup, ReadError, TestResult, Transport, call
 from skopax.kit import connection
 from skopax.kit.env import env_set
 from skopax.messages import msg
@@ -87,4 +87,11 @@ PLUGIN = Plugin(
             Field('cloud-id', 'Cloud id', 'text', help='Optional: the id of the site; when empty it is read from the site.')),
     env_instances=env_instances, test=test,
     knowledge=(Knowledge('jira', 'Jira', (Path(__file__).parent / 'jira.md').read_text(encoding='utf-8'), slack=True, inline=True),),
+    setup=Setup(steps=(
+        'Sign in as the account Skopax will use and open https://id.atlassian.com/manage-profile/security/api-tokens. Choose Create API token with scopes, name it and set an expiry (1 to 365 days).',
+        'Pick Jira as the app and select the scopes read:jira-work and read:jira-user. The account also needs Browse projects and Browse users and groups in Jira.',
+        "Create the token, copy it and paste it into API token. Enter that account's address in Email.",
+        'In Site give your Jira Cloud address, such as https://example.atlassian.net. Leave Cloud id empty unless asked, then choose Test connection.',
+        "A token made with the plain Create API token button also works, but it carries all the account's access.",
+    ), docs='https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/', docs_label='Atlassian: manage API tokens'),
 )

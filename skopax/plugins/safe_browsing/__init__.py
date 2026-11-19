@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Plugin, ReadError, Sweep, TestResult, Tool
+from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Plugin, ReadError, Setup, Sweep, TestResult, Tool
 from skopax.kit import connection
 from skopax.plugins.safe_browsing import safebrowsing as engine
 from skopax.plugins.safe_browsing.safebrowsing import (CLEAN, DOT, ID, NAME, PASS, REFUSED, SECTION, TOOL_BUDGET_S, TOOL_URLS, Denied, NotChecked, SafeBrowsing,
@@ -68,5 +68,10 @@ PLUGIN = Plugin(
     checks=(Check(PASS, 'Safe Browsing listings of the hosts', 900, 675, (PASS,), run, tool='safebrowsing', sections=(SECTION,), section_help=SECTION_HELP),),
     tools=(Tool('safebrowsing', DESCRIPTION, SCHEMA, safebrowsing_tool, per_run=PER_RUN, scan=True, needs_field='api-key'),),
     links=links,
+    setup=Setup(steps=(
+                   'Optional: without a key, Skopax reads the public site status page. For the API, open APIs & Services > Library in Google Cloud console, search Safe Browsing API and click Enable.',
+                   'Open APIs & Services > Credentials > Create credentials > API key. Under API restrictions choose Restrict key, select only Safe Browsing API, and save.',
+                   'Paste the key into API key.'),
+                docs='https://developers.google.com/safe-browsing/v4/get-started', docs_label='Safe Browsing API: get started'),
     knowledge=(Knowledge('safe-browsing', 'Safe Browsing', (Path(__file__).parent / 'safe_browsing.md').read_text(encoding='utf-8'), slack=True),),
 )

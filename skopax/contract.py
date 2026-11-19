@@ -21,6 +21,7 @@ __all__ = [
     'CHANNELS',
     'Capabilities',
     'Field',
+    'Setup',
     'InstanceInfo',
     'KEY_SEGMENT',
     'card_key',
@@ -102,6 +103,13 @@ class Capabilities:
     hosts: tuple[str, ...] = ()
     secrets: tuple[str, ...] = ()
     agent_reads: bool = False
+
+
+@dataclass(frozen=True)
+class Setup:
+    steps: tuple[str, ...] = ()
+    docs: str = ''
+    docs_label: str = ''
 
 
 @dataclass(frozen=True)
@@ -585,3 +593,4 @@ class Plugin:
     card_types: tuple[CardType, ...] = ()
     card_text: Callable[[dict], str | None] | None = None
     auto_resolve: tuple[AutoResolve, ...] = ()
+    setup: Setup | None = None

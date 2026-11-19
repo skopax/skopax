@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Panel, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, Unreachable
+from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Panel, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, Unreachable, Setup
 from skopax.kit import access, connection
 from skopax.plugins.airbyte.engine import (DENIED, HEALTH, INVALID, JOBS_MAX, OPS, PAGE, PAGES, RULE_HELP, RULES, TOKEN, TOOL_JOBS, TOOL_JOBS_DEFAULT, Airbyte, AirbyteError, AirbyteRun,
                                            airbyte_pass, evaluate, links_for, name_pattern, page_of, severities_of, token_of, watched_of, workspaces_of)
@@ -143,6 +143,15 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 
 PLUGIN = Plugin(
+    setup=Setup(
+        steps=(
+            'In Airbyte open your user menu > User settings > Applications. In Airbyte Cloud choose Create an application, name it and Submit; on Core the default application is already there. Reveal the client secret.',
+            'Copy the client id into Client id and the secret into Client secret. An application has the permissions of the user it belongs to, so use a user who can read the workspaces to watch.',
+            'Enter the address of the Airbyte web app in URL; Skopax calls its public API under /api/public/v1. Press Test connection.',
+        ),
+        docs='https://docs.airbyte.com/platform/using-airbyte/configuring-api-access',
+        docs_label='Airbyte: configuring API access',
+    ),
     id=ID, name='Airbyte', version='0.1.0', category='infrastructure', description='Failed and unusually long Airbyte sync jobs, read from the Airbyte public API.', icon='icon.svg',
     author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('client-secret',)),
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Address of the Airbyte web app; the public API is under /api/public/v1.'),

@@ -2,7 +2,7 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
-from skopax.contract import Check, Context, Field, HttpError, Knowledge, Panel, PassResult, Peer, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, iso
+from skopax.contract import Check, Context, Field, HttpError, Knowledge, Panel, PassResult, Peer, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, iso, Setup
 from skopax.kit import access, connection
 from skopax.kit.promql import Late, PrometheusError, bounded, client_for, credential, instant, number, ui_of
 from skopax.monitor import failed
@@ -169,6 +169,14 @@ def read(ctx: Context, args: dict) -> object:
 
 
 PLUGIN = Plugin(
+    setup=Setup(
+        steps=(
+            'No credential of its own: Kafka reads through a Prometheus instance. Add that Prometheus instance first and pick it in Prometheus; it signs in as set there.',
+            'That Prometheus must hold the kafka_exporter series (kafka_consumergroup_lag_sum, kafka_brokers and others) and, for the calls of each service, the spring_kafka_* timers. Use Preset strimzi for Strimzi clusters, otherwise kafka-exporter.',
+        ),
+        docs='https://github.com/danielqsj/kafka_exporter',
+        docs_label='kafka_exporter',
+    ),
     id=ID, name='Kafka', version='0.1.0', category='infrastructure', description='Kafka brokers, partitions, consumer groups and the Kafka calls of each service, read from kafka_exporter and Spring Kafka series in Prometheus.',
     icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', uses=('prometheus',),
     fields=(Field('prometheus', 'Prometheus', 'instance', required=True, choices=('prometheus',), help='The Prometheus instance that holds the kafka_exporter and Spring Kafka series.'),
