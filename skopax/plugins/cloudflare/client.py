@@ -141,18 +141,22 @@ class Cloudflare:
         except Unreachable:
             raise CloudflareError(f'{what} unreachable', answered=False) from None
 
+    def page_of(self, path: str, page: int, what: str, params: Mapping[str, str] | None = None) -> tuple[list[dict], int]:
+        body = self._call('GET', f'{API}{path}?' + urlencode({**(params or {}), 'page': page, 'per_page': PER_PAGE}), what)
+        if not isinstance(body, dict) or not body.get('success', False):
+            raise CloudflareError(f'{what} answered an error', messages(body), refused=True, denied=permission_refused(body), invalid=permission_refused(body, INVALID_CODES))
+        result = body.get('result')
+        info = body.get('result_info') if isinstance(body.get('result_info'), dict) else {}
+        total = info.get('total_pages')
+        return [r for r in result if isinstance(r, dict)] if isinstance(result, list) else [], total if isinstance(total, int) and total > 0 else 1
+
     def listing(self, path: str, what: str | None = None, params: Mapping[str, str] | None = None, pages: int = MAX_PAGES) -> list[dict]:
         what = what or f"Cloudflare API {path.rsplit('/', 1)[-1]}"
         out: list[dict] = []
         for page in range(1, pages + 1):
-            body = self._call('GET', f'{API}{path}?' + urlencode({**(params or {}), 'page': page, 'per_page': PER_PAGE}), what)
-            if not isinstance(body, dict) or not body.get('success', False):
-                raise CloudflareError(f'{what} answered an error', messages(body), refused=True, denied=permission_refused(body), invalid=permission_refused(body, INVALID_CODES))
-            result = body.get('result')
-            out += [r for r in result if isinstance(r, dict)] if isinstance(result, list) else []
-            info = body.get('result_info') if isinstance(body.get('result_info'), dict) else {}
-            total = info.get('total_pages')
-            if page >= (total if isinstance(total, int) and total > 0 else 1):
+            found, total = self.page_of(path, page, what, params)
+            out += found
+            if page >= total:
                 break
         return out
 

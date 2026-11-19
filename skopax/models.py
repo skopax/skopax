@@ -340,6 +340,12 @@ class PluginTestIn(BaseModel):
     offChecks: list[CheckId] | None = Field(default=None, max_length=64)
 
 
+class FieldSuggestIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    name: str | None = Field(default=None, max_length=20)
+    values: dict[str, str | None] = Field(default_factory=dict, max_length=64)
+
+
 SsoValue = Annotated[str, StringConstraints(max_length=SSO_VALUE_MAX)]
 
 

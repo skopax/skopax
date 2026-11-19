@@ -17,7 +17,7 @@ from packaging.version import InvalidVersion, Version
 import skopax
 from skopax.bounded import HOOK_TIMEOUT_S, Bound
 from skopax.chattext import STARTERS_MAX as CHAT_STARTERS_MAX, TEXT_MAX as CHAT_TEXT_MAX, chat_kept, chat_problem, tree_problem
-from skopax.contract import CATEGORIES, ECHO_FIELD, ROUTE_ECHO, EDITIONS, FIELD_KINDS, ID, KNOWLEDGE_INLINE_MAX, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Setup, Tag, TagRule, Tool
+from skopax.contract import CATEGORIES, ECHO_FIELD, ROUTE_ECHO, EDITIONS, FIELD_KINDS, ID, SEPARATORS, SUGGEST_KINDS, KNOWLEDGE_INLINE_MAX, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Setup, Tag, TagRule, Tool
 from skopax.errkind import Authored, kind as exc_kind
 from skopax.messages import LANG_TAG, msg, refusal as message_refusal
 
@@ -671,6 +671,10 @@ def _check(plugin: Plugin, directory: Path | None) -> None:
     for f in (*plugin.fields, *(f for read in plugin.agent_reads for f in read.fields)):
         if f.check is not None and not callable(f.check):
             raise _why('field_check', key=f.key)
+        if f.suggest is not None and (not callable(f.suggest) or f.kind not in SUGGEST_KINDS):
+            raise _why('field_suggest', key=f.key, kinds=', '.join(SUGGEST_KINDS))
+        if not isinstance(f.separator, str) or f.separator not in SEPARATORS:
+            raise _why('field_separator', key=f.key)
     for f in plugin.fields:
         if f.show_if is not None and (len(f.show_if) != 2 or f.show_if[0] not in keys):
             raise _why('show_if', key=f.key, other=f.show_if[0] if f.show_if else '')
@@ -1216,4 +1220,5 @@ def describe(plugin: Plugin, icon: bool | None = None) -> dict:
 
 def field_view(f) -> dict:
     return {'key': f.key, 'label': f.label, 'kind': f.kind, 'required': f.required, 'default': f.default, 'help': f.help, 'choices': list(f.choices), 'low': f.low, 'high': f.high,
-            'showIf': list(f.show_if) if f.show_if else None, 'ui': f.ui, 'choiceLabels': dict(f.choice_labels), 'group': f.group}
+            'showIf': list(f.show_if) if f.show_if else None, 'ui': f.ui, 'choiceLabels': dict(f.choice_labels), 'group': f.group,
+            **({'suggest': True, 'separator': f.separator} if f.suggest is not None else {})}

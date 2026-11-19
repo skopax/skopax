@@ -1419,6 +1419,26 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
 .int-entry-change, .int-entry-clear { flex: none; padding: 2px 8px; border: 0; border-radius: 99px; background: none; color: var(--link); font: inherit; font-size: 0.74rem; font-weight: 600; cursor: pointer; }
 .int-entry-clear { padding: 2px 7px; color: var(--muted); }
 .int-entry-change:hover, .int-entry-clear:hover { background: var(--hover); }
+.int-sug { position: relative; display: grid; gap: 6px; min-width: 0; }
+.int-sug-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.int-sug-chips:empty { display: none; }
+.int-sug-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; box-sizing: border-box; padding: 2px 3px 2px 10px; border: 1px solid var(--line-2); border-radius: 99px; background: var(--raised); font-size: 0.8rem; color: var(--fg); }
+.int-sug-v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.int-sug-one { justify-self: start; }
+.int-sug-tag { flex: none; color: var(--muted); font-size: 0.7rem; }
+.int-sug-x { flex: none; padding: 1px 6px; border: 0; border-radius: 99px; background: none; color: var(--muted); font: inherit; font-size: 0.72rem; cursor: pointer; }
+.int-sug-x:hover { background: var(--hover); color: var(--fg); }
+.int-sug-x:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.int-field .int-sug-in { font: inherit; font-size: 0.85rem; line-height: 1.35; color: var(--fg); background: var(--bg); border: 1px solid var(--line-2); border-radius: 6px; padding: 6px 9px; box-sizing: border-box; min-width: 0; width: 100%; }
+.int-field .int-sug-in:hover { border-color: var(--btn-line); }
+.int-field .int-sug-in:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 22%, transparent); }
+.int-sug-pop { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin-top: 4px; box-sizing: border-box; border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); color: var(--fg); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25); }
+.int-sug-list { max-height: 240px; overflow-y: auto; margin: 0; padding: 4px; list-style: none; }
+.int-sug-list:empty { display: none; }
+.int-sug-o { padding: 5px 8px; border-radius: 5px; font-size: 0.82rem; overflow-wrap: anywhere; cursor: pointer; }
+.int-sug-o:hover, .int-sug-o[aria-selected="true"] { background: var(--active); }
+.int-sug-note { margin: 0; padding: 6px 10px; color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
+.int-sug-note:empty { display: none; }
 .int-adv { display: grid; min-width: 0; }
 .int-adv-h { display: flex; align-items: center; gap: 8px; padding: 2px 0; list-style: none; cursor: pointer; border-radius: 4px; }
 .int-adv-h::-webkit-details-marker { display: none; }
