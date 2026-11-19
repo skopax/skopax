@@ -88,7 +88,7 @@ async function theSidebarListsTheMapInOrder() {
   assert.ok(ids.every((id) => doc.getElementById('tab-' + id).getAttribute('href') === '#t=' + id || id === 'anoms'), 'rows are #t= links');
   assert.strictEqual(doc.querySelector('#side [role="tab"], #side [aria-selected]'), null, 'no tab roles on the rows');
   assert.strictEqual(doc.getElementById('count-anoms').textContent, '2', 'Board counts the open cards');
-  assert.deepStrictEqual([...doc.querySelectorAll('#side .b-new')].map((b) => [b.closest('a.tab').id, b.textContent]), [['tab-chat', 'New'], ['tab-mcp', 'New']], 'Chat and Connect MCP carry New');
+  assert.deepStrictEqual([...doc.querySelectorAll('#side .b-new')].map((b) => [b.closest('a.tab').id, b.textContent]), [], 'no row carries a New badge');
   const drawn = (name) => { const d = doc.createElement('div'); d.innerHTML = w.navIcon(name); return d.firstChild.innerHTML; };
   assert.strictEqual(doc.querySelector('#tab-svcs svg.i').innerHTML, drawn('server'), 'icons come from icons.js');
   assert.strictEqual(doc.querySelector('#tab-anoms svg.i').innerHTML, drawn('board'));
@@ -303,7 +303,7 @@ async function aRailTipCarriesTheRowBadges() {
   const full = await tip('tab-mcp');
 
   //then
-  assert.deepStrictEqual(rail, ['Connect MCP \u00b7 New', 'Chat \u00b7 New', 'Demo board \u00b7 plug-in', 'Notifications \u00b7 3 unread', 'Services'], 'in the rail a tip carries what the hidden row shows: New, the unread count and the plug-in tag');
+  assert.deepStrictEqual(rail, ['Connect MCP', 'Chat', 'Demo board \u00b7 plug-in', 'Notifications \u00b7 3 unread', 'Services'], 'in the rail a tip carries what the hidden row shows: the unread count and the plug-in tag');
   assert.strictEqual(capped, 'Notifications \u00b7 9+ unread', 'the unread part reads as the badge does');
   assert.strictEqual(zero, 'Notifications', 'with nothing unread the hidden zero badge adds nothing to the tip');
   assert.ok(full === null || full.indexOf('\u00b7 New') < 0, 'the full sidebar shows the badges themselves, so no tip repeats them');

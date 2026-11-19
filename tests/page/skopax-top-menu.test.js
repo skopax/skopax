@@ -140,9 +140,7 @@ async function connectClaudeExplainsTheMcpServerAndHowToAddIt() {
   //then
   assert.ok(!doc.getElementById('panel-mcp').hidden && doc.getElementById('crumb-page').textContent === 'Connect MCP' && current(doc).join() === 'mcp', 'Connect MCP is its own row');
   assert.strictEqual(doc.getElementById('count-mcp').textContent, '', 'no count next to it');
-  const fresh = doc.querySelector('#tab-mcp .b-new');
-  assert.ok(fresh && fresh.textContent === 'New', 'Connect MCP carries a New badge');
-  assert.deepStrictEqual([...doc.querySelectorAll('.tab .b-new')].map((d) => d.closest('.tab').id), ['tab-chat', 'tab-mcp'], 'only Chat and Connect MCP are flagged new');
+  assert.deepStrictEqual([...doc.querySelectorAll('.tab .b-new')], [], 'no row is flagged new');
   assert.ok(!/plugin/i.test(box.textContent), 'no plug-in install route is described');
   assert.ok(box.querySelector('ol li b').textContent.startsWith('Claude Code, by hand'), 'the manual command is the first way');
   assert.strictEqual(cmd, 'claude mcp add --scope user --transport http --client-id skopax-mcp skopax https://skopax.example.com/mcp', 'the manual command uses the server address and client id');

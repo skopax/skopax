@@ -284,6 +284,7 @@ function intFilter() {
     t.hidden = (INT_CAT === INT_CUSTOM ? t.dataset.origin === 'builtin' : !!INT_CAT && t.dataset.cat !== INT_CAT) || !intMatches(t.dataset.find, q);
     if (!t.hidden) seen++;
   });
+  document.querySelectorAll('#integrations .int-group').forEach(function (g) { g.hidden = ![].some.call(g.querySelectorAll('.int-tile'), function (t) { return !t.hidden; }); });
   document.querySelectorAll('#integrations .int-chip').forEach(function (c) { c.setAttribute('aria-pressed', String(c.dataset.cat === INT_CAT)); });
   if (!none) return;
   none.hidden = !(q && all.length && !seen);
@@ -389,9 +390,24 @@ function renderIntegrations(note) {
   var said = accText('p', 'adm-msg ok int-note', note || '');
   said.setAttribute('role', 'status');
   box.appendChild(said);
-  var grid = accText('div', 'int-grid');
-  shown.forEach(function (p) { grid.appendChild(intTile(p)); });
-  box.appendChild(grid);
+  if (anyCustom) {
+    [['custom', 'Custom plug-ins', shown.filter(intIsCustom)], ['builtin', 'Built-in plug-ins', shown.filter(function (p) { return !intIsCustom(p); })]].forEach(function (g) {
+      if (!g[2].length) return;
+      var sec = accText('section', 'int-group'), h = accText('h4', 'int-group-h', g[1] + ' '), grid = accText('div', 'int-grid');
+      sec.dataset.group = g[0];
+      h.id = 'int-group-' + g[0];
+      h.appendChild(accText('span', 'int-group-n', String(g[2].length)));
+      sec.setAttribute('aria-labelledby', h.id);
+      sec.appendChild(h);
+      g[2].forEach(function (p) { grid.appendChild(intTile(p)); });
+      sec.appendChild(grid);
+      box.appendChild(sec);
+    });
+  } else {
+    var grid = accText('div', 'int-grid');
+    shown.forEach(function (p) { grid.appendChild(intTile(p)); });
+    box.appendChild(grid);
+  }
   if (shown.length) box.appendChild(intNoneBox());
   if (!shown.length) box.appendChild(accText('p', 'muted int-empty', 'Nothing is connected yet: + Add integration lists what can be set up.'));
   intFilter();
