@@ -174,14 +174,14 @@ def test_a_run_that_keeps_stopping_its_pod_is_taken_over_at_most_twice(store: St
     assert taken == [True, True, False, False]
 
 
-def test_without_tokens_the_app_starts_no_server_job(store: Store, tmp_path):
+def test_without_tokens_the_app_starts_only_the_version_check_job(store: Store, tmp_path):
     # when
     with TestClient(create_app(settings(), store, kube=Kube(root=tmp_path))) as c:
         info = c.get('/api/server').json()
         jobs = c.app.state.scheduler.jobs
 
     # then
-    assert jobs == []
+    assert [j.name for j in jobs] == ['version-check']
     assert {k: v for k, v in info.items() if k not in ('displayName', 'product', 'version')} == {'enrich': {'gitlab': False, 'jira': False}, 'settle': False, 'jiraLinks': False, 'postdeploy': False, 'push': False, 'plugins': [],
                     'kube': False, 'slack': {'listen': 'off', 'socket': False}, 'investigate': {'mode': 'off', 'enabled': False, 'model': 'claude-opus-5-5', 'effort': 'medium',
                     'maxToolCalls': 30, 'rooms': 2, 'slackModel': 'claude-sonnet-5-5', 'slackEffort': 'medium', 'slackMaxToolCalls': 10, 'stopped': None, 'spentToday': 0.0, 'cap': 25.0, 'lastRun': None},
@@ -195,7 +195,7 @@ def test_each_token_switches_on_only_its_own_job(store: Store, tmp_path):
         info = c.get('/api/server').json()
 
     # then
-    assert names == ['enrich', 'jira-links']
+    assert names == ['enrich', 'jira-links', 'version-check']
     assert (info['enrich'], info['settle']) == ({'gitlab': False, 'jira': True}, False)
 
 

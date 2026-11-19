@@ -32,6 +32,7 @@ FEATURES: tuple[Feature, ...] = (
     Feature('push', 'core.push', 'Phone push', 'Sends new critical cards and task notices to the push users as a Slack direct message', 'phone'),
     Feature('postdeploy', 'core.postdeploy', 'Post-deploy check', 'Checks every prod deploy and writes a deploy report', 'report'),
     Feature('self-review', 'self-review.enabled', 'Self-review', 'Writes the daily self-review of {product} itself and sends it as a Slack direct message', 'check'),
+    Feature('update-check', 'core.update-check', 'Check for new versions', 'Asks GitHub once a day for the latest Skopax release and shows an admin notice when a newer one exists', 'tag'),
     Feature('hide-attribution', 'core.hide-attribution', 'Hide "powered by Skopax"', 'Hides the "powered by Skopax" line on every page and in the chat', 'badge', edition='enterprise'),
 )
 KEYS = frozenset(f.key for f in FEATURES)

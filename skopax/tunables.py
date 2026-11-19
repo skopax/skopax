@@ -249,6 +249,7 @@ STATIC = (
     feature_tunable('core.slack-listener', 'slack_listener_on'),
     feature_tunable('core.mcp', 'mcp_on'),
     feature_tunable('core.push', 'push_on'),
+    feature_tunable('core.update-check', 'update_check'),
     feature_tunable('core.hide-attribution', 'hide_attribution'),
 ) + tuple(T(key, field, RULES, label, 'Thresholds of the ' + label + ' cards; an empty field uses the default', 'rules', defaults=dict(defaults)) for key, field, label, defaults in RULE_SETS) + (
     T(CERT_SKIP_KEY, 'cert_skip', RULES, 'Certificates not watched', 'Hosts whose certificate expiry raises no card, separated by commas: shop.example.com also covers its subdomains, '

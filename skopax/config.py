@@ -150,6 +150,7 @@ class Settings:
     slack_listener_on: bool = True
     mcp_on: bool = True
     push_on: bool = True
+    update_check: bool = True
     hide_attribution: bool = False
     jira_project: str = ''
     jira_parent: str = ''
@@ -494,6 +495,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         slack_listener_on=get('core.slack-listener', 'SKOPAX_FEATURE_SLACK_LISTENER', 'true').strip().lower() == 'true',
         mcp_on=get('core.mcp', 'SKOPAX_FEATURE_MCP', 'true').strip().lower() == 'true',
         push_on=get('core.push', 'SKOPAX_FEATURE_PUSH', 'true').strip().lower() == 'true',
+        update_check=get('core.update-check', 'SKOPAX_UPDATE_CHECK', 'true').strip().lower() == 'true',
         hide_attribution=get('core.hide-attribution', 'SKOPAX_FEATURE_HIDE_ATTRIBUTION', 'false').strip().lower() == 'true',
         jira_project=get('jira.project', 'JIRA_PROJECT', '').strip(),
         jira_parent=get('jira.parent', 'JIRA_PARENT', '').strip(),

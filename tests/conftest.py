@@ -13,7 +13,8 @@ import mongomock
 import pytest
 from fastapi.testclient import TestClient
 
-from skopax import agent, app as app_module, brand, clock, engine, messages, probe, redact, sections, tags
+from skopax import agent, app as app_module, brand, clock, engine, messages, probe, redact, sections, tags, versioncheck
+from skopax.remote import Unreachable
 from skopax.app import create_app
 from skopax.chatui.text import reset as reset_chat_texts
 from skopax.investigator import prompt, select
@@ -113,6 +114,14 @@ def no_agent_threads(monkeypatch):
         if refresher._thread in leaked:
             refresher.stop()
     assert not leaked, 'a test left an agent-sources thread running'
+
+
+@pytest.fixture(autouse=True)
+def offline_version_check(monkeypatch):
+    def refuse(*args, **kw):
+        raise Unreachable('no network in tests')
+
+    monkeypatch.setattr(versioncheck, 'send', refuse)
 
 
 @pytest.fixture(autouse=True)

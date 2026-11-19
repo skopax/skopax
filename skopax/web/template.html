@@ -202,6 +202,10 @@ body:not(.is-rail) .s-grp.folded > a.tab:not([aria-current="page"]):not(.k-crit)
 .side-attr .attr-line { display: flex; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .side-attr .attr-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .side-attr .attr-by { flex: none; white-space: pre; }
+.side-attr .attr-up, .end-attr .attr-up { flex: none; align-self: center; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--info); }
+.side-attr .attr-mark { position: relative; }
+.side-attr .attr-mark .attr-up { position: absolute; top: 4px; right: 4px; margin: 0; }
+.side-attr .attr-up.k-warn, .end-attr .attr-up.k-warn { background: var(--warn); }
 .side-attr a:hover { color: var(--fg-2); text-decoration: underline; text-underline-offset: 2px; }
 .side-attr .attr-mark { display: none; width: 30px; height: 30px; margin: 0 auto; place-items: center; border-radius: 6px; }
 .side-attr .attr-mark img { display: block; width: 16px; height: 16px; opacity: .8; }
@@ -270,6 +274,7 @@ body:not(.is-rail) .s-grp.folded > a.tab:not([aria-current="page"]):not(.k-crit)
 .adm-notices { display: grid; gap: 6px; min-width: 0; }
 .adm-notice { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); border-left: 3px solid var(--c); border-radius: 6px; background: var(--cb); color: var(--fg); font-size: 0.86rem; overflow-wrap: anywhere; }
 .adm-notice-at { font-size: 0.76rem; }
+.adm-notice-link { color: var(--link); font-size: 0.82rem; }
 @container content (max-width: 899px) {
   .adm-shell { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .adm-nav { position: static; flex-direction: row; gap: 6px; padding-bottom: 4px; overflow-x: auto; scrollbar-width: thin; }
@@ -278,6 +283,9 @@ body:not(.is-rail) .s-grp.folded > a.tab:not([aria-current="page"]):not(.k-crit)
   .adm-nav .tab[aria-current="page"] .count { color: inherit; }
 }
 .side .a-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+.side .a-dot.plain { background: var(--info); }
+.is-rail .side .user-btn .u-dot.plain { background: var(--info); }
+.user-btn .u-dot.plain { min-width: 8px; width: 8px; height: 8px; padding: 0; border-radius: 50%; background: var(--info); }
 .tab-grp[hidden] { display: none; }
 .filters-l { flex: 1 1 auto; padding: 4px 10px; }
 .mark { width: 26px; height: 26px; flex: none; box-sizing: border-box; border-radius: 6px; display: grid; place-items: center; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.16); color: var(--brand-line); }
