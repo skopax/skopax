@@ -115,7 +115,7 @@ def test_varnish_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('varnish').state == 'ok'
     assert json.loads(json.dumps(manifest)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'Varnish', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
+        'Varnish', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
     assert manifest['capabilities'] == {'hosts': [], 'secrets': [], 'agentReads': False}
     assert manifest['uses'] == ['elasticsearch'] and manifest['description'].endswith('.')
     assert manifest['checks'] == [{'id': 'varnish', 'label': manifest['checks'][0]['label'], 'period': 900, 'offset': 720, 'ran': ['varnish']},

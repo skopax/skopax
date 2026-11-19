@@ -844,7 +844,7 @@ def test_langfuse_identity_and_manifest():
     assert 'skopax.plugins.langfuse' in BUILTIN and got is not None and got.state == 'ok' and got.plugin is langfuse.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'langfuse', 'Langfuse', '0.1.0', 'other', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
+        'langfuse', 'Langfuse', '0.1.0', 'other', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url'], 'secrets': ['secret-key', 'langfuse.secret-key'], 'agentReads': True} and manifest['uses'] == []
     assert manifest['agentReads'] == [{'op': 'langfuse', 'args': ['ask'], 'keys': [r'langfuse\.(url|public-key|secret-key)']}]
     assert [(f.key, f.kind, f.required, f.ui) for f in fields.values()] == [('url', 'url', True, True), ('public-key', 'text', True, False), ('secret-key', 'secret', True, False),

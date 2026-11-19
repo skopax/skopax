@@ -126,7 +126,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 
 PLUGIN = Plugin(
     id=ID, name='App stores', version='0.1.0', category='apps', description='App Store ratings and Google Play vitals and reviews of the mobile apps.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.4', edition='community',
     capabilities=Capabilities(hosts=('itunes.apple.com', 'playdeveloperreporting.googleapis.com', 'androidpublisher.googleapis.com', 'oauth2.googleapis.com'), secrets=('credentials',)),
     fields=(Field('apple-app-id', 'App Store app id', 'text', help='Numeric App Store id of the iOS app (the digits after "id" in its App Store link). Empty skips the App Store.'),
             Field('countries', 'Store countries', 'text', default='us', help='Comma-separated two-letter App Store countries to read the ratings of, such as us, gb (at most 10).'),

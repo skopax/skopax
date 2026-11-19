@@ -760,7 +760,7 @@ def test_umami_identity_and_manifest():
     assert 'skopax.plugins.umami' in BUILTIN and got is not None and got.state == 'ok' and got.plugin is umami.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'umami', 'Umami', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
+        'umami', 'Umami', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url', '@ui-url'], 'secrets': ['api-key', 'token', 'password'], 'agentReads': False} and manifest['uses'] == []
     assert [(f.key, f.kind, f.required, f.ui) for f in fields.values()] == [('url', 'url', True, True), ('ui-url', 'url', False, True), ('api-key', 'secret', False, False),
                                                                              ('token', 'secret', False, False), ('username', 'text', False, False), ('password', 'secret', False, False),

@@ -300,8 +300,8 @@ def test_the_jitter_is_a_few_minutes_and_the_same_for_one_install():
 
 def test_the_daily_job_stores_the_result_and_every_pod_shows_the_same_notice(store: Store):
     # given
-    http = github(release('v0.3.0', body='Security: fix'))
-    other_http = FakeHttp({('GET', LIST): [release('v0.3.0')]})
+    http = github(release('v99.0.0', body='Security: fix'))
+    other_http = FakeHttp({('GET', LIST): [release('v99.0.0')]})
     here, there = served(store, http), served(store, other_http)
 
     # when
@@ -312,7 +312,7 @@ def test_the_daily_job_stores_the_result_and_every_pod_shows_the_same_notice(sto
 
     # then
     assert 'update' not in before and 'version-check' in ran and 'version-check' not in second
-    assert shown == other and shown['level'] == 'warn' and shown['href'] == PAGE + 'v0.3.0'
+    assert shown == other and shown['level'] == 'warn' and shown['href'] == PAGE + 'v99.0.0'
     assert len(http.hits(LIST)) == 1 and other_http.calls == []
 
 
@@ -330,7 +330,7 @@ def test_a_server_with_the_check_off_never_asks_and_lists_no_job(store: Store):
 
 def test_only_an_admin_sees_the_update_notice(store: Store):
     # given
-    checker(store, github(release('v0.3.0'))).run_once()
+    checker(store, github(release('v99.0.0'))).run_once()
     c = served(store, FakeHttp())
 
     # when
@@ -361,7 +361,7 @@ def test_the_environment_variable_sets_the_start_value(env: dict, expected: bool
 
 def test_the_switch_in_admin_turns_the_notice_off_and_on(store: Store):
     # given
-    checker(store, github(release('v0.3.0'))).run_once()
+    checker(store, github(release('v99.0.0'))).run_once()
     c = served(store, FakeHttp())
 
     # when
@@ -375,7 +375,7 @@ def test_the_switch_in_admin_turns_the_notice_off_and_on(store: Store):
 
 def test_a_rebranded_install_still_names_the_upstream_product(store: Store):
     # given
-    checker(store, github(release('v0.3.0'))).run_once()
+    checker(store, github(release('v99.0.0'))).run_once()
     c = served(store, FakeHttp(), display_name='Acme Ops')
 
     # when
@@ -383,7 +383,7 @@ def test_a_rebranded_install_still_names_the_upstream_product(store: Store):
 
     # then
     assert brand.product() == 'Acme Ops'
-    assert shown['text'] == f'Skopax 0.3.0 is available; this server runs {brand.display_version()}.'
+    assert shown['text'] == f'Skopax 99.0.0 is available; this server runs {brand.display_version()}.'
 
 
 def waited(http: FakeHttp, count: int, seconds: float = 3.0) -> None:
