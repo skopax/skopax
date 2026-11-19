@@ -1206,6 +1206,10 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
 .int-chip[aria-pressed="true"] { color: var(--bg); background: var(--fg); border-color: var(--fg); }
 .int-note { margin: 0; }
 .int-note:empty, .int-msg:empty, .int-panel-note:empty { display: none; }
+.int-group { display: grid; gap: 6px; min-width: 0; }
+.int-group + .int-group { margin-top: 14px; }
+.int-group-h { display: flex; align-items: baseline; gap: 6px; margin: 0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.int-group-n { font: 500 11px var(--font-data); letter-spacing: 0; color: var(--muted); }
 .int-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); align-items: start; gap: 8px; }
 .int-tile { position: relative; display: block; min-width: 0; box-sizing: border-box; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; transition: border-color .15s ease, background-color .15s ease; }
 .int-tile:hover { border-color: var(--line-2); background: var(--raised); }

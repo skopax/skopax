@@ -1511,7 +1511,7 @@ async function aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin() {
   const desc = (id) => { const open = tile(doc, id).querySelector('.int-open'); const ref = doc.getElementById(open.getAttribute('aria-describedby')); return [open.title, ref && ref.textContent]; };
 
   //then
-  assert.deepStrictEqual(tiles(doc).map((x) => [x.dataset.id, x.dataset.origin]), [['acme', 'builtin'], ['pager', 'package'], ['gold', 'builtin'], ['cracked', 'env'], ['evil', 'env']]);
+  assert.deepStrictEqual(tiles(doc).map((x) => [x.dataset.id, x.dataset.origin]), [['pager', 'package'], ['cracked', 'env'], ['evil', 'env'], ['acme', 'builtin'], ['gold', 'builtin']]);
   assert.strictEqual(tile(doc, 'acme').querySelector('.int-cat').textContent, 'Metrics', 'a built-in tile looks as before');
   assert.ok(!tile(doc, 'acme').querySelector('.int-open').title && !tile(doc, 'acme').querySelector('.int-open').hasAttribute('aria-describedby'), 'no tooltip on a built-in');
   assert.strictEqual(tile(doc, 'pager').querySelector('.int-cat').textContent, 'Custom', 'a tile that needs attention keeps only the Custom marker');
@@ -1576,10 +1576,48 @@ async function theCustomChipAppearsOnlyWhenACustomPluginIsLoadedAndFiltersAlone(
   assert.deepStrictEqual(labels, ['All', 'Metrics', 'Alerts', 'Tickets', 'Other', 'Custom']);
   assert.deepStrictEqual(custom, [['pager', 'cracked', 'evil'], 'true', 'false', 'false']);
   assert.deepStrictEqual(alerts, [['pager'], 'false']);
-  assert.deepStrictEqual(all, [['acme', 'pager', 'gold', 'cracked', 'evil'], 'false']);
+  assert.deepStrictEqual(all, [['pager', 'cracked', 'evil', 'acme', 'gold'], 'false']);
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
   console.log('PASS Admin, Integrations: the Custom chip shows only when a custom plug-in is loaded and filters on its own, replacing the category');
+}
+
+async function customAndBuiltInPluginsSitInTheirOwnGroupsThatFollowTheFilter() {
+  //given
+  const plain = await boot();
+  await open(plain);
+  const ungrouped = [plain.doc.querySelectorAll('#integrations .int-group').length, plain.doc.querySelectorAll('#integrations .int-grid').length];
+  plain.w.close();
+  const t = await boot({catalog: customCatalog()});
+  await open(t);
+  const {doc} = t;
+  const groups = () => [...doc.querySelectorAll('#integrations .int-group')];
+  const read = () => groups().map((g) => [g.dataset.group, g.querySelector('.int-group-h').textContent, [...g.querySelectorAll('.int-tile')].map((x) => x.dataset.id), g.hidden]);
+  const chip = (label) => [...doc.querySelectorAll('#integrations .int-chip')].filter((c) => c.textContent === label)[0];
+  const find = doc.getElementById('int-find');
+
+  //when
+  const start = read();
+  const named = groups().map((g) => doc.getElementById(g.getAttribute('aria-labelledby')) === g.querySelector('.int-group-h'));
+  chip('Custom').click();
+  const custom = groups().map((g) => g.hidden);
+  chip('Tickets').click();
+  const tickets = groups().map((g) => g.hidden);
+  chip('All').click();
+  find.value = 'acme';
+  find.dispatchEvent(new t.w.Event('input'));
+  const searched = groups().map((g) => g.hidden);
+
+  //then
+  assert.deepStrictEqual(ungrouped, [0, 1], 'no custom plug-in: one plain grid, no group headings');
+  assert.deepStrictEqual(start, [['custom', 'Custom plug-ins 3', ['pager', 'cracked', 'evil'], false], ['builtin', 'Built-in plug-ins 2', ['acme', 'gold'], false]]);
+  assert.deepStrictEqual(named, [true, true]);
+  assert.deepStrictEqual(custom, [false, true], 'the Custom chip hides the built-in group');
+  assert.deepStrictEqual(tickets, [true, false], 'a category with only built-ins hides the custom group');
+  assert.deepStrictEqual(searched, [true, false], 'a search hides a group with no match');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: custom plug-ins and built-ins sit in their own headed groups, and a group with nothing shown hides');
 }
 
 async function theCatalogMarksACustomPluginQuietly() {
@@ -1890,6 +1928,7 @@ async function theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton() {
   await aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin();
   await theDrawerHeaderShowsOneMutedLineSayingBuiltInOrCustom();
   await theCustomChipAppearsOnlyWhenACustomPluginIsLoadedAndFiltersAlone();
+  await customAndBuiltInPluginsSitInTheirOwnGroupsThatFollowTheFilter();
   await theCatalogMarksACustomPluginQuietly();
   await anInstanceWithoutACheckReadsNoChecksGreyAndNeverConnected();
   await noImageIsRenderedWithoutASource();

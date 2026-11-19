@@ -25,7 +25,7 @@ var SIDE_GROUPS = [
   {id: 'more', label: 'More', fold: true, rows: ['review', 'docs']}
 ];
 var SIDE_PINNED = ['prefs'];
-var SIDE_NEW = ['chat', 'mcp'];
+var SIDE_NEW = [];
 var SIDE_BLANK = ['chat', 'mcp', 'docs', 'prefs'];
 var ADMIN_TABS = ['settings', 'access', 'integrations', 'features', 'ai', 'changes'];
 var ADMIN_LABELS = {settings: 'General', access: 'Access & sign-in', integrations: 'Integrations', features: 'Features', ai: 'Investigator', changes: 'Changes'};
