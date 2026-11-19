@@ -149,6 +149,13 @@ function adminNotes(list) {
       var p = accText('p', 'adm-notice ' + (n.level === 'warn' ? 'k-warn' : 'k-info'));
       if (typeof n.id === 'string') p.dataset.id = n.id;
       p.appendChild(accText('span', 'adm-notice-t', n.text));
+      if (typeof n.href === 'string' && /^https:\/\//i.test(n.href) && typeof n.linkText === 'string' && n.linkText) {
+        var a = accText('a', 'adm-notice-link', n.linkText);
+        a.setAttribute('href', n.href);
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+        p.appendChild(a);
+      }
       if (typeof n.at === 'string' && n.at) p.appendChild(accText('span', 'muted adm-notice-at', dayhm(n.at)));
       box.appendChild(p);
     });

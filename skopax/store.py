@@ -36,6 +36,7 @@ MUTED_PRESET = history.MUTED_PRESET
 PROBE_ID = 'probe'
 PROXY_ID = 'proxy-warning'
 SLACK_SCOPES_ID = 'slack-scopes'
+VERSION_CHECK_ID = 'version-check'
 SEVERITIES = ('crit', 'warn', 'info')
 CLAIM_ATTEMPTS = 3
 WRITE_LEASE_S = 30
@@ -456,6 +457,13 @@ class Store:
         doc = self.db['meta'].find_one({'_id': SLACK_SCOPES_ID}) or {}
         missing = doc.get('missing')
         return {'missing': [str(m) for m in missing] if isinstance(missing, list) else [], 'at': doc.get('at') if isinstance(doc.get('at'), str) else None}
+
+    def note_version_check(self, found: dict) -> None:
+        self.db['meta'].replace_one({'_id': VERSION_CHECK_ID}, {'_id': VERSION_CHECK_ID, 'latest': found['latest'], 'url': found['url'], 'securityIn': [str(v) for v in found['securityIn']], 'at': found['at']}, upsert=True)
+
+    def version_check(self) -> dict | None:
+        doc = self.db['meta'].find_one({'_id': VERSION_CHECK_ID})
+        return _without_ids(doc) if doc else None
 
     def proxy_sighting(self) -> dict | None:
         doc = self.db['meta'].find_one({'_id': PROXY_ID}) or {}

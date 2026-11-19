@@ -85,6 +85,7 @@ from skopax.settle import Settle, ignore_doc, ignored
 from skopax.slackevents import Clicks, Intake, Listener, Replier, TicketRefused, socket_client
 from skopax.clearnotes import ClearNotes
 from skopax.notices import Notices
+from skopax.versioncheck import OFFSET_S as VERSION_OFFSET, PERIOD_S as VERSION_PERIOD, START_DELAY_S as VERSION_START_DELAY, VersionCheck, jitter_of
 from skopax.reminders import Reminders
 from skopax.routes import TRIES, Echo, Refused as RouteRefused, Routes
 from skopax.models import RouteSendIn, SsoIn, SsoTestIn
@@ -657,6 +658,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     card_posts = CardPosts(store, slack, base_url, menu_on=lambda: started_at_boot('slack-socket'))
     attacher = Attacher(store, slack, settings.slack_attach_screenshots, base_url)
     notices = Notices(store)
+    versions = VersionCheck(store, transport, lambda: features.on('update-check'), clock=clock)
     reminders = Reminders(store, slack, settings.slack_remind_hours, base_url)
     clear_notes = ClearNotes(store, slack, settings.slack_clear_note_minutes, title_prefix=settings.jira_title_prefix)
     jira_links = JiraLinks(store, jira, settings.jira_links, notes, base_url, settings.jira_developer_field)
@@ -1174,6 +1176,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         Job('slack-clear-notes', CLEAR_NOTE_PERIOD, CLEAR_NOTE_OFFSET, clear_notes.run_once, lambda: clear_notes.enabled),
         Job('self-review', DAY_S, lambda now, hour=max(settings.selfreview_hour, 0): review_slot_offset(hour, now), self_review.scheduled, lambda: self_review.configured, background=True),
         Job('probe', PROBE_PERIOD, PROBE_OFFSET, probe_run, enabled=lambda: settings.probe),
+        Job('version-check', VERSION_PERIOD, VERSION_OFFSET + jitter_of(base_settings.mongo_uri + base_settings.mongo_db), versions.scheduled, lambda: features.on('update-check')),
         Job(CUSTOM_CHECKS, CUSTOM_CHECKS_PERIOD, CUSTOM_CHECKS_OFFSET, custom_checks.run_once, custom_checks.enabled),
     ]
     scheduler = Scheduler(store, boot=investigator.owner, jobs=lambda: core_jobs + [Job('postdeploy', POSTDEPLOY_PERIOD, POSTDEPLOY_OFFSET, lambda now: postdeploy.run_once(now), postdeploy.enabled)] + sweeper.jobs())
@@ -1414,6 +1417,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         jobs = asyncio.create_task(scheduler.loop())
         ticking = asyncio.create_task(runtime.loop(instances.every))
         first_probe = asyncio.create_task(asyncio.to_thread(probe_at_start))
+
+        async def version_at_start() -> None:
+            await asyncio.sleep(VERSION_START_DELAY)
+            await asyncio.to_thread(versions.start)
+
+        first_version = asyncio.create_task(version_at_start())
         marked = threading.Event()
 
         def marks_job() -> None:
@@ -1442,7 +1451,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             async with mcp_manager.run():
                 yield
         finally:
-            running = [t for t in (task, jobs, ticking, following, keying, sso_keying, first_probe, deciding) if t is not None]
+            running = [t for t in (task, jobs, ticking, following, keying, sso_keying, first_probe, first_version, deciding) if t is not None]
             for t in running:
                 t.cancel()
             await asyncio.gather(*running, return_exceptions=True)
@@ -2879,6 +2888,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             provider = signon.status()
             if not provider['ok']:
                 items.append({'id': 'sso-provider', 'level': 'warn', 'text': msg('sso.notice.provider'), 'at': provider['since']})
+        update = versions.notice()
+        if update is not None:
+            items.append(update)
         return {'items': items}
 
     @app.get('/api/admin/features')

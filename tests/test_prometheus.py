@@ -355,7 +355,7 @@ def test_env_defines_the_primary_instance(store: Store, tmp_path):
     assert bare.sources[0].instances[0]['namespaces'] == '.*' and bare.sources[0].instances[0]['ui-url'] == ''
     assert none.sources[0].instances == ()
     assert (main.primary, main.enabled, main.problem, main.values['url'], main.values['namespaces']) == (True, True, None, PROD, 'shop|payments')
-    assert jobs == ['probe', 'postdeploy', 'prometheus.prom']
+    assert jobs == ['probe', 'version-check', 'postdeploy', 'prometheus.prom']
     assert not hasattr(b.settings, 'prometheus_url') and not hasattr(b.settings, 'prometheus_namespaces') and not hasattr(b.settings, 'prometheus_ui_url')
 
 
@@ -665,7 +665,7 @@ def test_the_postdeploy_job_follows_the_instances_present_at_boot_and_added_late
     # then
     assert 'postdeploy' not in before and before_info is False
     assert 'postdeploy' in after and after_info is True
-    assert at_boot == ['postdeploy', 'prometheus.prom']
+    assert at_boot == ['version-check', 'postdeploy', 'prometheus.prom']
 
 
 def test_the_postdeploy_job_runs_each_row_on_its_own_available_instance(store: Store):

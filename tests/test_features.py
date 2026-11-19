@@ -35,7 +35,7 @@ from skopax.slack import CREATE_TASK, Slack
 from skopax.store import Store
 from skopax.tunables import STATIC, Live, TunableStore
 
-IDS = ('investigator', 'chat', 'slack-autosend', 'slack-listener', 'mcp', 'public-read', 'push', 'postdeploy', 'self-review', 'hide-attribution')
+IDS = ('investigator', 'chat', 'slack-autosend', 'slack-listener', 'mcp', 'public-read', 'push', 'postdeploy', 'self-review', 'update-check', 'hide-attribution')
 ICONS = Path(__file__).resolve().parent.parent / 'skopax' / 'web' / 'static' / 'icons.js'
 KEY = 'log|checkout-service|ERROR|boom'
 DRAFT = 'checkout-service showed 116 ERROR lines, 13:05 UTC.\nhttps://skopax.example.com/#a=x'
@@ -217,12 +217,23 @@ def hide_scene(store: Store) -> Scene:
     return Scene(c, probe, (False, False), (True, True))
 
 
+def update_scene(store: Store, **over) -> Scene:
+    store.note_version_check({'latest': '9.9.9', 'url': 'https://github.com/skopax/skopax/releases/tag/v9.9.9', 'securityIn': [], 'at': '2026-11-19T00:00:00Z'})
+    c = TestClient(create_app(dataclasses.replace(settings(), **over), store, transport=FakeHttp()))
+
+    def probe(n: int):
+        shown = [i['id'] for i in c.get('/api/admin/notices', headers=AUTH).json()['items']]
+        return 'version-check' in jobs(c), 'update' in shown
+
+    return Scene(c, probe, (False, False), (True, True))
+
+
 LIVE = {'investigator': ask_scene, 'chat': chat_scene, 'slack-autosend': autosend_scene, 'slack-listener': listener_scene, 'mcp': mcp_scene, 'public-read': public_scene,
-        'push': push_scene, 'postdeploy': postdeploy_scene}
+        'push': push_scene, 'postdeploy': postdeploy_scene, 'update-check': update_scene}
 BOOTED = {'investigator': lambda store: card_run_scene(store, investigator_on=False), 'investigate.mode': mode_scene,
           'slack-autosend': lambda store: autosend_scene(store, slack_autosend=False), 'mcp': lambda store: mcp_scene(store, mcp_on=False),
           'public-read': lambda store: public_scene(store, public_read=False), 'push': lambda store: push_scene(store, push_on=False),
-          'postdeploy': lambda store: postdeploy_scene(store, postdeploy=False), 'self-review': self_review_scene, 'hide-attribution': hide_scene}
+          'postdeploy': lambda store: postdeploy_scene(store, postdeploy=False), 'self-review': self_review_scene, 'update-check': lambda store: update_scene(store, update_check=False), 'hide-attribution': hide_scene}
 
 
 def test_features_list_every_core_feature_in_order():
@@ -641,7 +652,7 @@ def test_a_community_feature_never_asks_for_the_edition(store: Store):
     locked = features.locked('hide-attribution')
 
     # then
-    assert len(community) == 9 and before == []
+    assert len(community) == 10 and before == []
     assert locked is True and asked == ['edition']
 
 

@@ -201,14 +201,26 @@ function sideAdmin() {
   row.dataset.go = go;
   var notes = on && typeof ADMIN_NOTES !== 'undefined' && Array.isArray(ADMIN_NOTES) ? ADMIN_NOTES : [];
   var warn = notes.filter(function (n) { return n.level === 'warn'; }).length, dot = row.querySelector('.a-dot');
+  var found = notes.filter(function (n) { return n && n.id === 'update'; })[0];
   var said = warn + (warn === 1 ? ' warning' : ' warnings');
-  dot.hidden = !warn;
-  if (warn) { dot.setAttribute('aria-label', said); row.title = 'Admin \u00b7 ' + said; }
+  sideUpdate(found);
+  var plain = found && !warn && !document.querySelector('.attr-up') ? 'Update available' : '';
+  dot.hidden = !(warn || plain);
+  dot.classList.toggle('plain', !!plain);
+  if (warn || plain) { dot.setAttribute('aria-label', plain || said); row.title = 'Admin \u00b7 ' + (plain || said); }
   else { dot.removeAttribute('aria-label'); row.removeAttribute('title'); }
   row.hidden = !on || SIDE_MENU;
-  sideAdminItem(on, go, warn, said);
+  sideAdminItem(on, go, warn, said, plain);
 }
-function sideAdminItem(on, go, warn, said) {
+function sideUpdate(found) {
+  var secure = !!found && found.level === 'warn', said = secure ? 'Security update available' : 'Update available';
+  Array.prototype.forEach.call(document.querySelectorAll('.attr-up'), function (dot) {
+    dot.hidden = !found;
+    dot.classList.toggle('k-warn', secure);
+    if (found) dot.setAttribute('aria-label', said); else dot.removeAttribute('aria-label');
+  });
+}
+function sideAdminItem(on, go, warn, said, plain) {
   var item = document.getElementById('um-admin'), btn = document.getElementById('user-btn');
   if (item) {
     item.hidden = !on;
@@ -216,13 +228,14 @@ function sideAdminItem(on, go, warn, said) {
     var n = item.querySelector('.um-n');
     n.hidden = !warn;
     n.textContent = warn ? String(warn) : '';
-    if (warn) item.title = 'Admin \u00b7 ' + said; else item.removeAttribute('title');
+    if (warn) item.title = 'Admin \u00b7 ' + said; else if (plain) item.title = 'Admin \u00b7 ' + plain; else item.removeAttribute('title');
   }
   if (btn) {
-    var dot = btn.querySelector('.u-dot');
-    dot.hidden = !(on && warn);
+    var dot = btn.querySelector('.u-dot'), show = on && (warn || plain);
+    dot.hidden = !show;
+    dot.classList.toggle('plain', !!(on && !warn && plain));
     dot.textContent = on && warn ? String(warn) : '';
-    if (on && warn) dot.setAttribute('aria-label', said); else dot.removeAttribute('aria-label');
+    if (show) dot.setAttribute('aria-label', warn ? said : plain); else dot.removeAttribute('aria-label');
   }
 }
 function sideUserMark(id) {
@@ -249,6 +262,10 @@ function sideFoot(acct) {
     a.title = at.text;
     a.appendChild(el('span', 'attr-name')).textContent = at.text.slice(0, cut);
     if (cut < at.text.length) a.appendChild(el('span', 'attr-by')).textContent = at.text.slice(cut);
+    var up = el('span', 'attr-up');
+    up.setAttribute('role', 'img');
+    up.hidden = true;
+    a.appendChild(up);
     return a;
   };
   if (at && foot) {
@@ -258,9 +275,14 @@ function sideFoot(acct) {
     mark.setAttribute('rel', 'noopener noreferrer');
     mark.setAttribute('aria-label', at.text);
     mark.title = at.text;
+    var markUp = el('span', 'attr-up');
+    markUp.setAttribute('role', 'img');
+    markUp.hidden = true;
+    mark.appendChild(markUp);
     foot.appendChild(mark);
   }
   if (at && end) end.appendChild(line(''));
+  if (at) sideAdmin();
   if (!box || acct === undefined) return;
   box.innerHTML = '';
   box.hidden = !acct;
