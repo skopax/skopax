@@ -507,7 +507,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     brand.use_hidden(lambda: features.on('hide-attribution'))
 
     def chat_attribution() -> dict | None:
-        return brand.attribution_line() if settings.chat_attribution else None
+        return brand.attribution_line()
 
     follower = Follower(sources, live, instances, os.environ)
     redaction.use_rules(runtime.redaction_rules, runtime.redaction_timed_out)

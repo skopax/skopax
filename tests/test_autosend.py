@@ -341,7 +341,7 @@ def test_a_report_draft_posts_with_the_footer_of_who_drafted_it(store: Store, by
 
     # then
     assert sent == 1
-    assert transport.calls[0][1]['attachments'][0]['blocks'][-1]['elements'][0]['text'].endswith(f'Sent from Skopax by {footer}')
+    assert transport.calls[0][1]['attachments'][0]['blocks'][-2]['elements'][0]['text'].endswith(f'Sent from Skopax by {footer}')
 
 
 def test_a_report_hold_stops_its_auto_send(store: Store):
