@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, Sweep, TestResult, iso
+from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, Setup, ReadError, Sweep, TestResult, iso
 from skopax.kit import access, connection
 from skopax.plugins.sonarqube.engine import BUDGET_S, FAILING, SonarError, SonarQube, TEST_BUDGET_S, VALIDATE, SEARCH, card, filters_of, gates_of, link_for, projects_of, watched
 
@@ -95,4 +95,10 @@ PLUGIN = Plugin(
     checks=(Check(CHECK, 'SonarQube quality gates', 86400, 30600, RAN, run, daily=True),),
     links=links,
     knowledge=(Knowledge('sonarqube', NAME, (Path(__file__).parent / 'sonarqube.md').read_text(encoding='utf-8'), slack=True),),
+    setup=Setup(steps=(
+        'In SonarQube open the account menu > My account > Security. Under Generate Tokens choose the type User, set an expiration and choose Generate.',
+        'Use an account that has the Browse permission on the projects to watch (Project settings > Permissions of each project). The token reads only what that account may browse.',
+        'Copy the token at once (SonarQube shows it once) and paste it into Token.',
+        'In URL give your SonarQube address. In Projects list project keys or names to watch (* matches any characters), or leave it empty for all browsable projects. Choose Test connection.',
+    ), docs='https://docs.sonarsource.com/sonarqube-server/latest/user-guide/managing-tokens/', docs_label='SonarQube: managing tokens'),
 )

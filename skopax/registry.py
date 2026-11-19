@@ -17,7 +17,7 @@ from packaging.version import InvalidVersion, Version
 import skopax
 from skopax.bounded import HOOK_TIMEOUT_S, Bound
 from skopax.chattext import STARTERS_MAX as CHAT_STARTERS_MAX, TEXT_MAX as CHAT_TEXT_MAX, chat_kept, chat_problem, tree_problem
-from skopax.contract import CATEGORIES, ECHO_FIELD, ROUTE_ECHO, EDITIONS, FIELD_KINDS, ID, KNOWLEDGE_INLINE_MAX, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Tag, TagRule, Tool
+from skopax.contract import CATEGORIES, ECHO_FIELD, ROUTE_ECHO, EDITIONS, FIELD_KINDS, ID, KNOWLEDGE_INLINE_MAX, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Setup, Tag, TagRule, Tool
 from skopax.errkind import Authored, kind as exc_kind
 from skopax.messages import LANG_TAG, msg, refusal as message_refusal
 
@@ -137,6 +137,10 @@ PACK_TEXT_MAX = 40_000
 PACK_FIELDS = ('product', 'org')
 SECTION_ANCHOR = re.compile(r'^## [^\n]*?\{#([a-z-]+)\}[ \t]*$', re.M)
 HELP_MAX = 160
+SETUP_STEPS_MAX = 10
+SETUP_STEP_MAX = 400
+SETUP_DOCS_MAX = 500
+SETUP_LABEL_MAX = 60
 DROPS_MAX = 50
 SEVERITIES = ('info', 'warn', 'crit')
 CARD_LABEL_MAX = 40
@@ -602,6 +606,21 @@ def _outbound_ok(hook: object, fields: dict) -> bool:
     return hook.sev_field is None or (sev is not None and sev.kind == 'choice' and set(sev.choices) <= set(SEVERITIES))
 
 
+def _setup_ok(setup) -> bool:
+    if setup is None:
+        return True
+    if not isinstance(setup, Setup) or not isinstance(setup.steps, tuple) or not 1 <= len(setup.steps) <= SETUP_STEPS_MAX:
+        return False
+    if not all(isinstance(s, str) and s.strip() and len(s) <= SETUP_STEP_MAX and s.isprintable() for s in setup.steps):
+        return False
+    docs, label = setup.docs, setup.docs_label
+    if not isinstance(docs, str) or not isinstance(label, str) or len(label) > SETUP_LABEL_MAX or not label.isprintable():
+        return False
+    if docs and not (docs.startswith('https://') and len(docs) > len('https://') and len(docs) <= SETUP_DOCS_MAX and not any(ch.isspace() for ch in docs) and docs.isprintable()):
+        return False
+    return not label or (bool(docs) and bool(label.strip()))
+
+
 def _check(plugin: Plugin, directory: Path | None) -> None:
     if not isinstance(plugin.id, str) or not ID.fullmatch(plugin.id):
         raise _why('id', id=plugin.id)
@@ -672,6 +691,8 @@ def _check(plugin: Plugin, directory: Path | None) -> None:
     limit = plugin.max_instances
     if limit is not None and (not isinstance(limit, int) or isinstance(limit, bool) or limit < 1):
         raise _why('max_instances')
+    if not _setup_ok(plugin.setup):
+        raise _why('setup', steps=SETUP_STEPS_MAX, step=SETUP_STEP_MAX, docs=SETUP_DOCS_MAX, label=SETUP_LABEL_MAX)
     caps = plugin.capabilities
     for f in tuple(plugin.fields) + tuple(f for read in plugin.agent_reads for f in read.fields):
         if f.kind == 'secret' and f.key not in caps.secrets:
@@ -1185,6 +1206,7 @@ def describe(plugin: Plugin, icon: bool | None = None) -> dict:
         'hooks': [name for name in ('role_resolver', 'settings_source', 'oidc_token_request', 'org_validators', 'entitlement') if getattr(plugin.hooks, name) is not None],
         'migrations': [m.version for m in plugin.migrations],
         'agentReads': [{'op': r.op, 'args': list(r.args), 'keys': list(r.keys)} for r in plugin.agent_reads],
+        'setup': None if plugin.setup is None else {'steps': list(plugin.setup.steps), 'docs': plugin.setup.docs, 'docsLabel': plugin.setup.docs_label},
     }
 
 

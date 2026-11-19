@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, Plugin, ReadError, Sweep, TestResult, Tool
+from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, Plugin, ReadError, Sweep, TestResult, Tool, Setup
 from skopax.kit import access, connection
 from skopax.plugins.grafana.grafana import LIST, LIST_RIGHT, MAX_SERIES, NAME, PASS, SECTION, GrafanaError, alert_summary, client_for, links_for, skip_list, sweep
 
@@ -67,6 +67,16 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 
 PLUGIN = Plugin(
+    setup=Setup(
+        steps=(
+            'In Grafana open Administration > Users and access > Service accounts > Add service account. Give it a display name and the Viewer role, then Create.',
+            'Open the new service account and choose Add service account token. Name it, leave the expiry as you prefer, and choose Generate token.',
+            'Paste the token into Token. It needs datasources:read and datasources:query on each Prometheus datasource and alert.rules:read. Viewer alone may not reach every datasource; if Test connection or a card names a missing right, add it by role or datasource permission.',
+            'Enter the Grafana address in URL (also used for links to alert rules). Press Test connection.',
+        ),
+        docs='https://grafana.com/docs/grafana/latest/administration/service-accounts/',
+        docs_label='Grafana: service accounts',
+    ),
     id='grafana', name='Grafana', version='0.1.0', category='alerts', description='Alerts firing on the Prometheus datasources of Grafana.', icon='icon.svg',
     author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)), uses=('prometheus',),
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Base URL of Grafana, also used for links to its alert rules.'),

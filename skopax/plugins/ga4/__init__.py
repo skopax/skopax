@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, RuleSet, Sweep, TestResult, Tool
+from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, RuleSet, Setup, Sweep, TestResult, Tool
 from skopax.kit.google import GoogleAuth, GoogleError, access_key, bounded, connection_test
 from skopax.plugins.ga4.engine import (CHECK, COMPARES, DOT, MATCHES, MAX_DAYS, MAX_DIMENSIONS, MAX_METRICS, MAX_MINUTES, MAX_ROWS, NEEDS, OPS, PART, PROPERTIES,
                                        REALTIME_DIMENSIONS, REALTIME_METRICS, REPORT_DIMENSIONS, REPORT_METRICS, ROWS, RULE_HELP, RULES, SCOPES, SHOWN, SITE, BAD_SITE,
@@ -106,7 +106,7 @@ PLUGIN = Plugin(
     id=ID, name='Google Analytics 4', version='0.1.0', category='marketing', description='Daily drops in GA4 key events and active users, and GA4 numbers for the investigator.',
     icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
     capabilities=Capabilities(hosts=('analyticsdata.googleapis.com', 'oauth2.googleapis.com'), secrets=('credentials',)),
-    fields=(Field('property-id', 'Web property id', 'text', required=True, help='The numeric id of the GA4 property of the site (Admin, Property details). The check reads it once a day.'),
+    fields=(Field('property-id', 'Web property id', 'text', required=True, help='The numeric id of the GA4 property of the site (Admin, Property settings). The check reads it once a day.'),
             Field('app-property-id', 'App property id', 'text',
                   help='The numeric id of a separate GA4 property of the mobile apps, read by the analytics tool only. Empty when the apps report into the web property.'),
             Field('site', 'Site name', 'text', help='The name the cards show as their service, such as example.com. Empty shows the property id.'),
@@ -117,5 +117,12 @@ PLUGIN = Plugin(
     rules=(RuleSet('rules', 'Key event and user drops', dict(RULES), RULE_HELP),),
     tools=(Tool('analytics', DESCRIPTION, SCHEMA, analytics, per_run=PER_RUN, scan=True),),
     links=links,
+    setup=Setup(steps=(
+                   'In Google Cloud console, open APIs & Services > Library for your project, search Google Analytics Data API and click Enable.',
+                   'In Google Cloud console, open IAM & Admin > Service accounts, pick your project and click Create service account. Name it and click Done; no project role is needed.',
+                   'Open the account, Keys tab, Add key, Create new key, JSON, Create. Paste the whole downloaded file into Service account key.',
+                   'Copy the account email (client_email in the key). In Google Analytics, Admin > Property access management, click +, Add users, enter that email, choose Viewer, click Add.',
+                   'Put the numeric property id (Admin > Property settings) in Web property id. Use App property id only for a separate app property.'),
+                docs='https://support.google.com/analytics/answer/9305788', docs_label='Google Analytics: add users to a property'),
     knowledge=(Knowledge('ga4', 'Google Analytics 4', (Path(__file__).parent / 'ga4.md').read_text(encoding='utf-8'), slack=True),),
 )

@@ -9,7 +9,7 @@ import pytest
 
 import skopax
 from skopax import contract, engine, jiraaccess, probe, promqlchecks, registry, selfreview, slackhealth
-from skopax.contract import AgentRead, Capabilities, Check, Field, Hooks, Knowledge, PassResult, ReadError, Sweep, Tool
+from skopax.contract import AgentRead, Capabilities, Check, Field, Hooks, Knowledge, PassResult, ReadError, Setup, Sweep, Tool
 from skopax.registry import Registry
 from tests.plugins import demo_plugin, enterprise_plugin, entitled_plugin, gold_plugin, old_core_plugin, order_a, order_b, order_c
 from tests.plugins.base import minimal
@@ -372,6 +372,64 @@ def test_a_plugin_name_must_be_one_short_printable_line(name):
     # then
     assert loaded.state == 'broken'
     assert loaded.reason == 'demo was not loaded: the name must be one line of at most 60 printable characters'
+
+
+GOOD_DOCS = 'https://docs.example.com/tokens'
+
+
+@pytest.mark.parametrize('setup', [
+    Setup(steps=('Open Settings',)),
+    Setup(steps=tuple(f'Step {n}' for n in range(10)), docs=GOOD_DOCS, docs_label='Example: tokens'),
+    Setup(steps=('x' * 400,)),
+    Setup(steps=('Open',), docs='https://' + 'a' * 492),
+    Setup(steps=('Open',), docs=GOOD_DOCS, docs_label='L' * 60),
+    None,
+], ids=['one-step', 'ten-steps-with-link', 'long-step', 'long-docs', 'long-label', 'none'])
+def test_a_valid_setup_guide_loads(setup):
+    # then
+    assert solo(variant(setup=setup)).state == 'ok'
+
+
+@pytest.mark.parametrize('setup', [
+    Setup(),
+    Setup(steps=tuple(f'Step {n}' for n in range(11))),
+    Setup(steps=('',)),
+    Setup(steps=('   ',)),
+    Setup(steps=('Open' + chr(9) + 'Settings',)),
+    Setup(steps=('Open\nSettings',)),
+    Setup(steps=('x' * 401,)),
+    Setup(steps=(5,)),
+    Setup(steps=['Open']),
+    Setup(steps=('Open',), docs='http://docs.example.com/tokens'),
+    Setup(steps=('Open',), docs='javascript:alert(1)'),
+    Setup(steps=('Open',), docs='https://'),
+    Setup(steps=('Open',), docs='https://docs.example.com/a b'),
+    Setup(steps=('Open',), docs='https://' + 'a' * 493),
+    Setup(steps=('Open',), docs=GOOD_DOCS, docs_label='L' * 61),
+    Setup(steps=('Open',), docs=GOOD_DOCS, docs_label='Two' + chr(10) + 'lines'),
+    Setup(steps=('Open',), docs_label='Guide'),
+    Setup(steps=('Open',), docs=None),
+    Setup(steps=('Open',), docs=GOOD_DOCS, docs_label='   '),
+    'steps',
+], ids=['empty', 'eleven-steps', 'blank-step', 'space-step', 'tab-step', 'newline-step', 'long-step', 'not-text', 'not-tuple', 'http', 'script', 'bare-scheme', 'whitespace', 'long-docs',
+        'long-label', 'label-newline', 'label-without-docs', 'docs-none', 'blank-label', 'not-a-setup'])
+def test_an_invalid_setup_guide_breaks_the_plugin(setup):
+    # when
+    loaded = solo(variant(setup=setup))
+
+    # then
+    assert loaded.state == 'broken'
+    assert loaded.reason.startswith('Demo was not loaded: the setup guide must be 1-10 printable steps')
+
+
+def test_describe_serves_the_setup_guide_or_none():
+    # given
+    guide = Setup(steps=('Open Settings', 'Copy the token'), docs=GOOD_DOCS, docs_label='Example: tokens')
+
+    # then
+    assert registry.describe(variant(setup=guide))['setup'] == {'steps': ['Open Settings', 'Copy the token'], 'docs': GOOD_DOCS, 'docsLabel': 'Example: tokens'}
+    assert registry.describe(DEMO)['setup'] is None
+    assert json.dumps(registry.describe(variant(setup=guide)))
 
 
 def test_a_sixty_character_name_loads():
@@ -990,3 +1048,17 @@ def test_no_two_foreground_builtin_checks_start_in_the_same_second_of_an_hour():
 
     # then
     assert {t: found for t, found in starts.items() if len(set(found)) > 1} == {}
+
+
+def test_every_builtin_plugin_says_how_to_set_it_up():
+    # given
+    import importlib
+    loaded = [importlib.import_module(name).PLUGIN for name in registry.BUILTIN]
+
+    # when
+    missing = [p.id for p in loaded if not isinstance(p.setup, Setup) or not p.setup.steps]
+    unlinked = [p.id for p in loaded if p.setup and p.setup.docs and not p.setup.docs.startswith('https://')]
+
+    # then
+    assert missing == []
+    assert unlinked == []

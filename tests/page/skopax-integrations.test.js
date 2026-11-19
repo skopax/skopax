@@ -1923,6 +1923,68 @@ async function theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton() {
   console.log('PASS Admin, Integrations: the drawer lists instances as cards under a counted header with the Add button, or an empty state');
 }
 
+async function thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne() {
+  //given
+  const guide = {steps: ['Open Settings', EVIL, 'Copy the token'], docs: 'https://docs.example.com/tokens', docsLabel: 'Example: tokens'};
+  const bare = {steps: ['Create a key'], docs: '', docsLabel: ''};
+  const unlabeled = {steps: ['Create a key'], docs: 'https://docs.example.com/key', docsLabel: '  '};
+  const hostile = {steps: ['x'], docs: 'javascript:alert(1)', docsLabel: 'Bad'};
+  const base = {version: '1.0.0', category: 'other', description: '', edition: 'community', icon: false, state: 'ok', reason: null, enabled: true, fields: FIELDS, checks: []};
+  const cat = {edition: 'community', secretsKey: 'generated', plugins: [
+    Object.assign({id: 'fresh', name: 'Fresh', instances: [], health: health('off', 'Not set up yet'), setup: guide}, base),
+    Object.assign({id: 'used', name: 'Used', instances: [instance('main', {primary: true})], health: health('ok', 'Healthy', iso(1), [{name: 'main', state: 'ok', text: 'Healthy', at: iso(1)}]), setup: bare}, base),
+    Object.assign({id: 'none', name: 'None', instances: [], health: health('off', 'Not set up yet'), setup: null}, base),
+    Object.assign({id: 'formless', name: 'Formless', fields: [], instances: [], health: health('off', 'Not set up yet'), setup: bare}, base, {fields: []}),
+    Object.assign({id: 'plain', name: 'Plain', instances: [], health: health('off', 'Not set up yet'), setup: unlabeled}, base),
+    Object.assign({id: 'odd', name: 'Odd', instances: [], health: health('off', 'Not set up yet'), setup: hostile}, base)]};
+  const t = await boot({catalog: cat});
+  await open(t);
+  const via = (id) => { if (panel(t.doc) && inPanel(t.doc, '.int-close')) inPanel(t.doc, '.int-close').click(); addBtn(t.doc).click(); pick(t.doc, id).click(); };
+
+  //when
+  via('fresh');
+  const fresh = inPanel(t.doc, '.int-setup');
+  const freshOpen = fresh.open, summary = fresh.querySelector('summary').textContent, items = [...fresh.querySelectorAll('ol > li')].map((li) => li.textContent);
+  const link = fresh.querySelector('a'), position = [...panel(t.doc).children].indexOf(fresh) - [...panel(t.doc).children].indexOf(inPanel(t.doc, '.int-meta'));
+  const markup = t.doc.querySelectorAll('img[onerror]').length;
+  via('used');
+  const used = inPanel(t.doc, '.int-setup'), usedOpen = used.open, usedLink = used.querySelector('a');
+  via('none');
+  const none = inPanel(t.doc, '.int-setup');
+  via('formless');
+  const formless = inPanel(t.doc, '.int-setup'), formlessText = inPanel(t.doc, '.int-nofields') !== null;
+  via('plain');
+  const plainLink = inPanel(t.doc, '.int-setup a').textContent;
+  via('fresh');
+  inPanel(t.doc, '.int-setup summary').click();
+  via('used');
+  inPanel(t.doc, '.int-setup summary').click();
+  via('fresh');
+  const keptClosed = inPanel(t.doc, '.int-setup').open;
+  via('used');
+  const keptOpen = inPanel(t.doc, '.int-setup').open;
+  via('odd');
+  const odd = inPanel(t.doc, '.int-setup');
+
+  //then
+  assert.strictEqual(freshOpen, true, 'open when the plug-in has no instance');
+  assert.strictEqual(summary, 'How to set it up');
+  assert.deepStrictEqual(items, guide.steps, 'the steps are text');
+  assert.strictEqual(markup, 0);
+  assert.strictEqual(position, 1, 'right after the meta line');
+  assert.deepStrictEqual([link.textContent, link.getAttribute('href'), link.target, link.rel], ['Example: tokens', 'https://docs.example.com/tokens', '_blank', 'noopener noreferrer']);
+  assert.strictEqual(usedOpen, false, 'closed when an instance exists');
+  assert.strictEqual(usedLink, null, 'no link without docs');
+  assert.ok(formless && formless.open && formlessText, 'shown, open, for a plug-in with no fields');
+  assert.strictEqual(plainLink, 'Setup guide', 'a blank label falls back');
+  assert.deepStrictEqual([keptClosed, keptOpen], [false, true], 'a toggle is kept per plug-in across repaints');
+  assert.strictEqual(none, null, 'absent when setup is null');
+  assert.strictEqual(odd.querySelector('a'), null, 'only https links are linked');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Admin, Integrations: the setup guide is open without instances, closed with one, escaped, and links only https docs');
+}
+
 (async () => {
   await theTilesShowEveryConnectedPluginWithItsStateHealthAndIcon();
   await aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin();
@@ -1987,4 +2049,5 @@ async function theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton() {
   await darkBrandIconsGetALightBackplateInDarkModeOnly();
   await thePickerListsRowsWithDescriptionsAndWhatIsAddedAndMovesByKeyboard();
   await theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton();
+  await thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

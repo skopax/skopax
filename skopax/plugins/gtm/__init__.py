@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, Sweep, TestResult, Tool
+from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, Setup, Sweep, TestResult, Tool
 from skopax.kit.google import GoogleAuth, GoogleError, bounded, connection_test
 from skopax.plugins.gtm.engine import (BAD_CONTAINER, CHECK, DOT, NEEDS, OPS, PART, SCOPES, Gtm, GtmError, links_for, prior_of, public_id, read, release_rows,
                                        run_pass, wanted)
@@ -88,5 +88,12 @@ PLUGIN = Plugin(
     tools=(Tool('gtm', DESCRIPTION, SCHEMA, gtm_tool, per_run=PER_RUN, scan=True),),
     links=links,
     releases=releases,
+    setup=Setup(steps=(
+                   'In Google Cloud console, open APIs & Services > Library for your project, search Tag Manager API and click Enable.',
+                   'In Google Cloud console, open IAM & Admin > Service accounts, pick your project and click Create service account. Name it and click Done; no project role is needed.',
+                   'Open the account, Keys tab, Add key, Create new key, JSON, Create. Paste the whole downloaded file into Service account key.',
+                   'Copy the account email (client_email in the key). In Tag Manager, Admin, Container column, User Management, click +, Add users, enter that email and give it Read on the container. Send the invitation.',
+                   'Enter the public id such as GTM-ABC1234 in Container id.'),
+                docs='https://support.google.com/tagmanager/answer/6107011', docs_label='Tag Manager: add users and permissions'),
     knowledge=(Knowledge('gtm', 'Google Tag Manager', (Path(__file__).parent / 'gtm.md').read_text(encoding='utf-8'), slack=True),),
 )

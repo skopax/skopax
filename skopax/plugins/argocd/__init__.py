@@ -1,7 +1,7 @@
 from pathlib import Path
 from time import monotonic
 
-from skopax.contract import (Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, SourceDown, Sweep, TestResult, Tool,
+from skopax.contract import (Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, PassResult, Plugin, Setup, ReadError, SourceDown, Sweep, TestResult, Tool,
                              Unreachable, anomaly, call)
 from skopax.kit import connection
 from skopax.kube import NAMESPACE, Kube, KubeError
@@ -193,4 +193,10 @@ PLUGIN = Plugin(
     tools=(Tool('argo', DESCRIPTION, SCHEMA, argo_tool),),
     links=links, probe_targets=probe_targets,
     knowledge=(Knowledge('argocd', 'Argo CD', (Path(__file__).parent / 'argocd.md').read_text(encoding='utf-8'), slack=True),),
+    setup=Setup(steps=(
+        'With Mode set to This cluster no token is needed. Give the service account Skopax runs as get and list on applications.argoproj.io in the namespace in Namespace (default argocd), then enter the Argo CD address in URL for the links.',
+        'With Mode set to Argo CD API, in the argocd-cm ConfigMap add a local account that can use API keys, such as accounts.skopax: apiKey.',
+        'In argocd-rbac-cm add the policy p, skopax, applications, get, */*, allow (or a project, such as my-project/*).',
+        'Create the token with argocd account generate-token --account skopax --expires-in 90d and paste it into Token. Enter the Argo CD address in URL, then choose Test connection.',
+    ), docs='https://argo-cd.readthedocs.io/en/stable/operator-manual/user-management/', docs_label='Argo CD: user management'),
 )

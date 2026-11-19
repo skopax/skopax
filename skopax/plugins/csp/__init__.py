@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Check, Context, Field, Knowledge, Plugin, ReadError, RuleSet, SourceDown, TestResult
+from skopax.contract import Check, Context, Field, Knowledge, Plugin, ReadError, RuleSet, SourceDown, TestResult, Setup
 from skopax.kit import connection
 from skopax.kit.elastic import REJECTED, TEST_TIMEOUT, Budget, ElasticError, client_for, native, no_read, refusal, sources_of
 from skopax.plugins.csp.checks import HELP, NO_MESSAGE, RULES, SECTION_HELP, grouped, links, query, run_csp, shown_sources, target_of
@@ -37,6 +37,14 @@ def test(ctx: Context) -> TestResult:
 
 
 PLUGIN = Plugin(
+    setup=Setup(
+        steps=(
+            'No credential of its own: CSP reports reads logs through an Elasticsearch instance. Add that instance first and pick it in Elasticsearch; its API key needs read on the indices the query names.',
+            'Write Query as ES|QL that selects the report lines, such as FROM logs-* | WHERE message LIKE "*csp-report*". Each report is read from the message column. Press Test connection.',
+        ),
+        docs='https://www.elastic.co/docs/reference/query-languages/esql',
+        docs_label='Elastic: ES|QL',
+    ),
     id=ID, name='CSP reports', version='0.1.0', category='web',
     description='Content Security Policy violation reports from the logs in Elasticsearch: hosts the browsers block for the first time, and jumps in the hourly report count.',
     icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',

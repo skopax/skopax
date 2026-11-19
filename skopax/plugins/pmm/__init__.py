@@ -3,7 +3,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from skopax.contract import (Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Panel, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool,
-                             Unreachable)
+                             Unreachable, Setup)
 from skopax.kit import access, connection
 from skopax.kit.promql import ranged
 from skopax.plugins.pmm.checks import (MONGO_RULE, PMM_RULE, QAN_ROWS, QAN_RULE, QAN_TOTALS, app_pattern, dashboard, evaluate_mongo, evaluate_pmm, evaluate_qan, links_for, mongo_pass,
@@ -343,6 +343,15 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 
 PLUGIN = Plugin(
+    setup=Setup(
+        steps=(
+            'In PMM open the Grafana service accounts page (Administration > Users and access > Service accounts), add a service account with the Viewer role and generate a token for it.',
+            'Paste the token into Token and the PMM address into URL. Viewer can query the metrics and Query Analytics data sources.',
+            'Leave Metrics data source and QAN data source empty only if the token may list data sources (the Admin role or datasources:read). Otherwise enter the data source uids so Skopax need not list them.',
+        ),
+        docs='https://docs.percona.com/percona-monitoring-and-management/3/api/authentication.html',
+        docs_label='PMM: service accounts and authentication',
+    ),
     id=ID, name='PMM (Postgres, MongoDB)', version='0.1.0', category='infrastructure',
     description='Postgres servers, slow queries and MongoDB members read from Percona Monitoring and Management.', icon='icon.svg',
     author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),

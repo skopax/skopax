@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from skopax.contract import AutoResolve, Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Plugin, ReadError, Setting, SourceDown, Sweep, TestResult, Tool
+from skopax.contract import (AutoResolve, Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Plugin, ReadError, Setting, Setup, SourceDown, Sweep, TestResult,
+                             Tool)
 from skopax.kit import connection
 from skopax.kit.text import cut
 from skopax.plugins.vwo.wingify import (CHECK, NAME, NAME_LIMIT, NO_TOKEN, OPS, PARTS, PERMISSION, VERDICT_PASS, VERDICT_SECTION, Wingify, as_dict, ident,
@@ -86,6 +87,14 @@ PLUGIN = Plugin(
     capabilities=Capabilities(hosts=('app.wingify.com',), secrets=('api-token',)),
     fields=(Field('api-token', 'API token', 'secret', required=True, help=f'A VWO API token. {PERMISSION} is enough: nothing is ever changed.'),
             Field('account-id', 'Account id', 'text', default='current', help='The VWO account number, or current for the account the token belongs to.')),
+    setup=Setup(
+        steps=(
+            'Sign in to VWO as an admin of the account (API access depends on the plan) and open https://app.wingify.com/#/developers/tokens.',
+            'Create a token and choose the lowest permission level: Browse is enough, because Skopax never changes anything.',
+            'Copy the token and paste it into API token.',
+            'Leave Account id as current to use the account the token belongs to, or enter the account number. Test connection reads the account, then a campaign.',
+        ),
+        docs='https://help.wingify.com/hc/en-us/articles/58822048638489-How-to-Access-Wingify-API', docs_label='VWO: how to access the API'),
     test=test,
     checks=(Check(CHECK, 'A/B tests that start, stop or change', 300, 225, (CHECK,), run_changes, tool=TOOL, sections=(CHECK,), section_help=CHANGES_HELP),
             Check(VERDICT_PASS, 'A/B test results VWO decided', 3600, 1560, (VERDICT_PASS,), run_verdicts, tool=TOOL, sections=(VERDICT_SECTION,), section_help=VERDICTS_HELP)),

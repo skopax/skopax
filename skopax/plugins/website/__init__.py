@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from skopax import clock
-from skopax.contract import (Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, Setting, Sweep, TestResult, Tool,
+from skopax.contract import (Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, Setting, Setup, Sweep, TestResult, Tool,
                              Transport, anomaly, iso)
 from skopax.kit import connection
 from skopax.kit.browser import CONNECT_S, MAX_HEIGHT, VIEWPORTS, Browser, BrowserDown, endpoint
@@ -244,6 +244,15 @@ PLUGIN = Plugin(
             Field('internal-subdomains', 'Subdomains may be internal', 'bool', default='false',
                   help='Off: the tools and the browser open a subdomain that is not the site URL host or one of the more hosts only when it resolves to public addresses. '
                        'On: any subdomain is opened, internal ones too.')),
+    setup=Setup(
+        steps=(
+            'No account is needed. Set Site URL to the https address of the site, for example https://www.example.com. Only https on port 443 is read.',
+            'List other hosts of the site in More hosts, and hosts behind a login or APIs in Login hosts, Login paths and API paths: they are never opened.',
+            'For screenshots, run a headless Chrome service that exposes the DevTools endpoint and set Browser URL to it, for example http://browser:9222. Empty means no screenshots.',
+            'If a firewall or bot rule blocks the page read, add the header it expects (Name: value) in Scan headers, and ask the site owner to allow the Skopax address.',
+            'Optionally link your Umami instance in Umami instance so the page scan reads the busiest paths. Test connection reads the page, then the browser.',
+        ),
+        docs='https://github.com/chromedp/docker-headless-shell', docs_label='chromedp headless-shell image'),
     test=test,
     checks=(Check(CHECK, 'Screenshot browser', 300, 45, (CHECK,), browser_check, sections=(SECTION,), section_help=SECTION_HELP),
             Check(pagescan.PASS, 'Page scan', 3600, 2700, (pagescan.PASS,), pagescan.scan, tool=pagescan.TOOL, sections=(pagescan.SECTION,), section_help=SCAN_HELP,

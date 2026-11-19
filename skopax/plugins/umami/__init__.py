@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, PassResult, Plugin, RuleSet, SourceDown, Sweep, TestResult, Tool
+from skopax.contract import (Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, PassResult, Plugin, RuleSet, Setup, SourceDown, Sweep, TestResult,
+                             Tool)
 from skopax.kit import connection
 from skopax.messages import msg
 from skopax.kit.umami import CLOUD, HEARTBEAT, NO_DOMAIN, NOT_FOUND, SERVER, LoginFailed, Umami, UmamiError, domain_of, event_of, form_of, properties_of, refusal
@@ -134,6 +135,16 @@ PLUGIN = Plugin(
                                                                           'the umami tool reads only these.'),
             Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),
             Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), group='advanced', help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),
+    setup=Setup(
+        steps=(
+            'Umami Cloud: sign in, click the profile button in the side navigation, choose Settings, API keys, Create key, and copy the key.',
+            'Umami Cloud: set URL to https://api.umami.is/v1 and paste the key into API key. Leave Token, Username and Password empty. Set UI URL to your dashboard address, or cards carry no link.',
+            'Own server: set URL to the server address. Token takes a bearer token: an API key (Settings, API keys, if your version has them) or a login token. Without Token, Username and Password log in and renew themselves.',
+            'Whichever you use, the key or user must own the website, be an admin, or be in the team that holds it. Use a user with view access only.',
+            'Website ID: copy the UUID from the website settings page, in the tracking code (data-website-id), and paste it into Website ID.',
+            'Leave Event empty to watch pageviews only, or name a tracked event. Test connection reads the website.',
+        ),
+        docs='https://docs.umami.is/docs/cloud/api-key', docs_label='Umami: API key'),
     test=test,
     checks=(Check(check.CHECK, 'Pageviews and a tracked event against 1 and 7 days earlier', 900, 420, RAN, run, tool='umami'),),
     rules=(RuleSet('rules', 'Umami', dict(check.RULES), check.RULE_HELP),),

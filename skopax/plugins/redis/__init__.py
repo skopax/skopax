@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Check, Context, Field, HttpError, Knowledge, Panel, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, iso
+from skopax.contract import Check, Context, Field, HttpError, Knowledge, Panel, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, iso, Setup
 from skopax.kit import access, connection
 from skopax.kit.promql import Late, PrometheusError, bounded, client_for, credential, graph, instant, number, ui_of
 from skopax.monitor import failed
@@ -138,6 +138,14 @@ def read(ctx: Context, args: dict) -> object:
 
 
 PLUGIN = Plugin(
+    setup=Setup(
+        steps=(
+            'No credential of its own: Redis reads through a Prometheus instance. Add that Prometheus instance first and pick it in Prometheus; it signs in as set there.',
+            'That Prometheus must hold the redis_exporter series (redis_up, redis_memory_used_bytes and others) and, for the Redis calls of each service, the lettuce_seconds_* series of the Lettuce client. Use Selector to narrow what is read.',
+        ),
+        docs='https://github.com/oliver006/redis_exporter',
+        docs_label='redis_exporter',
+    ),
     id=ID, name='Redis', version='0.1.0', category='infrastructure', description='Redis instances and the Redis calls of each service, read from redis_exporter and Lettuce series in Prometheus.',
     icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', uses=('prometheus',),
     fields=(Field('prometheus', 'Prometheus', 'instance', required=True, choices=('prometheus',), help='The Prometheus instance that holds the redis_exporter and Lettuce client series.'),

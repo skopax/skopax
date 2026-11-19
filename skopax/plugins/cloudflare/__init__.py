@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Panel, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool
+from skopax.contract import (Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Panel, PassResult, Plugin, ReadError, RuleSet, Setup, Sweep, TestResult,
+                             Tool)
 from skopax.kit import connection
 from skopax.kit.options import pairs
 from skopax.plugins.cloudflare import client as cf
@@ -280,6 +281,16 @@ PLUGIN = Plugin(
             Field('status-components', 'Status components', 'text',
                   help='Semicolon-separated Cloudflare status-page components to watch, written as the status page shows them, for example CDN/Cache; WAF; Tokyo, Japan - (NRT). '
                        'Empty: no status check.')),
+    setup=Setup(
+        steps=(
+            'In the Cloudflare dashboard open My Profile, API Tokens and choose Create Token (an account owned token under Manage Account, API Tokens works too).',
+            'Start from scratch with a custom token and name it, for example Skopax read-only.',
+            'Add a Zone policy with four Read permissions, each picked as Zone, name, Read: Zone, Zone, Read; Zone, Analytics, Read; Zone, SSL and Certificates, Read; Zone, Health Checks, Read.',
+            'Set Zone Resources to the zones you will list in Zones (or all zones of the account). Add no Edit permission.',
+            'Continue to summary, then Create Token, and copy the secret: Cloudflare shows it once.',
+            'Paste it into API token, then list the zone names in Zones. Test connection reports which permission is missing.',
+        ),
+        docs='https://developers.cloudflare.com/fundamentals/api/get-started/create-token/', docs_label='Cloudflare: create an API token'),
     test=test,
     checks=(Check('cf', 'Health checks, certificates and status', 900, 60, ('cf',), run_cf, sections=('cloudflare',), section_help={'cloudflare': SECTION_HELP['cloudflare']}),
             Check('edge', 'Edge 5xx', 900, 60, ('edge',), run_edge, tool='edge', sections=('edge',), section_help={'edge': SECTION_HELP['edge']})),

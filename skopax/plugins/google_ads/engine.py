@@ -27,11 +27,11 @@ CHECK_WORDS = {LINKS: 'ad-link check', POLICY: 'policy check'}
 NS = 'ads'
 NEEDS = 'Read only access to the Google Ads account'
 NO_ACCESS = ('the service account has no access to this Google Ads account: add it as a Read only user under Admin, Access and security, '
-             'and check the developer token and login-customer-id')
+             'and check login-customer-id and that the Cloud project has Google Ads API access')
 BAD_CUSTOMER = 'customer-id must be the 10-digit Google Ads customer id, with or without dashes'
 BAD_LOGIN = 'login-customer-id must be the 10-digit id of the manager account, with or without dashes, or empty'
 BAD_VERSION = 'api-version must be a Google Ads API version such as v26'
-BAD_TOKEN = 'developer-token must be the token from the API Center: 10 to 100 letters, digits, - and _'
+BAD_TOKEN = 'developer-token, when set, must be 10 to 100 letters, digits, - and _'
 OPS = ('campaigns', 'daily', 'ads', 'query')
 DEFAULT_DAYS = 7
 MAX_DAYS = 90
@@ -116,12 +116,12 @@ class GoogleAds:
             return BAD_LOGIN
         if not API_VERSION.fullmatch(self.version):
             return BAD_VERSION
-        if not DEV_TOKEN.fullmatch(self.developer_token):
+        if self.developer_token and not DEV_TOKEN.fullmatch(self.developer_token):
             return BAD_TOKEN
         return None
 
     def headers(self) -> dict[str, str]:
-        out = {'developer-token': self.developer_token}
+        out = {'developer-token': self.developer_token} if self.developer_token else {}
         if CUSTOMER.fullmatch(self.login_customer_id):
             out['login-customer-id'] = self.login_customer_id
         return out

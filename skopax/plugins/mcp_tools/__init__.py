@@ -1,4 +1,4 @@
-from skopax.contract import Capabilities, Field, Plugin, Setting
+from skopax.contract import Capabilities, Field, Plugin, Setting, Setup
 
 ID = 'mcp-tools'
 PRESETS = ('atlassian', 'notion', 'github', 'google-drive')
@@ -9,6 +9,15 @@ PLUGIN = Plugin(
     description='Adds the tools of an outside MCP server to the investigator and the chat, and can search one folder of company documents', icon='icon.svg',
     author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('header-value', 'oauth-client-secret')),
     max_instances=20,
+    setup=Setup(
+        steps=(
+            'Get the streamable HTTP address of the MCP server from its vendor or your platform team and paste it into URL. It must be https.',
+            'Token in a header: create an access token on the server with read permissions only. Set Method to Token in a header, keep Header name as Authorization, and write Bearer, a space and the token in Header value.',
+            'OAuth: set Method to OAuth and save, then choose Connect in the connection panel and sign in as an account that can read what the investigator should see. Skopax finds the sign-in details the server publishes.',
+            'OAuth scopes: list scopes separated by spaces, or leave it empty. If the server does not register clients itself, create an OAuth client in its admin console, register <SKOPAX_BASE_URL>/api/admin/mcp-tools/oauth/callback as the redirect address, and enter OAuth client id and OAuth client secret.',
+            'Test connection lists the tools. Then turn on only the read tools you want in the panel; a new connection starts off.',
+        ),
+        docs='https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization', docs_label='MCP: authorization'),
     fields=(Field('url', 'URL', 'url', required=True, group='connection', help='The streamable HTTP endpoint of the MCP server.'),
             Field('preset', 'Catalog entry', 'choice', choices=PRESETS, choice_labels=PRESET_NAMES, group='connection', help='Set by the catalog entry you added it from.'),
             Field('auth', 'Method', 'choice', default='none', choices=('none', 'header', 'oauth'),

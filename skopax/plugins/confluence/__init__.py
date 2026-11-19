@@ -3,7 +3,7 @@ from pathlib import Path
 from time import monotonic
 from urllib.parse import quote, urlencode, urlsplit
 
-from skopax.contract import Capabilities, Context, Field, HttpError, Knowledge, Plugin, ReadError, TestResult, Tool, call
+from skopax.contract import Capabilities, Context, Field, HttpError, Knowledge, Plugin, Setup, ReadError, TestResult, Tool, call
 from skopax.kit import connection
 from skopax.kit.env import env_set
 from skopax.plugins.confluence.client import (BODY_LIMIT, DENIED, GATEWAY, HITS, NO_SPACES, OPS, SPACES, TEXT_LIMIT, TEXT_MIN, Confluence, basic, denied_text, in_spaces,
@@ -91,4 +91,11 @@ PLUGIN = Plugin(
     env_instances=env_instances, test=test,
     tools=(Tool('confluence', DESCRIPTION, SCHEMA, read, instance_input=None, per_run=PER_RUN, scan=True, needs_field='spaces'),),
     knowledge=(Knowledge('confluence', 'Confluence', (Path(__file__).parent / 'confluence.md').read_text(encoding='utf-8'), slack=True),),
+    setup=Setup(steps=(
+        'Sign in as the account Skopax will use and open https://id.atlassian.com/manage-profile/security/api-tokens. Choose Create API token with scopes, name it and set an expiry (1 to 365 days).',
+        'Pick Confluence as the app and select the scopes search:confluence, read:page:confluence and read:space:confluence. The account must be able to view the spaces you list.',
+        "Create the token, copy it and paste it into API token. Enter that account's address in Email. Use a token of its own, not the one Jira uses.",
+        'In URL give your Atlassian Cloud address, such as https://example.atlassian.net. In Spaces list the space keys the tool may read, such as ENG, OPS.',
+        'Choose Test connection. It names any listed space the account cannot see.',
+    ), docs='https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/', docs_label='Atlassian: manage API tokens'),
 )

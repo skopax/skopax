@@ -614,6 +614,7 @@ MESSAGES: dict[str, str] = {
     'plugins.why.knowledge_inline_long': 'knowledge {id} is inline and longer than {limit} characters; an inline entry is shown on every run, so keep it short or drop inline',
     'plugins.why.uses': 'uses names {id}, which is not a plug-in id or is this plug-in itself',
     'plugins.why.instance_field': 'instance field {key} needs exactly one choice, a plug-in listed in uses',
+    'plugins.why.setup': 'the setup guide must be 1-{steps} printable steps of at most {step} characters, with an optional https docs link of at most {docs} characters and a link label of at most {label} printable characters that needs the link',
     'plugins.why.max_instances': 'max_instances must be empty or a whole number of at least 1',
     'plugins.why.agent_instance': 'agent-read field {key} cannot be an instance field',
     'plugins.why.secret': 'secret field {key} is not listed in the declared secrets',

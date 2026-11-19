@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 from pathlib import Path
 
-from skopax.contract import AgentRead, Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Panel, Plugin, ReadError, RuleSet, SourceDown, TestResult, Tool, Transport, call
+from skopax.contract import AgentRead, Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Panel, Plugin, ReadError, RuleSet, SourceDown, TestResult, Tool, Transport, call, Setup
 from skopax.kit import connection
 from skopax.kit.elastic import TEST_TIMEOUT, Budget, Elastic, ElasticError, client_for, cluster_of, index_of, indices_of, namespace_problem, native, no_read, quoted
 from skopax.messages import msg
@@ -137,6 +137,16 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 
 PLUGIN = Plugin(
+    setup=Setup(
+        steps=(
+            'In Kibana open the API keys page, choose Create API key and pick a user key. Creating it needs the manage_own_api_key or manage_api_key privilege.',
+            'Under access configuration use custom privileges: read on the Log index (default logs-*), the APM index (default traces-apm*) and the Log flow index if you set one. Add the cluster privilege monitor if you want Test connection to show the version.',
+            'Copy the encoded key and paste it into API key. If the APM data is in another cluster, enter its address in APM URL and its own key in APM API key; empty means the log cluster and its key.',
+            'Enter the cluster address in URL. A cluster without security needs no key. Press Test connection.',
+        ),
+        docs='https://www.elastic.co/docs/deploy-manage/api-keys/elasticsearch-api-keys',
+        docs_label='Elastic: API keys',
+    ),
     id=ID, name='Elasticsearch', version='0.1.0', category='logs', description='New and growing error and warning log patterns, APM latency and failures, and the log flow per namespace, read from Elasticsearch with ES|QL.',
     icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
     capabilities=Capabilities(hosts=('@url', '@apm-url', '@ui-url'), secrets=('api-key', 'apm-api-key', 'elastic.logging-api-key', 'elastic.apm-api-key'), agent_reads=True),

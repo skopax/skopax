@@ -1,4 +1,4 @@
-var INTEG = null, INTEG_SEQ = 0, INT_CAT = '', INT_Q = '', INT_PANEL = null, INT_POP_OFF = null;
+var INTEG = null, INTEG_SEQ = 0, INT_CAT = '', INT_Q = '', INT_PANEL = null, INT_POP_OFF = null, INT_SETUP_OPEN = {};
 var INT_CATS = {metrics: 'Metrics', logs: 'Logs', alerts: 'Alerts', infrastructure: 'Infrastructure', tickets: 'Tickets', code: 'Code', chat: 'Chat', web: 'Web', apps: 'Apps', marketing: 'Marketing', other: 'Other'};
 var INT_DOTS = {ok: 'ok', warn: 'warn', error: 'error', pending: 'pending', none: 'off', off: 'off'};
 var INT_MCP = 'mcp-tools', INT_MCP_PRESETS = null, INT_MCP_BACK = null, INT_MCP_SEQ = 0, INT_MCP_FRESH_MS = 600000, INT_MCP_WRITES = {}, INT_MCP_EXPIRED = false, INT_MCP_NOTE = '';
@@ -601,6 +601,27 @@ function intLeave() {
   intClose(false);
   intPopClose(false);
 }
+function intSetup(p, panel, open) {
+  var setup = p.setup, steps = setup && Array.isArray(setup.steps) ? setup.steps : [];
+  if (!steps.length) return;
+  var box = accText('details', 'int-setup'), list = accText('ol', 'int-setup-steps');
+  var kept = INT_SETUP_OPEN[p.id];
+  box.open = typeof kept === 'boolean' ? kept : open;
+  var sum = accText('summary', null, 'How to set it up');
+  sum.addEventListener('click', function () { INT_SETUP_OPEN[p.id] = !box.open; });
+  box.appendChild(sum);
+  steps.forEach(function (step) { list.appendChild(accText('li', null, String(step))); });
+  box.appendChild(list);
+  var docs = typeof setup.docs === 'string' ? setup.docs : '';
+  if (/^https:\/\/\S+$/.test(docs)) {
+    var link = accText('a', 'int-setup-link', typeof setup.docsLabel === 'string' && setup.docsLabel.trim() ? setup.docsLabel.trim() : 'Setup guide');
+    link.href = docs;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    box.appendChild(link);
+  }
+  panel.appendChild(box);
+}
 function intPanelPaint(note) {
   var s = INT_PANEL, panel = intPanelEl(), p = s && intFind(s.id);
   if (!p || !panel) { intClose(false); return false; }
@@ -623,6 +644,7 @@ function intPanelPaint(note) {
   panel.appendChild(head);
   if (p.description) panel.appendChild(accText('p', 'adm-help int-desc', String(p.description)));
   panel.appendChild(accText('p', 'muted int-meta', intMetaOf(p)));
+  intSetup(p, panel, !insts.length);
   if (!usable && p.reason) panel.appendChild(accText('p', 'adm-msg bad int-reason', String(p.reason)));
   intDrops(p, panel);
   var said = accText('p', 'adm-msg ok int-panel-note', note || '');
