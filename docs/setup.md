@@ -49,7 +49,7 @@ Each switch has an environment name, which sets the starting value. A value save
 | Post-deploy check | `SKOPAX_POSTDEPLOY` | checks every deploy and writes a report |
 | Self-review | `SKOPAX_SELF_REVIEW` | the daily self-review |
 | Check for new versions | `SKOPAX_UPDATE_CHECK` | asks GitHub once a day for the latest release and shows admins a notice when a newer one exists; see [Version check](operations.md#version-check) |
-| Hide "powered by Skopax" | `SKOPAX_FEATURE_HIDE_ATTRIBUTION` | Enterprise only; see [Branding](configuration.md#branding) |
+| Hide "powered by Skopax" | `SKOPAX_FEATURE_HIDE_ATTRIBUTION` | Enterprise only; hides the line on every page, in the chat and on Slack and Teams posts; see [Branding](configuration.md#branding) |
 
 ### The Anthropic key
 

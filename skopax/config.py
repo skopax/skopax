@@ -141,7 +141,6 @@ class Settings:
     assign_dm: bool = True
     postdeploy: bool = True
     probe: bool = False
-    chat_attribution: bool = False
     cert_rules: str = ''
     cert_skip: tuple[str, ...] = ()
     investigator_on: bool = True
@@ -486,7 +485,6 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         assign_dm=get('core.assign-dm', 'SKOPAX_ASSIGN_DM', 'true').strip().lower() == 'true',
         postdeploy=get('core.postdeploy', 'SKOPAX_POSTDEPLOY', 'true').strip().lower() == 'true',
         probe=get('core.probe', 'SKOPAX_PROBE', 'true').strip().lower() == 'true',
-        chat_attribution=get('core.chat-attribution', 'SKOPAX_CHAT_ATTRIBUTION', 'false').strip().lower() == 'true',
         cert_rules=get('core.certs', 'SKOPAX_CERT_RULES', '').strip(),
         cert_skip=csv_of(get('core.cert-skip', 'SKOPAX_CERT_SKIP', '')),
         investigator_on=get('core.investigator', 'SKOPAX_FEATURE_INVESTIGATOR', 'true').strip().lower() == 'true',

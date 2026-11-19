@@ -241,8 +241,6 @@ STATIC = (
     T('self-review.enabled', 'self_review_enabled', FEATURES, 'Self-review', 'Writes the daily self-review of {product} itself and sends it as a Slack direct message; it also needs the Anthropic key, the self project and its log index. Switched on after the review hour, the first scheduled review comes the next day; Run now works at once', 'bool'),
     T('core.probe', 'probe', FEATURES, 'Reachability probe', 'Checks from this server that every probe target of a serving integration answers, every 15 minutes and at start; '
       'its report gives tool status and certificate expiry cards', 'bool'),
-    T('core.chat-attribution', 'chat_attribution', FEATURES, 'Powered by on Slack and Teams posts', 'Ends every message {product} starts in Slack and Teams, its channel posts and '
-      'its own direct messages, with the "powered by" line; a reply to a person never carries it, and Hide "powered by Skopax" wins', 'bool'),
     feature_tunable('core.investigator', 'investigator_on'),
     feature_tunable('core.chat', 'chat_on'),
     feature_tunable('core.slack-autosend', 'slack_autosend'),

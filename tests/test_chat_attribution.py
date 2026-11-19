@@ -8,7 +8,6 @@ from skopax import brand
 from skopax.app import create_app
 from skopax.cardposts import CardPosts
 from skopax.config import Settings, load_settings
-from skopax.features import KEYS
 from skopax.push import Pusher
 from skopax.slack import SECTION_LIMIT, Slack
 from skopax.store import Store
@@ -70,34 +69,12 @@ def bar(payload: dict) -> list[str]:
     return [e['text'] for e in payload['blocks'][-1]['elements']]
 
 
-def switch_on(client: TestClient) -> None:
-    saved = client.put('/api/admin/settings', json={'key': 'core.chat-attribution', 'value': 'true'}, headers=AUTH)
-    assert saved.status_code == 200
-
-
-def test_chat_posts_carry_no_attribution_by_default(store: Store):
+def test_top_level_posts_carry_the_line_by_default(store: Store):
     # given
     transport, api = FakeSlack(), FakeSlackApi()
 
     # when
     with app_with(seeded(store), transport, api) as client:
-        everything(client)
-        line = client.app.state.chat_attribution()
-
-    # then
-    sent = payloads(transport, api)
-    assert line is None
-    assert {'card post', 'thread reply', 'update', 'dm'} <= {'dm' if p['channel'] == PUSH_USER else 'thread reply' if 'thread_ts' in p else 'update' if 'ts' in p else 'card post' for p in sent}
-    assert [p for p in sent if 'powered by' in json.dumps(p) or 'skopax.io' in json.dumps(p)] == []
-
-
-def test_the_admin_switch_adds_the_line_to_top_level_posts(store: Store):
-    # given
-    transport, api = FakeSlack(), FakeSlackApi()
-
-    # when
-    with app_with(seeded(store), transport, api) as client:
-        switch_on(client)
         everything(client)
         line = client.app.state.chat_attribution()
 
@@ -124,7 +101,7 @@ def test_thread_replies_never_carry_it(store: Store):
     slack.attribution = lambda: LINE
 
     # when
-    with app_with(store, transport, api, chat_attribution=True) as client:
+    with app_with(store, transport, api) as client:
         everything(client)
     posts = CardPosts(store, slack, 'https://skopax.example.com', autostart=False)
     posts.after({'type': 'take', 'key': 'log|other|ERROR|y', 'requestedBy': 'alice@example.com'})
@@ -139,12 +116,12 @@ def test_thread_replies_never_carry_it(store: Store):
     assert bar(card_post(transport))[-1] == MARK
 
 
-def test_hide_attribution_wins_over_the_switch(store: Store):
+def test_hide_attribution_removes_it_from_slack(store: Store):
     # given
     transport, api = FakeSlack(), FakeSlackApi()
 
     # when
-    with app_with(seeded(store), transport, api, registry=registry_with(switchable_entitlement), chat_attribution=True, hide_attribution=True) as client:
+    with app_with(seeded(store), transport, api, registry=registry_with(switchable_entitlement), hide_attribution=True) as client:
         hidden = client.app.state.features.on('hide-attribution')
         everything(client)
         line = client.app.state.chat_attribution()
@@ -159,7 +136,7 @@ def test_attribution_link_never_unfurls(store: Store):
     transport, api = FakeSlack(), FakeSlackApi()
 
     # when
-    with app_with(seeded(store), transport, api, chat_attribution=True) as client:
+    with app_with(seeded(store), transport, api) as client:
         everything(client)
 
     # then
@@ -217,23 +194,30 @@ def test_a_line_that_cannot_be_read_adds_nothing_and_the_post_goes_out():
     assert post.calls[0]['text'] == 'hello' and 'blocks' not in post.calls[0]
 
 
-def test_the_switch_is_an_other_switch_that_is_off_by_default():
+def test_the_old_switch_is_gone_and_its_values_are_ignored(store: Store):
     # given
-    row = {t.key: t for t in STATIC}['core.chat-attribution']
+    transport, api = FakeSlack(), FakeSlackApi()
 
     # when
-    from_env = load_settings(env={'SKOPAX_CHAT_ATTRIBUTION': 'true'}).chat_attribution
-    from_config = load_settings(lambda: {'core.chat-attribution': 'true'}, env={}).chat_attribution
+    from_env = load_settings(env={'SKOPAX_CHAT_ATTRIBUTION': 'false'})
+    from_config = load_settings(lambda: {'core.chat-attribution': 'false'}, env={})
+    store.db['tunables'].insert_one({'_id': 'core.chat-attribution', 'value': 'false', 'by': 'alice@example.com', 'at': '2026-11-18T07:00:00Z'})
+    with app_with(seeded(store), transport, api) as client:
+        saved = client.put('/api/admin/settings', json={'key': 'core.chat-attribution', 'value': 'false'}, headers=AUTH)
+        listed = client.get('/api/admin/settings', headers=AUTH)
+        featured = client.get('/api/admin/features', headers=AUTH)
+        everything(client)
 
     # then
-    assert (row.group, row.kind, row.label, row.live) == ('Features', 'bool', 'Powered by on Slack and Teams posts', True)
-    assert 'its own direct messages' in row.help and 'a reply to a person never carries it' in row.help
-    assert 'core.chat-attribution' not in KEYS, 'an Other switch, not a feature card'
-    assert Settings(mongo_uri='m', mongo_db='d', token='t', commit_id='c').chat_attribution is False
-    assert from_env is True and from_config is True
+    assert 'core.chat-attribution' not in {t.key for t in STATIC}
+    assert not hasattr(Settings(mongo_uri='m', mongo_db='d', token='t', commit_id='c'), 'chat_attribution')
+    assert not hasattr(from_env, 'chat_attribution') and not hasattr(from_config, 'chat_attribution')
+    assert saved.status_code == 404 and listed.status_code == 200 and featured.status_code == 200
+    assert 'core.chat-attribution' not in {i['key'] for i in listed.json()['items']}
+    assert bar(card_post(transport))[-1] == MARK
 
 
-def test_the_switch_is_read_in_the_sending_thread(store: Store, monkeypatch):
+def test_the_line_is_read_in_the_sending_thread(store: Store, monkeypatch):
     # given
     transport, api = FakeSlack(), FakeSlackApi()
     seen = []
@@ -249,7 +233,7 @@ def test_the_switch_is_read_in_the_sending_thread(store: Store, monkeypatch):
     monkeypatch.setattr(brand, 'attribution_line', recorded)
 
     # when
-    with app_with(seeded(store), transport, api, chat_attribution=True) as client:
+    with app_with(seeded(store), transport, api) as client:
         client.post('/api/slack-posts', json={'key': KEY}, headers=AUTH)
 
     # then
@@ -286,7 +270,7 @@ def test_the_line_is_read_only_for_a_message_that_can_carry_it(store: Store, mon
     transport, api = FakeSlack(), FakeSlackApi()
 
     # when
-    with app_with(seeded(store), transport, api, chat_attribution=True) as client:
+    with app_with(seeded(store), transport, api) as client:
         client.post('/api/slack-posts', json={'key': KEY}, headers=AUTH)
         posted = len(reads)
         client.post('/api/slack-updates', json={'key': KEY, 'text': 'still on it'}, headers=AUTH)
@@ -316,17 +300,15 @@ def teams_body(store: Store, tmp_path, registry=None, **over) -> list[str]:
     return teams_texts(t.calls[0][1])
 
 
-def test_a_teams_route_post_carries_the_line_only_with_the_switch_and_never_while_hidden(store: Store, tmp_path):
+def test_a_teams_route_post_carries_the_line_and_the_hide_switch_removes_it(store: Store, tmp_path):
     # given
     text, href = brand.attribution_of(NAMED)
     shown = teams_cards.attribution_row({'attribution': {'text': text, 'href': href}})[0]['text']
 
     # when
-    off = teams_body(store, tmp_path)
-    on = teams_body(another(store, 'teams-on'), tmp_path, chat_attribution=True)
-    hidden = teams_body(another(store, 'teams-hidden'), tmp_path, registry=registry_with(switchable_entitlement, teams_plugin), chat_attribution=True, hide_attribution=True)
+    on = teams_body(store, tmp_path)
+    hidden = teams_body(another(store, 'teams-hidden'), tmp_path, registry=registry_with(switchable_entitlement, teams_plugin), hide_attribution=True)
 
     # then
-    assert off[-1] != shown and href not in ' '.join(off) and text not in ' '.join(off), 'off by default'
-    assert on[-1] == shown and on[:-1] == off, 'a route post is a message Skopax starts, so the line is its last row'
-    assert hidden == off, 'the Enterprise hide switch wins'
+    assert on[-1] == shown and on[:-1] == hidden, 'a route post is a message Skopax starts, so the line is its last row'
+    assert href not in ' '.join(hidden) and text not in ' '.join(hidden), 'the Enterprise hide switch removes it'
