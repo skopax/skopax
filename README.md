@@ -42,7 +42,7 @@ Status: 0.2.0 is the current release; 0.1.0 was the first stable one. Since 0.1.
 
 ## Plug-ins: connect what you already run
 
-Everything Skopax watches comes through plug-ins, and 33 of them ship in the image. Most are ready to switch on in Admin > Integrations; Spring Cloud Config is set up with `SPRING_CONFIG_URL` instead (see [Configuration](docs/configuration.md#spring-cloud-config)):
+Everything Skopax watches comes through plug-ins, and 34 of them ship in the image. Most are ready to switch on in Admin > Integrations; Spring Cloud Config is set up with `SPRING_CONFIG_URL` instead (see [Configuration](docs/configuration.md#spring-cloud-config)):
 
 <a href="docs/images/plugins-dark.png#gh-dark-mode-only"><img width="420" src="docs/images/plugins-dark.png#gh-dark-mode-only" alt="Admin, Integrations (0.1.0): all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a><a href="docs/images/plugins-light.png#gh-light-mode-only"><img width="420" src="docs/images/plugins-light.png#gh-light-mode-only" alt="Admin, Integrations (0.1.0): all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a>
 
@@ -53,7 +53,7 @@ Everything Skopax watches comes through plug-ins, and 33 of them ship in the ima
 | Web and edge | Website, Cloudflare, Varnish, Chrome UX Report, CSP reports, Safe Browsing |
 | Apps | App stores, Crashlytics |
 | Marketing and analytics | Google Ads, Google Analytics 4, Google Tag Manager, Umami, VWO |
-| Code, tickets and docs | GitLab, GitHub, SonarQube, Jira, Confluence |
+| Code, tickets and docs | GitLab, GitHub, SonarQube, Jira, Confluence, SharePoint and OneDrive |
 | Chat and AI | Slack, Microsoft Teams, Langfuse |
 | Settings | Spring Cloud Config |
 

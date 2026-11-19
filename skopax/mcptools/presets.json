@@ -74,10 +74,5 @@
     "soon": false,
     "denied": [],
     "authParams": {"access_type": "offline", "prompt": "consent"}
-  },
-  {
-    "id": "microsoft-365",
-    "name": "Microsoft SharePoint and OneDrive",
-    "soon": true
   }
 ]
