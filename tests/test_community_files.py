@@ -19,6 +19,7 @@ RESERVED_DOMAINS = re.compile(r'(?:^|\.)(?:example\.com|example\.org|example\.ne
 FIXTURE_ADDRESSES = {
     'docs/extending.md': {'name' + '@host.tld'},
     'tests/test_kube.py': {'pa55word' + '@mongo-0.svc'},
+    'tests/test_sharepoint_plugin.py': {'user' + '@contoso.sharepoint.com'},
 }
 
 
