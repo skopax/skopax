@@ -517,6 +517,9 @@ async function aPresetGroupIsFoldedWhenAllChecksAreOkAndItsHeaderSummarisesIt() 
   assert.strictEqual(h.querySelector('.pqc-gsum').textContent, 'all ok');
   assert.strictEqual(h.querySelector('.pqc-gcards'), null);
   assert.deepStrictEqual(errors, []);
+  const caretCss = fs.readFileSync(TEMPLATE, 'utf8');
+  assert.ok(/\.pqc-caret \{[^}]*width: 7px;[^}]*border-right: 2px solid[^}]*rotate\(-45deg\)/.test(caretCss), 'the fold arrow is a visible chevron pointing right');
+  assert.ok(/\.pqc-ghead\[aria-expanded="true"\] \.pqc-caret \{[^}]*rotate\(45deg\)/.test(caretCss), 'and points down when open');
   console.log('PASS a preset group is folded when all checks are ok and its header summarises it');
 }
 
@@ -536,6 +539,7 @@ async function aGroupOpensByItselfOnAFailingCheckOrAnOpenCard() {
   assert.strictEqual(head(b.doc).getAttribute('aria-expanded'), 'true');
   assert.strictEqual(head(b.doc).querySelector('.pqc-gsum').textContent, 'all ok');
   assert.strictEqual(head(b.doc).querySelector('.pqc-gcards').textContent, '1 card');
+  assert.deepStrictEqual([head(a.doc).querySelector('.pqc-gsum').classList.contains('bad'), head(b.doc).querySelector('.pqc-gsum').classList.contains('bad')], [true, false], 'only a failing check colours the summary; an open card colours only its own count');
   assert.strictEqual(head(c.doc).getAttribute('aria-expanded'), 'false');
   assert.strictEqual(head(c.doc).querySelector('.pqc-gsum').textContent, '2 not run yet');
   assert.deepStrictEqual(a.errors.concat(b.errors, c.errors), []);

@@ -290,7 +290,7 @@ function pqcSummary(items) {
   if (n.failing) parts.push(n.failing + ' failing');
   if (n.fresh) parts.push(n.fresh + ' not run yet');
   if (n.off) parts.push(n.off + ' off');
-  return {text: parts.length ? parts.join(' \u00b7 ') : 'all ok', cards: cards, bad: n.failing > 0 || cards > 0};
+  return {text: parts.length ? parts.join(' \u00b7 ') : 'all ok', cards: cards, failing: n.failing > 0, bad: n.failing > 0 || cards > 0};
 }
 function pqcWords(name) { return String(name || '').split(/\s+/).filter(Boolean); }
 function pqcPrefix(names, label) {
@@ -312,11 +312,11 @@ function pqcGroup(g) {
   btn.type = 'button';
   btn.setAttribute('aria-expanded', open ? 'true' : 'false');
   btn.setAttribute('aria-controls', id);
-  btn.appendChild(pqcEl('span', 'pqc-caret', '\u25b8')).setAttribute('aria-hidden', 'true');
+  btn.appendChild(pqcEl('span', 'pqc-caret')).setAttribute('aria-hidden', 'true');
   btn.appendChild(pqcEl('span', 'tag pqc-chip', chip));
   btn.appendChild(pqcEl('span', 'pqc-gname', gname));
   btn.appendChild(pqcEl('span', 'pqc-m pqc-gcount', pqcCount(g.items.length, 'check', 'checks')));
-  btn.appendChild(pqcEl('span', 'pqc-gsum' + (sum.bad ? ' bad' : ''), sum.text));
+  btn.appendChild(pqcEl('span', 'pqc-gsum' + (sum.failing ? ' bad' : ''), sum.text));
   if (sum.cards > 0) btn.appendChild(pqcEl('span', 'pqc-gcards', pqcCount(sum.cards, 'card', 'cards')));
   var rows = pqcEl('ul', 'pqc-grows'), skip = pqcPrefix(g.items.map(function (d) { return d.name; }), chip + ' ' + gname);
   rows.id = id;

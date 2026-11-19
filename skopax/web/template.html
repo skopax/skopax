@@ -1480,8 +1480,9 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
 .pqc-ghead { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; width: 100%; min-height: 32px; box-sizing: border-box; padding: 3px 14px; font: inherit; font-size: 0.88rem; color: var(--fg); text-align: left; background: var(--hover); border: 0; cursor: pointer; min-width: 0; }
 .pqc-ghead:hover { background: var(--active); }
 .pqc-ghead:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
-.pqc-caret { display: inline-block; font-size: 0.7rem; color: var(--muted); transition: transform .15s ease; }
-.pqc-ghead[aria-expanded="true"] .pqc-caret { transform: rotate(90deg); }
+.pqc-caret { display: inline-block; flex: none; width: 7px; height: 7px; margin: 0 4px 0 2px; border-right: 2px solid var(--fg-2); border-bottom: 2px solid var(--fg-2); transform: rotate(-45deg); transition: transform .15s ease; }
+.pqc-ghead:hover .pqc-caret { border-color: var(--fg); }
+.pqc-ghead[aria-expanded="true"] .pqc-caret { transform: rotate(45deg); }
 .pqc-gsum { font-size: 0.72rem; color: var(--muted); }
 .pqc-gsum.bad, .pqc-gcards { font-size: 0.72rem; color: var(--warn); font-weight: 600; }
 .pqc-grows { list-style: none; margin: 0; padding: 0; min-width: 0; }
