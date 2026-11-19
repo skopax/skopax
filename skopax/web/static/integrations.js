@@ -36,6 +36,165 @@ function intMoved(f, inst) {
   if (f.kind === 'secret') return !!(inst && inst.secrets && inst.secrets[f.key] && inst.secrets[f.key].set);
   return intInit(f, inst) !== (f.default || '');
 }
+var INT_SUG_SHOWN = 200;
+function intSuggests(f) { return f.suggest === true && (f.kind === 'text' || f.kind === 'url') && (f.separator === '' || f.separator === ',' || f.separator === ';' || f.separator == null); }
+function intSugSplit(v, sep) { return String(v || '').split(sep).map(function (x) { return x.trim(); }).filter(Boolean); }
+function intPicker(form, p, inst, w) {
+  var sep = w.dataset.sep || '', multi = !!sep, input = w.querySelector('.int-in'), box = w.querySelector('.int-sug-in'), pop = w.querySelector('.int-sug-pop');
+  var list = w.querySelector('.int-sug-list'), note = w.querySelector('.int-sug-note'), chipsEl = w.querySelector('.int-sug-chips'), tag = w.querySelector('.int-sug-one');
+  var st = {state: 'idle', values: [], canon: {}, note: '', seq: 0, active: -1, shown: [], quiet: false, edited: false};
+  var chosen = multi ? intSugSplit(input.value, sep) : [];
+  var known = function (v) { return st.state === 'ok' && Object.prototype.hasOwnProperty.call(st.canon, foldCase(v)); };
+  var canon = function (v) { return known(v) ? st.canon[foldCase(v)] : v; };
+  var has = function (v) { var k = foldCase(v); return chosen.some(function (c) { return foldCase(c) === k; }); };
+  var store = function () { intPut(input, chosen.join(sep + ' ')); };
+  var paintOne = function () {
+    if (multi || !tag) return;
+    tag.hidden = !(st.state === 'ok' && box.value.trim() && !known(box.value.trim()));
+  };
+  var paintChips = function () {
+    if (!multi) { paintOne(); return; }
+    chipsEl.textContent = '';
+    chosen.forEach(function (v) {
+      var li = accText('li', 'int-sug-chip'), x = accText('button', 'int-sug-x', '\u2715');
+      li.appendChild(accText('span', 'int-sug-v', v));
+      if (st.state === 'ok' && !known(v)) { li.classList.add('free'); li.appendChild(accText('span', 'int-sug-tag', 'not in the list')); }
+      x.type = 'button';
+      x.setAttribute('aria-label', 'Remove ' + v);
+      x.addEventListener('click', function () { chosen = chosen.filter(function (c) { return c !== v; }); store(); paintChips(); box.focus(); });
+      li.appendChild(x);
+      chipsEl.appendChild(li);
+    });
+  };
+  var mark = function (i) {
+    st.active = i;
+    [].forEach.call(list.children, function (o, n) { o.setAttribute('aria-selected', String(n === i)); });
+    if (i >= 0 && list.children[i]) { box.setAttribute('aria-activedescendant', list.children[i].id); list.children[i].scrollIntoView({block: 'nearest'}); } else box.removeAttribute('aria-activedescendant');
+  };
+  var paintList = function () {
+    list.textContent = '';
+    st.shown = [];
+    mark(-1);
+    if (st.state === 'loading') { note.textContent = 'Loading\u2026'; return; }
+    if (st.state === 'refused') { note.textContent = st.text; return; }
+    if (st.state !== 'ok') { note.textContent = ''; return; }
+    var q = foldCase((multi || box.dataset.typed === '1') ? box.value.trim() : '');
+    var hits = st.values.filter(function (v) { return !has(v) && foldCase(v).indexOf(q) >= 0; });
+    st.shown = hits.slice(0, INT_SUG_SHOWN);
+    st.shown.forEach(function (v, n) {
+      var o = accText('li', 'int-sug-o', v);
+      o.id = box.id + '-o' + n;
+      o.setAttribute('role', 'option');
+      o.setAttribute('aria-selected', 'false');
+      o.addEventListener('click', function () { take(v); });
+      list.appendChild(o);
+    });
+    var said = !hits.length ? 'No match' : hits.length > st.shown.length ? 'Showing ' + st.shown.length + ' of ' + hits.length + '; type to narrow the list' : '';
+    note.textContent = [said, st.note].filter(Boolean).join('. ');
+  };
+  var setOpen = function (on) {
+    pop.hidden = !on;
+    box.setAttribute('aria-expanded', String(on));
+    if (!on) mark(-1);
+  };
+  var load = async function () {
+    var seq = ++st.seq;
+    st.state = 'loading';
+    paintList();
+    try {
+      var r = await adminApi('POST', intBase(p) + '/fields/' + encodeURIComponent(w.dataset.key) + '/suggestions', {name: inst ? inst.name : undefined, values: intValues(form, 'test')});
+      if (seq !== st.seq) return;
+      st.values = intList(r && r.values).filter(function (v) { return typeof v === 'string'; });
+      st.canon = {};
+      st.values.forEach(function (v) { var k = foldCase(v); if (!Object.prototype.hasOwnProperty.call(st.canon, k)) st.canon[k] = v; });
+      st.note = r && typeof r.note === 'string' ? r.note : '';
+      st.state = 'ok';
+    } catch (e) {
+      if (seq !== st.seq) return;
+      st.state = 'refused';
+      st.text = e && e.detail ? String(e.detail) : 'The list could not be loaded';
+    }
+    paintChips();
+    paintList();
+  };
+  var open = function () {
+    setOpen(true);
+    if (st.state === 'idle' || st.state === 'refused') load(); else paintList();
+  };
+  var putOne = function (v) {
+    box.value = v;
+    st.quiet = true;
+    intPut(input, v);
+    st.quiet = false;
+    st.edited = false;
+  };
+  var take = function (v) {
+    v = canon(String(v).trim());
+    if (!v) return;
+    if (multi) {
+      if (!has(v)) chosen.push(v);
+      box.value = '';
+      store();
+      paintChips();
+    } else {
+      putOne(v);
+      delete box.dataset.typed;
+      paintOne();
+    }
+    paintList();
+    if (!multi) setOpen(false);
+  };
+  var commit = function () {
+    if (!multi) {
+      if (!st.edited) return;
+      var one = box.value.trim();
+      if (one && canon(one) !== one) putOne(canon(one));
+      return;
+    }
+    var parts = intSugSplit(box.value, sep).map(canon);
+    box.value = '';
+    var added = false;
+    parts.forEach(function (v) { if (!has(v)) { chosen.push(v); added = true; } });
+    if (added) { store(); paintChips(); }
+  };
+  w._sugFlush = commit;
+  pop.addEventListener('mousedown', function (e) { e.preventDefault(); });
+  box.addEventListener('focus', open);
+  box.addEventListener('blur', function () { delete box.dataset.typed; setOpen(false); });
+  box.addEventListener('input', function () {
+    if (st.quiet) return;
+    st.edited = true;
+    if (!multi) { box.dataset.typed = '1'; paintOne(); }
+    if (pop.hidden) open(); else paintList();
+  });
+  box.addEventListener('keydown', function (e) {
+    var n = st.shown.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (pop.hidden) { open(); return; }
+      if (n) mark(e.key === 'ArrowDown' ? (st.active + 1) % n : (st.active - 1 + n) % n);
+    } else if (e.key === 'Enter') {
+      if (!pop.hidden && st.active >= 0 && st.shown[st.active] != null) { e.preventDefault(); take(st.shown[st.active]); }
+      else if (multi) { e.preventDefault(); commit(); paintList(); }
+    } else if (e.key === 'Escape') {
+      if (pop.hidden) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+    } else if (e.key === 'Backspace' && multi && box.value === '' && chosen.length) {
+      e.preventDefault();
+      chosen.pop();
+      store();
+      paintChips();
+      paintList();
+    }
+  });
+  form.addEventListener('input', function (e) { if (!w.contains(e.target) && st.state !== 'loading') st.state = 'idle'; });
+  paintChips();
+}
+function intFlushPickers(form) {
+  form.querySelectorAll('.int-field').forEach(function (w) { if (typeof w._sugFlush === 'function') w._sugFlush(); });
+}
 function intFieldHtml(p, f, inst) {
   var id = 'int-' + p.id + '-' + (inst ? inst.name : 'new') + '-' + f.key;
   var init = intInit(f, inst);
@@ -74,6 +233,12 @@ function intFieldHtml(p, f, inst) {
     }
   } else if (f.kind === 'int') {
     input = '<input id="' + esc(id) + '" class="int-in" type="number" inputmode="numeric" step="1"' + (f.low != null ? ' min="' + esc(f.low) + '"' : '') + (f.high != null ? ' max="' + esc(f.high) + '"' : '') + ' value="' + esc(init) + '">';
+  } else if (intSuggests(f) && !owned) {
+    extra = ' data-sep="' + esc(f.separator || '') + '"';
+    var combo = ' role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="' + esc(id) + '-list" autocomplete="off" spellcheck="false"';
+    input = '<div class="int-sug">' + (f.separator ? '<input type="hidden" class="int-in" value="' + esc(init) + '"><ul class="int-sug-chips" aria-label="' + esc(f.label) + '"></ul>' +
+      '<input id="' + esc(id) + '" class="int-sug-in" type="text" maxlength="1000"' + combo + '>' : '<input id="' + esc(id) + '" class="int-in int-sug-in" type="text" maxlength="1000" value="' + esc(init) + '"' + combo + '><span class="int-sug-tag int-sug-one" hidden>not in the list</span>') +
+      '<div class="int-sug-pop" hidden><ul id="' + esc(id) + '-list" class="int-sug-list" role="listbox" aria-label="' + esc(f.label) + '"></ul><p class="int-sug-note" aria-live="polite"></p></div></div>';
   } else {
     input = '<input id="' + esc(id) + '" class="int-in" type="text" maxlength="1000" value="' + esc(init) + '"' + (owned ? ' readonly' : '') + '>';
   }
@@ -967,6 +1132,7 @@ function intForm(slot, p, inst) {
     });
   });
   intWidgets(form);
+  form.querySelectorAll('.int-sug').forEach(function (b) { intPicker(form, p, inst, b.closest('.int-field')); });
   var cancel = form.querySelector('.int-cancel');
   if (cancel) cancel.addEventListener('click', function () {
     if (!intList(p.instances).length) { intClose(true); return; }
@@ -984,6 +1150,7 @@ function intForm(slot, p, inst) {
     result.className = 'int-result';
     result.hidden = false;
     try {
+      intFlushPickers(form);
       var off = intOffChecks(form), sent = {name: inst ? inst.name : undefined, values: intValues(form, 'test')};
       if (!intSameSet(off, inst ? intStoredOff(p, inst) : [])) sent.offChecks = off;
       var r = await adminApi('POST', intBase(p) + '/test', sent);
@@ -1078,6 +1245,7 @@ async function intSave(form, p, inst, turnOn) {
   var msg = form.querySelector('.int-form-msg'), body = {}, mcp = intMcpBoxOf(p);
   if (mcp && !intMcpClaim(mcp, msg)) return;
   form.querySelectorAll('.int-field-msg').forEach(function (m) { intSay(m, '', false); });
+  intFlushPickers(form);
   var values = intValues(form, inst ? 'edit' : 'create'), off = intOffChecks(form), pressed = document.activeElement;
   intHold(pressed);
   intBusy(form, true);

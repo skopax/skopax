@@ -8,6 +8,7 @@ import re
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from types import MappingProxyType
 from urllib.parse import urlsplit
 
 import regex
@@ -15,14 +16,16 @@ import regex
 from skopax import engine, remote, tags
 from skopax.agent import AgentError, RemoteAgent, declared, http_link, rev_of
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
-from skopax.contract import KNOWLEDGE_INLINE_TOTAL, KNOWLEDGE_OWNER_TOTAL, AutoResolve, Context, Field, InstanceInfo, Knowledge, Locale, OrgPack, Panel, Peer, Plugin, ReadError, RunState, SourceDown, TestResult
+from skopax.contract import (KNOWLEDGE_INLINE_TOTAL, KNOWLEDGE_OWNER_TOTAL, AutoResolve, Context, Field, InstanceInfo, Knowledge, Locale, OrgPack, Panel, Peer, Plugin, ReadError, Refused, RunState,
+                             SourceDown, SuggestContext, Suggestions, TestResult)
 from skopax.engine import parse_iso
 from skopax.deployhook import DeployHooks
-from skopax.errkind import kind
+from skopax.errkind import Authored, kind
+from skopax.kit.connection import failure
 from skopax.kube import Kube
 from skopax.messages import LANG_TAG, msg
 from skopax.migrations import MigrationFailed
-from skopax.redact import SlowRules
+from skopax.redact import SlowRules, redact_text
 from skopax.instances import (ADMIN, AGENT_PLUGIN, REFRESH_S, Instance, InstanceMissing, Instances, InvalidInstance, PluginState, address_owners, agent_fields, checks_off, effective_fields,
                               hub_problem, merged_values, moved_addresses, validate, visible)
 from skopax.registry import Registry, field_view, problem
@@ -32,9 +35,73 @@ from skopax.remote import Transport
 
 log = logging.getLogger('skopax.runtime')
 
+
+class SuggestFailed(Exception):
+    def __init__(self, status: int, text: str):
+        super().__init__(text)
+        self.status = status
+        self.text = text
+
+
+def scrubbed(text: str, secrets: Iterable[str]) -> str:
+    held = [x for x in secrets if x]
+    for secret in held:
+        text = text.replace(secret, '***')
+    text = ''.join(ch for ch in text if ch.isprintable())
+    for secret in held:
+        shown = ''.join(ch for ch in secret if ch.isprintable())
+        if shown:
+            text = text.replace(shown, '***')
+    return text
+
+
+def refused_here(e: BaseException) -> bool:
+    return isinstance(e, Refused) or (isinstance(e, ReadError) and 400 <= e.status < 500)
+
+
+def suggest_failure(e: BaseException) -> str:
+    if not isinstance(e, Exception):
+        return msg('integrations.suggest_failed', error=kind(e))
+    if isinstance(e, Authored) and not isinstance(e, SourceDown):
+        return redact_text(e.text)
+    said = failure(e)
+    return msg('integrations.suggest_failed', error=kind(e)) if said == msg('connection.failed', error=kind(e)) else said
+
+
+def answered(raw: object, separator: str, secrets: Iterable[str]) -> dict:
+    held = list(secrets)
+    if isinstance(raw, Suggestions):
+        note = scrubbed(raw.note, held)[:SUGGEST_NOTE_MAX] if isinstance(raw.note, str) else ''
+        return {'values': picked(raw.values, separator, held), **({'note': note} if note.strip() else {})}
+    return {'values': picked(raw, separator, held)}
+
+
+def picked(raw: object, separator: str, secrets: Iterable[str]) -> list[str]:
+    if not isinstance(raw, (list, tuple)):
+        raise SuggestFailed(502, msg('integrations.suggest_bad'))
+    held = [x for x in secrets if len(x) >= SUGGEST_SECRET_MIN]
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        value = item.strip()
+        if not value or len(value) > SUGGEST_VALUE_MAX or not value.isprintable() or value in seen or (separator and separator in value) or any(x in value for x in held):
+            continue
+        seen.add(value)
+        out.append(value)
+        if len(out) == SUGGEST_MAX:
+            break
+    return out
+
 ORG_KEYS = ('link_hosts', 'email_domains', 'ticket_projects')
 ASSET_MAX_BYTES = 2 * 1024 * 1024
 TEST_SUMMARY_MAX = 300
+SUGGEST_MAX = 2000
+SUGGEST_VALUE_MAX = 200
+SUGGEST_SECRET_MIN = 4
+SUGGEST_DETAIL_MAX = TEST_SUMMARY_MAX
+SUGGEST_NOTE_MAX = 200
 CLIENT_RETRY_S = 60
 READ_TIMEOUT_MIN = 1
 READ_TIMEOUT_MAX = 75
@@ -285,6 +352,7 @@ class Runtime:
         self._warned: set[tuple] = set()
         self._pushed: dict[str, tuple[tuple, str]] = {}
         self._tests: dict[tuple[str, str | None], threading.Thread] = {}
+        self._suggesting: dict[tuple[str, str | None, str], threading.Thread] = {}
         self._probing: dict[tuple[str, str], tuple[dict, threading.Event]] = {}
 
     def refresh(self) -> None:
@@ -440,11 +508,7 @@ class Runtime:
             return []
         return [i for i in self.instances.all(plugin_id) if i.enabled and not i.problem]
 
-    def connection_test(self, plugin: Plugin, name: str | None, given: Mapping[str, str | None], timeout: float, now: float, reused: Callable[[], None] | None = None,
-                        off_checks: Iterable[str] | None = None, tester: Callable[[Context], TestResult] | None = None) -> dict:
-        run = tester or plugin.test
-        if run is None:
-            return {'ok': False, 'summary': msg('integrations.test_none'), 'ms': 0}
+    def _resolved(self, plugin: Plugin, name: str | None, given: Mapping[str, str | None], picker: bool = False) -> tuple:
         stored = self.instances.get(plugin.id, name) if name else None
         if name and stored is None:
             raise InstanceMissing(msg('instances.unknown', name=name))
@@ -465,7 +529,17 @@ class Runtime:
             if key not in kept and key in fields and given.get(key) is None and visible(fields[key], values, fields):
                 if key in stored.owned:
                     raise InvalidInstance(key, msg('integrations.reenter_owned', field=fields[key].label, source=stored.source))
+                if picker:
+                    raise InvalidInstance(key, msg('integrations.suggest_reenter', field=fields[key].label))
                 raise InvalidInstance(key, msg('integrations.reenter' if plugin.id in addressed or owner.get(key, plugin.id) in addressed else 'integrations.reenter_trust_test', field=fields[key].label))
+        return stored, every, fields, values, kept, extra
+
+    def connection_test(self, plugin: Plugin, name: str | None, given: Mapping[str, str | None], timeout: float, now: float, reused: Callable[[], None] | None = None,
+                        off_checks: Iterable[str] | None = None, tester: Callable[[Context], TestResult] | None = None) -> dict:
+        run = tester or plugin.test
+        if run is None:
+            return {'ok': False, 'summary': msg('integrations.test_none'), 'ms': 0}
+        stored, every, fields, values, kept, extra = self._resolved(plugin, name, given)
         clean = validate(plugin, values, extra=extra)
         if plugin.id == AGENT_PLUGIN and kept and stored is not None:
             found = hub_problem(stored, clean.get('via'), self.instances.get(AGENT_PLUGIN, clean.get('via') or ''))
@@ -510,16 +584,50 @@ class Runtime:
         found = box.get('value')
         if not isinstance(found, TestResult) or not isinstance(found.ok, bool) or not isinstance(found.summary, str):
             return {'ok': False, 'summary': msg('integrations.test_bad'), 'ms': elapsed}
-        text = found.summary
-        for secret in secrets.values():
-            text = text.replace(secret, '***')
-        text = ''.join(ch for ch in text if ch.isprintable())
-        for secret in secrets.values():
-            shown = ''.join(ch for ch in secret if ch.isprintable())
-            if shown:
-                text = text.replace(shown, '***')
+        text = scrubbed(found.summary, secrets.values())
         ms = found.ms if isinstance(found.ms, int) and not isinstance(found.ms, bool) and found.ms >= 0 else elapsed
         return {'ok': found.ok, 'summary': text[:TEST_SUMMARY_MAX], 'ms': ms}
+
+    def suggestions(self, plugin: Plugin, key: str, name: str | None, given: Mapping[str, str | None], timeout: float) -> dict:
+        f = next((x for x in effective_fields(plugin, self.instances.extra_fields(plugin.id)) if x.key == key), None)
+        if f is None or f.suggest is None:
+            raise SuggestFailed(404, msg('integrations.suggest_none', field=key))
+        stored, every, fields, values, _, extra = self._resolved(plugin, name, given, picker=True)
+        clean = validate(plugin, values, partial=True, extra=extra)
+        secrets = {k: v for k, v in clean.items() if fields[k].kind == 'secret'}
+        plain = {k: v for k, v in clean.items() if fields[k].kind != 'secret'}
+        temp = Instance(plugin.id, name or '-', bool(stored and stored.primary), True, plain, secrets, ADMIN, frozenset(), None, tuple(x.key for x in every if x.kind == 'secret'),
+                        stored.off_checks if stored is not None else frozenset())
+        asked = SuggestContext(MappingProxyType(dict(clean)), self.transport_for(plugin, temp.info()), time.monotonic() + timeout)
+        box: dict = {}
+        done = threading.Event()
+        slot = (plugin.id, name, key)
+
+        def go() -> None:
+            try:
+                box['value'] = f.suggest(asked)
+            except BaseException as e:
+                box['error'] = e
+            finally:
+                with self._guard:
+                    if self._suggesting.get(slot) is threading.current_thread():
+                        del self._suggesting[slot]
+                done.set()
+
+        with self._guard:
+            running = self._suggesting.get(slot)
+            if running is not None and running.is_alive():
+                raise SuggestFailed(409, msg('integrations.suggest_busy'))
+            worker = self._suggesting[slot] = threading.Thread(target=go, name=f'suggest-{plugin.id}', daemon=True)
+        worker.start()
+        if not done.wait(timeout):
+            raise SuggestFailed(502, msg('integrations.suggest_timeout', seconds=f'{timeout:g}'))
+        if 'error' in box:
+            e = box['error']
+            if not refused_here(e):
+                log.warning('%s', msg('integrations.suggest_failed_log', plugin=plugin.id, field=key, error=kind(e)))
+            raise SuggestFailed(400 if refused_here(e) else 502, scrubbed(suggest_failure(e), secrets.values())[:SUGGEST_DETAIL_MAX])
+        return answered(box.get('value'), f.separator, secrets.values())
 
     def serving(self) -> list[tuple[Plugin, list[Instance]]]:
         out = []

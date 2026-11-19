@@ -48,6 +48,7 @@ WRITES = {
     ('POST', '/api/admin/mcp-tools/instances/{name}/oauth/start'): 'admin',
     ('POST', '/api/admin/mcp-tools/instances/{name}/tools/refresh'): 'admin',
     ('POST', '/api/admin/plugins/{plugin_id}/instances'): 'admin',
+    ('POST', '/api/admin/plugins/{plugin_id}/fields/{key}/suggestions'): 'admin',
     ('POST', '/api/admin/plugins/{plugin_id}/test'): 'admin',
     ('POST', '/api/admin/sso/test'): 'admin',
     ('POST', '/api/admin/tokens'): 'admin',

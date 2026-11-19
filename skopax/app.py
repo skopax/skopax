@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Annotated, Callable, Mapping
 from urllib.parse import parse_qs, quote, urlsplit
 
-from fastapi import BackgroundTasks, Body, Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, Header, HTTPException, Path as PathParam, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -65,7 +65,7 @@ from skopax.chatui import CHAT_ID
 from skopax.chatui.text import set_texts as set_chat_texts
 from skopax.assign import Assigner, Invalid as AssignInvalid, people_of, slug
 from skopax.jiralinks import ticket_projects
-from skopax.models import email_allowed, NoticesReadIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn
+from skopax.models import email_allowed, NoticesReadIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, FieldSuggestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn
 from skopax.selfreview import BY as SELF_REVIEW_BY, SelfReview, self_service, gather as review_facts, review_slot_offset
 from skopax.slackhealth import OFFSET as SLACK_POSTS_OFFSET, PASS as SLACK_POSTS, PERIOD as SLACK_POSTS_PERIOD, slack_posts_pass
 from skopax.jiraaccess import PASS as JIRA_ACCESS, access_pass as jira_access_pass
@@ -99,7 +99,7 @@ from skopax.instances import InstanceExists, InstanceMissing, Instances, Invalid
 from skopax.registry import Registry, card_types_view, describe, locale_drops
 from skopax.plugai import PluginAi
 from skopax.plugintools import PluginTools
-from skopax.runtime import Runtime
+from skopax.runtime import Runtime, SuggestFailed
 from skopax.monitor import rules_of as monitor_rules
 from skopax.probe import CERT_RULES, Probe, cert_pass, public as public_reach, summary as probe_summary
 from skopax import promqlroutes
@@ -182,6 +182,7 @@ PAGE_ASK_SOURCES = ('page', 'api')
 ACCESS_KIND = 'access'
 ADMIN_KIND = 'admin'
 TEST_TIMEOUT_S = 15
+SUGGEST_TIMEOUT_S = 10
 CHECK_MS_MAX_S = 1800
 INVESTIGATOR_WORK = ('ask', 'dive', 'assess')
 
@@ -3144,6 +3145,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except Exception as e:
             log.warning('%s', msg('integrations.test_failed_log', plugin=plugin_id, error=kind(e)))
             return {'ok': False, 'summary': msg('integrations.test_failed', error=kind(e)), 'ms': 0}
+
+    @app.post('/api/admin/plugins/{plugin_id}/fields/{key}/suggestions')
+    def post_admin_field_suggestions(plugin_id: str, key: Annotated[str, PathParam(max_length=64)], body: FieldSuggestIn, by: Annotated[str, Depends(require_admin)]) -> dict:
+        plugin = plugin_usable(plugin_id)
+        try:
+            return runtime.suggestions(plugin, key, body.name, body.values, SUGGEST_TIMEOUT_S)
+        except SuggestFailed as e:
+            raise HTTPException(e.status, e.text) from None
+        except InvalidInstance as e:
+            raise FieldRefused(e.field, e.args[0]) from None
+        except InstanceMissing:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, msg('instances.unknown', name=body.name)) from None
 
     mcptools_routes.mount(app, mcptools_deps, require_admin)
     promqlroutes.mount(app, custom_checks, require_admin, lambda by, text: store.add_activity(ADMIN_KIND, by, text), lambda: scheduler.nudge(CUSTOM_CHECKS))
