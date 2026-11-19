@@ -231,7 +231,7 @@ async function theCardPageFollowsTheAttributionRule() {
   assert.strictEqual(slot.getAttribute('href'), null);
   slotted.w.close();
   assert.deepStrictEqual(missing.errors, []);
-  assert.strictEqual(missing.doc.getElementById('attribution').textContent, 'Skopax 0.2.1 \u00b7 skopax.io');
+  assert.strictEqual(missing.doc.getElementById('attribution').textContent, 'Skopax 0.2.2 \u00b7 skopax.io');
   assert.strictEqual(missing.doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
   hidden.w.close();
   missing.w.close();

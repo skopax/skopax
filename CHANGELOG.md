@@ -2,6 +2,29 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.2.2 (2026-11-19)
+
+Plug-in fields you pick from a list, starting with Cloudflare, names that follow single sign-on and can be edited, Access & sign-in as tabs, and compact custom checks.
+
+**Upgrade notes:**
+
+- At their next SSO sign-in, people whose name is still the setup default ("Admin") or their email address get the name from the identity provider. A name someone chose is kept.
+- Accounts that already sign in with SSO keep following the identity provider's name until someone edits it.
+
+New:
+
+- Plug-in fields can offer their values as a list: the field shows chips and a searchable list, free text still works and is marked "not in the list". Cloudflare lists the components of its public status page and the zones the token can see. Plug-ins declare it with `Field.suggest` and `Field.separator`; see docs/extending.md.
+- Admins rename people in Admin > Access & sign-in, and everyone can rename themselves from the user menu.
+
+Changed:
+
+- Names come from the identity provider at sign-in (name, else given and family name) unless someone chose one. Control and bidirectional characters are removed from names.
+- Admin > Access & sign-in shows People, Single sign-on, API tokens and MCP sign-in as tabs, one at a time, kept in the address.
+- Custom checks: a preset set folds into one header line with a summary such as "2 failing · 1 not run yet" and opens by itself when a check fails or has an open card. Rows are shorter and drop the repeated preset prefix.
+- Admin > Integrations: a plug-in without checks no longer says "No checks", and a tile with several instances reads "N instances".
+- The "How to set it up" box has a chevron that shows it opens.
+- The attribution line is centred on the sign-in and setup pages.
+
 ## 0.2.1 (2026-11-19)
 
 Setup guides for every plug-in, a SharePoint and OneDrive knowledge plug-in (preview), a Company knowledge group in Integrations, a daily check for new versions, and the "powered by" line on Slack and Teams posts.
