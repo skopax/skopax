@@ -9,7 +9,7 @@ dependencies = [
     "pydantic==2.14.2",
     "PyJWT[crypto]==2.15.1",
     "cryptography==50.0.2",
-    "anthropic==2.4.0",
+    "anthropic==2.5.0",
     "slack_sdk==3.46.0",
     "websockets==17.4",
     "chainlit==2.12.0",
