@@ -131,10 +131,11 @@ jobs:
           password: ${{ github.token }}
       - name: Build the example layer on the pushed image
         run: docker build --build-arg BASE_IMAGE="$IMAGE" --build-arg SKOPAX_VERSION="$SKOPAX_VERSION" -t skopax-hello:smoke examples/hello-plugin
-      - name: Build the Couchbase and managed Redis example layers on top
+      - name: Build the Couchbase, managed Redis and batch jobs example layers on top
         run: |
           docker build --build-arg BASE_IMAGE=skopax-hello --build-arg SKOPAX_VERSION=smoke -t skopax-couchbase:smoke examples/couchbase-plugin
-          docker build --build-arg BASE_IMAGE=skopax-couchbase --build-arg SKOPAX_VERSION=smoke -t skopax-examples:smoke examples/managed-redis-plugin
+          docker build --build-arg BASE_IMAGE=skopax-couchbase --build-arg SKOPAX_VERSION=smoke -t skopax-managed-redis:smoke examples/managed-redis-plugin
+          docker build --build-arg BASE_IMAGE=skopax-managed-redis --build-arg SKOPAX_VERSION=smoke -t skopax-examples:smoke examples/batch-jobs-plugin
       - name: Wait for Mongo
         env:
           MONGO: ${{ job.services.mongo.id }}
@@ -168,11 +169,11 @@ jobs:
           done
           if [ "$up" != 1 ]; then echo "the app never came up"; exit 1; fi
           curl --max-time 10 -fsS -H "Authorization: Bearer $SKOPAX_TOKEN" http://127.0.0.1:8080/api/admin/plugins \
-            | python3 -c 'import json, sys; p = {x["id"]: x for x in json.load(sys.stdin)["plugins"]}; h = p["hello"]; print(h["id"], h.get("state"), h.get("reason")); assert h.get("state") == "ok", h.get("state"); assert all(p[i].get("state") == "ok" for i in ("couchbase", "managed-redis")), {i: p[i].get("state") for i in ("couchbase", "managed-redis")}'
+            | python3 -c 'import json, sys; p = {x["id"]: x for x in json.load(sys.stdin)["plugins"]}; h = p["hello"]; print(h["id"], h.get("state"), h.get("reason")); assert h.get("state") == "ok", h.get("state"); assert all(p[i].get("state") == "ok" for i in ("couchbase", "managed-redis", "batch-jobs")), {i: p[i].get("state") for i in ("couchbase", "managed-redis", "batch-jobs")}'
           icon="$(curl --max-time 10 -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/plugins/hello/icon.svg)"
           echo "icon $icon"
           [ "$icon" = 200 ]
-          for plugin in couchbase managed-redis; do
+          for plugin in couchbase managed-redis batch-jobs; do
             icon="$(curl --max-time 10 -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080/plugins/$plugin/icon.svg")"
             echo "$plugin icon $icon"
             [ "$icon" = 200 ]

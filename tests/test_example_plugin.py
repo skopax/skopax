@@ -36,7 +36,9 @@ SECRET = 's3cr3t-key'
 URL = f'https://shop.example.com/health?key={SECRET}'
 SHOWN = 'https://shop.example.com/health'
 KEY = 'hello|shop.example.com'
-FULLER = {'couchbase': ('couchbase-plugin', 'skopax_couchbase', ('icon.svg', 'panel.js')), 'managed-redis': ('managed-redis-plugin', 'skopax_managed_redis', ('icon.svg',))}
+FULLER = {'couchbase': ('couchbase-plugin', 'skopax_couchbase', ('icon.svg', 'panel.js')), 'managed-redis': ('managed-redis-plugin', 'skopax_managed_redis', ('icon.svg',)),
+          'batch-jobs': ('batch-jobs-plugin', 'skopax_batch_jobs', ('icon.svg', 'panel.js'))}
+TOOLS = {'couchbase': 1, 'managed-redis': 1, 'batch-jobs': 0}
 DISCOVER = ('import json, sys; from pathlib import Path; sys.path[:0] = [sys.argv[2], sys.argv[1]]; from skopax.registry import Registry; '
             'x = Registry.load({}, builtin=()).get(sys.argv[3] if len(sys.argv) > 3 else "hello"); '
             'print(json.dumps(None if x is None else {"id": x.id, "origin": x.origin, "state": x.state, "reason": x.reason, '
@@ -121,7 +123,8 @@ def test_the_example_check_opens_a_card_on_a_non_200(store):
     assert pages.urls() == [URL, URL]
 
 
-@pytest.mark.parametrize('script', [EXAMPLE / 'skopax_hello' / 'panel.js', ROOT / 'examples' / 'couchbase-plugin' / 'skopax_couchbase' / 'panel.js'], ids=['hello', 'couchbase'])
+@pytest.mark.parametrize('script', [EXAMPLE / 'skopax_hello' / 'panel.js', ROOT / 'examples' / 'couchbase-plugin' / 'skopax_couchbase' / 'panel.js',
+                                    ROOT / 'examples' / 'batch-jobs-plugin' / 'skopax_batch_jobs' / 'panel.js'], ids=['hello', 'couchbase', 'batch-jobs'])
 def test_the_example_panel_counts_open_cards_like_the_built_ins(script):
     # given
     pattern = re.compile(r"a\.status === 'open'[^;]*;")
@@ -188,14 +191,14 @@ def test_a_fuller_example_follows_the_plugin_rules(plugin_id):
     assert 'README.md' in articles and {name: hits for name, hits in articles.items() if hits} == {}
     assert (loaded.id, loaded.state, loaded.reason) == (plugin_id, 'ok', None)
     assert panels == [None] * len(plugin.panels) and all(p.group in NAV_GROUPS and (example / package / p.script).is_file() for p in plugin.panels)
-    assert tools == [None] and (example / package / plugin.icon).is_file()
+    assert tools == [None] * TOOLS[plugin_id] and (example / package / plugin.icon).is_file()
     assert (plugin.licence, plugin.version, plugin.max_instances) == ('Apache-2.0', '0.1.0', None)
     assert {t.sig for t in plugin.card_types}.isdisjoint(CORE_SIGS)
 
 
 def test_the_fuller_examples_load_beside_the_built_in_plugins_without_a_clash():
     # when
-    registry = Registry.load({'SKOPAX_PLUGINS': 'skopax_couchbase, skopax_managed_redis'}, entry_points=False, core_tools=CORE_TOOLS, core_knowledge=core_knowledge_ids(),
+    registry = Registry.load({'SKOPAX_PLUGINS': 'skopax_couchbase, skopax_managed_redis, skopax_batch_jobs'}, entry_points=False, core_tools=CORE_TOOLS, core_knowledge=core_knowledge_ids(),
                              core_settings=core_setting_ids())
 
     # then
@@ -221,6 +224,9 @@ def test_a_second_instance_of_a_fuller_example_keeps_its_own_keys_and_clears_onl
     if plugin_id == 'couchbase':
         data = tests.put(tests.node_put(tests.healthy(), 'uptime', 0, tests.N1, 60), 'queue', 0, 50)
         first, second = tests.Ctx(tests.FakeProm(data), name='orders'), tests.Ctx(tests.FakeProm(data), name='search')
+    elif plugin_id == 'batch-jobs':
+        data = tests.failing(tests.slow(tests.healthy(), tests.EXPORT, 200), tests.SEARCH, 4, 4)
+        first, second = tests.Ctx(tests.FakeProm(data), name='shop-jobs'), tests.Ctx(tests.FakeProm(data), name='shop-jobs-eu')
     else:
         data = tests.put(tests.put(tests.healthy(), 'evicted', tests.MAIN, 5), 'uptime', tests.MAIN, 60)
         first, second = tests.Ctx(tests.FakeGrafana(data=data), name='cloud'), tests.Ctx(tests.FakeGrafana(data=data), name='backup')

@@ -120,13 +120,14 @@ curl -fsS -H "Authorization: Bearer <the SKOPAX_TOKEN value>" http://localhost:8
 
 ## More examples
 
-Hello is small on purpose. The two other examples in `examples/` are complete plug-ins for real services, each with its own README that walks through the parts of the contract it adds, and with tests that run against a fake transport. Read them in this order:
+Hello is small on purpose. The three other examples in `examples/` are complete plug-ins for real services, each with its own README that walks through the parts of the contract it adds, and with tests that run against a fake transport. Read them in this order:
 
 | Example | Read it for |
 | --- | --- |
 | [`examples/hello-plugin`](../examples/hello-plugin/README.md) | The smallest whole plug-in: one field, one check, Test connection, one page and a layer image. |
 | [`examples/couchbase-plugin`](../examples/couchbase-plugin/README.md) | A check that reads through a peer Prometheus instance: one instance per cluster, a selector field it checks itself, 1-day and 7-day baselines with `kit.promql`, a rule set, card types, card links, the access-refused card, a page in the Observe group and a read-only tool on the last pass. |
 | [`examples/managed-redis-plugin`](../examples/managed-redis-plugin/README.md) | A check that reads Prometheus series through a Grafana datasource, for a service you cannot reach directly: metric names as fields with `redis_exporter` defaults, `offset` baselines, the access card naming the missing Grafana right, and a live tool with `scan=True`. |
+| [`examples/batch-jobs-plugin`](../examples/batch-jobs-plugin/README.md) | A check that judges scheduled jobs by their own history: metric and label names as fields, 16 queries in parallel inside one time budget, day and week windows shifted for schedule drift, failing, missed and slow rules with a roll-up card per group, a knowledge entry for the investigator and a page with one row per job. |
 
 They build, test and ship like Hello: `.venv/bin/python -m pytest -q -n 0 examples/<name>/tests`, and a layer image from each folder's `Dockerfile`, which differs from Hello's only in the package it copies.
 

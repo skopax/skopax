@@ -25,7 +25,7 @@ LINK_TREES = ('github.com/skopax', 'ghcr.io/skopax') + VENDOR_REPOS
 GENERATED_SECRET = '"$(openssl rand -hex 32)"'
 SECRET_NAME = r'[A-Z_]*(?:SECRET|TOKEN|PASSWORD|KEY)[A-Z_]*'
 DOCS = ('README.md', 'setup.md', 'configuration.md', 'sign-in.md', 'plugins.md', 'custom-checks.md', 'extending.md', 'operations.md', 'development.md')
-EXAMPLES = ('hello-plugin', 'couchbase-plugin', 'managed-redis-plugin')
+EXAMPLES = ('hello-plugin', 'couchbase-plugin', 'managed-redis-plugin', 'batch-jobs-plugin')
 COMMUNITY = ('CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'TRADEMARKS.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'CHANGELOG.md', *(f'examples/{name}/README.md' for name in EXAMPLES))
 COMMUNITY_HOSTS = ('modeltrademarkguidelines.org', 'www.modeltrademarkguidelines.org', 'creativecommons.org', 'www.contributor-covenant.org', 'contributor-covenant.org', 'developercertificate.org')
 COMMUNITY_TREES = ('github.com/mozilla',)
@@ -644,7 +644,7 @@ def test_the_development_page_matches_the_workflows_the_dockerfile_and_the_gitle
     assert writers == ['build', 'promote'] and f'`packages: write` in {" and ".join(f"`{job}`" for job in writers)} only' in flat
     assert 'as environment secrets of `release`, not repository secrets' in flat
     assert '`/var/lib/dpkg/status.d/`' in flat and 'Syft' in flat
-    assert 'the `SKOPAX_VERSION` defaults in `Dockerfile` and in the example Dockerfiles (`examples/hello-plugin/Dockerfile`, `examples/couchbase-plugin/Dockerfile` and `examples/managed-redis-plugin/Dockerfile`)' in flat
+    assert 'the `SKOPAX_VERSION` defaults in `Dockerfile` and in the example Dockerfiles (`examples/hello-plugin/Dockerfile`, `examples/couchbase-plugin/Dockerfile`, `examples/managed-redis-plugin/Dockerfile` and `examples/batch-jobs-plugin/Dockerfile`)' in flat
     tests_runs = [step['run'] for step in ci['jobs']['tests']['steps'] if 'run' in step and not step['run'].startswith('uv python install')]
     tests_bullet = flat[flat.index('- `tests`:'):flat.index('- `pages`:')]
     assert 'uv lock --check' in tests_runs and [run for run in tests_runs if f'`{run}`' in tests_bullet] == tests_runs

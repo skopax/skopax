@@ -60,7 +60,7 @@ Everything Skopax watches comes through plug-ins, and 34 of them ship in the ima
 - **Any MCP server.** Connect an outside MCP server and pick which of its tools the investigator may use. The catalog has ready entries for Atlassian, Notion, GitHub and Google Drive.
 - **Several of each.** Every plug-in can have more than one instance, such as two Prometheus servers or a Kubernetes cluster per region, each with its own checks and thresholds.
 - **Shape it without code.** Admin switches whole features on and off, turns single checks on or off per instance, sets their thresholds, and changes branding and language. Settings can also come from a file or a settings source, so an install can be configured as code.
-- **Write your own.** A plug-in is a small Python package against a documented contract: checks that make cards, tools for the investigator, settings and an Admin form, all from one definition. Ship it in your own image built `FROM` Skopax. Start from `examples/hello-plugin`, or from the fuller `examples/couchbase-plugin` and `examples/managed-redis-plugin`. See [Integrations](docs/plugins.md) and [Extending Skopax](docs/extending.md).
+- **Write your own.** A plug-in is a small Python package against a documented contract: checks that make cards, tools for the investigator, settings and an Admin form, all from one definition. Ship it in your own image built `FROM` Skopax. Start from `examples/hello-plugin`, or from the fuller `examples/couchbase-plugin`, `examples/managed-redis-plugin` and `examples/batch-jobs-plugin`. See [Integrations](docs/plugins.md) and [Extending Skopax](docs/extending.md).
 
 ## AI costs: see them, tune them, cap them
 
@@ -157,7 +157,7 @@ The full guide is in [docs/](docs/README.md):
 - [Sign-in](docs/sign-in.md): single sign-on, roles, local accounts and the MCP server.
 - [Integrations](docs/plugins.md): the plug-ins that ship with Skopax, their instances and outside MCP servers.
 - [Custom checks](docs/custom-checks.md): PromQL checks written in Admin, without a plug-in, and the presets for Couchbase and managed Redis.
-- [Extending Skopax](docs/extending.md): writing a plug-in, starting from the example in `examples/hello-plugin`, with two fuller examples next to it: `examples/couchbase-plugin` and `examples/managed-redis-plugin`.
+- [Extending Skopax](docs/extending.md): writing a plug-in, starting from the example in `examples/hello-plugin`, with three fuller examples next to it: `examples/couchbase-plugin`, `examples/managed-redis-plugin` and `examples/batch-jobs-plugin`.
 - [Operations](docs/operations.md): the image, logs, agent mode, the probe, proxies and recovery.
 - [Development](docs/development.md): the tests, continuous integration, the licence gate and releases.
 
