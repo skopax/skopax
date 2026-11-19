@@ -21,6 +21,8 @@ SOURCES = ('local', 'sso')
 ROLE_SOURCES = ('resolver', 'claim', 'admin', 'default')
 IDP_SOURCES = ('resolver', 'claim')
 ROLE_FIELDS = ('role', 'roleFrom', 'adminRole')
+NAME_SOURCES = ('default', 'idp', 'admin', 'self')
+IDP_NAMES = ('default', 'idp')
 RESOLVED_AT = 'resolvedAtTs'
 
 SCRYPT_N = 2 ** 14
@@ -62,6 +64,22 @@ def admin_set_of(doc: dict | None) -> str | None:
     if doc.get('roleFrom') in (None, 'admin') and doc.get('role') in ROLES:
         return doc['role']
     return None
+
+
+def name_from(doc: dict | None) -> str:
+    doc = doc or {}
+    if doc.get('nameFrom') in NAME_SOURCES:
+        return doc['nameFrom']
+    name = str(doc.get('name') or '').strip()
+    if name.lower() == str(doc.get('email') or '').strip().lower():
+        return 'default'
+    if doc.get('source') == 'sso':
+        return 'idp'
+    return 'default' if name == msg('setup.admin_name') else 'admin'
+
+
+def idp_source(name: str, email: str) -> str:
+    return 'default' if name.strip().lower() == str(email or '').strip().lower() else 'idp'
 
 
 def leaves_admin(fields: dict) -> bool:
@@ -119,8 +137,13 @@ def clean_email(email: str) -> str:
     return text.lower()
 
 
+def unseen(ch: str) -> bool:
+    code = ord(ch)
+    return code < 32 or 127 <= code <= 159 or 0x202A <= code <= 0x202E or 0x2066 <= code <= 0x2069
+
+
 def clean_name(name: str) -> str:
-    text = str(name or '').strip()
+    text = ''.join(ch for ch in str(name or '') if not unseen(ch)).strip()
     if not 1 <= len(text) <= NAME_MAX:
         raise InvalidUser(msg('user.name_length', max=NAME_MAX))
     return text
@@ -166,7 +189,7 @@ def admin_row(doc: dict | None, now: float) -> dict | None:
     since = held.get('atTs') if waiting else None
     expires = clock.stamp(since + LINK_PENDING_S) if isinstance(since, (int, float)) and not isinstance(since, bool) else None
     shown = {'state': state, 'boundAt': held.get('boundAt'), 'allowedAt': allowed, 'expiresAt': expires} if isinstance(held, dict) else None
-    return {k: v for k, v in doc.items() if k not in ('pw', 'ssoLink')} | {'ssoLink': shown}
+    return {k: v for k, v in doc.items() if k not in ('pw', 'ssoLink')} | {'ssoLink': shown, 'nameFrom': name_from(doc)}
 
 
 def link_admits(doc: dict, login) -> bool:
@@ -196,11 +219,13 @@ class Users:
         at = self.now()
         return {'state': 'pending', 'by': by, 'at': clock.stamp(at), 'atTs': at}
 
-    def create(self, email: str, name: str, role: str, password: str | None = None, source: str = 'local', link_by: str | None = None) -> dict:
+    def create(self, email: str, name: str, role: str, password: str | None = None, source: str = 'local', link_by: str | None = None, name_from: str = 'admin') -> dict:
         key = clean_email(email)
         if source not in SOURCES:
             raise InvalidUser(msg('user.source_invalid'))
-        doc = {'_id': key, 'email': key, 'name': clean_name(name), 'role': clean_role(role), 'source': source,
+        if name_from not in NAME_SOURCES:
+            raise ValueError(f'unknown name source {name_from!r}')
+        doc = {'_id': key, 'email': key, 'name': clean_name(name), 'nameFrom': name_from, 'role': clean_role(role), 'source': source,
                'disabled': False, 'createdAt': stamp(), 'lastLogin': None}
         if password is not None:
             doc['pw'] = hash_password(clean_password(password))
@@ -210,10 +235,12 @@ class Users:
             doc['ssoLink'] = self.pending_link(link_by)
         return self.insert(doc)
 
-    def add_sso(self, email: str, name: str, role: str) -> dict:
+    def add_sso(self, email: str, name: str, role: str, name_from: str = 'admin') -> dict:
         key = clean_email(email)
         chosen = clean_role(role)
-        return self.insert({'_id': key, 'email': key, 'name': clean_name(name), 'role': chosen, 'adminRole': chosen, 'roleFrom': 'admin', 'source': 'sso',
+        if name_from not in NAME_SOURCES:
+            raise ValueError(f'unknown name source {name_from!r}')
+        return self.insert({'_id': key, 'email': key, 'name': clean_name(name), 'nameFrom': name_from, 'role': chosen, 'adminRole': chosen, 'roleFrom': 'admin', 'source': 'sso',
                             'disabled': False, 'createdAt': stamp(), 'lastLogin': None, 'opened': False})
 
     def make_local(self, email: str, password: str, by: str, fields: dict | None = None, link: bool = True) -> dict | None:
@@ -293,9 +320,10 @@ class Users:
         role = clean_role(default_role)
         now = stamp()
         only = {'_id': key, 'source': 'sso', 'disabled': {'$ne': True}} | ({} if verified else {'opened': {'$ne': False}})
-        seen = {'$set': {'name': label, 'lastLogin': now}, '$unset': {'opened': ''}}
+        seen = {'$set': {'lastLogin': now}, '$unset': {'opened': ''}}
+        made = {'email': key, 'name': label, 'nameFrom': idp_source(label, key), 'role': role, 'roleFrom': 'default', 'disabled': False, 'createdAt': now}
         try:
-            self.col.update_one(only, seen | {'$setOnInsert': {'email': key, 'role': role, 'roleFrom': 'default', 'disabled': False, 'createdAt': now}}, upsert=True)
+            self.col.update_one(only, seen | {'$setOnInsert': made}, upsert=True)
         except DuplicateKeyError as e:
             found = self.get(key)
             if found is None or found.get('source') != 'sso':
@@ -304,16 +332,41 @@ class Users:
                 raise Unopened(key) from e
             if not found.get('disabled'):
                 self.col.update_one(only, seen)
+                self.idp_name(key, label)
                 return self.get(key)
             return found
+        self.idp_name(key, label)
         return self.get(key)
 
     def insert_sso(self, email: str, name: str, default_role: str) -> dict | None:
         key = clean_email(email)
+        label = clean_name(name)
         now = stamp()
-        self.col.update_one({'_id': key}, {'$setOnInsert': {'email': key, 'name': clean_name(name), 'role': clean_role(default_role), 'roleFrom': 'default', 'source': 'sso',
+        self.col.update_one({'_id': key}, {'$setOnInsert': {'email': key, 'name': label, 'nameFrom': idp_source(label, key), 'role': clean_role(default_role), 'roleFrom': 'default', 'source': 'sso',
                                                              'disabled': False, 'createdAt': now, 'lastLogin': now}}, upsert=True)
         return self.get(key)
+
+    def idp_name(self, email: str, name: str) -> bool:
+        key = str(email or '').strip().lower()
+        label = clean_name(name)
+        held = self.col.find_one({'_id': key}, {'name': 1, 'nameFrom': 1, 'email': 1, 'disabled': 1, 'source': 1})
+        if held is None or held.get('disabled') or name_from(held) not in IDP_NAMES:
+            return False
+        kept = str(held.get('name') or '').strip()
+        if idp_source(label, key) == 'default' and kept != msg('setup.admin_name') and idp_source(kept, key) != 'default':
+            return False
+        unchanged = {'name': held.get('name'), 'nameFrom': held['nameFrom'] if 'nameFrom' in held else {'$exists': False}}
+        res = self.col.update_one({'_id': key, 'disabled': {'$ne': True}, **unchanged}, {'$set': {'name': label, 'nameFrom': idp_source(label, key)}})
+        return bool(res.modified_count)
+
+    def rename(self, email: str, name: str, source: str) -> dict:
+        if source not in ('admin', 'self'):
+            raise ValueError(f'unknown name source {source!r}')
+        key = str(email or '').strip().lower()
+        after = self.col.find_one_and_update({'_id': key}, {'$set': {'name': clean_name(name), 'nameFrom': source}}, return_document=ReturnDocument.AFTER)
+        if after is None:
+            raise InvalidUser(msg('access.unknown_user'))
+        return public(after)
 
     def open_sso(self, email: str) -> dict | None:
         key = str(email or '').strip().lower()

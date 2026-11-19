@@ -61,7 +61,7 @@ class SetupGate:
         if taken is None:
             raise BadCode()
         try:
-            admin = self.users.create(email, name, 'admin', password)
+            admin = self.users.create(email, name, 'admin', password, name_from='self')
         except BaseException:
             try:
                 self.meta.insert_one(taken)

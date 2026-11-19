@@ -362,6 +362,7 @@ function tabPath(id) {
   }
   if (id === 'svcs') return kind === 'all' ? id : id + '/' + kind;
   if (id === 'chat') return chatPath();
+  if (id === 'access' && typeof ACCESS_TAB !== 'undefined' && ACCESS_TAB !== 'people') return id + '/' + ACCESS_TAB;
   return id;
 }
 function markTab() {
@@ -398,6 +399,7 @@ function openTabPath(raw) {
   }
   if (id === 'chat') openChatPath(parts.slice(1));
   if (id === 'integrations' && typeof intWant === 'function') intWant(sub === 'mcp' ? parts[2] || '' : '', sub === 'signin-expired');
+  if (id === 'access' && typeof accWant === 'function') accWant(sub);
   showTab(id);
 }
 var relCount = null;

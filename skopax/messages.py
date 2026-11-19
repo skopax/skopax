@@ -421,6 +421,8 @@ MESSAGES: dict[str, str] = {
     'access.user_disabled': 'User {email} disabled',
     'access.user_enabled': 'User {email} enabled',
     'access.user_password': 'Password changed for {email}',
+    'access.user_renamed': 'User {email} renamed to {name}',
+    'access.self_renamed': 'Changed their own name to {name}',
     'access.token_created': 'API token {name} created with the {role} role',
     'access.token_revoked': 'API token {name} revoked',
     'chat.login_first': 'log in to {product} first',

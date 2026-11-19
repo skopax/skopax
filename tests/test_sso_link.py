@@ -334,7 +334,7 @@ def test_a_user_disabled_mid_login_is_not_written(store: Store, monkeypatch):
     users = Users(store.db)
     users.create('carol@example.com', 'Carol', 'viewer', source='sso')
     users.set_disabled('carol@example.com', True)
-    users.create(BOB, 'Bob', 'viewer', source='sso')
+    users.create(BOB, 'Bob', 'viewer', source='sso', name_from='idp')
     before = raw(store, 'carol@example.com')
     real = Users.get
     raced = []

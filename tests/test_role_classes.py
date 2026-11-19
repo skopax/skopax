@@ -38,6 +38,7 @@ WRITES = {
     ('PATCH', '/api/actions/{action_id}'): 'operator',
     ('PATCH', '/api/admin/plugins/{plugin_id}/instances/{name}'): 'admin',
     ('PATCH', '/api/admin/users/{email}'): 'admin',
+    ('PATCH', '/api/me'): 'session',
     ('POST', '/api/actions'): 'operator',
     ('POST', '/api/admin/anthropic-key/test'): 'admin',
     ('POST', '/api/admin/custom-checks'): 'admin',
@@ -176,6 +177,7 @@ READS = {
     '/static/{name}': 'open',
 }
 BODIES = {('POST', '/api/me/password'): {'current': 'correct horse battery', 'new': 'another horse battery'},
+          ('PATCH', '/api/me'): {'name': 'New Name'},
           ('PUT', '/api/admin/mcp-tools/instances/{name}/tools'): {'on': [], 'understood': False},
           ('POST', '/api/admin/mcp-tools/instances/{name}/confirm'): {'understood': True, 'version': 1},
           ('PUT', '/api/admin/mcp-tools/instances/{name}/scope'): {'id': 'f1'},

@@ -167,6 +167,8 @@ class SignIn:
         stored = self.users.linked_login(email, iss, sub)
         if stored is None:
             raise Refused('local-account')
+        if self.users.idp_name(email, display_name(claims, email)):
+            stored = self.users.get(email) or stored
         return stored
 
     def mcp(self, claims: dict, issuer: str) -> McpUser:

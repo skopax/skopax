@@ -107,7 +107,8 @@ async function initActions() {
       else if (!me.user) sideFoot({login: '/login?next=' + encodeURIComponent(location.pathname + location.search), tip: 'Log in to ' + brandName() + '. Actions need the operator role.'});
       else {
         var tip = role === 'admin' ? me.user + ' \u00b7 admin: settings, access and actions' : role === 'operator' ? me.user + ' \u00b7 operator: can queue actions' : me.user + ' \u00b7 viewer: actions need the operator role, ask an admin';
-        var items = me.canChangePassword ? [{label: 'Change password', icon: 'key', run: function () { openPasswordDialog(document.getElementById('user-btn')); }}] : [];
+        var items = me.canEditName ? [{id: 'um-name', label: 'Edit name', icon: 'badge', run: function () { openNameDialog(document.getElementById('user-btn')); }}] : [];
+        if (me.canChangePassword) items.push({label: 'Change password', icon: 'key', run: function () { openPasswordDialog(document.getElementById('user-btn')); }});
         items.push({label: 'Sign out', icon: 'out', run: logOut});
         sideFoot({user: me.user, name: String(me.name || '').trim() || me.user, role: role, tip: tip, items: items});
       }
@@ -143,6 +144,51 @@ async function initActions() {
       b.disabled = false;
       accountNote('Could not sign out, try again', true);
     }
+  }
+  window.__skopaxRenamed = function (email, name) {
+    if (!me.user || email !== me.user) return;
+    me.name = name;
+    account();
+  };
+  function openNameDialog(opener) {
+    accountNote('');
+    var d = document.getElementById('name-dialog');
+    if (d) d.remove();
+    d = el('div', 'pw-dialog name-dialog');
+    d.id = 'name-dialog';
+    d.setAttribute('role', 'dialog');
+    d.setAttribute('aria-modal', 'true');
+    d.setAttribute('aria-label', 'Edit name');
+    d.innerHTML = '<form class="pw-card"><h2>Edit name</h2>' +
+      '<label>Your name, as others see it (1 to 120 characters)<input type="text" name="name" maxlength="120" autocomplete="name" required></label>' +
+      '<div class="pw-acts"><button type="submit" class="btn small">Save</button><button type="button" class="btn sec small name-cancel">Cancel</button><span class="adm-msg name-msg" role="status"></span></div></form>';
+    var form = d.querySelector('form'), msg = d.querySelector('.name-msg'), go = d.querySelector('button[type="submit"]'), input = form.elements.name;
+    var close = function () { d.remove(); if (opener && document.body.contains(opener)) opener.focus(); };
+    var say = function (t, bad) { msg.textContent = t; msg.className = 'adm-msg name-msg' + (bad ? ' bad' : ''); };
+    input.value = String(me.name || '').trim() || me.user || '';
+    d.querySelector('.name-cancel').addEventListener('click', close);
+    d.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') close(); });
+    form.addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      go.disabled = true;
+      say('Saving\u2026', false);
+      try {
+        var r = await adminApi('PATCH', '/api/me', {name: input.value.trim()});
+        var name = r && typeof r.name === 'string' ? r.name : input.value.trim();
+        d.remove();
+        window.__skopaxRenamed(me.user, name);
+        if (typeof accRenamed === 'function') accRenamed(me.user, name);
+        var back = document.getElementById('user-btn');
+        if (back) back.focus();
+        accountNote('Name saved.');
+      } catch (err) {
+        say(err && err.detail ? err.detail : 'The name could not be saved. Try again.', true);
+        go.disabled = false;
+      }
+    });
+    document.body.appendChild(d);
+    input.focus();
+    input.select();
   }
   function openPasswordDialog(opener) {
     accountNote('');

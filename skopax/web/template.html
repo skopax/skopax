@@ -1012,7 +1012,7 @@ a.shot.phone img { width: 60px; }
 .acc-wrap { overflow-x: auto; }
 .acc-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .acc-table th, .acc-table td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: middle; }
-.acc-table select, .acc-form input, .acc-form select, .acc-pw { font: inherit; font-size: 0.85rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 4px 8px; box-sizing: border-box; min-width: 0; }
+.acc-table select, .acc-form input, .acc-form select, .acc-pw, .acc-name-in { font: inherit; font-size: 0.85rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 4px 8px; box-sizing: border-box; min-width: 0; }
 .acc-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 10px; }
 .acc-form label { display: grid; gap: 3px; font-size: 0.78rem; color: var(--fg-2); }
 .acc-user.off td:not(.acc-ctl) { color: var(--muted); }
@@ -1075,6 +1075,7 @@ a.shot.phone img { width: 60px; }
 .acc-nav-b { display: flex; align-items: center; gap: 8px; width: auto; padding: 6px 12px; font: inherit; font-size: 0.85rem; color: var(--fg-2); text-align: left; background: none; border: 0; border-radius: 5px; cursor: pointer; }
 .acc-nav-b:hover { background: var(--hover); color: var(--fg); }
 .acc-nav-b:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.acc-nav-b[aria-selected="true"] { color: var(--fg); font-weight: 600; background: var(--active); }
 .acc-nav-l { flex: 1 1 auto; min-width: 0; }
 .acc-nav-n:empty { display: none; }
 .acc-dot { flex: none; width: 8px; height: 8px; overflow: hidden; color: transparent; font-size: 0; border-radius: 50%; background: var(--warn); }
@@ -1119,7 +1120,7 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
 .acc-mi:hover:not(:disabled), .acc-mi:focus-visible { background: var(--hover); outline: none; }
 .acc-mi:disabled { color: var(--muted); cursor: not-allowed; }
 .acc-mi-danger:not(:disabled) { color: var(--crit); }
-.acc-pw-form:not([hidden]) { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 6px; }
+.acc-pw-form:not([hidden]), .acc-name-form:not([hidden]) { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 6px; }
 .acc-exp { font-size: 0.82rem; }
 .acc-token code { font-size: 0.76rem; }
 .acc-token td, .acc-user td, .acc-table th { padding-inline: 6px; }
@@ -1172,9 +1173,6 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
 .acc-mcp-acts { padding: 8px 14px 14px; }
 .acc-mcp-grp .ai-head { padding: 12px 14px 4px; }
 .acc-mcp-method { margin: 0; padding: 0 14px 6px; font-size: 0.84rem; color: var(--fg-2); }
-@media (max-width: 900px) {
-  .acc-nav { display: none; }
-}
 @media (max-width: 640px) {
   .acc-table thead { display: none; }
   .acc-table, .acc-table tbody { display: block; }

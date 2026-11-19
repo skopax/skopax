@@ -65,7 +65,7 @@ from skopax.chatui import CHAT_ID
 from skopax.chatui.text import set_texts as set_chat_texts
 from skopax.assign import Assigner, Invalid as AssignInvalid, people_of, slug
 from skopax.jiralinks import ticket_projects
-from skopax.models import email_allowed, NoticesReadIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, FieldSuggestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn
+from skopax.models import email_allowed, NoticesReadIn, NameIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, FieldSuggestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn
 from skopax.selfreview import BY as SELF_REVIEW_BY, SelfReview, self_service, gather as review_facts, review_slot_offset
 from skopax.slackhealth import OFFSET as SLACK_POSTS_OFFSET, PASS as SLACK_POSTS, PERIOD as SLACK_POSTS_PERIOD, slack_posts_pass
 from skopax.jiraaccess import PASS as JIRA_ACCESS, access_pass as jira_access_pass
@@ -1339,7 +1339,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if not (settings.admin_email and settings.admin_password) or env_state['conflict']:
             return False
         try:
-            users.create(settings.admin_email, msg('setup.admin_name'), 'admin', settings.admin_password)
+            users.create(settings.admin_email, msg('setup.admin_name'), 'admin', settings.admin_password, name_from='default')
             log.info('admin created from env: %s', settings.admin_email.strip().lower())
         except UserExists:
             if setup_gate.needed():
@@ -2155,6 +2155,26 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         log.info('password changed by %s', user.name)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    @app.patch('/api/me')
+    def rename_me(request: Request, body: NameIn, authorization: Annotated[str | None, Header()] = None) -> dict:
+        user = current_user(request) if not bearer_token(authorization) else None
+        if user is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, msg('password.needs_session'))
+        if not same_origin(request):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, msg('login.cross_site'))
+        name = user_field(clean_name, 'name', body.name)
+        held = users.get(user.name) or {}
+        if held.get('name') == name and held.get('nameFrom') == 'self':
+            return {'name': name}
+        try:
+            users.rename(user.name, name, 'self')
+        except InvalidUser as e:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, e.text) from e
+        finally:
+            user_cache.pop(user.name, None)
+        store.add_activity(ACCESS_KIND, user.name, msg('access.self_renamed', name=name))
+        return {'name': name}
+
     @app.get('/api/me')
     def me(request: Request) -> dict:
         user = current_user(request)
@@ -2166,6 +2186,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             'userRole': user.role if user else None,
             'source': user.source if user else None,
             'canChangePassword': bool(user and user.source == 'local'),
+            'canEditName': bool(user),
             'user': user.name if user else None,
             'name': name or None,
             'operator': bool(user and user.operator),
@@ -2514,7 +2535,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def post_admin_user(body: UserIn, by: Annotated[str, Depends(require_admin)]) -> dict:
         email = user_field(clean_email, 'email', body.email)
         role = user_field(clean_role, 'role', body.role)
-        name = email.partition('@')[0] if body.name == '' else user_field(clean_name, 'name', body.name)
+        named = body.name != ''
+        name = user_field(clean_name, 'name', body.name) if named else email.partition('@')[0]
+        name_from = 'admin' if named else 'default'
         password = body.password or None
         if body.sso and not signon.active():
             raise FieldRefused('sso', msg('access.sso_off'))
@@ -2525,7 +2548,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if body.sso and not sso_domain_allowed(email):
             raise FieldRefused('email', msg('access.sso_domain'))
         try:
-            made = users.add_sso(email, name, role) if password is None else users.create(email, name, role, password, link_by=by if body.sso else None)
+            made = users.add_sso(email, name, role, name_from) if password is None else users.create(email, name, role, password, link_by=by if body.sso else None, name_from=name_from)
         except UserExists as e:
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.user_exists')) from e
         except InvalidUser as e:
@@ -2591,6 +2614,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, e.text) from e
         except IdpManaged:
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.role_from_idp')) from None
+        if body.name is not None:
+            name = user_field(clean_name, 'name', body.name)
+            if current.get('name') == name and current.get('nameFrom') == 'admin':
+                body = body.model_copy(update={'name': None})
+            else:
+                fields |= {'name': name, 'nameFrom': 'admin'}
         if body.password is not None and current.get('source') == 'sso':
             fields.pop('pw', None)
             current = sso_to_local(key, body, fields, by)
@@ -2636,6 +2665,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             store.add_activity(ACCESS_KIND, by, msg('access.user_disabled' if body.disabled else 'access.user_enabled', email=key))
         if body.password is not None:
             store.add_activity(ACCESS_KIND, by, msg('access.user_password', email=key))
+        if body.name is not None:
+            store.add_activity(ACCESS_KIND, by, msg('access.user_renamed', email=key, name=clean_name(body.name)))
 
     @app.get('/api/admin/tokens')
     def get_admin_tokens(by: Annotated[str, Depends(require_admin)]) -> list[dict]:
