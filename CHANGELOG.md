@@ -20,7 +20,7 @@ Changed:
 
 - Names come from the identity provider at sign-in (name, else given and family name) unless someone chose one. Control and bidirectional characters are removed from names.
 - Admin > Access & sign-in shows People, Single sign-on, API tokens and MCP sign-in as tabs, one at a time, kept in the address.
-- Custom checks: a preset set folds into one header line with a summary such as "2 failing · 1 not run yet" and opens by itself when a check fails or has an open card. Rows are shorter and drop the repeated preset prefix.
+- Custom checks: a preset set folds into one header line with a summary such as "2 failing, 1 not run yet" and opens by itself when a check fails or has an open card. Rows are shorter and drop the repeated preset prefix.
 - Admin > Integrations: a plug-in without checks no longer says "No checks", and a tile with several instances reads "N instances".
 - The "How to set it up" box has a chevron that shows it opens.
 - The attribution line is centred on the sign-in and setup pages.
