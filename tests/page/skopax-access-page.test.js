@@ -96,7 +96,7 @@ async function boot(opts) {
           const doc = Object.assign({id: '0a1b2c3d', name: body.name, role: body.role, createdBy: 'alice@example.com', createdAt: iso(0), lastUsed: null, revoked: false},
             body.expiresDays ? {expiresAt: iso(-body.expiresDays * DAY)} : {});
           db.tokens = db.tokens.concat([doc]);
-          return ok(Object.assign({}, doc, {token: 'skopax_0a1b2c3d_SECRETSECRETSECRETSECRET'}), 201);
+          return ok(Object.assign({}, doc, {token: 'SECRETSECRETSECRET'}), 201);
         }
         if (p.startsWith('/api/admin/tokens/') && method === 'DELETE') return none();
         if (p === '/api/admin/sso' && method === 'GET') return opts.ssoDown ? bad(503, 'Database unavailable') : ok(db.sso);
