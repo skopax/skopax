@@ -63,6 +63,7 @@ BUILTIN: tuple[str, ...] = (
     'skopax.plugins.mcp_tools',
     'skopax.plugins.spring_config',
     'skopax.plugins.sonarqube',
+    'skopax.plugins.sharepoint',
 )
 CORE_PREFIXES = (
     'core',
