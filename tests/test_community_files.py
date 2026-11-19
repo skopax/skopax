@@ -177,7 +177,7 @@ def test_trademarks_lets_a_plug_in_package_carry_the_skopax_prefix_as_a_function
     functional = flat[flat.index('## 3. The basic rule'):flat.index('## 4.')]
     permission = flat[flat.index('## 5. Uses that need written permission'):flat.index('## 6.')]
     example = read('examples/hello-plugin/pyproject.toml')
-    fuller = {name: read(f'examples/{name}-plugin/pyproject.toml') for name in ('couchbase', 'managed-redis')}
+    fuller = {name: read(f'examples/{name}-plugin/pyproject.toml') for name in ('couchbase', 'managed-redis', 'batch-jobs')}
 
     # then
     assert 'a plug-in package named `skopax-<name>` or `skopax_<name>`' in functional
@@ -247,7 +247,7 @@ def test_community_files_and_docs_are_ascii():
     docs = sorted(str(path.relative_to(ROOT)) for path in (ROOT / 'docs').rglob('*.md'))
     paths = ['CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'TRADEMARKS.md', 'SECURITY.md', '.github/PULL_REQUEST_TEMPLATE.md',
              '.github/ISSUE_TEMPLATE/bug.yml', '.github/ISSUE_TEMPLATE/feature.yml', '.github/ISSUE_TEMPLATE/config.yml',
-             'README.md', 'THIRD_PARTY_NOTICES.md', 'CHANGELOG.md', 'examples/hello-plugin/README.md', 'examples/couchbase-plugin/README.md', 'examples/managed-redis-plugin/README.md', *docs]
+             'README.md', 'THIRD_PARTY_NOTICES.md', 'CHANGELOG.md', 'examples/hello-plugin/README.md', 'examples/couchbase-plugin/README.md', 'examples/managed-redis-plugin/README.md', 'examples/batch-jobs-plugin/README.md', *docs]
     examples = sorted(str(path.relative_to(ROOT)) for path in (ROOT / 'examples').rglob('*') if path.is_file() and '__pycache__' not in path.parts)
 
     # when
