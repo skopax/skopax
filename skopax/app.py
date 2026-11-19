@@ -117,7 +117,7 @@ from skopax.sso import FIELDS as SSO_FIELDS, SECRET_FIELD as SSO_SECRET_FIELD, S
 from skopax.throttle import Throttle
 from skopax.store import ActionMoved, ChatPrivate, Conflict, NotFound, Store, iso, new_id, utc_now
 
-OPEN_PATHS = ('/actuator/health', '/actuator/health/*', '/static/*', '/icons/*', '/plugins/*', '/manifest.webmanifest', '/setup', '/login', '/login/sso', '/authorized', '/logout', '/mcp',
+OPEN_PATHS = ('/actuator/health', '/actuator/health/*', '/static/*', '/icons/*', '/favicon.ico', '/plugins/*', '/manifest.webmanifest', '/setup', '/login', '/login/sso', '/authorized', '/logout', '/mcp',
               '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/*', '/login/sso-icon')
 READ_METHODS = ('GET', 'HEAD')
 FORM_BODY_MAX = 16384
@@ -217,7 +217,7 @@ def load_assets() -> dict[str, tuple[bytes, str]]:
 ASSETS = load_assets()
 
 
-ICON_TYPES = {'.png': 'image/png', '.svg': 'image/svg+xml'}
+ICON_TYPES = {'.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon'}
 
 
 def load_icons() -> dict[str, tuple[bytes, str]]:
@@ -1873,6 +1873,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     @app.get('/manifest.webmanifest')
     def manifest() -> Response:
         return Response(manifest_json(), media_type='application/manifest+json', headers={'Cache-Control': 'no-cache'})
+
+    @app.get('/favicon.ico')
+    def favicon(if_none_match: Annotated[str | None, Header()] = None) -> Response:
+        return icon('favicon.ico', if_none_match)
 
     @app.get('/icons/{name}')
     def icon(name: str, if_none_match: Annotated[str | None, Header()] = None) -> Response:

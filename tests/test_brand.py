@@ -374,6 +374,21 @@ def test_the_wordmark_is_the_svg_for_the_default_name_and_escaped_text_for_any_o
     assert named == '<span class="wordmark wordmark-text" role="img" aria-label="O&#x27;Brien Ops">O&#x27;Brien Ops</span>'
 
 
+def test_favicon_ico_is_open_and_holds_the_mark_at_16_32_and_48_pixels():
+    # given
+    with app_client(fresh_store()) as c:
+
+        # when
+        got = c.get('/favicon.ico')
+
+    # then
+    body = got.content
+    sizes = [body[6 + 16 * i] for i in range(int.from_bytes(body[4:6], 'little'))]
+    assert got.status_code == 200 and got.headers['content-type'] == 'image/x-icon'
+    assert body[:4] == bytes([0, 0, 1, 0]) and sizes == [16, 32, 48]
+    assert all(body[int.from_bytes(body[6 + 16 * i + 12:6 + 16 * i + 16], 'little'):][:8] == b'\x89PNG\r\n\x1a\n' for i in range(3))
+
+
 def test_login_setup_and_the_page_header_show_the_wordmark_and_the_favicon_is_the_mark(store):
     # given
     client = admin_client(store)

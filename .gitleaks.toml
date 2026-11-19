@@ -70,3 +70,10 @@ regexes = ['''^umami-api-key-41c2$''']
 description = "Python bytecode that pytest writes beside the tests: it holds the same made-up fixture values as the allowlisted test files, and git never tracks it, so only a scan of a working tree sees it."
 targetRules = ["generic-api-key", "jwt", "private-key"]
 paths = ['''^tests/(?:[^/]+/)*__pycache__/[^/]+\.pyc$''']
+
+[[allowlists]]
+description = "The Access page suite stub returns the same made-up skopax_ API token shape."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^tests/page/skopax-access-page\.test\.js$''']
+regexes = ['''^skopax_0a1b2c3d_SECRETSECRETSECRETSECRET$''']

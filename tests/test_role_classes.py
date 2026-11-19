@@ -158,6 +158,7 @@ READS = {
     '/chat-continue/{chat_id}': 'session',
     '/docs': 'read',
     '/docs/oauth2-redirect': 'read',
+    '/favicon.ico': 'open',
     '/icons/{name}': 'open',
     '/icons/sso/{name}': 'open',
     '/login': 'open',

@@ -33,6 +33,7 @@ FOUND_OPEN = [
     ('GET', '/actuator/health/liveness'),
     ('GET', '/actuator/health/readiness'),
     ('GET', '/authorized'),
+    ('GET', '/favicon.ico'),
     ('GET', '/icons/sso/x'),
     ('GET', '/icons/x'),
     ('GET', '/login'),

@@ -45,6 +45,7 @@ Fixed:
 - The Slack fallback text of a card is escaped, so a service or label text cannot ping a channel.
 - The logo goes to the board.
 - Page scan: carousels (Swiper, Slick, Splide, Bootstrap, Flickity, Owl, scroll-snap) no longer report cut text, and an identity transform no longer hides a real cut.
+- `/favicon.ico` is served (16, 32 and 48 px), for tools that do not read the SVG icon.
 - Regex options run with a time limit, and a mask that backtracks badly is refused.
 
 Security:
