@@ -383,7 +383,7 @@ def test_a_rebranded_install_still_names_the_upstream_product(store: Store):
 
     # then
     assert brand.product() == 'Acme Ops'
-    assert shown['text'] == 'Skopax 0.3.0 is available; this server runs 0.2.0.'
+    assert shown['text'] == f'Skopax 0.3.0 is available; this server runs {brand.display_version()}.'
 
 
 def waited(http: FakeHttp, count: int, seconds: float = 3.0) -> None:
