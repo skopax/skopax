@@ -62,6 +62,17 @@ Everything Skopax watches comes through plug-ins, and 34 of them ship in the ima
 - **Shape it without code.** Admin switches whole features on and off, turns single checks on or off per instance, sets their thresholds, and changes branding and language. Settings can also come from a file or a settings source, so an install can be configured as code.
 - **Write your own.** A plug-in is a small Python package against a documented contract: checks that make cards, tools for the investigator, settings and an Admin form, all from one definition. Ship it in your own image built `FROM` Skopax. Start from `examples/hello-plugin`, or from the fuller `examples/couchbase-plugin` and `examples/managed-redis-plugin`. See [Integrations](docs/plugins.md) and [Extending Skopax](docs/extending.md).
 
+## AI costs: see them, tune them, cap them
+
+The investigator calls the Anthropic API with your own key, so you pay Anthropic directly and Skopax shows where the money goes.
+
+<a href="docs/images/costs-dark.png#gh-dark-mode-only"><img width="420" src="docs/images/costs-dark.png#gh-dark-mode-only" alt="The Skopax Costs page for the last 7 days: 2.31 dollars today of a 10 dollar daily cap, 19.71 dollars over the week, averages per Slack ask and per investigator run, a 79 percent cache hit share, spend per day stacked by source and the by-source table with models"></a><a href="docs/images/costs-light.png#gh-light-mode-only"><img width="420" src="docs/images/costs-light.png#gh-light-mode-only" alt="The Skopax Costs page for the last 7 days: 2.31 dollars today of a 10 dollar daily cap, 19.71 dollars over the week, averages per Slack ask and per investigator run, a 79 percent cache hit share, spend per day stacked by source and the by-source table with models"></a>
+
+- **See it.** The Costs page, under Activity, shows the spend per source: investigator runs, page asks, Slack asks, deploy assessments, small talk, page scans and self-reviews. It also shows the spend per hour for today and per day over 7 or 30 days, the average cost of a Slack ask and of an investigator run, the models used and the cache hit share.
+- **Tune it.** Admin > Investigator sets the model and thinking effort for cards, Slack, Chat and the topic gate separately, so the cheap checks can stay on a small model. Prompts are cached between calls, and the Costs page shows how much of each prompt came from the cache.
+- **Cap it.** A daily dollar limit is shared by the investigator and the self-review: once it is reached they stop until the next day, and 0 stops them. Page and Slack asks have hourly caps, for everyone together and per person. Chat messages have a cap per person per day, and MCP investigations a cap per person per hour. Each card run, assessment and Slack ask has its own tool-call budget, and web searches and page reads per run are limited too. A warning card that clears and comes back keeps its earlier finding for a set number of hours instead of being investigated again.
+- **Stop it.** Set the investigator's mode to off or shadow, or press Stop investigator to halt a run at once.
+
 ## Quickstart
 
 Skopax ships as a ready image, so there is nothing to clone or build: `ghcr.io/skopax/skopax:0.2.2`, built for `linux/amd64` and `linux/arm64`. Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. [Operations](docs/operations.md#the-image) has more on the image.
