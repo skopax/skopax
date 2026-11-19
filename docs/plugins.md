@@ -11,7 +11,7 @@ Prometheus, Kubernetes, the observability plug-ins, GitLab, GitHub, Jira, Conflu
 
 Admin > Integrations shows a tile for each connected plug-in, with its health and an on/off switch, and "+ Add integration" lists the plug-ins that can be set up. A plug-in is on unless an admin switched it off, and one that needs instances does nothing until it has an enabled, valid instance.
 
-Below the tiles, Custom checks turns a PromQL query on a Prometheus or Grafana instance into cards without a plug-in (see [Custom checks](custom-checks.md)).
+Below the tiles, Custom checks turns a PromQL query on a Prometheus or Grafana instance, or an ES|QL query on an Elasticsearch instance, into cards without a plug-in (see [Custom checks](custom-checks.md)).
 
 A plug-in that is installed as a package or loaded from `SKOPAX_PLUGINS` shows as Custom in Admin > Integrations, with a Custom chip to list only those; built-in plug-ins carry no mark.
 
@@ -278,6 +278,8 @@ Vendor guide: [Elastic: API keys](https://www.elastic.co/docs/deploy-manage/api-
 ### CSP reports
 
 Content Security Policy violation reports in the logs: hosts the browsers block for the first time, and jumps in the hourly count.
+
+**Deprecated:** use the [CSP preset](custom-checks.md#csp-reports) under custom checks; this plug-in leaves in 0.4.
 
 **Set it up:**
 

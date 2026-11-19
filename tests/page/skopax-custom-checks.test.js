@@ -36,8 +36,8 @@ function rendered(values) {
 }
 
 function listed(items) {
-  return {items, presets: [{id: 'couchbase', name: 'Docstore', nameKey: 'cluster'}, {id: 'managed-redis', name: 'Managed Redis', nameKey: 'name'}], sources: {prometheus: ['main'], grafana: ['ops']}, limits: {checks: 50, series: 500, cards: 20, querySeconds: 20, for: 12, split: 5, name: 80, query: 2000, title: 200, text: 1000, periodSeconds: 300},
-    choices: {source: ['prometheus', 'grafana'], op: ['>', '>=', '<', '<=', '==', '!='], baselines: ['1d', '1w'], baselineMode: ['ratio', 'difference'], severity: ['info', 'warn', 'crit']}};
+  return {items, presets: [{id: 'couchbase', name: 'Docstore', nameKey: 'cluster'}, {id: 'managed-redis', name: 'Managed Redis', nameKey: 'name'}], sources: {prometheus: ['main'], grafana: ['ops'], elasticsearch: ['central']}, limits: {checks: 50, series: 500, cards: 20, querySeconds: 20, for: 12, split: 5, name: 80, query: 2000, title: 200, text: 1000, periodSeconds: 300, rows: 1000, window: 60, windowMin: 5, windowMax: 1440},
+    choices: {source: ['prometheus', 'grafana', 'elasticsearch'], op: ['>', '>=', '<', '<=', '==', '!='], baselines: ['1d', '1w'], baselineMode: ['ratio', 'difference'], severity: ['info', 'warn', 'crit']}};
 }
 
 async function boot(opts) {
@@ -65,6 +65,9 @@ async function boot(opts) {
           if (p === '/api/admin/custom-checks/preview') {
             if (body.threshold === 'abc') return bad(422, 'the threshold must be a number');
             if (srv.slow) await new Promise((r) => setTimeout(r, 40));
+            if (body.source === 'elasticsearch') return ok({ok: true, reason: '', warnings: ['query has no ?start/?end: reads every document', EVIL], series: 2, read: 2, skipped: 0, noBaseline: 0, firing: 1, for: 1,
+              cards: [{key: 'k1', sev: 'warn', title: 'shop logs 250 lines', text: 'Service shop wrote 250 lines.', value: 250, d1: null, d7: null, labels: {service: 'shop'},
+                links: [{label: 'Query in Kibana', url: 'https://kibana.example.com/app/discover#/?_a=x'}], more: 0}]});
             if (body.id && /-down$/.test(body.id)) return ok({ok: true, reason: '', series: 3, read: 3, skipped: 0, noBaseline: 0, firing: 1, for: 1,
               cards: [{key: 'k1', sev: 'crit', title: EVIL + ' down', text: 'down', value: 0, d1: null, d7: null, labels: {}, links: [], more: 0}]});
             if (body.id && body.id.indexOf('-n1ql-queue') > 0) return ok({ok: false, reason: 'Prometheus main answered HTTP 400: ' + EVIL, cards: [], series: 0, read: 0, skipped: 0, noBaseline: 0, firing: 0, for: 1});
@@ -189,6 +192,68 @@ async function anAdminFillsInANewCheckPreviewsItAndSavesIt() {
   assert.match(box(doc).querySelector('.adm-msg').textContent, /Saved/);
   assert.deepStrictEqual(errors, []);
   console.log('PASS an admin fills in a new check, previews it and saves it');
+}
+
+async function anElasticsearchCheckAsksForAnEsqlQueryAndAWindowAndItsPreviewShowsTheWarnings() {
+  //given
+  const {w, doc, errors, calls} = await boot({items: []});
+  box(doc).querySelector('.pqc-add').click();
+  await wait(20);
+  const before = {window: field(doc, 'window').closest('.pqc-f').hidden, label: field(doc, 'query').closest('.pqc-f').firstChild.textContent};
+
+  //when
+  type(w, field(doc, 'name'), 'Busy services');
+  type(w, field(doc, 'source'), 'elasticsearch');
+  const shapeOf = {window: field(doc, 'window').closest('.pqc-f').hidden, datasource: field(doc, 'datasource').closest('.pqc-f').hidden, label: field(doc, 'query').closest('.pqc-f').firstChild.textContent,
+    help: field(doc, 'query').closest('.pqc-f').lastChild.textContent, instances: [...field(doc, 'instance').options].map((o) => o.value),
+    sources: [...field(doc, 'source').options].map((o) => o.textContent)};
+  type(w, field(doc, 'query'), 'FROM logs-* | STATS value = COUNT(*) BY service = service.name');
+  type(w, field(doc, 'window'), '30');
+  type(w, field(doc, 'threshold'), '100');
+  type(w, field(doc, 'by'), 'service');
+  box(doc).querySelector('.pqc-preview-btn').click();
+  await wait(60);
+  const preview = box(doc).querySelector('.pqc-preview');
+  const warned = [...preview.querySelectorAll('.pqc-warn')].map((x) => x.textContent);
+  const links = [...preview.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')]);
+  box(doc).querySelector('.pqc-save').click();
+  await wait(60);
+
+  //then
+  assert.deepStrictEqual(before, {window: true, label: 'PromQL query'}, 'a Prometheus check has no window');
+  assert.deepStrictEqual(shapeOf.sources, ['Prometheus', 'Grafana datasource', 'Elasticsearch']);
+  assert.strictEqual(shapeOf.window, false);
+  assert.strictEqual(shapeOf.datasource, true);
+  assert.strictEqual(shapeOf.label, 'ES|QL query');
+  assert.match(shapeOf.help, /Starts with FROM/);
+  assert.match(shapeOf.help, /1000 rows/);
+  assert.deepStrictEqual(shapeOf.instances, ['central']);
+  assert.deepStrictEqual(warned, ['Note: query has no ?start/?end: reads every document', 'Note: ' + EVIL]);
+  assert.deepStrictEqual(links, [['Query in Kibana', 'https://kibana.example.com/app/discover#/?_a=x']]);
+  const sent = calls.filter((c) => c[0] === 'POST' && c[1] === '/api/admin/custom-checks').map((c) => c[2]);
+  assert.strictEqual(sent.length, 1);
+  assert.deepStrictEqual([sent[0].source, sent[0].instance, sent[0].window, sent[0].datasource, sent[0].by], ['elasticsearch', 'central', '30', '', ['service']]);
+  assert.strictEqual(box(doc).querySelectorAll('img').length, 0);
+  assert.strictEqual(w.HIT, undefined);
+  assert.match(box(doc).querySelector('.pqc-row').textContent, /elasticsearch central/);
+  assert.deepStrictEqual(errors, []);
+  console.log('PASS an elasticsearch check asks for an ES|QL query and a window and its preview shows the warnings');
+}
+
+async function anElasticsearchCheckOpensWithItsOwnWindow() {
+  //given
+  const {doc, errors} = await boot({items: [item({id: 'busy', name: 'Busy', source: 'elasticsearch', instance: 'central', query: 'FROM logs-* | STATS value = COUNT(*)', window: 240, by: [], run: null})]});
+
+  //when
+  box(doc).querySelector('.pqc-row .pqc-edit').click();
+  await wait(20);
+
+  //then
+  assert.strictEqual(field(doc, 'window').value, '240');
+  assert.strictEqual(field(doc, 'window').closest('.pqc-f').hidden, false);
+  assert.strictEqual(field(doc, 'source').value, 'elasticsearch');
+  assert.deepStrictEqual(errors, []);
+  console.log('PASS an elasticsearch check opens with its own window');
 }
 
 async function aRefusedPreviewShowsTheReasonAndAnEditSavesWithPut() {
@@ -614,7 +679,7 @@ async function handWrittenChecksStayFlatAndNoEmptyGapElementSitsBeforeTheList() 
 (async () => {
   for (const t of [aPresetGroupIsFoldedWhenAllChecksAreOkAndItsHeaderSummarisesIt, aGroupOpensByItselfOnAFailingCheckOrAnOpenCard, aToggleWinsOverTheAutoRuleAndIsRememberedAcrossRerenders,
     theRepeatedPrefixIsDroppedButTheFullNameStaysInTitleAndAccessibleNameAndNeverEmpty, handWrittenChecksStayFlatAndNoEmptyGapElementSitsBeforeTheList, theKeyboardPathMovesFocusIntoThePickerAndBackOut, cancelStopsARunningPreviewAndASourceWithoutInstancesSaysSo, anAdminPicksAPresetFillsItsPlaceholdersPreviewsEachCheckAndAddsIt, refusedPlaceholdersAndATwiceAddedPresetShowTheReasonAsText,
-    theListGroupsPresetChecksUnderAChipAndTheyStayEditable, theAddFromPresetButtonIsOffAtTheCap, theIntegrationsPageListsTheCustomChecksWithTheirStateAsText, anAdminFillsInANewCheckPreviewsItAndSavesIt, aRefusedPreviewShowsTheReasonAndAnEditSavesWithPut,
+    theListGroupsPresetChecksUnderAChipAndTheyStayEditable, theAddFromPresetButtonIsOffAtTheCap, theIntegrationsPageListsTheCustomChecksWithTheirStateAsText, anAdminFillsInANewCheckPreviewsItAndSavesIt, anElasticsearchCheckAsksForAnEsqlQueryAndAWindowAndItsPreviewShowsTheWarnings, anElasticsearchCheckOpensWithItsOwnWindow, aRefusedPreviewShowsTheReasonAndAnEditSavesWithPut,
     deleteAsksOnceMoreBeforeItDeletes, aBoardCardFromACustomCheckShowsItsLabelValuesAsText, anOpenEditorKeepsWhatWasTypedWhenTheIntegrationsPageLoadsAgain, aViewerNeverLoadsTheChecks, theStylesUseThemeColoursAndStackAtPhoneWidth]) {
     try { await t(); } catch (e) { console.log('FAIL ' + t.name + '\n' + (e && e.stack || e)); process.exitCode = 1; }
   }

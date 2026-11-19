@@ -3,7 +3,8 @@ var PQC_STATES = {ok: ['ok', 'k-ok'], failing: ['failing', 'k-warn'], off: ['off
 var PQC_SEV = {info: 'k-info', warn: 'k-warn', crit: 'k-crit'};
 var PQC_BASE = {'1d': '1 day ago', '1w': '1 week ago'};
 var PQC_OPEN = {}, PQC_GSEQ = 0;
-var PQC_PRESETS = null, PQC_PICK = null, PQC_PICK_FORM = null, PQC_PICK_RUN = null, PQC_SOURCE_NAMES = {prometheus: 'Prometheus', grafana: 'Grafana datasource'};
+var PQC_PRESETS = null, PQC_PICK = null, PQC_PICK_FORM = null, PQC_PICK_RUN = null, PQC_SOURCE_NAMES = {prometheus: 'Prometheus', grafana: 'Grafana datasource', elasticsearch: 'Elasticsearch'};
+var PQC_QUERY = {elasticsearch: 'ES|QL query'};
 
 function pqcEl(tag, cls, text) {
   var e = document.createElement(tag);
@@ -67,7 +68,7 @@ function pqcRender(said) {
   from.addEventListener('click', function () { pqcPick(''); });
   head.appendChild(from);
   box.appendChild(head);
-  box.appendChild(pqcEl('p', 'muted pqc-sub', 'Cards from your own PromQL query on a Prometheus or Grafana instance, checked every ' + Math.round(pqcLimit('periodSeconds', 300) / 60) +
+  box.appendChild(pqcEl('p', 'muted pqc-sub', 'Cards from your own PromQL or ES|QL query on a Prometheus, Grafana or Elasticsearch instance, checked every ' + Math.round(pqcLimit('periodSeconds', 300) / 60) +
     ' min. ' + items.length + ' of ' + most + ' set up.'));
   var msg = pqcEl('p', 'adm-msg ok', said || '');
   msg.setAttribute('role', 'status');
@@ -397,26 +398,42 @@ function pqcForm(d) {
   pqcField(f, 'Name', pqcInput('name', d.name, pqcLimit('name', 80)), 'Shown on every card of this check.');
   if (fresh) pqcField(f, 'Id', pqcInput('id', '', 41), 'Optional: lowercase letters, digits and dashes; made from the name when empty. It never changes, so open cards survive a rename.');
   pqcField(f, 'State', pqcSelect('enabled', [['on', 'On'], ['off', 'Off: clears its cards']], d.enabled === false ? 'off' : 'on'));
-  var src = pqcSelect('source', pqcChoices('source').map(function (s) { return [s, s === 'grafana' ? 'Grafana datasource' : 'Prometheus']; }), source);
+  var src = pqcSelect('source', pqcChoices('source').map(function (s) { return [s, PQC_SOURCE_NAMES[s] || s]; }), source);
   pqcField(f, 'Source', src);
   var inst = pqcSelect('instance', pqcInstances(source, d.instance), d.instance || '');
-  pqcField(f, 'Instance', inst, 'The Prometheus or Grafana instance set up under Integrations.');
+  pqcField(f, 'Instance', inst, 'The Prometheus, Grafana or Elasticsearch instance set up under Integrations.');
   var ds = pqcField(f, 'Datasource', pqcInput('datasource', d.datasource, 200), 'The name or uid of the Grafana Prometheus datasource. A uid keeps working after a rename.');
   ds.hidden = source !== 'grafana';
-  src.addEventListener('change', function () {
-    ds.hidden = src.value !== 'grafana';
-    var keep = inst.value;
-    inst.textContent = '';
-    pqcInstances(src.value, '').forEach(function (o) { var opt = pqcEl('option', '', o[1]); opt.value = o[0]; inst.appendChild(opt); });
-    inst.value = keep;
-  });
   var q = pqcEl('textarea', 'pqc-q');
   q.name = 'query';
   q.rows = 3;
   q.maxLength = pqcLimit('query', 2000);
   q.value = d.query || '';
   q.spellcheck = false;
-  pqcField(f, 'PromQL query', q, 'An instant query. At most ' + pqcLimit('series', 500) + ' series are read and each pass has ' + pqcLimit('querySeconds', 20) + ' s for its queries.', true);
+  var qf = pqcField(f, 'PromQL query', q, ' ', true);
+  var win = pqcInput('window', d.window == null ? pqcLimit('window', 60) : d.window, 4);
+  win.type = 'number';
+  win.min = String(pqcLimit('windowMin', 5));
+  win.max = String(pqcLimit('windowMax', 1440));
+  var wf = pqcField(f, 'Window (minutes)', win, 'The time the query reads: ?start is this many minutes before the pass and ?end the pass time, both moved back for a baseline.');
+  var shape = function (to) {
+    var es = to === 'elasticsearch';
+    ds.hidden = to !== 'grafana';
+    wf.hidden = !es;
+    qf.firstChild.textContent = PQC_QUERY[to] || 'PromQL query';
+    qf.lastChild.textContent = es ? 'Starts with FROM and returns a number column named value, such as FROM logs-* | WHERE @timestamp >= ?start AND @timestamp < ?end | STATS value = COUNT(*) BY service = service.name. At most ' +
+      pqcLimit('rows', 1000) + ' rows are read and each pass has ' + pqcLimit('querySeconds', 20) + ' s for its queries.' :
+      'An instant query. At most ' + pqcLimit('series', 500) + ' series are read and each pass has ' + pqcLimit('querySeconds', 20) + ' s for its queries.';
+  };
+  shape(source);
+  src.addEventListener('change', function () {
+    shape(src.value);
+    var keep = inst.value;
+    inst.textContent = '';
+    pqcInstances(src.value, '').forEach(function (o) { var opt = pqcEl('option', '', o[1]); opt.value = o[0]; inst.appendChild(opt); });
+    inst.value = keep;
+    if (inst.selectedIndex < 0 && inst.options.length) inst.selectedIndex = 0;
+  });
   pqcField(f, 'Comparison', pqcSelect('op', pqcPairs(pqcChoices('op')), d.op || '>'));
   var th = pqcInput('threshold', d.threshold == null ? '' : d.threshold, 40);
   th.inputMode = 'decimal';
@@ -434,7 +451,7 @@ function pqcForm(d) {
   pqcField(f, 'Compare with', ticks, 'The same query at the same time 1 day or 1 week earlier; with both, it fires only against both.');
   pqcField(f, 'Baseline as', pqcSelect('baselineMode', pqcChoices('baselineMode').map(function (m) { return [m, m === 'ratio' ? 'Ratio (now / then)' : 'Difference (now - then)']; }), d.baselineMode || 'ratio'));
   pqcField(f, 'Severity', pqcSelect('severity', pqcPairs(pqcChoices('severity')), d.severity || 'warn'));
-  pqcField(f, 'Split by labels', pqcInput('by', pqcList(d.by).join(', '), 200), 'One card per value set of these labels, at most ' + pqcLimit('cards', 20) + ' cards; the rest on one card.');
+  pqcField(f, 'Split by labels', pqcInput('by', pqcList(d.by).join(', '), 200), 'One card per value set of these labels (for ES|QL, columns), at most ' + pqcLimit('cards', 20) + ' cards; the rest on one card.');
   var n = pqcInput('for', d['for'] || 1, 3);
   n.type = 'number';
   n.min = '1';
@@ -477,6 +494,7 @@ function pqcValue(f) {
     baselineMode: v('baselineMode'), severity: v('severity'), by: v('by').split(',').map(function (x) { return x.trim(); }).filter(Boolean), 'for': Number(v('for')) || 1,
     title: v('title').trim(), text: v('text').trim()};
   if (f.querySelector('[name="id"]') && v('id').trim()) body.id = v('id').trim();
+  if (body.source === 'elasticsearch') body.window = v('window').trim();
   return body;
 }
 function pqcSafe(url) { return typeof url === 'string' && /^https:\/\/[^\s]+$/.test(url); }
@@ -489,6 +507,7 @@ function pqcShow(out, r) {
   var cards = pqcList(r.cards);
   out.appendChild(pqcEl('p', 'muted pqc-sum', (r.series || 0) + ' series, ' + (r.firing || 0) + ' match, ' + pqcCount(cards.length, 'card', 'cards') + (r.skipped ? ', ' + r.skipped + ' not a number' : '') +
     (r.read < r.series ? ', ' + r.read + ' read' : '') + (r.noBaseline ? ', ' + pqcCount(r.noBaseline, 'group', 'groups') + ' had no baseline value' : '') + ((r['for'] || 1) > 1 ? '; a card opens only after ' + r['for'] + ' passes in a row' : '') + '. Nothing is saved.'));
+  pqcList(r.warnings).forEach(function (x) { out.appendChild(pqcEl('p', 'adm-msg pqc-warn', 'Note: ' + String(x))); });
   var ul = pqcEl('ul', 'pqc-cards');
   cards.forEach(function (c) {
     var li = pqcEl('li', 'pqc-card');

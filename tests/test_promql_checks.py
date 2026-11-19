@@ -546,7 +546,7 @@ def test_preview_of_a_failing_query_says_why_and_of_a_bad_definition_refuses(sto
         checks.preview(check(op='~'), NOW)
 
     # then
-    assert failing == {'ok': False, 'reason': 'Prometheus main is unreachable', 'cards': [], 'series': 0, 'read': 0, 'skipped': 0, 'noBaseline': 0, 'firing': 0, 'for': 1}
+    assert failing == {'ok': False, 'reason': 'Prometheus main is unreachable', 'cards': [], 'series': 0, 'read': 0, 'skipped': 0, 'noBaseline': 0, 'firing': 0, 'for': 1, 'warnings': []}
 
 
 def test_the_job_is_on_while_a_check_or_one_of_its_cards_exists(store):

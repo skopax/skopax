@@ -34,7 +34,7 @@ def test_every_shipped_preset_loads_and_its_checks_pass_clean_with_the_sample_pl
     found = load()
 
     # then
-    assert sorted(found) == ['couchbase', 'managed-redis']
+    assert sorted(found) == ['couchbase', 'csp', 'managed-redis']
     for preset in found.values():
         samples = {p['key']: p['example'] for p in preset.placeholders}
         values, checks = preset.fill(samples)
@@ -53,7 +53,7 @@ def test_the_longest_allowed_placeholder_values_still_fit_every_check():
         for p in preset.placeholders:
             most = p['max']
             longest[p['key']] = {'matchers': 'a="' + 'x' * (most - 4) + '"', 'prefix': 'p' * most, 'label': 'l' * most, 'name': 'n' * most,
-                                 'instance': 'i' * most, 'datasource': 'd' * most}[p['kind']]
+                                 'instance': 'i' * most, 'datasource': 'd' * most, 'index': 'x' * most}[p['kind']]
 
         # when
         values, checks = preset.fill(longest)
@@ -482,7 +482,7 @@ def test_the_constants_inside_the_queries_and_the_thresholds_are_the_example_rul
 
 def test_a_preset_whose_selector_matches_nothing_says_so_with_one_check():
     # given
-    checks = {p.id: p.fill({'couchbase': COUCHBASE, 'managed-redis': REDIS}[p.id])[1] for p in presets().values()}
+    checks = {p.id: p.fill({'couchbase': COUCHBASE, 'managed-redis': REDIS}[p.id])[1] for p in presets().values() if p.source != 'elasticsearch'}
 
     # when
     found = {k: next(d for d in v if d['id'].endswith('-no-series')) for k, v in checks.items()}
@@ -501,8 +501,9 @@ def test_the_promtool_file_covers_every_check_of_every_preset_in_every_case(tmp_
 
     # then
     assert doc['rule_files'] == [presets_promtool.RULES_FILE] and (tmp_path / presets_promtool.RULES_FILE).read_text() == 'groups: []\n'
-    groups = {p: [t for t in doc['tests'] if t['name'].startswith(p + ' ')] for p in presets()}
-    assert [len(groups[p]) for p in presets()] == [len(couchbase_cases()), len(redis_cases())]
+    promql = [p for p, preset in presets().items() if preset.source != 'elasticsearch']
+    groups = {p: [t for t in doc['tests'] if t['name'].startswith(p + ' ')] for p in promql}
+    assert [len(groups[p]) for p in promql] == [len(couchbase_cases()), len(redis_cases())]
     for preset_id, tests in groups.items():
         _, checks = presets()[preset_id].fill({'couchbase': presets_promtool.COUCHBASE_VALUES, 'managed-redis': presets_promtool.REDIS_VALUES}[preset_id])
         for t in tests:
