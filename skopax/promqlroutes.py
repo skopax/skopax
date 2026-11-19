@@ -14,7 +14,8 @@ PATH = '/api/admin/custom-checks'
 def limits() -> dict:
     return {'checks': promqlchecks.CHECKS_MAX, 'series': promqlchecks.SERIES_MAX, 'cards': promqlchecks.CARDS_MAX, 'querySeconds': promqlchecks.QUERY_TIME_S,
             'for': promqlchecks.FOR_MAX, 'split': promqlchecks.SPLIT_MAX, 'name': promqlchecks.NAME_MAX, 'query': promqlchecks.QUERY_MAX, 'title': promqlchecks.TITLE_MAX,
-            'text': promqlchecks.TEXT_MAX, 'periodSeconds': promqlchecks.JOB_PERIOD}
+            'text': promqlchecks.TEXT_MAX, 'periodSeconds': promqlchecks.JOB_PERIOD,
+            'rows': promqlchecks.ROWS_MAX, 'window': promqlchecks.WINDOW, 'windowMin': promqlchecks.WINDOW_MIN, 'windowMax': promqlchecks.WINDOW_MAX}
 
 
 def choices() -> dict:

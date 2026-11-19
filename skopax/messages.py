@@ -1085,6 +1085,7 @@ MESSAGES: dict[str, str] = {
     'custom_checks.more_short': '{sev} {name} {count} more',
     'custom_checks.link_prometheus': 'Query in Prometheus',
     'custom_checks.link_grafana': 'Query in Grafana',
+    'custom_checks.link_kibana': 'Query in Kibana',
     'custom_checks.failing': 'ok \u00b7 {count} of {total} custom checks failing: {names}',
     'custom_checks.failing_more': '{names} and {count} more',
     'custom_checks.added': 'Custom check {name} added',
