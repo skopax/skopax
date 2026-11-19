@@ -50,7 +50,7 @@ from skopax.oidc import OidcError
 from skopax.operators import OperatorUnknown, Operators
 from skopax.postdeploy import JOB_OFFSET as POSTDEPLOY_OFFSET, JOB_PERIOD as POSTDEPLOY_PERIOD, SERVER_BY, PostDeploy
 from skopax.attach import Attacher
-from skopax.autosend import AutoSend, CritNow, Fallback, waiting as auto_send_waiting
+from skopax.autosend import AutoSend, Fallback, PostNow, fresh as fresh_cards, waiting as auto_send_waiting
 from skopax.config import ConfigurationError, Settings
 from skopax.contract import CodeHost, OrgPack, SourceDown
 from skopax.engine import Applied, PassResult, apply, iso as epoch_iso, new_pushes
@@ -988,7 +988,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     auto = AutoSend(store, lambda key: send_anomaly_to_slack(key, AUTO_BY), lambda report_id: send_report_to_slack(report_id, AUTO_BY), on=lambda: features.on('slack-autosend') and slack.enabled)
     fallback = Fallback(store, settings.slack_fallback_minutes)
-    crit_now = CritNow(store, lambda key: send_anomaly_to_slack(key, SERVER_BY), lambda: bool(settings.slack_crit_now and slack.enabled) and features.on('slack-autosend'))
+    post_now = PostNow(store, lambda key: send_anomaly_to_slack(key, SERVER_BY), lambda: settings.slack_post_sev if slack.enabled and features.on('slack-autosend') else 'off',
+                       lambda: investigator_ready() and settings.investigate_mode == 'live')
 
     def server_apply(results: list[PassResult], now: float, links, after=None, check: str | None = None, screen=None, clusters=None) -> Applied | None:
         try:
@@ -1007,9 +1008,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             notices.fired(applied.events, applied.cards)
         if applied and applied.push:
             pusher.send(applied.push)
-            crit_now.run(applied.push, applied.cards, now)
-            if investigator.enabled and any(a.get('sev') == 'crit' for a in applied.push):
-                investigator.kick(time.time())
+        if applied:
+            post_now.run(fresh_cards(applied, now), applied.cards, now)
+        if applied and investigator.enabled and any(a.get('sev') == 'crit' for a in applied.push):
+            investigator.kick(time.time())
         if applied:
             routes.later(applied.cards, time.time(), applied.push)
         card_posts.swept(applied)

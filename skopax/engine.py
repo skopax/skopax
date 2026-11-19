@@ -542,6 +542,7 @@ class Applied:
     push: list[dict]
     resolved: list[dict] = field(default_factory=list)
     cards: list[dict] = field(default_factory=list)
+    first: bool = False
 
 
 def reach_of(results: list[PassResult], clusters: Mapping[str, tuple[str | None, ...]] | None = None) -> dict[str, bool | frozenset]:
@@ -573,13 +574,13 @@ def number_cards(store: Store, cards: list[dict]) -> None:
 def _merged(state: dict, all_results: list[PassResult], now: float, alert_twins: tuple[str, ...], screen, clusters) -> tuple:
     results = screen(state, all_results) if screen else all_results
     found = [x for r in results if r.ok for x in r.found]
-    events, push, _ = merge(state, copy.deepcopy(found), reach_of(results, clusters), now)
+    events, push, first = merge(state, copy.deepcopy(found), reach_of(results, clusters), now)
     twins = group_alert_twins(state, alert_twins)
     siblings = group_siblings(state)
     if twins or siblings:
         grouped = {k for k, _ in twins + siblings}
         push = [a for a in push if a.get('key') not in grouped]
-    return results, events, push, twins, siblings
+    return results, events, push, twins, siblings, first
 
 
 def apply(store: Store, results: list[PassResult], now: float, links: Callable[[dict], list[dict] | None] | None = None, dm: bool = False,
@@ -598,7 +599,7 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
         state = store.load()
         loaded = copy.deepcopy(state)
         base = state.get('rev', 0)
-        results, events, push, twins, siblings = _merged(state, all_results, now, alert_twins, screen, clusters)
+        results, events, push, twins, siblings, first = _merged(state, all_results, now, alert_twins, screen, clusters)
         if tag_rules is not None:
             tags.apply_rules(state['anomalies'], tag_rules, iso(now), texts if hooks else tags.texts_with(state['anomalies'], tag_rules, iso(now), hooks))
         number_cards(store, state['anomalies'])
@@ -647,5 +648,5 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
             store.add_activity('auto', SYSTEM, msg('engine.grouped.twin', key=key, host=host), key=key)
         for key, host in siblings:
             store.add_activity('auto', SYSTEM, msg('engine.grouped.sibling', key=key, host=host), key=key)
-        return Applied(rev, events, push, resolved, state['anomalies'])
+        return Applied(rev, events, push, resolved, state['anomalies'], first)
     raise Conflict(store.rev()['rev'])

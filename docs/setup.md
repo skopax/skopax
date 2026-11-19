@@ -41,7 +41,7 @@ Each switch has an environment name, which sets the starting value. A value save
 |---|---|---|
 | AI investigator | `SKOPAX_FEATURE_INVESTIGATOR` | investigates cards and answers questions |
 | Chat | `SKOPAX_FEATURE_CHAT` | the Chat page, Slack direct messages and MCP questions; needs `CHAT_UI` and SSO at boot |
-| Slack auto-send | `SKOPAX_FEATURE_SLACK_AUTOSEND` | posts armed drafts and critical cards on its own; armed drafts post once it is on again |
+| Slack auto-send | `SKOPAX_FEATURE_SLACK_AUTOSEND` | posts armed drafts, and new cards from Post at once from up (warnings and critical cards by default), on its own; armed drafts post once it is on again |
 | Slack listener | `SKOPAX_FEATURE_SLACK_LISTENER` | answers questions and button clicks in Slack |
 | MCP server | `SKOPAX_FEATURE_MCP` | lets AI assistants read and triage cards |
 | Read without login | `SKOPAX_PUBLIC_READ` | anyone who can reach the page may read |

@@ -6,7 +6,7 @@ from typing import Callable
 from pymongo.errors import PyMongoError
 
 from skopax import clock
-from skopax.engine import fmt, iso as epoch_iso, parse_iso
+from skopax.engine import PUSH_SVC_QUIET_S, SEV_RANK, Applied, fmt, iso as epoch_iso, parse_iso, push_group
 from skopax.errkind import Authored, kind as error_kind
 from skopax.investigator.select import EVENT_WINDOW_S, announced_twin, merged, own_findings, stamps
 from skopax.messages import msg
@@ -24,7 +24,9 @@ FALLBACK_SEV = 'crit'
 FALLBACK_SKIP_TRIAGE = ('investigating',) + STOPPED_TRIAGE
 FALLBACK_TRIGGERS = ('cards', 'action')
 FALLBACK_COVERED = ('done', 'running')
-CRIT_NOW_BURST = 3
+POST_NOW_BURST = 3
+SEV_WORDS = {'crit': 'critical', 'warn': 'warning', 'info': 'info'}
+NO_INVESTIGATION = ('info',)
 SUB_LIMIT = 80
 
 
@@ -142,13 +144,14 @@ def plain(text) -> str:
     return ' '.join(str(text).split()).replace('<', '‹').replace('>', '›')
 
 
-def fallback_text(a: dict, fired_at: str, last_key: str = 'autosend.fallback.last') -> str:
+def fallback_text(a: dict, fired_at: str, last_key: str | None = 'autosend.fallback.last') -> str:
     unit = a.get('unit') or ''
     what = ' · '.join([plain(a.get('svc') or '?'), plain(a.get('label') or '?')] + ([cut(plain(a['sub']), SUB_LIMIT)] if a.get('sub') else []))
     base = '' if a.get('d1') is None else msg('autosend.base.d1', d1=shown(a['d1'], unit)) + ('' if a.get('d7') is None else msg('autosend.base.d7', d7=shown(a['d7'], unit))) + ')'
     since_at = parse_iso(a.get('firstSeen') or fired_at)
     since = clock.date(since_at)
-    return msg('autosend.fallback.body', what=what, now=shown(a.get('now'), unit), base=base, since=since, zone=clock.label(since_at), last=msg(last_key))
+    text = msg('autosend.fallback.body', what=what, now=shown(a.get('now'), unit), base=base, since=since, zone=clock.label(since_at), last=msg(last_key) if last_key else '')
+    return text if last_key else text.rstrip()
 
 
 def investigated(runs: list[dict], key: str, fired_at: str) -> bool:
@@ -202,19 +205,66 @@ class Fallback:
         return count
 
 
-class CritNow:
-    def __init__(self, store: Store, send: Callable[[str], object], enabled: Callable[[], bool]):
+def quiet(a: dict, cards: list[dict], now: float) -> bool:
+    group = push_group(a)
+    if group is None:
+        return False
+    for c in cards:
+        if c is a or push_group(c) != group:
+            continue
+        at = c.get('pushedAt') if c.get('pushedSev') in SEV_RANK else None
+        at = at or ((c.get('slackPost') or {}).get('at') if c.get('sev') in NO_INVESTIGATION else None)
+        if at and now - parse_iso(at) < PUSH_SVC_QUIET_S:
+            return True
+    return False
+
+
+def fresh(applied: Applied, now: float) -> list[dict]:
+    if applied.first:
+        return []
+    by_key = {c['key']: c for c in applied.cards}
+    pushed = {a['key'] for a in applied.push}
+    new = [by_key[e['key']] for e in applied.events if e.get('ev') == 'new' and e.get('key') in by_key and e['key'] not in pushed]
+    taken, info = set(), []
+    for a in new:
+        group = push_group(a)
+        if a.get('sev') not in NO_INVESTIGATION or (group is not None and group in taken) or quiet(a, applied.cards, now):
+            continue
+        if group is not None:
+            taken.add(group)
+        info.append(a)
+    return list(applied.push) + info
+
+
+def severities(cards: list[dict]) -> str:
+    counts = {sev: sum(1 for a in cards if a.get('sev') == sev) for sev in SEV_WORDS}
+    return ', '.join(f'{n} {word}' for sev, word in SEV_WORDS.items() if (n := counts[sev]))
+
+
+class PostNow:
+    def __init__(self, store: Store, send: Callable[[str], object], floor: Callable[[], str], investigating: Callable[[], bool] = lambda: True):
         self.store = store
         self.send = send
-        self.enabled = enabled
+        self.floor = floor
+        self.investigating = investigating
 
-    def due(self, pushed: list[dict], cards: list[dict], now: float) -> list[dict]:
+    def last_line(self, a: dict, investigating: bool) -> str | None:
+        if a.get('sev') in NO_INVESTIGATION:
+            return 'autosend.post_now.info_last'
+        if not investigating:
+            return None
+        return 'autosend.crit_now.last' if a.get('sev') == FALLBACK_SEV else 'autosend.post_now.warn_last'
+
+    def due(self, pushed: list[dict], cards: list[dict], now: float, floor: str | None = None) -> list[dict]:
+        floor = floor or self.floor()
+        if floor not in SEV_RANK:
+            return []
         by_key = {c['key']: c for c in cards}
         picked = []
         own = own_findings()
         for p in pushed:
             a = by_key.get(p['key'], p)
-            if a.get('sev') != FALLBACK_SEV or a.get('status') != 'open' or a.get('muted') or merged(a, by_key) or a.get('src') in own:
+            if SEV_RANK.get(a.get('sev'), -1) < SEV_RANK[floor] or a.get('status') != 'open' or a.get('muted') or merged(a, by_key) or a.get('src') in own:
                 continue
             if a.get('slackDraft') or (a.get('slackPost') or {}).get('at') or (a.get('autoSend') or {}).get('holdBy') or a.get('triage') in STOPPED_TRIAGE:
                 continue
@@ -224,25 +274,31 @@ class CritNow:
         return picked
 
     def run(self, pushed: list[dict], cards: list[dict], now: float) -> list[str]:
-        if not pushed or not self.enabled():
+        if not pushed:
             return []
-        due = self.due(pushed, cards, now)
-        if len(due) > CRIT_NOW_BURST:
-            self.store.add_activity('slack', SERVER_BY, f'{len(due)} critical cards opened together; not posted at once, the investigator groups them first')
-            log.info('%d critical cards opened together, left to the investigator', len(due))
+        floor = self.floor()
+        if floor not in SEV_RANK:
+            return []
+        due = self.due(pushed, cards, now, floor)
+        investigating = self.investigating()
+        if len(due) > POST_NOW_BURST:
+            grouped = investigating and any(a.get('sev') not in NO_INVESTIGATION for a in due)
+            self.store.add_activity('slack', SERVER_BY, f'{len(due)} cards opened together ({severities(due)}); not posted at once' + (', the investigator groups them first' if grouped else ''))
+            log.info('%d cards opened together (%s), not posted at once', len(due), severities(due))
             return []
         posted = []
         for a in due:
             fired_at = a.get('pushedAt') or a.get('firstSeen') or epoch_iso(now)
-            saved = self.store.fallback_slack_draft(a['key'], fallback_text(a, fired_at, 'autosend.crit_now.last'), SERVER_BY, fired_at, dt.datetime.fromtimestamp(now, dt.timezone.utc), STOPPED_TRIAGE)
+            last = self.last_line(a, investigating)
+            saved = self.store.fallback_slack_draft(a['key'], fallback_text(a, fired_at, last), SERVER_BY, fired_at, dt.datetime.fromtimestamp(now, dt.timezone.utc), STOPPED_TRIAGE)
             if saved is None:
                 continue
             try:
                 self.send(a['key'])
             except SEND_ERRORS as e:
-                log.warning('critical card %s not posted to Slack at once, its auto-send retries: %s', a['key'], error_kind(e))
+                log.warning('card %s not posted to Slack at once, its auto-send retries: %s', a['key'], error_kind(e))
                 continue
             posted.append(a['key'])
-            self.store.add_activity('slack', SERVER_BY, f"Critical card posted to Slack at once with its numbers · {a['key']}", key=a['key'])
-            log.info('critical card %s posted to Slack at once', a['key'])
+            self.store.add_activity('slack', SERVER_BY, f"Card posted to Slack at once with its numbers \u00b7 {a['key']}", key=a['key'])
+            log.info('card %s posted to Slack at once', a['key'])
         return posted

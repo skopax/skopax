@@ -14,6 +14,10 @@ log = logging.getLogger('skopax.config')
 
 INVESTIGATE_MODES = ('off', 'shadow', 'live')
 SLACK_LISTEN_MODES = ('off', 'shadow', 'live')
+SLACK_POST_SEVS = ('crit', 'warn', 'info', 'off')
+SLACK_POST_SEV = 'warn'
+CRIT_NOW_TOLD = 'slack.crit-now'
+TOLD: set[str] = set()
 
 PLACEHOLDER = re.compile(r'\$\{([^}:]+)(?::([^}]*))?}')
 SESSION_IDLE_HOURS = 72
@@ -135,6 +139,8 @@ class Settings:
     slack_operator_cache_s: int = 600
     slack_fallback_minutes: int = 15
     slack_crit_now: bool = True
+    slack_post_sev: str = SLACK_POST_SEV
+    slack_post_sev_set: bool = False
     routes_slack_echo: bool = False
     release_settle: bool = False
     jira_links: bool = True
@@ -430,6 +436,17 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
 
     log_color = logs.NEVER if env.get(logs.NO_COLOR_ENV) else log_setting(LOG_COLOR_KEY, logs.COLOR_ENV, logs.COLORS, logs.ALWAYS)
 
+    post_sev_raw = get('slack.post-sev', 'SLACK_POST_SEV', '').strip().lower()
+    crit_now_raw = get('slack.crit-now', 'SLACK_CRIT_NOW', '').strip().lower()
+    if crit_now_raw and CRIT_NOW_TOLD not in TOLD:
+        TOLD.add(CRIT_NOW_TOLD)
+        log.warning('slack.crit-now (SLACK_CRIT_NOW) is replaced by slack.post-sev (SLACK_POST_SEV); it still counts while slack.post-sev is not set')
+    if post_sev_raw and post_sev_raw not in SLACK_POST_SEVS:
+        log.warning('slack.post-sev %r is not one of %s; using %s', post_sev_raw, ', '.join(SLACK_POST_SEVS), SLACK_POST_SEV)
+    post_sev_set = post_sev_raw in SLACK_POST_SEVS
+    crit_now = crit_now_raw in ('', 'true')
+    post_sev = post_sev_raw if post_sev_set else SLACK_POST_SEV if crit_now else 'off'
+
     release_template = get('jira.release-name', 'JIRA_RELEASE_NAME', RELEASE_NAME).strip() or RELEASE_NAME
     release_refused = release_problem(release_template)
     if release_refused:
@@ -479,7 +496,9 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         slack_operator_cache_s=int(get('slack.operator-cache-seconds', 'SLACK_OPERATOR_CACHE_SECONDS', '600')),
         slack_fallback_minutes=int(get('slack.fallback-minutes', 'SLACK_FALLBACK_MINUTES', '15').strip() or 15),
         routes_slack_echo=get('routes.slack-echo', 'ROUTES_SLACK_ECHO', 'false').strip().lower() == 'true',
-        slack_crit_now=get('slack.crit-now', 'SLACK_CRIT_NOW', 'true').strip().lower() == 'true',
+        slack_crit_now=crit_now,
+        slack_post_sev=post_sev,
+        slack_post_sev_set=post_sev_set,
         release_settle=get('core.release-settle', 'SKOPAX_RELEASE_SETTLE', 'false').strip().lower() == 'true',
         jira_links=get('core.jira-links', 'SKOPAX_JIRA_LINKS', 'true').strip().lower() == 'true',
         assign_dm=get('core.assign-dm', 'SKOPAX_ASSIGN_DM', 'true').strip().lower() == 'true',

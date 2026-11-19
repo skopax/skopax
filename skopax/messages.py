@@ -201,6 +201,8 @@ MESSAGES: dict[str, str] = {
     'routes.gave_up': '{plugin} stopped posting {count} card(s) to the route {route} after {tries} failed tries ({reason}). Fix the route, then run its Test connection to post them again.',
     'autosend.fallback.last': 'The automatic investigation could not run; someone needs to look at this card.',
     'autosend.crit_now.last': 'The automatic investigation has started; findings will arrive in this thread.',
+    'autosend.post_now.warn_last': 'The investigator looks at this card on its next run; findings will arrive in this thread.',
+    'autosend.post_now.info_last': 'No automatic investigation runs on info cards; someone can open the card to look.',
     'autosend.fallback.body': '{what}: now {now}{base}\nOngoing since {since} {zone}.\n{last}',
     'autosend.base.d1': ' (1 d ago {d1}',
     'autosend.base.d7': ' / 7 d ago {d7}',

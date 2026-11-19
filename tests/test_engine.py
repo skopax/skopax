@@ -837,3 +837,16 @@ def test_a_duplicate_of_an_original_that_is_resolved_and_quiet_reopens_on_its_ow
 
     # then
     assert (dup['status'], dup['triage'], dup.get('parent'), dup['muted']) == ('open', None, None, None)
+
+
+def test_applied_says_whether_it_was_the_first_pass(store: Store):
+    # given
+    result = PassResult('cf', True, 'ok', [item('a|svc1', sev='info'), item('b|svc1', sev='crit')])
+
+    # when
+    first = apply(store, [result], NOW)
+    later = apply(store, [PassResult('cf', True, 'ok', [item('a|svc1', sev='info'), item('b|svc1', sev='crit'), item('c|svc2', sev='info')])], NOW + 60)
+
+    # then
+    assert first.first is True and first.push == []
+    assert later.first is False and [e['key'] for e in later.events if e['ev'] == 'new'] == ['c|svc2']

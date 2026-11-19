@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from skopax import registry as registry_module
 from skopax.app import create_app
-from skopax.autosend import CritNow, Fallback
+from skopax.autosend import Fallback, PostNow
 from skopax.contract import CardType, Check
 from skopax.engine import iso
 from skopax.investigator import select
@@ -43,7 +43,7 @@ def test_a_check_marked_own_findings_is_never_picked_by_the_investigator_or_the_
     with TestClient(create_app(settings(), store, registry=registry)):
         picked = [a['key'] for a in select.eligible(state, 'live', [], NOW, 5)]
         fallback = [a['key'] for a, _ in Fallback(store, 15).due(state, [], NOW)]
-        crit_now = [a['key'] for a in CritNow(store, lambda key: None, lambda: True).due(cards, cards, NOW)]
+        crit_now = [a['key'] for a in PostNow(store, lambda key: None, lambda: 'crit').due(cards, cards, NOW)]
 
     # then
     assert registry.own_findings() == frozenset({'shop-sends'})

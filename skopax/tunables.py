@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 from pymongo import DESCENDING, ReturnDocument
 
 from skopax import brand, clock as zone_clock, logs, tags
-from skopax.config import DEFAULT_ROLES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SSO_CLAIM_MODES, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
+from skopax.config import DEFAULT_ROLES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
 from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
@@ -68,10 +68,11 @@ class Tunable:
     default: str | None = None
     rule_help: Mapping[str, str] | None = None
     hidden: bool = False
+    choice_labels: Mapping[str, str] | None = None
 
 
-def T(key, field, group, label, help, kind, low=None, high=None, choices=(), live=True, defaults=None, part=None, hidden=False) -> Tunable:
-    return Tunable(key, field, group, label, help, kind, low, high, choices if callable(choices) else tuple(choices), live, defaults, part, hidden=hidden)
+def T(key, field, group, label, help, kind, low=None, high=None, choices=(), live=True, defaults=None, part=None, hidden=False, choice_labels=None) -> Tunable:
+    return Tunable(key, field, group, label, help, kind, low, high, choices if callable(choices) else tuple(choices), live, defaults, part, hidden=hidden, choice_labels=choice_labels)
 
 
 def choices_of(t: Tunable) -> tuple[str, ...]:
@@ -90,6 +91,10 @@ def card_languages() -> tuple[str, ...]:
 
 HTTPS_KEYS = ()
 SLACK_CHANNEL_KEY = 'slack.channel'
+POST_SEV_KEY = 'slack.post-sev'
+CRIT_NOW_KEY = 'slack.crit-now'
+POST_SEV_LABELS = {'crit': 'Critical', 'warn': 'Warning', 'info': 'Info', 'off': 'Off'}
+RENAMED = {CRIT_NOW_KEY: POST_SEV_KEY}
 TIMEZONE_KEY = 'general.timezone'
 RELEASE_NAME_KEY = 'jira.release-name'
 LINKS_KEY = 'core.instance-links'
@@ -210,7 +215,9 @@ STATIC = (
     T('slack.remind-hours', 'slack_remind_hours', SLACK, 'Reminder after (h)', 'Reminds a posted card nobody acted on after N hours; 0 turns reminders off', 'float', 0, 168, live=False),
     T('slack.clear-note-minutes', 'slack_clear_note_minutes', SLACK, 'Cleared note after (min)', 'Says in the thread that a posted card cleared after N minutes', 'float', 0, 240, live=False),
     T('routes.slack-echo', 'routes_slack_echo', SLACK, 'Echo route posts to Slack', 'Also posts a card a route (such as a Teams channel) takes to the Slack channel when Slack has not posted it yet, and says in its thread which route got it; a route can override this with its own Also post to Slack field', 'bool'),
-    T('slack.crit-now', 'slack_crit_now', SLACK, 'Critical cards at once', 'Posts a critical card to the main channel with its numbers the moment it opens, like Teams; the investigator\'s findings follow as a reply in its thread', 'bool'),
+    T(POST_SEV_KEY, 'slack_post_sev', SLACK, 'Post at once from', 'Posts a card of this severity or higher to the main channel with its numbers when it is pushed (new, escalated or reopened; an info card only when it is brand new); the investigator\'s findings follow as a reply in its thread. '
+      'Many cards opening together are not posted at once, and the investigator, when it runs, groups them. Off leaves every card to the investigator\'s drafts and to people', 'choice', choices=SLACK_POST_SEVS, choice_labels=POST_SEV_LABELS),
+    T(CRIT_NOW_KEY, 'slack_crit_now', SLACK, 'Critical cards at once', 'Deprecated: use Post at once from. false turns posting at once off while Post at once from is not set', 'bool', live=False, hidden=True),
     T('slack.fallback-minutes', 'slack_fallback_minutes', SLACK, 'Numbers fallback after (min)', 'Posts the numbers of a critical card when no investigation finished in N minutes; 0 turns it off', 'int', 0, 240, live=False),
     T('slack.state-notes', 'slack_state_notes', SLACK, 'Status notes in threads', 'Posts a short line in the thread when a posted card is taken, resolved or muted', 'bool', live=False),
     T('slack.listen', 'slack_listen', SLACK, 'Listening', 'off, shadow (reads only) or live (answers)', 'choice', choices=SLACK_LISTEN_MODES, live=False),
@@ -520,6 +527,8 @@ def apply(base: Settings, overrides: dict[str, str], extra: tuple[Tunable, ...] 
             changes[t.field] = value
     if 'auto_resolve_days' in changes and 'auto_resolve_hours' not in changes and not base.auto_resolve_hours_set:
         changes['auto_resolve_hours'] = changes['auto_resolve_days'] * 24
+    if 'slack_crit_now' in changes and 'slack_post_sev' not in changes and not base.slack_post_sev_set:
+        changes['slack_post_sev'] = SLACK_POST_SEV if changes['slack_crit_now'] else 'off'
     if tag_parts:
         held = dict(base.tag_rules or tags.RULES)
         held.update(tag_parts)
@@ -543,12 +552,12 @@ class TunableStore:
     def all(self) -> dict[str, dict]:
         return {d['_id']: {'value': d.get('value'), 'by': d.get('by'), 'at': d.get('at')} for d in self.values.find({})}
 
-    def write(self, key: str, value: str | None, by: str, old: str | None) -> dict:
+    def write(self, key: str, value: str | None, by: str, old: str | None, **extra) -> dict:
         if value is None:
             self.values.delete_one({'_id': key})
         else:
             self.values.replace_one({'_id': key}, {'_id': key, 'value': value, 'by': by, 'at': iso(utc_now())}, upsert=True)
-        return self.write_change(key, old, value, by)
+        return self.write_change(key, old, value, by, **extra)
 
     def advance(self, key: str, value: str) -> None:
         found = self.values.find_one({'_id': key})
@@ -583,6 +592,7 @@ class Live:
         self.labels: dict[str, str] = dict(labels)
         self.overrides: dict[str, dict] = {}
         self._warned: dict[tuple[str, int], str] = {}
+        self._told: set[str] = set()
         self._current = base
         self._rev: int | None = None
         self._checked: float | None = None
@@ -602,6 +612,7 @@ class Live:
             rev = self.tunables.rev()
             if rev != self._rev or force:
                 overrides = self.tunables.all()
+                self._tell_renamed(overrides)
                 self._current = apply(self.base, {k: v['value'] for k, v in overrides.items()}, self.extra())
                 zone_clock.set_zone(self._current.timezone)
                 logs.use(self._current.log_format, self._current.log_color, self._current.log_level)
@@ -612,6 +623,12 @@ class Live:
             log.warning('admin settings not read, keeping the last ones: %s', error_kind(e))
         finally:
             self._lock.release()
+
+    def _tell_renamed(self, overrides: Mapping[str, dict]) -> None:
+        for old, new in RENAMED.items():
+            if old in overrides and old not in self._told:
+                self._told.add(old)
+                log.warning('admin setting %s is replaced by %s; it still counts while %s is not set', old, new, new)
 
     def _seen(self) -> None:
         if self.watch is None:
@@ -706,6 +723,10 @@ class Live:
             if callable(t.choices) and out['value'] and out['value'] not in offered:
                 out['choices'] = list(dict.fromkeys(out['choices'] + [out['value']]))
                 out['problem'] = msg('settings.pack_missing', value=out['value'])
+        if t.choice_labels:
+            out['choiceLabels'] = dict(t.choice_labels)
+        if t.key == POST_SEV_KEY and not given and not self.base.slack_post_sev_set:
+            self.mark_old_switch(out)
         if t.key == 'core.log-color' and logs.PLAIN[0]:
             out['value'] = NO_COLOR_SHOWN
             out['choices'] = list(dict.fromkeys(out['choices'] + [NO_COLOR_SHOWN]))
@@ -721,6 +742,22 @@ class Live:
         if t.key == LINKS_KEY:
             self.hide_refused_links(t, out, given, configured)
         return out
+
+    def set_post_sev(self, value: str | None, by: str, old: str | None) -> dict:
+        stored_old = self.overrides.get(CRIT_NOW_KEY)
+        if value is not None and old is None and not self.base.slack_post_sev_set and (stored_old or not self.base.slack_crit_now):
+            old = self.current().slack_post_sev
+        cleared = self.tunables.write(CRIT_NOW_KEY, None, by, stored_old.get('value'), legacy=True) if stored_old else None
+        if value is None and POST_SEV_KEY not in self.overrides and cleared:
+            return cleared
+        return self.tunables.write(POST_SEV_KEY, value, by, old)
+
+    def mark_old_switch(self, out: dict) -> None:
+        stored_old = self.overrides.get(CRIT_NOW_KEY)
+        if stored_old:
+            out.update(source='admin', by=stored_old.get('by'), at=stored_old.get('at'), oldSwitch=CRIT_NOW_KEY)
+        elif not self.base.slack_crit_now:
+            out['oldSwitch'] = CRIT_NOW_KEY
 
     def label_of(self, t: Tunable) -> str:
         key = CONFIG_KEY.get(t.key, t.key)
@@ -770,7 +807,10 @@ class Live:
             value = now
         else:
             value = None if raw is None else stored(parse(t, raw, self.base))
-        change = self.tunables.write(key, value, by, old)
+        if key == POST_SEV_KEY:
+            change = self.set_post_sev(value, by, old)
+        else:
+            change = self.tunables.write(key, value, by, old)
         self.refresh(force=True)
         return self.entry(t), {**change, 'label': t.label, 'before': before, 'after': hide_refused(key, self.now_text(t))}
 
