@@ -68,3 +68,18 @@ def test_a_tile_instance_follows_its_first_watched_check(store):
     # then
     assert [(i['name'], i['pass'], i['status']) for i in tile['instances']] == [('main', 'beat', 'ok'), ('east', None, None)]
     assert tile['passes'] == ['beat']
+
+
+def test_a_plugin_with_no_fields_checks_or_panels_has_no_tile_and_is_still_listed_in_admin(store):
+    # given
+    hooks_only = minimal('hooky', 'Hooky', checks=())
+    store.save_state({'anomalies': [], 'initialized': True, 'sources': {}, 'serverPasses': {}}, None)
+
+    # when
+    with TestClient(create_app(settings(), store, registry=Registry.of(hooks_only, PAIR, directory=HERE))) as c:
+        tiles = [t['id'] for t in c.get('/api/server', headers=AUTH).json()['plugins']]
+        listed = {p['id']: p for p in c.get('/api/admin/plugins', headers=AUTH).json()['plugins']}
+
+    # then
+    assert tiles == ['pair']
+    assert listed['hooky']['state'] == 'ok' and listed['hooky']['fields'] == [] and 'pair' in listed

@@ -216,10 +216,11 @@ class Users:
         return self.insert({'_id': key, 'email': key, 'name': clean_name(name), 'role': chosen, 'adminRole': chosen, 'roleFrom': 'admin', 'source': 'sso',
                             'disabled': False, 'createdAt': stamp(), 'lastLogin': None, 'opened': False})
 
-    def make_local(self, email: str, password: str, by: str) -> dict | None:
+    def make_local(self, email: str, password: str, by: str, fields: dict | None = None, link: bool = True) -> dict | None:
         key = str(email or '').strip().lower()
-        change = {'$set': {'source': 'local', 'pw': hash_password(clean_password(password)), 'ssoLink': self.pending_link(by)}, '$unset': {'opened': ''}}
-        return public(self.col.find_one_and_update({'_id': key, 'source': 'sso', 'opened': False}, change, return_document=ReturnDocument.AFTER))
+        change = {'source': 'local', 'pw': hash_password(clean_password(password))} | ({'ssoLink': self.pending_link(by)} if link else {}) | (fields or {})
+        before = self.guarded_update(key, change, ('opened',), only={'source': 'sso', 'opened': False})
+        return self.get(key) if before is not None else None
 
     def insert(self, doc: dict) -> dict:
         key = doc['_id']

@@ -4,7 +4,7 @@ from tests.test_slack import FakeSlack
 from skopax.store import Store
 
 
-def test_an_assignment_made_with_the_api_token_is_sent_in_the_name_of_claude(store: Store):
+def test_an_assignment_made_with_the_api_token_is_sent_in_the_name_of_the_investigator(store: Store):
     # given
     t = FakeSlack()
     store.save({**state(anomaly(KEY, num=14, svc='checkout-service', label='ERROR lines')), 'initialized': True}, None)
@@ -15,4 +15,4 @@ def test_an_assignment_made_with_the_api_token_is_sent_in_the_name_of_claude(sto
 
     # then
     [(_, post)] = t.calls
-    assert post['text'].startswith('Claude assigned you a Skopax card: *#14 · checkout-service / ERROR lines*')
+    assert post['text'].startswith('Investigator assigned you a Skopax card: *#14 \u00b7 checkout-service / ERROR lines*')

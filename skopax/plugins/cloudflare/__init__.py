@@ -2,6 +2,7 @@ from pathlib import Path
 
 from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Panel, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool
 from skopax.kit import connection
+from skopax.kit.options import pairs
 from skopax.plugins.cloudflare import client as cf
 from skopax.plugins.cloudflare.checks import EDGE_HELP, EDGE_RULE, MID, Pass, cf_pass, components_of, edge_pass, evaluate_edge, outcome, probe_analytics
 from skopax.plugins.cloudflare.client import (DENIED, STATUS_PAGE, VERIFY, ZONE_NAME, Cloudflare, CloudflareError, Zone, account_id, client_for, lacks, traffic,
@@ -18,6 +19,26 @@ SECTION_HELP = {
     'cloudflare': 'health checks (part checks), certificate packs (part certs) and watched status components (part components) of the zones, plus a summary row',
     'edge': 'one row per watched zone: requests in the last hour, cached share, 502 / 52x and other 5xx shares, and the same shares 1 and 7 days earlier',
 }
+
+
+PLAN_CHECKS = ('cf', 'edge')
+PLAN_WORDS = ('all', 'none')
+
+
+def zone_plan(raw: object) -> tuple[dict[str, frozenset[str]], list[str]]:
+    found, bad = pairs(raw)
+    plan: dict[str, frozenset[str]] = {}
+    for zone, spec in found.items():
+        words = [w.strip().lower() for w in spec.split('+') if w.strip()]
+        if not words or any(w not in PLAN_CHECKS + PLAN_WORDS for w in words) or ('none' in words and len(words) > 1):
+            bad.append(f'{zone}={spec}')
+        else:
+            plan[zone.lower().rstrip('.')] = frozenset(PLAN_CHECKS if 'all' in words else [w for w in words if w in PLAN_CHECKS])
+    return plan, bad
+
+
+def runs(plan: dict[str, frozenset[str]], zone: str, check: str) -> bool:
+    return check in plan.get(zone, frozenset(PLAN_CHECKS))
 
 
 def _zones(client: Cloudflare, names: list[str], out: Pass) -> tuple[list[Zone], list[str]]:
@@ -57,9 +78,12 @@ def _refused(part: str, zones: list[str], invalid: bool = False) -> ReadError:
     return ReadError(400, f'Cloudflare cannot read {part}{where}: {lacks(part, invalid)}')
 
 
-def _probe(client: Cloudflare, zones: list[Zone], now: float, off: frozenset[str]) -> None:
-    zone = zones[0]
-    parts = () if 'cf' in off else (('health checks', f'/zones/{zone.id}/healthchecks'), ('certificates', f'/zones/{zone.id}/ssl/certificate_packs'))
+def _probe(client: Cloudflare, zones: list[Zone], now: float, off: frozenset[str], plan: dict[str, frozenset[str]] | None = None) -> None:
+    plan = plan or {}
+    cf_zones = [z for z in zones if runs(plan, z.name, 'cf')]
+    edge_zones = [z for z in zones if runs(plan, z.name, 'edge')]
+    parts = () if 'cf' in off or not cf_zones else (('health checks', f'/zones/{cf_zones[0].id}/healthchecks'), ('certificates', f'/zones/{cf_zones[0].id}/ssl/certificate_packs'))
+    zone = cf_zones[0] if cf_zones else None
     for part, path in parts:
         try:
             client.listing(path, pages=1)
@@ -71,13 +95,13 @@ def _probe(client: Cloudflare, zones: list[Zone], now: float, off: frozenset[str
             if e.answer():
                 raise ReadError(400, e.reason) from None
             raise
-    if 'edge' in off:
+    if 'edge' in off or not edge_zones:
         return
     try:
-        probe_analytics(client, zones, now)
+        probe_analytics(client, edge_zones, now)
     except CloudflareError as e:
         if e.denied:
-            raise _refused('analytics', [z.name for z in zones], e.invalid) from None
+            raise _refused('analytics', [z.name for z in edge_zones], e.invalid) from None
         if e.answer():
             raise ReadError(400, e.reason) from None
         raise
@@ -90,6 +114,12 @@ def test(ctx: Context) -> TestResult:
         names = zone_names(info.config.get('zones'))
         if not names:
             raise ReadError(400, 'Zones is empty: name at least one zone')
+        plan, bad = zone_plan(info.config.get('zone-checks'))
+        if bad:
+            raise ReadError(400, f"Checks per zone needs zone=cf, edge, cf+edge or none entries; {', '.join(bad)} cannot be read")
+        strays = [z for z in plan if z not in names]
+        if strays:
+            raise ReadError(400, f"Checks per zone names {', '.join(strays)}, which is not in Zones")
         client = client_for(info, ctx.http(), cf.TEST_BUDGET_S, cf.TEST_CALL_S)
         try:
             status, refused = client.verify(), None
@@ -119,7 +149,7 @@ def test(ctx: Context) -> TestResult:
             raise ReadError(400, f'Cloudflare token is {status}')
         if missing:
             raise ReadError(400, f"Cloudflare token active, but it cannot see the zone{'s' if len(missing) > 1 else ''} {', '.join(missing)}")
-        _probe(client, found, ctx.now, info.off_checks)
+        _probe(client, found, ctx.now, info.off_checks, zone_plan(info.config.get('zone-checks'))[0])
         return f"Cloudflare token active{MID}zones: {', '.join(z.name for z in found)}"
 
     return connection.result(ask)
@@ -131,11 +161,13 @@ def _blind(got: Pass) -> bool:
 
 def run_cf(ctx: Context) -> Sweep:
     info = ctx.instance
-    names = zone_names(info.config.get('zones'))
+    plan = zone_plan(info.config.get('zone-checks'))[0]
+    listed = zone_names(info.config.get('zones'))
+    names = [n for n in listed if runs(plan, n, 'cf')]
     components = components_of(info.config.get('status-components'))
     client = client_for(info, ctx.http(), cf.BUDGET_S)
     got = Pass()
-    zones, missing = _zones(client, names, got)
+    zones, missing = _zones(client, names, got) if names or not listed else ([], [])
     cf_pass(client, zones, components, ctx.now, got)
     if components and 'status' not in got.errors:
         got.reach('status')
@@ -148,10 +180,12 @@ def run_cf(ctx: Context) -> Sweep:
 
 def run_edge(ctx: Context) -> Sweep:
     info = ctx.instance
-    names = zone_names(info.config.get('zones'))
+    plan = zone_plan(info.config.get('zone-checks'))[0]
+    listed = zone_names(info.config.get('zones'))
+    names = [n for n in listed if runs(plan, n, 'edge')]
     client = client_for(info, ctx.http(), cf.BUDGET_S)
     got = Pass()
-    zones, missing = _zones(client, names, got)
+    zones, missing = _zones(client, names, got) if names or not listed else ([], [])
     data = None
     if zones:
         try:
@@ -235,10 +269,13 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 PLUGIN = Plugin(
     id=ID, name='Cloudflare', version='0.1.0', category='web',
     description='Health checks, certificate packs, status-page components and edge 5xx shares of Cloudflare zones.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community',
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
     capabilities=Capabilities(hosts=('api.cloudflare.com', 'www.cloudflarestatus.com'), secrets=('token',)),
     fields=(Field('token', 'API token', 'secret', required=True, help='A read-only API token with Zone Read, Analytics Read, SSL and Certificates Read and Health Checks Read on the watched zones.'),
             Field('zones', 'Zones', 'text', required=True, help='Comma-separated zone names to watch, for example example.com, example.org. Their ids are looked up with the token.'),
+            Field('zone-checks', 'Checks per zone', 'text',
+                  help='Comma-separated zone=checks entries that limit which checks run for a zone: cf (health checks and certificates), edge (edge 5xx), cf+edge or none, '
+                       'for example example.org=edge, example.net=none. A zone that is not listed runs both. The status components are not per zone.'),
             Field('account', 'Account id', 'text', help='Account id for account-level GraphQL and dashboard links. Empty: the account of the first zone.'),
             Field('status-components', 'Status components', 'text',
                   help='Semicolon-separated Cloudflare status-page components to watch, written as the status page shows them, for example CDN/Cache; WAF; Tokyo, Japan - (NRT). '

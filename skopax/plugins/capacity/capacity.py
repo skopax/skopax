@@ -203,7 +203,8 @@ def row_link(r: dict, ui: str) -> str | None:
     return None
 
 
-def run_pass(client: Prometheus, now: float, rules: dict, *, source: str, ui: str, credential: str = access.CREDENTIAL, jvm: bool = True, host_disks: bool = True, volume_selector: str = '', fs_selector: str = FS) -> tuple[PassResult, list[dict]]:
+def run_pass(client: Prometheus, now: float, rules: dict, *, source: str, ui: str, credential: str = access.CREDENTIAL, jvm: bool = True, host_disks: bool = True, volume_selector: str = '', fs_selector: str = FS,
+             disk_client=None, disk_error: str = '') -> tuple[PassResult, list[dict]]:
     found, ran, read_ok, errors, empty, off, rows, refused, reached = [], [], [], [], [], [], [], [], []
     for part, read, cards in (('volumes', lambda vec: volume_rows(vec, volume_selector), lambda got: volume_cards(got, rules)),
                               ('hpa', hpa_rows, hpa_cards),
@@ -213,10 +214,14 @@ def run_pass(client: Prometheus, now: float, rules: dict, *, source: str, ui: st
             off.append(part)
             ran.append(f'capacity:{part}')
             continue
+        if part == 'dbdisk' and disk_error:
+            errors.append(f'{NAMES[part]}: {disk_error}')
+            continue
         seen = []
+        reader = disk_client if part == 'dbdisk' and disk_client is not None else client
 
-        def vec(expr: str, seen=seen) -> list[tuple[dict, float]]:
-            got = client.vec(expr, now)
+        def vec(expr: str, seen=seen, reader=reader) -> list[tuple[dict, float]]:
+            got = reader.vec(expr, now)
             seen.append(bool(got))
             return got
 
@@ -229,7 +234,7 @@ def run_pass(client: Prometheus, now: float, rules: dict, *, source: str, ui: st
             if access.denied(e.code):
                 refused.append(part)
                 reached.append(part)
-                found.append(access.card('capacity', NAME, part, status=e.code, credential=credential, name=NAMES[part]))
+                found.append(access.card('capacity', NAME, part, status=e.code, credential='token' if reader is not client else credential, name=NAMES[part]))
                 continue
             errors.append(f'{NAMES[part]}: {e.reason}')
             continue

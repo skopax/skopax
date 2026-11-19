@@ -6,3 +6,4 @@
 - Evictions mean memory is full and Redis drops keys by its eviction policy; rejected connections mean the client limit was hit, so pods that start or scale out cannot connect.
 - Master and replica cards come only from series that carry the `role` label, grouped by namespace.
 - For anything else use `promql` on the same Prometheus instance (`redis_*` and `lettuce_seconds_*` series).
+- The instance field peer-names maps the address a service calls to a friendly name; the `redis` column and the card text then show the name, and the address is the one Lettuce reports as net_sock_peer_addr.

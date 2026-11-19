@@ -486,6 +486,25 @@ def test_the_log_settings_are_admin_choices_in_general(store):
         ('General', 'choice', ['text', 'json', 'log4j']), ('General', 'choice', ['always', 'auto', 'never']), ('General', 'choice', ['DEBUG', 'INFO', 'WARNING', 'ERROR'])]
 
 
+def test_admin_shows_the_log_colour_as_off_while_no_color_keeps_the_log_plain(kept_logging, store):
+    # given
+    env = {'NO_COLOR': '1'}
+    out = started(env)
+    live = Live(load_settings(env=env), TunableStore(store.db))
+    live.current()
+    live.set('core.log-color', 'always', 'admin@example.com')
+
+    # when
+    shown = {e['key']: e for e in live.entries()}['core.log-color']
+    logs.PLAIN[0] = False
+    plain_off = {e['key']: e for e in live.entries()}['core.log-color']
+
+    # then
+    assert shown['value'] == 'off (NO_COLOR)' and 'off (NO_COLOR)' in shown['choices']
+    assert plain_off['value'] == 'always' and 'off (NO_COLOR)' not in plain_off['choices']
+    assert ESC not in out.getvalue()
+
+
 def test_a_settings_source_gives_the_log_settings_and_a_change_there_swaps_them_live(kept_logging, store, tmp_path, monkeypatch):
     # given
     env = {'DEMO_URL': 'https://demo.example.com', 'SKOPAX_LOG_COLOR': 'never'}

@@ -11,7 +11,7 @@ from skopax import brand, drafts, tags, tickets
 from skopax.plugins.gitlab.client import SEARCH_HITS, GitLab
 from skopax.investigator import tools as investigator_tools
 from skopax.investigator.tools import HELD_CARD, PROPOSE_TICKET, READ_LIMIT_ROWS, READ_TOOLS, TICKET_POINTS, TICKET_TITLE_LIMIT, WRITE_NAMES, WRITE_TOOLS, Effects, Sources, Toolbox, draft_problem
-from skopax.investigator.toolset import CORE
+from skopax.investigator.toolset import CORE, KNOWLEDGE
 from skopax.messages import msg
 from skopax.plugins import gitlab as gitlab_plugin
 from skopax.store import NotFound, Store
@@ -816,7 +816,7 @@ def test_a_read_only_box_offers_read_tools_and_propose_ticket_only_with_a_card(s
     no_card = [t['name'] for t in ro_box(store, keys=()).definitions()]
 
     # then
-    reads = [t['name'] for t in READ_TOOLS if CORE[t['name']].needs in (None, 'jira')]
+    reads = [t['name'] for t in READ_TOOLS if CORE[t['name']].needs in (None, 'jira') and t['name'] != KNOWLEDGE]
     assert with_card == sorted(reads + ['propose_ticket', 'propose_card_action'])
     assert no_card == sorted(reads + ['propose_card_action'])
     assert not set(with_card) & WRITE_NAMES
@@ -933,7 +933,7 @@ def offered(b: Toolbox) -> list[str]:
 def test_each_run_type_is_offered_only_the_write_tools_that_work_in_it(store: Store):
     # given
     effects = Effects(lambda key, by: {}, lambda key, text, by, *_, notice=None: {})
-    reads = [t['name'] for t in READ_TOOLS if CORE[t['name']].needs in (None, 'jira')]
+    reads = [t['name'] for t in READ_TOOLS if CORE[t['name']].needs in (None, 'jira') and t['name'] != KNOWLEDGE]
 
     # when
     card_run = offered(box(store))

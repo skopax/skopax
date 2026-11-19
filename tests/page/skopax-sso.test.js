@@ -123,7 +123,7 @@ async function rendersValuesWithSourceLabels() {
   //then
   const box = t.doc.getElementById('access');
   assert.ok(card(t.doc), 'the Single sign-on card is shown');
-  assert.ok(card(t.doc).compareDocumentPosition(box.querySelector('.acc-user')) & t.w.Node.DOCUMENT_POSITION_FOLLOWING, 'the card sits above the users');
+  assert.ok(card(t.doc).compareDocumentPosition(box.querySelector('.acc-user')) & t.w.Node.DOCUMENT_POSITION_PRECEDING, 'the card sits below the people list, which comes first');
   assert.strictEqual(card(t.doc).querySelector('.sso-pill').textContent, 'Off');
   assert.strictEqual(field(t.doc, 'issuer').querySelector('.sso-in').value, 'https://idp.example.com');
   assert.strictEqual(field(t.doc, 'issuer').querySelector('.sso-src').textContent, 'from environment');
@@ -425,6 +425,61 @@ async function generalNoLongerListsSignInOrMcp() {
   assert.deepStrictEqual(t.errors, []);
   t.close();
   return 'the General tab no longer lists the Sign-in and MCP groups';
+}
+
+async function theLastKnownRoleSettingSitsInTheSignInCardAndSavesFromThere() {
+  //given
+  const stale = settingItem('roles.stale-max-minutes', 'Sign-in', 'Last known role (minutes)', '60', {kind: 'int', low: 0, high: 1440});
+  const items = [settingItem('access.session-hours', 'Access', 'Session length (h)', '12', {kind: 'int', low: 1, high: 720}), stale];
+  const t = await boot({items});
+  t.flags.hook = async (method, p, body, h) => {
+    if (method === 'PUT' && p === '/api/admin/settings') return h.ok({item: Object.assign({}, stale, {value: body.value, source: 'admin'}), change: {}});
+  };
+
+  //when
+  await openAccess(t);
+  const row = card(t.doc).querySelector('.adm-row[data-key="roles.stale-max-minutes"]');
+  const inGeneral = !!t.doc.querySelector('#admin .adm-row[data-key="roles.stale-max-minutes"]');
+  const input = row.querySelector('.adm-in');
+  setValue(input, '30');
+  button(t.doc, 'sso-save').click();
+  await wait(150);
+
+  //then
+  assert.ok(row, 'the setting is a row inside the Sign-in card');
+  assert.strictEqual(inGeneral, false, 'and not in General');
+  assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PUT' && c[1] === '/api/admin/settings').map((c) => c[2]), [{key: 'roles.stale-max-minutes', value: '30'}]);
+  const again = card(t.doc).querySelector('.adm-row[data-key="roles.stale-max-minutes"]');
+  assert.strictEqual(again.querySelector('.adm-in').value, '30', 'the saved value shows after the repaint');
+  assert.strictEqual(card(t.doc).querySelectorAll('.adm-row[data-key="roles.stale-max-minutes"]').length, 1);
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'Last known role (minutes) sits in the Sign-in card, not in General, and saves from there';
+}
+
+async function theLastKnownRoleEditSurvivesAnSsoCardSave() {
+  //given
+  const stale = settingItem('roles.stale-max-minutes', 'Sign-in', 'Last known role (minutes)', '60', {kind: 'int', low: 0, high: 1440});
+  const t = await boot({items: [settingItem('access.session-hours', 'Access', 'Session length (h)', '12', {kind: 'int', low: 1, high: 720}), stale]});
+  await openAccess(t);
+  const row = () => card(t.doc).querySelector('.adm-row[data-key="roles.stale-max-minutes"]');
+
+  //when
+  setValue(row().querySelector('.adm-in'), '30');
+  setValue(field(t.doc, 'issuer').querySelector('.sso-in'), 'https://idp2.example.com');
+  field(t.doc, 'client-id').querySelector('.sso-reset').click();
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual(puts(t), [{values: {'client-id': null}}], 'the Reset saved only its field');
+  assert.strictEqual(row().querySelector('.adm-in').value, '30', 'the typed value is still there');
+  button(t.doc, 'sso-save').click();
+  await wait(150);
+  assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PUT' && c[1] === '/api/admin/settings').map((c) => c[2]), [{key: 'roles.stale-max-minutes', value: '30'}], 'and the card Save sends it');
+  assert.deepStrictEqual(puts(t)[1], {values: {issuer: 'https://idp2.example.com'}}, 'together with the kept SSO edit');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'an unsaved Last known role edit survives a repaint of the Single sign-on card, and the card Save sends it with the SSO edits';
 }
 
 const mcpItem = (key, label, value) => settingItem(key, 'MCP', label, value);
@@ -1085,9 +1140,9 @@ async function theCardStylesItsOverrideLabelFoldCheckboxAndRows() {
   const counts = [...t.doc.querySelectorAll('#access .acc-sec h3 .count')];
   assert.strictEqual(counts.length, 2);
   counts.forEach((c) => assert.ok(parseFloat(css(c).marginLeft) > 0, 'the count keeps a gap from its heading'));
-  assert.deepStrictEqual(counts.map((c) => c.parentNode.textContent), ['Users1', 'API tokens0'], 'the gap is styling, not text');
+  assert.deepStrictEqual(counts.map((c) => c.parentNode.textContent), ['People1', 'API tokens0'], 'the gap is styling, not text');
   t.close();
-  return 'the override label is styled, Advanced: endpoints has a chevron, the checkbox and role-map rows line up, and the Users and API tokens counts stand apart';
+  return 'the override label is styled, Advanced: endpoints has a chevron, the checkbox and role-map rows line up, and the People and API tokens counts stand apart';
 }
 
 async function aMissingRedirectUriSaysWhatSetsIt() {
@@ -1204,6 +1259,8 @@ async function aSelectTheServerSentNoValueForIsNotSavedByItself() {
   console.log('PASS ' + await theRedirectUriIsShownWithCopy());
   console.log('PASS ' + await hostileValuesRenderAsText());
   console.log('PASS ' + await generalNoLongerListsSignInOrMcp());
+  console.log('PASS ' + await theLastKnownRoleSettingSitsInTheSignInCardAndSavesFromThere());
+  console.log('PASS ' + await theLastKnownRoleEditSurvivesAnSsoCardSave());
   console.log('PASS ' + await unsavedEditsSurviveAResetAndTheSwitch());
   console.log('PASS ' + await theSecretIsSentOnTestAndNeverLeftInThePage());
   console.log('PASS ' + await anAdminSecretCanBeRemovedAndAnUnreadableOneSaysSo());

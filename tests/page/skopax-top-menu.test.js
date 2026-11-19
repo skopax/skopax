@@ -91,37 +91,37 @@ async function aLinkToAFormerMenuTabOpensItAndTheCrumbNamesIt() {
   console.log('PASS a #t= link to a tab of the old Skopax menu opens it, marks its row and names it in the crumb');
 }
 
-async function aFoldedMoreTakesTheColourOfItsHottestRow() {
+async function aFoldedMoreCountsItsHotRowsAndNamesThemInItsTooltip() {
   //given
   const {dom, doc, errors} = await boot();
-  const more = doc.getElementById('side-more');
-  const plain = more.classList.contains('hot');
+  const more = doc.getElementById('side-more'), sum = () => more.querySelector('.g-sum');
+  const plain = [sum().textContent, sum().className];
 
   //when
-  doc.getElementById('tab-review').className = 'tab k-act hot';
+  doc.getElementById('tab-review').className = 'tab k-warn hot';
   doc.getElementById('count-review').textContent = '2';
-  doc.getElementById('tab-docs').className = 'tab k-info hot';
+  doc.getElementById('tab-docs').className = 'tab k-crit hot';
   await wait(20);
 
   //then
-  assert.ok(!plain, 'plain while nothing inside needs attention');
-  assert.ok(more.classList.contains('hot') && more.classList.contains('k-info') && !more.classList.contains('k-act'), 'it takes the colour of its most urgent row: ' + more.className);
-  assert.strictEqual(more.title, 'More \u00b7 Review 2, Docs', 'the tooltip names the rows that need attention');
+  assert.deepStrictEqual(plain, ['2', 'g-sum'], 'a folded More counts its rows while nothing inside needs attention');
+  assert.deepStrictEqual([sum().textContent, sum().className], ['2', 'g-sum hot k-crit'], 'it counts its hot rows in the colour of the most urgent');
+  assert.strictEqual(more.title, 'More folded: Review 2, Docs', 'the tooltip names the group and the rows that need attention');
 
   //when
   more.click();
-  const open = more.classList.contains('hot');
+  const open = sum().textContent;
   more.click();
   doc.getElementById('tab-review').className = 'tab k-act';
   doc.getElementById('tab-docs').className = 'tab';
   await wait(20);
 
   //then
-  assert.ok(!open, 'an open More shows its rows instead');
-  assert.ok(!more.classList.contains('hot') && !more.hasAttribute('title'), 'and goes plain again');
+  assert.strictEqual(open, '', 'an open More shows its rows instead');
+  assert.deepStrictEqual([sum().textContent, sum().className], ['2', 'g-sum'], 'and goes plain again');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-  console.log('PASS a folded More takes the colour of its most urgent row and its tooltip names the rows that need attention');
+  console.log('PASS a folded More counts its rows or its hot rows and its tooltip names the rows that need attention');
 }
 
 async function connectClaudeExplainsTheMcpServerAndHowToAddIt() {
@@ -225,7 +225,7 @@ async function aLoginWithoutTheRoleIsToldWhichLocalRoleItNeeds() {
   await theOldSkopaxMenuTabsSitInTheActivityAndConnectGroups();
   await aRowKeepsItsTooltipOnFocus();
   await aLinkToAFormerMenuTabOpensItAndTheCrumbNamesIt();
-  await aFoldedMoreTakesTheColourOfItsHottestRow();
+  await aFoldedMoreCountsItsHotRowsAndNamesThemInItsTooltip();
   await connectClaudeExplainsTheMcpServerAndHowToAddIt();
   await theSettingsGearIsAnInlineIcon();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

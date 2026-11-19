@@ -1,13 +1,14 @@
 function cardsState() {
   var s = {};
   document.querySelectorAll('#anoms article.inc').forEach(function (c) {
-    var resp = c.querySelector('details.resp');
+    var resp = c.querySelector('details.resp'), at = document.activeElement, kind = c.querySelector('.res-form:not([hidden]) .res-kind[aria-pressed="true"]');
     s[c.dataset.key] = {
       resp: resp ? resp.open : null,
-      forms: [].filter.call(c.querySelectorAll('.reason'), function (f) { return !f.hidden; }).map(function (f) {
-        var i = f.querySelector('input, textarea, select');
-        return i ? [i.id.split('-')[0], i.value, i === document.activeElement] : null;
-      }).filter(Boolean)
+      kind: kind ? kind.dataset.kind : null,
+      focus: at && c.contains(at) && at.tagName === 'BUTTON' ? [at.id, at.className, at.textContent.trim()] : null,
+      forms: [].concat.apply([], [].filter.call(c.querySelectorAll('.reason'), function (f) { return !f.hidden; }).map(function (f) {
+        return [].map.call(f.querySelectorAll('input, textarea, select'), function (i) { return i.id ? [i.id.replace(/-\d+$/, ''), i.value, i === document.activeElement] : null; }).filter(Boolean);
+      }))
     };
   });
   return s;
@@ -20,13 +21,23 @@ function restoreCards(s, seen) {
     if (!x) return;
     var resp = c.querySelector('details.resp');
     if (resp && x.resp != null) resp.open = x.resp;
+    if (x.kind) {
+      var res = c.querySelector('.res-form');
+      if (res) res.hidden = false;
+      var k = c.querySelector('.res-form .res-kind[data-kind="' + x.kind + '"]'), was = document.activeElement;
+      if (k && k.getAttribute('aria-pressed') !== 'true') { k.click(); if (was && was !== document.body && was.focus) was.focus({preventScroll: true}); }
+    }
     x.forms.forEach(function (f) {
-      var i = c.querySelector('.reason [id^="' + f[0] + '-"]');
+      var i = [].filter.call(c.querySelectorAll('.reason input, .reason textarea, .reason select'), function (n) { return n.id.replace(/-\d+$/, '') === f[0]; })[0];
       if (!i) return;
       i.closest('.reason').hidden = false;
       i.value = f[1];
       if (f[2]) i.focus({preventScroll: true});
     });
+    if (x.focus) {
+      var b = (x.focus[0] && document.getElementById(x.focus[0])) || [].filter.call(c.querySelectorAll('button'), function (n) { return n.className === x.focus[1] && n.textContent.trim() === x.focus[2]; })[0];
+      if (b && c.contains(b)) b.focus({preventScroll: true});
+    }
   });
   return fresh;
 }

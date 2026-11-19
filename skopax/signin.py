@@ -203,6 +203,7 @@ class SignIn:
                 stored = self.mcp_opened(claims, email)
             if kept is None and resolved is not None:
                 self.users.stamp_resolved(email, resolved, self.clock())
+            self.users.touch_login(email)
         except PyMongoError as e:
             raise Refused('database') from e
         role = kept if kept is not None else choose(resolved=resolved, mapped=mapped, admin_set=admin_set_of(stored), default=self.settings.sso_default_role)[0]

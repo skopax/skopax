@@ -112,6 +112,17 @@ def test_only_admins_and_the_token_read_and_change_settings_and_admin_counts_as_
     assert not any('secret' in k or 'token' in k or 'webhook' in k or k.endswith('.url') for k in items if k not in endpoints)
 
 
+def test_the_last_known_role_setting_belongs_to_the_sign_in_group():
+    # given
+    found = known('roles.stale-max-minutes')
+
+    # when
+    group = found.group
+
+    # then
+    assert group == 'Sign-in'
+
+
 def test_an_admin_change_is_live_at_once_kept_in_history_and_reverted(store: Store):
     # given
     store.save(state(), None)

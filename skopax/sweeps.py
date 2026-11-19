@@ -307,6 +307,9 @@ class Sweeper:
         def screen(state: dict, all_results: list[PassResult]) -> list[PassResult]:
             return [r for r in all_results if self._live(state, plugin.id, owner[r.name], started, check.id)]
 
+        def owner_of(info: InstanceInfo | None) -> Callable[[dict], bool]:
+            return lambda card: (card.get('cluster') or None) == _segment(info) and any(_owns(c, info, clearing_key(card)) for c in plugin.checks)
+
         def after(state: dict) -> None:
             docs = [d for info, s in taken if self._live(state, plugin.id, info, started, check.id) for d in s.deploys if (d['ns'], d['svc'], d['toImage']) not in known]
             keys = [(d['ns'], d['svc'], d['toImage']) for d in docs]
@@ -323,6 +326,9 @@ class Sweeper:
                         sections.merge_rows(state, section, rows, plugin.id, _segment(info))
             if outputs is not None:
                 outputs.attach(state, [(taken[i][1], pictures[i]) for i in live])
+            for i in live:
+                if taken[i][1].cleared:
+                    sweepout.mark_cleared(state, plugin, taken[i][1].cleared, keymaps[i], now, owner_of(taken[i][0]))
             self._heal(state, plugin)
             state['retired'] = [t for t in tombs(state) if t['at'] >= started - RETIRED_KEEP_S]
             sections.finish(state, lambda ns, svc, image: known.get((ns, svc, image)))
@@ -331,7 +337,7 @@ class Sweeper:
         applied = self.apply(results, now, self.runtime.linker(), after, check=check.id, screen=screen, clusters=clusters)
         for i in list(live) if outputs is not None else []:
             info, scoped = taken[i]
-            owns = lambda card, info=info: (card.get('cluster') or None) == _segment(info) and any(_owns(c, info, clearing_key(card)) for c in plugin.checks)
+            owns = owner_of(info)
             try:
                 outputs.after(plugin, check, info, scoped, keymaps[i], pictures[i], now, owns)
             except Exception as e:
@@ -593,12 +599,12 @@ class Sweeper:
         if not isinstance(sweep.deploys, list) or not all(_text(d, DEPLOY_TEXT) and _storable(d) for d in sweep.deploys):
             return self._bad(check, 'deploy')
         try:
-            shots, posts, memos, dropped = sweepout.outputs_of(sweep, _storable)
+            shots, posts, memos, digest, cleared, dropped = sweepout.outputs_of(sweep, _storable)
         except sweepout.Malformed as e:
             return self._bad(check, e.what)
         if dropped:
             log.warning('%s', msg('sweeps.outputs_dropped', check=check.id, what=', '.join(dropped)))
-        return dataclasses.replace(sweep, result=dataclasses.replace(result, found=found), shots=shots, posts=posts, memos=memos)
+        return dataclasses.replace(sweep, result=dataclasses.replace(result, found=found), shots=shots, posts=posts, memos=memos, digest=digest, cleared=cleared)
 
     def _without_repeats(self, plugin: Plugin, scoped: Sweep, seen: set[str]) -> Sweep:
         result = scoped.result

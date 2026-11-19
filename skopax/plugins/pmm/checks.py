@@ -5,6 +5,7 @@ import urllib.parse
 
 from skopax import clock
 from skopax.contract import anomaly, fmt, iso
+from skopax.kit import options
 from skopax.kit.text import duration
 
 W = '60m'
@@ -40,9 +41,18 @@ def literal(text: str) -> str:
     return "'" + text.replace('\\', '\\\\').replace("'", "\\'") + "'"
 
 
-def pg_queries(services: str) -> dict[str, str]:
+def user_match(users: list[str]) -> str:
+    return '|'.join(re.escape(u) for u in users)
+
+
+def pg_queries(services: str, split: list[str] | tuple[str, ...] = ()) -> dict[str, str]:
     sel = f'service_name=~{json.dumps(services or ".*")}'
-    return dict(
+    extra = {}
+    if split:
+        match = json.dumps(user_match(list(split)))
+        extra = dict(connmain=f'max_over_time(sum by (service_name) (pg_stat_activity_count{{{sel},usename!~{match}}})[{W}:1m])',
+                     connsplit=f'max_over_time(sum by (service_name) (pg_stat_activity_count{{{sel},usename=~{match}}})[{W}:1m])')
+    return extra | dict(
         up=f'max by (service_name) (pg_up{{{sel}}})',
         maxconn=f'max by (service_name) (pg_settings_max_connections{{{sel}}})',
         conn=f'max_over_time(sum by (service_name) (pg_stat_activity_count{{{sel}}})[{W}:1m])',
@@ -79,9 +89,9 @@ def metrics_pass(client, queries: dict, now: float, skip=lambda k, i: False) -> 
         return {k: f.result() for k, f in futs.items()}
 
 
-def pmm_pass(client, now: float, services: str) -> dict:
+def pmm_pass(client, now: float, services: str, split: list[str] | tuple[str, ...] = ()) -> dict:
     client.uid('metrics')
-    return metrics_pass(client, pg_queries(services), now)
+    return metrics_pass(client, pg_queries(services, split), now)
 
 
 def mongo_pass(client, now: float, services: str) -> dict:
@@ -89,12 +99,12 @@ def mongo_pass(client, now: float, services: str) -> dict:
     return metrics_pass(client, mongo_queries(services), now, lambda k, i: k == 'names' and i > 0)
 
 
-def qan_pass(client, now: float, services: str, skip_users: list[str], rules: dict) -> tuple[list[dict], list[dict]]:
+def qan_pass(client, now: float, services: str, skip_users: list[str], rules: dict, only_users: list[str] | tuple[str, ...] = ()) -> tuple[list[dict], list[dict]]:
     client.uid('qan')
     hours = 24 * max(OFFS) + 2
     with concurrent.futures.ThreadPoolExecutor(2) as ex:
-        q = ex.submit(client.qan, qan_sql(now, True, services, skip_users, rules), hours, now)
-        t = ex.submit(client.qan, qan_sql(now, False, services, skip_users, rules), hours, now)
+        q = ex.submit(client.qan, qan_sql(now, True, services, skip_users, rules, only_users), hours, now)
+        t = ex.submit(client.qan, qan_sql(now, False, services, skip_users, rules, only_users), hours, now)
         return q.result(), t.result()
 
 
@@ -124,6 +134,8 @@ def evaluate_pmm(data: dict, rules: dict, services: str = '.*') -> tuple[list[di
 
     up, conn, idle, lag, longtx = trio('up'), trio('conn'), trio('idletx'), trio('lag'), trio('longtx')
     lockw, lockm = trio('lockwait'), trio('lockmins')
+    split = ('connsplit', 0) in data
+    jumps, apart = (trio('connmain'), trio('connsplit')) if split else (conn, None)
     expected = sorted(set().union(*up))
     if not expected:
         return None
@@ -148,6 +160,8 @@ def evaluate_pmm(data: dict, rules: dict, services: str = '.*') -> tuple[list[di
                  idletx=idle[0].get(svc), longtx=longtx[0].get(svc), lag=lag[0].get(svc), deadlocks=round(dead[0].get(svc, [0])[0]),
                  lockMax=lockw[0].get(svc, 0) if svc in up[0] else None, lockMins=round(lockm[0].get(svc, 0)),
                  lockMaxD1=lockw[1].get(svc, 0), lockMaxD7=lockw[2].get(svc, 0), lockMinsD1=round(lockm[1].get(svc, 0)), lockMinsD7=round(lockm[2].get(svc, 0)))
+        if split:
+            r.update(connSplit=apart[0].get(svc), connSplitD1=apart[1].get(svc), connSplitD7=apart[2].get(svc))
         rows.append(r)
         if svc not in up[0]:
             found.append(pmm_item(svc, 'down', 'crit', 0, up[1].get(svc), up[2].get(svc), 'not reported by PMM',
@@ -169,13 +183,25 @@ def evaluate_pmm(data: dict, rules: dict, services: str = '.*') -> tuple[list[di
                 found.append(pmm_item(svc, 'saturation', sev, pct, None if d1 is None else 100 * d1 / cap, None if d7 is None else 100 * d7 / cap, 'connection saturation',
                                       f'{svc} peaked at {fmt(c)} of {fmt(cap)} connections in the last 60 min ({fmt(pct, "%")} of max_connections), {base_txt}', 5,
                                       f'{sev.upper()} {svc} connections {fmt(c)}/{fmt(cap)} ({fmt(pct, "%")})', '%'))
-        bases = [b for b in (d1, d7) if b is not None]
-        if c is not None and bases:
+        j, j1, j7 = jumps[0].get(svc), jumps[1].get(svc), jumps[2].get(svc)
+        jump_txt = f'the same window had {fmt(j1) if j1 is not None else "no data"} a day ago and {fmt(j7) if j7 is not None else "no data"} a week ago'
+        bases = [b for b in (j1, j7) if b is not None]
+        if j is not None and bases:
             base = max(bases)
-            if c > max(rules['jump'] * base, base + rules['jump_slack']):
-                found.append(pmm_item(svc, 'conn-jump', 'warn', c, d1, d7, 'connection jump',
-                                      f'{svc} peaked at {fmt(c)} connections in the last 60 min (max_connections {fmt(cap or 0)}), {base_txt}', rules['jump_slack'],
-                                      f'WARN {svc} connections jumped to {fmt(c)} (1d {fmt(d1 or 0)} / 7d {fmt(d7 or 0)})'))
+            if j > max(rules['jump'] * base, base + rules['jump_slack']):
+                found.append(pmm_item(svc, 'conn-jump', 'warn', j, j1, j7, 'connection jump',
+                                      f'{svc} peaked at {fmt(j)} connections in the last 60 min (max_connections {fmt(cap or 0)}), {jump_txt}', rules['jump_slack'],
+                                      f'WARN {svc} connections jumped to {fmt(j)} (1d {fmt(j1 or 0)} / 7d {fmt(j7 or 0)})'))
+        if split:
+            a, a1, a7 = apart[0].get(svc), apart[1].get(svc), apart[2].get(svc)
+            split_bases = [b for b in (a1, a7) if b is not None]
+            if a is not None and split_bases:
+                base = max(split_bases)
+                if a > max(rules['jump'] * base, base + rules['jump_slack']):
+                    found.append(pmm_item(svc, 'conn-split', 'info', a, a1, a7, 'split user connection jump',
+                                          f'the split users of {svc} peaked at {fmt(a)} connections in the last 60 min, the same window had {fmt(a1 or 0)} a day ago and {fmt(a7 or 0)} a week ago '
+                                          '(users listed in split-users, shown apart from the application)', rules['jump_slack'],
+                                          f'INFO {svc} split user connections jumped to {fmt(a)} (1d {fmt(a1 or 0)} / 7d {fmt(a7 or 0)})'))
         v = idle[0].get(svc) or 0
         if v > rules['idletx']:
             found.append(pmm_item(svc, 'idle-in-tx', 'warn', v, idle[1].get(svc), idle[2].get(svc), 'idle in transaction',
@@ -218,11 +244,12 @@ def qan_windows(now: float) -> list[tuple[str, str]]:
     return [(f'toDateTime({t - 3600 - o * 86400})', f'toDateTime({t - o * 86400})') for o in (0,) + OFFS]
 
 
-def qan_sql(now: float, per_query: bool, services: str, skip_users: list[str], rules: dict) -> str:
+def qan_sql(now: float, per_query: bool, services: str, skip_users: list[str], rules: dict, only_users: list[str] | tuple[str, ...] = ()) -> str:
     w = qan_windows(now)
     cols = ', '.join(f'sumIf(num_queries, period_start > {a} AND period_start <= {b}) AS c{i}, sumIf(m_query_time_sum, period_start > {a} AND period_start <= {b}) AS t{i}'
                      for i, (a, b) in enumerate(w))
     skipped = f" AND username NOT IN ({', '.join(literal(u) for u in skip_users)})" if skip_users else ''
+    skipped = (f" AND username IN ({', '.join(literal(u) for u in only_users)})" if only_users else '') + skipped
     where = (f"service_type = 'postgresql' AND match(service_name, {literal('^(?:' + (services or '.*') + ')$')}){skipped} AND ("
              + ' OR '.join(f'(period_start > {a} AND period_start <= {b})' for a, b in w) + ')')
     if not per_query:
@@ -240,8 +267,24 @@ def qan_sql(now: float, per_query: bool, services: str, skip_users: list[str], r
             f'ORDER BY greatest(t0, t1, t2) DESC LIMIT {QAN_ROWS}')
 
 
-def qan_app(db: str | None) -> str:
+def qan_app(db: str | None, pattern=None) -> str:
+    if pattern is not None and db:
+        found = options.search(pattern, db)
+        named = found.group('app') if found is not None else None
+        if named:
+            return named.replace('_', '-')
     return (db or '?').replace('_', '-')
+
+
+def app_pattern(raw: object):
+    found = options.guarded(raw)
+    return found if found is not None and 'app' in found.groupindex else None
+
+
+def split_card(x: dict) -> dict:
+    out = dict(x, key=x['key'] + '|split', sev='info', split=True)
+    out['short'] = re.sub(r'^(CRIT|WARN) ', 'INFO ', str(out.get('short') or ''))
+    return out
 
 
 def qan_avg(c, t):
@@ -259,7 +302,7 @@ def qan_key(server: object, qid: object) -> str:
     return f'qan:{server}:{qid}'
 
 
-def evaluate_qan(data: tuple[list[dict], list[dict]], rules: dict, services: str = '.*') -> tuple[list[dict], list[dict]] | None:
+def evaluate_qan(data: tuple[list[dict], list[dict]], rules: dict, services: str = '.*', pattern=None, split: bool = False) -> tuple[list[dict], list[dict]] | None:
     rows, totals = ([r for r in part if watched(services, str(r.get('service_name') or ''))] for part in data)
     if not rows and not totals:
         return None
@@ -280,7 +323,7 @@ def evaluate_qan(data: tuple[list[dict], list[dict]], rules: dict, services: str
     top = []
     for r in rows:
         server, db, qid, q = r['service_name'], r.get('database') or '', str(r.get('queryid') or ''), ' '.join(str(r.get('q') or '').split())
-        app = qan_app(db)
+        app = qan_app(db, pattern)
         c0, t0, c1, t1, c7, t7 = num(r, 'c0'), num(r, 't0'), num(r, 'c1'), num(r, 't1'), num(r, 'c2'), num(r, 't2')
         a0, a1, a7 = qan_avg(c0, t0), qan_avg(c1, t1), qan_avg(c7, t7)
         pk = 1000 * num(r, 'pk0') if num(r, 'pkc0') else None
@@ -325,7 +368,10 @@ def evaluate_qan(data: tuple[list[dict], list[dict]], rules: dict, services: str
                          f'INFO {app} query calls {fmt(c0)}/h (1d {fmt(c1)} / 7d {fmt(c7)}): {short_q[:60]}', app, qid)
             found.append(dict(x, msg=q, queryid=qid, db=db))
     top.sort(key=lambda x: -x['t'])
-    return found, top[:int(rules['top'])]
+    top = top[:int(rules['top'])]
+    if split:
+        return [split_card(x) for x in found], [dict(r, split=True) for r in top]
+    return found, top
 
 
 def mongo_item(svc, sig, sev, now, d1, d7, label, what, slack, short, unit=''):

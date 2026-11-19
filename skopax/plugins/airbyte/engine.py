@@ -10,6 +10,7 @@ from collections.abc import Mapping
 
 from skopax import clock
 from skopax.contract import HttpError, ReadError, Transport, Unreachable, anomaly, call, iso
+from skopax.kit import options
 from skopax.kit.text import duration
 
 API = '/api/public/v1'
@@ -45,6 +46,7 @@ CONNECTION_ID = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 NO_REASON = 'the Airbyte public API has no failure reason, attempt count or logs: open the job link or the timeline for them'
 RUNNING = ('running', 'pending', 'incomplete')
 DASH = '\u2013'
+SEVERITIES = ('info', 'warn', 'crit')
 RETRY = ' Airbyte retries a failed attempt inside the same job and the public API has no attempt count, so a run this long is most likely a retry loop.'
 BETWEEN = ' (status incomplete: its last attempt failed and Airbyte retries)'
 
@@ -137,6 +139,26 @@ def watched_of(raw: str) -> list[str]:
     return list(out.values())
 
 
+def severities_of(raw: object) -> tuple[dict[str, str], list[str]]:
+    found, bad = options.pairs(raw)
+    out: dict[str, str] = {}
+    for key, value in found.items():
+        level = value.lower()
+        if level in SEVERITIES and key.lower() not in out:
+            out[key.lower()] = level
+        else:
+            bad.append(f'{key}={value}')
+    return out, bad
+
+
+def workspaces_of(raw: object) -> list[str]:
+    return list(dict.fromkeys(x.lower() for x in options.entries(raw)))
+
+
+def name_pattern(raw: object):
+    return options.guarded(raw)
+
+
 def schedule_of(s) -> str | None:
     s = s if isinstance(s, dict) else {}
     if s.get('cronExpression'):
@@ -209,14 +231,22 @@ def probe_jobs(client: Airbyte, token: str) -> int | None:
     return None
 
 
-def airbyte_pass(client: Airbyte, watched: list[str], jobs: int, budget: float | None = None, clock=time.monotonic, probe: bool = False) -> PassRead:
+def matches(c: dict, wanted: set[str], pattern) -> bool:
+    if not wanted and pattern is None:
+        return True
+    return bool(keys_of(c) & wanted) or (pattern is not None and name_of(c) is not None and options.search(pattern, name_of(c)) is not None)
+
+
+def airbyte_pass(client: Airbyte, watched: list[str], jobs: int, budget: float | None = None, clock=time.monotonic, probe: bool = False, pattern=None,
+                 workspaces: list[str] | tuple[str, ...] = ()) -> PassRead:
     started = clock()
     budget = BUDGET_S if budget is None else budget
     token = token_of(client)
     listed, cut = connections_of(client, token)
     wanted = {entry.lower() for entry in watched}
-    chosen = {c['connectionId']: picked(c) for c in listed if isinstance(c.get('connectionId'), str) and c['connectionId'] and (not wanted or keys_of(c) & wanted)}
-    seen = set().union(*(keys_of(c) for c in listed if c.get('connectionId') in chosen))
+    named = [c for c in listed if isinstance(c.get('connectionId'), str) and c['connectionId'] and matches(c, wanted, pattern)]
+    chosen = {c['connectionId']: picked(c) for c in named if not workspaces or str(c.get('workspaceId') or '').lower() in workspaces}
+    seen = set().union(*(keys_of(c) for c in named))
     access: dict[str, int | None] = {'connections': None}
     found, denied, failed = read_jobs(client, token, list(chosen), jobs, budget, started, clock) if chosen else ({}, {}, {})
     if found or denied:
@@ -278,17 +308,19 @@ def labels_of(data: list[dict], kept: Mapping[str, str] | None = None) -> dict[s
     return out
 
 
-def item(c: dict, name: str, sig: str, took: float, base: float | None, label: str, what: str, short: str, job: object) -> dict:
-    x = anomaly('airbyte', 'airbyte-' + sig, '-', name, 'sync', 'warn', took, base, None, 'dur', label, what, 86400, short)
+def item(c: dict, name: str, sig: str, took: float, base: float | None, label: str, what: str, short: str, job: object, sev: str = 'warn') -> dict:
+    x = anomaly('airbyte', 'airbyte-' + sig, '-', name, 'sync', sev, took, base, None, 'dur', label, what, 86400, short)
     x.update(key=f'airbyte|{name}|{sig}', ranKey=f"airbyte:{c['id']}", connId=c['id'], jobId=job, workspaceId=c.get('workspaceId'))
     return x
 
 
-def evaluate(data: list[dict], now: float, url: str, rules: Mapping[str, float], kept: Mapping[str, str] | None = None) -> tuple[list[dict], list[dict]]:
+def evaluate(data: list[dict], now: float, url: str, rules: Mapping[str, float], kept: Mapping[str, str] | None = None, severities: Mapping[str, str] | None = None) -> tuple[list[dict], list[dict]]:
     found, rows = [], []
     labels = labels_of(data, kept)
     for d in data:
         c, jobs = d['conn'], d['jobs']
+        sev = (severities or {}).get(str(c['id']).lower()) or (severities or {}).get(str(c['name'] or '').lower()) or 'warn'
+        tag = sev.upper()
         name, ws = labels.get(c['id'], c['name'] or c['id']), c.get('workspaceId')
         ok = [j for j in jobs if j.get('status') == 'succeeded' and iso_secs(j.get('duration'))]
         base = median([iso_secs(j['duration']) for j in ok])
@@ -322,11 +354,11 @@ def evaluate(data: list[dict], now: float, url: str, rules: Mapping[str, float],
         if running and long_run:
             found.append(item(c, name, 'long-run', took, base, 'sync running long',
                               f'{name}: job {job} has been running for {duration(took)} since {at(start)}{between}{rows_txt}; {usual}.{retry}',
-                              f'WARN Airbyte {name} running {duration(took)} (usual {duration(base) if base else DASH})', job))
+                              f'{tag} Airbyte {name} running {duration(took)} (usual {duration(base) if base else DASH})', job, sev))
         elif last.get('status') == 'failed' and now - end < rules['failed_keep_s']:
             found.append(item(c, name, 'failed', took, base, 'sync failed',
                               f'{name}: job {job} {last.get("status")} at {at(end)} after {duration(took)} (started {at(start)}{rows_txt}); {usual}.{retry}',
-                              f'WARN Airbyte {name} sync {last.get("status")} after {duration(took)}', job))
+                              f'{tag} Airbyte {name} sync {last.get("status")} after {duration(took)}', job, sev))
     rows.sort(key=lambda r: str(r['name']))
     return found, rows
 

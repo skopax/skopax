@@ -32,6 +32,14 @@ class Tab:
         found = got['result']['value']
         return found['vw'], found['items']
 
+    def raw(self, body: str, slow_clock: bool = False) -> dict:
+        page = f'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>{STYLE}</style></head><body>{body}</body></html>'
+        deadline = time.monotonic() + 10
+        self.conn.call('Page.setDocumentContent', {'frameId': self.frame, 'html': page}, self.session, deadline)
+        stub = 'const real = performance.now; let t = 0; performance.now = () => (t += 4000);' if slow_clock else 'const real = performance.now;'
+        expression = f'(() => {{ {stub} try {{ return {browser_kit.OVERFLOW}({browser_kit.OVERFLOW_MAX}); }} finally {{ performance.now = real; }} }})()'
+        return self.conn.call('Runtime.evaluate', {'expression': expression, 'returnByValue': True}, self.session, deadline)['result']['value']
+
     def verdicts(self, body: str) -> list[str]:
         vw, items = self.items(body)
         return [v for item in items for v in (verdict(item, vw),) if v][:browser_kit.OVERFLOW_MAX]
@@ -142,3 +150,141 @@ def test_a_clipped_drawing_with_many_parts_still_leaves_a_later_cut_table_a_slot
 
     # then
     assert shown == ['cut']
+
+
+SPILL = '<div style="' + BOX + '"><div style="width:361px;text-align:right">Total</div></div>'
+WRAPPED_TABLE = ('<div style="' + BOX + '"><div style="transform:{transform}"><table style="width:700px"><tr><th>Term</th><th>Rate</th><th>Fees</th><th>Total cost</th></tr>'
+                 '<tr><td>12</td><td>2.1</td><td>40</td><td>1200</td></tr></table></div></div>')
+
+
+@pytest.mark.parametrize('transform', ['translateX(0)', 'translateZ(0)', 'translate3d(0,0,0)', 'scale(1)', 'rotate(0deg)', 'matrix(1,0,0,1,0,0)'])
+def test_an_identity_transform_does_not_exempt_the_text_under_it(tab, transform):
+    # when
+    shown = tab.verdicts(WRAPPED_TABLE.format(transform=transform))
+
+    # then
+    assert shown == ['cut']
+
+
+@pytest.mark.parametrize('transform', ['translateX(-1px)', 'scale(1.01)', 'rotate(1deg)'])
+def test_a_transform_that_really_moves_something_still_exempts_it(tab, transform):
+    # when
+    shown = tab.verdicts(WRAPPED_TABLE.format(transform=transform))
+
+    # then
+    assert shown == []
+
+
+def test_many_harmless_clipped_boxes_before_a_real_cut_do_not_hide_it(tab):
+    # given
+    body = SPILL * 60 + TABLE
+
+    # when
+    shown = tab.verdicts(body)
+    vw, items = tab.items(body)
+
+    # then
+    assert shown == ['cut']
+    assert len(items) > 40 and sum(1 for i in items if i.get('lost') is True) == 1
+
+
+def test_the_real_cut_is_found_whatever_its_place_among_the_harmless_boxes(tab):
+    # then
+    assert tab.verdicts(TABLE + SPILL * 60) == ['cut']
+    assert tab.verdicts(SPILL * 30 + TABLE + SPILL * 30) == ['cut']
+    assert tab.verdicts(SPILL * 60) == []
+
+
+LONG_TEXT = 'Read the full terms and conditions before you sign the agreement'
+NESTED = {
+    'scroller-with-a-clipped-box': ('<div style="overflow-x:auto;width:358px;margin:16px"><div style="width:700px"><div style="overflow:hidden;width:200px;white-space:nowrap">' + LONG_TEXT + '</div></div></div>',
+                                    ['scrolls']),
+    'page-wide-wrapper-with-a-cut': ('<div style="width:600px"><div style="' + BOX + ';white-space:nowrap">' + LONG_TEXT + '</div></div>', ['page']),
+    'a-cut-containing-a-scroller': ('<div style="' + BOX + '"><div style="overflow-x:auto;width:600px"><div style="width:900px">' + LONG_TEXT + '</div></div></div>', ['cut']),
+    'a-cut-containing-a-cut': ('<div style="' + BOX + '"><div style="overflow:hidden;width:500px;white-space:nowrap">' + LONG_TEXT + ' ' + LONG_TEXT + '</div></div>', ['cut']),
+    'three-nested-boxes': ('<div style="' + BOX + '"><div style="overflow:hidden;width:300px"><div style="overflow:hidden;width:200px;white-space:nowrap">' + LONG_TEXT + '</div></div></div>', ['cut']),
+    'table-in-a-scroller': ('<div style="overflow-x:auto;width:358px;margin:16px">' + TABLE + '</div>', ['scrolls']),
+    'page-pan-next-to-a-table': ('<div style="width:700px;height:20px;background:#eee"></div>' + TABLE, ['page', 'cut']),
+}
+
+
+@pytest.mark.parametrize('body, expected', list(NESTED.values()), ids=list(NESTED))
+def test_a_box_inside_another_is_still_judged_ancestor_first_as_before(tab, body, expected):
+    # when
+    shown = tab.verdicts(body)
+
+    # then
+    assert shown == expected
+
+
+def slides(style: str = 'flex:0 0 358px', tag: str = 'div', names: tuple[str, ...] = ('Slide one', 'Slide two', 'Slide three')) -> str:
+    return ''.join(f'<{tag} style="{style}">{n}</{tag}>' for n in names)
+
+
+def boxed(inner: str) -> str:
+    return '<div style="' + BOX + '">' + inner + '</div>'
+
+
+def moved_track(x: str) -> str:
+    return f'translate3d({x},0px,0px)'
+
+
+LIBRARIES = {
+    'swiper-at-rest': boxed('<div style="display:flex;transform:translate3d(0px,0px,0px);transition-duration:0ms">' + slides() + '</div>'),
+    'swiper-mid-slide': boxed('<div style="display:flex;transform:' + moved_track('-179px') + '">' + slides() + '</div>'),
+    'swiper-on-slide-two': boxed('<div style="display:flex;transform:' + moved_track('-358px') + '">' + slides() + '</div>'),
+    'slick-at-rest': boxed('<div style="width:1074px;white-space:nowrap;transform:translate3d(0px,0px,0px)">' + slides('display:inline-block;width:358px') + '</div>'),
+    'slick-mid-slide': boxed('<div style="width:1074px;white-space:nowrap;transform:' + moved_track('-200px') + '">' + slides('display:inline-block;width:358px') + '</div>'),
+    'splide-at-rest': boxed('<ul style="display:flex;list-style:none;margin:0;padding:0;transform:translateX(0px)">' + slides('flex:0 0 358px', 'li') + '</ul>'),
+    'splide-mid-slide': boxed('<ul style="display:flex;list-style:none;margin:0;padding:0;transform:translateX(-120px)">' + slides('flex:0 0 358px', 'li') + '</ul>'),
+    'bootstrap-at-rest': boxed('<div style="display:block;width:100%">Slide one</div><div style="display:none">Slide two</div><div style="display:none">Slide three</div>'),
+    'bootstrap-mid-slide': boxed('<div style="position:relative;display:flex"><div style="float:left;width:100%;margin-right:-100%;transform:translateX(-100%)">Slide one</div>'
+                                 '<div style="float:left;width:100%;margin-right:-100%;transform:translateX(0)">Slide two</div></div>'),
+    'flickity-at-rest': boxed('<div style="position:relative;height:30px;transform:translateX(0%)"><div style="position:absolute;left:0;width:358px">One</div>'
+                              '<div style="position:absolute;left:358px;width:358px">Two</div><div style="position:absolute;left:716px;width:358px">Three</div></div>'),
+    'flickity-mid-slide': boxed('<div style="position:relative;height:30px;transform:translateX(-100px)"><div style="position:absolute;left:0;width:358px">One</div>'
+                                '<div style="position:absolute;left:358px;width:358px">Two</div></div>'),
+    'owl-at-rest': boxed('<div style="width:1074px;white-space:nowrap;transform:translate3d(0px,0px,0px);transition:all 0s ease 0s">' + slides('display:inline-block;width:358px') + '</div>'),
+    'owl-mid-slide': boxed('<div style="width:1074px;white-space:nowrap;transform:' + moved_track('-300px') + '">' + slides('display:inline-block;width:358px') + '</div>'),
+    'scroll-snap-row': '<div style="overflow-x:auto;scroll-snap-type:x mandatory;display:flex;margin:16px;width:358px">' + slides('flex:0 0 358px;scroll-snap-align:start') + '</div>',
+}
+
+
+@pytest.mark.parametrize('body', list(LIBRARIES.values()), ids=list(LIBRARIES))
+def test_a_carousel_built_like_the_common_libraries_is_not_cut_at_rest_or_mid_slide(tab, body):
+    # when
+    shown = tab.verdicts(body)
+
+    # then
+    assert 'cut' not in shown
+
+
+def test_a_carousel_track_at_rest_is_not_cut(tab):
+    # then
+    assert tab.verdicts(LIBRARIES['swiper-at-rest']) == []
+    assert tab.verdicts(LIBRARIES['flickity-at-rest']) == []
+
+
+def test_a_slide_on_screen_whose_own_text_is_clipped_is_still_cut_in_a_track_at_rest(tab):
+    # given
+    clipped = ('<div style="flex:0 0 358px;overflow:hidden;white-space:nowrap">' + LONG_TEXT + ' and more of the agreement text that runs on</div>' + slides('flex:0 0 358px', 'div', ('Two', 'Three')))
+    body = boxed('<div style="display:flex;transform:translate3d(0px,0px,0px)">' + clipped + '</div>')
+
+    # then
+    assert tab.verdicts(body) == ['cut']
+
+
+def test_an_identity_transform_on_a_plain_block_with_one_wide_child_is_still_cut(tab):
+    # then
+    assert tab.verdicts(boxed('<div style="transform:translateZ(0)"><div style="white-space:nowrap">' + LONG_TEXT + '</div></div>')) == ['cut']
+    assert tab.verdicts(WRAPPED_TABLE.format(transform='translateX(0)')) == ['cut']
+
+
+def test_a_probe_that_ran_out_of_its_time_says_so(tab):
+    # given
+    # when
+    whole = tab.raw(SPILL * 3 + TABLE)
+    cut_short = tab.raw(SPILL * 3 + TABLE, True)
+
+    # then
+    assert cut_short['cutShort'] is True and whole['cutShort'] is False

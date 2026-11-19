@@ -17,7 +17,7 @@ from packaging.version import InvalidVersion, Version
 import skopax
 from skopax.bounded import HOOK_TIMEOUT_S, Bound
 from skopax.chattext import STARTERS_MAX as CHAT_STARTERS_MAX, TEXT_MAX as CHAT_TEXT_MAX, chat_kept, chat_problem, tree_problem
-from skopax.contract import CATEGORIES, EDITIONS, FIELD_KINDS, ID, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Tag, TagRule, Tool
+from skopax.contract import CATEGORIES, ECHO_FIELD, ROUTE_ECHO, EDITIONS, FIELD_KINDS, ID, KNOWLEDGE_INLINE_MAX, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Tag, TagRule, Tool
 from skopax.errkind import Authored, kind as exc_kind
 from skopax.messages import LANG_TAG, msg, refusal as message_refusal
 
@@ -31,6 +31,7 @@ ENV = 'SKOPAX_PLUGINS'
 ATTR = 'PLUGIN'
 BUILTIN: tuple[str, ...] = (
     'skopax.plugins.gitlab',
+    'skopax.plugins.github',
     'skopax.plugins.jira',
     'skopax.plugins.slack',
     'skopax.plugins.prometheus',
@@ -60,6 +61,8 @@ BUILTIN: tuple[str, ...] = (
     'skopax.plugins.google_ads',
     'skopax.plugins.vwo',
     'skopax.plugins.mcp_tools',
+    'skopax.plugins.spring_config',
+    'skopax.plugins.sonarqube',
 )
 CORE_PREFIXES = (
     'core',
@@ -76,12 +79,13 @@ CORE_PREFIXES = (
     'screenshot',
     'self-review',
     'tags',
+    'routes',
     'mongo',
     'anthropic',
     'agent',
     'small-talk',
 )
-CORE_RAN = ('manual', 'slack-posts', 'selfreview', 'certs', 'jira-links')
+CORE_RAN = ('manual', 'slack-posts', 'selfreview', 'certs', 'jira-links', 'custom-checks')
 BRIDGE_PREFIX = 'mcp_'
 CORE_STATE = frozenset({'anomalies', 'history', 'muted', 'retired', 'warned', 'summary', 'sources', 'serverPushes', 'serverPasses', 'initialized', 'conflict', 'rev', 'updatedAt', 'archiveHours', '_id'})
 TOOL_NAME = re.compile(r'[a-zA-Z0-9_-]{1,64}')
@@ -494,6 +498,10 @@ def problem(kind: str, item: object) -> str | None:
                 return msg('plugins.why.knowledge_text', id=item.id)
             if len(item.text) > SECTION_MAX:
                 return msg('plugins.why.knowledge_long', id=item.id, limit=SECTION_MAX)
+            if not isinstance(item.inline, bool) or not isinstance(item.slack, bool):
+                return msg('plugins.why.shape', what=f'knowledge {item.id} flags')
+            if item.inline and len(item.text) > KNOWLEDGE_INLINE_MAX:
+                return msg('plugins.why.knowledge_inline_long', id=item.id, limit=KNOWLEDGE_INLINE_MAX)
             return None
         if kind == 'panels':
             ok = isinstance(item, Panel) and isinstance(item.tab, str) and isinstance(item.script, (str, type(None))) and isinstance(item.fragment, (str, type(None))) \
@@ -640,6 +648,9 @@ def _check(plugin: Plugin, directory: Path | None) -> None:
             if f.kind not in FIELD_KINDS:
                 raise _why('field_kind', key=f.key, kind=f.kind)
             _field_look(f)
+    for f in (*plugin.fields, *(f for read in plugin.agent_reads for f in read.fields)):
+        if f.check is not None and not callable(f.check):
+            raise _why('field_check', key=f.key)
     for f in plugin.fields:
         if f.show_if is not None and (len(f.show_if) != 2 or f.show_if[0] not in keys):
             raise _why('show_if', key=f.key, other=f.show_if[0] if f.show_if else '')
@@ -1132,6 +1143,8 @@ def _loaded(plugin: object, label: str, origin: str, module=None, directory: Pat
     try:
         _check(plugin, directory)
         kept, drops, dropped = _kept_locales(plugin)
+        if kept.outbound is not None and not any(f.key == ECHO_FIELD for f in kept.fields):
+            kept = replace(kept, fields=(*kept.fields, ROUTE_ECHO))
     except _Reject as exc:
         return Loaded(str(plugin.id), modname, origin, plugin, 'broken', _broken_text(_pname(plugin, label), exc.text), directory)
     except Exception as exc:

@@ -41,6 +41,7 @@ try {
   --font-data: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .int-ico-dark { background: #e6e8ec; }
   :root:not([data-theme="light"]) {
     --bg: #0f1115; --surface: #171a20; --raised: #1c2027; --sunken: #13161b; --fg: #e6e8ec; --fg-2: #bdc3cd; --muted: #8b929f; --line: #272b33; --line-2: #383d47;
     --link: #7eaaf2; --ring: #7eaaf2; --btn-bg: #e6e8ec; --btn-fg: #121419; --btn-hover: #ffffff; --btn-line: #4a505c;
@@ -54,6 +55,7 @@ try {
     color-scheme: dark;
   }
 }
+:root[data-theme="dark"] .int-ico-dark { background: #e6e8ec; }
 :root[data-theme="dark"] {
   --bg: #0f1115; --surface: #171a20; --raised: #1c2027; --sunken: #13161b; --fg: #e6e8ec; --fg-2: #bdc3cd; --muted: #8b929f; --line: #272b33; --line-2: #383d47;
   --link: #7eaaf2; --ring: #7eaaf2; --btn-bg: #e6e8ec; --btn-fg: #121419; --btn-hover: #ffffff; --btn-line: #4a505c;
@@ -75,7 +77,7 @@ body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--fo
 .page { --pad-t: 18px; padding-inline: var(--pad-x); padding-block: var(--pad-t) 48px; display: grid; gap: 16px; }
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
-.chev::before { content: "›"; display: inline-block; width: 0.7em; font-size: 1.1rem; line-height: 1; color: var(--muted); transition: transform .12s ease; }
+.chev::before { content: "\203A"; display: inline-block; width: 0.7em; font-size: 1.1rem; line-height: 1; color: var(--muted); transition: transform .12s ease; }
 details[open] > summary.chev::before { transform: rotate(90deg); }
 a { color: var(--link); text-underline-offset: 2px; }
 :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
@@ -158,6 +160,24 @@ body.is-rail { --side-w: 64px; }
 .s-nav { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; margin: 0 -4px; padding: 2px 4px 2px; scrollbar-width: thin; }
 .s-nav.more-below { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--row-h)), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - var(--row-h)), transparent); }
 .s-grp + .s-grp { margin-top: var(--grp-gap); }
+.user-btn { position: relative; }
+.user-btn .u-dot { flex: none; min-width: 15px; padding: 0 4px; border-radius: 8px; font-size: 9.5px; line-height: 15px; text-align: center; color: var(--warn); background: var(--warn-bg); }
+.user-btn[aria-current="page"] { background: var(--active); color: var(--fg); }
+.menu .mi .um-n { margin-left: auto; }
+.is-rail .side .user-btn .u-dot { position: absolute; top: 2px; right: 6px; min-width: 8px; width: 8px; height: 8px; padding: 0; font-size: 0; line-height: 0; border-radius: 50%; background: var(--warn); }
+.g-btn { display: flex; align-items: center; gap: 6px; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
+.g-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; border-radius: 4px; }
+.g-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.g-sum { display: none; min-width: 15px; padding: 0 4px; border-radius: 8px; font-size: 9.5px; line-height: 15px; text-align: center; letter-spacing: 0; color: var(--muted); background: var(--sunken); }
+.s-grp.folded .g-sum { display: inline-block; }
+.g-sum.hot { color: var(--c, var(--warn)); }
+.g-sum.k-crit { color: var(--crit); background: var(--crit-bg); }
+.g-sum.k-warn { color: var(--warn); background: var(--warn-bg); }
+.g-chev .i { width: 12px; height: 12px; color: var(--muted); transition: transform .15s ease; }
+.s-grp.folded .g-chev .i { transform: rotate(-90deg); }
+body:not(.is-rail) .s-grp.folded > a.tab:not([aria-current="page"]):not(.k-crit):not(.k-warn) { display: none; }
+.is-rail .side .g-btn { pointer-events: none; }
+.is-rail .side .g-t, .is-rail .side .g-sum, .is-rail .side .g-chev { display: none; }
 .g-h { margin: 0; padding: 0 10px; height: var(--grp-h); line-height: var(--grp-h); font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); overflow: hidden; white-space: nowrap; }
 .side .tab { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; height: var(--row-h); box-sizing: border-box; margin: 0; padding: 0 8px 0 10px; border: 0; border-radius: 6px; background: transparent; box-shadow: none;
   color: var(--fg-2); font: inherit; font-size: 13.5px; font-weight: 500; text-decoration: none; text-align: left; cursor: pointer; }
@@ -175,10 +195,6 @@ body.is-rail { --side-w: 64px; }
 .side .tab.hot .count { color: var(--c); font-weight: 600; }
 .side .tab.hot[aria-current="page"] { color: var(--fg); }
 .side .tab[aria-disabled="true"] { color: var(--muted); cursor: not-allowed; }
-.side .tab.more .m-chev .i { color: var(--muted); transition: transform .15s ease; }
-.side .tab.more[aria-expanded="true"] .m-chev .i { transform: rotate(180deg); }
-.side .tab.more .m-dot { display: none; width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
-.side .tab.more.hot .m-dot { display: inline-block; }
 .b-new { font-size: 10.5px; font-weight: 650; line-height: 16px; padding: 0 7px; border-radius: 99px; color: var(--new-fg); background: var(--new-bg); }
 .s-bot { --user-h: 40px; --attr-h: 18px; display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); }
 .side-attr { min-height: var(--attr-h); box-sizing: border-box; padding: 0 4px; font-size: 11.5px; line-height: var(--attr-h); color: var(--muted); }
@@ -220,7 +236,7 @@ body.is-rail { --side-w: 64px; }
 .is-rail .side .tab { justify-content: center; padding: 0; }
 .is-rail .side .tab .i { width: 18px; height: 18px; }
 .is-rail .side .tab .end { position: absolute; top: 3px; right: 7px; gap: 0; }
-.is-rail .side .tab .count, .is-rail .side .tab.more .m-chev { display: none; }
+.is-rail .side .tab .count { display: none; }
 .is-rail .side .b-new { width: 8px; height: 8px; padding: 0; font-size: 0; line-height: 0; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 2px var(--bar-bg); }
 .is-rail .side .user-t, .is-rail .side .user-btn > .i { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .is-rail .side .user-btn { justify-content: center; padding: 6px 0; }
@@ -288,7 +304,7 @@ h1 .home:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; bo
 .sg-pill .count { font-size: 0.7rem; }
 .sg-pill.k-warn, .sg-pill.k-crit { color: var(--c); border-color: var(--c); background: var(--cb); }
 .sg-bad { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
-.sg-bad::before { content: "·"; margin-right: 6px; font-weight: 400; }
+.sg-bad::before { content: "\00b7"; margin-right: 6px; font-weight: 400; }
 .sg-body { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding-left: 4px; }
 .sg-body[hidden] { display: none; }
 td.any-wrap, td.any-wrap .svc { overflow-wrap: anywhere; white-space: normal; }
@@ -581,7 +597,7 @@ details.grp.wait > summary.grp-h .count { color: var(--crit); font-weight: 700; 
 .inc { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; transition: border-color 0.8s, box-shadow 0.8s; }
 .inc-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; padding: 6px 14px 6px 12px; min-width: 0; }
 .inc-title { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 100%; cursor: pointer; }
-.inc-title::before { content: "›"; flex: none; display: inline-block; width: 0.7em; text-align: center; font-size: 1.1rem; line-height: 1; color: var(--muted); transition: transform .12s ease; }
+.inc-title::before { content: "\203A"; flex: none; display: inline-block; width: 0.7em; text-align: center; font-size: 1.1rem; line-height: 1; color: var(--muted); transition: transform .12s ease; }
 .inc-title:hover::before, .inc.open .inc-title::before { color: var(--fg); }
 .inc.open .inc-title::before { transform: rotate(90deg); }
 .inc-title > .sev, .inc-title > .tag, .inc-title > .chg { flex: none; }
@@ -647,8 +663,18 @@ details.grp.wait > summary.grp-h .count { color: var(--crit); font-weight: 700; 
 .mute-pick .mp-opts { display: grid; gap: 6px; margin: 4px 0 10px; }
 .mute-pick .mp-opts label { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer; }
 .mute-pick .mp-why { width: 100%; box-sizing: border-box; font: inherit; font-size: 0.88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 7px 10px; margin-bottom: 10px; }
-.res-kinds { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
-.res-form .res-kinds { justify-content: flex-end; }
+.res-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; flex-basis: 100%; width: 100%; }
+.res-kinds .res-kind { width: 100%; min-width: 0; justify-content: center; white-space: normal; height: auto; min-height: 30px; padding: 3px 4px; font-size: 0.78rem; line-height: 1.15; text-align: center; }
+.res-kinds .res-hint { grid-column: 1 / -1; margin: 2px 0 0; font-size: 0.78rem; line-height: 1.35; color: var(--muted); }
+.res-form > input, .res-form > .btn { flex: 1 1 100%; width: 100%; box-sizing: border-box; justify-content: center; }
+#form-resolve .res-kinds { margin-bottom: 6px; }
+.resolve-pick .res-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.resolve-pick .res-kinds .res-kind { flex: 1 1 auto; width: auto; white-space: nowrap; padding: 6px 12px; font-size: 0.86rem; }
+.resolve-pick .res-kinds .res-hint { flex: 1 1 100%; }
+.resolve-pick .modal { width: min(30rem, calc(100vw - 32px)); }
+.acts .acts-more .res-form > .btn.small { width: 100%; height: 32px; justify-content: center; color: var(--btn-fg); background: var(--btn-bg); }
+.acts .acts-more .res-form > .btn.small:hover:not(:disabled) { background: var(--btn-hover); }
+.acts .acts-more .res-form .res-kinds .btn { height: auto; min-height: 30px; justify-content: center; padding: 3px 4px; }
 .resolve-pick .rp-opts { margin: 4px 0 2px; }
 .resolve-pick input { width: 100%; box-sizing: border-box; font: inherit; font-size: 0.88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 7px 10px; }
 .res-form input[aria-invalid="true"], .resolve-pick input[aria-invalid="true"] { border-color: var(--crit); }
@@ -729,7 +755,7 @@ details.grp.wait > summary.grp-h .count { color: var(--crit); font-weight: 700; 
 .inc-more > .line, .inc-tags { padding-inline: 18px; }
 .inc-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .line { font-family: var(--font-data); font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap; row-gap: 2px; }
-.line > span + span::before { content: "·"; margin-inline: 8px; color: var(--line-2); }
+.line > span + span::before { content: "\00b7"; margin-inline: 8px; color: var(--line-2); }
 .line b { color: var(--c); font-weight: 600; }
 .line .ch { color: var(--fg-2); font-weight: 500; }
 .line .usd { color: var(--fg-2); font-weight: 500; }
@@ -764,7 +790,7 @@ td .tag.plain { border-color: transparent; padding-inline: 0; }
 .asg-quick .asg-me::before { content: attr(data-ini); width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.62rem; font-weight: 700; color: var(--fg); background: var(--sunken); border: 1px solid var(--line-2); flex: none; }
 .asg-quick .asg-me:not([data-ini])::before { content: ""; }
 .acts .asg-quick .asg-clear { color: var(--crit); }
-.asg-quick .asg-clear::before { content: "×"; width: 22px; text-align: center; font-size: 1.1rem; line-height: 1; flex: none; }
+.asg-quick .asg-clear::before { content: "\00d7"; width: 22px; text-align: center; font-size: 1.1rem; line-height: 1; flex: none; }
 .asg-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 0.76rem; color: var(--muted); }
 .acts .asg-btn.has-av::before { content: attr(data-ini); width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 700; color: var(--fg); background: var(--sunken); border: 1px solid var(--line-2); flex: none; }
 .acts .asg-btn .asg-chev { width: 5px; height: 5px; margin-left: 2px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); flex: none; }
@@ -1005,6 +1031,9 @@ a.shot.phone img { width: 60px; }
 .acc-link-again { margin-top: 4px; }
 .acc-mcp-note { margin: 0; padding: 0 14px 10px; }
 .sso-card { justify-items: stretch; }
+.sso-roles { display: grid; min-width: 0; }
+.sso-roles .adm-row { padding-inline: 0; }
+.sso-roles:empty { display: none; }
 .sso-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: 12px 18px; min-width: 0; }
 .sso-f { display: grid; gap: 4px; align-content: start; min-width: 0; }
 .sso-f .adm-help { margin: 0; }
@@ -1033,6 +1062,130 @@ a.shot.phone img { width: 60px; }
 .sso-check { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
 .sso-ct { color: var(--fg-2); overflow-wrap: anywhere; }
 .sso-check.bad .sso-ct { color: var(--crit); }
+.acc-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.acc-nav { position: sticky; top: calc(var(--top-h) + 6px); z-index: 6; display: flex; flex-wrap: wrap; gap: 2px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); }
+.acc-nav-b { display: flex; align-items: center; gap: 8px; width: auto; padding: 6px 12px; font: inherit; font-size: 0.85rem; color: var(--fg-2); text-align: left; background: none; border: 0; border-radius: 5px; cursor: pointer; }
+.acc-nav-b:hover { background: var(--hover); color: var(--fg); }
+.acc-nav-b:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.acc-nav-l { flex: 1 1 auto; min-width: 0; }
+.acc-nav-n:empty { display: none; }
+.acc-dot { flex: none; width: 8px; height: 8px; overflow: hidden; color: transparent; font-size: 0; border-radius: 50%; background: var(--warn); }
+.acc-dot[hidden] { display: none; }
+.acc-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
+.acc-part { display: grid; min-width: 0; scroll-margin-top: calc(var(--top-h) + 64px); }
+.acc-part h3:focus { outline: none; }
+.acc-part h3:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.acc-card, .acc-sec { max-width: none; padding: 14px 16px; border-radius: 8px; }
+.acc-sec-help { margin: 0; }
+.acc-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.acc-find, .acc-role-f { font: inherit; font-size: 0.85rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 5px; padding: 5px 9px; box-sizing: border-box; min-width: 0; }
+.acc-find { flex: 1 1 14rem; max-width: 22rem; }
+.acc-find:focus-visible, .acc-role-f:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.acc-shown:empty, .acc-none[hidden], .acc-empty:empty { display: none; }
+.acc-empty, .acc-none { margin: 0; padding: 10px 0; }
+.acc-failed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.acc-who { display: flex; align-items: center; gap: 10px; min-width: 11rem; }
+.acc-av { flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-size: 0.82rem; font-weight: 650; color: var(--link); background: color-mix(in srgb, var(--link) 14%, transparent); }
+.acc-names { display: grid; min-width: 0; }
+.acc-name { font-weight: 600; color: var(--fg); overflow-wrap: break-word; }
+.acc-mail { font-size: 0.78rem; color: var(--muted); overflow-wrap: break-word; }
+.acc-user.off .acc-av { filter: grayscale(1); opacity: 0.6; }
+.acc-table select.acc-chip { appearance: none; -webkit-appearance: none; padding: 2px 22px 2px 9px; font-size: 0.78rem; font-weight: 600; border-radius: 99px; color: var(--c); border-color: color-mix(in srgb, var(--c) 40%, transparent); background: color-mix(in srgb, var(--c) 9%, var(--surface)) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 8px center; cursor: pointer; }
+.acc-table select.acc-chip:disabled { cursor: not-allowed; opacity: 0.85; background-image: none; padding-right: 9px; }
+.acc-table select.acc-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; font-weight: 600; border-radius: 99px; color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); background: color-mix(in srgb, var(--c) 9%, transparent); }
+.acc-chip-viewer { --c: var(--muted); }
+.acc-chip-operator { --c: var(--info); }
+.acc-chip-admin { --c: var(--good); }
+.acc-last-admin { margin-left: 6px; cursor: help; }
+.acc-src { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.acc-last { font-size: 0.82rem; white-space: nowrap; }
+.acc-last.acc-not-yet { color: var(--warn); }
+.acc-ctl { white-space: nowrap; }
+.acc-ctl .adm-msg { white-space: normal; }
+.acc-menu-w { position: relative; display: inline-block; }
+.acc-menu-b { min-width: 30px; padding-inline: 8px; font-weight: 700; letter-spacing: 1px; }
+.acc-menu { position: fixed; z-index: 60; display: grid; min-width: 13rem; padding: 4px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--surface); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
+.acc-menu[hidden] { display: none; }
+.acc-mi { display: block; width: 100%; padding: 7px 10px; font: inherit; font-size: 0.84rem; color: var(--fg); text-align: left; background: none; border: 0; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.acc-mi:hover:not(:disabled), .acc-mi:focus-visible { background: var(--hover); outline: none; }
+.acc-mi:disabled { color: var(--muted); cursor: not-allowed; }
+.acc-mi-danger:not(:disabled) { color: var(--crit); }
+.acc-pw-form:not([hidden]) { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 6px; }
+.acc-exp { font-size: 0.82rem; }
+.acc-token code { font-size: 0.76rem; }
+.acc-token td, .acc-user td, .acc-table th { padding-inline: 6px; }
+.acc-exp.tag { white-space: normal; }
+.acc-secret { border-color: color-mix(in srgb, var(--warn) 45%, var(--line-2)); background: var(--warn-bg); }
+.acc-secret-v { display: block; padding: 7px 10px; font-family: var(--font-data); color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 5px; }
+.acc-secret-note { margin: 0; font-weight: 600; color: var(--fg-2); }
+.sso-status { margin: 0; font-size: 0.84rem; color: var(--fg-2); }
+.sso-status[data-tested="ok"] { color: var(--good); }
+.sso-status[data-tested="bad"] { color: var(--crit); }
+.sso-grp { display: grid; gap: 10px; min-width: 0; margin: 4px 0 0; padding: 12px 0 0; border: 0; border-top: 1px solid var(--line); }
+.sso-grp-l { padding: 0; font-size: 0.8rem; font-weight: 650; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); }
+.sso-grp .sso-roles, .sso-grp .sso-preview-w { grid-column: 1 / -1; }
+.sso-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sso-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 9px; font-size: 0.82rem; border: 1px solid var(--line-2); border-radius: 99px; background: var(--raised); }
+.sso-chip-t { overflow-wrap: anywhere; }
+.sso-chip-del { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; font: inherit; color: var(--muted); background: none; border: 0; border-radius: 50%; cursor: pointer; }
+.sso-chip-del:hover { color: var(--crit); background: var(--hover); }
+.sso-chip-del:focus-visible { outline: 2px solid var(--ring); outline-offset: 0; }
+.sso-chips-none { font-size: 0.82rem; }
+.sso-chip-row { display: flex; gap: 6px; min-width: 0; }
+.sso-chip-row .adm-in { flex: 1 1 auto; width: auto; }
+.sso-icon-box { display: grid; gap: 4px; align-content: start; min-width: 0; }
+.sso-icon-box .adm-help { margin: 0; }
+.sso-icon-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.sso-icon-pick { position: relative; }
+.sso-icon-pick:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
+.sso-icon-file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.sso-icon-msg:empty { display: none; }
+.sso-preview-w { display: grid; gap: 6px; max-width: 26rem; }
+.sso-pv-note { margin: 0; }
+.sso-preview { padding: 14px; border: 1px dashed var(--line-2); border-radius: 8px; background: var(--sunken); }
+.sso-pv { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 41px; padding: 8px 12px; box-sizing: border-box; font-weight: 600; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 6px; overflow-wrap: anywhere; }
+.sso-pv-ico { flex: none; width: 20px; height: 20px; background: no-repeat center / contain; }
+.sso-pv.sso-btn-microsoft { font-family: "Segoe UI", system-ui, sans-serif; font-size: 15px; color: #5e5e5e; background: #ffffff; border-color: #8c8c8c; border-radius: 0; }
+.sso-pv.sso-btn-microsoft .sso-pv-ico { width: 21px; height: 21px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sso-pv.sso-btn-microsoft { color: #ffffff; background: #2f2f2f; border-color: #2f2f2f; } }
+:root[data-theme="dark"] .sso-pv.sso-btn-microsoft { color: #ffffff; background: #2f2f2f; border-color: #2f2f2f; }
+.acc-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: 12px 18px; min-width: 0; }
+.acc-fields .adm-row.adm-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; align-content: start; padding: 0; border: 0; box-shadow: none; }
+.acc-fields .adm-field .adm-l { display: contents; }
+.acc-fields .adm-field .adm-n { order: 0; }
+.acc-fields .adm-field .adm-n b { font-size: 0.82rem; font-weight: 600; color: var(--fg-2); }
+.acc-fields .adm-field .adm-c { order: 1; }
+.acc-fields .adm-field .adm-c .adm-in { width: 100%; max-width: none; }
+.acc-fields .adm-field .adm-help, .acc-fields .adm-field .adm-problem { order: 2; margin: 0; }
+.acc-fields .adm-field .adm-key { display: none; }
+.acc-fields .adm-field .adm-acts:has(> .adm-msg:empty):not(:has(button)) { display: none; }
+.acc-mcp-fields { padding: 6px 14px 4px; }
+.acc-mcp-acts { padding: 8px 14px 14px; }
+.acc-mcp-grp .ai-head { padding: 12px 14px 4px; }
+.acc-mcp-method { margin: 0; padding: 0 14px 6px; font-size: 0.84rem; color: var(--fg-2); }
+@media (max-width: 900px) {
+  .acc-nav { display: none; }
+}
+@media (max-width: 640px) {
+  .acc-table thead { display: none; }
+  .acc-table, .acc-table tbody { display: block; }
+  .acc-table tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .acc-table td { display: grid; gap: 2px; padding: 0; border: 0; min-width: 0; }
+  .acc-table td[data-l]::before { content: attr(data-l); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+  .acc-table td:first-child, .acc-table td.acc-ctl { grid-column: 1 / -1; }
+  .acc-who { min-width: 0; }
+  .acc-table select.acc-chip { justify-self: start; }
+  .acc-src { align-self: start; }
+  .acc-table td.acc-ctl { white-space: normal; }
+  .acc-wrap { overflow: visible; }
+  .acc-card, .acc-sec { padding: 12px; }
+  .sso-map-t tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 4px 0; }
+  .sso-map-t td { padding: 0; }
+  .sso-map-t td:first-child { flex: 1 1 100%; }
+  .sso-map-v { width: 100%; }
+  .sso-map { overflow-x: visible; }
+}
 .int-top { display: grid; gap: 8px; min-width: 0; }
 .int-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-width: 0; }
 .int-h h3 { margin: 0; font-size: 1.06rem; font-weight: 700; }
@@ -1068,7 +1221,8 @@ a.shot.phone img { width: 60px; }
 .int-line { display: flex; min-width: 0; font-size: 0.72rem; line-height: 1.35; color: var(--muted); white-space: nowrap; overflow: hidden; }
 .int-line .int-cat { flex: 0 100 auto; min-width: 3ch; }
 .int-line .int-health { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.int-line .int-health::before { content: "\00b7"; margin: 0 5px; }
+.int-line .int-cat + .int-health::before, .int-line .int-why::before { content: "\00b7"; margin: 0 5px; }
+.int-line .int-why { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--warn); }
 .int-tile.need .int-health { color: var(--warn); }
 .int-tile .int-msg { position: absolute; right: 8px; bottom: 4px; max-width: calc(100% - 16px); padding: 0 4px; font-size: 0.7rem; background: var(--surface); border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .int-open:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
@@ -1256,6 +1410,49 @@ a.shot.phone img { width: 60px; }
 @media (max-width: 480px) { .int-foot-acts { margin-left: 0; flex: 1 1 100%; justify-content: flex-end; } }
 @media (prefers-reduced-motion: reduce) { .int-seg-b, .int-adv-h::before, .int-field .int-in { transition: none; } }
 .adm-plugin-terms { margin: 4px 0 0; }
+.pqc-box { margin-top: 22px; min-width: 0; }
+.pqc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.pqc-head h3 { margin: 0; font-size: 1rem; }
+.pqc-sub { margin: 4px 0 8px; font-size: 0.84rem; }
+.pqc-list { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); min-width: 0; }
+.pqc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 14px; border-top: 1px solid var(--line); min-width: 0; }
+.pqc-row:first-child { border-top: 0; }
+.pqc-n { font-weight: 600; overflow-wrap: anywhere; }
+.pqc-m { flex: 1 1 12rem; min-width: 0; color: var(--muted); font-size: 0.82rem; overflow-wrap: anywhere; }
+.pqc-state { white-space: normal; overflow-wrap: anywhere; }
+.pqc-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; margin: 10px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); min-width: 0; }
+.pqc-f { display: grid; gap: 4px; align-content: start; min-width: 0; font-size: 0.85rem; }
+.pqc-f.wide, .pqc-acts, .pqc-preview { grid-column: 1 / -1; }
+.pqc-f input:not([type="checkbox"]), .pqc-f select, .pqc-f textarea { font: inherit; font-size: 0.88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 10px; box-sizing: border-box; width: 100%; min-width: 0; }
+.pqc-f input:focus-visible, .pqc-f select:focus-visible, .pqc-f textarea:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.pqc-f textarea { resize: vertical; }
+.pqc-f .pqc-q { font-family: var(--font-data); min-height: 5rem; }
+.pqc-f .adm-help { margin: 0; font-size: 0.76rem; }
+.pqc-ticks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.pqc-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.pqc-preview { min-width: 0; overflow-wrap: anywhere; }
+.pqc-cards { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; min-width: 0; }
+.pqc-card { border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; min-width: 0; overflow-wrap: anywhere; }
+.pqc-card .pqc-t { font-weight: 600; }
+.pqc-card p { margin: 4px 0 0; color: var(--muted); font-size: 0.82rem; }
+.pqc-picker { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); min-width: 0; overflow-wrap: anywhere; }
+.pqc-picker h4, .pqc-preset-form h4 { margin: 0; font-size: 0.95rem; }
+.pqc-picker > .pqc-preset-form { margin: 0; padding: 0; border: 0; }
+.pqc-picker h4:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.pqc-presets, .pqc-preset-checks { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; min-width: 0; }
+.pqc-preset, .pqc-pcheck { border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; min-width: 0; overflow-wrap: anywhere; }
+.pqc-ptop { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.pqc-ptop .pqc-m { flex: 1 1 6rem; }
+.pqc-what { margin: 4px 0 0; font-size: 0.85rem; overflow-wrap: anywhere; }
+.pqc-preset .adm-help { margin: 2px 0 0; font-size: 0.76rem; }
+.pqc-pcheck .pqc-n { font-weight: 500; }
+.pqc-pcheck .pqc-preview:empty { display: none; }
+.pqc-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 14px; border-top: 1px solid var(--line); background: var(--hover); min-width: 0; }
+.pqc-group:first-child { border-top: 0; }
+.pqc-chip { --c: var(--info); }
+.pqc-gname { font-weight: 600; overflow-wrap: anywhere; }
+.pqc-group ~ .pqc-row { padding-left: 24px; }
+@media (max-width: 768px) { .pqc-form { grid-template-columns: minmax(0, 1fr); } }
 .adm-hist { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .adm-hist th, .adm-hist td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
 .adm-ch { overflow-wrap: anywhere; }
@@ -1433,7 +1630,7 @@ a.btn.chat-link svg { width: 17px; height: 17px; flex: none; }
 .jira-msg { font-size: 0.8rem; color: var(--crit); }
 .acts .sev-act { height: 30px; padding: 0 12px; font-size: 0.84rem; white-space: nowrap; }
 .sev-form { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.sev-pick[aria-pressed="true"] { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--btn-bg); }
+.btn.sev-pick[aria-pressed="true"], .btn.sev-pick[aria-pressed="true"]:hover, .btn.res-kind[aria-pressed="true"], .btn.res-kind[aria-pressed="true"]:hover { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--btn-bg); }
 .sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .acts .asg-msg { flex-basis: 100%; text-align: right; font-size: 0.8rem; color: var(--muted); }
 .acts .stat { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; }
@@ -1478,8 +1675,8 @@ a.btn.chat-link svg { width: 17px; height: 17px; flex: none; }
 .st::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--c); vertical-align: 0.12em; }
 a.st.flag-link, button.st.flag-link { font-family: inherit; line-height: inherit; border: 0; cursor: pointer; text-decoration: none; display: inline-block; }
 a.st.flag-link:hover, button.st.flag-link:hover { text-decoration: underline; text-underline-offset: 2px; }
-a.st.flag-link::after { content: " ↗"; }
-button.st.flag-link::after { content: " ›"; }
+a.st.flag-link::after { content: " \2197"; }
+button.st.flag-link::after { content: " \203A"; }
 .s-queued { --c: var(--act); --cb: var(--act-bg); } .s-processing { --c: var(--info); --cb: var(--info-bg); }
 .s-done { --c: var(--good); --cb: var(--good-bg); } .s-failed { --c: var(--crit); --cb: var(--crit-bg); } .s-other { --c: var(--mute); --cb: var(--mute-bg); }
 .s-warn { --c: var(--warn); --cb: var(--warn-bg); }
@@ -1496,7 +1693,7 @@ button.st.flag-link::after { content: " ›"; }
 .drep-body .img { font-family: var(--font-data); font-size: 0.82rem; white-space: nowrap; }
 .drep-body .sig { font-family: var(--font-data); font-size: 0.78rem; color: var(--muted); min-width: 24ch; }
 .drep-body .sig a { color: inherit; text-decoration: none; }
-.drep-body .sig a::after { content: " ↗"; color: var(--link); }
+.drep-body .sig a::after { content: " \2197"; color: var(--link); }
 .drep-body .sig a:hover { color: var(--link); text-decoration: underline; text-underline-offset: 2px; }
 .drep-body .ikeys { display: flex; flex-wrap: wrap; gap: 2px 8px; margin-top: 2px; max-width: 30ch; font-family: var(--font-data); font-size: 0.76rem; }
 .drep-body .ikeys .more { font: inherit; color: var(--link); background: none; border: 0; padding: 0; cursor: pointer; white-space: nowrap; }
@@ -1588,7 +1785,7 @@ details.foot > summary { display: inline-flex; align-items: center; gap: 4px; fo
   .acts .stat, .acts .asg-msg { text-align: left; }
   .notif { justify-content: flex-start; }
   .notif .slack-st { text-align: left; }
-  .reason, .res-form .res-kinds { justify-content: flex-start; }
+  .reason { justify-content: flex-start; }
 }
 @media (orientation: portrait) and (min-width: 1000px) and (min-height: 1500px) {
   .layout { grid-template-columns: auto minmax(0, 1fr); }
@@ -1635,7 +1832,7 @@ details.foot > summary { display: inline-flex; align-items: center; gap: 4px; fo
   .end-attr { display: block; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .side, body.drawer-open .side, .side .tab.more .m-chev .i { transition: none; }
+  .side, body.drawer-open .side, .g-chev .i,
   .chev::before, .inc-title::before, .inc, .btn, .sg-pill, .tabs, body.nav-open .tabs, .layout.nav-anim .tabs, .layout.nav-anim.nav-off .tabs { transition: none; }
   .last-check .upd, .nav-backdrop, .modal-wrap, .modal { animation: none; }
   .chat-frame, .chat-loading { transition: none; }
@@ -1688,7 +1885,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <span class="off-tag" id="off-tag" hidden>PAUSED</span>
       <div class="top-r">
         <span class="last-check" id="last-check"></span>
-        <div class="inv-menu" id="inv-menu"><button type="button" class="btn sec small" id="inv-btn" aria-haspopup="true" aria-expanded="false" title="Investigator: ask it a question, stop or resume it" hidden>Investigator</button><div class="inv-pop" id="inv-pop" hidden><p class="inv-state" id="inv-state"></p><button type="button" class="btn small op-btn" id="inv-chat">Chat with [[brand]]</button><button type="button" class="btn sec small op-btn" id="inv-ask">Ask the investigator…</button><button type="button" class="btn sec small op-btn admin-only" id="inv-stop">Stop investigator</button><a class="inv-link" href="#t=acts" id="inv-more">Runs, usage and actions on History</a></div></div>
+        <div class="inv-menu" id="inv-menu"><button type="button" class="btn sec small" id="inv-btn" aria-haspopup="true" aria-expanded="false" title="Investigator: ask it a question, stop or resume it" hidden>Investigator</button><div class="inv-pop" id="inv-pop" hidden><p class="inv-state" id="inv-state"></p><button type="button" class="btn small op-btn" id="inv-chat">Chat with [[brand]]</button><button type="button" class="btn sec small op-btn" id="inv-ask">Ask the investigator&hellip;</button><button type="button" class="btn sec small op-btn admin-only" id="inv-stop">Stop investigator</button><a class="inv-link" href="#t=acts" id="inv-more">Runs, usage and actions on History</a></div></div>
         <button type="button" class="ibtn" id="theme-btn"></button>
       </div>
     </header>
@@ -1720,21 +1917,21 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <p class="panel-note"><span>Questions people asked [[brand]]: in Slack by tagging @[[brand]] in any channel it is in, or here with Ask the investigator. Each one is investigated and answered where it was asked; questions about the same card are grouped under that card, whichever thread they came from.</span> <span class="q" tabindex="0" role="img" aria-label="About requests" title="Anyone in the workspace can ask in Slack, a few questions an hour per person (slack.user-ask-cap) within [[brand]]'s hourly and daily limits; take, resolve and the other card buttons stay with [[brand]] operators. Invite the bot to a channel with /invite @[[brand]]; slack.ask-channels can limit the channels. The investigator reads what the connected integrations show, such as prod logs, metrics, code and tickets, and answers without personal data.">?</span></p>
       <button type="button" class="btn small op-btn" id="req-ask">Ask the investigator</button>
     </div>
-    <div class="reviews" id="reqs"><p class="muted">Loading requests…</p></div>
+    <div class="reviews" id="reqs"><p class="muted">Loading requests&hellip;</p></div>
   </section>
 
   <section class="panel" id="panel-chat" hidden>
     <div class="toolbar">
       <p class="panel-note"><span>Chat with [[brand]] about prod, a card or what an investigation found. Your chats are private until you share one.</span> <span class="q" tabindex="0" role="img" aria-label="About the chat" title="Each message is answered by the investigator with its read tools, with the earlier messages of the chat as context. It changes nothing by itself: when you ask for a card change or an investigation, the answer carries a button an operator clicks. Chats are private: they are left out of Requests, Investigator, the activity log and later runs. The share icon makes one chat readable to anyone logged in who has its link. A daily message cap per person applies (Admin &rsaquo; Investigator). The answer arrives in one piece when the run is done; the status line above it shows the progress.">?</span></p>
     </div>
-    <div class="chat" id="chat"><p class="muted">Loading the chat…</p></div>
+    <div class="chat" id="chat"><p class="muted">Loading the chat&hellip;</p></div>
   </section>
 
   <section class="panel" id="panel-inv" hidden>
     <div class="toolbar">
       <p class="panel-note"><span>What the investigator is doing right now: each room and what it runs, what is waiting and why, the limits, and the last runs.</span> <span class="q" tabindex="0" role="img" aria-label="About the investigator page" title="The investigator works in rooms: each room runs one thing at a time (a question, an Investigate click or a deploy assessment), and the Cards room looks at new and escalated cards. A question asked in a Slack thread that already has one running waits for it. The page refreshes every 15 seconds.">?</span></p>
     </div>
-    <div class="inv" id="inv"><p class="muted">Loading the investigator…</p></div>
+    <div class="inv" id="inv"><p class="muted">Loading the investigator&hellip;</p></div>
   </section>
 
   <section class="panel" id="panel-svcs" hidden>
@@ -1751,7 +1948,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
   </section>
 
   <section class="panel" id="panel-lat" hidden>
-    <p class="panel-note">KrakenD p95 of the 30 busiest routes (Prometheus, not sampled). Flagged above 2× baseline and +250 ms.</p>
+    <p class="panel-note">KrakenD p95 of the 30 busiest routes (Prometheus, not sampled). Flagged above 2&times; baseline and +250 ms.</p>
     <div class="box">
       <table id="routes">
         <thead><tr><th>Gateway</th><th>Route</th><th class="num">Requests</th><th class="num">p95 now</th><th class="num">1 day ago</th><th class="num">7 days ago</th></tr></thead>
@@ -1775,18 +1972,18 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <p>Deploys less than 2 hours apart form one release, named after the Jira release version of their tickets, otherwise Ad-hoc deploys. Tickets are the Jira keys in the commit titles between the two images; Commits by are everyone with a non-merge commit between the two images, most commits first (the names and the image pair link to the GitLab compare view). While a service has a new image from the last 24 hours, the Releases row in the sidebar is coloured and counts them, and a line above the list opens them on Services. A release covered by a post-deploy check links to it on Deploy reports. The history is never deleted and starts where prod Prometheus still had it when it was first loaded (30 days back). Copy link on a release gives a link that opens it here.</p>
     </details>
     <p class="panel-note rels-recent" id="rels-recent" hidden></p>
-    <div class="dreps" id="rels"><p class="muted">Loading releases…</p></div>
+    <div class="dreps" id="rels"><p class="muted">Loading releases&hellip;</p></div>
   </section>
 
   <section class="panel" id="panel-reps" hidden>
     <div class="toolbar reps-head">
     <details class="panel-note help" id="reps-hint">
-      <summary>Post-deploy checks, newest first. <span class="q" title="Every image change in the window, compared with the same clock window 1 and 7 days earlier, plus the ERROR lines of anything flagged. Each report's title stays short (the release, the check window, clean or N flagged); the report links to the release it covers on Releases and starts with Claude's summary of the release. In the rows, the image pair opens the GitLab compare view, a long ticket list folds behind +N more, and every signal links to its source: err / warn to that service's log lines in Kibana, the others to a Prometheus graph of the query the check ran, on the cluster the service runs on. Copy link gives a link that opens the report; Send to Slack posts it to the channel from the service's own Slack app, with its Slack draft as the message when Claude wrote one (hover the Draft tag next to the button to read it; Copy and Edit sit beside it). Run one with the Post-deploy check button beside this line (operators) or ask Claude." aria-label="How deploy reports work">?</span></summary>
-      <p>Every image change in the window, compared with the same clock window 1 and 7 days earlier, plus the ERROR lines of anything flagged. Each report's title stays short (the release, the check window, clean or N flagged); the report links to the release it covers on Releases and starts with Claude's summary of the release. In the rows, the image pair opens the GitLab compare view, a long ticket list folds behind +N more, and every signal links to its source: err / warn to that service's log lines in Kibana, the others to a Prometheus graph of the query the check ran, on the cluster the service runs on. Copy link gives a link that opens the report; Send to Slack posts it to the channel from the service's own Slack app, with its Slack draft as the message when Claude wrote one (hover the Draft tag next to the button to read it; Copy and Edit sit beside it). Run one with the Post-deploy check button beside this line (operators) or ask Claude.</p>
+      <summary>Post-deploy checks, newest first. <span class="q" title="Every image change in the window, compared with the same clock window 1 and 7 days earlier, plus the ERROR lines of anything flagged. Each report's title stays short (the release, the check window, clean or N flagged); the report links to the release it covers on Releases and starts with the investigator's summary of the release. In the rows, the image pair opens the GitLab compare view, a long ticket list folds behind +N more, and every signal links to its source: err / warn to that service's log lines in Kibana, the others to a Prometheus graph of the query the check ran, on the cluster the service runs on. Copy link gives a link that opens the report; Send to Slack posts it to the channel from the service's own Slack app, with its Slack draft as the message when the investigator wrote one (hover the Draft tag next to the button to read it; Copy and Edit sit beside it). Run one with the Post-deploy check button beside this line (operators) or ask the investigator." aria-label="How deploy reports work">?</span></summary>
+      <p>Every image change in the window, compared with the same clock window 1 and 7 days earlier, plus the ERROR lines of anything flagged. Each report's title stays short (the release, the check window, clean or N flagged); the report links to the release it covers on Releases and starts with the investigator's summary of the release. In the rows, the image pair opens the GitLab compare view, a long ticket list folds behind +N more, and every signal links to its source: err / warn to that service's log lines in Kibana, the others to a Prometheus graph of the query the check ran, on the cluster the service runs on. Copy link gives a link that opens the report; Send to Slack posts it to the channel from the service's own Slack app, with its Slack draft as the message when the investigator wrote one (hover the Draft tag next to the button to read it; Copy and Edit sit beside it). Run one with the Post-deploy check button beside this line (operators) or ask the investigator.</p>
     </details>
     <div class="pdc" id="pdc"></div>
     </div>
-    <div class="dreps" id="reps"><p class="muted">Loading reports…</p></div>
+    <div class="dreps" id="reps"><p class="muted">Loading reports&hellip;</p></div>
   </section>
 
   <section class="panel" id="panel-slack" hidden>
@@ -1797,7 +1994,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <button type="button" class="btn sec small nt-more" id="nt-more" hidden>Show more</button>
     </section>
     <h3 class="sub-h first" id="sq-h">Slack drafts</h3>
-    <p class="panel-note"><span>Slack drafts that have not been posted yet, on anomaly cards and on deploy reports, and what happens to each one next. Armed drafts come first, the soonest first. <b>Send now</b> posts it to the channel, <b>Hold</b> stops the auto-send that posts it within 30 s, <b>Discard</b> removes the draft and <b>Edit</b> opens its form on the card or the report.</span> <span class="q" tabindex="0" role="img" aria-label="About the Slack queue" title="Claude writes the drafts; the service posts them, either on a click or on the auto-send timer, within 30 s of the draft. A draft on a crit or warn card and every deploy report draft arms that timer. An info card, a draft an operator edited and a held draft wait for Send now. A card that is in progress or marked as no action needed never auto-sends either: the job skips it and disarms the timer, so its draft waits here until someone sends it. Sending the draft of a card that is handled, muted or cleared still works, but the text is probably out of date.">?</span></p>
+    <p class="panel-note"><span>Slack drafts that have not been posted yet, on anomaly cards and on deploy reports, and what happens to each one next. Armed drafts come first, the soonest first. <b>Send now</b> posts it to the channel, <b>Hold</b> stops the auto-send that posts it within 30 s, <b>Discard</b> removes the draft and <b>Edit</b> opens its form on the card or the report.</span> <span class="q" tabindex="0" role="img" aria-label="About the Slack queue" title="The investigator writes the drafts; the service posts them, either on a click or on the auto-send timer, within 30 s of the draft. A draft on a crit or warn card and every deploy report draft arms that timer. An info card, a draft an operator edited and a held draft wait for Send now. A card that is in progress or marked as no action needed never auto-sends either: the job skips it and disarms the timer, so its draft waits here until someone sends it. Sending the draft of a card that is handled, muted or cleared still works, but the text is probably out of date.">?</span></p>
     <div class="box">
       <table id="slackq">
         <thead><tr><th>What</th><th>Draft</th><th>Status</th><th class="sq-c">Actions</th></tr></thead>
@@ -1817,11 +2014,11 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
     <h3 class="sub-h first">Investigator</h3>
     <div class="pod-ctl" id="pod-ctl"></div>
     <details class="hist" id="hist-runs" open><summary class="chev">Investigator runs <span class="count" id="hist-runs-n"></span></summary>
-    <ul class="q-list q-rows" id="pod-list"><li class="muted">Loading investigations…</li></ul>
+    <ul class="q-list q-rows" id="pod-list"><li class="muted">Loading investigations&hellip;</li></ul>
     </details>
     <details class="hist" id="hist-acts"><summary class="chev">Actions <span class="count" id="hist-acts-n"></span></summary>
     <p class="panel-note" id="q-hint"></p>
-    <ul class="q-list q-rows" id="q-list"><li class="muted">Loading actions…</li></ul>
+    <ul class="q-list q-rows" id="q-list"><li class="muted">Loading actions&hellip;</li></ul>
     </details>
   </section>
 
@@ -1830,7 +2027,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <p class="panel-note"><span>What the investigator and its topic gate spent, from the spend ledger: one row per model call, kept 90 days.</span> <span class="q" tabindex="0" role="img" aria-label="About costs" title="Every priced model call writes one ledger row next to the daily spend counter: investigator runs (cards and Investigate clicks), page asks, Slack asks, deploy-report assessments and the Haiku topic gate (page and Slack). The Today tile reads the daily counter the daily cap uses; everything else adds up ledger rows. Cache hit share is cache reads over all prompt tokens. The run list links each run's full record. Operators only, because it names who asked.">?</span></p>
       <div class="seg" id="costs-range" role="group" aria-label="Range"><button type="button" data-days="1">1 d</button><button type="button" data-days="7">7 d</button><button type="button" data-days="30">30 d</button></div>
     </div>
-    <div class="costs" id="costs"><p class="muted">Loading costs…</p></div>
+    <div class="costs" id="costs"><p class="muted">Loading costs&hellip;</p></div>
   </section>
 
   <section class="panel" id="panel-tools" hidden>
@@ -1839,17 +2036,17 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <label class="tools-find"><input type="search" id="tools-find" placeholder="Search tools, descriptions, checks" aria-label="Search tools" autocomplete="off"><span class="muted" id="tools-shown" aria-live="polite"></span></label>
       <div class="seg" id="tools-range" role="group" aria-label="Range"><button type="button" data-days="1">1 d</button><button type="button" data-days="7">7 d</button><button type="button" data-days="30">30 d</button></div>
     </div>
-    <div class="tools" id="tools"><p class="muted">Loading tools…</p></div>
+    <div class="tools" id="tools"><p class="muted">Loading tools&hellip;</p></div>
   </section>
   <section class="panel" id="panel-mcp" hidden>
-    <div class="mcp-info" id="mcp-info"><p class="muted">Loading…</p></div>
+    <div class="mcp-info" id="mcp-info"><p class="muted">Loading&hellip;</p></div>
   </section>
 
   <section class="panel" id="panel-review" hidden>
     <div class="toolbar">
-      <p class="panel-note"><span>A daily look at how [[brand]] itself is doing and what to improve: noise, re-firing cards, repeated runs, tool errors, cards nobody acted on, spend.</span> <span class="q" tabindex="0" role="img" aria-label="About the review" title="A Claude session reads [[brand]]'s own records each morning (Slack posts and what people did with them, run records and tool errors, gate decisions, spend, open and waiting cards) and writes its suggestions here; the same text goes to the requester as a Slack DM sent by the [[brand]] Slack app. The last 30 are kept.">?</span></p>
+      <p class="panel-note"><span>A daily look at how [[brand]] itself is doing and what to improve: noise, re-firing cards, repeated runs, tool errors, cards nobody acted on, spend.</span> <span class="q" tabindex="0" role="img" aria-label="About the review" title="An investigator session reads [[brand]]'s own records each morning (Slack posts and what people did with them, run records and tool errors, gate decisions, spend, open and waiting cards) and writes its suggestions here; the same text goes to the requester as a Slack DM sent by the [[brand]] Slack app. The last 30 are kept.">?</span></p>
     </div>
-    <div class="reviews" id="review"><p class="muted">Loading the review…</p></div>
+    <div class="reviews" id="review"><p class="muted">Loading the review&hellip;</p></div>
   </section>
 
   <div class="adm-shell" id="adm-shell" hidden>
@@ -1866,13 +2063,14 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
 
     <section class="panel" id="panel-access" hidden>
       <div class="toolbar">
-        <p class="panel-note">Single sign-on, who can sign in, which API tokens exist and how MCP signs people in. Roles are viewer, operator and admin. Disabling a user or lowering a role reaches their page sessions and API tokens within 30 seconds, and an open chat refuses their next message. An API token never has more access than the person who made it.</p>
+        <p class="panel-note">Who can sign in and how: people and their roles, single sign-on, API tokens and MCP sign-in. Roles are viewer, operator and admin.</p>
       </div>
-      <div class="admin" id="access"><p class="muted">Loading users&hellip;</p></div>
+      <div class="admin" id="access"><p class="muted">Loading&hellip;</p></div>
     </section>
 
     <section class="panel" id="panel-integrations" hidden>
       <div class="admin" id="integrations"><p class="muted">Loading integrations&hellip;</p></div>
+      <div class="admin pqc-box" id="pqc"></div>
     </section>
 
     <section class="panel" id="panel-features" hidden>
@@ -1932,7 +2130,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
   </main>
   <aside class="live" id="live" aria-label="Activity">
     <div class="live-head"><h2>Activity</h2><span class="live-dot" id="live-dot" title="Updates every 5 seconds"></span><button type="button" class="live-hide" id="live-hide" aria-expanded="true" aria-controls="live-rows">Hide</button></div>
-    <ol class="live-rows" id="live-rows"><li class="muted">Loading…</li></ol>
+    <ol class="live-rows" id="live-rows"><li class="muted">Loading&hellip;</li></ol>
   </aside>
     </div>
     </div>
@@ -1972,7 +2170,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
     <p class="json-src" id="json-src"></p>
     <pre class="json-body" id="json-body" tabindex="0"></pre>
     <p class="ask-err" id="json-err" hidden></p>
-    <div class="modal-acts"><a class="btn sec" id="json-raw" href="#" target="_blank" rel="noopener" title="The same record as raw JSON in a new tab">Open raw ↗</a><button type="button" class="btn" id="json-close">Close</button></div>
+    <div class="modal-acts"><a class="btn sec" id="json-raw" href="#" target="_blank" rel="noopener" title="The same record as raw JSON in a new tab">Open raw &#8599;</a><button type="button" class="btn" id="json-close">Close</button></div>
   </div>
 </div>
 
@@ -1981,7 +2179,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
     <h2 id="shot-title"></h2>
     <p class="json-src" id="shot-meta"></p>
     <div class="shot-body" id="shot-body"></div>
-    <div class="modal-acts"><a class="btn sec" id="shot-raw" href="#" target="_blank" rel="noopener" title="The image in a new tab">Open image ↗</a><button type="button" class="btn" id="shot-close">Close</button></div>
+    <div class="modal-acts"><a class="btn sec" id="shot-raw" href="#" target="_blank" rel="noopener" title="The image in a new tab">Open image &#8599;</a><button type="button" class="btn" id="shot-close">Close</button></div>
   </div>
 </div>
 
@@ -2002,7 +2200,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
     <p class="task-card" id="task-card"></p>
     <div class="task-row">
       <label class="f grow">Title<input type="text" id="task-title" maxlength="200"></label>
-      <label class="f pts proj" id="task-project-f">Project<select id="task-project"><option value="">Choose…</option></select></label>
+      <label class="f pts proj" id="task-project-f">Project<select id="task-project"><option value="">Choose&hellip;</option></select></label>
       <label class="f pts" id="task-points-f">Points<select id="task-points"><option>1</option><option>2</option><option>3</option><option>5</option><option>8</option><option>13</option><option>21</option></select></label>
     </div>
     <label class="f" id="task-epic-f">Epic<input type="text" id="task-epic" maxlength="30" placeholder="Optional: search an epic by name or key"></label>
@@ -2033,6 +2231,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
 <script src="/static/costs.js"></script>
 <script src="/static/admin.js"></script>
 <script src="/static/integrations.js"></script>
+<script src="/static/promqlchecks.js"></script>
 <script src="/static/tools.js"></script>
 <script src="/static/review.js"></script>
 <script src="/static/requests.js"></script>

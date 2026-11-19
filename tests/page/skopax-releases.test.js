@@ -131,7 +131,7 @@ async function releasesAndReportsOnTheirOwnTabs() {
   ], 'short titles built by the page: release name (else Deploy report) \u00b7 check window (saved time when it has no end) \u00b7 clean or N flagged');
   assert.ok(reps.every((d, i) => !d.querySelector(':scope > summary').textContent.includes(REPORTS[i].summary)), 'the stored one-line summary is not in the title');
   assert.ok(reps.every((d) => d.querySelector(':scope > summary').firstElementChild.className === 't'), 'the time stays at the left');
-  assert.strictEqual(reps[0].querySelector(':scope > summary .muted').textContent, '2 deploys \u00b7 1 issues \u00b7 Claude \u00b7 $0.00', 'the muted part no longer repeats the window or the flagged count');
+  assert.strictEqual(reps[0].querySelector(':scope > summary .muted').textContent, '2 deploys \u00b7 1 issues \u00b7 Investigator \u00b7 $0.00', 'the muted part no longer repeats the window or the flagged count');
   assert.match(reps[0].querySelector('.drep-body').textContent, /restarts=3/, 'report content stays on the report card');
   assert.ok(!doc.querySelector('#tiles [data-id="deploys"]'), 'no Deployed services pill any more');
   const recent = doc.getElementById('rels-recent');
@@ -676,13 +676,13 @@ async function reportSummaryAndSlackSend() {
   assert.strictEqual(r2top.querySelector('.sev').textContent, 'All clear', 'no flagged row: all clear');
   assert.ok(!r2top.querySelector('li'), 'no points');
   assert.strictEqual(r1().querySelector(':scope > summary .slack-rec').textContent, 'Slack recommended');
-  assert.match(r1().querySelector(':scope > summary .slack-rec').title, /^OPS 13\.10 release[\s\S]*Copy and Edit next to Send draft to Slack$/);
+  assert.match(r1().querySelector(':scope > summary .slack-rec').title, /^OPS 13\.10 release[\s\S]*Copy and Edit next to Send draft to Slack\nWaiting for a person: send it with the button$/);
   assert.strictEqual(sendOf('rep-r1').textContent, 'Send draft to Slack');
   assert.ok(!sendOf('rep-r1').hasAttribute('aria-disabled'), 'operators can send');
   const tagOf = () => r1().querySelector('.rep-acts .draft-q');
   assert.strictEqual(sendOf('rep-r1').nextElementSibling, tagOf(), 'the draft sits as a tag right next to Send draft to Slack');
-  assert.match(tagOf().textContent, /^Draft \u00b7 Claude \d\d:\d\d$/, 'the tag says who and when');
-  assert.ok(tagOf().title.startsWith(draft.text + '\n\nClaude \u00b7 '), 'its tooltip is the draft text plus who and when: ' + tagOf().title);
+  assert.match(tagOf().textContent, /^Draft \u00b7 Investigator \d\d:\d\d$/, 'the tag says who and when');
+  assert.ok(tagOf().title.startsWith(draft.text + '\n\nInvestigator \u00b7 '), 'its tooltip is the draft text plus who and when: ' + tagOf().title);
   assert.deepStrictEqual([...r1().querySelectorAll('.rep-acts .btn')].map((b) => b.textContent), ['Send draft to Slack', 'Copy', 'Edit', 'Re-assess'], 'Copy and Edit sit in the action row, Re-assess closes it');
   assert.ok(r1().querySelector('.rep-acts + .draft-form').hidden, 'the edit form waits folded under the action row');
   assert.ok(!doc.querySelector('#rep-r2 .draft-q') && !doc.querySelector('#rep-r2 .draft-copy'), 'no draft, no tag or Copy');
@@ -782,8 +782,8 @@ async function reportAutoSendShowsTheTimeAndHoldStopsIt() {
   //then
   assert.match(tag().textContent, /^Auto-send \d\d:\d\d$/, 'the summary tag counts down to the auto-send instead of saying Slack recommended');
   assert.ok(tag().classList.contains('armed'));
-  assert.ok(tag().title.startsWith(draft.text + '\n\nClaude \u00b7 '), 'tooltip keeps the draft text');
-  assert.match(tag().title, /posts itself to Slack within 30 s of \d\d:\d\d unless someone presses Hold$/);
+  assert.ok(tag().title.startsWith(draft.text + '\n\nInvestigator \u00b7 '), 'tooltip keeps the draft text');
+  assert.match(tag().title, /posts itself to Slack within 30 s of \d\d:\d\d unless someone presses Hold\nSends by itself at \d\d:\d\d unless someone holds it$/);
   assert.deepStrictEqual([...r1().querySelectorAll('.rep-acts .btn')].map((b) => b.textContent), ['Send draft to Slack', 'Hold', 'Copy', 'Edit', 'Re-assess'], 'Hold sits next to Send');
   const hold = () => r1().querySelector('.rep-acts .hold-btn');
   assert.strictEqual(hold().getAttribute('aria-disabled'), null, 'operators can hold');
@@ -796,7 +796,7 @@ async function reportAutoSendShowsTheTimeAndHoldStopsIt() {
   //then
   assert.deepStrictEqual(writes.map((x) => [x[0], x[1]]), [['POST', '/api/deploy-reports/r1/slack-hold']], 'Hold posts to the report hold endpoint');
   assert.strictEqual(tag().textContent, 'Slack recommended', 'a held draft is a normal manual draft again');
-  assert.match(tag().title, /Auto-send held by op \d\d:\d\d; it only goes out with the button now\.$/);
+  assert.match(tag().title, /\nHeld by op at \d\d:\d\d$/);
   assert.ok(!hold(), 'the Hold button goes once it is held');
   assert.strictEqual(r1().querySelector('.rep-acts .slack-btn').textContent, 'Send draft to Slack', 'Send still posts it');
   assert.deepStrictEqual(errors, []);

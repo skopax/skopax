@@ -67,7 +67,11 @@ def test_the_browser_files_and_page_tests_carry_no_code_or_claims_for_an_integra
 
     # when
     code = [f'{p.relative_to(ROOT)}: {needle}' for p in BROWSER_FILES for needle in (word, *dead) if needle in p.read_text(encoding='utf-8').lower() or needle in p.read_text(encoding='utf-8')]
-    claims = [p.name for p in page_tests if word in p.read_text(encoding='utf-8').lower()]
+    preset_refs = ('/api/admin/custom-checks/presets/' + word, f"'{word}'")
+    texts = {p.name: p.read_text(encoding='utf-8') for p in page_tests}
+    for ref in preset_refs:
+        texts = {name: text.replace(ref, '') for name, text in texts.items()}
+    claims = [name for name, text in texts.items() if word in text.lower()]
 
     # then
     assert page_tests

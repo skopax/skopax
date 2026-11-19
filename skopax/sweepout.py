@@ -12,8 +12,9 @@ from pymongo.errors import PyMongoError
 
 from skopax import clock
 from skopax.cardlink import card_url
-from skopax.contract import Check, InstanceInfo, Plugin, Sweep
-from skopax.engine import SHOTS, iso, mute_for
+from skopax.actors import SYSTEM
+from skopax.contract import CLEAR_OUTCOMES, Check, Cleared, Digest, InstanceInfo, Plugin, Sweep
+from skopax.engine import AUTO_RESOLVED_BY, SHOTS, iso, mute_for, parse_iso
 from skopax.errkind import kind
 from skopax.investigator.tools import IMAGE_MAX_BYTES, IMAGE_TYPES, shot_facts
 from skopax.messages import msg
@@ -39,6 +40,13 @@ HANDLED = ('handled', 'progress')
 BULLET = '\u2022'
 DOT = ' \u00b7 '
 DIGEST = 'page-digest'
+CHECK_DIGEST = 'check-digest'
+DIGEST_LINES_MAX = 50
+DIGEST_GAP_S = 3600
+CLEARED_MAX = 200
+CLEAR_NOTE_MAX = 500
+CLEAR_NOTE = 'clearNote'
+OPEN_TRIAGE = (None, 'dived')
 
 
 class Malformed(Exception):
@@ -161,12 +169,68 @@ def memos_of(raw: object, storable: Callable[[object], bool], dropped: list[str]
     return out
 
 
-def outputs_of(sweep: Sweep, storable: Callable[[object], bool]) -> tuple[list[dict | None], list[dict], dict[str, dict], list[str]]:
+def digest_of(raw: object, dropped: list[str]) -> Digest | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, Digest) or not isinstance(raw.title, str) or not isinstance(raw.lines, (tuple, list)) or not all(isinstance(x, str) for x in raw.lines):
+        raise Malformed('digest')
+    lines = [flat(x) for x in raw.lines if flat(x)]
+    if len(lines) > DIGEST_LINES_MAX:
+        dropped.append(f"{counted(len(lines) - DIGEST_LINES_MAX, 'digest line', 'digest lines')} over the {DIGEST_LINES_MAX} per pass")
+    return Digest(raw.title, tuple(lines[:DIGEST_LINES_MAX])) if lines else None
+
+
+def cleared_of(raw: object, dropped: list[str]) -> dict[str, Cleared]:
+    if not isinstance(raw, dict):
+        raise Malformed('cleared')
+    out: dict[str, Cleared] = {}
+    over = 0
+    for key, said in raw.items():
+        if not filled(key) or not isinstance(said, Cleared) or not isinstance(said.note, str) or said.outcome not in ('',) + CLEAR_OUTCOMES:
+            raise Malformed('cleared')
+        note = cut_words(flat(said.note), CLEAR_NOTE_MAX)
+        if not note and not said.outcome:
+            continue
+        if len(out) >= CLEARED_MAX:
+            over += 1
+            continue
+        out[key] = Cleared(note, said.outcome)
+    if over:
+        dropped.append(f"{counted(over, 'cleared note', 'cleared notes')} over the {CLEARED_MAX} per pass")
+    return out
+
+
+def outputs_of(sweep: Sweep, storable: Callable[[object], bool]) -> tuple[list[dict | None], list[dict], dict[str, dict], Digest | None, dict[str, Cleared], list[str]]:
     dropped: list[str] = []
     shots = shots_of(sweep.shots, dropped)
     posts = posts_of(sweep.posts, len(shots), dropped)
     memos = memos_of(sweep.memos, storable, dropped)
-    return shots, posts, memos, dropped
+    digest = digest_of(sweep.digest, dropped)
+    cleared = cleared_of(sweep.cleared, dropped)
+    return shots, posts, memos, digest, cleared, dropped
+
+
+def just_cleared(card: dict | None, at: str, owns: Callable[[dict], bool]) -> bool:
+    return card is not None and owns(card) and card.get('status') == 'cleared' and card.get('clearedAt') == at and not card.get('expired')
+
+
+def mark_cleared(state: dict, plugin: Plugin, cleared: dict[str, Cleared], keymap: dict[str, str], now: float, owns: Callable[[dict], bool]) -> list[str]:
+    at = iso(now)
+    cards = {a['key']: a for a in state.get('anomalies') or [] if isinstance(a, dict) and isinstance(a.get('key'), str)}
+    out = []
+    for raw, said in cleared.items():
+        key = keymap.get(raw, raw)
+        card = cards.get(key)
+        if not just_cleared(card, at, owns):
+            continue
+        resolves = bool(said.outcome) and card.get('triage') in OPEN_TRIAGE
+        if not said.note and not resolves:
+            continue
+        card[CLEAR_NOTE] = {'by': plugin.name, 'plugin': plugin.id, 'at': at} | ({'text': said.note} if said.note else {}) | ({'outcome': said.outcome} if resolves else {})
+        if resolves:
+            card.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, triagedAt=at, resolution={'kind': said.outcome, 'by': plugin.name, 'via': SYSTEM, 'at': at})
+        out.append(key)
+    return out
 
 
 def quiet(card: dict, state: dict, now: float) -> bool:
@@ -180,13 +244,14 @@ def posted(card: dict) -> bool:
 
 
 class Outputs:
-    def __init__(self, store, slack, attacher, base_url: str, cap: Callable[[], int], clock: Callable[[], float] = time.time):
+    def __init__(self, store, slack, attacher, base_url: str, cap: Callable[[], int], clock: Callable[[], float] = time.time, auto: Callable[[], bool] = lambda: True):
         self.store = store
         self.slack = slack
         self.attacher = attacher
         self.base = base_url.rstrip('/')
         self.cap = cap
         self.clock = clock
+        self.auto = auto
 
     def shots(self, plugin: Plugin, check: Check, info: InstanceInfo | None, sweep: Sweep, keymap: dict[str, str]) -> list[dict | None]:
         found = list(sweep.shots)
@@ -249,6 +314,43 @@ class Outputs:
                 log.warning('a memo of pass %s was not stored: %s', check.id, kind(e))
         if sweep.posts and self.slack.enabled:
             self._posts(plugin, check, sweep.posts, keymap, pictures, now, owns)
+        if sweep.digest is not None and self.slack.enabled and self.auto():
+            self._digest(plugin, check, info, sweep.digest)
+
+    def digest_text(self, plugin: Plugin, digest: Digest) -> str:
+        out = [esc(cut_words(flat(digest.title), TITLE_MAX) or plugin.name)]
+        shown = 0
+        for line in digest.lines:
+            row = f'{BULLET} {esc(cut_words(line, LINE_MAX))}'
+            rest = len(digest.lines) - shown - 1
+            tail = [f"{BULLET} {esc(msg('slack.digest.more', count=rest))}"] if rest > 0 else []
+            if len('\n'.join(out + [row] + tail)) > POST_TEXT_MAX:
+                break
+            out.append(row)
+            shown += 1
+        if len(digest.lines) > shown:
+            out.append(f"{BULLET} {esc(msg('slack.digest.more', count=len(digest.lines) - shown))}")
+        return '\n'.join(out)
+
+    def _digest(self, plugin: Plugin, check: Check, info: InstanceInfo | None, digest: Digest) -> None:
+        target = f"{CHECK_DIGEST}:{plugin.id}/{check.id}/{PLUGIN_NO_INSTANCE if info is None else info.name}"
+        label = cut_words(flat(digest.title), LABEL_MAX) or plugin.name
+        try:
+            last = self.store.action_done_at(CHECK_DIGEST, target)
+        except PyMongoError as e:
+            log.warning('the digest of pass %s was not sent, its last post could not be read: %s', check.id, kind(e))
+            return
+        if last and self.clock() - parse_iso(last) < DIGEST_GAP_S:
+            log.info('the digest of pass %s waits: one went out at %s, at most one per %d s', check.id, last, DIGEST_GAP_S)
+            return
+        try:
+            sent = self.slack.linked(self.slack.post({'text': self.digest_text(plugin, digest)}))
+        except SlackError as e:
+            log.warning('the digest of pass %s was not sent: %s', check.id, kind(e))
+            self.store.add_action({'type': CHECK_DIGEST, 'target': target, 'label': label, 'requestedBy': SERVER_BY, 'plugin': plugin.id}, 'failed', f'not sent: {kind(e)}')
+            return
+        self.store.add_action({'type': CHECK_DIGEST, 'target': target, 'label': label, 'requestedBy': SERVER_BY, 'plugin': plugin.id, 'slack': sent}, 'done',
+                              f"posted to {self.slack.channel} \u00b7 {counted(len(digest.lines), 'line', 'lines')}")
 
     def _posts(self, plugin: Plugin, check: Check, posts: list[dict], keymap: dict[str, str], pictures: list[dict | None], now: float, owns: Callable[[dict], bool]) -> None:
         state = self.store.load()

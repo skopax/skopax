@@ -19,6 +19,12 @@ DENIED_TEXT = re.compile(r'not enough privileges|access denied|permission denied
 PERMISSIONS = {'data sources': 'the Admin role (or datasources:read) to list data sources', 'metrics': 'the Viewer role (query on the metrics data source)',
                'QAN': 'the Viewer role (query on the QAN data source)'}
 SLUGS = {'data sources': 'data-sources', 'metrics': 'metrics', 'QAN': 'qan'}
+HOST_HEADER = re.compile(r'[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?::\d{1,5})?')
+
+
+def host_header(config: Mapping[str, str]) -> str:
+    value = str(config.get('host-header') or '').strip()
+    return value if HOST_HEADER.fullmatch(value) else ''
 
 
 def lacks(part: str, invalid: bool = False) -> str:
@@ -59,10 +65,11 @@ def pick(sources: list[dict], pinned: str, types: tuple[str, ...]) -> dict | Non
 
 
 class Pmm:
-    def __init__(self, url: str, token: str, transport: Transport, metrics_uid: str = '', qan_uid: str = '', budget: float | None = None, clock=time.monotonic):
+    def __init__(self, url: str, token: str, transport: Transport, metrics_uid: str = '', qan_uid: str = '', budget: float | None = None, clock=time.monotonic, host: str = ''):
         self.url = url.rstrip('/')
         self.token = token
-        self.transport = with_headers(transport, {'Authorization': f'Bearer {token}'}) if token else transport
+        extra = ({'Authorization': f'Bearer {token}'} if token else {}) | ({'Host': host} if host else {})
+        self.transport = with_headers(transport, extra) if extra else transport
         self._pinned = {'metrics': metrics_uid, 'qan': qan_uid}
         self._uids: dict[str, str] = {}
         self._failed: dict[str, PmmError] = {}
@@ -180,4 +187,4 @@ class Pmm:
 
 def client_for(info: InstanceInfo, transport: Transport, budget: float | None = None) -> Pmm:
     config: Mapping[str, str] = info.config
-    return Pmm(config.get('url') or '', config.get('token') or '', transport, (config.get('metrics-datasource') or '').strip(), (config.get('qan-datasource') or '').strip(), budget)
+    return Pmm(config.get('url') or '', config.get('token') or '', transport, (config.get('metrics-datasource') or '').strip(), (config.get('qan-datasource') or '').strip(), budget, host=host_header(config))

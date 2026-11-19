@@ -78,7 +78,7 @@ def releases(rows: list[dict], since: float) -> list[dict]:
 
 PLUGIN = Plugin(
     id=ID, name='Google Tag Manager', version='0.1.0', category='marketing', description='Publishes of a Google Tag Manager container, shown as cards and next to the releases.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community',
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
     capabilities=Capabilities(hosts=('tagmanager.googleapis.com', 'oauth2.googleapis.com'), secrets=('credentials',)),
     fields=(Field('container', 'Container id', 'text', required=True, help='The public id of the container, such as GTM-ABC1234, as shown at the top of Tag Manager.'),
             Field('credentials', 'Service account key', 'secret', required=True,

@@ -142,7 +142,7 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 PLUGIN = Plugin(
     id=ID, name='Langfuse', version='0.1.0', category='other', description='Errors, traffic, latency and cost of the turns an AI app traces to Langfuse, and a read-only trace tool.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community',
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
     capabilities=Capabilities(hosts=('@url',), secrets=('secret-key', 'langfuse.secret-key'), agent_reads=True),
     fields=(Field('url', 'URL', 'url', required=True, default=CLOUD, ui=True, help='Address of Langfuse, the cloud region or your own server.'),
             Field('public-key', 'Public key', 'text', required=True, help='Public key (pk-lf-...) of the Langfuse project.'),

@@ -157,7 +157,7 @@ async function thePasswordIsOptionalOnlyWithTheSwitchOn() {
   assert.ok(/12-256/.test(helpOff) && helpOff !== OPTIONAL);
   assert.strictEqual(sentOn, 1);
   assert.deepStrictEqual(posts(t)[0][2], {email: 'erin@example.com', name: '', role: 'viewer', sso: true});
-  await until(() => !form(t) && t.doc.querySelector('#access .acc-users-msg').textContent === 'User added', 'the added note');
+  await until(() => !form(t) && t.doc.querySelector('#access .acc-users-msg').textContent === 'Person added', 'the added note');
   assert.ok(rowOf(t, 'erin@example.com'), 'the new user is listed');
   assert.strictEqual(t.doc.activeElement, t.doc.querySelector('#access .acc-add-open'), 'focus goes back to Add user');
   assert.deepStrictEqual(t.errors, []);

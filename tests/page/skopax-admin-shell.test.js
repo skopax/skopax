@@ -115,7 +115,7 @@ async function aLinkToAccessShowsItWithTheAdminRowCurrentAndOtherTabsHideTheShel
 
   //then
   assert.ok(!doc.getElementById('panel-access').hidden && doc.getElementById('panel-settings').hidden, 'the link opens Access');
-  assert.deepStrictEqual(currentIds(doc).sort(), ['side-admin', 'tab-access'], 'the sidebar Admin row and the Access section are current');
+  assert.deepStrictEqual(currentIds(doc).sort(), ['side-admin', 'tab-access', 'user-btn'], 'the user menu button, the hidden Admin row and the Access section are current');
   assert.strictEqual(doc.getElementById('crumb-page').textContent, 'Admin \u203a Access & sign-in');
   assert.ok(calls.some((c) => c[1] === '/api/admin/users'), 'Access loads its users');
 

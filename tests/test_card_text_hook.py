@@ -1,3 +1,5 @@
+import copy
+import json
 import logging
 import threading
 from types import SimpleNamespace
@@ -29,9 +31,14 @@ def by_rule(text: str = 'An older rule sentence.') -> dict:
 
 def test_a_card_text_hook_writes_the_business_sentence_and_a_business_route_then_posts_it(store: Store):
     # given
+    refused: list[str] = []
+
     def card_text(card: dict) -> str | None:
         src = card.get('src')
-        card['sig'] = 'changed'
+        try:
+            card['sig'] = 'changed'
+        except TypeError:
+            refused.append(card['key'])
         return SENTENCE if src == 'shop' else None
 
     shop = minimal('shop', 'Shop', tags=(Tag('newsletter', 'Newsletter'),), tag_rules=(TagRule('newsletter', ('type:x-send',)),), card_text=card_text)
@@ -50,7 +57,7 @@ def test_a_card_text_hook_writes_the_business_sentence_and_a_business_route_then
     # then
     assert written['business'] == {'text': SENTENCE, 'by': 'rule', 'at': written['business']['at']} and written['business']['at']
     assert tags.ids(written) == ['newsletter']
-    assert written['sig'] == 'x-send', 'the hook gets a copy of the card'
+    assert written['sig'] == 'x-send' and refused == [KEY], 'the hook gets a read-only copy of the card'
     assert sent == {'teams/news': [KEY]}
     assert '**Recommended:** ' + SENTENCE in texts(t.calls[0][1])
 
@@ -206,7 +213,10 @@ def test_each_card_gets_its_own_copy_and_one_failing_card_keeps_only_its_own_sen
 
     def card_text(card: dict) -> str:
         seen.append(id(card))
-        card['label'] = 'changed'
+        try:
+            card['label'] = 'changed'
+        except TypeError:
+            seen.append(-1)
         if card['sig'] in ('x-bad-1', 'x-bad-2'):
             raise LookupError('no such newsletter')
         return SENTENCE
@@ -220,7 +230,7 @@ def test_each_card_gets_its_own_copy_and_one_failing_card_keeps_only_its_own_sen
 
     # then
     assert [c['business'] for c in cards] == [{'text': SENTENCE, 'by': 'rule', 'at': LATER}, by_rule(), {'text': SENTENCE, 'by': 'rule', 'at': LATER}, by_rule()]
-    assert all(c['label'] == 'Spring newsletter' for c in cards) and len(seen) == 4
+    assert all(c['label'] == 'Spring newsletter' for c in cards) and len(seen) == 8 and seen.count(-1) == 4 and len(set(seen) - {-1}) == 4
     assert [r.getMessage() for r in caplog.records] == ['plug-in shop: card text failed, the sentences it writes stay as they are this pass (LookupError)']
 
 
@@ -448,3 +458,80 @@ def test_a_pass_still_waits_for_an_owner_whose_call_started_within_the_hook_time
     # then
     assert got['first'] == got['second'] == ['text k0', 'text k1', 'text k2']
     assert caplog.records == []
+
+
+def test_a_hook_cannot_change_the_card_it_is_given_at_any_depth():
+    # given
+    tried: list[str] = []
+
+    def card_text(card: dict) -> str:
+        for name, write in (('top', lambda: card.__setitem__('sig', 'changed')), ('update', lambda: card.update(sig='changed')), ('pop', lambda: card.pop('sig')),
+                            ('delete', lambda: card.__delitem__('sig')), ('default', lambda: card.setdefault('new', 1)), ('clear', card.clear),
+                            ('list', lambda: card['tags'].append({'id': 'x'})), ('list item', lambda: card['tags'].__setitem__(0, None)),
+                            ('nested', lambda: card['business'].__setitem__('text', 'changed')), ('merge', lambda: card.__ior__({'sig': 'changed'}))):
+            try:
+                write()
+            except TypeError:
+                tried.append(name)
+        return SENTENCE
+
+    tags.use_texts([('shop', card_text)])
+    fresh = sends(tags=[{'id': 'seo', 'by': 'alice@example.com', 'at': AT}], business=by_rule())
+
+    # when
+    tags.apply_rules([fresh], (), LATER)
+
+    # then
+    assert tried == ['top', 'update', 'pop', 'delete', 'default', 'clear', 'list', 'list item', 'nested', 'merge']
+    assert fresh['sig'] == 'x-send' and fresh['tags'] == [{'id': 'seo', 'by': 'alice@example.com', 'at': AT}]
+    assert fresh['business'] == {'text': SENTENCE, 'by': 'rule', 'at': LATER}
+
+
+def test_the_frozen_card_still_reads_like_a_dict_and_a_copy_of_it_can_be_changed():
+    # given
+    seen: dict = {}
+
+    def card_text(card: dict) -> str:
+        seen['dict'] = isinstance(card, dict) and isinstance(card['tags'], list)
+        seen['json'] = json.loads(json.dumps(card))['tags'][0]['id']
+        mine = copy.deepcopy(card)
+        mine['tags'].append({'id': 'mine'})
+        mine['sig'] = 'mine'
+        shallow = copy.copy(card)
+        shallow['sig'] = 'shallow'
+        seen['copies'] = (mine['sig'], len(mine['tags']), shallow['sig'], type(mine) is dict, type(mine['tags']) is list)
+        seen['plain'] = {**card, 'sig': 'spread'}['sig'] + ' ' + dict(card, sig='made')['sig']
+        return SENTENCE
+
+    tags.use_texts([('shop', card_text)])
+    fresh = sends(tags=[{'id': 'seo', 'by': 'alice@example.com', 'at': AT}])
+
+    # when
+    tags.apply_rules([fresh], (), LATER)
+
+    # then
+    assert seen == {'dict': True, 'json': 'seo', 'copies': ('mine', 2, 'shallow', True, True), 'plain': 'spread made'}
+    assert fresh['sig'] == 'x-send' and len(fresh['tags']) == 1
+
+
+def test_every_hook_reads_the_same_one_copy_of_a_card_and_the_pass_makes_no_deep_copy(monkeypatch):
+    # given
+    seen: dict[str, list[int]] = {'alpha': [], 'beta': [], 'gamma': []}
+
+    def hook(name: str, answer: str | None):
+        return lambda card: seen[name].append(id(card)) or answer
+
+    def no_deepcopy(*args, **kwargs):
+        raise AssertionError('the card-text pass made a deep copy')
+
+    tags.use_texts([('alpha', hook('alpha', None)), ('beta', hook('beta', None)), ('gamma', hook('gamma', 'Gamma speaks.'))])
+    cards = [sends(f'x-send-{i}') for i in range(3)]
+
+    # when
+    with monkeypatch.context() as patched:
+        patched.setattr(copy, 'deepcopy', no_deepcopy)
+        tags.apply_rules(cards, (), LATER)
+
+    # then
+    assert seen['alpha'] == seen['beta'] == seen['gamma'] and len(set(seen['alpha'])) == 3
+    assert [c['business']['text'] for c in cards] == ['Gamma speaks.'] * 3

@@ -10,7 +10,7 @@ Behind it, alerts and errors are grouped into one card per problem, so the team 
 
 The name comes from the Greek *skopos*, "lookout": the one who stands on a high place, scans the horizon and calls out what is coming.
 
-Status: 0.1.0 is the first stable release. From here, settings and the plug-in contract follow semantic versioning: before 1.0, no breaking change ships without a note in [CHANGELOG.md](CHANGELOG.md).
+Status: 0.2.0 is the current release; 0.1.0 was the first stable one. Since 0.1.0, settings and the plug-in contract follow semantic versioning: before 1.0, no breaking change ships without a note in [CHANGELOG.md](CHANGELOG.md).
 
 ## What it looks like
 
@@ -42,9 +42,9 @@ Status: 0.1.0 is the first stable release. From here, settings and the plug-in c
 
 ## Plug-ins: connect what you already run
 
-Everything Skopax watches comes through plug-ins, and 30 of them ship in the image, ready to switch on in Admin > Integrations:
+Everything Skopax watches comes through plug-ins, and 33 of them ship in the image. Most are ready to switch on in Admin > Integrations; Spring Cloud Config is set up with `SPRING_CONFIG_URL` instead (see [Configuration](docs/configuration.md#spring-cloud-config)):
 
-<a href="docs/images/plugins-dark.png#gh-dark-mode-only"><img width="420" src="docs/images/plugins-dark.png#gh-dark-mode-only" alt="Admin, Integrations: all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a><a href="docs/images/plugins-light.png#gh-light-mode-only"><img width="420" src="docs/images/plugins-light.png#gh-light-mode-only" alt="Admin, Integrations: all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a>
+<a href="docs/images/plugins-dark.png#gh-dark-mode-only"><img width="420" src="docs/images/plugins-dark.png#gh-dark-mode-only" alt="Admin, Integrations (0.1.0): all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a><a href="docs/images/plugins-light.png#gh-light-mode-only"><img width="420" src="docs/images/plugins-light.png#gh-light-mode-only" alt="Admin, Integrations (0.1.0): all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a>
 
 | Area | Plug-ins |
 |---|---|
@@ -53,8 +53,9 @@ Everything Skopax watches comes through plug-ins, and 30 of them ship in the ima
 | Web and edge | Website, Cloudflare, Varnish, Chrome UX Report, CSP reports, Safe Browsing |
 | Apps | App stores, Crashlytics |
 | Marketing and analytics | Google Ads, Google Analytics 4, Google Tag Manager, Umami, VWO |
-| Code, tickets and docs | GitLab, Jira, Confluence |
+| Code, tickets and docs | GitLab, GitHub, SonarQube, Jira, Confluence |
 | Chat and AI | Slack, Microsoft Teams, Langfuse |
+| Settings | Spring Cloud Config |
 
 - **Any MCP server.** Connect an outside MCP server and pick which of its tools the investigator may use. The catalog has ready entries for Atlassian, Notion, GitHub and Google Drive.
 - **Several of each.** Every plug-in can have more than one instance, such as two Prometheus servers or a Kubernetes cluster per region, each with its own checks and thresholds.
@@ -63,7 +64,7 @@ Everything Skopax watches comes through plug-ins, and 30 of them ship in the ima
 
 ## Quickstart
 
-Skopax ships as a ready image, so there is nothing to clone or build: `ghcr.io/skopax/skopax:0.1.0`, built for `linux/amd64` and `linux/arm64`. Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. [Operations](docs/operations.md#the-image) has more on the image.
+Skopax ships as a ready image, so there is nothing to clone or build: `ghcr.io/skopax/skopax:0.2.0`, built for `linux/amd64` and `linux/arm64`. Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. [Operations](docs/operations.md#the-image) has more on the image.
 
 Run it with a MongoDB of your own. The first line makes the secret key once:
 
@@ -74,7 +75,7 @@ Run it with a MongoDB of your own. The first line makes the secret key once:
       -e MONGO_URI=mongodb://skopax-mongo:27017/skopax \
       -e SKOPAX_BASE_URL=http://localhost:8080 \
       -e SKOPAX_SECRET_KEY="$SKOPAX_SECRET_KEY" \
-      ghcr.io/skopax/skopax:0.1.0
+      ghcr.io/skopax/skopax:0.2.0
 
 Then open http://localhost:8080. Keep that key, for example in your password manager (`echo "$SKOPAX_SECRET_KEY"` prints it), and pass the same value on every start. With another key, Skopax cannot open the integration secrets sealed with the old one, so each has to be entered again, and everyone has to sign in again (see [Settings](docs/configuration.md#settings)).
 
@@ -93,7 +94,7 @@ Save this as `compose.yml` in an empty folder:
           interval: 10s
           retries: 10
       skopax:
-        image: ghcr.io/skopax/skopax:0.1.0
+        image: ghcr.io/skopax/skopax:0.2.0
         restart: unless-stopped
         ports:
           - "127.0.0.1:8080:8080"
@@ -144,6 +145,7 @@ The full guide is in [docs/](docs/README.md):
 - [Configuration](docs/configuration.md): settings, the config file and settings sources, branding and languages.
 - [Sign-in](docs/sign-in.md): single sign-on, roles, local accounts and the MCP server.
 - [Integrations](docs/plugins.md): the plug-ins that ship with Skopax, their instances and outside MCP servers.
+- [Custom checks](docs/custom-checks.md): PromQL checks written in Admin, without a plug-in, and the presets for Couchbase and managed Redis.
 - [Extending Skopax](docs/extending.md): writing a plug-in, starting from the example in `examples/hello-plugin`, with two fuller examples next to it: `examples/couchbase-plugin` and `examples/managed-redis-plugin`.
 - [Operations](docs/operations.md): the image, logs, agent mode, the probe, proxies and recovery.
 - [Development](docs/development.md): the tests, continuous integration, the licence gate and releases.

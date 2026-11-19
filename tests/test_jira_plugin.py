@@ -79,7 +79,7 @@ def test_jira_identity_and_manifest():
     assert (loaded.state, loaded.reason) == ('ok', None) and 'skopax.plugins.jira' in BUILTIN
     assert Registry.load({}, entry_points=False).get('jira').state == 'ok'
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition'], manifest['maxInstances']) == (
-        'Jira', '0.1.0', 'tickets', 'Skopax', 'Apache-2.0', '>=0.1,<0.2', 'community', 1)
+        'Jira', '0.1.0', 'tickets', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community', 1)
     assert manifest['capabilities'] == {'hosts': ['@url', 'api.atlassian.com'], 'secrets': ['api-token'], 'agentReads': False} and manifest['uses'] == []
     assert [(f['key'], f['kind'], f['required'], f['ui']) for f in manifest['fields']] == [('url', 'url', True, True), ('email', 'text', True, False), ('api-token', 'secret', True, False),
                                                                                            ('cloud-id', 'text', False, False)]

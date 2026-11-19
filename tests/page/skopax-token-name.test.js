@@ -66,7 +66,7 @@ async function bootCard(by) {
   return {w: dom.window, doc: dom.window.document, errors};
 }
 
-async function actionsMadeWithTheApiTokenReadAsClaudeOnTheInvestigatorTabAndTheCardPage() {
+async function actionsMadeWithTheApiTokenReadAsInvestigatorOnTheInvestigatorTabAndTheCardPage() {
   //given
   const page = await bootBoard();
   const token = await bootCard('token');
@@ -77,9 +77,9 @@ async function actionsMadeWithTheApiTokenReadAsClaudeOnTheInvestigatorTabAndTheC
   const asked = page.doc.querySelector('#inv .inv-room .inv-meta').textContent;
 
   //then
-  assert.deepStrictEqual(waits, ['Claude', '?', 'alice'], 'a token-made wait reads Claude, a private chat keeps ?, a person keeps their name');
-  assert.ok(asked.includes('asked by Claude'), asked);
-  assert.strictEqual(token.doc.querySelector('.act-last').textContent, 'Last action: Investigation \u00b7 queued \u00b7 ' + short(AT) + ' \u00b7 Claude');
+  assert.deepStrictEqual(waits, ['Investigator', '?', 'alice'], 'a token-made wait reads Investigator, a private chat keeps ?, a person keeps their name');
+  assert.ok(asked.includes('asked by Investigator'), asked);
+  assert.strictEqual(token.doc.querySelector('.act-last').textContent, 'Last action: Investigation \u00b7 queued \u00b7 ' + short(AT) + ' \u00b7 Investigator');
   assert.strictEqual(person.doc.querySelector('.act-last').textContent, 'Last action: Investigation \u00b7 queued \u00b7 ' + short(AT) + ' \u00b7 alice');
   [page, token, person].forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
   console.log('PASS an action made with the API token reads Claude on the Investigator tab and on the card page, like on the board; people keep their short name and a private chat keeps ?');
@@ -123,13 +123,13 @@ async function aNamedTokenReadsAsItsNameOnTheCardPageSlackAndDeployReports() {
 
   //then
   assert.strictEqual(card.doc.querySelector('.act-last').textContent, 'Last action: Investigation \u00b7 queued \u00b7 ' + short(AT) + ' \u00b7 ci', 'card.js');
-  assert.deepStrictEqual([reportBy(named), reportBy(legacy)], ['ci', 'Claude'], 'releases.js');
-  assert.deepStrictEqual([sender('token:ci'), sender('token'), sender('alice@example.com')], ['ci (on request)', 'Claude (on request)', 'alice'], 'slack.js');
+  assert.deepStrictEqual([reportBy(named), reportBy(legacy)], ['ci', 'Investigator'], 'releases.js');
+  assert.deepStrictEqual([sender('token:ci'), sender('token'), sender('alice@example.com')], ['ci (on request)', 'Investigator (on request)', 'alice'], 'slack.js');
   [card, named, legacy].forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
   console.log('PASS a named token reads as its name on the card page, in the Slack queue and on deploy reports, and the legacy token reads Claude');
 }
 
 (async () => {
-  await actionsMadeWithTheApiTokenReadAsClaudeOnTheInvestigatorTabAndTheCardPage();
+  await actionsMadeWithTheApiTokenReadAsInvestigatorOnTheInvestigatorTabAndTheCardPage();
   await aNamedTokenReadsAsItsNameOnTheCardPageSlackAndDeployReports();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

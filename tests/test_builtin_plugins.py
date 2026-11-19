@@ -95,7 +95,8 @@ def test_the_mcp_server_form_is_grouped_and_its_choices_read_as_words():
     assert {k: f.group for k, f in fields.items()} == {'url': 'connection', 'preset': 'connection', 'auth': 'sign-in', 'header-name': 'sign-in', 'header-value': 'sign-in', 'oauth-scopes': 'sign-in',
                                                      'oauth-client-id': 'sign-in', 'oauth-client-secret': 'sign-in', 'chat-role': 'access', 'knowledge': 'access', 'ca': 'advanced'}
     assert fields['auth'].choice_labels == {'none': 'No sign-in', 'header': 'Token in a header', 'oauth': 'OAuth'}
-    assert fields['chat-role'].choice_labels == {'viewer': 'Everyone', 'operator': 'Operators', 'admin': 'Admins only'}
+    assert fields['chat-role'].choice_labels == {'viewer': 'Everyone', 'operator': 'Operators and admins', 'admin': 'Admins only'}
+    assert fields['auth'].label == 'Method'
     assert dict(fields['preset'].choice_labels) == {k: v for k, v in names.items() if k in fields['preset'].choices} and set(fields['preset'].choices) <= set(names)
 
 

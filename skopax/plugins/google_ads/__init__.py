@@ -3,10 +3,10 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, Sweep, TestResult, Tool
+from skopax.contract import AutoResolve, Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, Setting, Sweep, TestResult, Tool
 from skopax.kit.google import GoogleAuth, GoogleError, bounded, connection_test
 from skopax.kit.web import Pacer, PageCheck, Site, site_pacer
-from skopax.plugins.google_ads.engine import (BROKEN, CAMPAIGN_ROWS, DEADLINE_S, DOT, LINKS, MAX_DAYS, MAX_ROWS, MOVED, NEEDS, OPS, POLICY, POLICY_QUERY, SCOPES,
+from skopax.plugins.google_ads.engine import (BROKEN, CAMPAIGN_ROWS, DEADLINE_S, DISAPPROVED, DOT, LINKS, MAX_DAYS, MAX_ROWS, MOVED, NEEDS, OPS, POLICY, POLICY_QUERY, SCOPES,
                                               TIMEOUT_S, AdsError, GoogleAds, ad_urls, day_of, link_pass, links_for, policy_pass, read, refused, wanted)
 from skopax.remote import addresses
 
@@ -17,6 +17,7 @@ TOOL_BUDGET_S = 100
 TEST_BUDGET_S = 12
 STR = {'type': 'string', 'maxLength': 200}
 SECTION_HELP = {'adLinks': 'The ad links opened on the last pass: each final URL with its HTTP status, where it ended and how many ads use it'}
+RESOLVE_HELP = 'Closes a disapproved-ads card nobody acted on this many hours after it first appeared, whether or not it still fires; 0 uses the general auto-resolve rule'
 DESCRIPTION = ('Google Ads, read only, with the service account of the instance: what the paid campaigns spend and bring, and where their ads point. '
                f'op campaigns (default): the top {CAMPAIGN_ROWS} campaigns of the last `days` (default 7, at most {MAX_DAYS}, today left out) with status, channel, '
                'cost in the account currency, clicks, impressions and conversions. '
@@ -120,7 +121,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 
 PLUGIN = Plugin(
     id=ID, name='Google Ads', version='0.1.0', category='marketing', description='Broken ad links and disapproved ads of a Google Ads account, and Google Ads numbers for the investigator.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community',
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
     capabilities=Capabilities(hosts=('googleads.googleapis.com', 'oauth2.googleapis.com', '*'), secrets=('developer-token', 'credentials')), uses=('website',),
     fields=(Field('customer-id', 'Customer id', 'text', required=True, help='The 10-digit id of the Google Ads account, with or without dashes, as shown at the top right in Google Ads.'),
             Field('login-customer-id', 'Manager account id', 'text',
@@ -138,6 +139,8 @@ PLUGIN = Plugin(
                   background=True),
             Check(POLICY, 'Disapproved ads', 900, 780, (POLICY,), run_policy, tool='google_ads', background=True)),
     tools=(Tool('google_ads', DESCRIPTION, SCHEMA, ads_tool, per_run=PER_RUN, scan=True),),
+    settings=(Setting('auto-resolve-hours', 'Auto-resolve disapproved ads after (hours)', RESOLVE_HELP, 'int', '24', 0, 720),),
+    auto_resolve=(AutoResolve(POLICY, DISAPPROVED, 24, 'auto-resolve-hours'),),
     links=links,
     knowledge=(Knowledge('google-ads', 'Google Ads', (Path(__file__).parent / 'google_ads.md').read_text(encoding='utf-8'), slack=True),),
 )

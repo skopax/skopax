@@ -1424,7 +1424,7 @@ async function theCatalogAndTheConnectionHeadDropTheirNoise() {
   const last = section(doc, 'conn').querySelector('.int-mcp-last');
 
   //then
-  assert.strictEqual(search, 'Search integrations\u2026', 'no count that leaves out the MCP entries');
+  assert.strictEqual(search, 'Search integrations', 'no count that leaves out the MCP entries');
   assert.deepStrictEqual(titles, ['Atlassian (Jira and Confluence)', 'Google Drive \u00b7 ' + PRESETS.texts.preview], 'a cut name can be read in full');
   assert.deepStrictEqual(primary, [false, false], 'an MCP connection has no primary');
   assert.strictEqual(last, null, 'a connected result does not repeat the Connected line');

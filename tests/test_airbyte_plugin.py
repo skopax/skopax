@@ -330,10 +330,12 @@ def test_airbyte_identity_and_manifest():
     assert 'skopax.plugins.airbyte' in BUILTIN and found is not None and found.state == 'ok' and found.plugin is airbyte.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'airbyte', 'Airbyte', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.2', 'community')
+        'airbyte', 'Airbyte', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url'], 'secrets': ['client-secret'], 'agentReads': False} and manifest['uses'] == []
     assert [(f.key, f.kind, f.required, f.ui) for f in fields.values()] == [('url', 'url', True, True), ('client-id', 'text', True, False), ('client-secret', 'secret', True, False),
-                                                                             ('connections', 'text', False, False), ('ca', 'pem', False, False), ('ca-pinned', 'bool', False, False)]
+                                                                             ('connections', 'text', False, False), ('connection-match', 'regex', False, False),
+                                                                             ('severities', 'text', False, False), ('workspaces', 'text', False, False), ('ca', 'pem', False, False),
+                                                                             ('ca-pinned', 'bool', False, False)]
     assert (check.id, check.period, check.offset, check.ran, check.sections, check.tool, check.once) == ('airbyte', 900, 300, ('airbyte',), ('airbyte',), 'airbyte', False)
     assert check.section_help['airbyte']
     assert (rules.id, rules.label, set(rules.help) == set(rules.defaults)) == ('rules', 'Airbyte syncs', True)
@@ -346,7 +348,7 @@ def test_airbyte_identity_and_manifest():
 
 def test_airbyte_defaults_are_neutral():
     # then
-    assert {f.key: f.default for f in airbyte.PLUGIN.fields} == {'url': '', 'client-id': '', 'client-secret': '', 'connections': '', 'ca': '', 'ca-pinned': 'false'}
+    assert {f.key: f.default for f in airbyte.PLUGIN.fields} == {'url': '', 'client-id': '', 'client-secret': '', 'connections': '', 'connection-match': '', 'severities': '', 'workspaces': '', 'ca': '', 'ca-pinned': 'false'}
     assert {s.key: s.default for s in airbyte.PLUGIN.settings} == {}
     assert dict(airbyte.PLUGIN.rules[0].defaults) == {'jobs': 15, 'long_x': 2, 'long_slack_s': 1200, 'no_base_s': 3600, 'failed_keep_s': 93600}
 

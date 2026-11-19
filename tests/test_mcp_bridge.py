@@ -574,7 +574,8 @@ def test_a_refused_input_writes_only_the_bridge_line(store):
 
     # then
     assert results(model) == [('query is required', True)] and fake.calls() == []
-    assert tool_lines(store) == [msg('mcptools.activity', server='main', tool='search', ms=0, outcome='refused', chars=0)]
+    head, tail = msg('mcptools.activity', server='main', tool='search', ms='{ms}', outcome='refused', chars=0).split('{ms}')
+    assert len(tool_lines(store)) == 1 and re.fullmatch(re.escape(head) + r'\d+' + re.escape(tail), tool_lines(store)[0])
     assert not [t for t in lines(store, 'tool') if t.startswith('mcp_main_search')], 'the generic line would carry schema text'
     assert record['toolCalls'][0]['server'] == 'main' and record['toolCalls'][0]['error'] == 'query is required'
 
@@ -901,7 +902,8 @@ def test_a_change_made_during_a_run_stops_the_next_call(store, change):
     got = results(model)
     assert got[0][1] is False and got[1] == (msg('mcptools.tool_off', instance='main'), True)
     assert [p['arguments'] for p in fake.calls()] == [{'query': 'a'}], 'the refused call never reaches the server'
-    assert tool_lines(store)[-1] == msg('mcptools.activity', server='main', tool='search', ms=0, outcome='refused', chars=0)
+    head, tail = msg('mcptools.activity', server='main', tool='search', ms='{ms}', outcome='refused', chars=0).split('{ms}')
+    assert re.fullmatch(re.escape(head) + r'\d+' + re.escape(tail), tool_lines(store)[-1])
     assert record['outcome'] == 'done'
 
 

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Plugin, ReadError, SourceDown, Sweep, TestResult, Tool
+from skopax.contract import AutoResolve, Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Plugin, ReadError, Setting, SourceDown, Sweep, TestResult, Tool
 from skopax.kit import connection
 from skopax.kit.text import cut
 from skopax.plugins.vwo.wingify import (CHECK, NAME, NAME_LIMIT, NO_TOKEN, OPS, PARTS, PERMISSION, VERDICT_PASS, VERDICT_SECTION, Wingify, as_dict, ident,
@@ -13,6 +13,7 @@ TEST_TIMEOUT_S = 4
 STR = {'type': 'string'}
 CHANGES_HELP = {CHECK: 'the VWO campaigns the check saw (part campaign), their recent starts, stops and edits (part change) and a summary row with running and total counts'}
 VERDICTS_HELP = {VERDICT_SECTION: 'one row per running VWO campaign: when its results were last read, and VWO\'s own decision on it when there is one'}
+RESOLVE_HELP = 'Closes an A/B result card nobody acted on this many hours after it first appeared, whether or not it still fires; 0 uses the general auto-resolve rule'
 DESCRIPTION = ('VWO (Wingify), the A/B testing tool on the site, read only: which experiments run and on which pages. An experiment changes what part of the visitors see without a deploy. '
                'op campaigns (default): every campaign with type, status, pages and traffic share, running ones first; narrow with status (RUNNING, PAUSED...) or contains '
                '(part of the name or of a page URL); more: true means the account has more campaigns than the first 300 that were read. '
@@ -81,7 +82,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='marketing', description='A/B tests that start, stop or change, and the results VWO itself decided on, read from the VWO API.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community',
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
     capabilities=Capabilities(hosts=('app.wingify.com',), secrets=('api-token',)),
     fields=(Field('api-token', 'API token', 'secret', required=True, help=f'A VWO API token. {PERMISSION} is enough: nothing is ever changed.'),
             Field('account-id', 'Account id', 'text', default='current', help='The VWO account number, or current for the account the token belongs to.')),
@@ -89,6 +90,8 @@ PLUGIN = Plugin(
     checks=(Check(CHECK, 'A/B tests that start, stop or change', 300, 225, (CHECK,), run_changes, tool=TOOL, sections=(CHECK,), section_help=CHANGES_HELP),
             Check(VERDICT_PASS, 'A/B test results VWO decided', 3600, 1560, (VERDICT_PASS,), run_verdicts, tool=TOOL, sections=(VERDICT_SECTION,), section_help=VERDICTS_HELP)),
     tools=(Tool(TOOL, DESCRIPTION, SCHEMA, wingify_tool, per_run=PER_RUN, scan=True),),
+    settings=(Setting('auto-resolve-hours', 'Auto-resolve results after (hours)', RESOLVE_HELP, 'int', '24', 0, 720),),
+    auto_resolve=(AutoResolve(VERDICT_PASS, 'ab-verdict', 24, 'auto-resolve-hours'),),
     links=links,
     knowledge=(Knowledge('vwo', 'VWO', (Path(__file__).parent / 'vwo.md').read_text(encoding='utf-8'), slack=True),),
 )

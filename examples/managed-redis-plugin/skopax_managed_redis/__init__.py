@@ -1,11 +1,9 @@
 import json
-import math
 import re
-from urllib.parse import quote, urlencode
 
-from skopax.contract import CardType, Check, Context, Field, HttpError, InstanceInfo, Peer, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, Unreachable, \
-    anomaly, call, iso
+from skopax.contract import CardType, Check, Context, Field, InstanceInfo, Peer, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool, anomaly, iso
 from skopax.kit import access, connection
+from skopax.kit.grafana import Datasource, DatasourceError, explore
 from skopax.kit.promql import Late, bounded
 from skopax.monitor import failed
 
@@ -19,11 +17,8 @@ OPS = ('instances', 'history')
 HISTORY_HOURS = 48
 HISTORY_POINTS = 120
 MAX_ROWS = 50
-TIMEOUT = 20
 BUDGET_S = 200
 NAME_MAX = 100
-LIST_RIGHT = 'datasources:read'
-QUERY_RIGHT = 'datasources:query'
 NO_PEER = 'no Grafana instance is set'
 DEFAULT_PREFIX = 'redis_'
 DEFAULT_LABEL = 'instance'
@@ -84,66 +79,6 @@ SCHEMA = {'type': 'object', 'properties': {'op': {'type': 'string', 'enum': list
                                            'hours': {'type': 'integer', 'minimum': 1, 'maximum': HISTORY_HOURS}}, 'additionalProperties': False}
 
 
-class SourceError(Exception):
-    def __init__(self, reason: str, code: int | None = None, right: str = ''):
-        super().__init__(reason)
-        self.reason = reason
-        self.code = code
-        self.right = right
-
-
-class Datasource:
-    def __init__(self, url: str, token: str, transport, name: str):
-        self.url = (url or '').rstrip('/')
-        self.token = token
-        self.transport = transport
-        self.name = name
-        self.found: str | None = None
-
-    def get(self, path: str, what: str, right: str, **params) -> object:
-        url = f'{self.url}{path}' + (f'?{urlencode(params)}' if params else '')
-        try:
-            return call(self.transport, 'GET', url, {'Authorization': f'Bearer {self.token}'}, timeout=TIMEOUT).body
-        except HttpError as e:
-            raise SourceError(f'{what}: HTTP {e.code}', e.code, right) from None
-        except Unreachable:
-            raise SourceError(f'{what}: unreachable') from None
-
-    def uid(self) -> str:
-        if self.found:
-            return self.found
-        listed = self.get('/api/datasources', 'Grafana datasources', LIST_RIGHT)
-        if not isinstance(listed, list):
-            raise SourceError('Grafana datasources: the answer is not a list')
-        found = next((d for d in listed if isinstance(d, dict) and d.get('name') == self.name and d.get('uid')), None)
-        if not found:
-            raise SourceError(f'no Grafana datasource named {self.name}')
-        self.found = str(found['uid'])
-        return self.found
-
-    def result(self, path: str, **params) -> list[dict]:
-        body = self.get(f'/api/datasources/proxy/uid/{quote(self.uid(), safe="")}/api/v1/{path}', self.name, QUERY_RIGHT, **params)
-        if not isinstance(body, dict) or body.get('status') != 'success':
-            raise SourceError(f'{self.name}: the answer is not a Prometheus success')
-        data = body.get('data')
-        found = data.get('result') if isinstance(data, dict) else None
-        return [r for r in found if isinstance(r, dict)] if isinstance(found, list) else []
-
-    def vec(self, expr: str) -> list[tuple[dict, float]]:
-        out = []
-        for s in self.result('query', query=expr):
-            try:
-                v = float((s.get('value') or [None, None])[1])
-            except (TypeError, ValueError, IndexError):
-                continue
-            if not math.isnan(v) and abs(v) != float('inf'):
-                out.append((s.get('metric') or {}, v))
-        return out
-
-    def span(self, expr: str, start: float, end: float, step: int) -> list[dict]:
-        return self.result('query_range', query=expr, start=f'{start:.0f}', end=f'{end:.0f}', step=str(step))
-
-
 class Where:
     def __init__(self, ctx: Context):
         config = ctx.instance.config
@@ -194,13 +129,6 @@ def rows_of(d: Datasource, where: Where) -> list[dict]:
     return [{k: r.get(k) for k in ROW_KEYS} for r in sorted(rows.values(), key=lambda x: x['name'])]
 
 
-def explore(ui: str, uid: str, expr: str) -> str | None:
-    if not ui.startswith('https://') or not uid:
-        return None
-    panes = {'a': {'datasource': uid, 'queries': [{'refId': 'A', 'expr': expr, 'datasource': {'type': 'prometheus', 'uid': uid}}], 'range': {'from': 'now-2d', 'to': 'now'}}}
-    return f"{ui.rstrip('/')}/explore?schemaVersion=1&panes={quote(json.dumps(panes, separators=(',', ':')), safe='')}"
-
-
 def cards_of(rows: list[dict], rules: dict, instance: str, where: Where, ui: str = '', uid: str = '') -> list[dict]:
     found = []
 
@@ -243,7 +171,7 @@ def cards_of(rows: list[dict], rules: dict, instance: str, where: Where, ui: str
     return found
 
 
-def refused(e: SourceError) -> dict:
+def refused(e: DatasourceError) -> dict:
     return access.card(ID, NAME, PART, e.right, status=e.code, name=PART_NAME)
 
 
@@ -261,7 +189,7 @@ def run(ctx: Context) -> Sweep:
         rows = rows_of(d, where)
     except Late:
         return Sweep(PassResult(ID, False, f'error: {PART_NAME}: timed out'))
-    except SourceError as e:
+    except DatasourceError as e:
         if access.denied(e.code):
             return Sweep(PassResult(ID, True, access.status('ok', [PART_NAME]), [refused(e)], {}, (reached,)))
         return Sweep(PassResult(ID, False, f'error: {e.reason}'))
@@ -319,7 +247,7 @@ def read(ctx: Context, args: dict) -> object:
     d = client_for(peer, where)
     try:
         return instances(d, where) if w['op'] == 'instances' else history(d, where, w, ctx.now)
-    except SourceError as e:
+    except DatasourceError as e:
         if access.denied(e.code):
             raise ReadError(e.code, access.text(NAME, PART_NAME, e.right, status=e.code)) from None
         raise ReadError(502, e.reason) from None
@@ -337,7 +265,7 @@ def test(ctx: Context) -> TestResult:
         d = client_for(peer, where)
         try:
             found = d.vec(queries(where.prefix, where.label)['up'])
-        except SourceError as e:
+        except DatasourceError as e:
             said = access.tested(NAME, PART_NAME, e.code, e.right)
             raise ReadError(e.code or 502, said or e.reason) from None
         names = sorted({str(m.get(where.label)) for m, _ in found if m.get(where.label)})
@@ -364,7 +292,7 @@ CARD_TYPES = (CardType('managed-redis-down', 'Managed Redis down'), CardType('ma
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='infrastructure',
     description='Example plug-in: Redis instances you cannot reach directly, such as a managed cloud Redis, read from redis_exporter series through a Grafana datasource.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', uses=('grafana',),
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.2,<0.3', uses=('grafana',),
     fields=(Field('grafana', 'Grafana', 'instance', required=True, choices=('grafana',), help='The Grafana instance whose datasource holds the Redis series.'),
             Field('datasource', 'Datasource', 'text', required=True, help='The name of the Grafana Prometheus datasource that holds the Redis series.'),
             Field('prefix', 'Metric prefix', 'text', default=DEFAULT_PREFIX,

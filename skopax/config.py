@@ -26,6 +26,8 @@ MCP_DIVE_CAP = 6
 SSO_SCOPE = 'openid email profile'
 SSO_CLAIM_MODES = ('id-token', 'access-token')
 SSO_CLIENT_AUTH = ('auto', 'post', 'basic')
+SSO_BUTTON_ICONS = ('auto', 'company', 'none')
+SSO_BUTTON_TEXT_MAX = 40
 SSO_NEW_ACCOUNTS = ('anyone', 'added-only')
 DOMAIN = re.compile(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', re.IGNORECASE)
 RELEASE_NAME = '{project} {yyyy}-{mm}-{dd}'
@@ -115,6 +117,8 @@ class Settings:
     sso_allowed_domains: tuple[str, ...] = ()
     sso_roles_claim: str = 'roles'
     sso_role_map: str = ''
+    sso_button_text: str = ''
+    sso_button_icon: str = 'auto'
     sso_session_idle_hours: int = SESSION_IDLE_HOURS
     sso_session_max_days: int = SESSION_MAX_DAYS
     operator_role: str = 'SKOPAX_OPERATOR'
@@ -131,6 +135,7 @@ class Settings:
     slack_operator_cache_s: int = 600
     slack_fallback_minutes: int = 15
     slack_crit_now: bool = True
+    routes_slack_echo: bool = False
     release_settle: bool = False
     jira_links: bool = True
     assign_dm: bool = True
@@ -185,7 +190,9 @@ class Settings:
     investigate_web_domains: str = ''
     investigate_web_searches: int = 3
     investigate_web_fetches: int = 4
-    auto_resolve_days: int = 3
+    auto_resolve_hours: int = 6
+    auto_resolve_days: int | None = None
+    auto_resolve_hours_set: bool = False
     archive_hours: int = 48
     history_keep_days: int = 365
     recurring_count: int = 3
@@ -350,6 +357,13 @@ def sso_role_map(raw: str) -> str:
         raise ConfigurationError(msg('config.role_map_invalid', problem=e.text)) from None
 
 
+def button_text(raw: str) -> str:
+    text = str(raw or '').strip()
+    if len(text) > SSO_BUTTON_TEXT_MAX:
+        log.warning('sso.button-text is longer than %d characters; using the first %d', SSO_BUTTON_TEXT_MAX, SSO_BUTTON_TEXT_MAX)
+    return text[:SSO_BUTTON_TEXT_MAX]
+
+
 def choice(key: str, raw: str, allowed: tuple[str, ...]) -> str:
     value = raw.strip().lower()
     if value in allowed:
@@ -386,6 +400,18 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         fallback = min(SESSION_IDLE_HOURS, max_days * 24)
         log.warning('sso.session-idle-hours %d is above sso.session-max-days %d; using %d', idle_hours, max_days, fallback)
         idle_hours = fallback
+
+    auto_hours_raw = get('core.auto-resolve-hours', 'SKOPAX_AUTO_RESOLVE_HOURS', '').strip()
+    auto_days_raw = get('core.auto-resolve-days', 'SKOPAX_AUTO_RESOLVE_DAYS', '').strip()
+    try:
+        auto_days = int(auto_days_raw) if auto_days_raw else None
+    except ValueError:
+        log.warning('core.auto-resolve-days %r is not a whole number; it is ignored', auto_days_raw)
+        auto_days = None
+    if auto_hours_raw:
+        auto_hours = bounded('core.auto-resolve-hours', auto_hours_raw, 0, 720, 6)
+    else:
+        auto_hours = min(max(auto_days, 0), 30) * 24 if auto_days is not None else 6
 
     default_role = get('sso.default-role', 'SSO_DEFAULT_ROLE', 'viewer').strip() or 'viewer'
     if default_role not in DEFAULT_ROLES:
@@ -436,6 +462,8 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         sso_allowed_domains=sso_domains(get('sso.allowed-domains', 'SSO_ALLOWED_DOMAINS', '')),
         sso_roles_claim=get('sso.roles-claim', 'SSO_ROLES_CLAIM', 'roles').strip() or 'roles',
         sso_role_map=role_map,
+        sso_button_text=button_text(get('sso.button-text', 'SSO_BUTTON_TEXT', '')),
+        sso_button_icon=choice('sso.button-icon', get('sso.button-icon', 'SSO_BUTTON_ICON', SSO_BUTTON_ICONS[0]), SSO_BUTTON_ICONS),
         sso_session_idle_hours=idle_hours,
         sso_session_max_days=max_days,
         operator_role=get('core.operator-role', 'SKOPAX_OPERATOR_ROLE', 'SKOPAX_OPERATOR'),
@@ -450,6 +478,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         slack_dm_chats=get('slack.dm-chats', 'SLACK_DM_CHATS', 'true').strip().lower() == 'true',
         slack_operator_cache_s=int(get('slack.operator-cache-seconds', 'SLACK_OPERATOR_CACHE_SECONDS', '600')),
         slack_fallback_minutes=int(get('slack.fallback-minutes', 'SLACK_FALLBACK_MINUTES', '15').strip() or 15),
+        routes_slack_echo=get('routes.slack-echo', 'ROUTES_SLACK_ECHO', 'false').strip().lower() == 'true',
         slack_crit_now=get('slack.crit-now', 'SLACK_CRIT_NOW', 'true').strip().lower() == 'true',
         release_settle=get('core.release-settle', 'SKOPAX_RELEASE_SETTLE', 'false').strip().lower() == 'true',
         jira_links=get('core.jira-links', 'SKOPAX_JIRA_LINKS', 'true').strip().lower() == 'true',
@@ -505,7 +534,9 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         investigate_web_domains=get('investigate.web-domains', 'INVESTIGATE_WEB_DOMAINS', '').strip(),
         investigate_web_searches=int(get('investigate.web-searches', 'INVESTIGATE_WEB_SEARCHES', '3').strip() or 3),
         investigate_web_fetches=int(get('investigate.web-fetches', 'INVESTIGATE_WEB_FETCHES', '4').strip() or 4),
-        auto_resolve_days=int(get('core.auto-resolve-days', 'SKOPAX_AUTO_RESOLVE_DAYS', '3').strip() or 3),
+        auto_resolve_hours=auto_hours,
+        auto_resolve_days=auto_days,
+        auto_resolve_hours_set=bool(auto_hours_raw),
         archive_hours=int(get('cards.archive-hours', 'CARDS_ARCHIVE_HOURS', '48').strip() or 48),
         history_keep_days=int(get('history.keep-days', 'HISTORY_KEEP_DAYS', '365').strip() or 365),
         recurring_count=int(get('recurring.count', 'RECURRING_COUNT', '3').strip() or 3),

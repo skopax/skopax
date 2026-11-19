@@ -4,6 +4,7 @@ import logging
 import re
 from collections.abc import Callable
 
+from skopax.codehosts import Undecided
 from skopax.contract import CodeHost, Missing, Refused, SourceDown
 from skopax.errkind import NoAccess, kind as error_kind, text_of
 from skopax.jiralinks import listed, ticket_finder
@@ -207,6 +208,9 @@ class Enricher:
             try:
                 self._git(d)
                 done['gitlab'] += 1
+            except Undecided as e:
+                done['errors'].append(e.text)
+                log.info('deploy enrichment left one deploy for a later sweep: %s', e.text)
             except ProjectRefused as e:
                 done['errors'].append(e.text)
                 log.warning('deploy enrichment through GitLab refused for %s of one project: the token lacks %s', e.part, e.permission)

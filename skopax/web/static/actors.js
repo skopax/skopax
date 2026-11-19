@@ -1,13 +1,13 @@
 var SYSTEM_ACTOR = 'system';
 var BRAND = (function () {
-  var out = {name: 'Skopax', slug: 'skopax', version: '0.1.0'};
+  var out = {name: 'Skopax', slug: 'skopax', version: '0.2.0'};
   try {
     var d = JSON.parse(document.getElementById('brand-data').textContent);
     if (d && d.name) out = d;
   } catch (e) {}
   if (out.attribution === null) return out;
   if (!out.attribution || !out.attribution.text) {
-    var v = out.version || '0.1.0';
+    var v = out.version || '0.2.0';
     out.attribution = {text: out.name === 'Skopax' ? 'Skopax ' + v + ' \u00b7 skopax.io' : out.name + ' \u00b7 powered by Skopax ' + v, href: 'https://skopax.io'};
   }
   return out;
@@ -23,4 +23,8 @@ function applyBrand() {
 }
 applyBrand();
 function isTokenActor(by) { var t = String(by == null ? '' : by); return t === 'token' || t.indexOf('token:') === 0; }
-function tokenActorLabel(by, legacy) { var t = String(by == null ? '' : by); return t.indexOf('token:') === 0 && t.length > 6 ? t.slice(6) : legacy === undefined ? 'Claude' : legacy; }
+function tokenActorLabel(by, legacy) { var t = String(by == null ? '' : by); return t.indexOf('token:') === 0 && t.length > 6 ? t.slice(6) : legacy === undefined ? 'Investigator' : legacy; }
+var RES_TIPS = {fixed: 'Fixed: the cause is gone because something was changed, such as a deploy, a config change or a rollback', handled: 'No action needed: harmless or a one-off, nothing was changed',
+  duplicate: 'Duplicate: the same problem as another card, which carries it on'};
+function resHint(kind) { var t = RES_TIPS[kind] || '', i = t.indexOf(': '); t = i >= 0 ? t.slice(i + 2) : t; return t ? t.charAt(0).toUpperCase() + t.slice(1) + '.' : ''; }
+var RES_PLACEHOLDER_WHY = 'Note (optional)', RES_PLACEHOLDER_DUP = 'Card number or key', RES_TITLE_WHY = 'Why it is resolved, becomes the card note (optional)', RES_TITLE_DUP = 'The other card: its number, like 12, or its key';

@@ -204,13 +204,13 @@ function sidebarHeight(doc) {
   };
   const row = t('--row-h'), head = t('--grp-h'), gap = t('--grp-gap'), instH = t('--inst-h'), searchH = t('--search-h'), userH = local('--user-h'), attrH = local('--attr-h');
   const groups = [...doc.querySelectorAll('#snav > .s-grp')];
-  const shown = (g) => [...g.querySelectorAll(':scope > a.tab:not([hidden]), :scope > button.tab')].length;
+  const shown = (g) => g.classList.contains('folded') ? 0 : [...g.querySelectorAll(':scope > a.tab:not([hidden])')].length;
   const navRows = groups.reduce((n, g) => n + shown(g), 0), heads = groups.filter((g) => g.querySelector('.g-h')).length;
   const pinned = [...doc.querySelectorAll('#pinned > a.tab:not([hidden])')].length;
   const side = box(doc, '.side'), top = box(doc, '.s-top'), nav = box(doc, '.s-nav');
   const sideGap = parseFloat(px(doc, '.side', 'gap')), botGap = parseFloat(px(doc, '.s-bot', 'gap'));
   const navH = nav.top + nav.bottom + heads * head + navRows * row + (navRows - groups.length) + (groups.length - 1) * len(doc, '.s-grp + .s-grp', 'margin-top', t);
-  const footH = parseFloat(px(doc, '.s-bot', 'padding-top')) + parseFloat(px(doc, '.s-bot', 'border-top')) + pinned * row + (pinned - 1) + botGap + userH + botGap + attrH;
+  const footH = parseFloat(px(doc, '.s-bot', 'padding-top')) + parseFloat(px(doc, '.s-bot', 'border-top')) + pinned * row + Math.max(pinned - 1, 0) + botGap + userH + botGap + attrH;
   const slot = doc.getElementById('side-top');
   assert.deepStrictEqual([...slot.children].map((c) => c.id), ['inst', 'search-btn'], 'the switcher and the search fill the slot, so they are in this sum');
   assert.deepStrictEqual([len(doc, '.inst-btn', 'height', t), len(doc, '.search', 'height', t), len(doc, '.side-top', 'gap', t)], [instH, searchH, gap], 'the switcher is --inst-h, the search --search-h, one --grp-gap between them');
@@ -233,8 +233,8 @@ function sidebarHeight(doc) {
   assert.deepStrictEqual(['min-width', 'overflow', 'text-overflow'].map((k) => cs(name).getPropertyValue(k)), ['0px', 'hidden', 'ellipsis'], 'the display name is what an ellipsis cuts');
   if (by) assert.deepStrictEqual([by.textContent, cs(by).getPropertyValue('flex-shrink'), cs(by).getPropertyValue('white-space')], [' \u00b7 powered by Skopax 0.1.0', '0', 'pre'], 'the powered-by part never shrinks');
   assert.strictEqual(line.title, line.textContent, 'the full text is its tooltip');
-  assert.ok(doc.getElementById('side-more-list').hidden, 'More is folded');
-  assert.deepStrictEqual([groups.length, navRows, heads, pinned], [5, 15, 3, 2], 'an admin sees every core row, More folded, Settings and Admin pinned');
+  assert.ok(doc.getElementById('side-more-list').classList.contains('folded'), 'More is folded');
+  assert.deepStrictEqual([groups.length, navRows, heads, pinned], [5, 14, 4, 0], 'an admin sees every core row and More folded; Settings and Admin are in the user menu');
   assert.ok(doc.getElementById('user-btn') && !doc.getElementById('account').hidden, 'the account box is shown');
   const snav = doc.getElementById('snav'), foot = doc.querySelector('#side > .s-bot');
   assert.deepStrictEqual(['flex-grow', 'min-height', 'overflow-y'].map((k) => cs(snav).getPropertyValue(k)), ['1', '0px', 'auto'], 'only the groups area grows, shrinks and scrolls');

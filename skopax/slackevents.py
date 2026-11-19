@@ -12,6 +12,7 @@ from urllib.parse import quote
 from slack_sdk.socket_mode import SocketModeClient
 from slack_sdk.socket_mode.response import SocketModeResponse
 
+from skopax.actions import PRESET
 from skopax.config import Setting
 from skopax import brand, drafts, history
 from skopax.engine import iso as epoch_iso, parse_iso
@@ -845,7 +846,7 @@ class Clicks:
             text = msg('slackevents.click.applied', label=applied, login=claim.get('claimedBy')) if claim.get('at') else msg('slackevents.click.applying')
             return self._tell(channel, user, text, thread_ts, 'claimed')
         action = {'type': call['action'], 'key': call['key'], 'target': call['key'], 'label': f"{stored} from Slack: {call['key']}"[:LABEL_LIMIT],
-                  'requestedBy': login, 'source': 'slack', 'askId': ask['id']} | ({'hours': call.get('hours')} if call['action'] == 'mute' else {}) | ({'reason': f'{stored} from Slack by {login}'} if call['action'] in ('mute', 'known') else {})
+                  'requestedBy': login, 'source': 'slack', 'askId': ask['id']} | ({'hours': call.get('hours')} if call['action'] == 'mute' else {}) | ({'reason': f'{stored} from Slack by {login}', PRESET: True} if call['action'] in ('mute', 'known') else {})
         if call['action'] == 'take' and call.get('owner'):
             action['owner'] = call['owner']
         if call['action'] == 'take' and call.get('ticket'):
@@ -854,6 +855,7 @@ class Clicks:
             action.update({f: call[f] for f in ('kind', 'ref') if call.get(f)})
         if call.get('reason'):
             action['reason'] = call['reason']
+            action.pop(PRESET, None)
         try:
             result = self.apply(action)
         except TicketRefused as e:

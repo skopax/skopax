@@ -1,6 +1,8 @@
 import copy
+import datetime
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -31,11 +33,23 @@ PERMISSIONS = {
     ('image.yml', 'version'): READ_ONLY,
     ('image.yml', 'build'): {'contents': 'read', 'packages': 'write', 'id-token': 'write', 'attestations': 'write'},
     ('image.yml', 'layer-smoke'): {'contents': 'read', 'packages': 'read'},
+    ('image.yml', 'scan'): {'contents': 'read', 'packages': 'read', 'security-events': 'write'},
+    ('scan.yml', 'scan'): {'contents': 'read', 'packages': 'read', 'security-events': 'write', 'issues': 'write'},
     ('image.yml', 'promote'): {'contents': 'read', 'packages': 'write'},
 }
 CI_JOBS = {'tests', 'pages', 'licences', 'secrets'}
-IMAGE_JOBS = {'ci', 'version', 'build', 'layer-smoke', 'promote'}
-NEEDS = {'version': {'ci'}, 'build': {'version'}, 'layer-smoke': {'version', 'build'}, 'promote': {'version', 'build', 'layer-smoke'}}
+IMAGE_JOBS = {'ci', 'version', 'build', 'layer-smoke', 'scan', 'promote'}
+NEEDS = {'version': {'ci'}, 'build': {'version'}, 'layer-smoke': {'version', 'build'}, 'scan': {'version', 'build'},
+         'promote': {'version', 'build', 'layer-smoke', 'scan'}}
+SCAN_ACTION = 'anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439'
+SCAN_ACTION_RELEASE = 'v7.4.2'
+GRYPE_VERSION = 'v0.121.1'
+UPLOAD_ACTION = 'github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26'
+SCAN_ISSUE_TITLE = 'Image scan: fixable findings in latest'
+SCAN_IMAGE = 'ghcr.io/skopax/skopax:latest'
+GRYPE_IGNORE = ROOT / '.grype.yaml'
+IGNORE_KEYS = {'vulnerability', 'package', 'reason', 'fix-state', 'namespace', 'vex-status', 'vex-justification', 'match-type'}
+SCAN_DIGEST = '${{ needs.build.outputs.digest }}'
 STATUS_FUNCTIONS = ('always()', 'cancelled()', 'failure()', 'success()')
 NOT_RC = "needs.version.outputs.rc == 'false'"
 HUB_IF = NOT_RC + " && env.HUB_USER != ''"
@@ -54,6 +68,7 @@ OUTSIDE = ('/Users/', '/home/', '~/', '$HOME')
 PIPED_SHELL = re.compile(r'\|\s*(?:sudo\s+)?(?:ba|z)?sh\b')
 GITLEAKS_FIXTURES = {
     'tests/page/skopax-access.test.js': 'generic-api-key',
+    'tests/page/skopax-access-page.test.js': 'generic-api-key',
     'tests/test_admin_plugins.py': 'generic-api-key',
     'tests/test_instances.py': 'private-key',
     'tests/test_mcp_access.py': 'jwt',
@@ -452,7 +467,7 @@ def test_every_action_is_pinned_by_sha():
     found = unpinned_actions(docs)
 
     # then
-    assert set(docs) == {'ci.yml', 'image.yml', 'pr.yml'}
+    assert set(docs) == {'ci.yml', 'image.yml', 'pr.yml', 'scan.yml'}
     assert sum(1 for doc in docs.values() for s in steps(doc) if 'uses' in s) >= 10
     assert found == []
     assert unpinned_actions(broken) == ['ci.yml: actions/checkout@v7']
@@ -589,7 +604,9 @@ def test_the_version_check_runs_before_any_build():
     unchecked = copy.deepcopy(image)
     unchecked['jobs']['version']['needs'] = []
     hasty = copy.deepcopy(image)
-    hasty['jobs']['promote']['needs'] = ['version', 'build']
+    hasty['jobs']['promote']['needs'] = ['version', 'build', 'scan']
+    unscanned = copy.deepcopy(image)
+    unscanned['jobs']['promote']['needs'] = ['version', 'build', 'layer-smoke']
 
     # when
     found = order_problems(image)
@@ -601,6 +618,7 @@ def test_the_version_check_runs_before_any_build():
     assert order_problems(rescued) == ['build has a job-level if: ${{ !cancelled() }}', 'build runs whatever its needs did']
     assert order_problems(unchecked) == ["version does not need ['ci']"]
     assert order_problems(hasty) == ["promote does not need ['layer-smoke']"]
+    assert order_problems(unscanned) == ["promote does not need ['scan']"]
 
 
 def test_no_gate_continues_on_error():
@@ -966,3 +984,312 @@ def test_the_dco_check_lists_only_the_failing_commits_of_a_range(tmp_path):
     # then
     assert done.returncode == 1
     assert [line.strip().split(' ', 1)[1] for line in done.stdout.splitlines() if line.startswith('  ')] == ['bad one']
+
+
+def scan_step_problems(doc: dict, job: str, fail_build: bool) -> list[str]:
+    problems = []
+    scans = uses(doc, 'anchore/scan-action', job)
+    if len(scans) != 1 or scans[0]['uses'] != SCAN_ACTION:
+        return [f'{job} does not run the pinned Grype action once']
+    given = scans[0].get('with', {})
+    if not re.fullmatch(r'v\d+\.\d+\.\d+', str(given.get('grype-version', ''))) or given.get('grype-version') != GRYPE_VERSION:
+        problems.append('Grype is not pinned to the chosen version')
+    if str(given.get('only-fixed')).lower() != 'true':
+        problems.append('the scan does not skip findings without a fix')
+    if given.get('severity-cutoff') != 'high':
+        problems.append(f'the severity cutoff is {given.get("severity-cutoff")!r}')
+    if given.get('output-format') != 'sarif':
+        problems.append('the scan does not write SARIF')
+    if str(given.get('fail-build', 'true')).lower() != str(fail_build).lower():
+        problems.append(f'fail-build is {given.get("fail-build")!r}')
+    if 'config' in given:
+        problems.append('the scan names its own config, which turns off .grype.yaml')
+    if scans[0].get('id') != 'grype':
+        problems.append('the scan step has no id grype')
+    uploads = uses(doc, 'github/codeql-action/upload-sarif', job)
+    if len(uploads) != 1 or uploads[0]['uses'] != UPLOAD_ACTION:
+        problems.append('the SARIF upload is missing or not pinned')
+    else:
+        if uploads[0].get('with', {}).get('sarif_file') != '${{ steps.grype.outputs.sarif }}':
+            problems.append('the upload does not take the scan SARIF')
+        if 'always()' not in str(uploads[0].get('if', '')):
+            problems.append('the SARIF upload is skipped when the scan fails')
+    if index_of(doc, job, 'actions/checkout') < 0 or index_of(doc, job, 'actions/checkout') > index_of(doc, job, 'anchore/scan-action'):
+        problems.append('the scan does not check out the tree for .grype.yaml first')
+    if index_of(doc, job, 'docker/login-action') < 0 or index_of(doc, job, 'docker/login-action') > index_of(doc, job, 'anchore/scan-action'):
+        problems.append('the scan does not log in to GHCR first')
+    return problems
+
+
+def release_scan_problems(image: dict) -> list[str]:
+    problems = scan_step_problems(image, 'scan', True)
+    scan = image['jobs']['scan']
+    scans = uses(image, 'anchore/scan-action', 'scan')
+    if scans and scans[0].get('with', {}).get('image') != f'{IMAGE}@{SCAN_DIGEST}':
+        problems.append('the scan does not take the digest that promote copies')
+    if needs_of(scan) != {'version', 'build'}:
+        problems.append(f'scan needs {sorted(needs_of(scan))}')
+    wide = [job for job, body in image['jobs'].items() if 'security-events' in (body.get('permissions') or {})]
+    if wide != ['scan']:
+        problems.append(f'security-events is granted to {wide}')
+    if image['jobs']['promote'].get('env', {}).get('DIGEST') != SCAN_DIGEST:
+        problems.append('promote does not copy the build digest')
+    return problems
+
+
+def schedule_problems(doc: dict, text: str) -> list[str]:
+    problems = []
+    on = triggers(doc)
+    crons = [item.get('cron') for item in on.get('schedule', [])]
+    if len(crons) != 1 or len(str(crons[0]).split()) != 5:
+        problems.append(f'schedule is {crons!r}')
+    elif str(crons[0]).split()[4] in ('*', ''):
+        problems.append('the scan runs more than weekly')
+    if set(on) - {'schedule', 'workflow_dispatch'}:
+        problems.append(f'scan.yml runs on {sorted(set(on) - {"schedule", "workflow_dispatch"})}')
+    problems += scan_step_problems(doc, 'scan', False)
+    scans = uses(doc, 'anchore/scan-action', 'scan')
+    if scans and scans[0].get('with', {}).get('image') != SCAN_IMAGE:
+        problems.append('the scan does not take the published image')
+    if SCAN_ISSUE_TITLE not in text:
+        problems.append('the issue title is not the agreed one')
+    if SECRET_REF.search(text.replace('secrets.GITHUB_TOKEN', '')):
+        problems.append('scan.yml names a repository secret')
+    script = '\n'.join(runs(doc, 'scan'))
+    issue = [s for s in steps(doc, 'scan') if 'gh issue' in s.get('run', '')]
+    if len(issue) != 1 or issue[0].get('if') != "always() && steps.grype.outputs.sarif != ''":
+        problems.append('the issue step is skipped when the upload fails')
+    expiry = [s for s in steps(doc, 'scan') if '.grype.yaml' in s.get('run', '')]
+    if len(expiry) != 1 or expiry[0].get('if') != 'always()':
+        problems.append('no always-run check of the ignore review dates')
+    for needle in ('gh issue create', 'gh issue edit', 'gh issue close'):
+        if needle not in script:
+            problems.append(f'scan.yml lacks {needle}')
+    return problems
+
+
+def test_the_release_scan_gates_the_promoted_digest_and_uploads_sarif():
+    # given
+    image = load('image.yml')
+    pins = {SCAN_ACTION_RELEASE: SCAN_ACTION.split('@')[1]}
+    floating = copy.deepcopy(image)
+    uses(floating, 'anchore/scan-action', 'scan')[0]['uses'] = 'anchore/scan-action@v7'
+    floating_grype = copy.deepcopy(image)
+    uses(floating_grype, 'anchore/scan-action', 'scan')[0]['with'].pop('grype-version')
+    unfixed = copy.deepcopy(image)
+    uses(unfixed, 'anchore/scan-action', 'scan')[0]['with']['only-fixed'] = False
+    lenient = copy.deepcopy(image)
+    uses(lenient, 'anchore/scan-action', 'scan')[0]['with']['severity-cutoff'] = 'critical'
+    soft = copy.deepcopy(image)
+    uses(soft, 'anchore/scan-action', 'scan')[0]['with']['fail-build'] = False
+    tagged = copy.deepcopy(image)
+    uses(tagged, 'anchore/scan-action', 'scan')[0]['with']['image'] = f'{IMAGE}:{VERSION}'
+    silent = copy.deepcopy(image)
+    silent['jobs']['scan']['steps'] = [s for s in steps(silent, 'scan') if 'upload-sarif' not in s.get('uses', '')]
+    blind = copy.deepcopy(image)
+    uses(blind, 'github/codeql-action/upload-sarif', 'scan')[0].pop('if')
+    broad = copy.deepcopy(image)
+    broad['jobs']['promote']['permissions']['security-events'] = 'write'
+    open_scan = copy.deepcopy(image)
+    open_scan['jobs']['promote']['needs'] = ['version', 'build', 'layer-smoke']
+
+    # when
+    found = release_scan_problems(image)
+
+    # then
+    assert pins == {'v7.4.2': '27805bf3b4e84b4a5c980df22ed233c00390a439'}
+    assert found == []
+    assert order_problems(image) == []
+    assert permission_problems({'image.yml': image}) == []
+    assert release_scan_problems(floating) == ['scan does not run the pinned Grype action once']
+    assert release_scan_problems(floating_grype) == ['Grype is not pinned to the chosen version']
+    assert release_scan_problems(unfixed) == ['the scan does not skip findings without a fix']
+    assert release_scan_problems(lenient) == ["the severity cutoff is 'critical'"]
+    assert release_scan_problems(soft) == ['fail-build is False']
+    assert release_scan_problems(tagged) == ['the scan does not take the digest that promote copies']
+    assert release_scan_problems(silent) == ['the SARIF upload is missing or not pinned']
+    assert release_scan_problems(blind) == ['the SARIF upload is skipped when the scan fails']
+    assert release_scan_problems(broad) == ["security-events is granted to ['scan', 'promote']"]
+    assert order_problems(open_scan) == ["promote does not need ['scan']"]
+    assert any(s.get('with', {}).get('registry') == 'ghcr.io' for s in uses(image, 'docker/login-action', 'scan'))
+    assert all(s['with']['persist-credentials'] is False for s in uses(image, 'actions/checkout', 'scan'))
+
+
+def test_the_weekly_scan_reads_the_published_image_and_never_fails_the_schedule():
+    # given
+    doc = load('scan.yml')
+    text = (WORKFLOWS / 'scan.yml').read_text(encoding='utf-8')
+    daily = copy.deepcopy(doc)
+    daily[True]['schedule'] = [{'cron': '0 5 * * *'}]
+    pushed = copy.deepcopy(doc)
+    pushed[True]['push'] = {'branches': ['main']}
+    floating = copy.deepcopy(doc)
+    uses(floating, 'anchore/scan-action', 'scan')[0]['with'].pop('grype-version')
+    quiet = copy.deepcopy(doc)
+    for s in steps(quiet, 'scan'):
+        if 'gh issue' in s.get('run', ''):
+            s.pop('if')
+    strict = copy.deepcopy(doc)
+    uses(strict, 'anchore/scan-action', 'scan')[0]['with']['fail-build'] = True
+    other = copy.deepcopy(doc)
+    uses(other, 'anchore/scan-action', 'scan')[0]['with']['image'] = 'ghcr.io/skopax/skopax:0.1.0'
+
+    # when
+    found = schedule_problems(doc, text)
+
+    # then
+    assert found == []
+    assert doc['permissions'] == {}
+    assert doc['jobs']['scan']['permissions'] == PERMISSIONS[('scan.yml', 'scan')]
+    assert schedule_problems(daily, text) == ['the scan runs more than weekly']
+    assert schedule_problems(pushed, text) == ["scan.yml runs on ['push']"]
+    assert schedule_problems(floating, text) == ['Grype is not pinned to the chosen version']
+    assert schedule_problems(quiet, text) == ['the issue step is skipped when the upload fails']
+    assert schedule_problems(strict, text) == ['fail-build is True']
+    assert schedule_problems(other, text) == ['the scan does not take the published image']
+    assert schedule_problems(doc, text.replace(SCAN_ISSUE_TITLE, 'Image scan')) == ['the issue title is not the agreed one']
+    assert continue_on_error_problems({'scan.yml': doc}) == []
+    assert shell_problems({'scan.yml': doc}) == []
+
+
+def grype_sarif(findings: list[tuple[str, str, str, str]]) -> dict:
+    rules = [{'id': rule, 'properties': {'security-severity': score}} for rule, score, level, text in findings if score]
+    results = [{'ruleId': rule, 'level': level, 'message': {'text': text}} for rule, score, level, text in findings]
+    return {'runs': [{'tool': {'driver': {'name': 'Grype', 'rules': rules}}, 'results': results}]}
+
+
+def high(n: int) -> tuple[str, str, str, str]:
+    return (f'CVE-2026-{n}-pkg{n}', '8.1', 'error', f'A High vulnerability in python package: pkg{n}, version 1.0 was found at: /x')
+
+
+def medium(n: int) -> tuple[str, str, str, str]:
+    return (f'CVE-2026-{n}-pkg{n}', '5.5', 'warning', f'A Medium vulnerability in python package: pkg{n}, version 1.0 was found at: /x')
+
+
+def run_issue_script(script: str, tmp_path: Path, findings: list[tuple[str, str, str, str]], existing: str) -> tuple[list[str], str]:
+    stubs = tmp_path / 'bin'
+    stubs.mkdir(parents=True)
+    log = tmp_path / 'gh.log'
+    log.write_text('', encoding='utf-8')
+    stub = stubs / 'gh'
+    stub.write_text('#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$GH_LOG"\nif [ "$2" = list ]; then printf \'%s\' "$GH_LIST"; fi\n', encoding='utf-8')
+    stub.chmod(0o755)
+    sarif = tmp_path / 'results.sarif'
+    sarif.write_text(json.dumps(grype_sarif(findings)), encoding='utf-8')
+    listing = json.dumps([{'number': 7, 'title': SCAN_ISSUE_TITLE}] if existing == 'open' else [{'number': 3, 'title': 'Another issue'}])
+    env = {'PATH': f'{stubs}:/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin', 'SARIF': str(sarif), 'GH_LOG': str(log), 'GH_LIST': listing,
+           'GH_TOKEN': 'token', 'GITHUB_REPOSITORY': 'skopax/skopax', 'GITHUB_SERVER_URL': 'https://github.com', 'GITHUB_RUN_ID': '42',
+           'RUNNER_TEMP': str(tmp_path)}
+    done = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], env=env, capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stderr
+    calls = [line for line in log.read_text(encoding='utf-8').splitlines() if not line.startswith('issue list')]
+    body = tmp_path / 'body.md'
+    return calls, body.read_text(encoding='utf-8') if body.exists() else ''
+
+
+def issue_script() -> str:
+    return '\n'.join(s['run'] for s in steps(load('scan.yml'), 'scan') if 'gh issue' in s.get('run', ''))
+
+
+@pytest.mark.skipif(shutil.which('jq') is None, reason='jq is not installed')
+@pytest.mark.parametrize('findings, existing, verb', [([high(1), high(2)], 'none', 'issue create'), ([high(1), medium(3)], 'open', 'issue edit 7'),
+                                                      ([medium(3)], 'open', 'issue close 7'), ([medium(3)], 'none', None), ([], 'none', None)])
+def test_the_weekly_scan_opens_updates_and_closes_one_issue(tmp_path, findings, existing, verb):
+    # given
+    script = issue_script()
+
+    # when
+    calls, body = run_issue_script(script, tmp_path, findings, existing)
+
+    # then
+    assert len(calls) == (0 if verb is None else 1)
+    assert verb is None or calls[0].startswith(verb)
+    assert verb != 'issue create' or f'--title {SCAN_ISSUE_TITLE}' in calls[0]
+    if verb in ('issue create', 'issue edit 7'):
+        assert re.findall(r'^- `(CVE-[^`]+)`', body, re.M) == [f'CVE-2026-{n}-pkg{n}' for n in (1, 2)][:len([f for f in findings if f[1] == '8.1'])]
+        assert 'CVE-2026-3-pkg3' not in body
+        assert f'found {len([f for f in findings if f[1] == "8.1"])} fixable' in body
+
+
+@pytest.mark.skipif(shutil.which('jq') is None, reason='jq is not installed')
+def test_the_weekly_scan_cleans_the_text_it_puts_in_the_issue(tmp_path):
+    # given
+    hostile = ('bad id!', '9.8', 'error', 'A Critical vulnerability in python package: x, version 1 was found')
+    noisy = ('CVE-2026-9-evil', '9.8', 'error', 'A Critical vulnerability in python package: ev`il@team, version 1.0 was found with `ticks` and @alice')
+    unscored = ('GHSA-aaaa-bbbb-cccc', '', 'error', 'A High vulnerability in python package: lib, version 2 was found')
+    skipped = ('GHSA-dddd-eeee-ffff', '', 'warning', 'A Medium vulnerability in python package: lib2, version 2 was found')
+
+    # when
+    calls, body = run_issue_script(issue_script(), tmp_path, [hostile, noisy, unscored, skipped], 'none')
+
+    # then
+    assert calls[0].startswith('issue create')
+    assert 'bad id' not in body and 'GHSA-dddd' not in body
+    assert '@' not in body.split('Run:')[0] and body.count('`') % 2 == 0
+    assert '- `CVE-2026-9-evil` in `evilteam`:' in body and '- `GHSA-aaaa-bbbb-cccc` in `lib`:' in body
+    assert 'found 2 fixable' in body
+
+
+def run_expiry_script(script: str, tmp_path: Path, reason_date: str) -> int:
+    stubs = tmp_path / 'bin'
+    stubs.mkdir(parents=True)
+    (stubs / 'python3').symlink_to(sys.executable)
+    (tmp_path / '.grype.yaml').write_text(
+        f'ignore:\n  - vulnerability: CVE-2026-0001\n    package:\n      name: libexample\n    reason: not reachable (review-by {reason_date})\n', encoding='utf-8')
+    env = {'PATH': f'{stubs}:/usr/bin:/bin'}
+    return subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], cwd=tmp_path, env=env, capture_output=True, text=True, check=False).returncode
+
+
+@pytest.mark.parametrize('date, code', [('2020-01-01', 1), ('2999-12-31', 0)])
+def test_the_weekly_scan_fails_its_own_run_when_an_ignore_entry_has_expired(tmp_path, date, code):
+    # given
+    script = '\n'.join(s['run'] for s in steps(load('scan.yml'), 'scan') if '.grype.yaml' in s.get('run', ''))
+
+    # when
+    result = run_expiry_script(script, tmp_path, date)
+
+    # then
+    assert result == code
+    assert script
+
+
+def test_the_grype_ignore_file_lists_only_reviewed_findings():
+    # given
+    doc = yaml.safe_load(GRYPE_IGNORE.read_text(encoding='utf-8'))
+    entries = doc['ignore']
+    bare = {'vulnerability': 'CVE-2026-0001', 'package': {'name': 'libexample'}}
+    complete = {**bare, 'reason': 'no fix upstream and not reachable (review-by 2027-01-31)'}
+
+    # when
+    found = ignore_problems(entries)
+
+    # then
+    assert list(doc) == ['ignore']
+    assert found == []
+    assert ignore_problems([bare]) == ['entry 0 has no reason', 'entry 0 has no review-by date']
+    assert ignore_problems([complete]) == []
+    assert ignore_problems([{**complete, 'reason': 'not reachable (review-by next year)'}]) == ['entry 0 has no review-by date']
+    assert ignore_problems([{**complete, 'reason': '(review-by 2027-01-31)'}]) == ['entry 0 has no reason']
+    assert ignore_problems([{**complete, 'review-by': '2027-01-31'}]) == ["entry 0 has keys Grype does not know: ['review-by']"]
+    assert ignore_problems([{**complete, 'package': {}}]) == ['entry 0 has no package name']
+    assert ignore_problems([{k: v for k, v in complete.items() if k != 'vulnerability'}]) == ['entry 0 has no vulnerability id']
+
+
+def ignore_problems(entries: list) -> list[str]:
+    problems = []
+    for n, entry in enumerate(entries):
+        if not re.fullmatch(r'(?:CVE-\d{4}-\d+|GHSA(?:-[a-z0-9]{4}){3})', str(entry.get('vulnerability', ''))):
+            problems.append(f'entry {n} has no vulnerability id')
+        if not str((entry.get('package') or {}).get('name', '')).strip():
+            problems.append(f'entry {n} has no package name')
+        match = re.fullmatch(r'(.*?)\s*\(review-by (\d{4}-\d{2}-\d{2})\)', str(entry.get('reason', '')).strip())
+        if not (match[1].strip() if match else str(entry.get('reason', '')).strip()):
+            problems.append(f'entry {n} has no reason')
+        try:
+            datetime.date.fromisoformat(match[2] if match else '')
+        except ValueError:
+            problems.append(f'entry {n} has no review-by date')
+        unknown = sorted(set(entry) - IGNORE_KEYS)
+        if unknown:
+            problems.append(f'entry {n} has keys Grype does not know: {unknown}')
+    return problems

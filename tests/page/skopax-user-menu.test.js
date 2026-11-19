@@ -117,7 +117,7 @@ async function fillAndSend(t, cur, next, again) {
   //then
   assert.ok(!menu.hidden && btn.getAttribute('aria-expanded') === 'true', 'a click opens the menu');
   assert.deepStrictEqual([menu.querySelector('.menu-h').textContent, menu.querySelector('.menu-h').getAttribute('role')], ['Signed in as alice.archer@example.com \u00b7 admin', 'none']);
-  assert.deepStrictEqual(items(t.doc).map((b) => [b.tagName, b.textContent.trim()]), [['BUTTON', 'Change password'], ['BUTTON', 'Sign out']]);
+  assert.deepStrictEqual(items(t.doc).map((b) => [b.tagName, b.textContent.trim()]), [['BUTTON', 'Settings'], ['BUTTON', 'Admin'], ['BUTTON', 'Change password'], ['BUTTON', 'Sign out']], 'Settings and Admin come first');
   assert.ok(items(t.doc).every((b) => b.querySelector('svg.i[aria-hidden="true"]')), 'each item has its icon');
   assert.strictEqual(t.doc.activeElement, items(t.doc)[0], 'the first item takes the focus');
 
@@ -127,7 +127,7 @@ async function fillAndSend(t, cur, next, again) {
   key(t, t.doc.activeElement, 'Escape');
 
   //then
-  assert.deepStrictEqual(moves, ['Sign out', 'Change password', 'Sign out', 'Sign out', 'Change password'], 'the arrows move and wrap, Home and End jump');
+  assert.deepStrictEqual(moves, ['Admin', 'Change password', 'Admin', 'Sign out', 'Settings'], 'the arrows move and wrap, Home and End jump');
   assert.ok(menu.hidden && t.doc.activeElement === btn && btn.getAttribute('aria-expanded') === 'false', 'Escape closes the menu and gives the focus back to the button');
 
   //when
@@ -146,7 +146,7 @@ async function fillAndSend(t, cur, next, again) {
   open(sso);
 
   //then
-  assert.deepStrictEqual(items(sso.doc).map((b) => b.textContent.trim()), ['Sign out'], 'an SSO user has no Change password');
+  assert.deepStrictEqual(items(sso.doc).map((b) => b.textContent.trim()), ['Settings', 'Admin', 'Sign out'], 'an SSO user has no Change password');
   sso.close();
   console.log('PASS the menu says who is signed in, offers Change password to local users and Sign out, and follows the keyboard');
 
@@ -273,7 +273,7 @@ async function fillAndSend(t, cur, next, again) {
   //then
   assert.ok(!railMenu.hidden && rb.getAttribute('aria-expanded') === 'true', 'the avatar opens the same account menu');
   assert.strictEqual(cs(railed, railMenu).left, 'calc(100% + 12px)', 'beside the rail');
-  assert.deepStrictEqual(items(railed.doc).map((b) => b.textContent.trim()), ['Change password', 'Sign out']);
+  assert.deepStrictEqual(items(railed.doc).map((b) => b.textContent.trim()), ['Settings', 'Admin', 'Change password', 'Sign out']);
 
   //when
   item(railed.doc, 'Change password').click();

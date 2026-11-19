@@ -79,12 +79,12 @@ def make_client(info: InstanceInfo, transport: Transport) -> Jira:
 
 PLUGIN = Plugin(
     id=ID, name='Jira', version='0.1.0', category='tickets', description='One Jira Cloud site for Create task, ticket links on cards, release lookups and the Jira read tools.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community', capabilities=Capabilities(hosts=('@url', GATEWAY_HOST), secrets=('api-token',)),
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url', GATEWAY_HOST), secrets=('api-token',)),
     client=make_client, max_instances=1,
     fields=(Field('url', 'Site', 'url', required=True, ui=True, help='Address of the Jira Cloud site, such as https://example.atlassian.net. Calls go through the Atlassian API gateway.'),
             Field('email', 'Email', 'text', required=True, help='Email of the account the API token belongs to.'),
             Field('api-token', 'API token', 'secret', required=True, help='An Atlassian API token of that account.'),
             Field('cloud-id', 'Cloud id', 'text', help='Optional: the id of the site; when empty it is read from the site.')),
     env_instances=env_instances, test=test,
-    knowledge=(Knowledge('jira', 'Jira', (Path(__file__).parent / 'jira.md').read_text(encoding='utf-8'), slack=True),),
+    knowledge=(Knowledge('jira', 'Jira', (Path(__file__).parent / 'jira.md').read_text(encoding='utf-8'), slack=True, inline=True),),
 )

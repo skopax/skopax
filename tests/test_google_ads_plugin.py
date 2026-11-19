@@ -779,7 +779,7 @@ def test_google_ads_identity_and_manifest():
     assert 'skopax.plugins.google_ads' in BUILTIN and found is not None and found.state == 'ok' and found.plugin is google_ads.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'google-ads', 'Google Ads', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.2', 'community')
+        'google-ads', 'Google Ads', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
     assert manifest['capabilities'] == {'hosts': ['googleads.googleapis.com', 'oauth2.googleapis.com', '*'], 'secrets': ['developer-token', 'credentials'], 'agentReads': False}
     assert 'only that site' in next(f for f in google_ads.PLUGIN.fields if f.key == 'website').help
     assert manifest['uses'] == ['website']
@@ -799,7 +799,7 @@ def test_google_ads_defaults_are_neutral():
     # then
     assert {f.key: f.default for f in google_ads.PLUGIN.fields} == {'customer-id': '', 'login-customer-id': '', 'developer-token': '', 'credentials': '',
                                                                    'api-version': 'v26', 'website': ''}
-    assert {s.key: s.default for s in google_ads.PLUGIN.settings} == {}
+    assert {s.key: s.default for s in google_ads.PLUGIN.settings} == {'auto-resolve-hours': '24'}
 
 
 def test_google_ads_connection_test_reports_ok_and_failures(store):

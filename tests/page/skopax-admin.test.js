@@ -122,7 +122,7 @@ async function anAdminSeesTheSettingsByGroupAndSavesResetsAndReverts() {
   //then
   assert.ok(!doc.getElementById('panel-settings').hidden && !doc.getElementById('tab-settings').hasAttribute('aria-disabled'), 'a link opens Admin \u00b7 General once the role is known');
   assert.deepStrictEqual([...doc.querySelectorAll('#adm-nav .tab')].map((t) => t.querySelector('.lbl').textContent), ['General', 'Access & sign-in', 'Integrations', 'Features', 'Investigator', 'Changes']);
-  assert.ok(!doc.getElementById('side-admin').hidden && doc.getElementById('side-admin').getAttribute('aria-current') === 'page', 'the sidebar Admin row shows and is current');
+  assert.ok(doc.getElementById('side-admin').hidden && !doc.getElementById('um-admin').hidden && doc.getElementById('user-btn').getAttribute('aria-current') === 'page', 'the Admin item shows in the user menu and the user button is current');
   assert.ok(!doc.querySelector('#tabs-anomalies [data-tab="settings"]'), 'not under the anomalies menu');
   assert.ok(doc.getElementById('reco').hidden, 'no summary on the General page');
   assert.ok(doc.getElementById('live').hidden && doc.getElementById('live').parentNode.classList.contains('no-live'), 'no Activity feed on the General page');

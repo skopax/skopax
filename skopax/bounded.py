@@ -21,6 +21,11 @@ class Bound:
         self._busy: dict[object, threading.Event] = {}
         self._since: dict[object, float] = {}
 
+    def free(self, key: object) -> bool:
+        with self._guard:
+            held = self._busy.get(key)
+            return held is None or held.is_set()
+
     def call(self, key: object, fn: Callable[[], object], timeout: float, wait: bool = False, stuck: float | None = None) -> object:
         end = self.clock() + timeout if wait else None
         done = threading.Event()
@@ -47,6 +52,10 @@ class Bound:
             except BaseException as e:
                 box['error'] = e
             finally:
+                with self._guard:
+                    if self._busy.get(key) is done:
+                        del self._busy[key]
+                        self._since.pop(key, None)
                 done.set()
 
         threading.Thread(target=go, name=self.name, daemon=True).start()

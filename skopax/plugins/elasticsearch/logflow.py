@@ -31,7 +31,7 @@ def window_query(config: Mapping[str, str], back_days: int, newest: bool) -> str
     shift = f' - {back_days} days' if back_days else ''
     upper = f' AND @timestamp < NOW(){shift}' if back_days else ''
     stats = 'n = COUNT(*), newest = MAX(@timestamp)' if newest else 'n = COUNT(*)'
-    source = f"FROM {index_of(config, 'logs')}" + (' METADATA _index' if by_index(config) else '')
+    source = f"FROM {index_of(config, 'logflow')}" + (' METADATA _index' if by_index(config) else '')
     group = '_index' if by_index(config) else quoted(namespace_field(config))
     return f'{source}\n| WHERE @timestamp >= NOW(){shift} - {WINDOW_MIN} minutes{upper}\n| STATS {stats} BY {group}'
 
@@ -94,7 +94,7 @@ def quiet(found: list[dict] | None = None) -> Sweep:
 
 def sweep(es: Elastic, config: Mapping[str, str], now: float, rules: Mapping[str, float], budget: Budget | None = None) -> Sweep:
     budget = budget or Budget()
-    index = index_of(config, 'logs')
+    index = index_of(config, 'logflow')
     field = '' if by_index(config) else namespace_field(config)
     try:
         problem = namespace_problem(config)

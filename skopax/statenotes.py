@@ -1,13 +1,13 @@
 import logging
 import re
 import time
-from typing import Callable
+from typing import Callable, Collection
 from urllib.parse import quote
 
 from skopax import brand, history
 from skopax.actions import DEFAULT_MUTE_HOURS
 from skopax.errkind import kind as error_kind
-from skopax.engine import mute_for
+from skopax.engine import mute_for, window_text
 from skopax.jiralinks import site_of
 from skopax.actors import SYSTEM, is_token, token_label
 from skopax.messages import msg
@@ -39,7 +39,7 @@ def who_of(by: str | None) -> str:
     by = str(by or '').strip()
     if by == SYSTEM:
         return brand.product()
-    return token_label(by) if is_token(by) else 'Claude' if not by or by == 'Claude' else by.split('@')[0]
+    return token_label(by) if is_token(by) else 'Investigator' if not by or by == 'Claude' else by.split('@')[0]
 
 
 def tickets(text, jira_url: str = '') -> str:
@@ -75,8 +75,14 @@ def muted_text(who: str, hours: float) -> str:
     return msg('notes.state.muted', hours=hours, who=esc(who))
 
 
-def auto_text(days: int) -> str:
-    return msg('notes.state.auto', days=days)
+def auto_text(hours: int, since: str | None = None) -> str:
+    if since == 'parent':
+        return msg('notes.state.auto_parent')
+    return msg({'first': 'notes.state.auto_first', 'info': 'notes.state.auto_info'}.get(since, 'notes.state.auto'), span=window_text(hours))
+
+
+def auto_event_text(hours: int) -> str:
+    return msg('notes.state.auto_event', span=window_text(hours))
 
 
 def assigned_text(name: str, who: str) -> str:
@@ -174,9 +180,9 @@ class StateNotes:
             if now is not None and now != marked(kind, before, None):
                 self._send(card, kind, resolved_text(shown(who), resolution=card.get('resolution'), jira_url=self.jira_url) if kind == 'handled' else progress_text(shown(who), card.get('ticket'), self.jira_url), who)
 
-    def auto_resolved(self, keys: list[str], days: int) -> None:
+    def auto_resolved(self, keys: list[str], hours: int, since: str | None = None, events: Collection[str] = ()) -> None:
         for key in keys:
-            self._note(key, 'handled', auto_text(days))
+            self._note(key, 'handled', auto_event_text(hours) if key in events else auto_text(hours, since))
 
     def jira_closed(self, key: str, ticket: str, status: str) -> None:
         self._note(key, 'handled', closed_text(ticket, status, self.jira_url))

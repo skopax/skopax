@@ -22,7 +22,7 @@ ENV = ('MONGO_URI', 'MONGO_DB', 'SKOPAX_TOKEN', 'TICK_RETENTION_DAYS', 'VAULT_ON
        'ANTHROPIC_API_KEY', 'INVESTIGATE_MODE', 'INVESTIGATE_MODEL', 'INVESTIGATE_EFFORT', 'INVESTIGATE_DAILY_USD', 'INVESTIGATE_MAX_CARDS',
        'INVESTIGATE_MAX_TOOL_CALLS', 'SLACK_APP_TOKEN', 'SLACK_LISTEN', 'SLACK_ASK_CAP', 'SLACK_OPERATOR_CACHE_SECONDS',
        'ROLES_URL', 'ROLES_CLIENT_ID', 'ROLES_CLIENT_SECRET', 'ROLES_CHANNEL', 'ROLES_SCOPE', 'INVESTIGATE_GATE_MODEL',
-       'INVESTIGATE_SLACK_MODEL', 'INVESTIGATE_SLACK_EFFORT', 'INVESTIGATE_SLACK_MAX_TOOL_CALLS', 'SKOPAX_AUTO_RESOLVE_DAYS',
+       'INVESTIGATE_SLACK_MODEL', 'INVESTIGATE_SLACK_EFFORT', 'INVESTIGATE_SLACK_MAX_TOOL_CALLS', 'SKOPAX_AUTO_RESOLVE_DAYS', 'SKOPAX_AUTO_RESOLVE_HOURS',
        'INVESTIGATE_STRICT_TOOLS', 'SSO_SESSION_IDLE_HOURS', 'SSO_SESSION_MAX_DAYS', 'JIRA_TITLE_PREFIX', 'SKOPAX_ENV_LABEL')
 
 
@@ -196,18 +196,101 @@ def test_an_invalid_session_length_falls_back_with_one_warning(monkeypatch, capl
     assert 'sso.session-' in record.getMessage()
 
 
-def test_auto_resolve_days_default_to_three_and_zero_turns_it_off(monkeypatch):
+def hours_of(config: dict, monkeypatch, env: dict | None = None) -> int:
+    for name, value in (env or {}).items():
+        monkeypatch.setenv(name, value)
+    return load_settings(lambda: config).auto_resolve_hours
+
+
+def test_auto_resolve_hours_default_to_six_when_neither_hours_nor_days_is_set(monkeypatch):
     # given
 
     # when
-    default = load_settings(lambda: {})
-    off = load_settings(lambda: {'core.auto-resolve-days': ' 0 '})
-    blank = load_settings(lambda: {'core.auto-resolve-days': ' '})
-    monkeypatch.setenv('SKOPAX_AUTO_RESOLVE_DAYS', '5')
-    env = load_settings(lambda: {})
+    default = hours_of({}, monkeypatch)
+    blank = hours_of({'core.auto-resolve-hours': ' ', 'core.auto-resolve-days': ' '}, monkeypatch)
 
     # then
-    assert (default.auto_resolve_days, off.auto_resolve_days, blank.auto_resolve_days, env.auto_resolve_days) == (3, 0, 3, 5)
+    assert (default, blank) == (6, 6)
+
+
+def test_only_the_deprecated_days_set_gives_days_times_twenty_four_hours(monkeypatch):
+    # given
+
+    # when
+    from_config = hours_of({'core.auto-resolve-days': ' 5 '}, monkeypatch)
+    from_env = hours_of({}, monkeypatch, {'SKOPAX_AUTO_RESOLVE_DAYS': '2'})
+
+    # then
+    assert (from_config, from_env) == (120, 48)
+
+
+def test_hours_win_when_both_hours_and_days_are_set(monkeypatch):
+    # given
+
+    # when
+    config = hours_of({'core.auto-resolve-hours': '12', 'core.auto-resolve-days': '5'}, monkeypatch)
+    env_hours = hours_of({'core.auto-resolve-days': '5'}, monkeypatch, {'SKOPAX_AUTO_RESOLVE_HOURS': '8'})
+
+    # then
+    assert (config, env_hours) == (12, 8)
+
+
+def test_zero_days_or_zero_hours_turns_auto_resolve_off_and_an_out_of_range_hours_falls_back(monkeypatch):
+    # given
+
+    # when
+    days_off = hours_of({'core.auto-resolve-days': '0'}, monkeypatch)
+    hours_off = hours_of({'core.auto-resolve-hours': '0', 'core.auto-resolve-days': '3'}, monkeypatch)
+    too_big = hours_of({'core.auto-resolve-hours': '721'}, monkeypatch)
+    text = hours_of({'core.auto-resolve-hours': 'soon'}, monkeypatch)
+
+    # then
+    assert (days_off, hours_off, too_big, text) == (0, 0, 6, 6)
+
+
+def test_a_non_numeric_days_value_warns_and_counts_as_unset(monkeypatch, caplog):
+    # given
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        loaded = load_settings(lambda: {'core.auto-resolve-days': 'three'})
+
+    # then
+    assert (loaded.auto_resolve_days, loaded.auto_resolve_hours) == (None, 6)
+    assert any('core.auto-resolve-days' in r.getMessage() for r in caplog.records)
+
+
+def test_an_admin_days_value_becomes_hours_unless_hours_are_set_by_config_or_by_admin():
+    # given
+    from skopax.tunables import apply
+
+    # when
+    days_only = apply(load_settings(lambda: {}), {'core.auto-resolve-days': '2'})
+    hours_by_admin = apply(load_settings(lambda: {}), {'core.auto-resolve-days': '2', 'core.auto-resolve-hours': '9'})
+    hours_by_config = apply(load_settings(lambda: {'core.auto-resolve-hours': '4'}), {'core.auto-resolve-days': '2'})
+    days_off = apply(load_settings(lambda: {}), {'core.auto-resolve-days': '0'})
+
+    # then
+    assert (days_only.auto_resolve_hours, hours_by_admin.auto_resolve_hours, hours_by_config.auto_resolve_hours, days_off.auto_resolve_hours) == (48, 9, 4, 0)
+
+
+def test_admin_lists_the_hours_setting_in_the_cards_group_and_hides_the_deprecated_days(store):
+    # given
+    from skopax.tunables import Live, TunableStore
+
+    # when
+    live = Live(load_settings(lambda: {}), TunableStore(store.db))
+    listed = {e['key']: e for e in live.entries()}
+    live.set('core.auto-resolve-hours', '10', 'alice@example.com')
+
+    # then
+    hours = listed['core.auto-resolve-hours']
+    assert (hours['group'], hours['label'], hours['kind'], hours['low'], hours['high'], hours['default']) == ('Cards', 'Auto-resolve cleared cards after (hours)', 'int', 0, 720, '6')
+    assert 'Closes a card that stopped firing and that nobody acted on after N hours' in hours['help']
+    assert 'core.auto-resolve-days' not in listed
+    assert live.current().auto_resolve_hours == 10
+    with pytest.raises(KeyError):
+        live.set('core.auto-resolve-days', '2', 'alice@example.com')
 
 
 def test_slack_fallback_minutes_default_to_fifteen_and_zero_turns_it_off(monkeypatch):
@@ -482,7 +565,7 @@ def test_core_key_namespace():
     # then
     assert not [k for k in keys | ids if k.startswith(('skopax.', 'service.'))]
     assert {'core.token', 'core.secret-key', 'core.timezone'} <= keys
-    assert {'core.assign-dm', 'core.postdeploy', 'core.jira-links', 'core.release-settle', 'core.auto-resolve-days'} <= ids
+    assert {'core.assign-dm', 'core.postdeploy', 'core.jira-links', 'core.release-settle', 'core.auto-resolve-days', 'core.auto-resolve-hours'} <= ids
     assert 'access.public-read' in ids and 'chat.daily-cap' in ids
 
 

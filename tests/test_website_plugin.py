@@ -88,7 +88,7 @@ def test_website_identity_and_manifest():
     # then
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'website', 'Website', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.2', 'community')
+        'website', 'Website', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url', '@browser-url', '*'], 'secrets': ['scan-headers'], 'agentReads': False}
     assert manifest['uses'] == ['umami']
     assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('browser', 300, 45, ['browser']), ('pagescan', 3600, 2700, ['pagescan']),
@@ -97,7 +97,7 @@ def test_website_identity_and_manifest():
     assert [(f['key'], f['kind'], f['required']) for f in manifest['fields']] == [
         ('url', 'url', True), ('hosts', 'text', False), ('login-hosts', 'text', False), ('login-paths', 'text', False), ('api-paths', 'text', False),
         ('refused-paths', 'text', False), ('browser-url', 'url', False), ('description', 'text', False), ('umami', 'instance', False), ('scan-headers', 'secret', False),
-        ('internal-subdomains', 'bool', False)]
+        ('tracking-params', 'text', False), ('kept-headers', 'text', False), ('scan-skip', 'text', False), ('user-agent', 'text', False), ('internal-subdomains', 'bool', False)]
     assert next(f for f in website.PLUGIN.fields if f.key == 'url').ui is True and next(f for f in website.PLUGIN.fields if f.key == 'umami').choices == ('umami',)
     assert website.PLUGIN.client is not None and website.PLUGIN.test is not None and website.PLUGIN.probe_targets is not None and website.PLUGIN.links is not None
     assert len((Path(website.__file__).parent / 'website.md').read_text(encoding='utf-8').splitlines()) <= 40
@@ -106,7 +106,8 @@ def test_website_identity_and_manifest():
 def test_website_defaults_are_neutral():
     # then
     assert {f.key: f.default for f in website.PLUGIN.fields} == {'url': '', 'hosts': '', 'login-hosts': '', 'login-paths': '', 'api-paths': '', 'refused-paths': '',
-                                                                  'browser-url': '', 'description': '', 'umami': '', 'scan-headers': '', 'internal-subdomains': 'false'}
+                                                                  'browser-url': '', 'description': '', 'umami': '', 'scan-headers': '', 'tracking-params': '', 'kept-headers': '', 'scan-skip': '',
+                                                                  'user-agent': '', 'internal-subdomains': 'false'}
     assert {s.key: s.default for s in website.PLUGIN.settings} == {'page-scan': 'false', 'scan-hours': '1', 'recheck-days': '7', 'pages': '50', 'extra': '', 'ignore': '',
                                                                   'model': 'claude-opus-5-5', 'digest-hour': '10', 'scan-prompt': ''}
     assert website.PLUGIN.rules == ()

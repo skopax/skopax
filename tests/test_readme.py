@@ -19,7 +19,7 @@ LINK_HOSTS = ('skopax.io', 'docs.astral.sh', 'localhost:8080')
 LINK_TREES = ('github.com/skopax', 'ghcr.io/skopax')
 GENERATED_SECRET = '"$(openssl rand -hex 32)"'
 SECRET_NAME = r'[A-Z_]*(?:SECRET|TOKEN|PASSWORD|KEY)[A-Z_]*'
-DOCS = ('README.md', 'setup.md', 'configuration.md', 'sign-in.md', 'plugins.md', 'extending.md', 'operations.md', 'development.md')
+DOCS = ('README.md', 'setup.md', 'configuration.md', 'sign-in.md', 'plugins.md', 'custom-checks.md', 'extending.md', 'operations.md', 'development.md')
 EXAMPLES = ('hello-plugin', 'couchbase-plugin', 'managed-redis-plugin')
 COMMUNITY = ('CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'TRADEMARKS.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'CHANGELOG.md', *(f'examples/{name}/README.md' for name in EXAMPLES))
 COMMUNITY_HOSTS = ('modeltrademarkguidelines.org', 'www.modeltrademarkguidelines.org', 'creativecommons.org', 'www.contributor-covenant.org', 'contributor-covenant.org', 'developercertificate.org')
@@ -431,7 +431,7 @@ def test_readme_states_the_stable_release_status():
     image = ' '.join(read('docs/operations.md').split())
 
     # then
-    assert 'Status: 0.1.0 is the first stable release.' in flat
+    assert f'Status: {image_tag()} is the current release; 0.1.0 was the first stable one.' in flat
     assert 'settings and the plug-in contract follow semantic versioning' in flat and 'without a note in [CHANGELOG.md](CHANGELOG.md)' in flat
     assert 'Release candidate, not yet stable' not in text and 'pre-release, not ready for use' not in text and 'may still change before 0.1.0' not in text
     assert re.search(rf'ghcr\.io/skopax/skopax:{re.escape(image_tag())}(?![\w.-])', text)

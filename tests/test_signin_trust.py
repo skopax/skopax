@@ -312,3 +312,64 @@ def test_the_refused_email_memory_is_bounded(store: Store, monkeypatch):
 
     # then
     assert access_lines(store) == [msg('access.sso_not_added', email=f'{name}@example.com') for name in ('a', 'b', 'c', 'a')], 'the oldest email is forgotten once more are kept'
+
+
+def test_a_demotion_that_races_the_last_admin_check_leaves_an_unopened_sso_account_untouched(store: Store, monkeypatch):
+    # given
+    admin = admin_of(sso_client(store))
+    admin.post(USERS, json={'email': DANA, 'name': 'Dana', 'role': 'admin', 'sso': True})
+    store.db['users'].update_one({'_id': ADMIN_EMAIL}, {'$set': {'disabled': True}})
+    before = raw(store, DANA)
+    monkeypatch.setattr(Users, 'is_last_admin', lambda self, email: False)
+
+    # when
+    res = admin.patch(f'{USERS}/{DANA}', json={'password': PASSWORD, 'role': 'viewer'})
+
+    # then
+    assert (res.status_code, res.json()['detail']) == (409, msg('access.last_admin'))
+    assert raw(store, DANA) == before, 'the password, the local source and the link are written together with the role, or not at all'
+    assert Users(store.db).active_admins() == 1
+
+
+def test_a_password_patch_on_an_unopened_sso_account_that_the_role_comes_from_the_idp_for_is_refused(store: Store):
+    # given
+    admin = admin_of(sso_client(store))
+    admin.post(USERS, json={'email': DANA, 'name': 'Dana', 'role': 'viewer', 'sso': True})
+    store.db['users'].update_one({'_id': DANA}, {'$set': {'roleFrom': 'claim'}})
+    before = raw(store, DANA)
+
+    # when
+    res = admin.patch(f'{USERS}/{DANA}', json={'password': PASSWORD, 'role': 'operator'})
+
+    # then
+    assert (res.status_code, res.json()['detail']) == (409, msg('access.role_from_idp'))
+    assert raw(store, DANA) == before
+
+
+def test_a_password_patch_on_an_unopened_sso_account_outside_the_allowed_domains_makes_no_pending_link(store: Store):
+    # given
+    admin = admin_of(sso_client(store, sso_allowed_domains=('example.com',)))
+    Users(store.db).add_sso('old@example.org', 'Old', 'viewer')
+    Users(store.db).add_sso(ERIN, 'Erin', 'viewer')
+
+    # when
+    outside = admin.patch(f'{USERS}/old@example.org', json={'password': PASSWORD})
+    inside = admin.patch(f'{USERS}/{ERIN}', json={'password': PASSWORD})
+
+    # then
+    assert outside.status_code == 200 and raw(store, 'old@example.org')['source'] == 'local' and 'ssoLink' not in raw(store, 'old@example.org')
+    assert inside.status_code == 200 and raw(store, ERIN)['ssoLink']['state'] == 'pending'
+    lines = ' '.join(access_lines(store))
+    assert msg('access.sso_linked', email='old@example.org', days=7) not in lines and msg('access.sso_linked', email=ERIN, days=7) in lines
+
+
+def test_a_refused_sso_link_patch_names_its_field(store: Store):
+    # given
+    admin = admin_of(sso_client(store, sso_allowed_domains=('example.com',)))
+    admin.post(USERS, json={'email': 'lou@example.org', 'name': '', 'role': 'viewer', 'password': PASSWORD})
+
+    # when
+    res = admin.patch(f'{USERS}/lou@example.org', json={'ssoLink': True})
+
+    # then
+    assert (res.status_code, res.json()) == (422, {'detail': msg('access.sso_domain'), 'field': 'ssoLink'})

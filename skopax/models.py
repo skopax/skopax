@@ -294,6 +294,7 @@ class TokenIn(BaseModel):
     model_config = ConfigDict(extra='forbid')
     name: str
     role: str = Field(max_length=20)
+    expiresDays: int | None = Field(default=None, ge=1, le=3650, strict=True)
 
 
 class PluginSwitchIn(BaseModel):

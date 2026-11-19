@@ -151,6 +151,11 @@
       if (a.hidden || a.getAttribute('aria-disabled') === 'true' || !(a.dataset.tab || a.dataset.go)) return;
       out.push({kind: 'Pages', label: a.dataset.label || '', meta: a.dataset.plugin ? 'plug-in' : '', node: a.querySelector('.i'), run: function () { a.click(); }});
     });
+    if (typeof SIDE_MENU !== 'undefined' && SIDE_MENU) {
+      out.push({kind: 'Pages', label: 'Settings', meta: '', node: null, icon: 'gear', run: function () { pickTab('prefs'); }});
+      var adm = document.getElementById('um-admin');
+      if (adm && !adm.hidden) out.push({kind: 'Pages', label: 'Admin', meta: '', node: null, icon: 'shield', run: function () { pickTab(adm.dataset.go || ADMIN_HOME); }});
+    }
     out.push({kind: 'Settings', label: 'Appearance', hay: 'theme mode text size density language', meta: 'Settings', icon: 'monitor', run: function () { pickTab('prefs'); }});
     if (me.user) out.push({kind: 'Settings', label: 'Account', hay: 'password sign out', meta: 'Settings', icon: 'key', run: function () { pickTab('prefs'); }});
     if (me.admin) {

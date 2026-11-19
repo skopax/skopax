@@ -34,6 +34,7 @@ function setAdminAccess(on) {
     FEAT_HELD = {};
     FEAT_SAID = {};
     AIKEY = null;
+    if (typeof pqcClear === 'function') pqcClear();
     NOTES_SEQ++;
     adminNotes([]);
     if (ADMIN_TABS.indexOf(curTab) >= 0) showTab('anoms');
@@ -51,16 +52,16 @@ function adminShow(id) {
   adminNotices();
   if (id === 'settings') loadAdmin();
   else if (id === 'access') loadAccess();
-  else if (id === 'integrations') loadIntegrations();
+  else if (id === 'integrations') { loadIntegrations(); if (typeof pqcLoad === 'function') pqcLoad(); }
   else if (id === 'features') loadFeatures();
   else if (id === 'ai') loadAi();
   else loadChanges();
   adminCounts(id);
 }
-async function adminApi(method, path, body) {
+async function adminApi(method, path, body, signal, raw) {
   var headers = {'Accept': 'application/json'};
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
-  var r = await fetch(path, {method: method, headers: headers, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body)});
+  if (body !== undefined) headers['Content-Type'] = raw || 'application/json';
+  var r = await fetch(path, {method: method, headers: headers, credentials: 'same-origin', body: body === undefined ? undefined : raw ? body : JSON.stringify(body), signal: signal});
   if (!r.ok) {
     var detail = null, field = null;
     try { var failure = await r.json(); detail = failure.detail; field = failure.field; } catch (e) {}
@@ -270,14 +271,14 @@ function adminValue(row, i) {
   });
   return Object.keys(out).length ? JSON.stringify(out) : '';
 }
-function adminRow(i) {
-  var row = el('div', 'adm-row' + (i.source === 'admin' ? ' set' : ''));
+function adminRow(i, card) {
+  var row = el('div', 'adm-row' + (i.source === 'admin' ? ' set' : '') + (card ? ' adm-field' : ''));
   row.dataset.key = i.key;
   row.dataset.find = (i.label + ' ' + i.key + ' ' + i.help + ' ' + Object.keys(i.ruleHelp || {}).map(function (k) { return k + ' ' + i.ruleHelp[k]; }).join(' ')).toLowerCase();
   row.innerHTML = '<div class="adm-l"><div class="adm-n"><b id="' + esc(adminId(i.key) + '-l') + '">' + esc(i.label) + '</b>' + adminSource(i) +
     (i.live ? '' : '<span class="tag k-warn" title="Read when the service starts: saved now, used after the next restart">after restart</span>') + '</div>' +
     '<p class="adm-help">' + esc(i.help) + '</p><code class="adm-key">' + esc(i.key) + '</code></div>' +
-    '<div class="adm-c">' + adminControl(i) + (i.pluginTerms && i.pluginTerms.length ? '<p class="adm-help adm-plugin-terms">From plug-ins, not saved here: ' + i.pluginTerms.map(function (t) { return '<code>' + esc(t) + '</code>'; }).join(' ') + '</p>' : '') + '<div class="adm-acts"><button type="button" class="btn small adm-save" disabled>Save</button>' +
+    '<div class="adm-c">' + adminControl(i) + (i.pluginTerms && i.pluginTerms.length ? '<p class="adm-help adm-plugin-terms">From plug-ins, not saved here: ' + i.pluginTerms.map(function (t) { return '<code>' + esc(t) + '</code>'; }).join(' ') + '</p>' : '') + '<div class="adm-acts">' + (card ? '' : '<button type="button" class="btn small adm-save" disabled>Save</button>') +
     (i.source === 'admin' ? '<button type="button" class="btn sec small adm-reset" title="' + esc('Drop the value set here and go back to ' + (i.base ? i.base : 'the default')) + '">Reset</button>' : '') +
     '<span class="adm-msg" role="status"></span></div></div>';
   if (i.problem) {
@@ -286,8 +287,8 @@ function adminRow(i) {
     row.querySelector('.adm-l').appendChild(note);
   }
   var save = row.querySelector('.adm-save'), msg = row.querySelector('.adm-msg');
-  row.querySelectorAll('input, select, textarea').forEach(function (inp) { inp.addEventListener('input', function () { save.disabled = adminValue(row, i) === adminCurrent(i); msg.textContent = ''; }); });
-  save.addEventListener('click', function () { adminSave(i, adminValue(row, i), save, msg); });
+  row.querySelectorAll('input, select, textarea').forEach(function (inp) { inp.addEventListener('input', function () { if (save) save.disabled = adminValue(row, i) === adminCurrent(i); msg.textContent = ''; }); });
+  if (save) save.addEventListener('click', function () { adminSave(i, adminValue(row, i), save, msg); });
   var reset = row.querySelector('.adm-reset');
   if (reset) reset.addEventListener('click', function () { adminReset(i, reset, msg); });
   return row;
@@ -424,7 +425,7 @@ function adminFilter() {
 }
 
 function adminRowEl(key) {
-  return document.querySelector(['#admin', '#feat-other', '#ai-rows', '#acc-mcp'].map(function (box) { return box + ' .adm-row[data-key="' + key + '"]'; }).join(', '));
+  return document.querySelector(['#admin', '#feat-other', '#ai-rows', '#acc-mcp', '#acc-sso .sso-roles'].map(function (box) { return box + ' .adm-row[data-key="' + key + '"]'; }).join(', '));
 }
 function adminKeep(box, saved, paint) {
   var keep = document.activeElement && box.contains(document.activeElement) ? document.activeElement.id : null, edits = saved ? unsaved(box, saved) : [];
@@ -432,11 +433,42 @@ function adminKeep(box, saved, paint) {
   restoreUnsaved(box, edits);
   if (keep && document.getElementById(keep)) document.getElementById(keep).focus();
 }
+function accCardEdits(box) {
+  return box ? [].map.call(box.querySelectorAll('.adm-row[data-key]'), function (row) {
+    var i = adminItems().filter(function (x) { return x.key === row.dataset.key; })[0];
+    return i && adminValue(row, i) !== adminCurrent(i) ? {i: i, value: adminValue(row, i)} : null;
+  }).filter(Boolean) : [];
+}
+async function accSaveFields(edits) {
+  for (var n = 0; n < edits.length; n++) {
+    var e = edits[n];
+    try {
+      var r = await adminApi('PUT', '/api/admin/settings', {key: e.i.key, value: e.value});
+      ADMIN.items = ADMIN.items.map(function (x) { return x.key === r.item.key ? r.item : x; });
+      e.said = r.item.live ? 'Saved, live within ' + ((ADMIN && ADMIN.refreshSeconds) || 15) + ' s on every pod' : 'Saved, used after the next restart';
+    } catch (err) {
+      e.bad = true;
+      e.said = err && err.detail ? err.detail : 'Not saved, try again';
+    }
+  }
+  try { ADMIN_HIST = await adminApi('GET', '/api/admin/history?limit=' + ADMIN_HIST_MAX); } catch (err) {}
+  adminPaintAll(SSO_KEEP);
+  accShowSaid(edits);
+  return edits.filter(function (e) { return e.bad; });
+}
+function accShowSaid(edits) {
+  edits.forEach(function (e) {
+    var row = adminRowEl(e.i.key), m = row && row.querySelector('.adm-msg');
+    if (m && e.said) { m.textContent = e.said; m.className = 'adm-msg ' + (e.bad ? 'bad' : 'ok'); }
+  });
+}
+function accNotSaved(failed) { return 'Not saved: ' + failed.map(function (e) { return e.i.label || e.i.key; }).join(', '); }
 function adminPaintAll(saved) {
   renderAdmin(saved);
   renderFeatOther(saved);
   renderAiRows(saved);
   renderMcpRows(saved);
+  renderSsoRoles(saved);
   renderChanges();
 }
 async function adminDone(r, said, reverted) {
@@ -757,6 +789,11 @@ function paintAiKey(said) {
 
 var ACCESS = null, ACCESS_SEQ = 0, ACCESS_N = null, ACCESS_ROLES = ['viewer', 'operator', 'admin'], ACCESS_IDP = ['claim', 'resolver'], ACCESS_LINKS = ['pending', 'bound', 'expired'];
 var ACCESS_PW_MIN = 12, ACCESS_PW_MAX = 256, ACCESS_EMAIL = /^[^@\s]{1,64}@[^@\s]{1,189}$/, ACCESS_ROLE_LABELS = {viewer: 'Viewer', operator: 'Operator', admin: 'Admin'};
+var ACCESS_FIND = '', ACCESS_ROLE_F = '', ACCESS_FAIL = {users: false, tokens: false}, ACCESS_MENU_WIRED = false, ACCESS_SOON_DAYS = 7, ACCESS_DAY_MS = 86400000;
+var ACCESS_SECTIONS = [['people', 'People', 'people'], ['sso', 'Single sign-on', 'single sign-on'], ['tokens', 'API tokens', 'API tokens'], ['mcp', 'MCP sign-in', 'MCP sign-in']];
+var ACCESS_USER_HEADS = ['Person', 'Role', 'Sign-in', 'Last sign-in', 'Disabled', 'SSO link', ''], ACCESS_TOKEN_HEADS = ['Name', 'Role', 'Token', 'Created by', 'Created', 'Last used', 'Expires', ''];
+var ACCESS_EXPIRY = [['', 'Never'], ['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['365', '1 year']];
+var ACCESS_LAST_ADMIN = 'The last admin keeps the admin role and stays enabled: make someone else an admin first';
 var ACCESS_ADD_ID = 'acc-add-user', ACCESS_ADD_FIELDS = ['email', 'name', 'role', 'sso', 'password'], ACCESS_NEED_PW = 'Enter a password of ' + ACCESS_PW_MIN + '-' + ACCESS_PW_MAX + ' characters';
 function accText(tag, cls, text) {
   var e = document.createElement(tag);
@@ -821,13 +858,18 @@ function accCell(row, child) {
 }
 async function loadAccess() {
   var seq = ++ACCESS_SEQ, box = document.getElementById('access');
+  var held = function (p) { return p.then(function (v) { return {ok: v}; }, function (e) { return {err: e || {}}; }); };
   try {
-    var r = await Promise.all([accFetch(), adminApi('GET', '/api/admin/sso').catch(adminNone), adminApi('GET', '/api/admin/settings').catch(adminNone)]);
+    accShell(box);
+    var r = await Promise.all([held(adminApi('GET', '/api/admin/users')), held(adminApi('GET', '/api/admin/tokens')), adminApi('GET', '/api/admin/sso').catch(adminNone),
+      adminApi('GET', '/api/admin/settings').catch(adminNone)]);
     if (seq !== ACCESS_SEQ) return;
-    ACCESS = r[0];
-    SSO = r[1] ? ssoView(r[1]) : null;
-    if (r[2]) ADMIN = r[2];
-    MCP_FAILED = !r[2];
+    if (adminDenied(r[0].err) || adminDenied(r[1].err)) throw r[0].err && adminDenied(r[0].err) ? r[0].err : r[1].err;
+    ACCESS_FAIL = {users: !Array.isArray(r[0].ok), tokens: !Array.isArray(r[1].ok)};
+    ACCESS = {users: ACCESS_FAIL.users ? [] : r[0].ok, tokens: ACCESS_FAIL.tokens ? [] : r[1].ok};
+    SSO = r[2] ? ssoView(r[2]) : null;
+    if (r[3]) ADMIN = r[3];
+    MCP_FAILED = !r[3];
     markAdminCount();
     renderAccess();
     renderSso();
@@ -845,12 +887,13 @@ async function accFetch() {
   return {users: r[0], tokens: r[1]};
 }
 async function accReload() {
-  try { ACCESS = await accFetch(); return true; } catch (e) { return false; }
+  try { ACCESS = await accFetch(); ACCESS_FAIL = {users: false, tokens: false}; return true; } catch (e) { return false; }
 }
-function accStale(fresh) {
-  var box = document.getElementById('acc-lists');
-  if (fresh || !box) return;
-  box.insertBefore(accText('p', 'adm-msg bad acc-stale', 'Could not refresh the list; open the tab again to see the latest.'), box.firstChild);
+function accStale(fresh, sec) {
+  var box = document.getElementById('acc-' + (sec || 'people'));
+  var at = box && box.querySelector('.acc-sec');
+  if (fresh || !at) return;
+  at.insertBefore(accText('p', 'adm-msg bad acc-stale', 'Could not refresh the list; open the tab again to see the latest.'), at.firstChild);
 }
 function accApply(change) {
   if (ACCESS) change(ACCESS);
@@ -874,26 +917,169 @@ function clearAccessSecret() {
   if (typed) typed.value = '';
 }
 function accShell(box) {
-  var lists = document.getElementById('acc-lists');
-  if (lists && box.contains(lists)) return lists;
+  if (box.querySelector('#acc-people')) return;
   box.textContent = '';
-  ['acc-sso', 'acc-lists', 'acc-mcp'].forEach(function (id) {
-    var part = accText('div', id);
-    part.id = id;
-    box.appendChild(part);
+  var page = accText('div', 'acc-page'), nav = accText('nav', 'acc-nav'), main = accText('div', 'acc-main');
+  nav.setAttribute('aria-label', 'Access sections');
+  ACCESS_SECTIONS.forEach(function (s) {
+    var b = accText('button', 'acc-nav-b'), dot = accText('span', 'acc-dot');
+    b.type = 'button';
+    b.dataset.sec = s[0];
+    b.appendChild(accText('span', 'acc-nav-l', s[1]));
+    b.appendChild(accText('span', 'count acc-nav-n', ''));
+    dot.hidden = true;
+    b.appendChild(dot);
+    b.addEventListener('click', function () { accJump(s[0]); });
+    nav.appendChild(b);
+    var part = accText('div', 'acc-part acc-' + s[0]);
+    part.id = 'acc-' + s[0];
+    part.appendChild(accText('p', 'muted acc-loading', 'Loading ' + s[2] + '\u2026'));
+    main.appendChild(part);
   });
-  return document.getElementById('acc-lists');
+  page.appendChild(nav);
+  page.appendChild(main);
+  box.appendChild(page);
+  if (!ACCESS_MENU_WIRED) {
+    ACCESS_MENU_WIRED = true;
+    document.addEventListener('click', function (e) { if (!e.target.closest || !e.target.closest('.acc-menu-w')) accMenuClose(null, false); });
+    window.addEventListener('scroll', function () { accMenuClose(null, false); }, true);
+    window.addEventListener('resize', function () { accMenuClose(null, false); });
+  }
 }
 function renderAccess() {
   var box = document.getElementById('access');
   if (!box || !ACCESS) return;
   ACCESS_SEQ++;
-  var lists = accShell(box);
-  var kept = lists.querySelector('.acc-add-user');
-  lists.textContent = '';
-  box = lists;
-  var users = accSection('Users', ACCESS.users.length);
-  var head = accText('div', 'acc-users-h'), open = accText('button', 'btn small acc-add-open', 'Add user'), said = accText('span', 'adm-msg acc-users-msg');
+  accShell(box);
+  var back = accFocusKey();
+  renderPeople();
+  renderTokens();
+  accNavPaint();
+  if (!ACCESS_FAIL.users) markAccessCount(ACCESS.users.length);
+  accFocusBack(back);
+}
+function accJump(sec) {
+  var part = document.getElementById('acc-' + sec), head = part && part.querySelector('h3');
+  if (!part) return;
+  if (typeof part.scrollIntoView === 'function') part.scrollIntoView({block: 'start', behavior: 'smooth'});
+  if (head) { head.tabIndex = -1; head.focus({preventScroll: true}); }
+}
+function accFailed(text) {
+  var p = accText('p', 'adm-msg bad acc-failed', text + ' '), again = accText('button', 'btn sec small acc-again', 'Try again');
+  again.type = 'button';
+  again.addEventListener('click', function () {
+    var part = p.closest('.acc-part'), sec = part && ACCESS_SECTIONS.filter(function (x) { return 'acc-' + x[0] === part.id; })[0];
+    if (part && sec) { part.textContent = ''; part.appendChild(accText('p', 'muted acc-loading', 'Loading ' + sec[2] + '\u2026')); }
+    loadAccess();
+  });
+  p.appendChild(again);
+  return p;
+}
+function accFold(text) { return String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+function accAdmins() { return ACCESS.users.filter(function (u) { return u.role === 'admin' && !u.disabled; }).length; }
+function accLastAdmin(u) { return u.role === 'admin' && !u.disabled && accAdmins() <= 1; }
+function accInitial(u) { var s = Array.from(String(u.name || u.email || '?').trim()); return (s[0] || '?').toUpperCase(); }
+function accRel(iso) {
+  var t = Date.parse(iso || '');
+  if (isNaN(t)) return '';
+  var m = Math.floor((Date.now() - t) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + ' min ago';
+  if (m < 1440) return Math.floor(m / 60) + ' h ago';
+  if (m < 30 * 1440) return Math.floor(m / 1440) + ' d ago';
+  return daytime(iso);
+}
+function accExpiry(t) {
+  var at = Date.parse(t && t.expiresAt || '');
+  if (isNaN(at)) return null;
+  var left = at - Date.now();
+  return {at: t.expiresAt, past: left <= 0, soon: left > 0 && left <= ACCESS_SOON_DAYS * ACCESS_DAY_MS, days: Math.ceil(left / ACCESS_DAY_MS)};
+}
+function accTokenWarn(t) { var x = accExpiry(t); return !t.revoked && !!x && (x.past || x.soon); }
+function accLabel(tr, heads) { [].forEach.call(tr.children, function (td, n) { if (heads[n]) td.dataset.l = heads[n]; }); }
+function accNavState() {
+  var a = ACCESS || {users: [], tokens: []}, mcp = mcpState();
+  var soon = a.tokens.filter(accTokenWarn).length, expired = a.users.filter(function (u) { var l = accLink(u); return l && l.state === 'expired'; }).length;
+  return {
+    people: {n: ACCESS && !ACCESS_FAIL.users ? String(a.users.length) : '', warn: ACCESS_FAIL.users ? 'People did not load' : expired ? expired + ' SSO link' + (expired === 1 ? '' : 's') + ' expired' : ''},
+    sso: {n: SSO ? ssoPill()[0] : '', warn: SSO ? ssoAttention() : ACCESS ? 'Single sign-on did not load' : ''},
+    tokens: {n: ACCESS && !ACCESS_FAIL.tokens ? String(a.tokens.length) : '', warn: ACCESS_FAIL.tokens ? 'API tokens did not load' : soon ? soon + ' expiring within ' + ACCESS_SOON_DAYS + ' days or expired' : ''},
+    mcp: {n: mcp[0], warn: MCP_FAILED ? 'MCP settings did not load' : mcp[2]}
+  };
+}
+function accNavPaint() {
+  var nav = document.querySelector('#access .acc-nav');
+  if (!nav) return;
+  var st = accNavState();
+  [].forEach.call(nav.querySelectorAll('.acc-nav-b'), function (b) {
+    var s = st[b.dataset.sec] || {n: '', warn: ''}, dot = b.querySelector('.acc-dot');
+    b.querySelector('.acc-nav-n').textContent = s.n;
+    dot.hidden = !s.warn;
+    dot.textContent = s.warn ? 'needs attention' : '';
+    b.title = s.warn || '';
+    b.classList.toggle('warn', !!s.warn);
+  });
+}
+function accFocusKey() {
+  var a = document.activeElement, box = document.getElementById('access');
+  if (!a || !box || a === document.body || !box.contains(a) || a.closest('#acc-sso, #acc-mcp')) return null;
+  var row = a.closest('[data-email], [data-id]'), cls = String(a.className || '').split(/\s+/).filter(function (c) { return /^acc-/.test(c); })[0] || '';
+  return {email: row ? row.dataset.email : null, id: row ? row.dataset.id : null, cls: cls, tag: a.tagName.toLowerCase(), name: a.name || '', sec: (a.closest('.acc-part') || {}).id || ''};
+}
+function accFocusBack(k) {
+  var now = document.activeElement, box = document.getElementById('access');
+  if (!k || !box || (now && now !== document.body && box.contains(now))) return;
+  var scope = document.getElementById(k.sec) || box;
+  if (k.email != null || k.id != null) scope = [].filter.call(box.querySelectorAll(k.email != null ? '.acc-user' : '.acc-token'), function (r) { return k.email != null ? r.dataset.email === k.email : r.dataset.id === k.id; })[0] || scope;
+  var to = [].filter.call(scope.querySelectorAll(k.tag), function (n) { return (k.cls ? n.classList.contains(k.cls) : true) && (!k.name || n.name === k.name) && !n.disabled && !n.closest('[hidden]'); })[0];
+  if (!to && scope !== box) to = scope.querySelector('.acc-menu-b') || scope.querySelector('h3');
+  if (to) { if (to.tagName === 'H3') to.tabIndex = -1; to.focus(); }
+}
+function accFilterPeople() {
+  var part = document.getElementById('acc-people');
+  if (!part) return;
+  var want = accFold(ACCESS_FIND.trim()), rows = part.querySelectorAll('.acc-user'), n = 0;
+  [].forEach.call(rows, function (r) {
+    var on = (!want || r.dataset.find.indexOf(want) >= 0) && (!ACCESS_ROLE_F || r.dataset.role === ACCESS_ROLE_F);
+    r.hidden = !on;
+    if (on) n++;
+  });
+  var none = part.querySelector('.acc-none'), shown = part.querySelector('.acc-shown');
+  if (none) none.hidden = n > 0 || !rows.length;
+  if (shown) shown.textContent = rows.length && n !== rows.length ? n + ' of ' + rows.length + ' shown' : '';
+}
+function accPeopleTools() {
+  var tools = accText('div', 'acc-tools'), find = document.createElement('input'), rf = document.createElement('select'), shown = accText('span', 'muted acc-shown');
+  find.type = 'search';
+  find.className = 'acc-find';
+  find.maxLength = 200;
+  find.placeholder = 'Search name or email';
+  find.setAttribute('aria-label', 'Search people by name or email');
+  find.value = ACCESS_FIND;
+  find.addEventListener('input', function () { ACCESS_FIND = find.value; accFilterPeople(); });
+  rf.className = 'acc-role-f';
+  rf.setAttribute('aria-label', 'Show role');
+  [['', 'All roles']].concat(ACCESS_ROLES.map(function (r) { return [r, ACCESS_ROLE_LABELS[r] + 's']; })).forEach(function (o) {
+    var opt = document.createElement('option');
+    opt.value = o[0];
+    opt.textContent = o[1];
+    rf.appendChild(opt);
+  });
+  rf.value = ACCESS_ROLE_F;
+  rf.addEventListener('change', function () { ACCESS_ROLE_F = rf.value; accFilterPeople(); });
+  shown.setAttribute('role', 'status');
+  tools.appendChild(find);
+  tools.appendChild(rf);
+  tools.appendChild(shown);
+  return tools;
+}
+function renderPeople() {
+  var part = document.getElementById('acc-people');
+  if (!part) return;
+  var kept = part.querySelector('.acc-add-user');
+  part.textContent = '';
+  var users = accSection('People', ACCESS_FAIL.users ? null : ACCESS.users.length);
+  var head = accText('div', 'acc-users-h'), open = accText('button', 'btn small acc-add-open', 'Add person'), said = accText('span', 'adm-msg acc-users-msg');
   open.type = 'button';
   open.setAttribute('aria-expanded', kept ? 'true' : 'false');
   open.setAttribute('aria-controls', ACCESS_ADD_ID);
@@ -902,20 +1088,115 @@ function renderAccess() {
   head.appendChild(open);
   head.appendChild(said);
   users.insertBefore(head, users.firstChild);
-  var ut = accTable(['Email', 'Name', 'Role', 'Source', 'Disabled', 'SSO link', '']);
-  ACCESS.users.forEach(function (u) { ut.body.appendChild(accUserRow(u)); });
-  users.appendChild(ut.wrap);
-  if (kept) { users.appendChild(kept); accAddSync(kept); }
+  users.appendChild(accText('p', 'adm-help acc-sec-help', 'Everyone who can sign in, with their role and how they sign in. Disabling someone or lowering a role reaches their sessions and API tokens within 30 seconds.'));
   open.addEventListener('click', function () { accAddOpen(users, open); });
-  box.appendChild(users);
-  var tokens = accSection('API tokens', ACCESS.tokens.length);
+  part.appendChild(users);
+  if (ACCESS_FAIL.users) { users.appendChild(accFailed('People did not load.')); return; }
+  if (!ACCESS.users.length) {
+    users.appendChild(accText('p', 'muted acc-empty', 'No people yet: add the first person who signs in.'));
+  } else {
+    users.appendChild(accPeopleTools());
+    var ut = accTable(ACCESS_USER_HEADS);
+    ACCESS.users.forEach(function (u) { var tr = accUserRow(u); accLabel(tr, ACCESS_USER_HEADS); ut.body.appendChild(tr); });
+    users.appendChild(ut.wrap);
+    var none = accText('p', 'muted acc-none', 'No one matches the search or the role.');
+    none.hidden = true;
+    users.appendChild(none);
+  }
+  if (kept) { users.appendChild(kept); accAddSync(kept); }
+  accFilterPeople();
+}
+function renderTokens() {
+  var part = document.getElementById('acc-tokens');
+  if (!part) return;
+  part.textContent = '';
+  var tokens = accSection('API tokens', ACCESS_FAIL.tokens ? null : ACCESS.tokens.length);
+  tokens.appendChild(accText('p', 'adm-help acc-sec-help', 'Tokens let scripts and CI jobs call the API. A token never has more access than the person who made it.'));
+  part.appendChild(tokens);
+  if (ACCESS_FAIL.tokens) { tokens.appendChild(accFailed('API tokens did not load.')); return; }
   tokens.appendChild(accText('div', 'acc-secret-slot'));
-  var tt = accTable(['Name', 'Role', 'Token', 'Created by', 'Created', 'Last used', '']);
-  ACCESS.tokens.forEach(function (t) { tt.body.appendChild(accTokenRow(t)); });
-  tokens.appendChild(tt.wrap);
+  if (!ACCESS.tokens.length) {
+    tokens.appendChild(accText('p', 'muted acc-empty', 'No API tokens yet: create one below for a script or a CI job.'));
+  } else {
+    var tt = accTable(ACCESS_TOKEN_HEADS);
+    ACCESS.tokens.forEach(function (t) { var tr = accTokenRow(t); accLabel(tr, ACCESS_TOKEN_HEADS); tt.body.appendChild(tr); });
+    tokens.appendChild(tt.wrap);
+  }
   tokens.appendChild(accAddToken());
-  box.appendChild(tokens);
-  markAccessCount(ACCESS.users.length);
+}
+function accMenuClose(except, back) {
+  [].forEach.call(document.querySelectorAll('#access .acc-menu:not([hidden])'), function (m) {
+    if (m === except) return;
+    m.hidden = true;
+    var b = m.parentNode.querySelector('.acc-menu-b');
+    if (b) { b.setAttribute('aria-expanded', 'false'); if (back) b.focus(); }
+  });
+}
+function accMenuPlace(b, m) {
+  var r = b.getBoundingClientRect(), h = m.offsetHeight || 0, w = m.offsetWidth || 0, cw = document.documentElement.clientWidth, room = window.innerHeight - r.bottom;
+  m.style.position = 'fixed';
+  m.style.left = Math.max(8, Math.min(r.right - w, cw - w - 8)) + 'px';
+  m.style.top = (room < h + 8 && r.top > h + 8 ? r.top - h - 4 : r.bottom + 4) + 'px';
+}
+function accMenu(u, items) {
+  var w = accText('span', 'acc-menu-w'), b = accText('button', 'btn sec small acc-menu-b', '\u22ef'), m = accText('div', 'acc-menu');
+  b.type = 'button';
+  b.setAttribute('aria-haspopup', 'menu');
+  b.setAttribute('aria-expanded', 'false');
+  b.setAttribute('aria-label', 'Actions for ' + u.email);
+  m.setAttribute('role', 'menu');
+  m.setAttribute('aria-label', 'Actions for ' + u.email);
+  m.hidden = true;
+  items.forEach(function (it) {
+    var mi = accText('button', 'acc-mi ' + it.cls, it.text);
+    mi.type = 'button';
+    mi.setAttribute('role', 'menuitem');
+    mi.tabIndex = -1;
+    if (it.title) mi.title = it.title;
+    if (it.off) { mi.disabled = true; mi.setAttribute('aria-disabled', 'true'); }
+    mi.addEventListener('click', function () { m.hidden = true; b.setAttribute('aria-expanded', 'false'); b.focus(); it.run(); });
+    m.appendChild(mi);
+  });
+  var live = function () { return [].filter.call(m.querySelectorAll('.acc-mi'), function (x) { return !x.disabled; }); };
+  b.addEventListener('click', function () {
+    var opening = m.hidden;
+    accMenuClose(m, false);
+    m.hidden = !opening;
+    b.setAttribute('aria-expanded', String(opening));
+    if (opening) accMenuPlace(b, m);
+    if (opening && live()[0]) live()[0].focus();
+  });
+  m.addEventListener('keydown', function (e) {
+    var list = live(), at = list.indexOf(document.activeElement), to = null;
+    if (e.key === 'Escape') { e.preventDefault(); m.hidden = true; b.setAttribute('aria-expanded', 'false'); b.focus(); return; }
+    if (e.key === 'Tab') { m.hidden = true; b.setAttribute('aria-expanded', 'false'); return; }
+    if (e.key === 'ArrowDown') to = (at + 1) % list.length;
+    else if (e.key === 'ArrowUp') to = (at - 1 + list.length) % list.length;
+    else if (e.key === 'Home') to = 0;
+    else if (e.key === 'End') to = list.length - 1;
+    if (to === null || !list.length) return;
+    e.preventDefault();
+    list[to].focus();
+  });
+  w.appendChild(b);
+  w.appendChild(m);
+  return w;
+}
+function accMethods(u) {
+  var box = accText('span', 'acc-src'), l = accLink(u);
+  if (u.source === 'sso') {
+    var only = accText('span', 'tag plain acc-badge acc-sso-only', 'SSO only');
+    only.title = 'Signs in with SSO and has no password';
+    box.appendChild(only);
+    return box;
+  }
+  box.appendChild(accText('span', 'tag plain acc-badge acc-pw-badge', 'Password'));
+  if (l && l.state === 'bound') {
+    var both = accText('span', 'tag plain acc-badge acc-sso-badge', 'SSO');
+    both.title = 'Also signs in with SSO';
+    box.appendChild(both);
+  }
+  return box;
 }
 async function accPatch(u, body, msg, revert, said) {
   accMsg(msg, 'Saving\u2026', false);
@@ -924,7 +1205,7 @@ async function accPatch(u, body, msg, revert, said) {
     accApply(function (a) { a.users = a.users.map(function (x) { return x.email === u.email ? Object.assign({}, x, saved || (body.password === undefined ? body : {})) : x; }); });
     var fresh = await accReload();
     renderAccess();
-    accStale(fresh);
+    accStale(fresh, 'people');
     accNote(accRowMsg('user', u.email), said);
   } catch (e) {
     if (revert) revert();
@@ -934,43 +1215,53 @@ async function accPatch(u, body, msg, revert, said) {
 function accUserRow(u) {
   var tr = accText('tr', 'acc-user' + (u.disabled ? ' off' : ''));
   tr.dataset.email = u.email;
-  accCell(tr, u.email);
-  accCell(tr, u.name || '');
-  var sel = accRoleSelect(u.role, 'acc-role'), idp = ACCESS_IDP.indexOf(u.roleFrom) >= 0;
+  tr.dataset.find = accFold((u.name || '') + ' ' + u.email);
+  tr.dataset.role = u.role;
+  var who = accText('div', 'acc-who'), av = accText('span', 'acc-av', accInitial(u)), names = accText('div', 'acc-names');
+  av.setAttribute('aria-hidden', 'true');
+  names.appendChild(accText('span', 'acc-name', u.name || u.email));
+  names.appendChild(accText('span', 'acc-mail', u.email));
+  who.appendChild(av);
+  who.appendChild(names);
+  accCell(tr, who);
+  var sel = accRoleSelect(u.role, 'acc-role acc-chip acc-chip-' + (ACCESS_ROLES.indexOf(u.role) >= 0 ? u.role : 'viewer')), idp = ACCESS_IDP.indexOf(u.roleFrom) >= 0, last = accLastAdmin(u);
   sel.setAttribute('aria-label', 'Role of ' + u.email);
   var roleCell = accCell(tr, sel);
   if (idp) {
     sel.disabled = true;
     sel.title = 'Set by the sign-in provider or a role plug-in at each sign-in';
     roleCell.appendChild(accText('span', 'tag plain acc-idp', 'from sign-in provider'));
+  } else if (last) {
+    sel.disabled = true;
+    sel.title = ACCESS_LAST_ADMIN;
   }
-  accCell(tr, accText('span', 'tag plain acc-src', u.source === 'sso' ? 'sso' : 'local'));
+  if (last) {
+    var lone = accText('span', 'tag plain acc-last-admin', 'Last admin');
+    lone.title = ACCESS_LAST_ADMIN;
+    roleCell.appendChild(lone);
+  }
+  accCell(tr, accMethods(u));
+  var fresh = u.source === 'sso' && u.opened === false, seen = accRel(u.lastLogin);
+  var lastIn = accText('span', 'acc-last' + (fresh ? ' acc-not-yet' : seen ? '' : ' muted'), seen || 'Not signed in yet');
+  if (seen) lastIn.title = dayhm(u.lastLogin);
+  accCell(tr, lastIn);
   var off = document.createElement('input');
   off.type = 'checkbox';
   off.className = 'acc-off';
   off.checked = !!u.disabled;
   off.setAttribute('aria-label', 'Disabled: ' + u.email);
+  if (last) { off.disabled = true; off.title = ACCESS_LAST_ADMIN; }
   accCell(tr, off);
   var linkCell = accCell(tr, null);
   var ctl = accCell(tr, null);
   ctl.className = 'acc-ctl';
   var msg = accText('span', 'adm-msg');
   msg.setAttribute('role', 'status');
-  var fresh = u.source === 'sso' && u.opened === false;
   if (u.source !== 'sso') accLinkCell(linkCell, u, msg);
-  else if (fresh) linkCell.appendChild(accText('span', 'muted acc-not-yet', 'Not signed in yet'));
+  else linkCell.appendChild(accText('span', 'muted acc-link-none', '\u2013'));
   sel.addEventListener('change', function () { accPatch(u, {role: sel.value}, msg, function () { sel.value = u.role; off.checked = !!u.disabled; }, 'Role set to ' + sel.value); });
   off.addEventListener('change', function () { accPatch(u, {disabled: off.checked}, msg, function () { sel.value = u.role; off.checked = !!u.disabled; }, off.checked ? 'Disabled' : 'Enabled'); });
-  if (u.source === 'sso') {
-    var only = accText('span', 'tag plain acc-sso-only', 'SSO only');
-    only.title = 'Signs in with SSO and has no password';
-    ctl.appendChild(only);
-    if (!fresh) { ctl.appendChild(msg); return tr; }
-  }
-  var reset = accText('button', 'btn sec small ' + (fresh ? 'acc-setpw' : 'acc-reset'), fresh ? 'Set password' : 'Reset password');
-  reset.type = 'button';
-  if (fresh) reset.title = 'Give this account a password: it becomes a local account, and its SSO link waits 7 days for the first sign-in';
-  var form = accText('span', 'acc-pw-form');
+  var canPw = u.source !== 'sso' || fresh, form = accText('span', 'acc-pw-form');
   form.hidden = true;
   var pw = accInput('password', 'password', 256, 'New password for ' + u.email);
   pw.className = 'acc-pw';
@@ -982,10 +1273,15 @@ function accUserRow(u) {
   form.appendChild(pw);
   form.appendChild(save);
   form.appendChild(cancel);
-  ctl.appendChild(reset);
-  ctl.appendChild(form);
+  var showPw = function () { form.hidden = !form.hidden; if (!form.hidden) pw.focus(); };
+  var items = [{cls: 'acc-mi-role', text: 'Change role', off: sel.disabled, title: sel.disabled ? sel.title : '', run: function () { sel.focus(); }}];
+  if (u.source !== 'sso') items.push({cls: 'acc-reset', text: 'Reset password', run: showPw});
+  if (fresh) items.push({cls: 'acc-setpw', text: 'Turn into local account', title: 'Give this account a password: it becomes a local account, and its SSO link waits 7 days for the first sign-in', run: showPw});
+  items.push({cls: 'acc-mi-off' + (u.disabled ? '' : ' acc-mi-danger'), text: u.disabled ? 'Enable sign-in' : 'Disable sign-in', off: last, title: last ? ACCESS_LAST_ADMIN : u.disabled ? '' : 'Stops sign-in for this person; their sessions and API tokens stop within 30 seconds',
+    run: function () { off.checked = !off.checked; off.dispatchEvent(new Event('change', {bubbles: true})); }});
+  ctl.appendChild(accMenu(u, items));
+  if (canPw) ctl.appendChild(form);
   ctl.appendChild(msg);
-  reset.addEventListener('click', function () { form.hidden = !form.hidden; if (!form.hidden) pw.focus(); });
   cancel.addEventListener('click', function () { form.hidden = true; pw.value = ''; accMsg(msg, ''); });
   save.addEventListener('click', function () { accPatch(u, {password: pw.value}, msg, null, fresh ? 'Password set' : 'Password reset'); });
   return tr;
@@ -1032,7 +1328,7 @@ function accAddHtml(sso) {
   var described = function (key) { return ' aria-describedby="acc-new-' + key + '-h acc-new-' + key + '-err"'; };
   var seg = '<input type="hidden" name="role" value="viewer"><div class="int-seg" role="radiogroup" aria-labelledby="acc-new-role-l"' + described('role') + '>' +
     ACCESS_ROLES.map(function (r) { return '<button type="button" class="int-seg-b" role="radio" data-value="' + r + '" aria-checked="false" tabindex="-1">' + ACCESS_ROLE_LABELS[r] + '</button>'; }).join('') + '</div>';
-  return '<div class="acc-add-head"><h4 id="acc-add-h">Add user</h4></div>' +
+  return '<div class="acc-add-head"><h4 id="acc-add-h">Add person</h4></div>' +
     accAddField('email', 'Email', true, '<input id="acc-new-email" class="int-in" name="email" type="email" maxlength="254" autocomplete="off" spellcheck="false" autocapitalize="off"' + described('email') + '>', '') +
     accAddField('name', 'Name', false, '<input id="acc-new-name" class="int-in" name="name" type="text" maxlength="120" autocomplete="off"' + described('name') + '>', 'Empty uses the part of the email before the @') +
     accAddField('role', 'Role', true, seg, 'Viewers read, operators work cards, admins also manage users and settings') +
@@ -1041,7 +1337,7 @@ function accAddHtml(sso) {
     accAddField('password', 'Password', true, '<div class="int-sec-row"><input id="acc-new-password" class="int-in" name="password" type="password" maxlength="' + ACCESS_PW_MAX + '" autocomplete="new-password"' + described('password') + '>' +
       '<button type="button" class="int-eye" aria-pressed="false" aria-controls="acc-new-password" aria-label="Show password">Show</button></div>', '') +
     '<div class="int-foot"><span class="adm-msg int-form-msg" role="status"></span><div class="int-foot-row"><div class="int-acts int-foot-acts">' +
-    '<button type="button" class="btn sec small acc-add-cancel">Cancel</button><button type="submit" class="btn small acc-add-go">Add user</button></div></div></div>';
+    '<button type="button" class="btn sec small acc-add-cancel">Cancel</button><button type="submit" class="btn small acc-add-go">Add person</button></div></div></div>';
 }
 function accAddPart(f, key) { return f.querySelector('.int-field[data-key="' + key + '"]'); }
 function accAddInput(f, key) {
@@ -1203,7 +1499,7 @@ function accAddUser() {
       renderAccess();
       accStale(fresh);
       var said = document.querySelector('#access .acc-users-msg'), open = document.querySelector('#access .acc-add-open');
-      if (said) { said.textContent = 'User added'; said.classList.add('ok'); }
+      if (said) { said.textContent = 'Person added'; said.classList.add('ok'); }
       if (open) open.focus();
     } catch (err) {
       delete f.dataset.busy;
@@ -1224,13 +1520,15 @@ function accTokenRow(t) {
     stop.title = 'Made from a single sign-on session and refused by the SSO stop: it stays refused after SSO is switched back on, so make a new token';
     named.appendChild(stop);
   }
-  accCell(tr, t.role);
+  accCell(tr, accText('span', 'acc-chip acc-chip-' + (ACCESS_ROLES.indexOf(t.role) >= 0 ? t.role : 'viewer'), t.role));
   var code = accText('code', null, 'skopax_' + t.id + '_\u2026');
   accCell(tr, code);
   accCell(tr, isTokenActor(t.createdBy) ? tokenActorLabel(t.createdBy) : t.createdBy || '');
   accCell(tr, dayhm(t.createdAt));
   accCell(tr, t.lastUsed ? dayhm(t.lastUsed) : 'never');
+  accCell(tr, accExpiryEl(t));
   var ctl = accCell(tr, null);
+  ctl.className = 'acc-ctl';
   var msg = accText('span', 'adm-msg');
   msg.setAttribute('role', 'status');
   if (t.revoked) {
@@ -1241,6 +1539,9 @@ function accTokenRow(t) {
     b.title = 'Stop this token working right away';
     b.setAttribute('aria-label', 'Revoke token ' + t.name);
     b.addEventListener('click', async function () {
+      var ask = window.__skopaxConfirm;
+      if (typeof ask !== 'function') return;
+      if (!(await ask('Revoke the token ' + t.name + '?', 'Scripts and jobs that use it are refused at once. This cannot be undone: make a new token to replace it.', 'Revoke token'))) { if (b.isConnected) b.focus(); return; }
       b.disabled = true;
       accMsg(msg, 'Revoking\u2026', false);
       try {
@@ -1248,8 +1549,9 @@ function accTokenRow(t) {
         accApply(function (a) { a.tokens = a.tokens.map(function (x) { return x.id === t.id ? Object.assign({}, x, {revoked: true}) : x; }); });
         var fresh = await accReload();
         renderAccess();
-        accStale(fresh);
+        accStale(fresh, 'tokens');
         accNote(accRowMsg('token', t.id), 'Revoked');
+        accFocusBack({email: null, id: null, cls: '', tag: 'h3', name: '', sec: 'acc-tokens'});
       } catch (e) {
         b.disabled = false;
         accNote(accLive(msg, accRowMsg('token', t.id)), accError(e, 'Not revoked, try again'), true);
@@ -1260,25 +1562,43 @@ function accTokenRow(t) {
   ctl.appendChild(msg);
   return tr;
 }
+function accExpiryEl(t) {
+  var x = accExpiry(t);
+  if (!x) return accText('span', 'muted acc-exp', 'Never');
+  if (t.revoked) return accText('span', 'acc-exp', dayhm(x.at));
+  if (!x.past && !x.soon) { var plain = accText('span', 'acc-exp', daytime(x.at)); plain.title = dayhm(x.at); return plain; }
+  var chip = accText('span', 'tag ' + (x.past ? 'k-crit acc-exp-past' : 'k-warn acc-exp-soon') + ' acc-exp', x.past ? 'Expired ' + dayhm(x.at) : x.days <= 1 ? 'Expires within a day' : 'Expires in ' + x.days + ' days');
+  chip.title = (x.past ? 'Refused since ' : 'Refused from ') + dayhm(x.at) + ': make a new token to replace it';
+  return chip;
+}
 function accAddToken() {
   var f = accText('form', 'acc-form acc-add-token');
-  var name = accInput('name', 'text', 80, 'Token name'), role = accRoleSelect('viewer', null, 'role');
+  var name = accInput('name', 'text', 80, 'Token name'), role = accRoleSelect('viewer', null, 'role'), exp = document.createElement('select');
   name.placeholder = 'deploy-bot';
+  exp.name = 'expires';
+  ACCESS_EXPIRY.forEach(function (o) {
+    var opt = document.createElement('option');
+    opt.value = o[0];
+    opt.textContent = o[1];
+    exp.appendChild(opt);
+  });
   var go = accText('button', 'btn small', 'Create token');
   go.type = 'submit';
   var msg = accText('span', 'adm-msg');
   msg.setAttribute('role', 'status');
   f.appendChild(accField('Name', name));
   f.appendChild(accField('Role', role));
+  f.appendChild(accField('Expires', exp));
   f.appendChild(go);
   f.appendChild(msg);
   f.addEventListener('submit', async function (e) {
     e.preventDefault();
     go.disabled = true;
     accMsg(msg, 'Creating\u2026', false);
-    var made;
+    var made, body = {name: name.value.trim(), role: role.value};
+    if (exp.value) body.expiresDays = Number(exp.value);
     try {
-      made = await adminApi('POST', '/api/admin/tokens', {name: name.value.trim(), role: role.value});
+      made = await adminApi('POST', '/api/admin/tokens', body);
     } catch (err) {
       accNote(accLive(msg, accFormMsg('acc-add-token')), accError(err, 'Not created, try again'), true);
       go.disabled = false;
@@ -1289,7 +1609,7 @@ function accAddToken() {
     accApply(function (a) { a.tokens = a.tokens.concat([listed]); });
     var fresh = await accReload();
     renderAccess();
-    accStale(fresh);
+    accStale(fresh, 'tokens');
     accShowToken(made.name, made.token);
   });
   return f;
@@ -1298,8 +1618,10 @@ function accShowToken(name, token) {
   var slot = document.querySelector('#access .acc-secret-slot');
   if (!slot) return;
   var box = accText('div', 'acc-secret');
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-label', 'New token ' + name);
   box.appendChild(accText('b', null, 'New token ' + name));
-  box.appendChild(accText('code', null, token));
+  box.appendChild(accText('code', 'acc-secret-v', token));
   var row = accText('div', 'adm-acts');
   var copy = accText('button', 'btn small', 'Copy');
   copy.type = 'button';
@@ -1308,7 +1630,7 @@ function accShowToken(name, token) {
   row.appendChild(copy);
   row.appendChild(state);
   box.appendChild(row);
-  box.appendChild(accText('p', 'adm-help', "Copy it now. It won't be shown again."));
+  box.appendChild(accText('p', 'adm-help acc-secret-note', "Copy it now. It won't be shown again. You will not see this token after you leave this tab."));
   copy.addEventListener('click', async function () {
     try {
       await navigator.clipboard.writeText(token);
@@ -1323,14 +1645,23 @@ function accShowToken(name, token) {
     }
   });
   slot.appendChild(box);
+  copy.focus();
 }
 
 var SSO = null, SSO_TESTING = false, SSO_MAP_MAX = 50, SSO_VALUE_MAX = 4000, SSO_SEALED = 'client-secret', SSO_MAP = 'role-map', SSO_VERIFIED = 'require-verified-email', SSO_KEEP = '+sso', MCP_FAILED = false;
-var SSO_MAIN = ['issuer', 'client-id', 'client-secret', 'scope', 'claims', 'roles-claim', 'role-map', 'default-role', 'require-verified-email', 'new-accounts', 'allowed-domains'];
+var SSO_MAIN = ['issuer', 'client-id', 'client-secret', 'scope', 'claims', 'roles-claim', 'role-map', 'default-role', 'require-verified-email', 'new-accounts', 'allowed-domains', 'button-text', 'button-icon'];
+var SSO_GROUPS = [['provider', 'Provider', ['issuer', 'client-id', 'client-secret', 'scope', 'claims', 'require-verified-email']], ['who', 'Who can sign in', ['new-accounts', 'allowed-domains']],
+  ['roles', 'Roles', ['roles-claim', 'role-map', 'default-role']], ['button', 'Sign-in button', ['button-text', 'button-icon']]];
+var SSO_CHIP_IN = 'sso-chip-in', SSO_DOMAINS = 'allowed-domains', SSO_BUTTON_TEXT = 'button-text', SSO_LAST_TEST = null, SSO_MARK_ID = /^[a-z0-9-]{1,40}$/, SSO_ICON_ACCEPT = ['image/png', 'image/webp', 'image/svg+xml'];
+var SSO_ICON_TYPES = {'image/png': 'PNG', 'image/webp': 'WebP', 'image/svg+xml': 'SVG'};
+var SSO_MARK_NAMES = {google: 'Google', microsoft: 'Microsoft', okta: 'Okta', auth0: 'Auth0', onelogin: 'OneLogin', jumpcloud: 'JumpCloud', zitadel: 'ZITADEL', authentik: 'authentik', gitlab: 'GitLab',
+  keycloak: 'Keycloak', key: 'OpenID Connect'};
+var SSO_ROLE_KEYS = ['roles.stale-max-minutes'];
 var SSO_ADVANCED = ['authorize-url', 'token-url', 'jwks-url', 'client-auth'];
 var SSO_LABELS = {issuer: 'Issuer URL', 'client-id': 'Client ID', 'client-secret': 'Client secret', scope: 'Scope', claims: 'Claims come from', 'roles-claim': 'Roles claim',
   'role-map': 'Role map', 'default-role': 'Default role', 'require-verified-email': 'Require verified email', 'authorize-url': 'Authorize URL', 'token-url': 'Token URL',
-  'jwks-url': 'Keys (JWKS) URL', 'client-auth': 'Client authentication', 'new-accounts': 'New accounts', 'allowed-domains': 'Allowed email domains'};
+  'jwks-url': 'Keys (JWKS) URL', 'client-auth': 'Client authentication', 'new-accounts': 'New accounts', 'allowed-domains': 'Allowed email domains', 'button-text': 'Button text',
+  'button-icon': 'Button icon'};
 var SSO_HELP = {issuer: 'Its /.well-known/openid-configuration document gives the endpoints.', 'client-secret': 'Saved sealed and never shown again.',
   scope: 'Separated by spaces; it includes openid unless the claims come from the access token.', 'roles-claim': 'A claim name such as roles or groups, or a dot path such as realm_access.roles.',
   'role-map': 'Claim values matched exactly; several matches give the highest role.',
@@ -1338,12 +1669,15 @@ var SSO_HELP = {issuer: 'Its /.well-known/openid-configuration document gives th
   'authorize-url': 'Empty uses the one the provider lists.', 'token-url': 'Empty uses the one the provider lists.', 'jwks-url': 'Empty uses the one the provider lists.',
   'client-auth': 'auto follows what the provider lists, post sends the secret in the form and basic in an Authorization header.',
   'new-accounts': 'Added only lets in only people who already have an account, added here or by an earlier sign-in. With a public provider, such as a consumer Google sign-in, Anyone means any account there.',
-  'allowed-domains': 'Email domains such as example.com, separated by commas, matched exactly; empty lets every domain in. Checked before an account is made or used.'};
+  'allowed-domains': 'Email domains such as example.com, matched exactly; none lets every domain in. Checked before an account is made or used.',
+  'button-text': 'The text of the login button, at most 40 characters; empty uses Sign in with SSO.', 'button-icon': 'Auto picks a mark from the issuer host; Company shows the image uploaded below; None shows the text only.'};
 var SSO_CHOICES = {claims: [['id-token', 'ID token'], ['access-token', 'access token']], 'client-auth': [['auto', 'auto'], ['post', 'post'], ['basic', 'basic']],
-  'default-role': [['viewer', 'viewer'], ['operator', 'operator']], 'new-accounts': [['anyone', 'Anyone the provider signs in'], ['added-only', 'Added only']]};
+  'default-role': [['viewer', 'viewer'], ['operator', 'operator']], 'new-accounts': [['anyone', 'Anyone the provider signs in'], ['added-only', 'Added only']],
+  'button-icon': [['auto', 'Auto, from the issuer'], ['company', 'Company icon'], ['none', 'None']]};
 var SSO_REASONS = {discovery: 'did not answer with its settings', issuer: 'names a different issuer', unreachable: 'not reachable'};
 var SSO_STOP = 'Single sign-on sessions end within 30 seconds and stay ended after switching back on: people sign in again. MCP tokens issued before stay refused. API tokens made from single sign-on sessions are refused and stay refused after switching back on: make new ones afterwards. Password logins go on.';
 var SSO_CHECKS = {discovery: 'Discovery', issuer: 'Issuer', pkce: 'PKCE', keys: 'Signing keys', 'client-auth': 'Client authentication', redirect: 'Redirect URI', scope: 'Scope'};
+var MCP_SWITCH = 'core.mcp';
 var MCP_KEYS = ['mcp.client-id', 'mcp.audience', 'mcp.allowed-clients', 'mcp.required-role', 'mcp.issuer', 'mcp.scope', 'mcp.resource-url'], MCP_META = '/.well-known/oauth-protected-resource';
 function ssoText(v) { return typeof v === 'string' ? v : ''; }
 function ssoView(r) {
@@ -1352,7 +1686,194 @@ function ssoView(r) {
   return {enabled: r.enabled === true, active: r.active === true, problem: ssoText(r.problem), redirectUri: ssoText(r.redirectUri),
     provider: {ok: p.ok !== false, since: ssoText(p.since), error: ssoText(p.error)}, values: r.values && typeof r.values === 'object' ? r.values : {},
     bases: r.bases && typeof r.bases === 'object' ? r.bases : {}, switch: ssoLayer(r.switch), secretNote: ssoText(r.secretNote),
-    secret: {set: s.set === true, from: ssoText(s.from) || null, unreadable: s.unreadable === true}, inUse: ssoInUse(r.roleMapInUse), mcpBase: ssoText(r.mcpBase)};
+    secret: {set: s.set === true, from: ssoText(s.from) || null, unreadable: s.unreadable === true}, inUse: ssoInUse(r.roleMapInUse), mcpBase: ssoText(r.mcpBase),
+    icon: ssoIconView(r.icon), button: ssoButtonView(r.button)};
+}
+function ssoIconView(v) {
+  v = v && typeof v === 'object' ? v : {};
+  var ver = typeof v.version === 'string' && /^[0-9a-f]{1,64}$/.test(v.version) ? v.version : null;
+  return {set: v.set === true && !!ver, type: ssoText(v.type), size: Number(v.size) || 0, version: ver};
+}
+function ssoButtonView(v) {
+  v = v && typeof v === 'object' ? v : {};
+  var list = function (x) { return Array.isArray(x) ? x.filter(function (s) { return typeof s === 'string' && s; }).map(function (s) { return s.toLowerCase(); }) : []; };
+  var marks = (Array.isArray(v.marks) ? v.marks : []).filter(function (m) { return m && typeof m.id === 'string' && SSO_MARK_ID.test(m.id); })
+    .map(function (m) { return {id: m.id, hosts: list(m.hosts), suffixes: list(m.suffixes), labels: list(m.labels), paths: Array.isArray(m.paths) ? m.paths.filter(function (s) { return typeof s === 'string' && s; }) : []}; });
+  var branded = {};
+  if (v.branded && typeof v.branded === 'object') Object.keys(v.branded).forEach(function (k) { if (SSO_MARK_ID.test(k) && typeof v.branded[k] === 'string') branded[k] = v.branded[k]; });
+  return {defaultText: ssoText(v.defaultText) || 'Sign in with SSO', textMax: Number(v.textMax) || 40, iconMax: Number(v.iconMax) || 65536, marks: marks, branded: branded};
+}
+function ssoHost(issuer) {
+  try {
+    var u = new URL(String(issuer || '').trim());
+    return u.protocol === 'http:' || u.protocol === 'https:' ? {host: u.hostname.toLowerCase(), path: u.pathname || ''} : null;
+  } catch (e) { return null; }
+}
+function ssoMarkOf(issuer) {
+  var at = ssoHost(issuer);
+  if (!at || !at.host || !SSO) return 'key';
+  var host = at.host, first = host.split('.')[0];
+  var hit = SSO.button.marks.filter(function (m) {
+    return m.hosts.indexOf(host) >= 0 || m.suffixes.some(function (s) { return host === s || host.slice(-s.length - 1) === '.' + s; }) || m.labels.indexOf(first) >= 0 ||
+      m.paths.some(function (p) { return at.path.indexOf(p) >= 0; });
+  })[0];
+  return hit ? hit.id : 'key';
+}
+function ssoButtonOf(issuer, text, mode) {
+  var label = String(text || '').trim(), b = SSO.button;
+  if (mode === 'none') return {mark: 'none', text: label || b.defaultText, icon: null, note: ''};
+  if (mode === 'company') return {mark: 'company', text: label || b.defaultText, icon: SSO.icon.version ? '/login/sso-icon?v=' + SSO.icon.version : null, note: SSO.icon.version ? '' : 'No company icon uploaded yet, so the button shows text only.'};
+  var mark = ssoMarkOf(issuer), note = '';
+  if (b.branded[mark]) {
+    if (label) { note = 'The ' + SSO_MARK_NAMES[mark] + ' mark goes only with the text ' + b.branded[mark] + ', so this text gets the key icon.'; mark = 'key'; }
+    else label = b.branded[mark];
+  }
+  return {mark: mark, text: label || b.defaultText, icon: '/icons/sso/' + mark + '.svg', note: note};
+}
+function ssoInputValue(name) {
+  var inp = document.getElementById('sso-in-' + name);
+  return inp ? inp.value : ssoVal(name).value;
+}
+function ssoPreview() {
+  var card = ssoCard(), box = card && card.querySelector('.sso-preview'), note = card && card.querySelector('.sso-pv-note');
+  if (!box) return;
+  var shown = ssoButtonOf(ssoInputValue('issuer'), ssoInputValue('button-text'), ssoInputValue('button-icon') || 'auto');
+  var b = accText('span', 'sso-pv sso-btn-' + shown.mark);
+  if (shown.icon) {
+    var ico = accText('span', 'sso-pv-ico');
+    ico.style.backgroundImage = 'url("' + shown.icon + '")';
+    b.appendChild(ico);
+  }
+  b.appendChild(accText('span', 'sso-pv-txt', shown.text));
+  box.textContent = '';
+  box.appendChild(b);
+  box.dataset.mark = shown.mark;
+  if (note) { note.textContent = shown.note; note.hidden = !shown.note; }
+}
+function ssoDomains(text) {
+  var seen = {};
+  return String(text || '').split(',').map(function (d) { return d.trim(); }).filter(function (d) { var k = d.toLowerCase(); if (!d || seen[k]) return false; seen[k] = 1; return true; });
+}
+function ssoPending() {
+  var chip = document.getElementById(SSO_CHIP_IN);
+  return chip ? chip.value.trim() : '';
+}
+function ssoChips() {
+  var card = ssoCard(), inp = document.getElementById('sso-in-allowed-domains'), box = card && card.querySelector('.sso-chips');
+  if (!box || !inp) return;
+  box.textContent = '';
+  var list = ssoDomains(inp.value);
+  list.forEach(function (d) {
+    var chip = accText('span', 'sso-chip'), del = accText('button', 'sso-chip-del', '\u00d7');
+    chip.setAttribute('role', 'listitem');
+    chip.appendChild(accText('span', 'sso-chip-t', d));
+    del.type = 'button';
+    del.dataset.domain = d;
+    del.setAttribute('aria-label', 'Remove ' + d);
+    chip.appendChild(del);
+    box.appendChild(chip);
+  });
+  if (!list.length) box.appendChild(accText('span', 'muted sso-chips-none', 'Every domain may sign in'));
+}
+function ssoSetDomains(list, focusAdd) {
+  var inp = document.getElementById('sso-in-allowed-domains');
+  if (!inp) return;
+  inp.value = list.join(', ');
+  inp.dispatchEvent(new Event('input', {bubbles: true}));
+  ssoChips();
+  var add = ssoCard().querySelector('.sso-chip-in');
+  if (focusAdd && add) add.focus();
+}
+function ssoAddDomain() {
+  var add = ssoCard().querySelector('.sso-chip-in'), inp = document.getElementById('sso-in-allowed-domains');
+  if (!add || !inp) return;
+  var typed = ssoDomains(add.value);
+  if (!typed.length) return;
+  add.value = '';
+  ssoSetDomains(ssoDomains(inp.value + ',' + typed.join(',')), true);
+}
+function ssoAttention() {
+  if (!SSO) return '';
+  if (SSO.enabled && !SSO.active && !ssoUnset()) return 'Single sign-on is on but needs setup';
+  if (SSO.active && !SSO.provider.ok) return 'The identity provider is not reachable';
+  if (SSO.secret.unreadable && !SSO.secret.set) return 'The client secret cannot be read';
+  return '';
+}
+function ssoStatus() {
+  var issuer = ssoVal('issuer').value, at = ssoHost(issuer), mark = ssoMarkOf(issuer), parts = [];
+  parts.push(at ? 'Provider: ' + (SSO_MARK_NAMES[mark] || SSO_MARK_NAMES.key) : 'Provider: not set');
+  if (at) parts.push(at.host);
+  parts.push(SSO_LAST_TEST ? (SSO_LAST_TEST.ok ? 'Test passed ' : 'Test failed ') + hm(SSO_LAST_TEST.at) : 'Not tested since this page opened');
+  return '<p class="sso-status" data-tested="' + (SSO_LAST_TEST ? SSO_LAST_TEST.ok ? 'ok' : 'bad' : 'none') + '">' + esc(parts.join(' \u00b7 ')) + '</p>';
+}
+function ssoIconBox() {
+  var i = SSO.icon, state = i.set ? (SSO_ICON_TYPES[i.type] || 'Image') + ', ' + (i.size < 1024 ? i.size + ' bytes' : Math.round(i.size / 102.4) / 10 + ' KiB') : 'None uploaded';
+  return '<div class="sso-icon-box"><span class="sso-fn">Company icon</span><p class="adm-help sso-icon-state">' + esc(state) + '</p>' +
+    '<div class="sso-icon-acts"><label class="btn sec small sso-icon-pick">Upload image<input type="file" class="sso-icon-file" accept="image/png,image/webp,image/svg+xml"></label>' +
+    (i.set ? '<button type="button" class="btn sec small sso-icon-del">Remove</button>' : '') + '</div>' +
+    '<p class="adm-help">PNG, WebP or SVG, at most ' + Math.round(SSO.button.iconMax / 1024) + ' KiB, shown at 20 px. An SVG may hold only shapes, gradients, clip paths and masks: styles, text, scripts and links outside the file are refused.</p>' +
+    '<p class="adm-msg sso-icon-msg" role="status"></p></div>';
+}
+function ssoGroup(g) {
+  var extra = g[0] === 'roles' ? '<div class="sso-roles acc-fields"></div>' : g[0] === 'button' ? ssoIconBox() +
+    '<div class="sso-preview-w"><span class="sso-fn">Preview</span><div class="sso-preview" aria-live="polite"></div><p class="adm-help sso-pv-note" hidden></p></div>' : '';
+  return '<fieldset class="sso-grp" data-grp="' + g[0] + '"><legend class="sso-grp-l">' + esc(g[1]) + '</legend><div class="sso-fields">' + g[2].map(ssoField).join('') + extra + '</div></fieldset>';
+}
+async function ssoIconPut(file) {
+  var card = ssoCard(), msg = card && card.querySelector('.sso-icon-msg');
+  if (!file) return;
+  if (file.size > SSO.button.iconMax) { ssoNote(msg, 'The icon is at most ' + Math.round(SSO.button.iconMax / 1024) + ' KiB.', true); return; }
+  if (SSO_ICON_ACCEPT.indexOf(file.type) < 0) { ssoNote(msg, 'The icon must be a PNG, WebP or SVG image.', true); return; }
+  ssoNote(msg, 'Uploading\u2026');
+  var r;
+  try {
+    r = await adminApi('PUT', '/api/admin/sso/icon', file, undefined, file.type);
+  } catch (e) {
+    var now = ssoCard();
+    ssoNote(now && now.querySelector('.sso-icon-msg'), accError(e, 'Not uploaded, try again'), true);
+    return;
+  }
+  var draft = ssoDraft();
+  SSO = ssoView(r);
+  ssoRepaint('', draft, []);
+  var after = ssoCard();
+  ssoNote(after && after.querySelector('.sso-icon-msg'), 'Icon uploaded');
+}
+async function ssoIconRemove(b) {
+  var ask = window.__skopaxConfirm;
+  if (typeof ask !== 'function') return;
+  var ok = await ask('Remove the company icon?', 'The login button shows no icon until another image is uploaded, or the icon is set to Auto or None.', 'Remove icon');
+  if (!ok) { if (b.isConnected) b.focus(); return; }
+  var r;
+  try {
+    r = await adminApi('DELETE', '/api/admin/sso/icon');
+  } catch (e) {
+    var card = ssoCard();
+    ssoNote(card && card.querySelector('.sso-icon-msg'), accError(e, 'Not removed, try again'), true);
+    return;
+  }
+  var draft = ssoDraft();
+  SSO = ssoView(r);
+  ssoRepaint('', draft, []);
+  var after = ssoCard();
+  ssoNote(after && after.querySelector('.sso-icon-msg'), 'Icon removed');
+}
+function ssoFocusKey() {
+  var a = document.activeElement, box = document.getElementById('acc-sso');
+  if (!a || !box || !box.contains(a)) return null;
+  var f = a.closest('.sso-f');
+  return {id: a.id || '', cls: String(a.className || '').split(/\s+/).filter(function (c) { return /^sso-/.test(c); })[0] || '', field: f ? f.dataset.field : ''};
+}
+function ssoFocusBack(k) {
+  var card = ssoCard();
+  if (!k || !card || (document.activeElement && document.activeElement !== document.body && card.contains(document.activeElement))) return;
+  var to = k.id ? document.getElementById(k.id) : null;
+  if (!to && k.cls) {
+    var scope = k.field ? ssoFieldEl(k.field) || card : card;
+    to = scope.querySelector('.' + k.cls);
+  }
+  if (!to || to.disabled) to = card.querySelector('#sso-h');
+  if (to) { if (to.id === 'sso-h') to.tabIndex = -1; to.focus(); }
 }
 function ssoInUse(list) {
   return (Array.isArray(list) ? list : []).filter(function (x) { return x && typeof x.value === 'string' && ACCESS_ROLES.indexOf(x.role) >= 0; }).map(function (x) { return {value: x.value, role: x.role}; });
@@ -1446,10 +1967,14 @@ function ssoControl(name) {
     return '<input type="text"' + id + ' class="sso-in adm-in" maxlength="2000" autocomplete="off" spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" placeholder="' +
       esc(shown) + '"' + (s.from ? ' readonly title="' + esc(ssoOwned(s.from)) + '"' : '') + '>';
   }
+  if (name === SSO_DOMAINS) return '<input type="text"' + id + ' class="sso-in adm-in" hidden maxlength="4000" value="' + esc(v.value) + '"><div class="sso-chips" role="list" aria-label="Allowed email domains"></div>' +
+    '<div class="sso-chip-row"><input type="text" id="' + SSO_CHIP_IN + '" class="sso-chip-in adm-in" maxlength="253" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="example.com" aria-label="Add an allowed email domain">' +
+    '<button type="button" class="btn sec small sso-chip-add">Add</button></div>';
+  if (name === SSO_BUTTON_TEXT) return '<input type="text"' + id + ' class="sso-in adm-in" maxlength="' + SSO.button.textMax + '" spellcheck="false" autocomplete="off" placeholder="' + esc(SSO.button.defaultText) + '" value="' + esc(v.value) + '">';
   return '<input type="text"' + id + ' class="sso-in adm-in" maxlength="4000" spellcheck="false" autocomplete="off" value="' + esc(v.value) + '">';
 }
 function ssoField(name) {
-  var label = esc(SSO_LABELS[name]), head = name === SSO_MAP ? '<b class="sso-fn">' + label + '</b>' : '<label class="sso-fn" for="sso-in-' + name + '">' + label + '</label>';
+  var label = esc(SSO_LABELS[name]), head = name === SSO_MAP ? '<b class="sso-fn">' + label + '</b>' : '<label class="sso-fn" for="' + (name === SSO_DOMAINS ? SSO_CHIP_IN : 'sso-in-' + name) + '">' + label + '</label>';
   var v = ssoVal(name), reset = name !== SSO_SEALED && v.source === 'admin' ? '<button type="button" class="btn sec small sso-reset" title="' + esc('Drop the value set here and go back to ' + (v.base || 'the default')) + '">Reset</button>' : '';
   var note = name === SSO_SEALED && SSO.secretNote ? '<p class="adm-help adm-problem sso-unreadable">' + esc(SSO.secretNote) + '</p>' : '';
   var help = ssoHelp(name);
@@ -1457,30 +1982,63 @@ function ssoField(name) {
     (help ? '<p class="adm-help">' + esc(help) + '</p>' : '') + '<p class="adm-msg sso-fmsg" role="status"></p></div>';
 }
 function renderSso(said) {
+  var kept = document.querySelector('#acc-sso .sso-roles'), edits = kept ? unsaved(kept, null) : [];
   var box = document.getElementById('acc-sso'), adding = document.querySelector('#access .acc-add-user');
   if (adding) accAddSync(adding);
   if (!box) return;
-  if (!SSO) { box.innerHTML = '<p class="muted">Single sign-on did not load; open the tab again.</p>'; return; }
+  if (!SSO) {
+    box.textContent = '';
+    var lost = accText('section', 'ai-key sso-card-off acc-card'), lostH = accText('h3', null, 'Single sign-on');
+    lost.appendChild(lostH);
+    lost.appendChild(accFailed('Single sign-on did not load.'));
+    box.appendChild(lost);
+    accNavPaint();
+    return;
+  }
   var pill = ssoPill(), prov = ssoProvider(), uri = SSO.redirectUri, stops = ssoResetStops();
-  box.innerHTML = '<section class="ai-key sso-card" aria-labelledby="sso-h"><div class="ai-head"><h3 id="sso-h">Single sign-on</h3><span class="tag ' + pill[1] + ' sso-pill">' + pill[0] + '</span>' +
+  box.innerHTML = '<section class="ai-key sso-card acc-card" aria-labelledby="sso-h"><div class="ai-head"><h3 id="sso-h">Single sign-on</h3><span class="tag ' + pill[1] + ' sso-pill">' + pill[0] + '</span>' +
     '<button type="button" role="switch" class="feat-sw sso-sw" data-key="sso.enabled" aria-checked="' + (SSO.enabled ? 'true' : 'false') + '" aria-label="Single sign-on" title="' +
     (SSO.enabled ? 'Switch off: single sign-on sessions end within 30 seconds and stay ended after switching back on, and MCP turns off, while password logins go on' : 'Switch on') + '"></button><span class="sso-sw-l">' + ssoSource(SSO.switch) + '</span>' +
     (SSO.switch.source === 'admin' ? '<button type="button" class="btn sec small sso-sw-reset" title="' + esc('Drop the switch set here and go back to ' + (SSO.switch.base || 'the default')) + '">' + (stops ? 'Reset (turns SSO off)' : 'Reset') + '</button>' : '') + '</div>' +
-    (SSO.problem && !ssoUnset() ? '<p class="adm-help adm-problem sso-problem">' + esc(SSO.problem) + '</p>' : '') + (prov ? '<p class="adm-help sso-provider">' + esc(prov) + '</p>' : '') +
-    '<div class="sso-fields">' + SSO_MAIN.map(ssoField).join('') + '</div>' +
+    ssoStatus() + (SSO.problem && !ssoUnset() ? '<p class="adm-help adm-problem sso-problem">' + esc(SSO.problem) + '</p>' : '') + (prov ? '<p class="adm-help sso-provider">' + esc(prov) + '</p>' : '') +
+    SSO_GROUPS.map(ssoGroup).join('') +
     '<details class="sso-adv"><summary class="chev">Advanced: endpoints</summary><div class="sso-fields">' + SSO_ADVANCED.map(ssoField).join('') + '</div></details>' +
     '<div class="sso-redirect"><span class="sso-fn">Redirect URI to register</span>' + (uri ? '<code>' + esc(uri) + '</code>' : '<span class="muted sso-nouri">Not set: set SKOPAX_BASE_URL (or SSO_REDIRECT_URI) and restart.</span>') +
     '<button type="button" class="btn sec small sso-copy"' + (uri ? '' : ' disabled') + '>Copy</button>' +
     '<span class="adm-msg" role="status"></span></div>' +
     '<div class="adm-acts"><button type="button" class="btn sec small sso-test">Test connection</button><button type="button" class="btn small sso-save">Save</button>' +
-    (SSO.enabled ? '' : '<button type="button" class="btn small sso-on">Save &amp; turn on</button>') + '<span class="adm-msg sso-msg" role="status"></span></div>' +
+    (SSO.enabled ? '' : '<button type="button" class="btn small sso-on">Save &amp; turn on</button>') + '<button type="button" class="btn sec small sso-discard" title="Drop the changes not saved yet on this card">Discard changes</button>' +
+    '<span class="adm-msg sso-msg" role="status"></span></div>' +
     '<div class="sso-result"></div></section>';
   var card = ssoCard();
   card.querySelector('.sso-test').disabled = SSO_TESTING;
-  card.addEventListener('input', function (e) { ssoUnmark(e.target.closest('.sso-f')); });
-  card.addEventListener('change', function (e) { ssoUnmark(e.target.closest('.sso-f')); });
+  card.addEventListener('input', function (e) { ssoUnmark(e.target.closest('.sso-f')); ssoLive(e.target); });
+  card.addEventListener('change', function (e) {
+    ssoUnmark(e.target.closest('.sso-f'));
+    ssoLive(e.target);
+    if (e.target.classList.contains('sso-icon-file')) ssoIconPut(e.target.files && e.target.files[0]);
+  });
+  card.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.classList.contains('sso-chip-in')) { e.preventDefault(); ssoAddDomain(); } });
   card.addEventListener('click', ssoClick);
+  renderSsoRoles();
+  var again = document.querySelector('#acc-sso .sso-roles');
+  if (again && edits.length) restoreUnsaved(again, edits);
+  ssoChips();
+  ssoPreview();
+  accNavPaint();
   if (said) ssoSay(said);
+}
+function ssoLive(t) {
+  if (t && (t.id === 'sso-in-issuer' || t.id === 'sso-in-button-text' || t.id === 'sso-in-button-icon')) ssoPreview();
+}
+function ssoRoleItems() { return adminItems().filter(function (i) { return SSO_ROLE_KEYS.indexOf(i.key) >= 0; }); }
+function renderSsoRoles(saved) {
+  var box = document.querySelector('#acc-sso .sso-roles');
+  if (!box || !ADMIN) return;
+  adminKeep(box, saved, function () {
+    box.textContent = '';
+    ssoRoleItems().forEach(function (i) { box.appendChild(adminRow(i, true)); });
+  });
 }
 function ssoClick(e) {
   var t = e.target.closest('button');
@@ -1488,6 +2046,10 @@ function ssoClick(e) {
   var f = t.closest('.sso-f');
   if (t.classList.contains('sso-map-add')) return ssoAddRow(f);
   if (t.classList.contains('sso-map-del')) { t.closest('tr').remove(); ssoUnmark(f); return; }
+  if (t.classList.contains('sso-chip-del')) { var at = document.getElementById('sso-in-allowed-domains'); return ssoSetDomains(ssoDomains(at.value).filter(function (d) { return d !== t.dataset.domain; }), true); }
+  if (t.classList.contains('sso-chip-add')) return ssoAddDomain();
+  if (t.classList.contains('sso-icon-del')) return ssoIconRemove(t);
+  if (t.classList.contains('sso-discard')) return ssoDiscard();
   if (t.classList.contains('sso-reset')) { var reset = {}; reset[f.dataset.field] = null; return ssoPut({values: reset}, 'Reset'); }
   if (t.classList.contains('sso-secret-del')) return ssoRemoveSecret(t);
   if (t.classList.contains('sso-sw-reset')) return ssoSwitchReset(t);
@@ -1498,8 +2060,29 @@ function ssoClick(e) {
   if (!on && !t.classList.contains('sso-save')) return;
   var values = ssoTyped();
   if (!values) return;
-  if (!on && !Object.keys(values).length) { ssoSay('Nothing changed'); return; }
+  var roles = accCardEdits(document.querySelector('#acc-sso .sso-roles'));
+  if (!on && !Object.keys(values).length && !roles.length) { ssoSay('Nothing changed'); return; }
+  if (roles.length) return ssoSaveWithRoles(on, values, roles);
   ssoPut(on ? {values: values, enabled: true} : {values: values}, on ? 'Saved and turned on' : 'Saved');
+}
+async function ssoSaveWithRoles(on, values, roles) {
+  ssoBusy(true);
+  ssoSay('Saving\u2026');
+  var failed = await accSaveFields(roles), sso = on || Object.keys(values).length, ok = true;
+  if (sso) ok = await ssoPut(on ? {values: values, enabled: true} : {values: values}, on ? 'Saved and turned on' : 'Saved');
+  else ssoBusy(false);
+  accShowSaid(roles);
+  var card = ssoCard(), msg = card && card.querySelector('.sso-msg');
+  if (failed.length) ssoSay((ok ? '' : msg.textContent + '; ') + accNotSaved(failed), true);
+  else if (!sso) ssoSay('Saved');
+}
+function ssoDiscard() {
+  var roles = document.querySelector('#acc-sso .sso-roles');
+  if (roles) roles.textContent = '';
+  renderSso('Changes discarded');
+  renderMcpRows(SSO_KEEP);
+  var b = ssoCard() && ssoCard().querySelector('.sso-discard');
+  if (b) b.focus();
 }
 function ssoAddRow(f) {
   var body = f.querySelector('.sso-map-t tbody');
@@ -1526,6 +2109,7 @@ function ssoTyped() {
     if (!inp) return;
     if (inp.tagName === 'SELECT' && ssoSelectKept(inp)) return;
     now = inp.type === 'checkbox' ? (inp.checked ? 'true' : 'false') : inp.value === inp.defaultValue ? ssoVal(name).value : inp.value.trim();
+    if (name === SSO_DOMAINS && ssoPending()) now = ssoDomains(inp.value + ',' + ssoPending()).join(', ');
     if (now !== ssoVal(name).value) out[name] = now;
   });
   var secret = document.getElementById('sso-in-' + SSO_SEALED);
@@ -1543,7 +2127,7 @@ function ssoRowsOf(card) {
   });
 }
 function ssoDraft() {
-  var card = ssoCard(), out = {fields: {}, map: null, secret: ''};
+  var card = ssoCard(), out = {fields: {}, map: null, secret: '', pending: ssoPending()};
   if (!card) return out;
   SSO_MAIN.concat(SSO_ADVANCED).forEach(function (name) {
     var inp = document.getElementById('sso-in-' + name);
@@ -1581,14 +2165,20 @@ function ssoRestore(draft, skip) {
       row.querySelector('.sso-map-r').value = draft.map[n].role;
     });
   }
+  var chip = document.getElementById(SSO_CHIP_IN);
+  if (draft.pending && chip && skip.indexOf(SSO_DOMAINS) < 0) chip.value = draft.pending;
   var secret = document.getElementById('sso-in-' + SSO_SEALED);
   var shown = typeof curTab !== 'undefined' && curTab === 'access';
   if (shown && draft.secret && secret && !secret.readOnly && skip.indexOf(SSO_SEALED) < 0) secret.value = draft.secret;
 }
 function ssoRepaint(said, draft, skip) {
+  var back = ssoFocusKey();
   renderSso(said);
   ssoRestore(draft, skip);
+  ssoChips();
+  ssoPreview();
   renderMcpRows(SSO_KEEP);
+  ssoFocusBack(back);
 }
 async function ssoRemoveSecret(b) {
   var ask = window.__skopaxConfirm;
@@ -1667,7 +2257,7 @@ function ssoFail(e, fallback) {
 function ssoEditedSince(sent, late, name) {
   if (name === SSO_MAP) return JSON.stringify(sent.map) !== JSON.stringify(late.map);
   if (name === SSO_SEALED) return sent.secret !== late.secret;
-  return sent.fields[name] !== late.fields[name];
+  return sent.fields[name] !== late.fields[name] || (name === SSO_DOMAINS && sent.pending !== late.pending);
 }
 async function ssoPut(body, said) {
   var skip = Object.keys(body.values || {}), sent = ssoDraft();
@@ -1680,11 +2270,12 @@ async function ssoPut(body, said) {
   } catch (e) {
     ssoBusy(false);
     ssoFail(e, 'Not saved, try again');
-    return;
+    return false;
   }
   var draft = ssoDraft();
   SSO = ssoView(r);
   ssoRepaint(said, draft, skip.filter(function (name) { return !ssoEditedSince(sent, draft, name); }));
+  return true;
 }
 async function ssoTest() {
   if (SSO_TESTING) return;
@@ -1699,6 +2290,7 @@ async function ssoTest() {
     var r = await adminApi('POST', '/api/admin/sso/test', {values: values});
     ssoSay('');
     ssoResult(r);
+    ssoTested(r);
   } catch (e) {
     if (e && e.field && ssoMark(e.field, accError(e, ''))) ssoSay('The test did not run: see ' + (SSO_LABELS[e.field] || e.field), true);
     else ssoSay(accError(e, 'The test could not run'), true);
@@ -1706,6 +2298,11 @@ async function ssoTest() {
   SSO_TESTING = false;
   var now = ssoCard();
   if (now) now.querySelector('.sso-test').disabled = false;
+}
+function ssoTested(r) {
+  SSO_LAST_TEST = {ok: !!r && r.ok === true, at: new Date().toISOString()};
+  var line = document.querySelector('#acc-sso .sso-status');
+  if (line) line.outerHTML = ssoStatus();
 }
 function ssoResult(r) {
   var box = document.querySelector('#acc-sso .sso-result');
@@ -1746,20 +2343,57 @@ function renderMcpRows(saved) {
     box.textContent = '';
     var s = el('section', 'adm-grp ai-grp acc-mcp-grp'), client = items.filter(function (i) { return i.key === 'mcp.client-id'; })[0];
     s.dataset.group = MCP_GROUP;
-    s.appendChild(accText('h3', null, 'MCP'));
+    s.classList.add('acc-card');
+    var head = accText('div', 'ai-head'), state = mcpState();
+    head.appendChild(accText('h3', null, 'MCP sign-in'));
+    if (state[0]) head.appendChild(accText('span', 'tag ' + state[1] + ' acc-mcp-pill', state[0]));
+    s.appendChild(head);
+    s.appendChild(accText('p', 'acc-mcp-method', 'Method: access tokens from the identity provider (OAuth), checked against the settings below'));
     s.appendChild(accText('p', 'adm-help acc-mcp-note', 'MCP signs people in through the identity provider, so it needs single sign-on set up and on, and the MCP server switch on in Features' +
       (SSO && !SSO.active ? '. Single sign-on is not on, so MCP is off.' : '.')));
     if (!ADMIN || MCP_FAILED) s.appendChild(accText('p', 'muted acc-mcp-note acc-mcp-failed', 'MCP settings did not load; open the tab again.'));
+    var fields = accText('div', 'acc-fields acc-mcp-fields');
+    s.appendChild(fields);
     items.forEach(function (i) {
-      var row = adminRow(i), input = row.querySelector('.adm-in');
+      var row = adminRow(i, true), input = row.querySelector('.adm-in');
       if (i.key === 'mcp.audience' && input) input.placeholder = client && client.value ? client.value : 'the client ID';
       if (i.key === 'mcp.resource-url') {
         var meta = accText('p', 'adm-help acc-mcp-meta', 'Metadata: ');
         meta.appendChild(accText('code', null, mcpMetaUrl(i.value)));
         row.querySelector('.adm-c').appendChild(meta);
       }
-      s.appendChild(row);
+      fields.appendChild(row);
     });
+    if (items.length) {
+      var acts = accText('div', 'adm-acts acc-mcp-acts'), save = accText('button', 'btn small acc-mcp-save', 'Save'), said = accText('span', 'adm-msg acc-mcp-msg');
+      save.type = 'button';
+      said.setAttribute('role', 'status');
+      acts.appendChild(save);
+      acts.appendChild(said);
+      s.appendChild(acts);
+      save.addEventListener('click', function () { mcpSave(save, said); });
+    }
     box.appendChild(s);
   });
+  accNavPaint();
+}
+async function mcpSave(b, said) {
+  var edits = accCardEdits(document.getElementById('acc-mcp'));
+  if (!edits.length) { ssoNote(said, 'Nothing changed'); return; }
+  b.disabled = true;
+  ssoNote(said, 'Saving\u2026');
+  var failed = await accSaveFields(edits), now = document.querySelector('#acc-mcp .acc-mcp-msg'), again = document.querySelector('#acc-mcp .acc-mcp-save');
+  if (now) ssoNote(now, failed.length ? accNotSaved(failed) : 'Saved', failed.length > 0);
+  if (again) { again.disabled = false; again.focus(); }
+}
+function mcpSwitch() {
+  var i = adminItems().filter(function (x) { return x.key === MCP_SWITCH; })[0];
+  return i ? i.value === 'true' : null;
+}
+function mcpState() {
+  if (!SSO || MCP_FAILED) return ['', 'plain', ''];
+  var on = mcpSwitch();
+  if (!SSO.active) return ['Off', 'plain', on === true && !ssoUnset() ? 'The MCP server is switched on, but single sign-on is not on' : ''];
+  if (on === false) return ['Off', 'plain', ''];
+  return on === true ? ['On', 'k-ok', ''] : ['Ready', 'plain', ''];
 }

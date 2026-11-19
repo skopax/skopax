@@ -58,7 +58,7 @@ def test_a_string_sent_for_an_array_is_refused_before_the_tool_runs(store: Store
 @pytest.mark.parametrize('tool,args,message', [
     ('note', {'key': KEY}, 'text is required'),
     ('note', {'key': KEY, 'text': None}, 'text is required'),
-    ('note', {'key': KEY, 'text': 't', 'txt': 'x'}, 'note has no field txt; its fields are key, text'),
+    ('note', {'key': KEY, 'text': 't', 'txt': 'x'}, 'note has no field txt; its fields are key, text, cause'),
     ('open_cards', {'all': True}, 'open_cards has no field all; it takes no fields'),
     ('note', 'checked', 'note takes an object of fields, got a string'),
     ('triage', {'key': KEY, 'state': 'done'}, 'state must be one of progress, handled, got "done"'),

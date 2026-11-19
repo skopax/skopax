@@ -282,6 +282,18 @@ function tagsRow(label) {
     });
     box.appendChild(b);
   });
+  var u = UNTAGGED_F, un = filterBase(filter).filter(function (a) { return !tagIds(a).length; }).length;
+  if (Object.keys(TAG_NAMES).length && (!folded || hasF(u))) {
+    var ub = el('button', 'tab-sub-i k-act' + (un ? '' : ' zero'), '<span class="lbl">Untagged</span><span class="count">' + esc(un) + '</span>');
+    ub.type = 'button'; ub.dataset.type = u;
+    ub.setAttribute('aria-pressed', hasF(u) ? 'true' : 'false');
+    ub.title = un + ' ' + (un === 1 ? 'card' : 'cards') + ' with no tag under ' + label + ' \u00b7 ' + (hasF(u) ? 'click again to drop this filter' : 'shows only them');
+    ub.addEventListener('click', function () {
+      showTab('anoms');
+      setType(toggledF(u));
+    });
+    box.appendChild(ub);
+  }
   return box;
 }
 function setType(t) {

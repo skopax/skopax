@@ -1,0 +1,211 @@
+{
+  "id": "managed-redis",
+  "name": "Managed Redis",
+  "summary": "Redis that you cannot reach directly, such as a managed cloud Redis: down, memory, clients, command time, evictions, rejected connections and restarts.",
+  "source": "grafana",
+  "needs": "A Grafana instance whose Prometheus datasource holds redis_exporter series (redis_up, redis_memory_used_bytes, ...), or the same series under another prefix.",
+  "placeholders": [
+    {
+      "key": "instance",
+      "kind": "instance",
+      "label": "Grafana",
+      "help": "The Grafana instance whose datasource holds the Redis series.",
+      "example": "ops"
+    },
+    {
+      "key": "datasource",
+      "kind": "datasource",
+      "label": "Datasource",
+      "help": "The name or uid of the Grafana Prometheus datasource that holds the Redis series.",
+      "example": "cloud-metrics"
+    },
+    {
+      "key": "name",
+      "kind": "name",
+      "label": "Name",
+      "help": "A short name for these Redis instances in the check names and ids, such as cache-prod.",
+      "example": "cache-prod"
+    },
+    {
+      "key": "selector",
+      "kind": "matchers",
+      "label": "Selector",
+      "default": "",
+      "optional": true,
+      "max": 80,
+      "help": "Optional label matchers that pick the Redis series, such as env=\"prod\". Empty reads every Redis series in the datasource.",
+      "example": "env=\"prod\""
+    },
+    {
+      "key": "prefix",
+      "kind": "prefix",
+      "label": "Metric prefix",
+      "default": "redis_",
+      "max": 40,
+      "help": "The start of every Redis metric name: redis_ for redis_exporter (redis_up, redis_connected_clients, ...). Change it only when your metrics are renamed.",
+      "example": "redis_"
+    },
+    {
+      "key": "label",
+      "kind": "label",
+      "label": "Instance label",
+      "default": "instance",
+      "max": 40,
+      "help": "The label that names each Redis instance in the series.",
+      "example": "instance"
+    }
+  ],
+  "checks": [
+    {
+      "key": "down",
+      "id": "redis-${name}-down",
+      "name": "Redis ${name} down",
+      "source": "grafana",
+      "instance": "${instance}",
+      "datasource": "${datasource}",
+      "query": "max by (${label}) (${prefix}up{${selector}})",
+      "op": "<",
+      "threshold": 0.5,
+      "severity": "crit",
+      "by": [
+        "${label}"
+      ],
+      "title": "{${label}} down",
+      "text": "Redis {${label}} is down: ${prefix}up is 0, so its exporter cannot reach it. Clients that need it fail or fall back to their source."
+    },
+    {
+      "key": "memory",
+      "id": "redis-${name}-memory",
+      "name": "Redis ${name} memory",
+      "source": "grafana",
+      "instance": "${instance}",
+      "datasource": "${datasource}",
+      "query": "100 * max by (${label}) (max_over_time(${prefix}memory_used_bytes{${selector}}[30m])) / max by (${label}) (${prefix}memory_max_bytes{${selector}}) < 95 and on (${label}) (max by (${label}) (${prefix}up{${selector}}) >= 0.5)",
+      "op": ">=",
+      "threshold": 85,
+      "severity": "warn",
+      "by": [
+        "${label}"
+      ],
+      "title": "{${label}} memory at {value} %",
+      "text": "Redis {${label}} peaked at {value} % of its memory limit in the last 30 min. Near the limit, writes fail or keys get evicted, depending on the eviction policy; find the keys that grow (big caches without a TTL) before it fills."
+    },
+    {
+      "key": "memory-crit",
+      "id": "redis-${name}-memory-crit",
+      "name": "Redis ${name} memory critical",
+      "source": "grafana",
+      "instance": "${instance}",
+      "datasource": "${datasource}",
+      "query": "100 * max by (${label}) (max_over_time(${prefix}memory_used_bytes{${selector}}[30m])) / max by (${label}) (${prefix}memory_max_bytes{${selector}}) and on (${label}) (max by (${label}) (${prefix}up{${selector}}) >= 0.5)",
+      "op": ">=",
+      "threshold": 95,
+      "severity": "crit",
+      "by": [
+        "${label}"
+      ],
+      "title": "{${label}} memory at {value} %",
+      "text": "Redis {${label}} peaked at {value} % of its memory limit in the last 30 min. Near the limit, writes fail or keys get evicted, depending on the eviction policy; find the keys that grow (big caches without a TTL) before it fills."
+    },
+    {
+      "key": "clients",
+      "id": "redis-${name}-clients",
+      "name": "Redis ${name} clients",
+      "source": "grafana",
+      "instance": "${instance}",
+      "datasource": "${datasource}",
+      "query": "100 * max by (${label}) (max_over_time(${prefix}connected_clients{${selector}}[30m])) / max by (${label}) (${prefix}config_maxclients{${selector}}) and on (${label}) (max by (${label}) (${prefix}up{${selector}}) >= 0.5)",
+      "op": ">=",
+      "threshold": 80,
+      "severity": "warn",
+      "by": [
+        "${label}"
+      ],
+      "title": "{${label}} clients at {value} % of the limit",
+      "text": "Redis {${label}} peaked at {value} % of its client limit (maxclients) in the last 30 min. A full limit refuses new connections, so pods that start or scale out cannot reach Redis."
+    },
+    {
+      "key": "latency",
+      "id": "redis-${name}-latency",
+      "name": "Redis ${name} command time",
+      "source": "grafana",
+      "instance": "${instance}",
+      "datasource": "${datasource}",
+      "query": "(1e6 * sum by (${label}) (increase(${prefix}commands_duration_seconds_total{${selector}}[30m])) / sum by (${label}) (increase(${prefix}commands_processed_total{${selector}}[30m])) >= 3 * max by (${label}) (label_replace(1e6 * sum by (${label}) (increase(${prefix}commands_duration_seconds_total{${selector}}[30m] offset 1d)) / sum by (${label}) (increase(${prefix}commands_processed_total{${selector}}[30m] offset 1d)), \"base\", \"1d\", \"\", \"\") or label_replace(1e6 * sum by (${label}) (increase(${prefix}commands_duration_seconds_total{${selector}}[30m] offset 7d)) / sum by (${label}) (increase(${prefix}commands_processed_total{${selector}}[30m] offset 7d)), \"base\", \"7d\", \"\", \"\"))) and on (${label}) (max by (${label}) (${prefix}up{${selector}}) >= 0.5)",
+      "op": ">=",
+      "threshold": 200,
+      "severity": "warn",
+      "by": [
+        "${label}"
+      ],
+      "title": "{${label}} command time {value} us",
+      "text": "Redis {${label}} averaged {value} us per command in the last 30 min, at least 3 times the same 30 min 1 day or 1 week earlier. Redis runs commands on one thread, so slow commands (KEYS, big SCANs, large values) queue everything behind them."
+    },
+    {
+      "key": "evicted",
+      "id": "redis-${name}-evicted",
+      "name": "Redis ${name} evictions",
+      "source": "grafana",
+      "instance": "${instance}",
+      "datasource": "${datasource}",
+      "query": "sum by (${label}) (increase(${prefix}evicted_keys_total{${selector}}[30m])) and on (${label}) (max by (${label}) (${prefix}up{${selector}}) >= 0.5)",
+      "op": ">",
+      "threshold": 0,
+      "severity": "warn",
+      "by": [
+        "${label}"
+      ],
+      "title": "{${label}} evicted {value} keys",
+      "text": "Redis {${label}} reported {value} evicted keys in the last 30 min: memory is full and Redis is dropping cached data."
+    },
+    {
+      "key": "rejected",
+      "id": "redis-${name}-rejected",
+      "name": "Redis ${name} rejected connections",
+      "source": "grafana",
+      "instance": "${instance}",
+      "datasource": "${datasource}",
+      "query": "sum by (${label}) (increase(${prefix}rejected_connections_total{${selector}}[30m])) and on (${label}) (max by (${label}) (${prefix}up{${selector}}) >= 0.5)",
+      "op": ">",
+      "threshold": 0,
+      "severity": "warn",
+      "by": [
+        "${label}"
+      ],
+      "title": "{${label}} rejected {value} connections",
+      "text": "Redis {${label}} reported {value} rejected connections in the last 30 min: the client limit was hit."
+    },
+    {
+      "key": "restart",
+      "id": "redis-${name}-restart",
+      "name": "Redis ${name} restart",
+      "source": "grafana",
+      "instance": "${instance}",
+      "datasource": "${datasource}",
+      "query": "min by (${label}) (${prefix}uptime_in_seconds{${selector}}) and on (${label}) (max by (${label}) (${prefix}up{${selector}}) >= 0.5)",
+      "op": "<",
+      "threshold": 3600,
+      "severity": "warn",
+      "by": [
+        "${label}"
+      ],
+      "title": "{${label}} restarted",
+      "text": "Redis {${label}} has been up for only {value} s: it restarted, so clients reconnected and an in-memory cache may start cold."
+    },
+    {
+      "key": "no-series",
+      "id": "redis-${name}-no-series",
+      "name": "Redis ${name} no series",
+      "source": "grafana",
+      "instance": "${instance}",
+      "datasource": "${datasource}",
+      "query": "absent(${prefix}up{${selector}})",
+      "op": ">",
+      "threshold": 0,
+      "severity": "crit",
+      "by": [],
+      "title": "no Redis series for ${name}",
+      "text": "The selector of the Managed Redis preset for ${name} matches no ${prefix}up series in the datasource, so every other check of this preset is quiet: check the selector, the metric prefix and the datasource."
+    }
+  ]
+}

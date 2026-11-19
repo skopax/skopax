@@ -16,6 +16,7 @@ from pymongo import DESCENDING, ReturnDocument
 
 from skopax import brand, clock as zone_clock, logs, tags
 from skopax.config import DEFAULT_ROLES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SSO_CLAIM_MODES, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
+from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import BY_KEY as FEATURE_OF
@@ -35,12 +36,14 @@ SEVS = ('info', 'warn', 'crit')
 REFRESH_S = 15
 TEXT_LIMIT = 1000
 TEXT_LIMITS = {'core.org-about': ORG_ABOUT_MAX}
+TEXT_LIMITS['sso.button-text'] = SSO_BUTTON_TEXT_MAX
 INPUT_LIMIT = 4000
 TEXT_BOXES = ('text', 'list', 'tagrules')
 TERM_LIMIT = 200
 HISTORY_LIMIT = 200
 ACTIVITY_VALUE = 80
 REV_ID = 'rev'
+NO_COLOR_SHOWN = 'off (NO_COLOR)'
 
 
 class Invalid(Authored, ValueError):
@@ -64,10 +67,11 @@ class Tunable:
     plugin: str | None = None
     default: str | None = None
     rule_help: Mapping[str, str] | None = None
+    hidden: bool = False
 
 
-def T(key, field, group, label, help, kind, low=None, high=None, choices=(), live=True, defaults=None, part=None) -> Tunable:
-    return Tunable(key, field, group, label, help, kind, low, high, choices if callable(choices) else tuple(choices), live, defaults, part)
+def T(key, field, group, label, help, kind, low=None, high=None, choices=(), live=True, defaults=None, part=None, hidden=False) -> Tunable:
+    return Tunable(key, field, group, label, help, kind, low, high, choices if callable(choices) else tuple(choices), live, defaults, part, hidden=hidden)
 
 
 def choices_of(t: Tunable) -> tuple[str, ...]:
@@ -126,7 +130,7 @@ SIGN_IN_ROLES = (
       'added in Admin or by an earlier sign-in. With a public provider, anyone means any account there', 'choice', choices=('anyone', 'added-only')),
     T('sso.allowed-domains', 'sso_allowed_domains', SIGNIN, 'Allowed email domains', 'Email domains that may sign in with SSO, such as example.com, separated by commas; matched exactly, without wildcards. '
       'Empty lets every domain in', 'list'),
-    T('roles.stale-max-minutes', 'roles_stale_max_minutes', GENERAL, 'Last known role (minutes)', 'While a plug-in role resolver fails, a person whose role that resolver gave in the last N minutes '
+    T('roles.stale-max-minutes', 'roles_stale_max_minutes', SIGNIN, 'Last known role (minutes)', 'While a plug-in role resolver fails, a person whose role that resolver gave in the last N minutes '
       'signs in with that role, and {product} logs a warning; anyone else is refused. 0 refuses everyone while the resolver fails', 'int', 0, 1440),
 )
 
@@ -165,6 +169,8 @@ STATIC = (
     T('sso.authorize-url', 'sso_authorize_url', SIGNIN, 'Authorize URL', 'Replaces the authorization endpoint the provider lists; empty uses the listed one', 'text'),
     T('sso.token-url', 'sso_token_url', SIGNIN, 'Token URL', 'Replaces the token endpoint the provider lists; empty uses the listed one', 'text'),
     T('sso.jwks-url', 'sso_jwks_url', SIGNIN, 'Keys (JWKS) URL', 'Replaces the signing keys (JWKS) address the provider lists; empty uses the listed one', 'text'),
+    T('sso.button-text', 'sso_button_text', SIGNIN, 'Button text', 'The text of the single sign-on button on the login page, at most 40 characters, such as Sign in with Acme; empty uses Sign in with SSO', 'text'),
+    T('sso.button-icon', 'sso_button_icon', SIGNIN, 'Button icon', 'The icon of the single sign-on button: auto picks a mark from the issuer host, company shows the image uploaded on the Single sign-on card, none shows the text only', 'choice', choices=SSO_BUTTON_ICONS),
     T('investigate.model', 'investigate_model', INV, 'Card model', 'Model for card runs, Investigate clicks, page asks and deploy-report assessments', 'choice', choices=MODELS),
     T('investigate.effort', 'investigate_effort', INV, 'Card effort', 'Thinking effort of the card model', 'choice', choices=EFFORTS),
     T('investigate.slack-model', 'investigate_slack_model', INV, 'Slack model', 'Model for questions asked in Slack', 'choice', choices=MODELS),
@@ -203,6 +209,7 @@ STATIC = (
     T('slack.great-emoji', 'slack_great_emoji', SLACK, 'Thank-you emoji', 'The reaction the bot puts on a thank-you', 'text'),
     T('slack.remind-hours', 'slack_remind_hours', SLACK, 'Reminder after (h)', 'Reminds a posted card nobody acted on after N hours; 0 turns reminders off', 'float', 0, 168, live=False),
     T('slack.clear-note-minutes', 'slack_clear_note_minutes', SLACK, 'Cleared note after (min)', 'Says in the thread that a posted card cleared after N minutes', 'float', 0, 240, live=False),
+    T('routes.slack-echo', 'routes_slack_echo', SLACK, 'Echo route posts to Slack', 'Also posts a card a route (such as a Teams channel) takes to the Slack channel when Slack has not posted it yet, and says in its thread which route got it; a route can override this with its own Also post to Slack field', 'bool'),
     T('slack.crit-now', 'slack_crit_now', SLACK, 'Critical cards at once', 'Posts a critical card to the main channel with its numbers the moment it opens, like Teams; the investigator\'s findings follow as a reply in its thread', 'bool'),
     T('slack.fallback-minutes', 'slack_fallback_minutes', SLACK, 'Numbers fallback after (min)', 'Posts the numbers of a critical card when no investigation finished in N minutes; 0 turns it off', 'int', 0, 240, live=False),
     T('slack.state-notes', 'slack_state_notes', SLACK, 'Status notes in threads', 'Posts a short line in the thread when a posted card is taken, resolved or muted', 'bool', live=False),
@@ -214,7 +221,8 @@ STATIC = (
     T('self-review.dm', 'selfreview_dm', REVIEW, 'Send to', 'Emails that get the self-review as a Slack DM, separated by commas; empty uses the push users', 'text'),
     T('self-review.hour', 'selfreview_hour', REVIEW, 'Hour (local time)', 'Hour of the daily self-review; -1 turns it off', 'int', -1, 23, live=False),
     T('cards.archive-hours', 'archive_hours', CARDS, 'Archive after (hours)', 'A card that is not firing (or is muted) and had no change for N hours moves to Archived: hidden on the board, the lists and the counts, still under the Archived list. Waiting cards nobody acted on stay', 'int', 1, 720),
-    T('core.auto-resolve-days', 'auto_resolve_days', CARDS, 'Auto-resolve after (days)', 'Closes waiting cards nobody acted on after N days; 0 turns it off', 'int', 0, 30),
+    T('core.auto-resolve-hours', 'auto_resolve_hours', CARDS, 'Auto-resolve cleared cards after (hours)', 'Closes a card that stopped firing and that nobody acted on after N hours; 0 turns it off', 'int', 0, 720),
+    T('core.auto-resolve-days', 'auto_resolve_days', CARDS, 'Auto-resolve after (days)', 'Deprecated: use the hours setting. Closes waiting cards nobody acted on after N days; 0 turns it off', 'int', 0, 30, hidden=True),
     T('recurring.count', 'recurring_count', CARDS, 'Recurring after (times)', 'A card that fired N times in the window with no ticket is marked recurring', 'int', 2, 20),
     T('recurring.days', 'recurring_days', CARDS, 'Recurring window (days)', 'Window of the recurring count', 'int', 1, 60),
     T('jira.projects', 'jira_projects', JIRA, 'Projects', 'Projects the Create task dialog offers, separated by commas; the Infra project is added to the list by itself', 'list'),
@@ -511,6 +519,8 @@ def apply(base: Settings, overrides: dict[str, str], extra: tuple[Tunable, ...] 
             tag_parts[t.part] = value
         else:
             changes[t.field] = value
+    if 'auto_resolve_days' in changes and 'auto_resolve_hours' not in changes and not base.auto_resolve_hours_set:
+        changes['auto_resolve_hours'] = changes['auto_resolve_days'] * 24
     if tag_parts:
         held = dict(base.tag_rules or tags.RULES)
         held.update(tag_parts)
@@ -626,6 +636,10 @@ class Live:
     def known(self) -> dict[str, Tunable]:
         return {t.key: t for t in registry(self.extra())}
 
+    def settable(self, key: str) -> Tunable | None:
+        t = self.known().get(key)
+        return None if t is None or t.hidden else t
+
     def base_text(self, t: Tunable) -> str:
         if t.plugin is not None:
             return self.values.get(t.key, t.default or '')
@@ -693,6 +707,9 @@ class Live:
             if callable(t.choices) and out['value'] and out['value'] not in offered:
                 out['choices'] = list(dict.fromkeys(out['choices'] + [out['value']]))
                 out['problem'] = msg('settings.pack_missing', value=out['value'])
+        if t.key == 'core.log-color' and logs.PLAIN[0]:
+            out['value'] = NO_COLOR_SHOWN
+            out['choices'] = list(dict.fromkeys(out['choices'] + [NO_COLOR_SHOWN]))
         if t.low is not None:
             out.update(low=t.low, high=t.high)
         if t.kind == 'tagrules':
@@ -738,10 +755,10 @@ class Live:
 
     def entries(self) -> list[dict]:
         self.refresh(force=True)
-        return [self.entry(t) for t in registry(self.extra())]
+        return [self.entry(t) for t in registry(self.extra()) if not t.hidden]
 
     def set(self, key: str, raw, by: str) -> tuple[dict, dict]:
-        t = self.known().get(key)
+        t = self.known().get(key) if raw is None else self.settable(key)
         if t is None:
             raise KeyError(key)
         self.refresh(force=True)

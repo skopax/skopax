@@ -97,8 +97,8 @@ async function draftIsShownOnTheCard() {
   const tag = orders.querySelector('.inc-more .inc-tags .slack-rec');
   assert.ok(tag && tag.textContent === 'Slack recommended', 'the expanded tags say Slack recommended');
   assert.ok(!orders.querySelector('.inc-head .slack-rec'), 'a draft that is not armed stays off the collapsed row');
-  assert.ok(tag.title.startsWith(text + '\n\nClaude · '), 'tag tooltip carries the draft');
-  assert.match(tag.title, / · full text and Edit in the expanded card$/, 'the tooltip points at the expanded card');
+  assert.ok(tag.title.startsWith(text + '\n\nInvestigator \u00b7 '), 'tag tooltip carries the draft');
+  assert.match(tag.title, / \u00b7 full text and Edit in the expanded card\n[^\n]+$/, 'the tooltip points at the expanded card and ends with the status line');
   const box = orders.querySelector('.sdraft');
   assert.ok(box && box.closest('.inc-more') && box.closest('.inc-more').hidden, 'draft text sits in the collapsed panel, the card stays compact');
   assert.ok(![...orders.children].some((c) => c.classList.contains('sdraft')), 'no draft box on the card face');
@@ -107,7 +107,7 @@ async function draftIsShownOnTheCard() {
   assert.match(box.querySelector('h5').textContent, /^Slack draft/);
   assert.strictEqual(box.querySelector('.sdraft-t').textContent, text, 'draft text shown as written, line breaks kept');
   assert.strictEqual(box.querySelector('.sdraft-t a').getAttribute('href'), LINK, 'card link is clickable');
-  assert.match(box.querySelector('.sdraft-by').textContent, /^Claude · \d\d:\d\d$/, 'who and when');
+  assert.match(box.querySelector('.sdraft-by').textContent, /^Investigator \u00b7 \d\d:\d\d$/, 'who and when');
   assert.ok(box.querySelector('.draft-form').hidden, 'edit form closed by default');
   assert.ok(!box.querySelector('.draft-edit').hasAttribute('aria-disabled'), 'operator can edit');
   const slack = orders.querySelector('.slack-btn');
@@ -360,8 +360,8 @@ async function armedDraftCountsDownAndHoldStopsIt() {
   assert.match(tag().textContent, /^Auto-send \d\d:\d\d$/, 'the tag counts down instead of saying Slack recommended');
   assert.ok(tag().classList.contains('armed'));
   assert.ok(tag().closest('.inc-title'), 'an armed auto-send sits on the collapsed row');
-  assert.ok(tag().title.startsWith(text + '\n\nClaude · '), 'tooltip keeps the draft text');
-  assert.match(tag().title, /posts itself to Slack within 30 s of \d\d:\d\d unless someone presses Hold; full text and Edit in the expanded card$/);
+  assert.ok(tag().title.startsWith(text + '\n\nInvestigator \u00b7 '), 'tooltip keeps the draft text');
+  assert.match(tag().title, /posts itself to Slack within 30 s of \d\d:\d\d unless someone presses Hold; full text and Edit in the expanded card\nSends by itself at \d\d:\d\d unless someone holds it$/);
   assert.strictEqual(doc.querySelector('#tab-sub-anoms button[data-f="slack"] .count').textContent, '1', 'an armed draft is still a waiting Slack draft');
   const hold = () => card(doc, ORDERS).querySelector('.notif .hold-btn');
   assert.ok(hold(), 'the card offers Hold');
@@ -378,7 +378,7 @@ async function armedDraftCountsDownAndHoldStopsIt() {
   assert.deepStrictEqual(calls.filter((c) => c.path === '/api/slack-holds').map((c) => [c.method, c.body]), [['POST', {key: ORDERS}]]);
   assert.strictEqual(tag().textContent, 'Slack recommended', 'a held draft is a normal manual draft again');
   assert.ok(tag().closest('.inc-tags') && !card(doc, ORDERS).querySelector('.inc-head .slack-rec'), 'and moves off the row into the expanded tags');
-  assert.match(tag().title, /Auto-send held by op \d\d:\d\d; it only goes out with the button now\.$/);
+  assert.match(tag().title, /\nHeld by op at \d\d:\d\d$/);
   assert.ok(!hold(), 'the Hold button goes once it is held');
   assert.strictEqual(card(doc, ORDERS).querySelector('.slack-btn').textContent, 'Send draft to Slack', 'Send still posts it');
   assert.ok(!navigated(errors), errors.join(' | '));
@@ -462,10 +462,10 @@ async function slackTabQueuesEveryUnsentDraft() {
   ], 'every row says what happens to it next');
   const stopped = r[5].children[2].querySelector('.state');
   assert.ok(stopped.classList.contains('k-warn'), 'the stopped one is amber, because it is the trap');
-  assert.match(stopped.title, /skips a card that is in progress/);
+  assert.match(stopped.title, /^Not sent: the card went In progress, so it waits for a person$/);
   assert.ok(!r[5].querySelector('.sq-acts .hold-btn'), 'nothing to hold on a card that will not auto-send');
   assert.strictEqual(cells(r[2])[1], 'Orders have returned errors since 18:40.', 'the draft cell shows its first line');
-  assert.ok(r[2].querySelector('.sq-d span').title.startsWith(serve.state.anomalies[0].slackDraft.text + '\n\nClaude · '), 'the full text is its tooltip');
+  assert.ok(r[2].querySelector('.sq-d span').title.startsWith(serve.state.anomalies[0].slackDraft.text + '\n\nInvestigator \u00b7 '), 'the full text is its tooltip');
   const tab = doc.getElementById('tab-slack');
   assert.strictEqual(doc.getElementById('count-slack').textContent, '7');
   assert.ok(tab.classList.contains('hot') && tab.classList.contains('k-info'), 'armed drafts make the tab hot and blue');
@@ -608,9 +608,10 @@ async function slackTabJumpsToTheDraftAndListsWhatWentOut() {
   const out = [...doc.querySelectorAll('#slack-sent tbody tr')].map((tr) => cells(tr));
   assert.deepStrictEqual(out, [
     [hhmm(sent.anomalies[1].slackPost.at), 'Warningcheckout-service / 5xx', 'Investigator \u00b7 auto-sent', 'draft'],
-    [hhmm(sent.anomalies[0].slackPost.at), 'Criticalorders-service / ERROR', 'Claude (on request)', 'draft'],
+    [hhmm(sent.anomalies[0].slackPost.at), 'Criticalorders-service / ERROR', 'Investigator (on request)', 'draft'],
     [hhmm(rep.slackPost.at), 'ReportDeploy report · ' + hhmm(rep.windowFrom) + '–' + hhmm(rep.windowTo) + ' · clean', 'op', 'plain'],
   ], 'the last 24 hours of posts, newest first, with who sent it and whether the draft was the message');
+  assert.deepStrictEqual([...doc.querySelectorAll('#slack-sent tbody tr')].slice(0, 2).map((tr) => tr.querySelector('.tag').title), ['Investigator\u2019s draft was the message', 'Investigator\u2019s draft was the message'], 'the tag names the investigator, not a model');
 
   //when
   const prog = rows(doc).find((tr) => cells(tr)[0].endsWith('catalog-service / restarts'));

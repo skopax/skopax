@@ -17,3 +17,5 @@ Then, for live traffic:
 - `cloudflare_graphql` only for what `edge` cannot answer: other datasets (firewall events, Workers, load balancing), other dimensions or several hosts at once. Keep the window to 24 h or less, set `limit`, and filter by zone tag.
 
 In a Cloudflare incident, the edge numbers decide. The Cloudflare status page names the affected components; CDN/Cache and Network are the request path, Dashboard and API are the control plane. A status card names the watched component and how Cloudflare rates it.
+
+The instance field zone-checks can limit a zone to the cf checks, the edge check or neither; a zone without a row in one table is not read by that check by choice, not because it failed.

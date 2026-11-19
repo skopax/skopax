@@ -15,7 +15,7 @@ import regex
 from skopax import engine, remote, tags
 from skopax.agent import AgentError, RemoteAgent, declared, http_link, rev_of
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
-from skopax.contract import Context, Field, InstanceInfo, Knowledge, Locale, OrgPack, Panel, Peer, Plugin, ReadError, SourceDown, TestResult
+from skopax.contract import KNOWLEDGE_INLINE_TOTAL, KNOWLEDGE_OWNER_TOTAL, AutoResolve, Context, Field, InstanceInfo, Knowledge, Locale, OrgPack, Panel, Peer, Plugin, ReadError, RunState, SourceDown, TestResult
 from skopax.engine import parse_iso
 from skopax.deployhook import DeployHooks
 from skopax.errkind import kind
@@ -31,8 +31,6 @@ from skopax.sections import plugin_of, stored_rows
 from skopax.remote import Transport
 
 log = logging.getLogger('skopax.runtime')
-
-KNOWLEDGE_TOTAL = 80000
 
 ORG_KEYS = ('link_hosts', 'email_domains', 'ticket_projects')
 ASSET_MAX_BYTES = 2 * 1024 * 1024
@@ -117,11 +115,12 @@ def _stem(card: dict) -> str | None:
 
 
 class RunContext:
-    def __init__(self, runtime: 'Runtime', plugin: Plugin, instance: Instance | None, now: float, reads=None):
+    def __init__(self, runtime: 'Runtime', plugin: Plugin, instance: Instance | None, now: float, reads=None, run_state: RunState | None = None):
         self.runtime = runtime
         self.plugin = plugin
         self.now = now
         self.instance = None if instance is None else instance.info()
+        self.run_state = RunState() if run_state is None else run_state
         self.testing = False
         self._reads = reads
         self._tool_reads: list = []
@@ -234,10 +233,6 @@ def shown_knowledge(plugin: Plugin, k: Knowledge) -> Knowledge:
     return dataclasses.replace(k, text=f'From plug-in {plugin.name}.\n\n{k.text.strip()}')
 
 
-def knowledge_size(k: Knowledge) -> int:
-    return len(f'\n## {k.title} {{#{k.id}}}\n\n{k.text.strip()}\n')
-
-
 def held_knowledge(plugin: Plugin, found: list) -> bool:
     if plugin.checks:
         return False
@@ -278,7 +273,6 @@ class Runtime:
         self._catching = threading.Lock()
         self._good: dict[str, dict[str, tuple[str, ...]]] = {}
         self._org_failing: set[str] = set()
-        self._left_out: frozenset[str] | None = None
         self._links_failed: set[str] = set()
         self._release_runs: dict[tuple[str, str | None], tuple[dict, threading.Event]] = {}
         self._releasing = threading.Lock()
@@ -614,42 +608,32 @@ class Runtime:
         transport = self.transport_for(plugin, info)
         return Peer(info, lambda: transport, frozenset(instance.off_checks))
 
-    def knowledge(self, cards: Sequence[dict] = ()) -> list[Knowledge]:
+    def _known(self, serving: list | None = None) -> list[tuple[Plugin, Knowledge, int]]:
+        return [(plugin, shown_knowledge(plugin, k), len(k.text.strip())) for plugin, found in (self.serving() if serving is None else serving) if not held_knowledge(plugin, found)
+                for k in plugin.knowledge]
+
+    def knowledge(self) -> list[Knowledge]:
+        return [k for _, k, _ in self._known()]
+
+    def knowledge_parts(self, cards: Sequence[dict] = ()) -> tuple[list[Knowledge], list[tuple[str, Knowledge]]]:
         serving = self.serving()
+        known = self._known(serving)
         active = [plugin for plugin, _ in serving]
-        owners = [owner.id for owner in (self._owner(card, active) for card in cards if isinstance(card, dict)) if owner is not None]
-        first = {plugin_id: at for at, plugin_id in enumerate(dict.fromkeys(owners))}
-        out: list[Knowledge] = []
-        left: list[str] = []
-        used = 0
-        full = False
-        for plugin, found in sorted(serving, key=lambda pair: first.get(pair[0].id, len(first))):
-            if held_knowledge(plugin, found):
-                continue
-            for k in plugin.knowledge:
-                shown = shown_knowledge(plugin, k)
-                size = knowledge_size(shown)
-                if full or used + size > KNOWLEDGE_TOTAL:
-                    full = True
-                    if plugin.name not in left:
-                        left.append(plugin.name)
-                    continue
-                used += size
-                out.append(shown)
-        self._note_left_out(tuple(left))
-        return out
+        owners = {owner.id for owner in (self._owner(card, active) for card in cards if isinstance(card, dict)) if owner is not None}
+        inline: list[Knowledge] = []
+        index: list[tuple[str, Knowledge]] = []
+        used = {True: 0, False: 0}
+        for plugin, k, size in known:
+            owned = plugin.id in owners
+            if (owned or k.inline) and used[owned] + size <= (KNOWLEDGE_OWNER_TOTAL if owned else KNOWLEDGE_INLINE_TOTAL):
+                used[owned] += size
+                inline.append(k)
+            else:
+                index.append((plugin.name, k))
+        return inline, index
 
-    def _note_left_out(self, left: tuple[str, ...]) -> None:
-        if not left:
-            return
-        with self._guard:
-            changed = frozenset(left) != self._left_out
-            self._left_out = frozenset(left)
-        if changed:
-            log.info('%s', msg('plugins.knowledge.left_out', limit=KNOWLEDGE_TOTAL, plugins=', '.join(left)))
-
-    def context(self, plugin: Plugin, instance: Instance | None, now: float, reads=None) -> RunContext:
-        return RunContext(self, plugin, instance, now, reads)
+    def context(self, plugin: Plugin, instance: Instance | None, now: float, reads=None, run_state: RunState | None = None) -> RunContext:
+        return RunContext(self, plugin, instance, now, reads, run_state)
 
     def linker(self) -> Callable[[dict], list[dict] | None]:
         deadline = time.monotonic() + self.hook_timeout
@@ -981,6 +965,34 @@ class Runtime:
 
     def card_texts(self) -> list[tuple[str, Callable[[dict], str | None]]]:
         return [(plugin.id, plugin.card_text) for plugin in self._plugins() if plugin.card_text is not None]
+
+    def auto_windows(self) -> tuple:
+        out = []
+        for plugin in self._plugins():
+            try:
+                declared = plugin.auto_resolve if isinstance(plugin.auto_resolve, (tuple, list)) else ()
+                for item in declared:
+                    if not (isinstance(item, AutoResolve) and isinstance(item.check, str) and isinstance(item.sig, str) and isinstance(item.setting, str)
+                            and isinstance(item.hours, int) and not isinstance(item.hours, bool)):
+                        self._warn(('auto-resolve', plugin.id, repr(item)[:80]), 'plug-in %s: skipping an auto_resolve entry that is not shaped as AutoResolve(check, sig, hours, setting)', plugin.id)
+                        continue
+                    hours = item.hours
+                    if item.setting:
+                        try:
+                            given = self.setting(plugin.id, item.setting)
+                            hours = given if isinstance(given, int) and not isinstance(given, bool) else hours
+                        except Exception as e:
+                            self._warn(('auto-resolve-setting', plugin.id, item.setting), 'plug-in %s: setting %s is not read, using %d hours: %s', plugin.id, item.setting, hours, kind(e))
+                    if hours <= 0:
+                        continue
+                    names = {item.check}
+                    for check in plugin.checks:
+                        if check.id == item.check:
+                            names |= {check.id, *check.ran}
+                    out.append((frozenset(names), item.sig, hours))
+            except Exception as e:
+                self._warn(('auto-resolve-plugin', plugin.id), 'plug-in %s: its auto_resolve entries are ignored: %s', plugin.id, kind(e))
+        return tuple(out)
 
     def ui_hosts(self) -> tuple[str, ...]:
         hosts = set()

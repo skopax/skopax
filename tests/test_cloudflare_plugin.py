@@ -224,9 +224,9 @@ def test_cloudflare_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('cloudflare').state == 'ok'
     assert json.loads(json.dumps(manifest)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'Cloudflare', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.2', 'community')
+        'Cloudflare', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
     assert manifest['capabilities'] == {'hosts': ['api.cloudflare.com', 'www.cloudflarestatus.com'], 'secrets': ['token'], 'agentReads': False} and manifest['uses'] == []
-    assert [(f['key'], f['kind'], f['required']) for f in manifest['fields']] == [('token', 'secret', True), ('zones', 'text', True), ('account', 'text', False), ('status-components', 'text', False)]
+    assert [(f['key'], f['kind'], f['required']) for f in manifest['fields']] == [('token', 'secret', True), ('zones', 'text', True), ('zone-checks', 'text', False), ('account', 'text', False), ('status-components', 'text', False)]
     assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('cf', 900, 60, ['cf']), ('edge', 900, 60, ['edge'])]
     assert [(c.id, c.sections, c.tool) for c in cloudflare.PLUGIN.checks] == [('cf', ('cloudflare',), None), ('edge', ('edge',), 'edge')]
     assert [(t.name, t.kind, t.per_run, t.scan, t.instance_input) for t in cloudflare.PLUGIN.tools] == [('cloudflare_graphql', 'read', 6, True, 'instance'), ('edge', 'read', None, True, 'instance')]
@@ -242,7 +242,7 @@ def test_cloudflare_defaults_are_neutral():
     rules = {r.id: dict(r.defaults) for r in cloudflare.PLUGIN.rules}
 
     # then
-    assert fields == {'token': '', 'zones': '', 'account': '', 'status-components': ''}
+    assert fields == {'token': '', 'zones': '', 'zone-checks': '', 'account': '', 'status-components': ''}
     assert cloudflare.PLUGIN.settings == ()
     assert rules == {'edge': dict(min_req=5000, conn_crit_n=200, conn_crit_pct=0.5, conn_warn_n=50, conn_warn_pct=0.05, conn_info_n=20, conn_info_pct=0.02,
                                   srv_crit_n=500, srv_crit_pct=1.0, srv_warn_n=200, srv_warn_pct=0.2, srv_info_n=50, srv_info_pct=0.05)}

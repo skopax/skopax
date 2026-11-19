@@ -47,7 +47,7 @@ def test_package_and_version():
     old = importlib.util.find_spec('watch' + 'er')
 
     # then
-    assert version == '0.1.0'
+    assert version == '0.2.0'
     assert old is None
 
 
@@ -79,8 +79,8 @@ def test_attribution():
     named, default = dataclasses.replace(settings(), display_name='Acme Ops'), dataclasses.replace(settings(), display_name='Skopax')
 
     # then
-    assert brand.attribution(named) == ('Acme Ops \u00b7 powered by Skopax 0.1.0', 'https://skopax.io')
-    assert brand.attribution(default) == ('Skopax 0.1.0 \u00b7 skopax.io', 'https://skopax.io')
+    assert brand.attribution(named) == ('Acme Ops \u00b7 powered by Skopax 0.2.0', 'https://skopax.io')
+    assert brand.attribution(default) == ('Skopax 0.2.0 \u00b7 skopax.io', 'https://skopax.io')
 
 
 def test_the_shown_version_is_the_release_tag_form_of_the_package_version():
@@ -91,10 +91,10 @@ def test_the_shown_version_is_the_release_tag_form_of_the_package_version():
     shown = {v: brand.display_version(v) for v in versions}
 
     # then
-    assert brand.display_version() == '0.1.0' == brand.display_version(skopax.__version__)
+    assert brand.display_version() == '0.2.0' == brand.display_version(skopax.__version__)
     assert shown == {v: release_version.release_tag(v).removeprefix('v') if release_version.release_tag(v) else v for v in versions}
     assert shown['0.1.0rc1'] == '0.1.0-rc.1' and shown['0.1.0'] == '0.1.0' and shown['0.1.0.post1'] == '0.1.0.post1'
-    assert brand.page_info()['version'] == '0.1.0' and skopax.__version__ == '0.1.0'
+    assert brand.page_info()['version'] == '0.2.0' and skopax.__version__ == '0.2.0'
 
 
 def test_display_name_is_escaped_everywhere(store):
@@ -374,6 +374,21 @@ def test_the_wordmark_is_the_svg_for_the_default_name_and_escaped_text_for_any_o
     assert named == '<span class="wordmark wordmark-text" role="img" aria-label="O&#x27;Brien Ops">O&#x27;Brien Ops</span>'
 
 
+def test_favicon_ico_is_open_and_holds_the_mark_at_16_32_and_48_pixels():
+    # given
+    with app_client(fresh_store()) as c:
+
+        # when
+        got = c.get('/favicon.ico')
+
+    # then
+    body = got.content
+    sizes = [body[6 + 16 * i] for i in range(int.from_bytes(body[4:6], 'little'))]
+    assert got.status_code == 200 and got.headers['content-type'] == 'image/x-icon'
+    assert body[:4] == bytes([0, 0, 1, 0]) and sizes == [16, 32, 48]
+    assert all(body[int.from_bytes(body[6 + 16 * i + 12:6 + 16 * i + 16], 'little'):][:8] == b'\x89PNG\r\n\x1a\n' for i in range(3))
+
+
 def test_login_setup_and_the_page_header_show_the_wordmark_and_the_favicon_is_the_mark(store):
     # given
     client = admin_client(store)
@@ -578,7 +593,7 @@ def test_a_failing_hide_check_keeps_the_line_and_warns_once(caplog):
     warned = [r.getMessage() for r in caplog.records if r.name == 'skopax.brand']
 
     # then
-    assert seen == (True, True, {'text': 'Skopax 0.1.0 \u00b7 skopax.io', 'href': SITE}, {'text': 'Skopax 0.1.0 \u00b7 skopax.io', 'href': SITE})
+    assert seen == (True, True, {'text': 'Skopax 0.2.0 \u00b7 skopax.io', 'href': SITE}, {'text': 'Skopax 0.2.0 \u00b7 skopax.io', 'href': SITE})
     assert len(warned) == 1 and 'RuntimeError' in warned[0] and 'secret' not in warned[0]
 
 

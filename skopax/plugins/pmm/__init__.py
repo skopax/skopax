@@ -1,13 +1,14 @@
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from skopax.contract import (Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Panel, PassResult, Plugin, ReadError, RuleSet, Sweep, TestResult, Tool,
                              Unreachable)
 from skopax.kit import access, connection
 from skopax.kit.promql import ranged
-from skopax.plugins.pmm.checks import (MONGO_RULE, PMM_RULE, QAN_ROWS, QAN_RULE, QAN_TOTALS, dashboard, evaluate_mongo, evaluate_pmm, evaluate_qan, links_for, mongo_pass,
+from skopax.plugins.pmm.checks import (MONGO_RULE, PMM_RULE, QAN_ROWS, QAN_RULE, QAN_TOTALS, app_pattern, dashboard, evaluate_mongo, evaluate_pmm, evaluate_qan, links_for, mongo_pass,
                                        pmm_pass, qan_key, qan_pass, unsupported, users)
-from skopax.plugins.pmm.client import KINDS, PERMISSIONS, SLUGS, Pmm, PmmError, client_for, lacks, pick
+from skopax.plugins.pmm.client import HOST_HEADER, KINDS, PERMISSIONS, SLUGS, Pmm, PmmError, client_for, lacks, pick
 
 ID = 'pmm'
 NO_DATA = 'ok \u00b7 no data'
@@ -85,6 +86,34 @@ def _url(info: InstanceInfo) -> str:
     return (info.config.get('url') or '').rstrip('/')
 
 
+def _base(info: InstanceInfo) -> str:
+    given = (info.config.get('link-base') or '').strip().rstrip('/')
+    try:
+        parts = urlsplit(given)
+        parts.port
+    except ValueError:
+        return _url(info)
+    return given if parts.scheme == 'https' and parts.hostname and not parts.username and not parts.password else _url(info)
+
+
+def _option_problem(config) -> str | None:
+    if (config.get('qan-app') or '').strip() and app_pattern(config.get('qan-app')) is None:
+        return 'QAN app pattern needs a pattern with a group named app, such as ^(?P<app>.+)_db$'
+    host = (config.get('host-header') or '').strip()
+    if host and not HOST_HEADER.fullmatch(host):
+        return 'Host header must be a host name, with an optional port'
+    base = (config.get('link-base') or '').strip()
+    if base:
+        try:
+            parts = urlsplit(base)
+            parts.port
+        except ValueError:
+            parts = None
+        if parts is None or parts.scheme != 'https' or not parts.hostname or parts.username or parts.password:
+            return 'Link base must be an https address without a user or password'
+    return None
+
+
 def _shown(found: dict | None, pinned: str) -> str:
     if found is not None:
         return f"{found.get('name') or found['uid']} ({found['uid']})"
@@ -122,7 +151,7 @@ def test(ctx: Context) -> TestResult:
     info = ctx.instance
 
     def ask() -> str:
-        refused = next((why for why in (_pattern(info, key)[1] for key in PATTERNS) if why), None)
+        refused = next((why for why in (_pattern(info, key)[1] for key in PATTERNS) if why), None) or _option_problem(info.config)
         if refused:
             raise ReadError(400, refused)
         client = client_for(info, ctx.http(), TEST_BUDGET_S)
@@ -151,7 +180,7 @@ def test(ctx: Context) -> TestResult:
 
 
 def _linked(rows: list[dict], info: InstanceInfo, which: str, params) -> list[dict]:
-    url = _url(info)
+    url = _base(info)
     if not url.startswith('https://'):
         return rows
     return [dict(r, link=dashboard(url, which, params(r))) for r in rows]
@@ -207,7 +236,7 @@ def run_pmm(ctx: Context) -> Sweep:
         return Sweep(PassResult('pmm', False, f'error: {refused}'))
     client = client_for(info, ctx.http())
     try:
-        got = evaluate_pmm(pmm_pass(client, ctx.now, services), ctx.rules('postgres'), services)
+        got = evaluate_pmm(pmm_pass(client, ctx.now, services, users(info.config.get('split-users') or '')), ctx.rules('postgres'), services)
     except PmmError as e:
         return _failed('pmm', 'pmm', e, client)
     if got is None:
@@ -223,20 +252,27 @@ def run_qan(ctx: Context) -> Sweep:
         return Sweep(PassResult('qan', False, f'error: {refused}'))
     rules = ctx.rules('qan')
     client = client_for(info, ctx.http())
+    exclude = users(info.config.get('exclude-users') or '')
+    split = [u for u in users(info.config.get('split-users') or '') if u not in exclude]
+    pattern = app_pattern(info.config.get('qan-app'))
     try:
-        data = qan_pass(client, ctx.now, services, users(info.config.get('exclude-users') or ''), rules)
-        got = evaluate_qan(data, rules, services)
+        data = qan_pass(client, ctx.now, services, exclude + split, rules)
+        got = evaluate_qan(data, rules, services, pattern)
+        apart_data = qan_pass(client, ctx.now, services, exclude, rules, split) if split else ([], [])
+        apart = evaluate_qan(apart_data, rules, services, pattern, True) if split else None
     except PmmError as e:
         return _failed('qan', 'qan', e, client)
-    if got is None:
+    if got is None and apart is None:
         return _quiet('qan', 'qan', client)
-    found, top = got
+    found, top = got or ([], [])
+    if apart is not None:
+        found, top = found + apart[0], top + apart[1]
 
     def params(r: dict) -> dict:
         return {'var-service_name': r['svc'], **({'filter_by': r['queryid'], 'query_selected': 'true'} if r['queryid'] else {})}
 
-    capped = len(data[0]) >= QAN_ROWS
-    read = {qan_key(r.get('service_name'), r.get('queryid')) for r in data[0] if r.get('queryid')}
+    capped = len(data[0]) >= QAN_ROWS or len(apart_data[0]) >= QAN_ROWS
+    read = {qan_key(r.get('service_name'), r.get('queryid')) for r in data[0] + apart_data[0] if r.get('queryid')}
     ran = (QAN_TOTALS, *sorted(read)) + (() if capped else ('qan', *_gone(ctx, read)))
     return _passed('qan', CAPPED if capped else 'ok', found, ran, 'qan', _linked(top, info, 'qan', params), client)
 
@@ -299,7 +335,7 @@ def qan(ctx: Context, args: dict) -> object:
 
 
 def links(card: dict, info: InstanceInfo) -> list[dict] | None:
-    return links_for(card, _url(info))
+    return links_for(card, _base(info))
 
 
 def probe_targets(info: InstanceInfo) -> list[dict]:
@@ -309,7 +345,7 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 PLUGIN = Plugin(
     id=ID, name='PMM (Postgres, MongoDB)', version='0.1.0', category='infrastructure',
     description='Postgres servers, slow queries and MongoDB members read from Percona Monitoring and Management.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.2', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Address of the PMM server, also used for dashboard links.'),
             Field('token', 'Token', 'secret', required=True, help='A PMM service-account token that can query the data sources; finding them when a uid is empty also needs the right to list data sources.'),
             Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),
@@ -319,7 +355,11 @@ PLUGIN = Plugin(
             Field('postgres-services', 'Postgres services', 'regex', default='.*', help='Only Postgres service names that match this pattern are watched. RE2 syntax: no lookarounds or backreferences.'),
             Field('mongo-services', 'MongoDB services', 'regex', default='.*', help='Only MongoDB service names that match this pattern are watched. RE2 syntax: no lookarounds or backreferences.'),
             Field('replica-set', 'Replica set', 'text', help='Name of the MongoDB replica set on its cards. Empty: the set label of the series.'),
-            Field('exclude-users', 'Users Query Analytics ignores', 'text', default='pmm', help='Comma-separated database users whose queries are left out.')),
+            Field('exclude-users', 'Users Query Analytics ignores', 'text', default='pmm', help='Comma-separated database users whose queries are left out.'),
+            Field('split-users', 'Users shown separately', 'text', help='Comma-separated database users, such as a reporting or BI user, whose connections and queries are read apart from the application and raise info cards only. Empty splits nobody. A user also listed in the ignored users stays ignored.'),
+            Field('qan-app', 'QAN app pattern', 'regex', help='Pattern with a group named app that takes the application name of a Query Analytics card from the database name, such as ^(?P<app>.+)_db$. A database it does not match keeps the database name. Empty uses the database name.'),
+            Field('host-header', 'Host header', 'text', help='Host header sent with every request to PMM, for a server behind a proxy that routes by host name: a host name with an optional port. Empty sends the host of the URL.'),
+            Field('link-base', 'Link base', 'url', ui=True, help='Address that the dashboard links on cards open instead of the URL, for example the public address of a PMM that is reached by an internal one: https only. Empty uses the URL.')),
     test=test,
     checks=(Check('pmm', 'Postgres servers', 900, 360, ('pmm',), run_pmm, tool='pmm_query', sections=('pmm',), section_help={'pmm': SECTION_HELP['pmm']}),
             Check('qan', 'Postgres queries', 900, 360, ('qan',), run_qan, tool='qan', sections=('qan',), section_help={'qan': SECTION_HELP['qan']}),

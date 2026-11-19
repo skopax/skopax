@@ -245,7 +245,7 @@ def test_an_operator_click_applies_the_card_action_once_and_swaps_the_button(sto
 
     # then
     assert (first, second) == ('applied', 'claimed')
-    assert applier.calls == [{'type': 'mute', 'key': KEY, 'target': KEY, 'hours': 6, 'label': f'Mute 6 h from Slack: {KEY}', 'requestedBy': 'adam.baker@example.com', 'source': 'slack', 'askId': act['id'], 'reason': 'Mute 6 h from Slack by adam.baker@example.com'}]
+    assert applier.calls == [{'type': 'mute', 'key': KEY, 'target': KEY, 'hours': 6, 'label': f'Mute 6 h from Slack: {KEY}', 'requestedBy': 'adam.baker@example.com', 'source': 'slack', 'askId': act['id'], 'reason': 'Mute 6 h from Slack by adam.baker@example.com', 'presetReason': True}]
     update = next(p for m, p in api.calls if m == 'chat.update')
     assert update['ts'] == ANSWER_TS and all(b['type'] != 'actions' for b in update['blocks'])
     assert update['blocks'][-1] == {'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': 'Mute 6 h · adam.baker@example.com'}]}

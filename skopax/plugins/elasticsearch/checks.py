@@ -5,6 +5,8 @@ from skopax.contract import Context, InstanceInfo, PassResult, Sweep, anomaly, f
 from skopax.kit.access import SIG as ACCESS_SIG
 from skopax.kit.elastic import (Budget, ElasticError, access_card, client_for, discover_for, epoch, index_of, indices_of, kql_levels, kql_text, level_filter, log_fields, namespace_problem,
                                 no_access, quoted, refusal, refused_status, service_logs_link)
+from skopax.kit import options
+from skopax.kit.options import compiled, number, pairs
 
 OFFS = (1, 7)
 WARM_S = 1800
@@ -23,16 +25,55 @@ LOGS_NO_DATA = 'logs:no-data'
 LOGS_ACCESS = 'logs:access:logs'
 APM_ACCESS = 'apm:access:apm'
 ID_RUN = re.compile(r'[0-9a-f]{8}-[0-9a-f-]{4,}')
+MASKED = '<masked>'
+MASK_CHARS = 400
+MASK_HINT = ' (check message-mask: Elasticsearch may not accept it)'
 
 
 def window() -> str:
     return ' OR '.join(['@timestamp >= NOW() - 60 minutes'] + [f'(@timestamp >= NOW() - {o} days - 60 minutes AND @timestamp < NOW() - {o} days)' for o in OFFS])
 
 
+def literal(text: str) -> str:
+    return '"' + text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t') + '"'
+
+
+def mask_problem(config: Mapping[str, str]) -> str | None:
+    mask = str(config.get('message-mask') or '').strip()
+    if not mask:
+        return None
+    found = compiled(mask)
+    if found is None:
+        return 'message-mask is not a valid pattern'
+    if found.search('') is not None:
+        return 'message-mask matches an empty text, so it would cut every line'
+    return 'message-mask backtracks too much on some texts' if options.slow(found) else None
+
+
+def mask_of(config: Mapping[str, str]) -> str:
+    return '' if mask_problem(config) else str(config.get('message-mask') or '').strip()
+
+
+def p95_overrides(config: Mapping[str, str]) -> tuple[dict[str, tuple[float | None, float | None]], list[str]]:
+    found, bad = pairs(config.get('apm-p95-overrides'))
+    out: dict[str, tuple[float | None, float | None]] = {}
+    for service, spec in found.items():
+        left, sep, right = spec.partition(':')
+        times, floor = number(left) if left.strip() else None, number(right) if right.strip() else None
+        if (left.strip() and times is None) or (right.strip() and floor is None) or (times is None and floor is None):
+            bad.append(f'{service}={spec}')
+        else:
+            out[service] = (times, floor)
+    return out, bad
+
+
 def logs_query(config: Mapping[str, str], with_error: bool = True) -> str:
     named = log_fields(config)
     error = str(config.get('error-field') or '').strip() if with_error else ''
     text = f"COALESCE({quoted(error)}, {quoted(named['message'])})" if error else quoted(named['message'])
+    mask = mask_of(config)
+    if mask:
+        text = f'REPLACE(SUBSTRING({text}, 1, {MASK_CHARS}), {literal(mask)}, "{MASKED}")'
     return f'''FROM {index_of(config, 'logs')}
 | WHERE ({window()}) AND {level_filter(named['level'])}
 | EVAL level = TO_UPPER({quoted(named['level'])})
@@ -44,15 +85,24 @@ def logs_query(config: Mapping[str, str], with_error: bool = True) -> str:
 | SORT now DESC | LIMIT {TOP}'''
 
 
+def per_service(default: float, own: Mapping[str, float]) -> str:
+    if not own:
+        return f'{default:g}'
+    cases = ', '.join(f'svc == {literal(s)}, {float(v)!r}' for s, v in own.items())
+    return f'CASE({cases}, {float(default)!r})'
+
+
 def apm_query(config: Mapping[str, str], rules: Mapping[str, float]) -> str:
     times, floor = rules.get('p95_times', APM_RULES['p95_times']), rules.get('p95_floor_ms', APM_RULES['p95_floor_ms'])
+    over = p95_overrides(config)[0]
+    times, floor = per_service(times, {s: t for s, (t, _) in over.items() if t is not None}), per_service(floor, {s: f for s, (_, f) in over.items() if f is not None})
     return f'''FROM {index_of(config, 'apm')}
 | WHERE processor.event == "transaction" AND ({window()})
 | EVAL w = CASE(@timestamp >= NOW() - 60 minutes, "now", @timestamp >= NOW() - 2 days, "d1", "d7"), ms = transaction.duration.us / 1000.0, f = CASE(event.outcome == "failure", 1, 0), rq = transaction.type == "request"
 | STATS n_now = COUNT(CASE(w == "now", 1, null)), n_d1 = COUNT(CASE(w == "d1", 1, null)), n_d7 = COUNT(CASE(w == "d7", 1, null)), r_now = COUNT(CASE(w == "now" AND rq, 1, null)), r_d1 = COUNT(CASE(w == "d1" AND rq, 1, null)), r_d7 = COUNT(CASE(w == "d7" AND rq, 1, null)), p95_now = PERCENTILE(CASE(w == "now" AND rq, ms, null), 95), p95_d1 = PERCENTILE(CASE(w == "d1" AND rq, ms, null), 95), p95_d7 = PERCENTILE(CASE(w == "d7" AND rq, ms, null), 95), f_now = SUM(CASE(w == "now", f, 0)), f_d1 = SUM(CASE(w == "d1", f, 0)), f_d7 = SUM(CASE(w == "d7", f, 0)) BY svc = service.name
 | WHERE n_now >= 100 AND n_d1 >= 50 AND n_d7 >= 50
 | EVAL p95_base = GREATEST(p95_d1, p95_d7), fr_now = f_now * 1.0 / n_now, fr_base = GREATEST(f_d1 * 1.0 / n_d1, f_d7 * 1.0 / n_d7)
-| EVAL slow = r_now >= 100 AND r_d1 >= 50 AND r_d7 >= 50 AND p95_now > {times:g} * p95_base AND p95_now - p95_base >= {floor:g}, failing = f_now >= 10 AND fr_now > 2 * fr_base + 0.005
+| EVAL slow = r_now >= 100 AND r_d1 >= 50 AND r_d7 >= 50 AND p95_now > {times} * p95_base AND p95_now - p95_base >= {floor}, failing = f_now >= 10 AND fr_now > 2 * fr_base + 0.005
 | WHERE slow OR failing
 | KEEP svc, n_now, r_now, p95_now, p95_base, f_now, fr_now, fr_base, slow, failing
 | LIMIT {APM_TOP}'''
@@ -86,14 +136,16 @@ def evaluate_logs(rows: list[dict] | None) -> tuple[list[dict], list[dict]]:
     return found, top
 
 
-def evaluate_apm(rows: list[dict] | None, warm: set[tuple[str, str]], rules: Mapping[str, float]) -> list[dict]:
+def evaluate_apm(rows: list[dict] | None, warm: set[tuple[str, str]], rules: Mapping[str, float], overrides: Mapping[str, tuple[float | None, float | None]] | None = None) -> list[dict]:
     found = []
     warm_names = {svc for _, svc in warm}
-    factor, floor = rules.get('p95_times', APM_RULES['p95_times']), rules.get('p95_floor_ms', APM_RULES['p95_floor_ms'])
     for r in rows or []:
         if not isinstance(r, dict):
             continue
         svc = str(r.get('svc') or '-')
+        own_times, own_floor = (overrides or {}).get(svc, (None, None))
+        factor = own_times if own_times is not None else rules.get('p95_times', APM_RULES['p95_times'])
+        floor = own_floor if own_floor is not None else rules.get('p95_floor_ms', APM_RULES['p95_floor_ms'])
         if svc.replace('_', '-') in warm_names:
             continue
         base = r.get('p95_base') or 0
@@ -116,8 +168,8 @@ def warm_services(deploys: list) -> set[tuple[str, str]]:
     return {(d['ns'], d['svc']) for d in deploys or [] if isinstance(d, dict) and isinstance(d.get('ns'), str) and isinstance(d.get('svc'), str) and d['ns'] and d['svc']}
 
 
-def needle(msg: str) -> str:
-    cut = re.split(r'["\\\n]|[0-9a-f]{8}-', msg or '')[0]
+def needle(msg: str, masked: bool = False) -> str:
+    cut = re.split(r'["\\\n]|[0-9a-f]{8}-' + (f'|{MASKED}' if masked else ''), msg or '')[0]
     if len(cut) > 60:
         cut = re.sub(r'\w+$', '', cut[:60]) if re.fullmatch(r'\w\w', cut[59:61]) else cut[:60]
     return cut.strip(' .,:;=(-')
@@ -126,7 +178,7 @@ def needle(msg: str) -> str:
 def log_lines_link(config: Mapping[str, str], app: str, level: str, msg: str, since: str) -> str:
     named = log_fields(config)
     error = str(config.get('error-field') or '').strip()
-    n = needle(msg)
+    n = needle(msg, bool(mask_of(config)))
     lines = ' or '.join(f'{field}:{kql_text(n)}' for field in dict.fromkeys(x for x in (named['message'], error) if x))
     cond = f' and ({lines})' if n else ''
     return discover_for(config, f"{named['service']}:{kql_text(app)} and {kql_levels(named['level'], (level,))}{cond}", since)
@@ -187,7 +239,8 @@ def run_logs(ctx: Context) -> Sweep:
             return no_access('logs', access_card('logs', 'Elasticsearch', 'logs', index, refused_status(e), bool(client.api_key)), {'logTop': []})
         if e.missing:
             return Sweep(PassResult('logs', True, 'ok \u00b7 no data', [], {}, (LOGS_NO_DATA, LOGS_ACCESS)), sections={'logTop': []})
-        return Sweep(PassResult('logs', False, f'error: {e.reason}'))
+        hint = MASK_HINT if mask_of(config) and e.status == 400 and not e.unknown else ''
+        return Sweep(PassResult('logs', False, f'error: {e.reason}{hint}'))
     since = iso(ctx.now - LINK_SPAN_S)
     for r in top:
         link = log_lines_link(config, r['app'], r['level'], r['msg'], since)
@@ -215,4 +268,4 @@ def run_apm(ctx: Context) -> Sweep:
         return Sweep(PassResult('apm', False, f'error: {e.reason}'))
     if counted is not None and not any(isinstance(r, dict) and r.get('n') for r in counted):
         return quiet
-    return Sweep(PassResult('apm', True, 'ok', evaluate_apm(rows, warm, rules), {}, ('apm', APM_ACCESS)))
+    return Sweep(PassResult('apm', True, 'ok', evaluate_apm(rows, warm, rules, p95_overrides(config)[0]), {}, ('apm', APM_ACCESS)))

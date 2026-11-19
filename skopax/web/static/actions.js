@@ -1041,7 +1041,8 @@ async function initActions() {
         return;
       }
       box.dataset.wired = '1';
-      var a = CARDS[+box.dataset.i];
+      var a = cardOfBox(box);
+      if (!a) return;
       var name = a.svc + ' ' + a.label;
       var prior = window.INV && INV[a.key];
       var dive = asIcon(btn('Investigate', 'inv-btn'), ICON_SPARKLES, prior ? 'Investigate · last run ' + dayhm(prior.startedAt) + ' (' + prior.mode + ') · ' + usdText(prior.usd) + ' · asks before running again' : 'Investigate: the investigator takes it within about two minutes');
@@ -1127,10 +1128,10 @@ async function initActions() {
         var rform = el('div', 'reason res-form');
         rform.hidden = true;
         var why = el('input');
-        why.type = 'text'; why.maxLength = 300; why.id = 'why-' + box.dataset.i; why.placeholder = 'Why (optional, becomes the card note)';
+        why.type = 'text'; why.maxLength = 300; why.id = 'why-' + box.dataset.i; why.placeholder = RES_PLACEHOLDER_WHY; why.title = RES_TITLE_WHY;
         why.setAttribute('aria-label', 'Why ' + name + ' is resolved');
         var dup = el('input');
-        dup.type = 'text'; dup.maxLength = 200; dup.id = 'dup-' + box.dataset.i; dup.placeholder = 'The other card: its number, like 12, or its key'; dup.hidden = true;
+        dup.type = 'text'; dup.maxLength = 200; dup.id = 'dup-' + box.dataset.i; dup.placeholder = RES_PLACEHOLDER_DUP; dup.title = RES_TITLE_DUP; dup.hidden = true;
         dup.setAttribute('aria-label', 'The card ' + name + ' duplicates');
         var picked = 'fixed';
         var kinds = resKindPicker(picked, function (k) {
@@ -1198,7 +1199,8 @@ async function initActions() {
     renderPdc(latest.postdeploy);
     document.querySelectorAll('.rep-acts .reassess-btn').forEach(function (b) { reassessState(b, b.closest('.rep-acts').__rep); });
     document.querySelectorAll('#anoms .acts').forEach(function (box) {
-      var a = CARDS[+box.dataset.i];
+      var a = cardOfBox(box);
+      if (!a) return;
       var x = latest[a.key];
       box.querySelectorAll('button.btn:not(.free):not(.slack-btn)').forEach(function (b) { b.disabled = !!(x && (x.status === 'requested' || x.status === 'processing')); });
       var st = box.querySelector('.stat'), la = box.closest('article.inc').querySelector('.last-act');
@@ -1248,7 +1250,9 @@ async function initActions() {
     if (who.ok) me = Object.assign(me, await who.json());
   } catch (e) {}
   ME_USER = me.user || '';
+  var autoBefore = ME_FEATURES['slack-autosend'];
   ME_FEATURES = me.features && typeof me.features === 'object' ? me.features : {};
+  if (autoBefore !== ME_FEATURES['slack-autosend']) { bumpRender(); renderAnoms(); }
   ME_OFF = me.featureOff && typeof me.featureOff === 'object' ? me.featureOff : {};
   ME_CHAT = !!me.chat;
   var gitlabBefore = ME_GITLAB;

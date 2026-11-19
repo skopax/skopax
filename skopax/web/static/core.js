@@ -46,6 +46,9 @@ var TAG_NAMES = {};
 var TECH_TAGS = {developer: 'engineering has to change the code or config of a service', data: 'the data team has to change a pipeline, an Airbyte sync or a DWH table', infra: 'infrastructure has to change (cluster, network, DNS, CI/CD, database server)', analyst: 'an analyst has to decide or specify something first (a requirement, a business rule, a flow or a text)'};
 function tagIds(a) { return (a.tags || []).map(function (t) { return t.id; }); }
 function tagName(id) { return TAG_NAMES[id] || id; }
+var RENDER_EPOCH = 0;
+function bumpRender() { RENDER_EPOCH++; }
+function cardOfBox(box) { var k = box.dataset.key; return CARDS.filter(function (c) { return c.key === k; })[0] || null; }
 function useTagLabels(list) {
   var next = {};
   (Array.isArray(list) ? list : []).forEach(function (t) {
@@ -53,9 +56,11 @@ function useTagLabels(list) {
   });
   var changed = JSON.stringify(next) !== JSON.stringify(TAG_NAMES);
   TAG_NAMES = next;
+  if (changed) bumpRender();
   return changed;
 }
 function tagBy(t) { return t.by === 'rule' ? 'rule' : t.by === 'pod' ? 'investigator' : draftBy(t.by); }
+var UNTAGGED_F = 'tag:-';
 function isTagF(t) { return String(t).startsWith('tag:'); }
 var ME_USER = '';
 var ME_CHANNEL = '';
@@ -95,8 +100,8 @@ function toggledF(p) {
   if (!hasF(p)) parts.push(p);
   return parts.sort(function (x, y) { return F_ORDER[fKind(x)] - F_ORDER[fKind(y)]; }).join('+');
 }
-function typeIs(a, t) { return String(t).indexOf('+') > 0 ? fParts(t).every(function (p) { return typeIs(a, p); }) : isWhoF(t) ? (t === 'who:none' ? !a.owner : t === 'who:any' ? !!a.owner : isPersonF(t) ? !!a.owner && personSlug(a.owner) === t.slice(6) : isMine(a)) : isTagF(t) ? tagIds(a).indexOf(t.slice(4)) >= 0 : typeOf(a) === (TYPE_ALIAS[t] || t); }
-function typeName(t) { return String(t).indexOf('+') > 0 ? fParts(t).map(typeName).join(' \u00b7 ') : WHO_NAMES[t] || (isPersonF(t) ? 'Assigned to ' + t.slice(6) : isTagF(t) ? tagName(t.slice(4)) : TYPE_NAMES[TYPE_ALIAS[t] || t] || String(t).replace(/-/g, ' ')); }
+function typeIs(a, t) { return String(t).indexOf('+') > 0 ? fParts(t).every(function (p) { return typeIs(a, p); }) : isWhoF(t) ? (t === 'who:none' ? !a.owner : t === 'who:any' ? !!a.owner : isPersonF(t) ? !!a.owner && personSlug(a.owner) === t.slice(6) : isMine(a)) : isTagF(t) ? (t === UNTAGGED_F ? !tagIds(a).length : tagIds(a).indexOf(t.slice(4)) >= 0) : typeOf(a) === (TYPE_ALIAS[t] || t); }
+function typeName(t) { return String(t).indexOf('+') > 0 ? fParts(t).map(typeName).join(' \u00b7 ') : WHO_NAMES[t] || (isPersonF(t) ? 'Assigned to ' + t.slice(6) : isTagF(t) ? (t === UNTAGGED_F ? 'Untagged' : tagName(t.slice(4))) : TYPE_NAMES[TYPE_ALIAS[t] || t] || String(t).replace(/-/g, ' ')); }
 function typed(list) { return typeF ? list.filter(function (a) { return typeIs(a, typeF); }) : list; }
 var searchQ = '', searchBack = '';
 var ASK_MAX = 1000;
@@ -120,7 +125,7 @@ function clearSearchUnless(list) {
 var SEV = {crit: ['Critical', 'k-crit'], warn: ['Warning', 'k-warn'], info: ['Info', 'k-info'], ok: ['Healthy', 'k-ok']};
 var SERVER_TZ = '';
 var JIRA_BASE = '';
-function setJiraBase(u) { JIRA_BASE = String(u || '').replace(/\/+$/, ''); }
+function setJiraBase(u) { var next = String(u || '').replace(/\/+$/, ''); if (next !== JIRA_BASE) bumpRender(); JIRA_BASE = next; }
 function jiraHref(k) { return JIRA_BASE ? JIRA_BASE + '/browse/' + encodeURIComponent(k) : ''; }
 var ISSUE_KEY = /\b[A-Z][A-Z0-9]{1,9}-\d+\b/g;
 var TICKET_LINKS = null;
@@ -138,7 +143,7 @@ RES_VIA[SYSTEM_ACTOR] = 'via ' + brandName();
 var RES_BY = {pod: 'investigator', auto: 'auto-resolve', 'jira-links': 'Jira link sweep'};
 RES_BY[SYSTEM_ACTOR] = 'quality check';
 function resolutionOf(x) { var r = x && x.resolution; return r && RES_KINDS.some(function (k) { return k[0] === r.kind; }) ? r : null; }
-function resWho(by) { return RES_BY[by] || (isTokenActor(by) ? tokenActorLabel(by, 'Claude') : !by || by === 'Claude' ? 'Claude' : String(by).split('@')[0]); }
+function resWho(by) { return RES_BY[by] || (isTokenActor(by) ? tokenActorLabel(by, 'Investigator') : !by || by === 'Claude' ? 'Investigator' : String(by).split('@')[0]); }
 function resRefHtml(ref) {
   var t = String(ref || '').trim(), n = /^#?(\d{1,7})$/.exec(t);
   if (n) return '<a href="/c/' + n[1] + '" title="Opens card #' + n[1] + '">#' + n[1] + '</a>';
@@ -158,8 +163,6 @@ function resolutionHtml(r) {
 function outcomeHtml(outcome, r) {
   return outcome === 'handled' || outcome === 'fixed' || outcome === 'duplicate' ? resolutionHtml(resolutionOf({resolution: r})) : null;
 }
-var RES_TIPS = {fixed: 'Fixed: the cause is gone because something was changed, such as a deploy, a config change or a rollback', handled: 'No action needed: harmless or a one-off, nothing was changed',
-  duplicate: 'Duplicate: the same problem as another card, which carries it on'};
 function resKindPicker(picked, onPick) {
   var g = el('div', 'res-kinds');
   g.setAttribute('role', 'group');
@@ -168,7 +171,6 @@ function resKindPicker(picked, onPick) {
     var b = el('button', 'btn sec small sev-pick res-kind');
     b.type = 'button';
     b.textContent = k[1];
-    b.title = RES_TIPS[k[0]];
     b.dataset.kind = k[0];
     b.setAttribute('aria-pressed', String(k[0] === picked));
     b.addEventListener('click', function () {
@@ -177,6 +179,10 @@ function resKindPicker(picked, onPick) {
     });
     g.appendChild(b);
   });
+  var hint = el('p', 'res-hint');
+  hint.textContent = resHint(picked);
+  g.appendChild(hint);
+  g.addEventListener('click', function (e) { var b = e.target.closest ? e.target.closest('.res-kind') : null; if (b) hint.textContent = resHint(b.dataset.kind); });
   return g;
 }
 function resolveBody(kind, why, ref, name) {
@@ -268,6 +274,17 @@ function linksHtml(list, max) {
 }
 
 function done(a) { return a.triage === 'progress' || a.triage === 'handled'; }
+function ownCause(a) {
+  var c = a && a.cause;
+  return c && (c.kind === 'event' || c.kind === 'recurring') && c.what && a.firstSeen && c.firstSeen === a.firstSeen ? c : null;
+}
+function causeOf(a) {
+  var own = ownCause(a);
+  if (own || !a.parent || a.parent === a.key) return own;
+  var p = (ALL || []).filter(function (x) { return x.key === a.parent; })[0];
+  return p ? ownCause(p) : null;
+}
+function eventCause(a) { var c = causeOf(a); return c && c.kind === 'event' ? c : null; }
 var ARCHIVE_DEFAULT_H = 48;
 function archiveHours() { return Number(D && D.archiveHours) || ARCHIVE_DEFAULT_H; }
 function stamp(s) { var v = s ? Date.parse(s) : NaN; return isNaN(v) ? 0 : v; }

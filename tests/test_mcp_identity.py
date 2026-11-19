@@ -305,7 +305,27 @@ def test_a_first_mcp_call_provisions_the_user_but_never_writes_a_role(store: Sto
     assert (made['source'], made['role'], made['roleFrom'], made['name'], made['disabled']) == ('sso', 'viewer', 'default', 'Paul Stone', False)
     assert listed(later) == VIEWER_TOOLS + OPERATOR_TOOLS
     assert (runs_as.email, runs_as.role, runs_as.admin, runs_as.operator) == (PAUL, 'admin', True, True)
-    assert kept == made, 'MCP never writes role, roleFrom, name or lastLogin of a known user'
+    assert {k: v for k, v in kept.items() if k != 'lastLogin'} == {k: v for k, v in made.items() if k != 'lastLogin'}, 'MCP never writes role, roleFrom or name of a known user'
+
+
+def test_an_mcp_sign_in_stamps_the_last_login_of_a_known_account_and_nothing_else(store: Store):
+    # given
+    idp = FakeIdp()
+    users = Users(store.db)
+    users.upsert_sso(PAUL, 'Paul Stone', 'viewer')
+    users.col.update_one({'_id': PAUL}, {'$set': {'lastLogin': None}})
+    before = store.db['users'].find_one({'_id': PAUL})
+    client = app_client(store, idp, mcp_settings(idp))
+
+    # when
+    with client as c:
+        res = rpc(c, 'tools/list', mint(idp, email=PAUL, name='Someone Else'))
+    after = store.db['users'].find_one({'_id': PAUL})
+
+    # then
+    assert res.status_code == 200
+    assert before['lastLogin'] is None and after['lastLogin']
+    assert {k: v for k, v in after.items() if k != 'lastLogin'} == {k: v for k, v in before.items() if k != 'lastLogin'}, 'no role, role source or name write'
 
 
 def test_api_tokens_do_not_open_mcp(store: Store, monkeypatch):
@@ -616,7 +636,8 @@ def test_a_concurrent_first_mcp_call_never_rewrites_a_known_user(store: Store, m
 
     # then
     assert missed == [PAUL] and res.status_code == 200
-    assert store.db['users'].find_one({'_id': PAUL}) == before, 'insert only: no name or lastLogin write'
+    after = store.db['users'].find_one({'_id': PAUL})
+    assert {k: v for k, v in after.items() if k != 'lastLogin'} == {k: v for k, v in before.items() if k != 'lastLogin'}, 'insert only: no name write'
 
 
 @pytest.mark.parametrize('doc', [

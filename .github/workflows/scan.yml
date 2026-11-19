@@ -1,0 +1,94 @@
+name: scan
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: scan
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: grype
+        name: Scan the published image for fixable High and Critical findings
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439
+        with:
+          image: ghcr.io/skopax/skopax:latest
+          grype-version: v0.121.1
+          only-fixed: true
+          severity-cutoff: high
+          fail-build: false
+          output-format: sarif
+      - name: Upload the scan to code scanning
+        if: always() && steps.grype.outputs.sarif != ''
+        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26
+        with:
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+          category: image-latest
+      - name: Open, update or close the findings issue
+        if: always() && steps.grype.outputs.sarif != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SARIF: ${{ steps.grype.outputs.sarif }}
+        run: |
+          title="Image scan: fixable findings in latest"
+          high="$(jq -c '(([.runs[].tool.driver.rules[]? | {key: .id, value: .properties["security-severity"]}] | from_entries) as $score | [.runs[].results[] | select(.ruleId | test("^[A-Za-z0-9._:-]+$")) | . as $r | select(if $score[$r.ruleId] != null then ($score[$r.ruleId] | tonumber) >= 7 else $r.level == "error" end)])' "$SARIF")"
+          count="$(jq 'length' <<< "$high")"
+          number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number,title | jq -r --arg t "$title" 'map(select(.title == $t)) | .[0].number // empty')"
+          body="$RUNNER_TEMP/body.md"
+          if [ "$count" = 0 ]; then
+            if [ -n "$number" ]; then
+              gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "The scheduled scan of the published image found nothing fixable at High or above. Closing."
+            fi
+            exit 0
+          fi
+          {
+            echo "The scheduled scan of ghcr.io/skopax/skopax:latest found $count fixable High or Critical finding(s)."
+            echo
+            jq -r '[.[] | (.message.text | split("\n")[0] | gsub("[@`]"; "")) as $text | (($text | capture("package: (?<p>[^,]+),")? | .p) // "unknown" | gsub("[^A-Za-z0-9._+:-]"; "")) as $pkg | "- `" + .ruleId + "` in `" + $pkg + "`: " + $text] | unique | .[:200][]' <<< "$high"
+            echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > "$body"
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body"
+          fi
+      - name: Fail when an ignore entry is past its review date
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import re
+          import sys
+          text = open('.grype.yaml', encoding='utf-8').read()
+          late = [d for d in re.findall(r'review-by (\d{4}-\d{2}-\d{2})\)', text) if datetime.date.fromisoformat(d) < datetime.date.today()]
+          if late:
+              print('ignore entries past their review date:', ', '.join(late))
+              sys.exit(1)
+          PY
