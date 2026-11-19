@@ -583,6 +583,8 @@ function adminReveal(tab) {
   if (!panel || panel.hidden) return;
   var hit = [].filter.call(panel.querySelectorAll(f ? '.feat' : tab === 'access' ? '.adm-row, .sso-f, .sso-sw' : '.adm-row'), function (n) { return f ? n.dataset.id === f.id : n.dataset.key === want.key; })[0];
   if (!hit) return;
+  var part = tab === 'access' ? hit.closest('.acc-part') : null;
+  if (part) accSelect(part.id.slice(4), false);
   var fold = hit.closest('details');
   if (fold) fold.open = true;
   hit.classList.add('adm-hit');
@@ -798,6 +800,7 @@ var ACCESS = null, ACCESS_SEQ = 0, ACCESS_N = null, ACCESS_ROLES = ['viewer', 'o
 var ACCESS_PW_MIN = 12, ACCESS_PW_MAX = 256, ACCESS_EMAIL = /^[^@\s]{1,64}@[^@\s]{1,189}$/, ACCESS_ROLE_LABELS = {viewer: 'Viewer', operator: 'Operator', admin: 'Admin'};
 var ACCESS_FIND = '', ACCESS_ROLE_F = '', ACCESS_FAIL = {users: false, tokens: false}, ACCESS_MENU_WIRED = false, ACCESS_SOON_DAYS = 7, ACCESS_DAY_MS = 86400000;
 var ACCESS_SECTIONS = [['people', 'People', 'people'], ['sso', 'Single sign-on', 'single sign-on'], ['tokens', 'API tokens', 'API tokens'], ['mcp', 'MCP sign-in', 'MCP sign-in']];
+var ACCESS_TAB = 'people', ACCESS_TAB_KEYS = {ArrowRight: 1, ArrowLeft: -1, Home: 'first', End: 'last'};
 var ACCESS_USER_HEADS = ['Person', 'Role', 'Sign-in', 'Last sign-in', 'Disabled', 'SSO link', ''], ACCESS_TOKEN_HEADS = ['Name', 'Role', 'Token', 'Created by', 'Created', 'Last used', 'Expires', ''];
 var ACCESS_EXPIRY = [['', 'Never'], ['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['365', '1 year']];
 var ACCESS_LAST_ADMIN = 'The last admin keeps the admin role and stays enabled: make someone else an admin first';
@@ -926,26 +929,34 @@ function clearAccessSecret() {
 function accShell(box) {
   if (box.querySelector('#acc-people')) return;
   box.textContent = '';
-  var page = accText('div', 'acc-page'), nav = accText('nav', 'acc-nav'), main = accText('div', 'acc-main');
+  var page = accText('div', 'acc-page'), nav = accText('div', 'acc-nav'), main = accText('div', 'acc-main');
+  nav.setAttribute('role', 'tablist');
   nav.setAttribute('aria-label', 'Access sections');
   ACCESS_SECTIONS.forEach(function (s) {
     var b = accText('button', 'acc-nav-b'), dot = accText('span', 'acc-dot');
     b.type = 'button';
+    b.id = 'acc-tab-' + s[0];
     b.dataset.sec = s[0];
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-controls', 'acc-' + s[0]);
     b.appendChild(accText('span', 'acc-nav-l', s[1]));
     b.appendChild(accText('span', 'count acc-nav-n', ''));
     dot.hidden = true;
     b.appendChild(dot);
-    b.addEventListener('click', function () { accJump(s[0]); });
+    b.addEventListener('click', function () { accSelect(s[0], true); });
     nav.appendChild(b);
     var part = accText('div', 'acc-part acc-' + s[0]);
     part.id = 'acc-' + s[0];
+    part.setAttribute('role', 'tabpanel');
+    part.setAttribute('aria-labelledby', 'acc-tab-' + s[0]);
     part.appendChild(accText('p', 'muted acc-loading', 'Loading ' + s[2] + '\u2026'));
     main.appendChild(part);
   });
+  nav.addEventListener('keydown', accTabKey);
   page.appendChild(nav);
   page.appendChild(main);
   box.appendChild(page);
+  accTabsPaint();
   if (!ACCESS_MENU_WIRED) {
     ACCESS_MENU_WIRED = true;
     document.addEventListener('click', function (e) { if (!e.target.closest || !e.target.closest('.acc-menu-w')) accMenuClose(null, false); });
@@ -965,11 +976,32 @@ function renderAccess() {
   if (!ACCESS_FAIL.users) markAccessCount(ACCESS.users.length);
   accFocusBack(back);
 }
-function accJump(sec) {
-  var part = document.getElementById('acc-' + sec), head = part && part.querySelector('h3');
-  if (!part) return;
-  if (typeof part.scrollIntoView === 'function') part.scrollIntoView({block: 'start', behavior: 'smooth'});
-  if (head) { head.tabIndex = -1; head.focus({preventScroll: true}); }
+function accKnown(sec) { return ACCESS_SECTIONS.some(function (s) { return s[0] === sec; }); }
+function accTabsPaint() {
+  ACCESS_SECTIONS.forEach(function (s) {
+    var on = s[0] === ACCESS_TAB, b = document.getElementById('acc-tab-' + s[0]), part = document.getElementById('acc-' + s[0]);
+    if (b) { b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; }
+    if (part) part.hidden = !on;
+  });
+}
+function accWant(sec) {
+  ACCESS_TAB = accKnown(sec) ? sec : 'people';
+  accTabsPaint();
+}
+function accSelect(sec, focus) {
+  if (!accKnown(sec)) return;
+  ACCESS_TAB = sec;
+  accTabsPaint();
+  if (focus) { var b = document.getElementById('acc-tab-' + sec); if (b) b.focus(); }
+  if (typeof curTab !== 'undefined' && curTab === 'access' && typeof markTab === 'function') markTab();
+}
+function accTabKey(e) {
+  var step = ACCESS_TAB_KEYS[e.key], ids = ACCESS_SECTIONS.map(function (s) { return s[0]; });
+  if (step === undefined || !e.target.closest || !e.target.closest('[role=tab]')) return;
+  e.preventDefault();
+  var at = ids.indexOf(e.target.dataset.sec);
+  var to = step === 'first' ? 0 : step === 'last' ? ids.length - 1 : (at + step + ids.length) % ids.length;
+  accSelect(ids[to], true);
 }
 function accFailed(text) {
   var p = accText('p', 'adm-msg bad acc-failed', text + ' '), again = accText('button', 'btn sec small acc-again', 'Try again');
@@ -1214,10 +1246,48 @@ async function accPatch(u, body, msg, revert, said) {
     renderAccess();
     accStale(fresh, 'people');
     accNote(accRowMsg('user', u.email), said);
+    return saved || {};
   } catch (e) {
     if (revert) revert();
     accNote(accLive(msg, accRowMsg('user', u.email)), accError(e, 'Not saved, try again'), true);
+    return null;
   }
+}
+function accRenamed(email, name) {
+  if (!ACCESS) return;
+  accApply(function (a) { a.users = a.users.map(function (x) { return x.email === email ? Object.assign({}, x, {name: name}) : x; }); });
+  renderAccess();
+}
+function accNameForm(u, msg, menu) {
+  var form = accText('span', 'acc-name-form'), input = accInput('name', 'text', 120, 'Name of ' + u.email);
+  var save = accText('button', 'btn small acc-name-save', 'Save'), cancel = accText('button', 'btn sec small acc-name-cancel', 'Cancel');
+  form.hidden = true;
+  input.className = 'acc-name-in';
+  input.required = false;
+  input.autocomplete = 'off';
+  save.type = 'button';
+  cancel.type = 'button';
+  form.appendChild(input);
+  form.appendChild(save);
+  form.appendChild(cancel);
+  var close = function () { form.hidden = true; accMsg(msg, ''); var b = menu.querySelector('.acc-menu-b'); if (b) b.focus(); };
+  var go = async function () {
+    if (save.disabled) return;
+    save.disabled = true;
+    input.readOnly = true;
+    var name = input.value.trim(), saved = await accPatch(u, {name: name}, msg, null, 'Name saved');
+    save.disabled = false;
+    input.readOnly = false;
+    if (saved && typeof window.__skopaxRenamed === 'function') window.__skopaxRenamed(u.email, saved.name || name);
+  };
+  save.addEventListener('click', go);
+  cancel.addEventListener('click', close);
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); go(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+  });
+  form.open = function () { input.value = u.name || ''; form.hidden = false; input.focus(); input.select(); };
+  return form;
 }
 function accUserRow(u) {
   var tr = accText('tr', 'acc-user' + (u.disabled ? ' off' : ''));
@@ -1280,13 +1350,18 @@ function accUserRow(u) {
   form.appendChild(pw);
   form.appendChild(save);
   form.appendChild(cancel);
-  var showPw = function () { form.hidden = !form.hidden; if (!form.hidden) pw.focus(); };
-  var items = [{cls: 'acc-mi-role', text: 'Change role', off: sel.disabled, title: sel.disabled ? sel.title : '', run: function () { sel.focus(); }}];
+  var naming = null;
+  var showPw = function () { naming.hidden = true; form.hidden = !form.hidden; if (!form.hidden) pw.focus(); };
+  var items = [{cls: 'acc-mi-name', text: 'Edit name', run: function () { form.hidden = true; naming.open(); }},
+    {cls: 'acc-mi-role', text: 'Change role', off: sel.disabled, title: sel.disabled ? sel.title : '', run: function () { sel.focus(); }}];
   if (u.source !== 'sso') items.push({cls: 'acc-reset', text: 'Reset password', run: showPw});
   if (fresh) items.push({cls: 'acc-setpw', text: 'Turn into local account', title: 'Give this account a password: it becomes a local account, and its SSO link waits 7 days for the first sign-in', run: showPw});
   items.push({cls: 'acc-mi-off' + (u.disabled ? '' : ' acc-mi-danger'), text: u.disabled ? 'Enable sign-in' : 'Disable sign-in', off: last, title: last ? ACCESS_LAST_ADMIN : u.disabled ? '' : 'Stops sign-in for this person; their sessions and API tokens stop within 30 seconds',
     run: function () { off.checked = !off.checked; off.dispatchEvent(new Event('change', {bubbles: true})); }});
-  ctl.appendChild(accMenu(u, items));
+  var menu = accMenu(u, items);
+  naming = accNameForm(u, msg, menu);
+  ctl.appendChild(menu);
+  ctl.appendChild(naming);
   if (canPw) ctl.appendChild(form);
   ctl.appendChild(msg);
   cancel.addEventListener('click', function () { form.hidden = true; pw.value = ''; accMsg(msg, ''); });

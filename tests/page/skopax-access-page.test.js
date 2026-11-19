@@ -63,9 +63,10 @@ async function boot(opts) {
     anomalies: [], services: [], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
   const html = pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state));
   const db = {users: opts.users || people(), tokens: opts.tokens || tokens(), sso: opts.sso || ssoView(), items: opts.items || settings()};
-  const flags = {hook: null};
+  const flags = {hook: null, meHook: null};
+  const me = {loginEnabled: true, sso: true, user: 'alice@example.com', name: opts.meName || 'Alice Archer', userRole: 'admin', source: 'local', canChangePassword: true, canEditName: opts.canEditName !== false, operator: true, admin: true, teams: [], tags: []};
   const dom = new JSDOM(html, {
-    url: 'https://skopax.example.com/#t=anoms', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
+    url: opts.url || 'https://skopax.example.com/#t=anoms', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () {};
@@ -76,7 +77,14 @@ async function boot(opts) {
         const ok = (b, status) => ({ok: true, status: status || 200, json: async () => JSON.parse(JSON.stringify(b)), text: async () => JSON.stringify(b)});
         const none = () => ({ok: true, status: 204, json: async () => { throw new Error('no body'); }, text: async () => ''});
         const bad = (status, detail, field) => ({ok: false, status, json: async () => (field === undefined ? {detail} : {detail, field})});
-        if (p.startsWith('/api/me')) return ok({loginEnabled: true, sso: true, user: 'alice@example.com', userRole: 'admin', source: 'local', canChangePassword: true, operator: true, admin: true, teams: [], tags: []});
+        if (p === '/api/me' && method === 'PATCH') {
+          calls.push([method, p, body, type]);
+          const hooked = flags.meHook && await flags.meHook(body, {ok, bad});
+          if (hooked) return hooked;
+          me.name = String(body.name).trim();
+          return ok({name: me.name});
+        }
+        if (p.startsWith('/api/me')) return ok(me);
         if (!p.startsWith('/api/admin')) {
           if (p.startsWith('/api/actions') || p.startsWith('/api/deploy-reports') || p.startsWith('/api/requests')) return ok([]);
           if (p.startsWith('/api/rev')) return ok({rev: 1});
@@ -124,8 +132,9 @@ async function boot(opts) {
     }});
   await wait(150);
   const t = {w: dom.window, doc: dom.window.document, errors, calls, flags, db, close: () => dom.window.close()};
-  t.doc.getElementById('tab-access').click();
+  if (!opts.url) t.doc.getElementById('tab-access').click();
   await wait(150);
+  if (opts.tab) t.doc.querySelector('#access [role=tab][data-sec="' + opts.tab + '"]').click();
   return t;
 }
 
@@ -170,7 +179,8 @@ async function theSectionsComeInOrderWithANavThatCountsAndFlags() {
   s.doc.querySelector('#access .acc-nav-b[data-sec="tokens"]').click();
 
   //then
-  assert.strictEqual(s.doc.activeElement, s.doc.querySelector('#acc-tokens h3'), 'the nav moves focus to the section heading');
+  assert.strictEqual(s.doc.activeElement, s.doc.querySelector('#access .acc-nav-b[data-sec="tokens"]'), 'the tab keeps focus and shows its section');
+  assert.ok(!s.doc.getElementById('acc-tokens').hidden && s.doc.getElementById('acc-people').hidden);
   assert.deepStrictEqual(s.errors, []);
   s.close();
   return 'the sections are People, Single sign-on, API tokens and MCP sign-in, and the nav counts them and flags an expiring token, SSO needing setup and MCP on without SSO';
@@ -250,7 +260,7 @@ async function theLastAdminKeepsRoleAndSignInWithTheReason() {
   assert.deepStrictEqual([sel.disabled, sel.title, off.disabled, off.title], [true, LAST_ADMIN, true, LAST_ADMIN]);
   assert.deepStrictEqual([alice.querySelector('.acc-last-admin').textContent, alice.querySelector('.acc-last-admin').title], ['Last admin', LAST_ADMIN]);
   const items = [...alice.querySelectorAll('.acc-menu [role=menuitem]')].map((m) => [m.textContent, m.disabled, m.title]);
-  assert.deepStrictEqual(items, [['Change role', true, LAST_ADMIN], ['Reset password', false, ''], ['Disable sign-in', true, LAST_ADMIN]]);
+  assert.deepStrictEqual(items, [['Edit name', false, ''], ['Change role', true, LAST_ADMIN], ['Reset password', false, ''], ['Disable sign-in', true, LAST_ADMIN]]);
   assert.ok(!frank.querySelector('select.acc-role').disabled && !frank.querySelector('.acc-last-admin'), 'a disabled admin does not count and is not the last admin');
 
   //when
@@ -281,16 +291,17 @@ async function theRowMenuWorksByKeyboard() {
   const closed = [chloe.querySelector('.acc-menu').hidden, t.doc.activeElement === menuB];
   menuB.click();
   key(t.doc.activeElement, 'ArrowDown');
+  key(t.doc.activeElement, 'ArrowDown');
   t.doc.activeElement.click();
   const pw = chloe.querySelector('input.acc-pw');
 
   //then
-  assert.deepStrictEqual(opened, ['true', 'Change role']);
-  assert.strictEqual(second, 'Reset password');
+  assert.deepStrictEqual(opened, ['true', 'Edit name']);
+  assert.strictEqual(second, 'Change role');
   assert.deepStrictEqual(closed, [true, true], 'Escape closes the menu and gives focus back');
   assert.ok(!chloe.querySelector('.acc-pw-form').hidden && t.doc.activeElement === pw, 'Reset password opens the password field');
-  assert.deepStrictEqual([...rowOf(t.doc, 'dana@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Change role', 'Turn into local account', 'Disable sign-in']);
-  assert.deepStrictEqual([...rowOf(t.doc, 'erin@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Change role', 'Reset password', 'Enable sign-in']);
+  assert.deepStrictEqual([...rowOf(t.doc, 'dana@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Change role', 'Turn into local account', 'Disable sign-in']);
+  assert.deepStrictEqual([...rowOf(t.doc, 'erin@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Change role', 'Reset password', 'Enable sign-in']);
   assert.deepStrictEqual([rowOf(t.doc, 'chloe@example.com').querySelector('.acc-mi-off').classList.contains('acc-mi-danger'), rowOf(t.doc, 'erin@example.com').querySelector('.acc-mi-off').classList.contains('acc-mi-danger')],
     [true, false], 'Disable is a danger action, Enable is not');
 
@@ -328,7 +339,7 @@ async function focusStaysOnTheControlAfterASaveRedraws() {
 
 async function tokensShowExpiryChipsAndCreateWithAnExpiry() {
   //given
-  const t = await boot();
+  const t = await boot({tab: 'tokens'});
 
   //then
   const exp = (id) => { const e = tokenOf(t.doc, id).querySelector('.acc-exp'); return [e.textContent, e.classList.contains('k-warn'), e.classList.contains('k-crit')]; };
@@ -362,7 +373,7 @@ async function tokensShowExpiryChipsAndCreateWithAnExpiry() {
   t.close();
 
   //given
-  const p = await boot({tokens: [{id: 'd4e5f6a7', name: 'old', role: 'viewer', createdBy: 'alice@example.com', createdAt: iso(40 * DAY), lastUsed: null, revoked: false, expiresAt: iso(2 * DAY)}]});
+  const p = await boot({tab: 'tokens', tokens: [{id: 'd4e5f6a7', name: 'old', role: 'viewer', createdBy: 'alice@example.com', createdAt: iso(40 * DAY), lastUsed: null, revoked: false, expiresAt: iso(2 * DAY)}]});
 
   //then
   const past = tokenOf(p.doc, 'd4e5f6a7').querySelector('.acc-exp');
@@ -374,7 +385,7 @@ async function tokensShowExpiryChipsAndCreateWithAnExpiry() {
 
 async function revokeAsksFirst() {
   //given
-  const t = await boot();
+  const t = await boot({tab: 'tokens'});
 
   //when
   tokenOf(t.doc, 'a1b2c3d4').querySelector('.acc-revoke').click();
@@ -439,7 +450,7 @@ async function eachSectionLoadsAndFailsOnItsOwn() {
 
 async function chipsEditTheAllowedDomains() {
   //given
-  const t = await boot();
+  const t = await boot({tab: 'sso'});
   const chips = () => [...card(t.doc).querySelectorAll('.sso-chip .sso-chip-t')].map((c) => c.textContent);
 
   //when
@@ -463,7 +474,7 @@ async function chipsEditTheAllowedDomains() {
 
 async function aDomainTypedButNotAddedIsSavedAndSurvivesARepaint() {
   //given
-  const t = await boot();
+  const t = await boot({tab: 'sso'});
   const add = () => card(t.doc).querySelector('.sso-chip-in');
   const label = field(t.doc, 'allowed-domains').querySelector('label.sso-fn');
 
@@ -535,7 +546,7 @@ async function theMcpAndLastKnownRoleFieldsSaveWithTheirCard() {
 async function aRefusedRoleFieldOnTheSsoCardKeepsItsReason() {
   //given
   const items = settings().concat([Object.assign({}, settings()[0], {key: 'roles.stale-max-minutes', group: 'Sign-in', label: 'Last known role (minutes)', kind: 'int', value: '60', base: '60', low: 0, high: 1440})]);
-  const t = await boot({items});
+  const t = await boot({tab: 'sso', items});
   let ssoDown = false;
   t.flags.hook = async (method, p, body, h) => {
     if (method === 'PUT' && p === '/api/admin/settings') return h.bad(422, 'Last known role is 0 to 1440 minutes.');
@@ -566,7 +577,7 @@ async function aRefusedRoleFieldOnTheSsoCardKeepsItsReason() {
 
 async function theCardGroupsItsFieldsAndShowsItsStatus() {
   //given
-  const t = await boot();
+  const t = await boot({tab: 'sso'});
 
   //then
   const groups = [...card(t.doc).querySelectorAll('.sso-grp')].map((g) => [g.querySelector('legend').textContent, [...g.querySelectorAll('.sso-f')].map((f) => f.dataset.field)]);
@@ -580,7 +591,7 @@ async function theCardGroupsItsFieldsAndShowsItsStatus() {
 
 async function thePreviewFollowsUnsavedEdits() {
   //given
-  const t = await boot();
+  const t = await boot({tab: 'sso'});
   const issuer = field(t.doc, 'issuer').querySelector('.sso-in'), text = field(t.doc, 'button-text').querySelector('.sso-in'), mode = field(t.doc, 'button-icon').querySelector('.sso-in');
   const note = () => { const n = card(t.doc).querySelector('.sso-pv-note'); return n.hidden ? '' : n.textContent; };
 
@@ -617,7 +628,7 @@ async function thePreviewFollowsUnsavedEdits() {
 
 async function unsavedButtonEditsSurviveASaveOfAnotherField() {
   //given
-  const t = await boot();
+  const t = await boot({tab: 'sso'});
   setValue(field(t.doc, 'button-text').querySelector('.sso-in'), 'Sign in with Acme');
   const mode = field(t.doc, 'button-icon').querySelector('.sso-in');
   mode.value = 'none';
@@ -645,7 +656,7 @@ async function unsavedButtonEditsSurviveASaveOfAnotherField() {
 
 async function theCompanyIconUploadsAndRemoves() {
   //given
-  const t = await boot();
+  const t = await boot({tab: 'sso'});
   const pick = (name, type, size) => {
     const input = card(t.doc).querySelector('.sso-icon-file');
     const file = new t.w.File([new Uint8Array(size)], name, {type});
@@ -692,9 +703,316 @@ async function theCompanyIconUploadsAndRemoves() {
   return 'the company icon refuses a big or wrong file before sending, uploads the raw file, shows in the preview, and Remove asks first';
 }
 
+const shownPanels = (doc) => [...doc.querySelectorAll('#access .acc-part')].filter((p) => !p.hidden).map((p) => p.id);
+const tabState = (doc) => [...doc.querySelectorAll('#access [role=tab]')].map((b) => [b.dataset.sec, b.getAttribute('aria-selected'), b.tabIndex]);
+const tabOf = (doc, sec) => doc.querySelector('#access [role=tab][data-sec="' + sec + '"]');
+
+async function theSectionsAreTabsThatShowOnePanelAtATime() {
+  //given
+  const t = await boot();
+  const list = t.doc.querySelector('#access .acc-nav');
+
+  //then
+  assert.strictEqual(list.getAttribute('role'), 'tablist');
+  assert.strictEqual(list.getAttribute('aria-label'), 'Access sections');
+  assert.deepStrictEqual(tabState(t.doc), [['people', 'true', 0], ['sso', 'false', -1], ['tokens', 'false', -1], ['mcp', 'false', -1]]);
+  assert.deepStrictEqual([...t.doc.querySelectorAll('#access .acc-part')].map((p) => [p.getAttribute('role'), p.getAttribute('aria-labelledby'), tabOf(t.doc, p.id.slice(4)).getAttribute('aria-controls') === p.id]),
+    [['tabpanel', 'acc-tab-people', true], ['tabpanel', 'acc-tab-sso', true], ['tabpanel', 'acc-tab-tokens', true], ['tabpanel', 'acc-tab-mcp', true]]);
+  assert.deepStrictEqual(shownPanels(t.doc), ['acc-people'], 'People is the default and the only panel shown');
+  assert.strictEqual(t.w.location.hash, '#t=access');
+
+  //when
+  tabOf(t.doc, 'tokens').click();
+
+  //then
+  assert.deepStrictEqual(shownPanels(t.doc), ['acc-tokens']);
+  assert.deepStrictEqual(tabState(t.doc).map((x) => x[1]), ['false', 'false', 'true', 'false']);
+  assert.strictEqual(t.doc.activeElement, tabOf(t.doc, 'tokens'), 'focus stays on the tab');
+  assert.strictEqual(t.w.location.hash, '#t=access/tokens', 'the tab is in the address');
+  assert.deepStrictEqual(nav(t.doc).tokens.slice(0, 2), ['3', true], 'the tab keeps its count and its attention dot');
+
+  //when
+  tabOf(t.doc, 'people').click();
+  const sel = rowOf(t.doc, 'chloe@example.com').querySelector('select.acc-role');
+  sel.value = 'operator';
+  change(sel);
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual(shownPanels(t.doc), ['acc-people'], 'a save that redraws the lists keeps the chosen tab');
+  assert.strictEqual(t.w.location.hash, '#t=access');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'Access & sign-in shows one section at a time as real tabs, People first, with counts and dots kept and the chosen tab in the address';
+}
+
+async function theTabsMoveWithTheArrowKeys() {
+  //given
+  const t = await boot();
+  tabOf(t.doc, 'people').focus();
+
+  //when
+  key(t.doc.activeElement, 'ArrowRight');
+  const right = [t.doc.activeElement.dataset.sec, shownPanels(t.doc)];
+  key(t.doc.activeElement, 'ArrowLeft');
+  key(t.doc.activeElement, 'ArrowLeft');
+  const wrapped = [t.doc.activeElement.dataset.sec, shownPanels(t.doc)];
+  key(t.doc.activeElement, 'Home');
+  const home = t.doc.activeElement.dataset.sec;
+  key(t.doc.activeElement, 'End');
+  const end = [t.doc.activeElement.dataset.sec, t.w.location.hash];
+
+  //then
+  assert.deepStrictEqual(right, ['sso', ['acc-sso']]);
+  assert.deepStrictEqual(wrapped, ['mcp', ['acc-mcp']], 'Left from the first tab wraps to the last');
+  assert.strictEqual(home, 'people');
+  assert.deepStrictEqual(end, ['mcp', '#t=access/mcp']);
+  assert.deepStrictEqual(tabState(t.doc).map((x) => x[2]), [-1, -1, -1, 0], 'only the selected tab is in the tab order');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'the Access tabs follow the tab pattern: Left and Right wrap, Home and End jump, and only the selected tab takes Tab focus';
+}
+
+async function aLinkOpensTheNamedTab() {
+  //given
+  const t = await boot({url: 'https://skopax.example.com/#t=access/sso'});
+  await wait(150);
+
+  //then
+  assert.deepStrictEqual(shownPanels(t.doc), ['acc-sso'], 'a reload or a link opens the tab in the address');
+  assert.strictEqual(t.w.location.hash, '#t=access/sso');
+
+  //when
+  t.w.location.hash = '#t=access/mcp';
+  await wait(150);
+
+  //then
+  assert.deepStrictEqual(shownPanels(t.doc), ['acc-mcp'], 'a link followed on the open page switches the tab');
+
+  //when
+  t.w.location.hash = '#t=access';
+  await wait(150);
+
+  //then
+  assert.deepStrictEqual(shownPanels(t.doc), ['acc-people']);
+  t.close();
+
+  //given
+  const odd = await boot({url: 'https://skopax.example.com/#t=access/nothing'});
+  await wait(150);
+
+  //then
+  assert.deepStrictEqual(shownPanels(odd.doc), ['acc-people'], 'an unknown section falls back to People');
+  assert.strictEqual(odd.w.location.hash, '#t=access');
+  assert.deepStrictEqual(odd.errors, []);
+  odd.close();
+
+  //given
+  const found = await boot();
+
+  //when
+  found.w.ADMIN_REVEAL = {tab: 'access', key: 'mcp.scope'};
+  found.w.loadAccess();
+  await wait(150);
+
+  //then
+  assert.deepStrictEqual(shownPanels(found.doc), ['acc-mcp'], 'a search hit on an MCP setting opens the MCP tab');
+  assert.strictEqual(found.doc.activeElement, found.doc.querySelector('#acc-mcp .adm-row[data-key="mcp.scope"]'));
+  assert.strictEqual(found.w.location.hash, '#t=access/mcp');
+  assert.deepStrictEqual(found.errors, []);
+  found.close();
+  return 'a link or reload to #t=access/<section> opens that tab, an unknown one opens People, and a search hit opens the tab that holds it';
+}
+
+async function theTabsStayOnNarrowScreens() {
+  //given
+  const css = require('fs').readFileSync(TEMPLATE, 'utf8');
+
+  //when
+  const hidden = css.match(/(^|[\s,}])\.acc-nav\s*(,[^{]*)?\{[^}]*display:\s*none/gm) || [];
+
+  //then
+  assert.ok(/\.acc-nav \{[^}]*display: flex/.test(css), 'the tab list rule is found');
+  assert.deepStrictEqual(hidden, [], 'no screen width hides the tabs, or a phone could never leave People');
+  return 'the Access tabs are never hidden by a narrow-screen rule';
+}
+
+async function anAdminRenamesAPersonFromTheRow() {
+  //given
+  const t = await boot();
+  const chloe = rowOf(t.doc, 'chloe@example.com');
+  const items = [...chloe.querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent);
+
+  //when
+  chloe.querySelector('.acc-mi-name').click();
+  const input = chloe.querySelector('input.acc-name-in');
+  const opened = [!chloe.querySelector('.acc-name-form').hidden, t.doc.activeElement === input, input.value, input.maxLength];
+  setValue(input, '  Chloe D.  ');
+  chloe.querySelector('.acc-name-save').click();
+  await wait(100);
+
+  //then
+  assert.strictEqual(items[0], 'Edit name');
+  assert.deepStrictEqual(opened, [true, true, 'Chlo' + E_ACUTE + ' Durand', 120]);
+  assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PATCH').map((c) => [c[1], c[2]]), [['/api/admin/users/chloe%40example.com', {name: 'Chloe D.'}]]);
+  assert.strictEqual(rowOf(t.doc, 'chloe@example.com').querySelector('.acc-name').textContent, 'Chloe D.');
+  assert.strictEqual(rowOf(t.doc, 'chloe@example.com').querySelector('.adm-msg').textContent, 'Name saved');
+
+  //given
+  t.flags.hook = (method, p, body, h) => method === 'PATCH' ? h.bad(422, 'A name is 1 to 120 characters.', 'name') : null;
+  const again = rowOf(t.doc, 'chloe@example.com');
+
+  //when
+  again.querySelector('.acc-mi-name').click();
+  setValue(again.querySelector('input.acc-name-in'), ' ');
+  key(again.querySelector('input.acc-name-in'), 'Enter');
+  await wait(100);
+
+  //then
+  assert.strictEqual(again.querySelector('.adm-msg').textContent, 'A name is 1 to 120 characters.');
+  assert.ok(!again.querySelector('.acc-name-form').hidden, 'a refused name keeps the field open');
+
+  //when
+  key(again.querySelector('input.acc-name-in'), 'Escape');
+
+  //then
+  assert.ok(again.querySelector('.acc-name-form').hidden && t.doc.activeElement === again.querySelector('.acc-menu-b'), 'Escape closes the field and gives focus back to the menu');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'an admin renames a person from the row menu with an inline field that saves on Enter, shows a refusal and closes on Escape';
+}
+
+async function renamingYourselfAsAdminUpdatesTheSidebar() {
+  //given
+  const t = await boot();
+  const alice = rowOf(t.doc, 'alice@example.com');
+  const before = t.doc.querySelector('#user-btn .user-t b').textContent;
+
+  //when
+  alice.querySelector('.acc-mi-name').click();
+  setValue(alice.querySelector('input.acc-name-in'), 'Zoe Admin');
+  alice.querySelector('.acc-name-save').click();
+  await wait(100);
+
+  //then
+  assert.strictEqual(before, 'Alice Archer');
+  assert.deepStrictEqual([t.doc.querySelector('#user-btn .user-t b').textContent, t.doc.querySelector('#user-btn .av').textContent], ['Zoe Admin', 'Z'], 'the sidebar follows without a reload');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'an admin who renames their own row sees the new name in the sidebar at once';
+}
+
+async function aPersonRenamesThemselvesFromTheUserMenu() {
+  //given
+  const t = await boot();
+  const labels = [...t.doc.querySelectorAll('#user-menu [role=menuitem]')].map((b) => b.textContent);
+
+  //when
+  t.doc.getElementById('um-name').click();
+  const d = t.doc.getElementById('name-dialog'), input = d.querySelector('input[name=name]');
+  const opened = [d.getAttribute('role'), d.getAttribute('aria-modal'), t.doc.activeElement === input, input.value, input.maxLength];
+  input.value = ' Ali A. ';
+  d.querySelector('form').dispatchEvent(new t.w.Event('submit', {bubbles: true, cancelable: true}));
+  await wait(100);
+
+  //then
+  assert.ok(labels.indexOf('Edit name') >= 0 && labels.indexOf('Edit name') < labels.indexOf('Sign out'));
+  assert.deepStrictEqual(opened, ['dialog', 'true', true, 'Alice Archer', 120]);
+  assert.deepStrictEqual(t.calls.filter((c) => c[1] === '/api/me').map((c) => [c[0], c[2]]), [['PATCH', {name: 'Ali A.'}]]);
+  assert.ok(!t.doc.getElementById('name-dialog'), 'the dialog closes');
+  assert.deepStrictEqual([t.doc.querySelector('#user-btn .user-t b').textContent, t.doc.querySelector('#user-btn .av').textContent], ['Ali A.', 'A']);
+  assert.strictEqual(t.doc.querySelector('#account .acct-note').textContent, 'Name saved.');
+  assert.strictEqual(rowOf(t.doc, 'alice@example.com').querySelector('.acc-name').textContent, 'Ali A.', 'the People list follows too');
+
+  //given
+  t.flags.meHook = (body, h) => h.bad(422, 'A name is 1 to 120 characters.', 'name');
+
+  //when
+  t.doc.getElementById('um-name').click();
+  const d2 = t.doc.getElementById('name-dialog');
+  d2.querySelector('input[name=name]').value = '';
+  d2.querySelector('form').dispatchEvent(new t.w.Event('submit', {bubbles: true, cancelable: true}));
+  await wait(100);
+
+  //then
+  assert.strictEqual(d2.querySelector('.name-msg').textContent, 'A name is 1 to 120 characters.');
+  assert.ok(t.doc.getElementById('name-dialog'), 'a refused name keeps the dialog open');
+
+  //when
+  key(d2, 'Escape');
+
+  //then
+  assert.ok(!t.doc.getElementById('name-dialog') && t.doc.activeElement === t.doc.getElementById('user-btn'), 'Escape closes it and focus goes back to the account button');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+
+  //given
+  const off = await boot({canEditName: false});
+
+  //then
+  assert.ok(!off.doc.getElementById('um-name'), 'no Edit name without a session that may rename');
+  off.close();
+  return 'Edit name in the user menu opens a small dialog that saves the name, updates the sidebar and the People list without a reload, and shows a refusal';
+}
+
+async function aSecondSaveWaitsForTheFirst() {
+  //given
+  const t = await boot();
+  let release = null;
+  t.flags.hook = (method) => method === 'PATCH' ? new Promise((r) => { release = r; }).then(() => null) : null;
+  const chloe = rowOf(t.doc, 'chloe@example.com');
+  chloe.querySelector('.acc-mi-name').click();
+  setValue(chloe.querySelector('input.acc-name-in'), 'Chloe D.');
+
+  //when
+  chloe.querySelector('.acc-name-save').click();
+  await wait(20);
+  const held = [chloe.querySelector('.acc-name-save').disabled, chloe.querySelector('input.acc-name-in').readOnly];
+  chloe.querySelector('.acc-name-save').click();
+  key(chloe.querySelector('input.acc-name-in'), 'Enter');
+  await wait(20);
+  release();
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual(held, [true, true], 'Save and the field wait while the name is saved');
+  assert.strictEqual(t.calls.filter((c) => c[0] === 'PATCH').length, 1, 'a double click or Enter sends one request');
+  assert.strictEqual(rowOf(t.doc, 'chloe@example.com').querySelector('.acc-name').textContent, 'Chloe D.');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'a second Save or Enter while a rename is being saved sends nothing';
+}
+
+async function aHostileNameIsShownAsText() {
+  //given
+  const users = people().map((u) => u.email === 'alice@example.com' || u.email === 'chloe@example.com' ? Object.assign({}, u, {name: EVIL}) : u);
+  const t = await boot({users, meName: EVIL});
+
+  //when
+  t.doc.getElementById('um-name').click();
+  const d = t.doc.getElementById('name-dialog');
+
+  //then
+  assert.strictEqual(t.doc.querySelector('#user-btn .user-t b').textContent, EVIL);
+  assert.strictEqual(rowOf(t.doc, 'chloe@example.com').querySelector('.acc-name').textContent, EVIL);
+  assert.strictEqual(d.querySelector('input[name=name]').value, EVIL);
+  assert.strictEqual(t.doc.querySelectorAll('#account img, #access img, #name-dialog img').length, 0, 'the name never becomes markup');
+
+  //when
+  rowOf(t.doc, 'chloe@example.com').querySelector('.acc-mi-name').click();
+
+  //then
+  assert.strictEqual(rowOf(t.doc, 'chloe@example.com').querySelector('input.acc-name-in').value, EVIL);
+  assert.strictEqual(t.doc.querySelectorAll('#access img').length, 0);
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'a name with markup in it shows as text in the sidebar, the People list, the row field and the dialog';
+}
+
 (async () => {
   const cases = [theSectionsComeInOrderWithANavThatCountsAndFlags, peopleShowAvatarMethodsAndLastSignIn, searchAndRoleFilterNarrowThePeople, theLastAdminKeepsRoleAndSignInWithTheReason,
     theRowMenuWorksByKeyboard, focusStaysOnTheControlAfterASaveRedraws, tokensShowExpiryChipsAndCreateWithAnExpiry, revokeAsksFirst, eachSectionLoadsAndFailsOnItsOwn, chipsEditTheAllowedDomains, aDomainTypedButNotAddedIsSavedAndSurvivesARepaint, theMcpAndLastKnownRoleFieldsSaveWithTheirCard, aRefusedRoleFieldOnTheSsoCardKeepsItsReason,
-    theCardGroupsItsFieldsAndShowsItsStatus, thePreviewFollowsUnsavedEdits, unsavedButtonEditsSurviveASaveOfAnotherField, theCompanyIconUploadsAndRemoves];
+    theCardGroupsItsFieldsAndShowsItsStatus, thePreviewFollowsUnsavedEdits, unsavedButtonEditsSurviveASaveOfAnotherField, theCompanyIconUploadsAndRemoves,
+    theSectionsAreTabsThatShowOnePanelAtATime, theTabsMoveWithTheArrowKeys, aLinkOpensTheNamedTab, theTabsStayOnNarrowScreens, anAdminRenamesAPersonFromTheRow, renamingYourselfAsAdminUpdatesTheSidebar, aPersonRenamesThemselvesFromTheUserMenu, aSecondSaveWaitsForTheFirst, aHostileNameIsShownAsText];
   for (const c of cases) console.log('PASS ' + await c());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

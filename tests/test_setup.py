@@ -334,9 +334,9 @@ def test_a_lost_race_to_create_the_env_admin_is_not_a_conflict(caplog, monkeypat
     caplog.set_level(logging.INFO, logger='skopax')
     real = Users.create
 
-    def other_request_won(self, email, name, role, password=None, source='local'):
-        real(self, email, name, role, password, source)
-        return real(self, email, name, role, password, source)
+    def other_request_won(self, email, name, role, password=None, source='local', name_from='admin'):
+        real(self, email, name, role, password, source, name_from=name_from)
+        return real(self, email, name, role, password, source, name_from=name_from)
 
     monkeypatch.setattr(Users, 'create', other_request_won)
 

@@ -123,6 +123,11 @@ class PasswordIn(BaseModel):
     new: str = Field(max_length=256)
 
 
+class NameIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    name: str = Field(max_length=400)
+
+
 class AdminSettingIn(BaseModel):
     key: str = Field(min_length=1, max_length=120)
     value: str = Field(max_length=SETTING_TEXT_MAX)
@@ -288,6 +293,7 @@ class UserPatch(BaseModel):
     disabled: bool | None = Field(default=None, strict=True)
     password: str | None = Field(default=None, max_length=1000)
     ssoLink: bool | None = Field(default=None, strict=True)
+    name: str | None = Field(default=None, max_length=400)
 
 
 class TokenIn(BaseModel):
