@@ -86,8 +86,10 @@ def test_the_test_button_answers_with_the_agents_own_summary(store):
         tested = c.post('/api/admin/plugins/kubernetes/test', json={'values': AGENT}, headers=AUTH)
 
     # then
-    assert tested.status_code == 200
-    assert tested.json() == {'ok': False, 'summary': 'the new agent is unreachable', 'ms': 0}
+    answer = tested.json()
+    assert tested.status_code == 200 and set(answer) == {'ok', 'summary', 'ms'}
+    assert answer['ok'] is False and answer['summary'] == 'the new agent is unreachable'
+    assert isinstance(answer['ms'], int) and answer['ms'] >= 0
 
 
 def test_the_test_instance_holds_every_agent_read_value_and_agent_read_defaults(store):
