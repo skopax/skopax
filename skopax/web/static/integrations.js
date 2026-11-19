@@ -146,6 +146,7 @@ function intSameSet(a, b) {
 }
 function intShown(h) {
   if (!h || typeof h.text !== 'string') return null;
+  if (h.state === 'none') return {state: 'off', text: '', none: true};
   var when = h.state === 'ok' && typeof h.at === 'string' && h.at ? ago(h.at) : '';
   return {state: INT_DOTS[h.state] || 'off', text: h.text + (when ? ' \u00b7 ' + when : '')};
 }
@@ -242,7 +243,8 @@ function intTile(p) {
   open.appendChild(row);
   var custom = intIsCustom(p);
   if (!need || custom) line.appendChild(accText('span', 'int-cat', need ? 'Custom' : intCatLabel(intCatOf(p)) + (custom ? ' \u00b7 Custom' : '')));
-  if (h) line.appendChild(accText('span', 'int-health', intShort(p, h)));
+  var healthText = h ? (h.none ? (intList(p.instances).length > 1 ? intList(p.instances).length + ' instances' : '') : intShort(p, h)) : '';
+  if (healthText) line.appendChild(accText('span', 'int-health', healthText));
   var why = need && h && intList(p.instances).length > 1 ? intWhy(p) : '';
   if (why) line.appendChild(accText('span', 'int-why', why));
   open.appendChild(line);
@@ -732,7 +734,7 @@ function intCard(p, i, cur, said) {
   meta.appendChild(accText('span', 'int-icard-s', i.enabled ? 'On' : 'Off'));
   c.appendChild(meta);
   line.appendChild(accText('span', 'int-dot ' + (h ? h.state : 'off')));
-  line.appendChild(accText('span', 'int-icard-l', h ? h.text : 'Not checked yet'));
+  if (!(h && h.none)) line.appendChild(accText('span', 'int-icard-l', h ? h.text : 'Not checked yet'));
   c.appendChild(line);
   edit.setAttribute('aria-hidden', 'true');
   c.appendChild(edit);
@@ -795,7 +797,7 @@ function intInstHead(p, inst) {
   line.appendChild(rmsg);
   box.appendChild(line);
   var h = intInstHealth(p, inst);
-  if (h) box.appendChild(intHealthEl(h, 'int-ihealth'));
+  if (h && !h.none) box.appendChild(intHealthEl(h, 'int-ihealth'));
   if (inst.problem) box.appendChild(accText('p', 'adm-msg bad int-problem', String(inst.problem)));
   on.addEventListener('change', async function () {
     var want = on.checked, mcp = intMcpBoxOf(p);
