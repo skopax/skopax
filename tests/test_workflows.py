@@ -801,7 +801,8 @@ def test_dependabot_watches_actions_uv_docker_and_npm_weekly():
     assert found['docker']['directories'] == ['/', '/examples/hello-plugin', '/examples/couchbase-plugin', '/examples/managed-redis-plugin']
     assert found['docker']['groups'] == {'docker': {'group-by': 'dependency-name'}}
     assert found['npm']['directory'] == '/tests/page'
-    assert {u['cooldown']['default-days'] for u in found.values()} == {14}
+    assert {e: u['cooldown']['default-days'] for e, u in found.items() if e != 'docker'} == {'github-actions': 14, 'uv': 14, 'npm': 14}
+    assert 'cooldown' not in found['docker']
     assert found['uv']['allow'] == [{'dependency-type': 'direct'}]
     assert {u['commit-message']['prefix'] for u in found.values()} == {'chore(deps)'}
 
