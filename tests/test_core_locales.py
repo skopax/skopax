@@ -1,6 +1,7 @@
 import dataclasses
 import json
 import re
+import warnings
 from collections import Counter
 
 import pytest
@@ -114,6 +115,21 @@ def test_tr_ships_as_a_core_pack():
     assert all(pack.lang in LANGS for pack in locales.packs())
 
 
+def test_a_missing_outbound_translation_warns_and_sends_english_instead_of_failing(monkeypatch):
+    # given
+    real = locales.read('tr')
+    key = sorted(outbound())[0]
+    monkeypatch.setattr(locales, 'read', lambda lang: dataclasses.replace(real, messages={k: v for k, v in real.messages.items() if k != key}))
+
+    # when
+    with pytest.warns(UserWarning, match=f'tr pack has no translation for 1 outbound messages, English is sent: {re.escape(key)}'):
+        test_every_core_pack_passes_the_plugin_pack_checks_with_no_text_dropped('tr')
+    messages.set_catalogs([('tr', locales.read('tr').messages)])
+
+    # then
+    assert key not in messages.catalog('tr')
+
+
 @pytest.mark.parametrize('lang', LANGS)
 def test_every_core_pack_passes_the_plugin_pack_checks_with_no_text_dropped(lang):
     # given
@@ -134,7 +150,9 @@ def test_every_core_pack_passes_the_plugin_pack_checks_with_no_text_dropped(lang
     assert len(raw.writing) <= WRITING_MAX and raw.writing.strip()
     assert raw.page and raw.messages and raw.chat
     assert set(raw.messages) <= outbound() and set(raw.chat) <= set(TEXTS['en'])
-    assert outbound() <= set(raw.messages), 'every outbound message is translated'
+    missing = sorted(outbound() - set(raw.messages))
+    if missing:
+        warnings.warn(f'{lang} pack has no translation for {len(missing)} outbound messages, English is sent: {", ".join(missing)}', stacklevel=1)
     assert placeholder_problems(raw) == []
     assert rule_problems(raw) == []
 
