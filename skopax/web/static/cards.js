@@ -876,10 +876,33 @@ function renderBoard(root, groups) {
   note.id = 'board-note';
   note.setAttribute('aria-live', 'polite');
   root.insertBefore(note, board);
+  root.insertBefore(boardTabs(board), note);
   if (!cards.length && searchQ) root.appendChild(el('p', 'muted', 'No card matches.'));
   TILES = nextTiles;
   if (DRAWER && cards.some(function (a) { return a.key === DRAWER; })) openDrawer(DRAWER, true);
   else { DRAWER = null; var gone = drawerNode(root); if (gone) gone.remove(); }
+}
+var BOARD_AT = 'open';
+function boardTabs(board) {
+  var bar = el('div', 'board-tabs');
+  bar.setAttribute('aria-label', 'Board columns');
+  var mark = function () { [].forEach.call(bar.children, function (b) { if (b.dataset.col === BOARD_AT) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); }); };
+  var show = function (col) { if (bar.offsetWidth && col) board.scrollLeft = col.offsetLeft - board.firstElementChild.offsetLeft; };
+  [].forEach.call(board.children, function (col) {
+    var b = el('button', 'board-tab', esc(col.querySelector('.bcol-h h3').textContent) + '<span class="count">' + esc(col.querySelector('.bcol-h .count').textContent) + '</span>');
+    b.type = 'button';
+    b.dataset.col = col.dataset.col;
+    b.addEventListener('click', function () { BOARD_AT = col.dataset.col; mark(); show(col); });
+    bar.appendChild(b);
+  });
+  board.addEventListener('scroll', function () {
+    if (!bar.offsetWidth || !board.clientWidth) return;
+    var col = board.children[Math.round(board.scrollLeft / board.clientWidth)];
+    if (col && col.dataset.col !== BOARD_AT) { BOARD_AT = col.dataset.col; mark(); }
+  }, {passive: true});
+  mark();
+  setTimeout(function () { show(board.querySelector('.bcol[data-col="' + BOARD_AT + '"]')); }, 0);
+  return bar;
 }
 function drawerNode(root) { return [].filter.call(root.children, function (c) { return c.classList.contains('card-drawer'); })[0] || null; }
 function openDrawer(key, quiet) {
