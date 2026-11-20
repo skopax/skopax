@@ -68,7 +68,7 @@ function backToSvcs() {
   var f = svcF;
   svcF = null;
   renderFilters();
-  setFilter('all');
+  setFilter('open');
   showTab('svcs');
   var row = f && [].filter.call(document.querySelectorAll('#svcs tbody tr'), function (r) { return r.dataset.svc === f.svc && r.dataset.ns === f.ns; })[0];
   if (!row) return;

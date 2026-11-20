@@ -298,7 +298,7 @@ function tagsRow(label) {
 }
 function setType(t) {
   typeF = t || '';
-  setFilter(filter === 'svc' && !svcF ? 'all' : filter);
+  setFilter(filter === 'svc' && !svcF ? 'open' : filter);
 }
 var navBack = document.getElementById('nav-backdrop');
 function navOpen() { return document.body.classList.contains('nav-open'); }
@@ -357,8 +357,8 @@ document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && na
 var curTab = null, urlReady = false;
 function tabPath(id) {
   if (id === 'anoms') {
-    var f = LINK_FILTERS.indexOf(filter) >= 0 ? filter : 'all';
-    return typeF ? id + '/' + f + '/' + encodeURIComponent(typeF) : f === 'all' ? id : id + '/' + f;
+    var f = LINK_FILTERS.indexOf(filter) >= 0 ? filter : 'open';
+    return typeF ? id + '/' + f + '/' + encodeURIComponent(typeF) : f === 'open' ? id : id + '/' + f;
   }
   if (id === 'svcs') return kind === 'all' ? id : id + '/' + kind;
   if (id === 'chat') return chatPath();
@@ -394,7 +394,7 @@ function openTabPath(raw) {
     typeF = /^(tag:|who:(u:)?)?[a-z0-9.-]{1,60}(\+(tag:|who:(u:)?)?[a-z0-9.-]{1,60}){0,2}$/.test(given || '') ? given : '';
     showTab(id);
     renderAnomSub();
-    setFilter(known ? sub : 'all');
+    setFilter(known ? sub : 'open');
     return;
   }
   if (id === 'chat') openChatPath(parts.slice(1));
@@ -444,7 +444,7 @@ function pickTab(id) {
   showTab(id);
   if (id !== 'anoms') return;
   typeF = '';
-  setFilter('all');
+  setFilter('open');
 }
 function showTab(id) {
   if (id === 'costs' && COSTS_OP === false) id = 'anoms';
@@ -514,17 +514,17 @@ function openFilterMenu() {
 }
 function renderFilterNote(c) {
   var note = document.getElementById('filter-note');
-  var f = c ? c.id : 'all', refocus = document.activeElement && document.activeElement.id === 'filter-menu';
-  note.className = 'filter-note ' + (c ? c.k : SEV[worst][1]) + (f !== 'all' || typeF ? ' on' : '');
+  var f = c ? c.id : 'open', refocus = document.activeElement && document.activeElement.id === 'filter-menu';
+  note.className = 'filter-note ' + (c ? c.k : SEV[worst][1]) + (f !== 'open' || typeF ? ' on' : '');
   note.title = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning'], [openBySev('info').length, 'info'], [inprog.length, 'in progress'], [taken.length, 'action taken'], [muted.length, 'muted'], [cleared.length, 'cleared'], [slackRec.length, 'Slack drafts'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
   note.innerHTML = '<span class="fn-cur">Showing <b>' + esc(c ? c.label : 'Open') + '</b>' + (typeF ? ' · <b>' + esc(typeName(typeF)) + '</b>' : '') +
     '<span class="count">' + esc(typeF ? shownN : c ? c.n : openAll().length) + '</span></span>' +
     (f === 'svc' ? '<button class="xlink" type="button" id="back-svcs">← Back to Services</button>' : '') +
     (typeF ? '<button class="xlink" type="button" id="clear-type">Every type ›</button>' : '') +
-    (f !== 'svc' && (f !== 'all' || typeF) ? '<button class="xlink copy-f" type="button" id="copy-f" title="Copies a link that opens Board with this filter' + (typeF ? ' and type' : '') + '">' + ICON_LINK + 'Copy link</button>' : '') +
-    (f !== 'all' ? '<button class="xlink" type="button" id="clear-f">Back to All ›</button>' : '') +
+    (f !== 'svc' && (f !== 'open' || typeF) ? '<button class="xlink copy-f" type="button" id="copy-f" title="Copies a link that opens Board with this filter' + (typeF ? ' and type' : '') + '">' + ICON_LINK + 'Copy link</button>' : '') +
+    (f !== 'open' ? '<button class="xlink" type="button" id="clear-f">Back to Open ›</button>' : '') +
     '<button class="btn sec small with-icon fn-menu" type="button" id="filter-menu" aria-controls="tab-sub-anoms" title="Open the section menu at the anomaly filters"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>Filters</button>';
-  if (f !== 'all') document.getElementById('clear-f').addEventListener('click', function () { setFilter('all'); });
+  if (f !== 'open') document.getElementById('clear-f').addEventListener('click', function () { setFilter('open'); });
   if (typeF) document.getElementById('clear-type').addEventListener('click', function () { setType(''); });
   var copyF = document.getElementById('copy-f');
   if (copyF) copyF.addEventListener('click', function () { copyUrl(location.origin + location.pathname + '#t=' + tabPath('anoms'), copyF); });
@@ -590,7 +590,7 @@ function initCardSearch() {
     var was = searchQ;
     searchQ = box.value.trim();
     if (searchQ && !was) { searchBack = filter; setFilter('all'); return; }
-    if (!searchQ && was) { setFilter(LINK_FILTERS.indexOf(searchBack) >= 0 ? searchBack : 'all'); return; }
+    if (!searchQ && was) { setFilter(LINK_FILTERS.indexOf(searchBack) >= 0 ? searchBack : 'open'); return; }
     renderAnoms();
     if (window.__skopaxRender) window.__skopaxRender();
   });

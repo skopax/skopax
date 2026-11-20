@@ -137,8 +137,8 @@ async function warnRowOpensItsCards() {
   assert.strictEqual(selected(doc), 'svcs', 'Back to Services returns to the tab');
   assert.strictEqual(chip(doc, 'bad').getAttribute('aria-pressed'), 'true', 'service kind chip kept');
   assert.strictEqual(doc.activeElement, row(doc, 'catalog-service').querySelector('button.go'), 'focus back on the row it came from');
-  assert.ok(/^Showing All/.test(doc.getElementById('filter-note').textContent) && !doc.getElementById('back-svcs'), 'anomaly filter reset to All, the default since 10 Nov');
-  assert.strictEqual(doc.querySelector('#tab-sub-anoms button[aria-pressed="true"]').dataset.f, 'all');
+  assert.ok(/^Showing Open/.test(doc.getElementById('filter-note').textContent) && !doc.getElementById('back-svcs'), 'anomaly filter reset to Open, the default');
+  assert.strictEqual(doc.querySelector('#tab-sub-anoms button[aria-pressed="true"]').dataset.f, 'open');
 
   //when
   row(doc, 'orders-service').querySelector('button.go').click();
@@ -258,14 +258,14 @@ async function severityChipsFilterTheOpenCards() {
   assert.deepStrictEqual(cards(doc), ['5xx|store/catalog-service', 'err|payments/orders-service'], 'Warning shows the open warning cards only');
   assert.strictEqual(sevItem('warn').getAttribute('aria-pressed'), 'true');
   assert.strictEqual(statusPressed(), null, 'Open is not pressed while a severity filters');
-  assert.match(doc.getElementById('filter-note').textContent, /^Showing Warning2Copy linkBack to All ›/);
+  assert.match(doc.getElementById('filter-note').textContent, /^Showing Warning2Copy linkBack to Open ›/);
 
   //when
   sevItem('warn').click();
 
   //then
   assert.strictEqual(statusPressed().dataset.f, 'open', 'a second click goes back to all open');
-  assert.strictEqual(doc.getElementById('clear-f').textContent, 'Back to All ›', 'Open is not the default filter since 10 Nov, so the line still offers Back to All');
+  assert.strictEqual(doc.getElementById('clear-f'), null, 'Open is the default filter, so the line offers no way back');
   assert.ok(!navigated(errors) && !errors.length, 'no errors: ' + errors.join(' | '));
   dom.window.close();
   return 'Critical / Warning / Info / Slack drafts in the side menu sub menu (group Open, counts, zero-faded) filter the open cards and toggle back; no chips row on the tab; the Anomalies tab takes the worst severity with an N critical · N warning tooltip; the filter line tooltip keeps the counts';
