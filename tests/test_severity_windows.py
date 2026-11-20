@@ -652,3 +652,88 @@ def test_a_card_cleared_seven_hours_ago_with_info_severity_stays_untriaged(store
     # then
     assert applied.resolved == []
     assert by_key(store)['log|a|ERROR|quiet'].get('triage') is None
+
+
+def test_saving_a_severity_does_not_pin_the_other_when_it_equals_the_base(store):
+    # given
+    tunables = TunableStore(store.db)
+    tunables.write('core.auto-resolve-hours', '6', 'bob@example.com', None)
+    live = Live(load_settings(lambda: {}), tunables)
+    live.refresh(force=True)
+
+    # when
+    live.set(HOURS_KEYS['crit'], '12', 'alice@example.com')
+    stored = tunables.all()
+    rows = tunables.history(10)
+
+    # then
+    assert HOURS_KEYS['warn'] not in stored and 'core.auto-resolve-hours' not in stored
+    assert not [r for r in rows if r['key'] == HOURS_KEYS['warn']]
+    assert (live.current().auto_resolve_hours_crit, live.current().auto_resolve_hours_warn) == (12, 6)
+
+
+def test_saving_a_severity_at_its_seeded_value_writes_no_history_row_but_still_pins_it(store):
+    # given
+    live = old_hours_live(store)
+    before = len(live.tunables.history(50))
+
+    # when
+    entry, change = live.set(HOURS_KEYS['crit'], '9', 'alice@example.com')
+    rows = live.tunables.history(50)
+    stored = live.tunables.all()
+
+    # then
+    assert not [r for r in rows if r['key'] == HOURS_KEYS['crit']], 'no 9 -> 9 row'
+    assert not [r for r in rows if r.get('old') == r.get('new')]
+    assert stored[HOURS_KEYS['crit']]['value'] == '9' and stored[HOURS_KEYS['crit']]['by'] == 'alice@example.com'
+    assert stored[HOURS_KEYS['warn']]['value'] == '9' and 'core.auto-resolve-hours' not in stored
+    assert (change['before'], change['after']) == ('9', '9')
+    assert len(rows) == before + 2
+    assert (entry['source'], entry['value']) == ('admin', '9')
+    assert live.tunables.rev() > 0
+
+
+def test_a_stored_old_off_names_itself_on_the_info_days_row_while_the_row_stays_a_default(store):
+    # given
+    tunables = TunableStore(store.db)
+    tunables.write('core.auto-resolve-hours', '0', 'bob@example.com', None)
+    live = Live(load_settings(lambda: {}), tunables)
+    live.refresh(force=True)
+
+    # when
+    row = {e['key']: e for e in live.entries()}['core.info-auto-close-days']
+
+    # then
+    assert (row['oldSwitch'], row['source'], row['value']) == ('core.auto-resolve-hours', 'default', '0')
+    assert row['by'] is None
+
+
+def test_a_stored_old_days_row_is_ignored_when_the_config_sets_the_old_hours(store):
+    # given
+    tunables = TunableStore(store.db)
+    tunables.write('core.auto-resolve-days', '2', 'bob@example.com', None)
+    live = Live(load_settings(lambda: {'core.auto-resolve-hours': '12'}), tunables, values={'core.auto-resolve-hours': '12'})
+    live.refresh(force=True)
+
+    # when
+    seen = live.stored_old_hours()
+    every = live.stored_old_hours(True)
+    row = {e['key']: e for e in live.entries()}[HOURS_KEYS['crit']]
+
+    # then
+    assert seen == []
+    assert [k for k, _ in every] == ['core.auto-resolve-days']
+    assert (row['source'], row['value'], row['from']) == ('config', '12', 'environment')
+    assert 'oldSwitch' not in row
+
+
+def test_an_old_off_set_outside_the_files_names_the_environment_on_the_info_days_row(store):
+    # given
+    base = load_settings(lambda: {'core.auto-resolve-hours': '0'})
+    live = Live(base, TunableStore(store.db), values={'core.auto-resolve-hours': '0'})
+
+    # when
+    row = {e['key']: e for e in live.entries()}['core.info-auto-close-days']
+
+    # then
+    assert (row['oldSwitch'], row['source'], row['from'], row['value']) == ('core.auto-resolve-hours', 'config', 'environment', '0')

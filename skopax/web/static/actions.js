@@ -63,7 +63,7 @@ async function initActions() {
   }
   function gate() {
     var why = lockReason(), loginWhy = loginReason();
-    document.querySelectorAll('#anoms .tile').forEach(function (t) { t.draggable = !why; });
+    document.querySelectorAll('#anoms .tile').forEach(function (t) { t.draggable = !why && !(window.__cardBusy && window.__cardBusy(t.dataset.key)) && !t.querySelector('.ta-b[aria-busy]'); });
     document.querySelectorAll('#anoms .acts button.btn:not(.free), #anoms .notif button.btn, .op-btn, .op-in').forEach(function (b) {
       var r = (b.classList.contains('admin-only') ? adminReason() : b.classList.contains('login-ok') ? loginWhy : why) || (b.classList.contains('slack-btn') && !me.slack ? 'Slack is not set up on this service yet: an admin connects it in Connect \u203a Integrations \u203a Slack' : '') || (b.classList.contains('jira-btn') && !me.jira ? 'Jira is not set up on this service yet: an admin adds it under Connect \u203a Integrations' : '');
       if (b.tagName === 'INPUT') b.readOnly = !!r;
@@ -1309,7 +1309,8 @@ async function initActions() {
     LATEST = latest;
     document.querySelectorAll('#anoms .tile').forEach(function (t) {
       var busy = cardBusy(t.dataset.key);
-      t.querySelectorAll('.tile-acts .ta-b[data-move]').forEach(function (b) { if (!b.hasAttribute('aria-busy')) b.disabled = busy; });
+      t.querySelectorAll('.tile-acts .ta-b[data-move]').forEach(function (b) { if (!b.hasAttribute('aria-busy')) b.disabled = busy || !!t.querySelector('.ta-b[aria-busy]'); });
+      t.draggable = !lockReason() && !busy && !t.querySelector('.ta-b[aria-busy]');
     });
     renderPdc(latest.postdeploy);
     document.querySelectorAll('.rep-acts .reassess-btn').forEach(function (b) { reassessState(b, b.closest('.rep-acts').__rep); });

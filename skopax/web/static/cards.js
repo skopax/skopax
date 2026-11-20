@@ -607,10 +607,12 @@ var TILE_MOVES = [
   ['done', 'Resolve', tileSvg('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>'), 'Resolve: fixed, no action needed or a duplicate of another card'],
   ['muted', 'Mute', tileSvg('<path d="M13.73 21a2 2 0 0 1-3.46 0"></path><path d="M18.63 13A17.89 17.89 0 0 1 18 8"></path><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"></path><path d="M18 8a6 6 0 0 0-9.33-5"></path><line x1="1" y1="1" x2="23" y2="23"></line>'), 'Mute: for 24 hours, a week or for good']];
 var TILE_TICKET = tileSvg('<rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>');
+var TILE_BUSY = {};
+function tileBusy(key) { return !!(TILE_BUSY[key] || (window.__cardBusy && window.__cardBusy(key))); }
 function tileActs(a, lock, who) {
   var moves = lock ? [] : TILE_MOVES.filter(function (m) { return moveSteps(a, m[0]); });
-  var busy = !!(window.__cardBusy && window.__cardBusy(a.key));
-  var status = moves.map(function (m) { return '<button type="button" class="ta-b" data-move="' + m[0] + '" aria-label="' + esc(m[1]) + '" title="' + esc(m[3]) + '"' + (busy ? ' disabled' : '') + '>' + m[2] + '</button>'; }).join('');
+  var busy = tileBusy(a.key);
+  var status = moves.map(function (m) { return '<button type="button" class="ta-b" data-move="' + m[0] + '" aria-label="' + esc(m[1]) + '" title="' + esc(m[3]) + '"' + (busy ? ' disabled' : '') + (TILE_BUSY[a.key] === m[0] ? ' aria-busy="true"' : '') + '>' + m[2] + '</button>'; }).join('');
   var k = ticketKey(a.ticket), href = k ? jiraHref(k) : '';
   var jira = !k ? '' : href ? '<a class="ta-jira" href="' + esc(href) + '" target="_blank" rel="noopener" aria-label="' + esc('Open ' + k + ' in Jira') + '" title="' + esc('Open ' + k + ' in Jira') + '">' + TILE_TICKET + '<span data-no-tx>' + esc(k) + '</span><span class="ext" aria-hidden="true">\u2197</span></a>'
     : '<span class="ta-jira">' + TILE_TICKET + '<span data-no-tx>' + esc(k) + '</span></span>';
@@ -618,7 +620,6 @@ function tileActs(a, lock, who) {
   var groups = [status, who, jira + copy].filter(Boolean).map(function (g, i) { return '<span class="ta-g">' + g + '</span>'; });
   return '<div class="tile-acts" role="group" aria-label="' + esc(a.num ? 'Actions for card #' + a.num : 'Actions for this card') + '">' + groups.join('<span class="ta-sep" aria-hidden="true"></span>') + '</div>';
 }
-var TILE_BUSY = {};
 function tileCopy(a, t) {
   var url = a.num ? location.origin + '/c/' + a.num : location.origin + location.pathname + '#a=' + linkKey(a.key), tip = t.title;
   function said(text) { t.title = text; boardNote(text); setTimeout(function () { t.title = tip; }, 2000); }
@@ -628,17 +629,22 @@ function tileCopy(a, t) {
 function tileMove(a, t) {
   var key = a.key, move = t.dataset.move;
   if (TILE_BUSY[key]) return;
-  TILE_BUSY[key] = true;
+  TILE_BUSY[key] = move;
   var row = t.closest('.tile-acts');
   row.querySelectorAll('.ta-b[data-move]').forEach(function (b) { b.disabled = true; });
   t.setAttribute('aria-busy', 'true');
+  row.closest('.tile').draggable = false;
   Promise.resolve(dropOn(a, move)).catch(function () {}).then(function () {
     delete TILE_BUSY[key];
     t.removeAttribute('aria-busy');
     var busy = !!(window.__cardBusy && window.__cardBusy(key));
-    if (t.isConnected) row.querySelectorAll('.ta-b[data-move]').forEach(function (b) { b.disabled = busy; });
-    var lost = !document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected || document.activeElement === t;
     var now = [].filter.call(document.querySelectorAll('#anoms .tile'), function (x) { return x.dataset.key === key; })[0];
+    var lock = window.__boardLock ? window.__boardLock() : 'Log in to move cards';
+    [row, now && now.querySelector('.tile-acts')].forEach(function (r) {
+      if (r) r.querySelectorAll('.ta-b[data-move]').forEach(function (b) { b.removeAttribute('aria-busy'); b.disabled = busy; });
+    });
+    if (now) now.draggable = !lock && !busy;
+    var lost = !document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected || document.activeElement === t;
     if (!lost || !now) return;
     var back = now.querySelector('.ta-b[data-move="' + move + '"]:not(:disabled)') || now.querySelector('.tile-open');
     if (back) back.focus();
@@ -648,7 +654,7 @@ function tile(a) {
   var b = el('div', 'tile ' + (SEV[a.sev] || SEV.info)[1]);
   b.dataset.key = a.key;
   var lock = window.__boardLock ? window.__boardLock() : 'Log in to move cards';
-  b.draggable = !lock;
+  b.draggable = !lock && !tileBusy(a.key);
   var where = a.cluster ? ' \u00b7 instance ' + a.cluster : '';
   b.title = a.svc + ' / ' + a.label + where + (a.num ? ' \u00b7 #' + a.num : '') + ' \u00b7 opens the card' + (lock ? '' : '; drag it to another column to change its status');
   var who = a.owner ? '<span class="tile-asg" role="img" aria-label="' + esc('Assignee: ' + ownerName(a.owner)) + '" title="' + esc('Assigned to ' + a.owner) + '">' + esc(ownerName(a.owner).split(/[._-]/).map(function (p) { return p.charAt(0); }).join('').slice(0, 2).toUpperCase()) + '</span>' : '';
@@ -666,7 +672,7 @@ function tile(a) {
   });
   b.addEventListener('click', function (e) { if (!e.target.closest('.tile-acts')) openDrawer(a.key); });
   b.addEventListener('dragstart', function (e) {
-    if (!b.draggable) { e.preventDefault(); return; }
+    if (!b.draggable || tileBusy(a.key)) { e.preventDefault(); return; }
     DRAG = a;
     if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', a.key); }
     b.classList.add('dragging');

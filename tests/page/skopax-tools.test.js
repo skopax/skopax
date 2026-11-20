@@ -192,6 +192,28 @@ async function heldAndRefusedShowApartFromErrors() {
   console.log('PASS a held call and a refused input are listed apart from errors, with their own counts, in operator words and in German');
 }
 
+async function heldAndRefusedHaveTheirOwnColumnsAndTheHelpExplainsThem() {
+  //given
+  const {w, doc, errors} = await boot();
+  const heads = [...doc.querySelectorAll('#tools thead th button')].map((b) => b.dataset.sort);
+  const cell = (name, id) => {
+    const at = heads.indexOf(id);
+    return doc.querySelector('#tools tr.tool-row[data-tool="' + name + '"]').children[at].textContent;
+  };
+  const help = doc.querySelector('#panel-tools .q').title;
+
+  //then
+  assert.ok(heads.indexOf('held') > heads.indexOf('errors') && heads.indexOf('refused') > heads.indexOf('held'), 'Held and Refused columns follow Errors: ' + heads);
+  assert.strictEqual(cell('note', 'errors'), '0', 'a held call and a refused input are not errors');
+  assert.strictEqual(cell('note', 'held'), '1');
+  assert.strictEqual(cell('note', 'refused'), '1');
+  assert.strictEqual(cell('kube', 'held'), '0', 'a tool with no held calls shows 0');
+  assert.ok(/held/i.test(help) && /planted/.test(help) && /refused/i.test(help) && /not (?:an |a )?errors?|not failures/i.test(help), 'the help explains held and refused next to errors: ' + help);
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS held and refused have their own Tools columns and the help explains them');
+}
+
 (async () => {
   await kubeCallsSplitByCluster();
   await checksCountAndASearchNarrowsTheList();
@@ -199,4 +221,5 @@ async function heldAndRefusedShowApartFromErrors() {
   await aSortedHeaderTranslatesWithItsArrowApart();
   await aBridgedMcpToolReadsAsAnMcpServerTool();
   await heldAndRefusedShowApartFromErrors();
+  await heldAndRefusedHaveTheirOwnColumnsAndTheHelpExplainsThem();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

@@ -3,7 +3,7 @@ var TOOL_KINDS = {read: 'read', write: 'write', propose: 'proposal', gone: 'remo
 var TOOL_TRIGGERS = {check: 'Checks', cards: 'Cards', action: 'Investigate', ask: 'Page asks', slack: 'Slack asks', chat: 'Chat', assess: 'Assessments', other: 'Other'};
 var TOOL_COLUMNS = [
   {id: 'name', label: 'Tool'}, {id: 'calls', label: 'Calls', num: true}, {id: 'runs', label: 'Runs', num: true}, {id: 'errors', label: 'Errors', num: true},
-  {id: 'errorRate', label: 'Error rate', num: true}, {id: 'p50Ms', label: 'p50', num: true}, {id: 'p95Ms', label: 'p95', num: true}, {id: 'maxMs', label: 'Max', num: true},
+  {id: 'held', label: 'Held', num: true}, {id: 'refused', label: 'Refused input', num: true}, {id: 'errorRate', label: 'Error rate', num: true}, {id: 'p50Ms', label: 'p50', num: true}, {id: 'p95Ms', label: 'p95', num: true}, {id: 'maxMs', label: 'Max', num: true},
   {id: 'lastAt', label: 'Last used'}, {id: 'byTrigger', label: 'By run type', fixed: true}];
 var TOOL_HELD = {
   cause: 'the cause was left out and the note names the trigger',
@@ -86,7 +86,7 @@ function toolRow(t) {
   var last = t.lastAt ? '<span title="' + esc(ago(t.lastAt)) + '">' + esc(dayhmZone(t.lastAt)) + '</span>' : '–';
   var row = '<tr class="tool-row' + (t.calls ? '' : ' tool-unused') + '" data-tool="' + esc(t.name) + '" tabindex="0" aria-expanded="' + open + '">' +
     '<td><code>' + esc(t.name) + '</code><span class="tkind">' + esc(TOOL_KINDS[t.kind] || t.kind) + '</span>' + toolState(t) + toolClusters(t) + '</td>' +
-    '<td class="num">' + esc(String(t.calls)) + '</td><td class="num">' + esc(String(t.runs)) + '</td><td class="num">' + esc(String(t.errors)) + '</td>' + toolRate(t) +
+    '<td class="num">' + esc(String(t.calls)) + '</td><td class="num">' + esc(String(t.runs)) + '</td><td class="num">' + esc(String(t.errors)) + '</td><td class="num">' + esc(String(t.held || 0)) + '</td><td class="num">' + esc(String(t.refused || 0)) + '</td>' + toolRate(t) +
     '<td class="num">' + esc(toolMs(t.p50Ms)) + '</td><td class="num">' + esc(toolMs(t.p95Ms)) + '</td><td class="num">' + esc(toolMs(t.maxMs)) + '</td>' +
     '<td class="when">' + last + '</td><td class="ttrig">' + toolTriggers(t) + '</td></tr>';
   return row + '<tr class="tool-more"' + (open ? '' : ' hidden') + '><td colspan="' + TOOL_COLUMNS.length + '">' + toolMore(t) + '</td></tr>';
