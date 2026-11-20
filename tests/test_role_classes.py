@@ -138,6 +138,8 @@ READS = {
     '/api/deploys': 'read',
     '/api/gate-examples': 'read',
     '/api/history/cards': 'read',
+    '/api/integrations': 'login',
+    '/api/integrations/custom-checks': 'login',
     '/api/investigations': 'read',
     '/api/investigations/{run_id}': 'read',
     '/api/investigator/status': 'read',

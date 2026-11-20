@@ -97,6 +97,7 @@ from skopax.setup import BadCode, SetupDone, SetupGate, render_form
 from skopax import migrations
 from skopax.errkind import NoAccess, Refusal, kind, text_of
 from skopax.features import BY_ID as FEATURE_BY_ID, FEATURES, Features, Locked, off_text
+from skopax.integrationview import reader_row
 from skopax.instances import InstanceExists, InstanceMissing, Instances, InvalidInstance, PluginState, SourceOwned, Writer, checks_off
 from skopax.registry import Registry, card_types_view, describe, locale_drops
 from skopax.plugai import PluginAi
@@ -961,7 +962,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             socket_state['started'] = True
             log.info('slack listener on, %s mode', listen_mode)
         elif listen_mode != 'off':
-            log.warning('slack.listen is %s but the Slack listener stays off: it needs the Slack app and bot tokens (Admin \u203a Integrations \u203a Slack) and an enabled investigator', listen_mode)
+            log.warning('slack.listen is %s but the Slack listener stays off: it needs the Slack app and bot tokens (Connect \u203a Integrations \u203a Slack) and an enabled investigator', listen_mode)
 
     async def open_socket_once_loaded() -> None:
         while instances.age() is None:
@@ -3075,6 +3076,22 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         passes = store.server_runs()['passes']
         return {'edition': registry.edition(), 'secretsKey': 'env' if base_settings.secret_key else 'generated', 'plugins': [plugin_row(x, passes) for x in registry.loaded()]}
 
+    def rule_values(plugin) -> list[dict]:
+        out = []
+        for r in plugin.rules:
+            try:
+                values = live.rules_of(f'{plugin.id}.{r.id}')
+            except KeyError:
+                values = dict(r.defaults)
+            out.append({'id': r.id, 'label': r.label, 'defaults': dict(r.defaults), 'help': dict(r.help), 'values': values})
+        return out
+
+    @app.get('/api/integrations')
+    def get_integrations(by: Annotated[str, Depends(require_login)]) -> dict:
+        passes = store.server_runs()['passes']
+        return {'edition': registry.edition(), 'readOnly': True,
+                'plugins': [reader_row(plugin_row(x, passes), rule_values(x.plugin) if x.plugin is not None and x.state != 'broken' else []) for x in registry.loaded()]}
+
     @app.put('/api/admin/plugins/{plugin_id}')
     def put_admin_plugin(plugin_id: str, body: PluginSwitchIn, by: Annotated[str, Depends(require_admin)]) -> dict:
         plugin = plugin_usable(plugin_id) if body.enabled else plugin_loaded(plugin_id)
@@ -3222,7 +3239,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise HTTPException(status.HTTP_404_NOT_FOUND, msg('instances.unknown', name=body.name)) from None
 
     mcptools_routes.mount(app, mcptools_deps, require_admin)
-    promqlroutes.mount(app, custom_checks, require_admin, lambda by, text: store.add_activity(ADMIN_KIND, by, text), lambda: scheduler.nudge(CUSTOM_CHECKS))
+    promqlroutes.mount(app, custom_checks, require_admin, lambda by, text: store.add_activity(ADMIN_KIND, by, text), lambda: scheduler.nudge(CUSTOM_CHECKS), reader=require_login)
 
     @app.get('/api/jira/search')
     def jira_search(q: Annotated[str, Query(max_length=120)], by: Annotated[str, Depends(require_operator)], type: Annotated[str, Query(max_length=10)] = '',

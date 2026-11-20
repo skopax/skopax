@@ -387,8 +387,9 @@ async function otherSwitchesFoldTheRestOfTheFeaturesGroup() {
   fold.open = true;
   await wait(20);
   const row = fold.querySelector('.adm-row[data-key="core.assign-dm"]');
-  row.querySelector('select').value = 'false';
-  row.querySelector('select').dispatchEvent(new w.Event('input'));
+  const sw = row.querySelector('input.adm-sw[role="switch"]');
+  assert.ok(sw.checked, 'a bool setting is a switch, on for true');
+  sw.click();
   row.querySelector('.adm-save').click();
   await wait(60);
 

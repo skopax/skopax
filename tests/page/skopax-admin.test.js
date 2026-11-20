@@ -121,7 +121,7 @@ async function anAdminSeesTheSettingsByGroupAndSavesResetsAndReverts() {
 
   //then
   assert.ok(!doc.getElementById('panel-settings').hidden && !doc.getElementById('tab-settings').hasAttribute('aria-disabled'), 'a link opens Admin \u00b7 General once the role is known');
-  assert.deepStrictEqual([...doc.querySelectorAll('#adm-nav .tab')].map((t) => t.querySelector('.lbl').textContent), ['General', 'Access & sign-in', 'Integrations', 'Features', 'Investigator', 'Changes']);
+  assert.deepStrictEqual([...doc.querySelectorAll('#adm-nav .tab')].map((t) => t.querySelector('.lbl').textContent), ['General', 'Access & sign-in', 'Features', 'Investigator', 'Changes']);
   assert.ok(doc.getElementById('side-admin').hidden && !doc.getElementById('um-admin').hidden && doc.getElementById('user-btn').getAttribute('aria-current') === 'page', 'the Admin item shows in the user menu and the user button is current');
   assert.ok(!doc.querySelector('#tabs-anomalies [data-tab="settings"]'), 'not under the anomalies menu');
   assert.ok(doc.getElementById('reco').hidden, 'no summary on the General page');
@@ -318,7 +318,7 @@ async function aChoiceWithNamedValuesShowsTheNamesAndSavesTheValue() {
   const oldRow = row(old.doc, 'slack.post-sev');
 
   //then
-  const tag = oldRow.querySelector('.adm-n .tag');
+  const tag = oldRow.querySelector('.adm-m .tag');
   assert.strictEqual(tag.textContent, 'old switch');
   assert.ok(tag.title.startsWith('From the old Critical cards at once switch (slack.crit-now), set by ') && tag.title.endsWith('Reset or saving a value here clears it'), tag.title);
   assert.strictEqual(oldRow.querySelector('select').selectedOptions[0].textContent, 'Off');

@@ -17,7 +17,7 @@ Hello asks one address on a schedule and opens a card when the address does not 
 ### The plug-in
 
 - **Imports.** A plug-in imports only the public surface: `skopax.contract`, `skopax.kit`, `skopax.remote` and a few more. It never opens its own sockets.
-- **Field.** `url` is a required field of kind `url`. Each instance of the plug-in, added in Admin > Integrations, has its own value. The code reads it as `ctx.instance.config['url']`.
+- **Field.** `url` is a required field of kind `url`. Each instance of the plug-in, added in Connect > Integrations, has its own value. The code reads it as `ctx.instance.config['url']`.
 - **Capabilities.** `hosts=('@url',)` declares that the plug-in talks only to the host of its `url` field.
 - **Network.** `ctx.http()` gives the transport Skopax manages for this instance, with its proxy, timeouts and size limits. `call_page` reads the address as a page and returns its HTTP status, so a 404 or a 503 comes back as a status rather than an error, and redirects are not followed. A plug-in does not open its own network connections.
 - **Test connection.** `test` runs `problem` inside `kit.connection.result`. That times the call and turns an error into a short text, which the Test connection button shows.
@@ -40,7 +40,7 @@ The Skopax image is distroless, so it has no `pip`. The layer image installs the
 docker build --build-arg SKOPAX_VERSION=0.3.0 -t skopax-hello examples/hello-plugin
 ```
 
-Pin `SKOPAX_VERSION` to the Skopax release you run. The plug-in's `core` range (`>=0.1,<0.4`) says which Skopax versions it works with. Start the image like the plain Skopax image. Hello is then listed in Admin > Integrations, and `GET /api/admin/plugins` lists it with the id `hello`.
+Pin `SKOPAX_VERSION` to the Skopax release you run. The plug-in's `core` range (`>=0.1,<0.4`) says which Skopax versions it works with. Start the image like the plain Skopax image. Hello is then listed in Connect > Integrations, and `GET /api/admin/plugins` lists it with the id `hello`.
 
 ## Licence
 

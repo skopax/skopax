@@ -616,3 +616,4 @@ class Plugin:
     auto_resolve: tuple[AutoResolve, ...] = ()
     setup: Setup | None = None
     company_knowledge: str = ''
+    knowledge_also: bool = False

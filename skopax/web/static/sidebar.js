@@ -12,6 +12,7 @@ var SIDE_ROWS = {
   acts: ['History', 'history'],
   costs: ['Costs', 'coin'],
   tools: ['Tools', 'wrench'],
+  integrations: ['Integrations', 'plug'],
   mcp: ['Connect MCP', 'plug'],
   review: ['Review', 'check'],
   docs: ['Docs', 'book'],
@@ -21,17 +22,17 @@ var SIDE_GROUPS = [
   {id: 'main', label: '', rows: ['anoms', 'reqs', 'chat', 'inv']},
   {id: 'observe', label: 'Observe', rows: ['svcs', 'lat', 'rels', 'reps']},
   {id: 'activity', label: 'Activity', rows: ['slack', 'hist', 'acts', 'costs']},
-  {id: 'connect', label: 'Connect', rows: ['tools', 'mcp']},
+  {id: 'connect', label: 'Connect', rows: ['integrations', 'tools', 'mcp']},
   {id: 'more', label: 'More', fold: true, rows: ['review', 'docs']}
 ];
 var SIDE_PINNED = ['prefs'];
 var SIDE_NEW = [];
 var SIDE_BLANK = ['chat', 'mcp', 'docs', 'prefs'];
-var ADMIN_TABS = ['settings', 'access', 'integrations', 'features', 'ai', 'changes'];
-var ADMIN_LABELS = {settings: 'General', access: 'Access & sign-in', integrations: 'Integrations', features: 'Features', ai: 'Investigator', changes: 'Changes'};
-var ADMIN_ICONS = {settings: 'gear', access: 'lock', integrations: 'plug', features: 'toggle', ai: 'spark', changes: 'history'};
-var ADMIN_COUNTED = ['settings', 'access', 'integrations', 'features'];
-var ADMIN_KEY = 'skopax-admin-tab', ADMIN_HOME = 'integrations';
+var ADMIN_TABS = ['settings', 'access', 'features', 'ai', 'changes'];
+var ADMIN_LABELS = {settings: 'General', access: 'Access & sign-in', features: 'Features', ai: 'Investigator', changes: 'Changes'};
+var ADMIN_ICONS = {settings: 'gear', access: 'lock', features: 'toggle', ai: 'spark', changes: 'history'};
+var ADMIN_COUNTED = ['settings', 'access', 'features'];
+var ADMIN_KEY = 'skopax-admin-tab', ADMIN_HOME = 'settings';
 var SIDE_HOT = ['k-crit', 'k-warn', 'k-info', 'k-act', 'k-ok'];
 var SIDE_THEMES = ['system', 'light', 'dark'];
 var SIDE_FOLD_KEY = 'skopax-sidebar-folds', SIDE_KEY = 'skopax-sidebar', SIDE_PHONE = '(max-width: 768px)', SIDE_FULL_W = 252, SIDE_RAIL_W = 64;
@@ -131,7 +132,7 @@ function sideGroups() {
       box.setAttribute('role', 'group');
       box.setAttribute('aria-label', 'Board and investigator');
     }
-    g.rows.forEach(function (id) { rows.appendChild(sideRow(id)); });
+    g.rows.forEach(function (id) { var r = sideRow(id); if (id === 'integrations') r.hidden = true; rows.appendChild(r); });
     nav.appendChild(box);
     if (g.label) sideFold(g.id, sideFoldState(g.id, g) === 'folded', false);
   });

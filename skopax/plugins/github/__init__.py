@@ -87,4 +87,5 @@ PLUGIN = Plugin(
         'In URL keep https://github.com, or give the address of your GitHub Enterprise Server. Enter the organization or user in Owner, then choose Test connection.',
     ), docs='https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens', docs_label='GitHub: managing personal access tokens'),
     company_knowledge='docs',
+    knowledge_also=True,
 )

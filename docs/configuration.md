@@ -66,7 +66,7 @@ For a setting, a later source overrides an earlier one. The file may hold only `
 
 If two sources define an instance with the same name, the first one wins.
 
-A bad value in the environment or the file stops the start and names the field. A bad instance from a plug-in source is parked with a reason shown in Admin, and the rest keeps running. If a source fails later, the last good values stay in use. Instances from a source are shown in Admin but edited at their source.
+A bad value in the environment or the file stops the start and names the field. A bad instance from a plug-in source is parked with a reason shown in Connect > Integrations, and the rest keeps running. If a source fails later, the last good values stay in use. Instances from a source are shown in Admin but edited at their source.
 
 ### Spring Cloud Config
 

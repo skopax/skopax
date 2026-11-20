@@ -234,7 +234,7 @@ function sidebarHeight(doc) {
   if (by) assert.deepStrictEqual([by.textContent, cs(by).getPropertyValue('flex-shrink'), cs(by).getPropertyValue('white-space')], [' \u00b7 powered by Skopax 0.1.0', '0', 'pre'], 'the powered-by part never shrinks');
   assert.strictEqual(line.title, line.textContent, 'the full text is its tooltip');
   assert.ok(doc.getElementById('side-more-list').classList.contains('folded'), 'More is folded');
-  assert.deepStrictEqual([groups.length, navRows, heads, pinned], [5, 14, 4, 0], 'an admin sees every core row and More folded; Settings and Admin are in the user menu');
+  assert.deepStrictEqual([groups.length, navRows, heads, pinned], [5, 15, 4, 0], 'an admin sees every core row and More folded; Settings and Admin are in the user menu');
   assert.ok(doc.getElementById('user-btn') && !doc.getElementById('account').hidden, 'the account box is shown');
   const snav = doc.getElementById('snav'), foot = doc.querySelector('#side > .s-bot');
   assert.deepStrictEqual(['flex-grow', 'min-height', 'overflow-y'].map((k) => cs(snav).getPropertyValue(k)), ['1', '0px', 'auto'], 'only the groups area grows, shrinks and scrolls');

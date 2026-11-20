@@ -165,7 +165,7 @@ async function theTilesShowEveryConnectedPluginWithItsStateHealthAndIcon() {
   assert.ok(!doc.querySelector('#panel-integrations .panel-note'), 'no table-era note above the header');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: tiles show the connected plug-ins with icon, category, switch, health and off styling; notices stay in the strip');
+  console.log('PASS Integrations: tiles show the connected plug-ins with icon, category, switch, health and off styling; notices stay in the strip');
 }
 
 async function theSubtitleCountsAndTheChipsFilterTheTiles() {
@@ -203,7 +203,7 @@ async function theSubtitleCountsAndTheChipsFilterTheTiles() {
   assert.strictEqual(tile(u.doc, 'prometheus').querySelector('.int-health').textContent, 'Waiting for the first check');
   assert.ok(tile(u.doc, 'prometheus').querySelector('.int-dot.pending'));
   u.w.close();
-  console.log('PASS Admin, Integrations: the subtitle counts what is connected and what needs attention, and the chips filter the tiles');
+  console.log('PASS Integrations: the subtitle counts what is connected and what needs attention, and the chips filter the tiles');
 }
 
 async function aLockedSwitchIsDisabledAndShowsTheReason() {
@@ -225,7 +225,7 @@ async function aLockedSwitchIsDisabledAndShowsTheReason() {
   assert.ok(!wrap(t.doc).hidden && inPanel(t.doc, '.int-reason').textContent === 'Gold board needs the Enterprise edition of Skopax', 'the panel says why');
   assert.ok(!inPanel(t.doc, '.int-add') && !inPanel(t.doc, '.int-form'), 'no instance can be added to a locked plug-in');
   t.w.close();
-  console.log('PASS Admin, Integrations: a locked plug-in that is off has a disabled switch and shows its reason');
+  console.log('PASS Integrations: a locked plug-in that is off has a disabled switch and shows its reason');
 }
 
 async function aStoredOnPluginThatCannotRunCanStillBeSwitchedOff() {
@@ -252,7 +252,7 @@ async function aStoredOnPluginThatCannotRunCanStillBeSwitchedOff() {
   assert.deepStrictEqual(before, [['true', false, 'cracked failed to start (RuntimeError)'], ['true', false], ['true', false, 'Relic needs core >=9 (this is 0.1.0)']], 'stored on with fields and no instance still gets a tile');
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PUT'), [['PUT', '/api/admin/plugins/cracked', {enabled: false}], ['PUT', '/api/admin/plugins/gold', {enabled: false}], ['PUT', '/api/admin/plugins/relic', {enabled: false}]]);
   t.w.close();
-  console.log('PASS Admin, Integrations: a broken, locked or incompatible plug-in that is stored on can always be switched off');
+  console.log('PASS Integrations: a broken, locked or incompatible plug-in that is stored on can always be switched off');
 }
 
 async function theSwitchSendsTheChoiceAndPutsItBackOnARefusal() {
@@ -275,7 +275,7 @@ async function theSwitchSendsTheChoiceAndPutsItBackOnARefusal() {
   assert.strictEqual(t.doc.querySelector('#integrations .int-note').textContent, 'Acme metrics switched off');
   assert.ok(wrap(t.doc).hidden, 'the switch does not open the panel');
   t.w.close();
-  console.log('PASS Admin, Integrations: the plug-in switch sends the choice and shows a refusal');
+  console.log('PASS Integrations: the plug-in switch sends the choice and shows a refusal');
 }
 
 async function aTileClickOpensThePanelAndEscClosesItFocusingTheTile() {
@@ -311,7 +311,7 @@ async function aTileClickOpensThePanelAndEscClosesItFocusingTheTile() {
   assert.ok(wrap(doc).hidden, 'a click outside closes it');
   assert.ok(/Nothing to set up/.test((() => { openTile(t, 'pager'); return panel(doc).textContent; })()), 'a plug-in without fields has nothing to set up');
   t.w.close();
-  console.log('PASS Admin, Integrations: a tile opens the side panel, focus stays inside, and Esc, close or a click outside returns focus to the tile');
+  console.log('PASS Integrations: a tile opens the side panel, focus stays inside, and Esc, close or a click outside returns focus to the tile');
 }
 
 async function theCatalogSearchesGroupsAndOpensWhatIsPicked() {
@@ -361,7 +361,7 @@ async function theCatalogSearchesGroupsAndOpensWhatIsPicked() {
   assert.ok(backTo, 'closing that panel focuses the Add button');
   assert.deepStrictEqual(connected, ['Acme metrics', 'main'], 'a connected plug-in opens on its first instance');
   t.w.close();
-  console.log('PASS Admin, Integrations: the catalog searches, groups by category, marks what is connected or locked, and opens what is picked');
+  console.log('PASS Integrations: the catalog searches, groups by category, marks what is connected or locked, and opens what is picked');
 }
 
 async function aPluginWithNothingToSetUpThatIsOffCanBeTurnedOnFromTheCatalog() {
@@ -385,7 +385,7 @@ async function aPluginWithNothingToSetUpThatIsOffCanBeTurnedOnFromTheCatalog() {
   assert.ok(wrap(t.doc).hidden && t.doc.querySelector('#integrations .int-note').textContent === 'Quiet switched on', 'the panel closes and the page says so');
   assert.ok(t.doc.activeElement === addBtn(t.doc), 'focus goes back to the Add button');
   t.w.close();
-  console.log('PASS Admin, Integrations: a plug-in with nothing to set up that is off is turned on from its panel');
+  console.log('PASS Integrations: a plug-in with nothing to set up that is off is turned on from its panel');
 }
 
 async function cancelGoesBackToTheFirstInstanceOrClosesThePanel() {
@@ -407,7 +407,7 @@ async function cancelGoesBackToTheFirstInstanceOrClosesThePanel() {
   assert.ok(wrap(t.doc).hidden && t.doc.activeElement === addBtn(t.doc), 'without one, Cancel closes the panel and focuses the Add button');
   assert.deepStrictEqual(t.calls.filter((c) => c[0] !== 'GET'), [], 'and sends nothing');
   t.w.close();
-  console.log('PASS Admin, Integrations: Cancel goes back to the first instance, or closes the panel when there is none');
+  console.log('PASS Integrations: Cancel goes back to the first instance, or closes the panel when there is none');
 }
 
 async function theAddFormShowsTokenOnlyForBearerAuth() {
@@ -431,7 +431,7 @@ async function theAddFormShowsTokenOnlyForBearerAuth() {
   assert.deepStrictEqual([...panel(t.doc).querySelectorAll('.int-form button')].filter((b) => !b.closest('.int-foot')).map((b) => b.className), ['int-seg-b', 'int-seg-b', 'int-eye'], 'the only other buttons are the field controls');
   assert.ok(inPanel(t.doc, '.int-add').getAttribute('aria-pressed') === 'true' && !inPanel(t.doc, '.int-itab[aria-selected="true"]'), 'the Add instance tab is the one shown');
   t.w.close();
-  console.log('PASS Admin, Integrations: the add form shows token only for auth=bearer');
+  console.log('PASS Integrations: the add form shows token only for auth=bearer');
 }
 
 async function anAddressIsReadOnlyWhenASourceOwnsTheInstance() {
@@ -450,7 +450,7 @@ async function anAddressIsReadOnlyWhenASourceOwnsTheInstance() {
   assert.deepStrictEqual(ownedUrl, [true, 'https://main.example.com', true]);
   assert.deepStrictEqual([mine.readOnly, mine.value], [false, 'https://east.example.com']);
   t.w.close();
-  console.log('PASS Admin, Integrations: the address of an instance a source owns is read-only');
+  console.log('PASS Integrations: the address of an instance a source owns is read-only');
 }
 
 async function aSecretShowsWhereItComesFromAndIsReadOnlyWhenASourceOwnsIt() {
@@ -470,7 +470,7 @@ async function aSecretShowsWhereItComesFromAndIsReadOnlyWhenASourceOwnsIt() {
   assert.deepStrictEqual([mine.placeholder, mine.readOnly, mine.value], ['set', false, '']);
   assert.ok(!t.doc.body.innerHTML.includes('tok-'), 'no secret value is in the page');
   t.w.close();
-  console.log('PASS Admin, Integrations: a secret reads "set \u00b7 from config file", is blank, and is read-only when a source owns it');
+  console.log('PASS Integrations: a secret reads "set \u00b7 from config file", is blank, and is read-only when a source owns it');
 }
 
 async function theInstanceShowsItsRoleSourceHealthAndProblem() {
@@ -490,7 +490,7 @@ async function theInstanceShowsItsRoleSourceHealthAndProblem() {
   assert.deepStrictEqual(main, [true, 'config file', true, 'Healthy ' + DOT + ' 2 min ago', true], 'a source instance has no Delete');
   assert.deepStrictEqual(east, [false, 'admin', true, 'east has a value that is not allowed', true]);
   t.w.close();
-  console.log('PASS Admin, Integrations: an instance shows its role, source, switch, health and problem, and only an instance made here can be deleted');
+  console.log('PASS Integrations: an instance shows its role, source, switch, health and problem, and only an instance made here can be deleted');
 }
 
 async function aRoutePluginShowsNoPrimaryControls() {
@@ -510,7 +510,7 @@ async function aRoutePluginShowsNoPrimaryControls() {
   //then
   assert.deepStrictEqual([main, east], [[false, false], [false, false]], 'every route posts, so a plug-in with no checks and no tools has no primary');
   t.w.close();
-  console.log('PASS Admin, Integrations: a plug-in with no checks and no tools, such as a Teams route, shows no primary tag and no Make primary');
+  console.log('PASS Integrations: a plug-in with no checks and no tools, such as a Teams route, shows no primary tag and no Make primary');
 }
 
 async function testConnectionShowsTheSummaryAndKeepsAnUntouchedSecretNull() {
@@ -528,7 +528,7 @@ async function testConnectionShowsTheSummaryAndKeepsAnUntouchedSecretNull() {
   assert.strictEqual(inPanel(t.doc, '.int-result').textContent, '\u2713 answered \u00b7 12 ms');
   assert.ok(inPanel(t.doc, '.int-result').classList.contains('ok') && !inPanel(t.doc, '.int-result').hidden);
   t.w.close();
-  console.log('PASS Admin, Integrations: Test connection shows the summary and sends null for an untouched secret');
+  console.log('PASS Integrations: Test connection shows the summary and sends null for an untouched secret');
 }
 
 async function aFailedTestShowsTheSummaryAsAProblem() {
@@ -548,7 +548,7 @@ async function aFailedTestShowsTheSummaryAsAProblem() {
   assert.ok(box.classList.contains('bad') && !box.classList.contains('ok'));
   assert.deepStrictEqual(t.calls.filter((c) => c[1].endsWith('/test'))[0][2], {values: {url: '', auth: 'basic'}});
   t.w.close();
-  console.log('PASS Admin, Integrations: a failed test shows its summary as a problem and an unsaved form sends no name');
+  console.log('PASS Integrations: a failed test shows its summary as a problem and an unsaved form sends no name');
 }
 
 async function saveAndTurnOnSendsAPostWithEnabledTrue() {
@@ -572,7 +572,7 @@ async function saveAndTurnOnSendsAPostWithEnabledTrue() {
   assert.ok(t.doc.activeElement === tile(t.doc, 'acme').querySelector('.int-open'), 'and focus goes back to the tile');
   assert.ok(t.calls.filter((c) => c[0] === 'GET' && c[1] === '/api/admin/plugins').length >= 2, 'the list reloads');
   t.w.close();
-  console.log('PASS Admin, Integrations: Save & turn on sends POST with enabled true and reloads the list');
+  console.log('PASS Integrations: Save & turn on sends POST with enabled true and reloads the list');
 }
 
 async function plainSaveSendsEnabledFalse() {
@@ -592,7 +592,7 @@ async function plainSaveSendsEnabledFalse() {
   assert.ok(!('token' in t.calls.filter((c) => c[0] === 'POST')[0][2].values), 'a hidden or untouched secret is not sent on create');
   assert.ok(!('offChecks' in t.calls.filter((c) => c[0] === 'POST')[0][2]), 'watching every check sends no offChecks');
   t.w.close();
-  console.log('PASS Admin, Integrations: Save adds the instance switched off');
+  console.log('PASS Integrations: Save adds the instance switched off');
 }
 
 async function aDuplicateNameShowsOnTheForm() {
@@ -613,7 +613,7 @@ async function aDuplicateNameShowsOnTheForm() {
   assert.ok(!wrap(t.doc).hidden && inPanel(t.doc, '.int-form'), 'the form stays open to fix it');
   assert.ok([...panel(t.doc).querySelectorAll('.int-form button')].every((b) => !b.disabled), 'and its buttons work again');
   t.w.close();
-  console.log('PASS Admin, Integrations: a 409 shows on the form, which stays open');
+  console.log('PASS Integrations: a 409 shows on the form, which stays open');
 }
 
 async function aFieldRefusalLandsOnItsOwnField() {
@@ -634,7 +634,7 @@ async function aFieldRefusalLandsOnItsOwnField() {
   assert.strictEqual(field(t.doc, 'auth').querySelector('.int-field-msg').textContent, '');
   assert.strictEqual(inPanel(t.doc, '.int-form-msg').textContent, '');
   t.w.close();
-  console.log('PASS Admin, Integrations: a 422 with a field names that field');
+  console.log('PASS Integrations: a 422 with a field names that field');
 }
 
 async function editingSendsOnlyChangesAndAnExplicitClearSendsAnEmptySecret() {
@@ -662,7 +662,7 @@ async function editingSendsOnlyChangesAndAnExplicitClearSendsAnEmptySecret() {
   assert.strictEqual(note, 'east saved');
   assert.strictEqual(inPanel(t.doc, '.int-form-msg').textContent, 'Nothing changed');
   t.w.close();
-  console.log('PASS Admin, Integrations: an edit sends only the changes, null for an untouched secret and "" only after Clear');
+  console.log('PASS Integrations: an edit sends only the changes, null for an untouched secret and "" only after Clear');
 }
 
 async function whatItWatchesSendsOffChecksAndAChecksOnlySaveIsAChange() {
@@ -698,7 +698,7 @@ async function whatItWatchesSendsOffChecksAndAChecksOnlySaveIsAChange() {
   assert.strictEqual(note, 'east saved', 'a save that changes only what it watches is a change');
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'POST').map((c) => c[2]), [{name: 'backup', values: {url: 'https://backup.example.com'}, enabled: false, offChecks: ['beat']}]);
   t.w.close();
-  console.log('PASS Admin, Integrations: what it watches has one box per check, unchecking sends PATCH offChecks, and a new instance can start without a check');
+  console.log('PASS Integrations: what it watches has one box per check, unchecking sends PATCH offChecks, and a new instance can start without a check');
 }
 
 async function aOnceCheckShowsItsBoxOnlyOnThePrimary() {
@@ -735,7 +735,7 @@ async function aOnceCheckShowsItsBoxOnlyOnThePrimary() {
   assert.deepStrictEqual(addBoxes, ['pulse', 'beat'], 'a new instance beside others is not the primary');
   assert.deepStrictEqual(firstBoxes, ['pulse', 'beat', 'nodes'], 'the first instance of a plug-in becomes its primary');
   t.w.close();
-  console.log('PASS Admin, Integrations: the box of a once-per-plug-in check shows only on the primary instance');
+  console.log('PASS Integrations: the box of a once-per-plug-in check shows only on the primary instance');
 }
 
 async function aConflictOnAChecksChangeReloadsTheRow() {
@@ -769,7 +769,7 @@ async function aConflictOnAChecksChangeReloadsTheRow() {
   assert.strictEqual(inPanel(t.doc, '.int-form-msg').textContent, 'URL comes from config file and cannot be changed here', 'a 409 that saved nothing shows its reason');
   assert.ok(inPanel(t.doc, '.int-form-msg').classList.contains('bad'));
   t.w.close();
-  console.log('PASS Admin, Integrations: after a 409 on a checks change the panel reads the row again, and shows the reason only when nothing was saved');
+  console.log('PASS Integrations: after a 409 on a checks change the panel reads the row again, and shows the reason only when nothing was saved');
 }
 
 async function saveAndTurnOnWhoseChecksChangeConflictsSaysItStaysOff() {
@@ -797,7 +797,7 @@ async function saveAndTurnOnWhoseChecksChangeConflictsSaysItStaysOff() {
   assert.deepStrictEqual([!wrap(t.doc).hidden, inPanel(t.doc, '.int-panel-note').textContent, inPanel(t.doc, '.int-on').checked, !!inPanel(t.doc, '.int-save-on'), checks(t.doc).map((c) => c.checked)],
     [true, said, false, true, [false, true]], 'the note says it stays off, and the row read again offers Save & turn on');
   t.w.close();
-  console.log('PASS Admin, Integrations: Save & turn on whose checks change conflicts says the instance is saved but stays off');
+  console.log('PASS Integrations: Save & turn on whose checks change conflicts says the instance is saved but stays off');
 }
 
 async function aPluginSetUpOutsideAdminIsNeitherConnectedNorNeedingAttention() {
@@ -821,7 +821,7 @@ async function aPluginSetUpOutsideAdminIsNeitherConnectedNorNeedingAttention() {
   assert.ok(!row.classList.contains('has') && row.querySelector('.int-has').classList.contains('idle'), 'neutral: no tick and not connected');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: a plug-in with no fields, checks or panels reads Set up outside Admin and counts as neither connected nor needing attention');
+  console.log('PASS Integrations: a plug-in with no fields, checks or panels reads Set up outside Admin and counts as neither connected nor needing attention');
 }
 
 async function theConnectedCountIsOneDefinitionForTheSubNavAndTheSubtitle() {
@@ -847,7 +847,7 @@ async function theConnectedCountIsOneDefinitionForTheSubNavAndTheSubtitle() {
   assert.strictEqual(t.doc.getElementById('count-integrations').textContent, '2', 'the sub-nav and the page agree');
   assert.deepStrictEqual(ticks, ['acme', 'pager'], 'only what is connected has a tick');
   t.w.close();
-  console.log('PASS Admin, Integrations: connected is on, can run in this edition, and serves an instance or needs none, for the sub-nav and the page alike');
+  console.log('PASS Integrations: connected is on, can run in this edition, and serves an instance or needs none, for the sub-nav and the page alike');
 }
 
 async function escAndFocusStayWithThePanelWhateverHasFocus() {
@@ -896,7 +896,7 @@ async function escAndFocusStayWithThePanelWhateverHasFocus() {
   assert.strictEqual(panel(doc).getAttribute('tabindex'), '-1', 'a click on panel text keeps focus in the panel');
   assert.ok(wrap(doc).hidden, 'Esc with focus on the panel itself closes it');
   t.w.close();
-  console.log('PASS Admin, Integrations: Esc and focus stay with the panel after Test connection, a refused Save, a click on its text, or focus on the body');
+  console.log('PASS Integrations: Esc and focus stay with the panel after Test connection, a refused Save, a click on its text, or focus on the body');
 }
 
 async function aRefusedCheckShowsByWhatItWatchesAsText() {
@@ -917,7 +917,7 @@ async function aRefusedCheckShowsByWhatItWatchesAsText() {
   assert.strictEqual(inPanel(t.doc, '.int-form-msg').textContent, '');
   assert.strictEqual(t.doc.querySelectorAll('img[onerror]').length, 0);
   t.w.close();
-  console.log('PASS Admin, Integrations: a refused check id shows by What it watches, as text');
+  console.log('PASS Integrations: a refused check id shows by What it watches, as text');
 }
 
 async function instanceControlsSwitchPromoteAndDeleteWithConfirmation() {
@@ -954,7 +954,7 @@ async function instanceControlsSwitchPromoteAndDeleteWithConfirmation() {
   assert.deepStrictEqual(early, [0, true], 'Cancel sends nothing and keeps the panel');
   assert.ok(wrap(t.doc).hidden && t.doc.querySelector('#integrations .int-note').textContent === 'east deleted');
   t.w.close();
-  console.log('PASS Admin, Integrations: switch, Make primary (with its notice) and Delete behind the confirm dialog call the right routes');
+  console.log('PASS Integrations: switch, Make primary (with its notice) and Delete behind the confirm dialog call the right routes');
 }
 
 async function droppedPackTextsShowOneWarningLinePerLanguageOnTheCardAndInThePanel() {
@@ -985,7 +985,7 @@ async function droppedPackTextsShowOneWarningLinePerLanguageOnTheCardAndInThePan
   assert.ok(/\.int-drop\s*\{[^}]*color:\s*var\(--warn\)/.test(TEMPLATE_CSS()), 'the warning colour comes from the theme token, so it follows light and dark');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: dropped pack texts show one escaped warning line per language on the card and in the panel');
+  console.log('PASS Integrations: dropped pack texts show one escaped warning line per language on the card and in the panel');
 }
 
 async function everyValueIsEscaped() {
@@ -1010,7 +1010,7 @@ async function everyValueIsEscaped() {
   assert.ok([...t.doc.querySelectorAll('#integrations img, #int-panel img')].every((i) => i.getAttribute('src').startsWith('/plugins/')), 'every image is a plug-in icon');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: names, descriptions, problems and field values are escaped on tiles, in the panel and in the catalog');
+  console.log('PASS Integrations: names, descriptions, problems and field values are escaped on tiles, in the panel and in the catalog');
 }
 
 async function instanceNamesSourcesFieldsAndNotesAreEscapedToo() {
@@ -1051,7 +1051,7 @@ async function instanceNamesSourcesFieldsAndNotesAreEscapedToo() {
   assert.strictEqual(t.doc.querySelectorAll('#integrations img, #int-panel img').length, 0, 'nothing became markup');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: instance names, sources, reasons, labels, help, choices, checks and categories are escaped too');
+  console.log('PASS Integrations: instance names, sources, reasons, labels, help, choices, checks and categories are escaped too');
 }
 
 async function dottedFieldKeysEditAndCarryTheirRefusal() {
@@ -1083,7 +1083,7 @@ async function dottedFieldKeysEditAndCarryTheirRefusal() {
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PATCH').map((c) => c[2]), [{values: {'echo.url': 'https://echo-two.example.com', 'echo.token': null}}]);
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: dotted field keys edit, test and carry their own refusal');
+  console.log('PASS Integrations: dotted field keys edit, test and carry their own refusal');
 }
 
 async function aSwitchedOffInstanceOffersNoMakePrimary() {
@@ -1103,7 +1103,7 @@ async function aSwitchedOffInstanceOffersNoMakePrimary() {
   assert.deepStrictEqual(east, [false, true], 'no Make primary on a switched-off instance, which offers Save & turn on');
   assert.deepStrictEqual(backup, [true, false], 'Make primary on a switched-on one');
   t.w.close();
-  console.log('PASS Admin, Integrations: a switched-off instance offers no Make primary');
+  console.log('PASS Integrations: a switched-off instance offers no Make primary');
 }
 
 async function aNonAdminSeesNoIntegrationsTab() {
@@ -1111,10 +1111,10 @@ async function aNonAdminSeesNoIntegrationsTab() {
   const t = await boot({admin: false});
 
   //then
-  assert.ok(t.doc.getElementById('tab-integrations').hidden, 'no Integrations tab for a non-admin');
-  assert.strictEqual(t.calls.filter((c) => c[1] === '/api/admin/plugins').length, 0);
+  assert.ok(!t.doc.getElementById('tab-integrations').hidden, 'a signed-in non-admin has the Connect Integrations row');
+  assert.strictEqual(t.calls.filter((c) => c[1] === '/api/admin/plugins').length, 0, 'and never reads the admin catalog');
   t.w.close();
-  console.log('PASS Admin, Integrations: hidden for a non-admin');
+  console.log('PASS Integrations: a non-admin has the row but never reads the admin catalog');
 }
 
 async function anUntouchedSelectIsNeverSent() {
@@ -1144,7 +1144,7 @@ async function anUntouchedSelectIsNeverSent() {
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PATCH').map((c) => c[2]), [{values: {url: 'https://env2.example.com'}}]);
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'POST').map((c) => c[2]), [{name: 'backup', values: {url: 'https://backup.example.com'}, enabled: false}]);
   t.w.close();
-  console.log('PASS Admin, Integrations: an untouched select (default or blank) is never sent, on edit or add');
+  console.log('PASS Integrations: an untouched select (default or blank) is never sent, on edit or add');
 }
 
 async function aChoiceWhoseDefaultIsEmptyCanBeSetBackToEmpty() {
@@ -1169,7 +1169,7 @@ async function aChoiceWhoseDefaultIsEmptyCanBeSetBackToEmpty() {
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PATCH').map((c) => c[2]), [{values: {'min-sev': ''}}]);
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: a choice whose default is empty keeps its empty option, so a saved value can be cleared again');
+  console.log('PASS Integrations: a choice whose default is empty keeps its empty option, so a saved value can be cleared again');
 }
 
 async function aRouteEchoChoiceShowsExactlyThreeOptionsAndStartsOnTheDefault() {
@@ -1192,7 +1192,7 @@ async function aRouteEchoChoiceShowsExactlyThreeOptionsAndStartsOnTheDefault() {
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PATCH').map((c) => c[2]), [], 'an untouched choice is not sent');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: a route echo choice shows Use the default, On and Off, starts on the default and sends nothing untouched');
+  console.log('PASS Integrations: a route echo choice shows Use the default, On and Off, starts on the default and sends nothing untouched');
 }
 
 async function anotherPluginsChoiceWithADefaultOptionKeepsItsBlankOption() {
@@ -1210,7 +1210,7 @@ async function anotherPluginsChoiceWithADefaultOptionKeepsItsBlankOption() {
   //then
   assert.deepStrictEqual(buttons, ['', 'default', 'fast']);
   t.w.close();
-  console.log('PASS Admin, Integrations: only the route echo choice drops its blank option; another plug-in keeps it');
+  console.log('PASS Integrations: only the route echo choice drops its blank option; another plug-in keeps it');
 }
 
 async function anInstanceFieldPicksAnInstanceOfTheUsedPlugin() {
@@ -1242,7 +1242,7 @@ async function anInstanceFieldPicksAnInstanceOfTheUsedPlugin() {
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'POST').map((c) => c[2]), [{name: 'second', values: {source: 'east'}, enabled: false}]);
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: an instance field picks an instance of the plug-in it reads through, keeping a stored name that is gone');
+  console.log('PASS Integrations: an instance field picks an instance of the plug-in it reads through, keeping a stored name that is gone');
 }
 
 async function aRefusalOnAHiddenFieldStillShowsAMessage() {
@@ -1264,7 +1264,7 @@ async function aRefusalOnAHiddenFieldStillShowsAMessage() {
   assert.ok(inPanel(t.doc, '.int-form-msg').classList.contains('bad'));
   assert.strictEqual(field(t.doc, 'token').querySelector('.int-field-msg').textContent, '');
   t.w.close();
-  console.log('PASS Admin, Integrations: a refusal that names a hidden field shows on the form');
+  console.log('PASS Integrations: a refusal that names a hidden field shows on the form');
 }
 
 async function leavingTheTabOrTheRoleClosesThePanelAndTheCatalog() {
@@ -1291,7 +1291,7 @@ async function leavingTheTabOrTheRoleClosesThePanelAndTheCatalog() {
   assert.deepStrictEqual([stays, outside], [true, true], 'a click outside closes the catalog');
   assert.ok(wrap(t.doc).hidden && !panel(t.doc).textContent, 'losing the role closes the panel and empties it');
   t.w.close();
-  console.log('PASS Admin, Integrations: leaving the section or the role closes the panel, and a click outside closes the catalog');
+  console.log('PASS Integrations: leaving the section or the role closes the panel, and a click outside closes the catalog');
 }
 
 async function theSidePanelIsAViewportOverlayAndFullScreenOnAPhone() {
@@ -1303,7 +1303,7 @@ async function theSidePanelIsAViewportOverlayAndFullScreenOnAPhone() {
   assert.ok(/\.int-panel \{[^}]*width: 420px;/.test(css), '420 px wide');
   assert.ok(/@media \(max-width: 768px\) \{[^@]*\.int-panel \{ width: 100%;/.test(css), 'full screen at 768 px and below');
   assert.ok(/<div class="int-wrap" id="int-wrap" hidden>/.test(css) && css.indexOf('id="int-wrap"') > css.indexOf('</main>'), 'outside the content, at body level');
-  console.log('PASS Admin, Integrations: the side panel is a fixed body-level overlay, 420 px wide, full screen on a phone');
+  console.log('PASS Integrations: the side panel is a fixed body-level overlay, 420 px wide, full screen on a phone');
 }
 
 async function aTileSwitchKeepsTheKeyboardFocusOnItsSwitch() {
@@ -1343,7 +1343,7 @@ async function aTileSwitchKeepsTheKeyboardFocusOnItsSwitch() {
   assert.ok(movedOn, 'focus moved elsewhere while the save was on its way stays there; only focus that fell to the body goes back to the switch');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: a tile switch keeps the keyboard focus after its toggle and the redraw');
+  console.log('PASS Integrations: a tile switch keeps the keyboard focus after its toggle and the redraw');
 }
 
 async function theSearchOwnsTabWhileItIsOpenOverTheSidePanel() {
@@ -1373,7 +1373,7 @@ async function theSearchOwnsTabWhileItIsOpenOverTheSidePanel() {
   assert.deepStrictEqual(closed, [true, false, true], 'Esc closes only the search and gives the focus back inside the panel');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: the search owns Tab while it is open over the side panel, and Esc closes only the search');
+  console.log('PASS Integrations: the search owns Tab while it is open over the side panel, and Esc closes only the search');
 }
 
 async function testConnectionSendsTheTicksOnlyWhenTheFormChangedThem() {
@@ -1399,7 +1399,7 @@ async function testConnectionSendsTheTicksOnlyWhenTheFormChangedThem() {
   const sent = t.calls.filter((c) => c[1].endsWith('/test')).map((c) => c[2].offChecks);
   assert.deepStrictEqual(sent, [undefined, ['beat'], undefined, ['pulse']], 'a test sends the ticks only when they differ from the saved ones, or from all on for a new instance');
   t.w.close();
-  console.log('PASS Admin, Integrations: Test connection sends the unsaved ticks of what it watches, and nothing when they match the saved ones');
+  console.log('PASS Integrations: Test connection sends the unsaved ticks of what it watches, and nothing when they match the saved ones');
 }
 
 async function aRefusedPluginShowsNoAccessAndNeedsAttention() {
@@ -1418,7 +1418,7 @@ async function aRefusedPluginShowsNoAccessAndNeedsAttention() {
   const css = require('fs').readFileSync(TEMPLATE, 'utf8');
   assert.ok(/\.int-dot\.warn\s*\{[^}]*var\(--warn\)/.test(css), 'the dot takes the theme warn colour in both themes');
   t.w.close();
-  console.log('PASS Admin, Integrations: a refused plug-in shows No access with an amber dot and needs attention');
+  console.log('PASS Integrations: a refused plug-in shows No access with an amber dot and needs attention');
 }
 
 async function thePinSwitchShowsOnlyOnceACertificateIsPasted() {
@@ -1440,7 +1440,7 @@ async function thePinSwitchShowsOnlyOnceACertificateIsPasted() {
   //then
   assert.deepStrictEqual([before, pasted, field(t.doc, 'ca-pinned').hidden], [true, false, true]);
   t.w.close();
-  console.log('PASS Admin, Integrations: the certificate pin switch shows only once a certificate is pasted');
+  console.log('PASS Integrations: the certificate pin switch shows only once a certificate is pasted');
 }
 
 async function anInstanceWithoutACheckShowsNoHealthTextAndNeverConnected() {
@@ -1465,7 +1465,7 @@ async function anInstanceWithoutACheckShowsNoHealthTextAndNeverConnected() {
   assert.ok(!t.doc.getElementById('integrations').textContent.includes('Connected'), 'nothing says Connected without a check behind it');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: an instance without a check shows no health text, only a grey dot, and never Connected');
+  console.log('PASS Integrations: an instance without a check shows no health text, only a grey dot, and never Connected');
 }
 
 async function twoInstancesWithoutChecksShowTheCountOnlyAndNotCheckedYetOnlyWhereNoHealthEntryExists() {
@@ -1490,7 +1490,7 @@ async function twoInstancesWithoutChecksShowTheCountOnlyAndNotCheckedYetOnlyWher
   assert.strictEqual(cards[1].querySelector('.int-icard-l').textContent, 'Not checked yet');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: two instances without checks show only the count, and Not checked yet only without a health entry');
+  console.log('PASS Integrations: two instances without checks show only the count, and Not checked yet only without a health entry');
 }
 
 async function noImageIsRenderedWithoutASource() {
@@ -1511,7 +1511,7 @@ async function noImageIsRenderedWithoutASource() {
   //then
   assert.deepStrictEqual([page, drawer, picker], [[], [], []], 'an img without a src makes the browser request the page itself');
   t.w.close();
-  console.log('PASS Admin, Integrations: no img is rendered without a source, on the page, in the side panel or in the catalog');
+  console.log('PASS Integrations: no img is rendered without a source, on the page, in the side panel or in the catalog');
 }
 
 function customCatalog() {
@@ -1567,7 +1567,7 @@ async function companyKnowledgeLeadsAsItsOwnGroupAndEachTileSitsInOneGroup() {
   assert.ok(/\.int-group-know \{[^}]*border-left: 3px solid var\(--brand\)/.test(css) && /\.int-group-know \{[^}]*color-mix\(in srgb, var\(--brand\)/.test(css), 'the accent uses the brand variable, which both themes share');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: Company knowledge is the first group with its muted line and quiet accent, and each tile sits in exactly one group');
+  console.log('PASS Integrations: Company knowledge is the first group with its muted line and quiet accent, and each tile sits in exactly one group');
 }
 
 async function aTileIsKnowledgeOnlyWhenItsSourceIsSetAndWithoutKnowledgeOrCustomThereAreNoGroups() {
@@ -1587,7 +1587,7 @@ async function aTileIsKnowledgeOnlyWhenItsSourceIsSetAndWithoutKnowledgeOrCustom
   assert.deepStrictEqual(read(blank), [['custom', ['pager', 'cracked', 'evil']], ['builtin', ['acme', 'gold', 'github', 'mcp-tools']]], 'GitHub with a blank Docs field and mcp-tools with the knowledge switch off are not knowledge');
   assert.deepStrictEqual([read(flat), flat.doc.querySelectorAll('#integrations .int-grid').length, chips(flat).includes('Knowledge')], [[], 1, false], 'no knowledge and no custom tile: one plain grid');
   [unset, blank, flat].forEach((t) => { assert.deepStrictEqual(t.errors, []); t.w.close(); });
-  console.log('PASS Admin, Integrations: GitHub counts only with its Docs set, mcp-tools only with a knowledge instance, and with no knowledge or custom tile there are no groups');
+  console.log('PASS Integrations: GitHub counts only with its Docs set, mcp-tools only with a knowledge instance, and with no knowledge or custom tile there are no groups');
 }
 
 async function theKnowledgeChipSitsAfterAllFiltersWithSearchAndHidesEmptyGroups() {
@@ -1625,7 +1625,7 @@ async function theKnowledgeChipSitsAfterAllFiltersWithSearchAndHidesEmptyGroups(
   assert.deepStrictEqual(all, ['knowledge', 'custom', 'builtin']);
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: the Knowledge chip follows All, filters to knowledge tiles with the search, and empty groups hide');
+  console.log('PASS Integrations: the Knowledge chip follows All, filters to knowledge tiles with the search, and empty groups hide');
 }
 
 async function theCatalogLeadsWithCompanyKnowledgeAndListsEachPluginOnce() {
@@ -1656,7 +1656,7 @@ async function theCatalogLeadsWithCompanyKnowledgeAndListsEachPluginOnce() {
   assert.deepStrictEqual(found, [['Company knowledge', ['sharepoint']]], 'the catalog search still finds it');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: the add-integration catalog leads with Company knowledge, notes the GitHub Docs field and lists nothing twice');
+  console.log('PASS Integrations: the add-integration catalog leads with Company knowledge, notes the GitHub Docs field and lists nothing twice');
 }
 
 async function aCustomKnowledgePluginSitsOnlyInCompanyKnowledgeAndABrokenOneStaysOut() {
@@ -1675,7 +1675,7 @@ async function aCustomKnowledgePluginSitsOnlyInCompanyKnowledgeAndABrokenOneStay
   assert.deepStrictEqual(read, [['knowledge', ['pager']], ['custom', ['cracked', 'evil']], ['builtin', ['acme', 'gold']]], 'a custom knowledge plug-in is only in Company knowledge, and a broken one is not knowledge');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: a custom knowledge plug-in sits only in Company knowledge and a broken one stays out');
+  console.log('PASS Integrations: a custom knowledge plug-in sits only in Company knowledge and a broken one stays out');
 }
 
 async function aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin() {
@@ -1700,7 +1700,7 @@ async function aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin() {
   assert.strictEqual(tile(doc, 'cracked').querySelector('.int-cat').textContent, 'Custom', 'a broken custom plug-in is marked too');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: a custom plug-in reads Custom on its tile with a tooltip and an accessible description, a built-in is unchanged');
+  console.log('PASS Integrations: a custom plug-in reads Custom on its tile with a tooltip and an accessible description, a built-in is unchanged');
 }
 
 async function theDrawerHeaderShowsOneMutedLineSayingBuiltInOrCustom() {
@@ -1723,7 +1723,7 @@ async function theDrawerHeaderShowsOneMutedLineSayingBuiltInOrCustom() {
   assert.ok(inPanel(t.doc, '.int-meta').classList.contains('muted'));
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: the drawer header shows one muted meta line, Built-in or Custom plug-in with author, version and licence');
+  console.log('PASS Integrations: the drawer header shows one muted meta line, Built-in or Custom plug-in with author, version and licence');
 }
 
 async function theCustomChipAppearsOnlyWhenACustomPluginIsLoadedAndFiltersAlone() {
@@ -1756,7 +1756,7 @@ async function theCustomChipAppearsOnlyWhenACustomPluginIsLoadedAndFiltersAlone(
   assert.deepStrictEqual(all, [['pager', 'cracked', 'evil', 'acme', 'gold'], 'false']);
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: the Custom chip shows only when a custom plug-in is loaded and filters on its own, replacing the category');
+  console.log('PASS Integrations: the Custom chip shows only when a custom plug-in is loaded and filters on its own, replacing the category');
 }
 
 async function customAndBuiltInPluginsSitInTheirOwnGroupsThatFollowTheFilter() {
@@ -1794,7 +1794,7 @@ async function customAndBuiltInPluginsSitInTheirOwnGroupsThatFollowTheFilter() {
   assert.deepStrictEqual(searched, [true, false], 'a search hides a group with no match');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: custom plug-ins and built-ins sit in their own headed groups, and a group with nothing shown hides');
+  console.log('PASS Integrations: custom plug-ins and built-ins sit in their own headed groups, and a group with nothing shown hides');
 }
 
 async function theCatalogMarksACustomPluginQuietly() {
@@ -1812,7 +1812,7 @@ async function theCatalogMarksACustomPluginQuietly() {
   assert.strictEqual(pick(t.doc, 'prometheus').dataset.origin, 'package');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: the add-integration catalog marks a custom plug-in with a quiet Custom label');
+  console.log('PASS Integrations: the add-integration catalog marks a custom plug-in with a quiet Custom label');
 }
 
 async function theSearchFiltersTheTilesByNameIdCategoryAndDescriptionWithoutCaseOrAccents() {
@@ -1881,7 +1881,7 @@ async function theSearchFiltersTheTilesByNameIdCategoryAndDescriptionWithoutCase
   assert.ok(back, 'Esc returns focus to the filtered tile');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: the search filters tiles by name, id, category and description, without case or accents, with the chips, Clear, Esc and /');
+  console.log('PASS Integrations: the search filters tiles by name, id, category and description, without case or accents, with the chips, Clear, Esc and /');
 }
 
 function intTileFound(w, id) { return !!w.intTileOpen(id) && !!w.intTileSwitch(id); }
@@ -1919,7 +1919,7 @@ async function aSlashDoesNotStealFocusFromAFieldOrTheOpenDrawer() {
   assert.ok(!ev.defaultPrevented, 'off the Integrations page / does nothing');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: / leaves fields, the open drawer and the picker alone, and does nothing off the page');
+  console.log('PASS Integrations: / leaves fields, the open drawer and the picker alone, and does nothing off the page');
 }
 
 async function theTilesAreCompactWithAStatusDotAShortHealthLineAndTheRestInTheTooltip() {
@@ -1957,7 +1957,7 @@ async function theTilesAreCompactWithAStatusDotAShortHealthLineAndTheRestInTheTo
   assert.ok(/\.int-line \{[^}]*white-space: nowrap;/.test(css) && /\.int-name \{[^}]*white-space: nowrap;/.test(css), 'both lines stay one line high, so a late health text never moves the grid');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: tiles are compact, with a status dot, a short health line, a warn edge and the reason and drops in the tooltip');
+  console.log('PASS Integrations: tiles are compact, with a status dot, a short health line, a warn edge and the reason and drops in the tooltip');
 }
 
 async function aTileThatNeedsAttentionDropsItsCategoryAndAMultiInstanceTileShowsTheFirstServerText() {
@@ -1983,7 +1983,7 @@ async function aTileThatNeedsAttentionDropsItsCategoryAndAMultiInstanceTileShows
   assert.ok(/\.int-line \.int-why::before/.test(css), 'the server text has its own separator');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: a tile that needs attention drops the category and a multi-instance tile shows the first server text');
+  console.log('PASS Integrations: a tile that needs attention drops the category and a multi-instance tile shows the first server text');
 }
 
 async function darkBrandIconsGetALightBackplateInDarkModeOnly() {
@@ -2003,7 +2003,7 @@ async function darkBrandIconsGetALightBackplateInDarkModeOnly() {
   assert.ok(/:root\[data-theme="dark"\] \.int-ico-dark \{ background: #[0-9a-f]{6}; \}/i.test(css), 'also when dark is picked by hand');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: dark brand icons get a light backplate in dark mode');
+  console.log('PASS Integrations: dark brand icons get a light backplate in dark mode');
 }
 
 async function thePickerListsRowsWithDescriptionsAndWhatIsAddedAndMovesByKeyboard() {
@@ -2058,7 +2058,7 @@ async function thePickerListsRowsWithDescriptionsAndWhatIsAddedAndMovesByKeyboar
   assert.ok(/@media \(max-width: 480px\) \{[^@]*\.int-pop \{[^}]*position: fixed;[^}]*left: 0;[^}]*right: 0;[^}]*width: auto;/.test(css), 'full width on a phone');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: the picker lists rows with a description and what is added, moves by arrows, and Enter opens a single result');
+  console.log('PASS Integrations: the picker lists rows with a description and what is added, moves by arrows, and Enter opens a single result');
 }
 
 async function theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton() {
@@ -2097,7 +2097,7 @@ async function theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton() {
   assert.ok(added, 'its Add button goes to the form');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Admin, Integrations: the drawer lists instances as cards under a counted header with the Add button, or an empty state');
+  console.log('PASS Integrations: the drawer lists instances as cards under a counted header with the Add button, or an empty state');
 }
 
 async function thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne() {
@@ -2163,7 +2163,7 @@ async function thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne() 
   assert.ok(/\.int-setup > summary::before \{[^}]*border-right:[^}]*transform: rotate\(-45deg\)/.test(css), 'a chevron marks the folded summary as clickable');
   assert.ok(/\.int-setup\[open\] > summary::before \{[^}]*rotate\(45deg\)/.test(css), 'and turns down when open');
   assert.ok(/\.int-setup > summary:hover \{[^}]*var\(--fg\)/.test(css), 'and the summary darkens on hover');
-  console.log('PASS Admin, Integrations: the setup guide is open without instances, closed with one, escaped, and links only https docs');
+  console.log('PASS Integrations: the setup guide is open without instances, closed with one, escaped, and links only https docs');
 }
 
 (async () => {

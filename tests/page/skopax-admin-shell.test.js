@@ -11,7 +11,7 @@ const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
 const EVIL = '<img src=x onerror=alert(1)>"\'';
 const FEATURE_SRC = fs.readFileSync(path.join(path.dirname(TEMPLATE), '..', 'features.py'), 'utf8');
 const TABLE = [...FEATURE_SRC.matchAll(/Feature\('([a-z-]+)', '([a-z.-]+)', '([^']+)',\s*'([^']*)', '([a-z]+)'(?:, edition='([a-z]+)')?/g)].map((m) => ({id: m[1], key: m[2], label: m[3], help: m[4], icon: m[5], edition: m[6] || 'community'}));
-const SUBNAV = [['tab-settings', 'General', 'gear'], ['tab-access', 'Access & sign-in', 'lock'], ['tab-integrations', 'Integrations', 'plug'], ['tab-features', 'Features', 'toggle'], ['tab-ai', 'Investigator', 'spark'], ['tab-changes', 'Changes', 'history']];
+const SUBNAV = [['tab-settings', 'General', 'gear'], ['tab-access', 'Access & sign-in', 'lock'], ['tab-features', 'Features', 'toggle'], ['tab-ai', 'Investigator', 'spark'], ['tab-changes', 'Changes', 'history']];
 
 function setting(key, group, label, extra) {
   return Object.assign({key, group, label, help: label + ' help', kind: 'bool', live: true, value: 'true', base: 'true', default: 'true', source: 'default', by: null, at: null}, extra || {});
@@ -100,13 +100,12 @@ async function theSubNavListsTheSixSectionsWithTheirIconsAndCounts() {
   assert.deepStrictEqual(navRows(doc).map((a) => [a.id, a.querySelector('.lbl').textContent]), SUBNAV.map((r) => [r[0], r[1]]));
   assert.deepStrictEqual(navRows(doc).map((a) => a.querySelector('svg.i').outerHTML), SUBNAV.map((r) => svg(doc, w.navIcon(r[2]))), 'each section has the mockup icon');
   assert.deepStrictEqual(navRows(doc).map((a) => a.getAttribute('href')), SUBNAV.map((r) => '#t=' + r[0].slice(4)));
-  assert.strictEqual(doc.getElementById('count-integrations').textContent, '2', 'Integrations counts the plug-ins that are on and usable');
   assert.strictEqual(doc.getElementById('count-features').textContent, '8/11', 'Features counts the switches that are on out of all of them');
   assert.ok(!doc.getElementById('adm-shell').hidden && doc.getElementById('tab-settings').getAttribute('aria-current') === 'page');
   assert.strictEqual(doc.getElementById('crumb-page').textContent, 'Admin \u203a General');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-  return 'the Admin sub-nav lists General, Access & sign-in, Integrations, Features, Investigator and Changes with their icons, and counts the plug-ins that are on and the features that are on';
+  return 'the Admin sub-nav lists General, Access & sign-in, Features, Investigator and Changes with their icons, and Features counts the features that are on';
 }
 
 async function aLinkToAccessShowsItWithTheAdminRowCurrentAndOtherTabsHideTheShell() {
@@ -142,8 +141,8 @@ async function everyAdminSectionHasItsOwnLinkAndTheAdminRowOpensTheLastOne() {
   await wait(60);
 
   //then
-  assert.strictEqual(first, '#t=integrations', 'the first time, the Admin row opens Integrations');
-  assert.ok(!fresh.doc.getElementById('panel-integrations').hidden);
+  assert.strictEqual(first, '#t=settings', 'the first time, the Admin row opens General');
+  assert.ok(!fresh.doc.getElementById('panel-settings').hidden);
   fresh.dom.window.close();
   for (const id of ['features', 'ai', 'changes']) {
     //when
@@ -169,9 +168,9 @@ async function everyAdminSectionHasItsOwnLinkAndTheAdminRowOpensTheLastOne() {
 
   //then
   assert.ok(!back.doc.getElementById('panel-ai').hidden, 'the stored section opens after a reload');
-  assert.strictEqual(bogus.doc.getElementById('side-admin').getAttribute('href'), '#t=integrations', 'a stored value that is not an admin section is ignored');
+  assert.strictEqual(bogus.doc.getElementById('side-admin').getAttribute('href'), '#t=settings', 'a stored value that is not an admin section is ignored');
   back.dom.window.close(); bogus.dom.window.close();
-  return 'deep links open Features, Investigator and Changes; the Admin row opens the last admin section, Integrations the first time';
+  return 'deep links open Features, Investigator and Changes; the Admin row opens the last admin section, General the first time';
 }
 
 async function generalLeavesOutTheFeaturesTheirKeysAndTheInvestigatorGroup() {
@@ -298,7 +297,7 @@ async function theSubNavIsAColumnOnWideContentAndAChipRowOnNarrow() {
 async function generalCountsRightOnEverySectionAndListsAreFetchedOnce() {
   //given
   const items = settings().map((i) => i.key === 'access.public-read' ? Object.assign({}, i, {value: 'true', source: 'admin', by: 'alice@example.com', at: iso(10)}) : i);
-  const t = await boot({hash: '#t=integrations', items});
+  const t = await boot({hash: '#t=features', items});
   const counts = [t.doc.getElementById('count-settings').textContent];
 
   //when
@@ -312,7 +311,7 @@ async function generalCountsRightOnEverySectionAndListsAreFetchedOnce() {
   //then
   assert.deepStrictEqual(counts, ['1', '1', '1', '1', '1'], 'General counts only its own row set here (the channel), never public read, on every section');
   assert.strictEqual(fetched('/api/admin/features'), 1, 'the features list is fetched once for the counts and kept');
-  assert.strictEqual(fetched('/api/admin/plugins'), 2, 'the plug-ins are fetched by Integrations itself, twice, and never again for the count');
+  assert.strictEqual(fetched('/api/admin/plugins'), 1, 'the plug-ins are fetched only by the Integrations page itself, never for an Admin count');
   assert.deepStrictEqual(t.errors, []);
   t.dom.window.close();
   return 'General counts its own settings set here on every section, with public read set here, and the lists fetched for the counts are kept';
@@ -321,7 +320,7 @@ async function generalCountsRightOnEverySectionAndListsAreFetchedOnce() {
 async function accessIsCountedBeforeItsTabIsOpened() {
   //given
   const user = (email, role) => ({email, name: email.split('@')[0], role, source: 'local', disabled: false, lastLogin: null});
-  const t = await boot({hash: '#t=integrations', users: [user('alice@example.com', 'admin'), user('bob@example.com', 'viewer')]});
+  const t = await boot({hash: '#t=settings', users: [user('alice@example.com', 'admin'), user('bob@example.com', 'viewer')]});
   const counts = [t.doc.getElementById('count-access').textContent];
 
   //when

@@ -13,6 +13,7 @@ function pqcEl(tag, cls, text) {
   return e;
 }
 function pqcBox() { return document.getElementById('pqc'); }
+function pqcRO() { return typeof intRO === 'function' && intRO(); }
 function pqcCount(n, one, many) { n = n || 0; return n + ' ' + (n === 1 ? one : many); }
 function pqcList(x) { return Array.isArray(x) ? x : []; }
 function pqcEdit(d) {
@@ -37,7 +38,7 @@ async function pqcLoad(said) {
   if (!box) return;
   var seq = ++PQC_SEQ;
   try {
-    var r = await adminApi('GET', PQC_PATH);
+    var r = await adminApi('GET', pqcRO() ? '/api/integrations/custom-checks' : PQC_PATH);
     if (seq !== PQC_SEQ) return;
     PQC = r && typeof r === 'object' ? r : {items: []};
     pqcRender(said);
@@ -45,7 +46,7 @@ async function pqcLoad(said) {
     if (seq !== PQC_SEQ) return;
     PQC = null;
     box.textContent = '';
-    box.appendChild(pqcEl('p', 'muted', adminDenied(e) ? 'Admins only: log in with the ' + ADMIN_ROLE + ' role.' : 'Custom checks did not load; open the tab again.'));
+    box.appendChild(pqcEl('p', 'muted', adminDenied(e) && !pqcRO() ? 'Admins only: log in with the ' + ADMIN_ROLE + ' role.' : 'Custom checks did not load; open the tab again.'));
   }
 }
 function pqcLimit(name, fallback) { var l = PQC && PQC.limits; return l && typeof l[name] === 'number' ? l[name] : fallback; }
@@ -57,32 +58,33 @@ function pqcRender(said) {
   box.textContent = '';
   var items = pqcList(PQC.items), most = pqcLimit('checks', 50), head = pqcEl('div', 'pqc-head');
   head.appendChild(pqcEl('h3', '', 'Custom checks'));
+  var ro = pqcRO();
   var add = pqcEl('button', 'btn small pqc-add', '+ Add check');
   add.type = 'button';
   add.disabled = items.length >= most;
   add.addEventListener('click', function () { pqcEdit({}); });
-  head.appendChild(add);
+  if (!ro) head.appendChild(add);
   var from = pqcEl('button', 'btn small pqc-from-preset', 'Add from preset');
   from.type = 'button';
   from.disabled = items.length >= most;
   from.addEventListener('click', function () { pqcPick(''); });
-  head.appendChild(from);
+  if (!ro) head.appendChild(from);
   box.appendChild(head);
   box.appendChild(pqcEl('p', 'muted pqc-sub', 'Cards from your own PromQL or ES|QL query on a Prometheus, Grafana or Elasticsearch instance, checked every ' + Math.round(pqcLimit('periodSeconds', 300) / 60) +
     ' min. ' + items.length + ' of ' + most + ' set up.'));
   var msg = pqcEl('p', 'adm-msg ok', said || '');
   msg.setAttribute('role', 'status');
   box.appendChild(msg);
-  if (PQC_EDIT) {
+  if (PQC_EDIT && !ro) {
     PQC_FORM = PQC_FORM || pqcForm(PQC_EDIT);
     box.appendChild(PQC_FORM);
   }
-  if (PQC_PICK) {
+  if (PQC_PICK && !ro) {
     PQC_PICK_FORM = PQC_PICK_FORM || pqcPicker(PQC_PICK);
     box.appendChild(PQC_PICK_FORM);
   }
   if (!items.length) {
-    box.appendChild(pqcEl('p', 'muted pqc-empty', 'No custom checks yet: + Add check sets one up, or Add from preset adds a ready-made set.'));
+    box.appendChild(pqcEl('p', 'muted pqc-empty', ro ? 'No custom checks yet.' : 'No custom checks yet: + Add check sets one up, or Add from preset adds a ready-made set.'));
     return;
   }
   var list = pqcEl('ul', 'pqc-list'), groups = [], byKey = {};
@@ -348,6 +350,7 @@ function pqcRow(d, skip) {
   var meta = pqcWhere(d) + ' \u00b7 ' + String(d.op || '') + ' ' + String(d.threshold) + ' \u00b7 ' + String(d.severity || '');
   if (run && state === 'ok') meta += ' \u00b7 ' + (run.series || 0) + ' series, ' + pqcCount(run.cards, 'card', 'cards') + (run.noBaseline ? ', ' + pqcCount(run.noBaseline, 'group', 'groups') + ' had no baseline value' : '');
   li.appendChild(pqcEl('span', 'pqc-m', meta));
+  if (pqcRO()) return li;
   var edit = pqcEl('button', 'btn small pqc-edit', 'Edit');
   edit.type = 'button';
   edit.setAttribute('aria-label', 'Edit ' + full);

@@ -200,7 +200,7 @@ def test_create_task_with_jira_off_is_refused_cleanly(store: Store):
     # then
     assert page.status_code == 201 and (page.json()['status'], page.json()['result']) == ('failed', refusal)
     assert clicked == 'refused' and ephemerals(api) == [msg('slackevents.click.refused', reason=refusal)]
-    assert 'Admin \u203a Integrations' in refusal and 'jira.url' not in refusal
+    assert 'Connect \u203a Integrations' in refusal and 'jira.url' not in refusal
     assert 'triage' not in store.anomaly(KEY) and 'ticket' not in store.get_action(act['id']) and http.calls == []
     assert (me['jira'], me['jiraUrl']) == (False, '')
 

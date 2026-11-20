@@ -18,7 +18,7 @@ The `couchbase` preset of [custom checks](../../docs/custom-checks.md#presets) n
 
 ### The plug-in, beyond Hello
 
-- **One instance per cluster.** `max_instances` is left unset, so an admin adds one instance per cluster in Admin > Integrations. The card keys hold the instance name, `couchbase|<instance>|<node or cluster>|<kind>`, so two clusters never share a card, even when they have a node of the same name.
+- **One instance per cluster.** `max_instances` is left unset, so an admin adds one instance per cluster in Connect > Integrations. The card keys hold the instance name, `couchbase|<instance>|<node or cluster>|<kind>`, so two clusters never share a card, even when they have a node of the same name.
 - **A peer instance.** The plug-in opens no connection of its own. `uses=('prometheus',)` and the field `Field('prometheus', 'Prometheus', 'instance', choices=('prometheus',))` let the admin pick one of the Prometheus instances, and `ctx.peer('prometheus')` gives the check its settings and transport. Without a peer the pass fails with `no Prometheus instance is set`, and every card stays open.
 - **Fields instead of fixed values.** `cluster` is the name the cards and the page show. `selector` holds the label matchers that pick the cluster in every query, `job=~".*couchbase.*"` by default. The nodes come from the `up` series that the selector finds, so a node added to the cluster shows on the next pass.
 - **Checking a field.** A field's value reaches PromQL inside `{...}`, so the plug-in checks the whole selector before it sends a query: it must be a list of `label op "value"` matchers, joined by commas. A selector such as `job="a"} or up{x="1"` would read other series, and the pass and Test connection refuse it with one sentence. Skopax checks a field's kind when the instance is saved, but not a plug-in's own rules for it, so this check runs in the pass and in Test connection.
@@ -48,7 +48,7 @@ As for Hello, the layer image installs the plug-in in a Python build stage and c
 docker build --build-arg SKOPAX_VERSION=0.3.0 -t skopax-couchbase examples/couchbase-plugin
 ```
 
-Pin `SKOPAX_VERSION` to the Skopax release you run. Couchbase is then listed in Admin > Integrations; add a Prometheus instance first, then one Couchbase instance per cluster.
+Pin `SKOPAX_VERSION` to the Skopax release you run. Couchbase is then listed in Connect > Integrations; add a Prometheus instance first, then one Couchbase instance per cluster.
 
 ## Licence
 

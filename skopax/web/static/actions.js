@@ -65,7 +65,7 @@ async function initActions() {
     var why = lockReason(), loginWhy = loginReason();
     document.querySelectorAll('#anoms .tile').forEach(function (t) { t.draggable = !why; });
     document.querySelectorAll('#anoms .acts button.btn:not(.free), #anoms .notif button.btn, .op-btn, .op-in').forEach(function (b) {
-      var r = (b.classList.contains('admin-only') ? adminReason() : b.classList.contains('login-ok') ? loginWhy : why) || (b.classList.contains('slack-btn') && !me.slack ? 'Slack is not set up on this service yet: an admin connects it in Admin \u203a Integrations \u203a Slack' : '') || (b.classList.contains('jira-btn') && !me.jira ? 'Jira is not set up on this service yet: an admin adds it under Admin \u203a Integrations' : '');
+      var r = (b.classList.contains('admin-only') ? adminReason() : b.classList.contains('login-ok') ? loginWhy : why) || (b.classList.contains('slack-btn') && !me.slack ? 'Slack is not set up on this service yet: an admin connects it in Connect \u203a Integrations \u203a Slack' : '') || (b.classList.contains('jira-btn') && !me.jira ? 'Jira is not set up on this service yet: an admin adds it under Connect \u203a Integrations' : '');
       if (b.tagName === 'INPUT') b.readOnly = !!r;
       if (!r) {
         b.removeAttribute('aria-disabled');
@@ -1333,6 +1333,7 @@ async function initActions() {
   setCostsAccess(!!me.user);
   if (typeof ntSignedIn === 'function') ntSignedIn(!!me.user);
   if (typeof setAdminAccess === 'function') setAdminAccess(me.admin);
+  if (typeof setIntView === 'function') setIntView(!!me.user, !!me.admin);
   window.__skopaxRender = render;
   window.__skopaxActions = refresh;
   await refresh();

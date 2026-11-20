@@ -992,7 +992,7 @@ async function tabsAreLinks() {
   const selected = () => doc.querySelector('a.tab[data-tab][aria-current="page"]').dataset.tab;
 
   //then
-  assert.ok(tabs.length === 12 && tabs.every((t) => t.tagName === 'A'), 'every row is a real link, so copy-link and middle-click work');
+  assert.ok(tabs.length === 13 && tabs.every((t) => t.tagName === 'A'), 'every row is a real link, so copy-link and middle-click work');
   assert.deepStrictEqual(tabs.map((t) => t.getAttribute('href')), tabs.map((t) => '#t=' + t.dataset.tab), 'each one points at its own #t= path');
   assert.ok(tabs.every((t) => !t.hasAttribute('role') && !t.hasAttribute('type')), 'they are plain links: no tab role and no button type');
   assert.strictEqual(w.location.hash, '#t=anoms', 'a load without a hash writes the open tab in the address bar');
@@ -1076,7 +1076,7 @@ async function tabGroupsCarryTheHealthState() {
   //then
   assert.deepStrictEqual(groups.map((g) => (g.querySelector('.tabs-l') || {}).textContent || ''), ['Anomaly filters'], 'the side menu keeps only the anomaly filters');
   const rows = (grp) => [...doc.querySelectorAll('#snav .s-grp[data-grp="' + grp + '"] a.tab[data-tab]')].map((t) => t.dataset.tab);
-  assert.deepStrictEqual(['main', 'observe', 'activity', 'connect', 'more'].map(rows), [['anoms', 'reqs', 'chat', 'inv'], ['svcs', 'lat', 'rels', 'reps'], ['slack', 'hist', 'acts', 'costs'], ['tools', 'mcp'], ['review', 'docs']], 'the sidebar groups the tabs: the Board group, then Observe (the old Metrics and Delivery), Activity, Connect and More');
+  assert.deepStrictEqual(['main', 'observe', 'activity', 'connect', 'more'].map(rows), [['anoms', 'reqs', 'chat', 'inv'], ['svcs', 'lat', 'rels', 'reps'], ['slack', 'hist', 'acts', 'costs'], ['integrations', 'tools', 'mcp'], ['review', 'docs']], 'the sidebar groups the tabs: the Board group, then Observe (the old Metrics and Delivery), Activity, Connect and More');
   assert.ok(!doc.getElementById('toptabs') && !doc.getElementById('menu-metrics') && !doc.getElementById('tabs-metrics'), 'no top-bar menus any more');
   assert.deepStrictEqual(['hist', 'acts'].map((id) => tab(id).querySelector('.lbl').textContent), ['Events', 'History'], 'the action log is History, the anomaly events are Events');
   assert.ok(groups.every((g) => g.getAttribute('role') === 'presentation') && !doc.querySelector('#tabs .tabs-l[role="tab"]'), 'labels are not tabs');

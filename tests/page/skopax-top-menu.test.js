@@ -3,7 +3,7 @@ const assert = require('assert');
 const {JSDOM, VirtualConsole} = require('jsdom');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
-const MENU = ['slack', 'hist', 'acts', 'costs', 'tools', 'mcp', 'review'];
+const MENU = ['slack', 'hist', 'acts', 'costs', 'integrations', 'tools', 'mcp', 'review'];
 
 async function boot(hash, me) {
   const errors = [];

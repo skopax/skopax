@@ -1,8 +1,8 @@
 # Custom checks
 
-A custom check turns a PromQL or ES|QL query into cards without a plug-in. An admin defines it in Admin > Integrations, under the integration tiles, and it reads through a Prometheus instance, through a Prometheus datasource of a Grafana instance, or through an Elasticsearch instance that is already set up there. A check is plain data (JSON), so a ready-made set of checks can be shared as data too.
+A custom check turns a PromQL or ES|QL query into cards without a plug-in. An admin defines it in Connect > Integrations, under the integration tiles, and it reads through a Prometheus instance, through a Prometheus datasource of a Grafana instance, or through an Elasticsearch instance that is already set up there. A check is plain data (JSON), so a ready-made set of checks can be shared as data too.
 
-Only admins list, add, change, preview or delete checks. The cards they make are ordinary cards: they are pushed, assigned, muted and resolved like any other.
+Only admins add, change, preview or delete checks. Operators and viewers see the list read-only on the same page, with credentials in queries masked, through `GET /api/integrations/custom-checks`. The cards they make are ordinary cards: they are pushed, assigned, muted and resolved like any other.
 
 ## A check
 
@@ -94,7 +94,9 @@ Preview in the editor runs the check once, with the values in the form and witho
 
 ## The API
 
-The page uses these routes; all of them need the admin role.
+The page uses these routes; all of them need the admin role, except the first.
+
+- `GET /api/integrations/custom-checks` lists the checks for anyone signed in, read-only: the check fields and the last run's state, reason, times and counts, without who created or changed them. Queries and texts show with credentials masked and every web address cut to its scheme, host and port.
 
 - `GET /api/admin/custom-checks` lists the checks, each with `run` (its last state: `ok`, `failing` or `off`, the reason, the series read, the cards made) and, for a check added from a preset, `preset` and `presetValues`; then the instances that can be a source (`prometheus`, `grafana` and `elasticsearch`), the limits (`rows` and the `window` default, `windowMin` and `windowMax` among them), the choices and the presets (`id`, `name` and `nameKey`).
 - `POST /api/admin/custom-checks` adds a check (201). A taken id or a full list is 409, a bad field 422 with the reason.

@@ -113,7 +113,7 @@ async function theCostsTabSitsNextToHistoryAndLoadsWhenOpened() {
   doc.getElementById('tab-costs').click();
   await wait(100);
   //then
-  assert.deepStrictEqual(delivery.slice(delivery.indexOf('acts'), delivery.indexOf('acts') + 3), ['acts', 'costs', 'tools'], 'Costs sits right after History, Tools after Costs');
+  assert.deepStrictEqual(delivery.slice(delivery.indexOf('acts'), delivery.indexOf('acts') + 3), ['acts', 'costs', 'integrations'], 'Costs sits right after History, the Connect group after Costs');
   assert.strictEqual(before, 0, 'nothing is fetched before the tab opens');
   assert.strictEqual(early, '$3.40', 'the count already shows the cap counter from the investigator info before the tab opens');
   assert.deepStrictEqual(costGets(gets), ['/api/costs?days=7'], 'seven days by default');
