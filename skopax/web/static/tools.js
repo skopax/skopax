@@ -5,6 +5,13 @@ var TOOL_COLUMNS = [
   {id: 'name', label: 'Tool'}, {id: 'calls', label: 'Calls', num: true}, {id: 'runs', label: 'Runs', num: true}, {id: 'errors', label: 'Errors', num: true},
   {id: 'errorRate', label: 'Error rate', num: true}, {id: 'p50Ms', label: 'p50', num: true}, {id: 'p95Ms', label: 'p95', num: true}, {id: 'maxMs', label: 'Max', num: true},
   {id: 'lastAt', label: 'Last used'}, {id: 'byTrigger', label: 'By run type', fixed: true}];
+var TOOL_HELD = {
+  cause: 'the cause was left out and the note names the trigger',
+  tag: 'the business-team tag was left out and the note names the team',
+  absorb: 'the absorb pattern was left out and the cards are grouped without it',
+  post: 'it did not post to the main channel itself and saved a draft that waits for a person',
+  slack: 'nothing was sent to Slack and the asker is told what to send instead'
+};
 var TOOLS = null;
 var TOOLS_SEQ = 0;
 var TOOLS_SORT = {id: 'calls', desc: true};
@@ -40,6 +47,17 @@ function toolMore(t) {
     var when = e.runId ? '<a class="run-link" href="/api/investigations/' + encodeURIComponent(e.runId) + '" target="_blank" rel="noopener" data-json="Run record" title="Open the full run record">' + esc(dayhmZone(e.at)) + '</a>' : esc(dayhmZone(e.at));
     return '<li>' + when + ' · ' + esc(TOOL_TRIGGERS[e.trigger] || e.trigger) + (e.check ? ' · ' + esc(e.check) : '') + ' · <code>' + esc(e.error) + '</code></li>';
   }).join('');
+  var held = (t.recentHeld || []).map(function (e) {
+    var when = e.runId ? '<a class="run-link" href="/api/investigations/' + encodeURIComponent(e.runId) + '" target="_blank" rel="noopener" data-json="Run record" title="Open the full run record">' + esc(dayhmZone(e.at)) + '</a>' : esc(dayhmZone(e.at));
+    var h = e.held || {};
+    return '<li>' + when + ' \u00b7 ' + esc(TOOL_TRIGGERS[e.trigger] || e.trigger) + ' \u00b7 <span>' + esc('Held: the run read text that looks planted (' + (h.phrases || []).join(', ') + ') in ' + (h.tools || []).join(', ')) + '</span>; <span>' + esc(TOOL_HELD[h.what] || '') + '</span></li>';
+  }).join('');
+  var refused = (t.recentRefused || []).map(function (e) {
+    var when = e.runId ? '<a class="run-link" href="/api/investigations/' + encodeURIComponent(e.runId) + '" target="_blank" rel="noopener" data-json="Run record" title="Open the full run record">' + esc(dayhmZone(e.at)) + '</a>' : esc(dayhmZone(e.at));
+    return '<li>' + when + ' \u00b7 ' + esc(TOOL_TRIGGERS[e.trigger] || e.trigger) + ' \u00b7 <code>' + esc(e.error) + '</code></li>';
+  }).join('');
+  var heldBox = t.held ? '<p class="sub-h">' + esc('Held by the planted-text guard (' + Math.min(t.held, (t.recentHeld || []).length) + ' of ' + t.held + ')') + '</p><p class="tdesc">' + esc('The run read text that looks planted, so the guard left one action out and told the investigator what to do instead. This is not a failure of the tool.') + '</p><ul>' + held + '</ul>' : '';
+  var refusedBox = t.refused ? '<p class="sub-h">' + esc('Refused input (' + Math.min(t.refused, (t.recentRefused || []).length) + ' of ' + t.refused + ')') + '</p><p class="tdesc">' + esc('The investigator sent an argument the tool does not accept, and it was refused before any source was called.') + '</p><ul>' + refused + '</ul>' : '';
   var trunc = t.truncated ? '<p class="muted">' + esc(plural(t.truncated, 'call', 'calls')) + ' returned more rows than the tool hands back and were cut.</p>' : '';
   var head = t.errors ? 'Latest errors (' + Math.min(t.errors, (t.recentErrors || []).length) + ' of ' + t.errors + ')' : 'No errors in this window.';
   var what = t.description ? '<p class="sub-h">What the investigator is told</p><p class="tdesc">' + esc(t.description) + '</p>' : '';
@@ -48,7 +66,7 @@ function toolMore(t) {
   var bc = t.byCheck || {}, checks = Object.keys(bc).sort(function (a, b) { return a < b ? -1 : a > b ? 1 : 0; }).map(function (n) { return n + ': ' + plural(bc[n].runs, 'run', 'runs') + (bc[n].errors ? ', ' + plural(bc[n].errors, 'error', 'errors') : ''); });
   var byCheck = checks.length ? '<p class="sub-h">Scheduled checks on the same source</p><p class="tdesc">' + esc(checks.join(' · ')) + '</p>' : '';
   var s = t.status, why = s && s.state !== 'on' && s.reason ? '<p class="sub-h">' + esc(s.state === 'off' ? 'Off' : 'Unreachable') + '</p><p class="tdesc tstate-why">' + esc(toolStateTip(s)) + '</p>' : '';
-  return why + what + clusters + byCheck + '<p class="sub-h">' + esc(head) + '</p>' + (errors ? '<ul>' + errors + '</ul>' : '') + trunc;
+  return why + what + clusters + byCheck + '<p class="sub-h">' + esc(head) + '</p>' + (errors ? '<ul>' + errors + '</ul>' : '') + heldBox + refusedBox + trunc;
 }
 function toolClusters(t) {
   var by = t.byCluster || {}, names = Object.keys(by).sort(function (a, b) { return (isPrimaryName(a) ? 0 : 1) - (isPrimaryName(b) ? 0 : 1) || (a < b ? -1 : a > b ? 1 : 0); });
@@ -87,6 +105,8 @@ function toolStrip(d) {
   return '<div class="cstrip">' +
     costTile(d.days === 1 ? 'Calls today' : 'Calls, last ' + d.days + ' days', String(d.calls), 'in ' + plural(d.runsWithTools, 'run', 'runs') + ' of ' + d.runs + (d.checkRuns ? ' + ' + plural(d.checkRuns, 'check run', 'check runs') : '')) +
     costTile('Errors', String(d.errors), rate) +
+    costTile('Held', String(d.held || 0), 'by the planted-text guard') +
+    costTile('Refused input', String(d.refused || 0), 'before any source was called') +
     costTile('Tools used', d.toolsUsed + ' of ' + d.toolsDefined, d.toolsDefined - d.toolsUsed ? (d.toolsDefined - d.toolsUsed) + ' never called' : 'every tool called') +
     costTile('Slowest p95', slow ? slow.name : '–', slow ? toolMs(slow.p95Ms) : '') + '</div>';
 }

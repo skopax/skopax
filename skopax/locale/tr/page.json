@@ -1138,7 +1138,19 @@
   "Change…": "Değiştir…",
   "Investigator": "Investigator",
   "Takes questions, Investigate clicks and deploy assessments.": "Soruları, İncele tıklamalarını ve deploy değerlendirmelerini üstlenir.",
-  "Takes new and escalated cards, and the queue when the rooms are full.": "Yeni ve yükseltilen kartları, odalar doluyken de kuyruğu üstlenir."
+  "Takes new and escalated cards, and the queue when the rooms are full.": "Yeni ve yükseltilen kartları, odalar doluyken de kuyruğu üstlenir.",
+  "Refused input": "Reddedilen girdi",
+  "by the planted-text guard": "planted-text korumasıyla",
+  "before any source was called": "herhangi bir kaynak çağrılmadan önce",
+  "Held by the planted-text guard ({0} of {1})": "Planted-text koruması tarafından tutulan ({0} / {1})",
+  "Refused input ({0} of {1})": "Reddedilen girdi ({0} / {1})",
+  "The run read text that looks planted, so the guard left one action out and told the investigator what to do instead. This is not a failure of the tool.": "Çalışma, yerleştirilmiş gibi görünen bir metin okudu; koruma bir eylemi dışarıda bıraktı ve araştırmacıya yerine ne yapacağını söyledi. Bu, aracın bir arızası değildir.",
+  "The investigator sent an argument the tool does not accept, and it was refused before any source was called.": "Araştırmacı aracın kabul etmediği bir argüman gönderdi ve hiçbir kaynak çağrılmadan önce reddedildi.",
+  "the cause was left out and the note names the trigger": "neden dışarıda bırakıldı ve not tetikleyiciyi adlandırıyor",
+  "the business-team tag was left out and the note names the team": "iş ekibi etiketi dışarıda bırakıldı ve not ekibi adlandırıyor",
+  "the absorb pattern was left out and the cards are grouped without it": "absorb kalıbı dışarıda bırakıldı ve kartlar onsuz gruplandı",
+  "it did not post to the main channel itself and saved a draft that waits for a person": "ana kanala kendisi göndermedi ve bir kişinin onayını bekleyen bir taslak kaydetti",
+  "nothing was sent to Slack and the asker is told what to send instead": "Slack'e hiçbir şey gönderilmedi ve soran kişiye ne göndermesi gerektiği söylendi"
  },
  "rules": [
   [
@@ -1384,6 +1396,10 @@
   [
    "^Takes (.+)\\.$",
    "Üstlendiği işler: $1."
+  ],
+  [
+   "^Held: the run read text that looks planted \\((.+)\\) in (.+)$",
+   "Tutuldu: çalışma yerleştirilmiş gibi görünen metin okudu ($1) şurada: $2"
   ]
  ],
  "months": {

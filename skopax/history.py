@@ -34,9 +34,9 @@ ASK_EVENT = 'slack-ask'
 ADDRESSED = ('progress', 'handled')
 CARD_FIELDS = ('key', 'num', 'svc', 'label', 'sub', 'ns', 'src', 'sev', 'unit', 'firstSeen', 'lastSeen', 'clearedAt', 'peak', 'triage', 'ticket', 'owner', 'triagedBy', 'autoResolvedAt', 'parent', 'teamsPosts', 'resolution')
 MUTED_PRESET = 'mutedPreset'
-STORED_FIELDS = {f: 1 for f in CARD_FIELDS + ('note', 'recommend', 'muted', MUTED_PRESET, 'status', 'slackPost', 'autoSend', 'pushedAt', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'clearNote', 'routeEcho')}
+STORED_FIELDS = {f: 1 for f in CARD_FIELDS + ('note', 'noteBy', 'recommend', 'recommendBy', 'muted', MUTED_PRESET, 'status', 'slackPost', 'autoSend', 'pushedAt', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'clearNote', 'routeEcho')}
 PAST_FIELDS = ('key', 'num', 'svc', 'label', 'sub', 'ns', 'src', 'sev', 'unit', 'firstSeen', 'lastSeen', 'clearedAt', 'peak', 'outcome', 'triage', 'ticket', 'owner', 'triagedBy',
-               'muted', 'note', 'recommend', 'runId', 'recap', 'reopens', 'asks', 'said', 'backfill', 'resolution', 'clearNote')
+               'muted', 'note', 'noteBy', 'recommend', 'recommendBy', 'runId', 'recap', 'reopens', 'asks', 'said', 'backfill', 'resolution', 'clearNote')
 ASK_FIELDS = ('at', 'by', 'question', 'answer', 'thread', 'usd', 'runId')
 ROW_FIELDS = {'key': 1, 'firstSeen': 1, 'lastSeen': 1, 'clearedAt': 1, 'outcome': 1, 'ticket': 1, 'lastAsk': 1, 'resolution': 1}
 CLOSED_FIELDS = ('key', 'num', 'svc', 'ns', 'label', 'sub', 'sev', 'src', 'firstSeen', 'lastSeen', 'clearedAt', 'outcome', 'ticket', 'owner', 'reopens', 'resolution')
@@ -169,8 +169,10 @@ def snapshot(card: dict) -> dict:
     note = note_text(card.get('note'))
     if note:
         out['note'] = note
+    out['noteBy'] = 'pod' if note and card.get('noteBy') == 'pod' else None
     if card.get('recommend'):
         out['recommend'] = cut(card['recommend'], TEXT_LIMIT)
+    out['recommendBy'] = 'pod' if card.get('recommend') and card.get('recommendBy') == 'pod' else None
     out['muted'] = cut(card['muted'], MUTED_LIMIT) if card.get('muted') else None
     out[MUTED_PRESET] = True if card.get('muted') and card.get(MUTED_PRESET) else None
     said = card.get('clearNote')
@@ -322,8 +324,10 @@ def _apply_run(doc: dict, run: dict, key: str) -> None:
         summary = str(w.get('summary') or '')
         if w.get('tool') == 'note' and summary:
             doc['note'] = cut(summary, TEXT_LIMIT)
+            doc['noteBy'] = 'pod'
         elif w.get('tool') == 'assess' and summary:
             doc['recommend'] = cut(summary.split(' → ', 1)[-1], TEXT_LIMIT)
+            doc['recommendBy'] = 'pod'
         elif w.get('tool') == 'triage':
             m = TRIAGE_WRITE.match(summary)
             if m:
@@ -346,6 +350,7 @@ def _apply_action(doc: dict, a: dict) -> None:
             doc['ticket'] = ticket
         if reason:
             doc['note'] = cut(reason, TEXT_LIMIT)
+            doc['noteBy'] = None
         if kind == 'take' and a.get('requestedBy'):
             doc['owner'] = a['requestedBy']
     elif kind in ('known', 'mute'):

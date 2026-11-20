@@ -160,10 +160,43 @@ async function aBridgedMcpToolReadsAsAnMcpServerTool() {
   console.log('PASS a bridged MCP tool reads as an MCP server tool, not a removed one');
 }
 
+async function heldAndRefusedShowApartFromErrors() {
+  //given
+  const held = {what: 'cause', tools: ['past_cards'], phrases: ['known noise']};
+  usage.held = 1;
+  usage.refused = 1;
+  usage.tools.push(tool('note', {calls: 2, runs: 1, errorRate: 0, p50Ms: 5, p95Ms: 5, maxMs: 5, lastAt: iso(2), byTrigger: {cards: 2}, held: 1, recentHeld: [{at: iso(2), runId: 'r1', trigger: 'cards', held}],
+    refused: 1, recentRefused: [{at: iso(3), runId: 'r2', trigger: 'cards', error: 'cluster must be one of prod, ngn, got "ngn-data"'}]}));
+  const de = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'skopax', 'locale', 'de', 'page.json'), 'utf8'));
+  const pack = Object.assign({}, de.page, {'@rules': de.rules});
+  const plain = await boot();
+  const german = await boot({de: pack});
+  const row = (d) => d.doc.querySelector('#tools tr.tool-row[data-tool="note"]');
+
+  //when
+  row(plain).click();
+  row(german).click();
+  const more = row(plain).nextElementSibling;
+  const mehr = row(german).nextElementSibling;
+  const tiles = [...plain.doc.querySelectorAll('#tools .ctile .cl')].map((e) => e.textContent);
+
+  //then
+  assert.ok(tiles.includes('Errors') && tiles.includes('Held') && tiles.includes('Refused input'), 'all three counts show: ' + tiles);
+  assert.ok(!/Latest errors/.test(more.textContent) && /No errors in this window/.test(more.textContent), 'a held call and a refused input are not errors');
+  assert.ok(/Held: the run read text that looks planted \(known noise\) in past_cards; the cause was left out and the note names the trigger/.test(more.textContent), more.textContent);
+  assert.ok(/Refused input \(1 of 1\)[\s\S]*cluster must be one of prod, ngn, got "ngn-data"/.test(more.textContent), 'the refused input is listed on its own');
+  assert.ok(/Zur\u00fcckgehalten: Der Lauf hat Text gelesen, der eingeschleust wirkt \(known noise\) in past_cards/.test(mehr.textContent) && /die Ursache wurde weggelassen/.test(mehr.textContent), mehr.textContent);
+  assert.deepStrictEqual(plain.errors.concat(german.errors), []);
+  plain.w.close();
+  german.w.close();
+  console.log('PASS a held call and a refused input are listed apart from errors, with their own counts, in operator words and in German');
+}
+
 (async () => {
   await kubeCallsSplitByCluster();
   await checksCountAndASearchNarrowsTheList();
   await anUnreachableToolSaysWhyInItsOpenedRow();
   await aSortedHeaderTranslatesWithItsArrowApart();
   await aBridgedMcpToolReadsAsAnMcpServerTool();
+  await heldAndRefusedShowApartFromErrors();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

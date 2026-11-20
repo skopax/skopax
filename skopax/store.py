@@ -659,7 +659,7 @@ class Store:
     def post_channels(self) -> set[str]:
         return {c for coll in (self.anomalies, self.deploy_reports) for c in coll.distinct('slackPost.channel') if c}
 
-    def assess(self, key: str, suspects: list[str] | None, recommend: str | None, code: list[dict] | None) -> int:
+    def assess(self, key: str, suspects: list[str] | None, recommend: str | None, code: list[dict] | None, by: str | None = None) -> int:
         doc = self._anomaly(key)
         update = {'$set': {'assessedAt': iso(utc_now())}}
         for field, value in (('suspects', suspects), ('recommend', recommend), ('code', code)):
@@ -667,6 +667,11 @@ class Store:
                 update['$set'][field] = value
             elif value is not None:
                 update.setdefault('$unset', {})[field] = ''
+        if recommend is not None:
+            if recommend and by == 'pod':
+                update['$set']['recommendBy'] = 'pod'
+            else:
+                update.setdefault('$unset', {})['recommendBy'] = ''
         with self._locked():
             rev, _ = self._claim(None)
             self.anomalies.update_one({'_id': doc['_id']}, update)
@@ -678,8 +683,9 @@ class Store:
         dived = {'$set': {'triage': 'dived', 'triagedBy': 'pod'}, '$unset': {'resolution': ''}} if by == 'pod' else {'$set': {'triage': 'dived'}, '$unset': {'triagedBy': '', 'resolution': ''}}
         with self._locked():
             rev, _ = self._claim(None)
-            self.anomalies.update_one({'_id': doc['_id']}, {'$set': {'note': {'text': text, 'at': iso(utc_now())}} | ({'cause': causes.recorded(cause, doc.get('firstSeen'))} if cause else {})}
-                                      | ({'$unset': {'cause': ''}} if drop_cause else {}))
+            unset = ({'cause': ''} if drop_cause else {}) | ({} if by == 'pod' else {'noteBy': ''})
+            self.anomalies.update_one({'_id': doc['_id']}, {'$set': {'note': {'text': text, 'at': iso(utc_now())}} | ({'noteBy': 'pod'} if by == 'pod' else {}) | ({'cause': causes.recorded(cause, doc.get('firstSeen'))} if cause else {})}
+                                      | ({'$unset': unset} if unset else {}))
             self.anomalies.update_one({'_id': doc['_id'], 'triage': {'$nin': kept}}, dived)
             return rev
 

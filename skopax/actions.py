@@ -6,6 +6,7 @@ from skopax.contract import Refused as ClientRefused
 from skopax.enrich import SourceDown
 from skopax.errkind import Authored, text_of
 from skopax.jiralinks import ticket_pattern
+from skopax.ownwords import KNOWN_REASON, KNOWN_REASONS, REASONS
 from skopax.actors import is_token, token_label
 from skopax.store import NotFound, Store, iso, utc_now
 
@@ -15,8 +16,6 @@ RESULT_WHY = 160
 HANDLED_SEVERITIES = ('warn', 'info')
 SEV_NAMES = {'crit': 'Critical', 'warn': 'Warning', 'info': 'Info', 'auto': 'auto'}
 PRESET = 'presetReason'
-KNOWN_REASONS = {'chat': 'marked as known noise from a chat answer'}
-KNOWN_REASON = 'marked as known noise on the page'
 
 
 class Refused(Authored, ValueError):
@@ -36,7 +35,7 @@ def default_reason(action: dict) -> str:
 
 
 def preset_reason(action: dict) -> bool:
-    return not action.get('reason') or action.get(PRESET) is True
+    return not action.get('reason') or action.get(PRESET) is True or str(action.get('reason')).strip() in REASONS
 
 
 def resolution(store: Store, action: dict) -> dict:

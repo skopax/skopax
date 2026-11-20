@@ -795,6 +795,29 @@ def test_the_esql_tool_shows_the_es_reason_without_the_class_name(store: Store):
     assert 'ElasticError' not in text and 'ReadError' not in text
 
 
+def test_a_dated_index_that_does_not_exist_yet_points_to_the_configured_pattern_and_stays_a_source_error(store: Store):
+    # given
+    body = es_error('index_not_found_exception', 'no such index [logs-shop-2026.11.20]')
+    http = FakeHttp({('POST', QUERY): HttpError(404, QUERY, body)})
+    tools = PluginTools(es_runtime(store, {'main': {'api-key': 'secret-key'}}, http))
+
+    # when
+    text, err = tool(tools, {'cluster': 'logs', 'query': 'FROM logs-shop-2026.11.20 | LIMIT 1'})
+
+    # then
+    assert err and text.startswith('ES|QL HTTP 404: index_not_found_exception: no such index')
+    assert 'daily index names follow UTC dates' in text and 'logs logs-*' in text and 'APM traces-apm*' in text and '@timestamp bound' in text
+    assert len(text) <= 300
+
+
+def test_the_esql_tool_description_says_daily_index_names_follow_utc_dates():
+    # given
+    from skopax.plugins.elasticsearch.esql import DESCRIPTION
+
+    # then
+    assert 'Daily index names follow UTC dates, so never write a dated index name' in DESCRIPTION
+
+
 @pytest.mark.parametrize('kind,reason,hint', [
     ('parsing_exception', "line 1:535: mismatched input 'last' expecting {QUOTED_STRING, INTEGER_LITERAL}", 'first and last are reserved words: name the column oldest / newest'),
     ('verification_exception', 'Found 1 problem line 1:191: No matches found for pattern [kubernetes*]', 'a KEEP or DROP pattern matched no column'),

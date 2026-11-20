@@ -13,6 +13,7 @@ PHRASES = (
     ('you are', re.compile(r'\byou\s+are\s+(?:an?|the|now)\b', re.I)),
     ('assistant', re.compile(r'(?<![\w/-])assistant(?![\w/-])(?!\s+service)', re.I)),
 )
+SOFT = ('known noise', 'assistant')
 ESCAPE = re.compile(r'\\(?:u([0-9a-fA-F]{4})|(["\\/bfnrt]))')
 SIMPLE = {'n': '\n', 'r': '\n', 't': ' ', 'b': ' ', 'f': ' ', '"': '"', '\\': '\\', '/': '/'}
 
@@ -22,12 +23,14 @@ def unescaped(text: str) -> str:
     return text.encode('utf-16-le', 'surrogatepass').decode('utf-16-le', 'replace')
 
 
-def scan(tool: str, text: str) -> list[dict]:
+def scan(tool: str, text: str, skip: tuple[str, ...] = ()) -> list[dict]:
     if not isinstance(text, str):
         return []
     text = unescaped(text)
     out = []
     for phrase, pattern in PHRASES:
+        if phrase in skip:
+            continue
         m = pattern.search(text)
         if not m:
             continue
