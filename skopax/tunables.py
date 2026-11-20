@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 from pymongo import DESCENDING, ReturnDocument
 
-from skopax import brand, clock as zone_clock, logs, tags
+from skopax import brand, clock as zone_clock, logs, settingcards, tags
 from skopax.config import AI_PROVIDERS, DEFAULT_ROLES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
 from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX
 from skopax.contract import Plugin
@@ -729,6 +729,7 @@ class Live:
                'value': self.now_text(t), 'base': base_text, 'default': default,
                'source': 'admin' if given else 'config' if configured else 'default',
                'by': (given or {}).get('by'), 'at': (given or {}).get('at')}
+        out.update(settingcards.placed(t))
         if out['source'] == 'config':
             out['from'] = self.label_of(t)
         if callable(t.choices):

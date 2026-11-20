@@ -147,7 +147,7 @@
  "tickets.findings": "Bulgular: {text}",
  "tickets.suspects": "Şüpheliler: {list}",
  "tickets.recommended": "Önerilen: {text}",
- "tickets.jira_off": "Bu serviste Jira kurulu değil: bir admin Yönetim › Entegrasyonlar altından ekler",
+ "tickets.jira_off": "Bu serviste Jira kurulu değil: bir admin Bağlan › Entegrasyonlar altından ekler",
  "postdeploy.head": "{date} deploy kontrolü: {count} servis ({span} {zone}), {clean} sorunsuz",
  "postdeploy.flagged": ", {n} işaretli: {list}",
  "postdeploy.more": " …",

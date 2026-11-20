@@ -261,6 +261,13 @@ function intKnowing(p) {
   if (key === 'always') return intUsable(p);
   return !!key && insts.some(function (i) { return !!i && !!i.values && i.values[key] != null && String(i.values[key]).trim() !== ''; });
 }
+function intKnowAlso(p) { return !!p && p.knowledgeAlso === true && !!intKnowKey(p); }
+var INT_KNOW_TIP = 'Also a knowledge source: the investigator searches and cites it';
+function intKnowTag() {
+  var tag = accText('span', 'tag k-info int-know-tag', 'Knowledge');
+  tag.title = INT_KNOW_TIP;
+  return tag;
+}
 function intNativeKnow(id) { var p = intFind(id); return !!p && p.id !== INT_MCP && !!intKnowKey(p); }
 function intKnowNote(p) {
   var key = intKnowKey(p);
@@ -368,7 +375,7 @@ function intTileOpen(id) {
   return t && t.querySelector('.int-open');
 }
 function intHay(p) {
-  return foldCase([intName(p), p.id, intCatLabel(intCatOf(p)), typeof p.description === 'string' ? p.description : '', intIsCustom(p) ? 'custom' : ''].join(' '));
+  return foldCase([intName(p), p.id, intCatLabel(intCatOf(p)), typeof p.description === 'string' ? p.description : '', intIsCustom(p) ? 'custom' : '', intKnowAlso(p) ? 'knowledge' : ''].join(' '));
 }
 function intMatches(hay, q) {
   return foldCase(String(q || '').trim()).split(/\s+/).filter(Boolean).every(function (w) { return String(hay || '').indexOf(w) >= 0; });
@@ -405,6 +412,7 @@ function intTile(p) {
   dot.appendChild(accText('span', 'int-dot ' + (h ? h.state : 'off')));
   dot.appendChild(accText('span', 'sr', need ? 'Needs attention' : st === 'on' ? 'On' : 'Off'));
   row.appendChild(dot);
+  if (intKnowAlso(p) && intKnowing(p)) row.appendChild(intKnowTag());
   open.appendChild(row);
   var custom = intIsCustom(p);
   if (!need || custom) line.appendChild(accText('span', 'int-cat', need ? 'Custom' : intCatLabel(intCatOf(p)) + (custom ? ' \u00b7 Custom' : '')));
@@ -430,6 +438,10 @@ function intTile(p) {
   if (!usable) {
     sw.title = String(p.reason || '');
     if (!on) sw.setAttribute('aria-disabled', 'true');
+  }
+  if (intRO()) {
+    sw.setAttribute('aria-disabled', 'true');
+    sw.title = INT_RO_NOTE;
   }
   top.appendChild(sw);
   t.appendChild(top);
@@ -533,7 +545,7 @@ function renderIntegrations(note) {
   var was = document.activeElement, held = !!was && was.id === 'int-find', caret = held ? [was.selectionStart, was.selectionEnd] : null;
   box.textContent = '';
   var shown = intPlugins().filter(intTiled), cats = intCatsOf(shown), need = shown.filter(intAttention).length, live = intPlugins().filter(intConnected).length;
-  var anyCustom = shown.some(intIsCustom), anyKnow = shown.some(intKnowing);
+  var anyCustom = shown.some(intIsCustom), anyKnow = shown.some(intKnowing), anyKnowGroup = shown.some(function (p) { return intKnowing(p) && !intKnowAlso(p); });
   if (INT_CAT && (INT_CAT === INT_CUSTOM ? !anyCustom : INT_CAT === INT_KNOW ? !anyKnow : cats.indexOf(INT_CAT) < 0)) INT_CAT = '';
   var top = accText('div', 'int-top'), head = accText('div', 'int-h');
   head.appendChild(accText('h3', 'int-title', 'Integrations'));
@@ -550,8 +562,9 @@ function renderIntegrations(note) {
   pop.hidden = true;
   picker.appendChild(add);
   picker.appendChild(pop);
-  head.appendChild(picker);
+  if (!intRO()) head.appendChild(picker);
   top.appendChild(head);
+  if (intRO()) top.appendChild(intViewNote('int-ro-list'));
   top.appendChild(accText('p', 'muted int-sub', live + ' connected \u00b7 ' + need + (need === 1 ? ' needs attention' : ' need attention')));
   if (shown.length) {
     var chips = accText('div', 'int-chips');
@@ -570,8 +583,8 @@ function renderIntegrations(note) {
   var said = accText('p', 'adm-msg ok int-note', note || '');
   said.setAttribute('role', 'status');
   box.appendChild(said);
-  if (anyCustom || anyKnow) {
-    var know = shown.filter(intKnowing), rest = shown.filter(function (p) { return know.indexOf(p) < 0; });
+  if (anyCustom || anyKnowGroup) {
+    var know = shown.filter(function (p) { return intKnowing(p) && !intKnowAlso(p); }), rest = shown.filter(function (p) { return know.indexOf(p) < 0; });
     [['knowledge', 'Company knowledge', know], ['custom', 'Custom plug-ins', rest.filter(intIsCustom)], ['builtin', 'Built-in plug-ins', rest.filter(function (p) { return !intIsCustom(p); })]].forEach(function (g) {
       if (!g[2].length) return;
       var sec = accText('section', 'int-group' + (g[0] === 'knowledge' ? ' int-group-know' : '')), h = accText('h4', 'int-group-h', g[1] + ' '), grid = accText('div', 'int-grid');
@@ -591,7 +604,7 @@ function renderIntegrations(note) {
     box.appendChild(grid);
   }
   if (shown.length) box.appendChild(intNoneBox());
-  if (!shown.length) box.appendChild(accText('p', 'muted int-empty', 'Nothing is connected yet: + Add integration lists what can be set up.'));
+  if (!shown.length) box.appendChild(accText('p', 'muted int-empty', intRO() ? 'Nothing is connected yet.' : 'Nothing is connected yet: + Add integration lists what can be set up.'));
   intFilter();
   var find = held && document.getElementById('int-find');
   if (find) {
@@ -617,15 +630,15 @@ function renderIntegrations(note) {
 async function loadIntegrations(note) {
   var seq = ++INTEG_SEQ, box = document.getElementById('integrations');
   try {
-    var r = await adminApi('GET', '/api/admin/plugins');
+    var ro = intRO(), r = await adminApi('GET', ro ? INT_RO_PATH : '/api/admin/plugins');
     if (seq !== INTEG_SEQ) return false;
     INTEG = r;
     renderIntegrations(note);
-    intMcpBack();
+    if (!ro) intMcpBack();
     return true;
   } catch (e) {
     if (seq !== INTEG_SEQ) return false;
-    box.innerHTML = '<p class="muted">' + (e && (e.code === 401 || e.code === 403) ? 'Admins only: log in with the ' + esc(ADMIN_ROLE) + ' role.' : 'Integrations did not load; open the tab again.') + '</p>';
+    box.innerHTML = '<p class="muted">' + (e && (e.code === 401 || e.code === 403) && !intRO() ? 'Admins only: log in with the ' + esc(ADMIN_ROLE) + ' role.' : 'Integrations did not load; open the tab again.') + '</p>';
     return false;
   }
 }
@@ -641,6 +654,7 @@ function intPick(p, note) {
   if (typeof p.description === 'string' && p.description) words.appendChild(accText('span', 'int-pick-d', p.description));
   if (note) words.appendChild(accText('span', 'int-pick-k', note));
   b.appendChild(words);
+  if (intKnowAlso(p)) b.appendChild(intKnowTag());
   if (intIsCustom(p)) b.appendChild(accText('span', 'muted int-pick-c', 'Custom'));
   if (intOutside(p)) b.appendChild(accText('span', 'int-has idle', 'Set up outside Admin'));
   else if (connected || n) b.appendChild(accText('span', 'int-has' + (connected ? '' : ' idle'), (connected ? '\u2713 ' : '') + (n > 1 ? n + ' added' : 'Added')));
@@ -692,7 +706,7 @@ function intPopOpen() {
   search.setAttribute('autocomplete', 'off');
   search.setAttribute('spellcheck', 'false');
   pop.appendChild(search);
-  var body = accText('div', 'int-pop-body'), knows = list.filter(function (p) { return !!intKnowKey(p); }), rest = list.filter(function (p) { return !intKnowKey(p); });
+  var body = accText('div', 'int-pop-body'), knows = list.filter(function (p) { return !!intKnowKey(p) && !intKnowAlso(p); }), rest = list.filter(function (p) { return !intKnowKey(p) || intKnowAlso(p); });
   if (knows.length || (mcp && mcp.state && mcp.state !== 'broken')) {
     var kg = accText('section', 'int-cat-grp int-know-grp'), kgrid = accText('div', 'int-pg');
     kg.dataset.cat = 'knowledge';
@@ -829,7 +843,7 @@ function intPanelPaint(note) {
   close.addEventListener('click', function () { intClose(true); });
   var names = accText('div', 'int-ph-t');
   names.appendChild(title);
-  if (usable && fields.length && !cur) names.appendChild(accText('span', 'int-ph-sub', 'Add instance'));
+  if (usable && fields.length && !cur && !intRO()) names.appendChild(accText('span', 'int-ph-sub', 'Add instance'));
   head.appendChild(intIcon(p));
   head.appendChild(names);
   head.appendChild(close);
@@ -843,6 +857,7 @@ function intPanelPaint(note) {
   said.setAttribute('role', 'status');
   panel.appendChild(said);
   if (!usable) return true;
+  if (intRO()) { intViewPanel(panel, p, insts, cur, said); return true; }
   if (!fields.length) {
     panel.appendChild(accText('p', 'adm-help int-nofields', 'Nothing to set up: this plug-in needs no instance.'));
     if (p.enabled !== true) panel.appendChild(intTurnOn(p));
@@ -881,7 +896,7 @@ function intPanelPaint(note) {
 }
 function intCard(p, i, cur, said) {
   var sel = !!cur && cur.name === i.name, ranked = !!((p.checks || []).length || (p.tools || []).length), h = intInstHealth(p, i);
-  var c = accText('div', 'int-icard' + (sel ? ' sel' : '') + (i.enabled ? '' : ' off')), b = accText('button', 'int-itab', i.name), meta = accText('span', 'int-icard-m'), line = accText('span', 'int-icard-h'), edit = accText('span', 'int-icard-e', sel ? 'Editing' : 'Edit');
+  var c = accText('div', 'int-icard' + (sel ? ' sel' : '') + (i.enabled ? '' : ' off')), b = accText('button', 'int-itab', i.name), meta = accText('span', 'int-icard-m'), line = accText('span', 'int-icard-h'), edit = accText('span', 'int-icard-e', intRO() ? (sel ? 'Viewing' : 'View') : sel ? 'Editing' : 'Edit');
   b.type = 'button';
   b.dataset.name = i.name;
   b.setAttribute('role', 'tab');

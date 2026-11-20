@@ -270,6 +270,21 @@ body:not(.is-rail) .s-grp.folded > a.tab:not([aria-current="page"]):not(.k-crit)
 .adm-nav .tab .end { margin-left: auto; display: flex; align-items: center; }
 .adm-nav .tab .count { margin: 0; font: 500 11px var(--font-data); color: var(--muted); }
 .adm-nav .tab .count:empty { display: none; }
+.int-ro-note { margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-left: 3px solid var(--link); border-radius: 6px; background: var(--sunken); color: var(--fg-2); font-size: 0.84rem; }
+.int-ro-top { margin: 0 0 12px; }
+.int-ro { display: grid; gap: 16px; min-width: 0; }
+.int-ro-sec { display: grid; gap: 8px; min-width: 0; }
+.int-ro-fields { display: grid; grid-template-columns: minmax(120px, max-content) minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: 0.86rem; }
+.int-ro-fields dt { color: var(--muted); }
+.int-ro-fields dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.int-ro-checks { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 0.86rem; }
+.int-ro-checks li { display: flex; align-items: center; gap: 8px; }
+.int-ro-checks li .tag { margin-left: auto; }
+.int-ro-rules { display: flex; flex-wrap: wrap; gap: 12px 24px; }
+.int-ro-rule caption { text-align: left; font-weight: 600; font-size: 0.82rem; padding-bottom: 4px; }
+.int-ro-v { font-family: var(--font-data); }
+.int-tile .int-switch[aria-disabled="true"] { opacity: 0.4; filter: grayscale(1); cursor: not-allowed; }
+.int-know-tag { flex: none; font-size: 0.66rem; padding: 0 5px; line-height: 1.5; }
 .adm-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
 .adm-notices { display: grid; gap: 6px; min-width: 0; }
 .adm-notice { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); border-left: 3px solid var(--c); border-radius: 6px; background: var(--cb); color: var(--fg); font-size: 0.86rem; overflow-wrap: anywhere; }
@@ -1012,6 +1027,36 @@ a.shot.phone img { width: 60px; }
 .adm-c .adm-in { width: 100%; max-width: 420px; min-width: 0; box-sizing: border-box; }
 .adm-c .adm-long { max-width: 100%; resize: vertical; }
 .adm-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.adm-card { display: grid; grid-template-columns: minmax(0, 1fr); margin: 0 12px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); min-width: 0; overflow: hidden; }
+.adm-card.plain { margin: 0 12px 12px; border: 0; border-radius: 0; }
+.adm-card.plain > .adm-row:first-of-type { border-top: 0; }
+.adm-card-h { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 14px; font-size: 0.76rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg-2); background: var(--sunken); }
+.adm-card-h .count { font: 500 11px var(--font-data); letter-spacing: 0; color: var(--muted); }
+.adm-card:not(.plain) > .adm-row:first-of-type { border-top: 0; }
+.adm-grp > .adm-card:not(.plain):first-of-type { margin-top: 2px; }
+.ai-grp > .adm-card:not(.plain):first-of-type { margin-top: 0; }
+.adm-row:has(> .adm-m) { grid-template-columns: minmax(0, 1fr) minmax(0, 300px) 168px; gap: 6px 20px; align-items: start; }
+.adm-row:has(> .adm-m) .adm-help { max-width: 64ch; overflow-wrap: anywhere; }
+.adm-row:has(> .adm-m) .adm-c .adm-in { max-width: none; }
+.adm-row:has(> .adm-m) .adm-c .adm-sw { width: 36px; }
+.adm-row:has(> .adm-m) .adm-save:disabled { visibility: hidden; }
+.adm-m { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; padding-top: 2px; }
+.adm-m .tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adm-num { display: flex; align-items: stretch; min-width: 0; }
+.adm-num .adm-in { flex: 1 1 auto; min-width: 0; border-radius: 4px 0 0 4px; }
+.adm-num.pre .adm-in { border-radius: 0 4px 4px 0; }
+.adm-unit { display: flex; align-items: center; flex: none; padding: 0 10px; font-size: 0.8rem; color: var(--muted); background: var(--sunken); border: 1px solid var(--line-2); border-left: 0; border-radius: 0 4px 4px 0; white-space: nowrap; }
+.adm-num.pre .adm-unit { border-left: 1px solid var(--line-2); border-right: 0; border-radius: 4px 0 0 4px; }
+.adm-sw-w { display: inline-flex; align-items: center; min-height: 32px; }
+.adm-c .adm-sw { appearance: none; -webkit-appearance: none; position: relative; flex: none; width: 36px; height: 20px; margin: 0; padding: 0; border: 0; border-radius: 99px; background: var(--line-2); cursor: pointer; }
+.adm-c .adm-sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); transition: left .15s ease; }
+.adm-c .adm-sw:checked { background: var(--good); }
+.adm-c .adm-sw:checked::after { left: 18px; }
+.adm-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--link); }
+.adm-none { margin: 4px 2px; }
+.adm-pair > .adm-row:has(> .adm-m) { grid-template-columns: minmax(0, 1fr); }
+.adm-pair .adm-m { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; }
+.adm-card > .adm-pair:first-of-type, .adm-card > .adm-multi:first-of-type { border-top: 0; }
 .route-form { display: grid; gap: 6px; }
 .route-link { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .route-link .rl-l { font-size: 0.78rem; color: var(--muted); }
@@ -1543,7 +1588,7 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
 .adm-hist { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .adm-hist th, .adm-hist td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
 .adm-ch { overflow-wrap: anywhere; }
-@container content (max-width: 720px) { .adm-row, .adm-pair { grid-template-columns: minmax(0, 1fr); } .adm-hist th:nth-child(2), .adm-hist td:nth-child(2) { display: none; } }
+@container content (max-width: 720px) { .adm-row, .adm-pair, .adm-row:has(> .adm-m) { grid-template-columns: minmax(0, 1fr); } .adm-m { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; } .adm-card { margin: 0 8px 8px; } .adm-hist th:nth-child(2), .adm-hist td:nth-child(2) { display: none; } }
 .reviews { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .inv { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; min-width: 0; }
 .chat-wrap { position: relative; }
@@ -2171,6 +2216,11 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
     </div>
     <div class="tools" id="tools"><p class="muted">Loading tools&hellip;</p></div>
   </section>
+  <section class="panel" id="panel-integrations" hidden>
+    <div class="adm-notices" id="int-notices" role="region" aria-label="Admin notices" hidden></div>
+    <div class="admin" id="integrations"><p class="muted">Loading integrations&hellip;</p></div>
+    <div class="admin pqc-box" id="pqc"></div>
+  </section>
   <section class="panel" id="panel-mcp" hidden>
     <div class="mcp-info" id="mcp-info"><p class="muted">Loading&hellip;</p></div>
   </section>
@@ -2199,11 +2249,6 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
         <p class="panel-note">Who can sign in and how: people and their roles, single sign-on, API tokens and MCP sign-in. Roles are viewer, operator and admin.</p>
       </div>
       <div class="admin" id="access"><p class="muted">Loading&hellip;</p></div>
-    </section>
-
-    <section class="panel" id="panel-integrations" hidden>
-      <div class="admin" id="integrations"><p class="muted">Loading integrations&hellip;</p></div>
-      <div class="admin pqc-box" id="pqc"></div>
     </section>
 
     <section class="panel" id="panel-features" hidden>
@@ -2363,8 +2408,10 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
 <script src="/static/investigations.js"></script>
 <script src="/static/costs.js"></script>
 <script src="/static/admin.js"></script>
+<script src="/static/adminui.js"></script>
 <script src="/static/integrations.js"></script>
 <script src="/static/promqlchecks.js"></script>
+<script src="/static/intview.js"></script>
 <script src="/static/tools.js"></script>
 <script src="/static/review.js"></script>
 <script src="/static/requests.js"></script>

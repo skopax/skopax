@@ -211,7 +211,7 @@
  "slackevents.user_capped": "Sie können höchstens {cap} Fragen pro Stunde stellen; versuchen Sie es gleich noch einmal.",
  "tickets.card": "Karte: ",
  "tickets.findings": "Ergebnisse: {text}",
- "tickets.jira_off": "Jira ist auf diesem Service nicht eingerichtet: ein Admin fügt es unter Verwaltung › Integrationen hinzu",
+ "tickets.jira_off": "Jira ist auf diesem Service nicht eingerichtet: ein Admin fügt es unter Verbinden › Integrationen hinzu",
  "tickets.link": "Link: ",
  "tickets.recommended": "Empfohlen: {text}",
  "tickets.suspects": "Mögliche Ursachen: {list}",

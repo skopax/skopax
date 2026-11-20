@@ -173,15 +173,15 @@ async function aValueSeededByTheOldHoursKeyShowsTheOldSettingTagAndResets() {
   const infoRow = doc.querySelector('#admin .adm-row[data-key="core.info-auto-close-days"]');
 
   //when
-  const tags = KEYS.map((k) => [].map.call(row(k).querySelectorAll('.adm-n .tag'), (t) => t.textContent));
-  const title = row(KEYS[0]).querySelector('.adm-n .tag').title;
+  const tags = KEYS.map((k) => [].map.call(row(k).querySelectorAll('.adm-m .tag'), (t) => t.textContent));
+  const title = row(KEYS[0]).querySelector('.adm-m .tag').title;
   row(KEYS[0]).querySelector('.adm-reset').click();
   await wait(80);
 
   //then
   assert.deepStrictEqual(tags, [['old setting'], ['old setting']]);
-  assert.deepStrictEqual([].map.call(infoRow.querySelectorAll('.adm-n .tag'), (t) => t.textContent), ['old setting']);
-  assert.strictEqual(infoRow.querySelector('.adm-n .tag').title, 'Off because the old Auto-resolve cleared cards after setting (core.auto-resolve-hours) is 0; a value saved here wins over it');
+  assert.deepStrictEqual([].map.call(infoRow.querySelectorAll('.adm-m .tag'), (t) => t.textContent), ['old setting']);
+  assert.strictEqual(infoRow.querySelector('.adm-m .tag').title, 'Off because the old Auto-resolve cleared cards after setting (core.auto-resolve-hours) is 0; a value saved here wins over it');
   assert.ok(!infoRow.querySelector('.adm-reset'), 'the info row is not an Admin value, so it has no Reset');
   assert.ok(title.startsWith('From the old Auto-resolve cleared cards after setting (core.auto-resolve-hours), set by ') && title.endsWith('Reset or saving a value here clears it'), title);
   assert.deepStrictEqual(calls.filter((c) => c[0] === 'DELETE').map((c) => c[1]), ['/api/admin/settings?key=' + encodeURIComponent(KEYS[0])]);

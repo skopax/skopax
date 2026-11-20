@@ -211,7 +211,7 @@
  "slackevents.user_capped": "Puedes hacer como máximo {cap} preguntas por hora; inténtalo de nuevo en un rato.",
  "tickets.card": "Tarjeta: ",
  "tickets.findings": "Hallazgos: {text}",
- "tickets.jira_off": "Jira no está configurado en este servicio: un admin lo añade en Admin › Integraciones",
+ "tickets.jira_off": "Jira no está configurado en este servicio: un admin lo añade en Conectar › Integraciones",
  "tickets.link": "Enlace: ",
  "tickets.recommended": "Recomendado: {text}",
  "tickets.suspects": "Sospechosos: {list}",
