@@ -13,7 +13,7 @@ from urllib.parse import quote, urlsplit
 from bson import Binary
 from pymongo.errors import PyMongoError
 
-from skopax import brand, causes, clock, drafts, history, tags
+from skopax import brand, causes, clock, drafts, history, information, tags
 from skopax.actors import SYSTEM
 from skopax.engine import iso as epoch_iso, parse_iso, sibling_stem
 from skopax.config import Settings
@@ -87,7 +87,7 @@ EXACT_HOST = '='
 URL = re.compile(r'https?://[^\s<>|)]+', re.I)
 BARE_URL = re.compile(r'(?<![\w@./:\\-])(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+[^\s<>|)]*|/[^\s<>|)]*|[?#][^\s<>|)]+)', re.I)
 OWNER_LIMIT = 200
-HANDLED_SEVERITIES = ('warn', 'info')
+HANDLED_SEVERITIES = ('warn',)
 ABSORB_MAX = 5
 ABSORB_LIMIT = 200
 ABSORB_TEXT_MIN = 6
@@ -1562,7 +1562,7 @@ class Toolbox:
 
     def _open_children(self, key: str) -> list[dict]:
         named = self.grouped.get(key, set())
-        return [x for x in self.store.load().get('anomalies') or [] if x.get('status') == 'open' and x.get('key') != key
+        return [x for x in self.store.load().get('anomalies') or [] if x.get('status') == 'open' and x.get('key') != key and not information.is_item(x)
                 and (x.get('parent') == key or x.get('key') in named)]
 
     def _t_triage(self, a: dict):
@@ -1580,10 +1580,10 @@ class Toolbox:
             if card.get('sev') == 'crit':
                 raise ToolError(f'a critical card stays open for a human: {instead}')
             if card.get('sev') not in HANDLED_SEVERITIES:
-                raise ToolError(f"handled is only for a warn or info card, this one is {card.get('sev')!r}: {instead}")
+                raise ToolError(f"handled is only for a warn card, this one is {card.get('sev')!r}: {instead}")
             if card.get('absorb'):
                 raise ToolError('this card holds absorb patterns, so it takes in the cards its incident keeps producing, critical ones too, and a handled parent would hide them: ' + instead)
-            held = [x['key'] for x in self._open_children(key) if x.get('sev') not in HANDLED_SEVERITIES]
+            held = [x['key'] for x in self._open_children(key) if not information.calm(x)]
             if held:
                 raise ToolError(f"{', '.join(held)} is merged into this card and is critical; a critical card stays open for a human, also under a parent: {instead}")
             if not any(w['tool'] == 'note' and w['key'] == key for w in self.writes):
@@ -1647,10 +1647,10 @@ class Toolbox:
                 raise ToolError(f'{parent} is already merged under {above}; that grouping stands, do not flip it')
             raise ToolError(f'{parent} is itself merged under {above}; group under {above} instead')
         if self.triaged.get(parent, host.get('triage')) == 'handled':
-            held = [k['key'] for k in kids if k.get('sev') not in HANDLED_SEVERITIES]
+            held = [k['key'] for k in kids if not information.calm(k)]
             if held:
                 raise ToolError(f"leave the critical {', '.join(held)} out of the group: the parent is handled, and a critical card stays open for a human, also under a parent ({parent})")
-            carried = {c: [x['key'] for x in self._open_children(c) if x.get('sev') not in HANDLED_SEVERITIES] for c in children}
+            carried = {c: [x['key'] for x in self._open_children(c) if not information.calm(x)] for c in children}
             carriers = [c for c in children if carried[c]]
             if carriers:
                 raise ToolError(f"leave {', '.join(carriers)} out of the group: it holds the critical {', '.join(k for c in carriers for k in carried[c])}, which would go under the handled parent too, "

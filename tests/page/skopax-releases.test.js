@@ -1076,7 +1076,7 @@ async function tabGroupsCarryTheHealthState() {
   //then
   assert.deepStrictEqual(groups.map((g) => (g.querySelector('.tabs-l') || {}).textContent || ''), ['Anomaly filters'], 'the side menu keeps only the anomaly filters');
   const rows = (grp) => [...doc.querySelectorAll('#snav .s-grp[data-grp="' + grp + '"] a.tab[data-tab]')].map((t) => t.dataset.tab);
-  assert.deepStrictEqual(['main', 'observe', 'activity', 'connect', 'more'].map(rows), [['anoms', 'reqs', 'chat', 'inv'], ['svcs', 'lat', 'rels', 'reps'], ['slack', 'hist', 'acts', 'costs'], ['integrations', 'tools', 'mcp'], ['review', 'docs']], 'the sidebar groups the tabs: the Board group, then Observe (the old Metrics and Delivery), Activity, Connect and More');
+  assert.deepStrictEqual(['main', 'observe', 'activity', 'connect', 'more'].map(rows), [['anoms', 'reqs', 'chat', 'inv'], ['svcs', 'info', 'lat', 'rels', 'reps'], ['slack', 'hist', 'acts', 'costs'], ['integrations', 'tools', 'mcp'], ['review', 'docs']], 'the sidebar groups the tabs: the Board group, then Observe (the old Metrics and Delivery), Activity, Connect and More');
   assert.ok(!doc.getElementById('toptabs') && !doc.getElementById('menu-metrics') && !doc.getElementById('tabs-metrics'), 'no top-bar menus any more');
   assert.deepStrictEqual(['hist', 'acts'].map((id) => tab(id).querySelector('.lbl').textContent), ['Events', 'History'], 'the action log is History, the anomaly events are Events');
   assert.ok(groups.every((g) => g.getAttribute('role') === 'presentation') && !doc.querySelector('#tabs .tabs-l[role="tab"]'), 'labels are not tabs');
@@ -1090,7 +1090,7 @@ async function tabGroupsCarryTheHealthState() {
   assert.ok(narrow.some((r) => r.selectorText === '.layout' && r.style.getPropertyValue('grid-template-columns') === 'minmax(0, 1fr)'), 'on a narrow content the main column takes the full width');
   assert.ok(narrow.some((r) => r.selectorText === '.tabs' && r.style.getPropertyValue('position') === 'fixed') && narrow.some((r) => r.selectorText === 'body.nav-open .tabs'), 'and the menu becomes a drawer');
   assert.deepStrictEqual([...doc.querySelector('section.overview').children].map((c) => c.id), ['reco', 'meta'], 'the overview keeps the Skopax summary and the source pills');
-  assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms button')].map((b) => b.dataset.f).slice(0, 5), ['all', 'open', 'crit', 'warn', 'info'], 'All first, then the Open counts right under Open in the Anomalies side sub menu');
+  assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms button')].map((b) => b.dataset.f).slice(0, 4), ['all', 'open', 'crit', 'warn'], 'All first, then the Open counts right under Open in the Anomalies side sub menu');
   assert.strictEqual(tab('anoms').title, '1 critical', 'the Anomalies tab tooltip counts by severity');
   assert.ok(tab('svcs').classList.contains('hot') && tab('svcs').classList.contains('k-crit'), 'Services is coloured by its worst service: ' + tab('svcs').className);
   assert.strictEqual(doc.getElementById('count-svcs').textContent, '1/2');

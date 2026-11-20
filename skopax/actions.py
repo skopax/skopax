@@ -1,19 +1,20 @@
 import datetime as dt
 
-from skopax import history, tickets
+from skopax import history, information, tickets
 from skopax import clock
 from skopax.contract import Refused as ClientRefused
 from skopax.enrich import SourceDown
 from skopax.errkind import Authored, text_of
 from skopax.jiralinks import ticket_pattern
+from skopax.messages import msg
 from skopax.ownwords import KNOWN_REASON, KNOWN_REASONS, REASONS
 from skopax.actors import is_token, token_label
 from skopax.store import NotFound, Store, iso, utc_now
 
+ANY_RECORD = frozenset({'severity', 'assess', 'postdeploy'})
 INSTANT = frozenset({'mute', 'unmute', 'reopen', 'link', 'severity', 'known', 'resolve', 'take', 'group', 'ticket'})
 DEFAULT_MUTE_HOURS = 24
 RESULT_WHY = 160
-HANDLED_SEVERITIES = ('warn', 'info')
 SEV_NAMES = {'crit': 'Critical', 'warn': 'Warning', 'info': 'Info', 'auto': 'auto'}
 PRESET = 'presetReason'
 
@@ -53,8 +54,17 @@ def resolution(store: Store, action: dict) -> dict:
     return {'kind': kind, 'ref': ref or None, 'by': action.get('requestedBy') or None, 'via': via}
 
 
+def information_item(store: Store, key: str) -> bool:
+    try:
+        return information.is_item(store.anomaly(key))
+    except NotFound:
+        return False
+
+
 def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = '', notify=None, extra_projects=()) -> str:
     kind, key = action['type'], action['key']
+    if kind not in ANY_RECORD and information_item(store, key):
+        raise Refused(msg('cards.information_item', key=key))
     if kind == 'ticket':
         if jira is None or settings is None:
             raise Refused('Jira is not set up on this service')
@@ -81,6 +91,7 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
         if sev not in SEV_NAMES:
             raise Refused('severity is one of crit, warn, info or auto')
         _, auto = store.set_severity(key, sev, action.get('requestedBy'))
+        store.number_card(key)
         return f'severity back to the signal ({SEV_NAMES[auto]})' if sev == 'auto' else f'severity set to {SEV_NAMES[sev]} by hand (the signal says {SEV_NAMES[auto]})'
     if kind == 'link':
         ticket = (action.get('ticket') or '').strip().upper()
@@ -132,7 +143,7 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
                 over = None
             if over and over.get('status') == 'open':
                 raise Refused(f'{parent} is already merged under {key}; that grouping stands' if above == key else f'{parent} is itself merged under {above}; group under {above} instead')
-        if host.get('triage') == 'handled' and kid.get('sev') not in HANDLED_SEVERITIES:
+        if host.get('triage') == 'handled' and not information.calm(kid):
             raise Refused(f'{parent} is handled and {key} is critical; a critical card stays open for a human, also under a parent')
         if host.get('triage') == 'handled' and kid.get('triage') != 'handled':
             raise Refused(f'{parent} is already resolved (Action taken), so {key} would disappear from Open under it; pick an open card as the parent')

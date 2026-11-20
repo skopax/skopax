@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 from pymongo import DESCENDING, ReturnDocument
 
 from skopax import brand, clock as zone_clock, logs, settingcards, tags
-from skopax.config import AI_PROVIDERS, DEFAULT_ROLES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
+from skopax.config import AI_PROVIDERS, DEFAULT_ROLES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
 from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
@@ -94,8 +94,9 @@ def card_languages() -> tuple[str, ...]:
 HTTPS_KEYS = ()
 SLACK_CHANNEL_KEY = 'slack.channel'
 POST_SEV_KEY = 'slack.post-sev'
+ROUTE_SEV = 'min-sev'
 CRIT_NOW_KEY = 'slack.crit-now'
-POST_SEV_LABELS = {'crit': 'Critical', 'warn': 'Warning', 'info': 'Info', 'off': 'Off'}
+POST_SEV_LABELS = {'crit': 'Critical', 'warn': 'Warning', 'off': 'Off'}
 RENAMED = {CRIT_NOW_KEY: POST_SEV_KEY}
 OLD_HOURS_KEYS = ('core.auto-resolve-hours', 'core.auto-resolve-days')
 SEV_HOURS_KEYS = {'core.auto-resolve-hours-crit': ('auto_resolve_hours_crit', 'crit'), 'core.auto-resolve-hours-warn': ('auto_resolve_hours_warn', 'warn')}
@@ -223,7 +224,7 @@ STATIC = (
     T('slack.remind-hours', 'slack_remind_hours', SLACK, 'Reminder after (h)', 'Reminds a posted card nobody acted on after N hours; 0 turns reminders off', 'float', 0, 168, live=False),
     T('slack.clear-note-minutes', 'slack_clear_note_minutes', SLACK, 'Cleared note after (min)', 'Says in the thread that a posted card cleared after N minutes', 'float', 0, 240, live=False),
     T('routes.slack-echo', 'routes_slack_echo', SLACK, 'Echo route posts to Slack', 'Also posts a card a route (such as a Teams channel) takes to the Slack channel when Slack has not posted it yet, and says in its thread which route got it; a route can override this with its own Also post to Slack field', 'bool'),
-    T(POST_SEV_KEY, 'slack_post_sev', SLACK, 'Post at once from', 'Posts a card of this severity or higher to the main channel with its numbers when it is pushed (new, escalated or reopened; an info card only when it is brand new); the investigator\'s findings follow as a reply in its thread. '
+    T(POST_SEV_KEY, 'slack_post_sev', SLACK, 'Post at once from', 'Posts a card of this severity or higher to the main channel with its numbers when it is pushed (new, escalated or reopened; information is never posted); the investigator\'s findings follow as a reply in its thread. '
       'Many cards opening together are not posted at once, and the investigator, when it runs, groups them. Off leaves every card to the investigator\'s drafts and to people', 'choice', choices=SLACK_POST_SEVS, choice_labels=POST_SEV_LABELS),
     T(CRIT_NOW_KEY, 'slack_crit_now', SLACK, 'Critical cards at once', 'Deprecated: use Post at once from. false turns posting at once off while Post at once from is not set', 'bool', live=False, hidden=True),
     T('slack.fallback-minutes', 'slack_fallback_minutes', SLACK, 'Numbers fallback after (min)', 'Posts the numbers of a critical card when no investigation finished in N minutes; 0 turns it off', 'int', 0, 240, live=False),
@@ -239,8 +240,8 @@ STATIC = (
     T('core.auto-resolve-hours', 'auto_resolve_hours', CARDS, 'Auto-resolve cleared cards after (hours)', 'Deprecated: use the critical and warning settings. Seeds the severities that have no setting of their own', 'int', 0, 720, hidden=True),
     T('core.auto-resolve-hours-crit', 'auto_resolve_hours_crit', CARDS, 'Auto-resolve cleared critical cards after (hours)', 'Closes a critical card that stopped firing and that nobody acted on after N hours; 0 turns it off for critical cards. With Business days only on, only Monday to Friday counts', 'int', 0, 720),
     T('core.auto-resolve-hours-warn', 'auto_resolve_hours_warn', CARDS, 'Auto-resolve cleared warning cards after (hours)', 'Closes a warning card that stopped firing and that nobody acted on after N hours; 0 turns it off for warning cards. With Business days only on, only Monday to Friday counts', 'int', 0, 720),
-    T('core.info-auto-close-days', 'info_auto_close_days', CARDS, 'Auto-resolve info cards still firing after (days)', 'Closes an info card that is still firing and that nobody acted on after N days; 0 turns it off. Log cards and info cards from warning or error signals are kept. With Business days only on, only Monday to Friday counts', 'int', 0, 90),
-    T('core.business-days', 'business_days', CARDS, 'Business days only', 'Count only Monday to Friday (install time zone) for auto-resolve and info close timers', 'bool'),
+    T('core.info-auto-close-days', 'info_auto_close_days', CARDS, 'Auto-resolve info cards still firing after (days)', 'Deprecated and ignored: information items are never closed, they end when their signal stops', 'int', 0, 90, hidden=True),
+    T('core.business-days', 'business_days', CARDS, 'Business days only', 'Count only Monday to Friday (install time zone) for the auto-resolve timers', 'bool'),
     T('core.auto-resolve-days', 'auto_resolve_days', CARDS, 'Auto-resolve after (days)', 'Deprecated: use the hours setting. Closes waiting cards nobody acted on after N days; 0 turns it off', 'int', 0, 30, hidden=True),
     T('recurring.count', 'recurring_count', CARDS, 'Recurring after (times)', 'A card that fired N times in the window with no ticket is marked recurring', 'int', 2, 20),
     T('recurring.days', 'recurring_days', CARDS, 'Recurring window (days)', 'Window of the recurring count', 'int', 1, 60),
@@ -372,7 +373,7 @@ def parse(t: Tunable, raw, base: Settings, loading: bool = False):
             raise Invalid(f'{t.label} must be true or false')
         return text == 'true'
     if t.kind == 'choice':
-        text = offered_tag(t, text)
+        text = retired_info(t.key, offered_tag(t, text)) if (loading and t.key == POST_SEV_KEY) or (t.plugin is not None and t.key.rpartition('.')[2] == ROUTE_SEV) else offered_tag(t, text)
         allowed = choices_of(t) + ((text_of(t, base),) if text_of(t, base) else ())
         if text not in allowed and not (loading and callable(t.choices)):
             raise Invalid(f'{t.label} must be one of ' + ', '.join(dict.fromkeys(allowed)))

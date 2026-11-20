@@ -102,7 +102,7 @@
   "Auto-resolve info cards still firing after (days)": "Resolver automáticamente las tarjetas de información que siguen activas después de (días)",
   "Closes a card that stopped firing and that nobody acted on after N hours, one value per severity; 0 turns it off for that severity. With Business days only on, only Monday to Friday counts": "Cierra una tarjeta que dejó de dispararse y en la que nadie actuó después de N horas, un valor por gravedad; 0 lo desactiva para esa gravedad. Con Solo días laborables activado, solo cuenta de lunes a viernes",
   "Business days only": "Solo días laborables",
-  "Count only Monday to Friday (install time zone) for auto-resolve and info close timers": "Contar solo de lunes a viernes (zona horaria de la instalación) en los plazos de resolución automática y de cierre de tarjetas de información",
+  "Count only Monday to Friday (install time zone) for the auto-resolve timers": "Contar solo de lunes a viernes (zona horaria de la instalación) en los plazos de resolución automática",
   "Auto-resolved": "Resuelta automáticamente",
   "Auto-send": "Envío automático",
   "Auto-send failed": "Falló el envío automático",
@@ -1183,7 +1183,17 @@
   "Responsibles not saved, try again": "No se guardaron los responsables, inténtalo de nuevo",
   "Slack app is missing users:read.email; responsibles are named without a ping": "A la app de Slack le falta users:read.email; los responsables se nombran sin mención",
   "Needs Slack auto-send on (Admin › Features).": "Necesita el envío automático a Slack activado (Admin › Features).",
-  "No longer an active user": "Ya no es un usuario activo"
+  "No longer an active user": "Ya no es un usuario activo",
+  "Information": "Información",
+  "Move to Information": "Mover a Información",
+  "Still firing": "Sigue activo",
+  "Back to the board": "Volver al tablero",
+  "Clears the hand-set severity: the card goes back to the board with the severity its signal gives": "Quita la severidad puesta a mano: la tarjeta vuelve al tablero con la severidad que da su señal",
+  "Info findings: worth knowing, nothing to act on. They are not cards, so they never reach the board, Slack or the investigator. Still firing first, newest first; an item that ended stays here for a day.": "Hallazgos de información: conviene saberlos, no hay nada que hacer. No son tarjetas, así que nunca llegan al tablero, a Slack ni al investigador. Primero los que siguen activos, los más nuevos primero; un elemento que terminó se queda aquí un día.",
+  "No information right now. Info findings show here while they fire and for a day after they end.": "Ahora no hay información. Los hallazgos de información aparecen aquí mientras están activos y un día después de terminar.",
+  "nothing firing": "nada activo",
+  "{0} item still firing": "{0} elemento sigue activo",
+  "{0} items still firing": "{0} elementos siguen activos"
  },
  "rules": [
   [
@@ -1433,6 +1443,34 @@
   [
    "^Held: the run read text that looks planted \\((.+)\\) in (.+)$",
    "Retenido: la ejecución leyó texto que parece plantado ($1) en $2"
+  ],
+  [
+   "^Ended (.+)$",
+   "Terminado $1"
+  ],
+  [
+   "^First seen (.+)$",
+   "Visto por primera vez $1"
+  ],
+  [
+   "^Last seen (.+)$",
+   "Visto por última vez $1"
+  ],
+  [
+   "^Moved to Information by (.+)$",
+   "Movido a Información por $1"
+  ],
+  [
+   "^Severity now: (\\S+), from the signal\\. A hand-set severity stays through every check until you set it back; Critical pushes, Move to Information takes it off the board onto the Information page$",
+   "Severidad ahora: $1, según la señal. Una severidad puesta a mano se mantiene en cada comprobación hasta que la restablezcas; Crítica avisa, Mover a Información la saca del tablero a la página Información"
+  ],
+  [
+   "^Severity now: (\\S+), set by hand by (.+); the signal says (\\S+)\\. A hand-set severity stays through every check until you set it back; Critical pushes, Move to Information takes it off the board onto the Information page$",
+   "Severidad ahora: $1, puesta a mano por $2; la señal dice $3. Una severidad puesta a mano se mantiene en cada comprobación hasta que la restablezcas; Crítica avisa, Mover a Información la saca del tablero a la página Información"
+  ],
+  [
+   "^Moved to Information: (.+)$",
+   "Movido a Información: $1"
   ]
  ],
  "months": {

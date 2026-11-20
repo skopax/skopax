@@ -20,6 +20,7 @@ function paint(data) {
   renderFilters();
   renderSvcChips();
   renderSvcs();
+  renderInfo();
   renderRoutes();
   renderHist();
   renderSlackQ();

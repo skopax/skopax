@@ -2,7 +2,7 @@ import logging
 import time
 from collections.abc import Callable
 
-from skopax import clock, tags
+from skopax import clock, information, tags
 from skopax.cardlink import card_url
 from skopax.engine import parse_iso
 from skopax.errkind import kind as error_kind
@@ -110,7 +110,7 @@ def card_line(a: dict, base_url: str, now: float) -> str:
 
 def build(cards: list[dict], owners: dict[str, list[str]], names: dict[str, str], mention: Callable[[str], str | None], base_url: str, now: float,
           labels: dict[str, str]) -> dict | None:
-    shown = board_open(cards)
+    shown = [a for a in board_open(information.cards_only(cards)) if a.get('sev') in information.CARD_SEVS]
     rows = []
     for tag, emails in owners.items():
         if tag not in labels or not emails:

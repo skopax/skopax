@@ -541,19 +541,6 @@ def test_a_stale_pod_mark_is_cleared_when_a_parent_pass_writes_the_note():
     assert parent['noteBy'] == 'pod' and parent['note']['text'] == 'owned'
 
 
-def test_a_stale_pod_mark_is_cleared_when_the_info_pass_writes_the_note():
-    # given
-    from skopax.engine import auto_close_info, iso
-    from tests.test_card_expiry import NOW as PASS_NOW
-    info = stale_marked('edge|shop.example.com', sev='info', src='edge', seen_h=0.1, firstSeen=iso(PASS_NOW - 5 * 86400))
-
-    # when
-    auto_close_info({'anomalies': [info]}, PASS_NOW)
-
-    # then
-    noted(info, 'Auto-resolved: info firing since')
-
-
 def test_a_stale_pod_mark_is_cleared_when_the_per_kind_pass_writes_the_note():
     # given
     from skopax.engine import auto_resolve_kinds

@@ -16,6 +16,7 @@ from pymongo.errors import DuplicateKeyError
 from skopax.actors import SYSTEM
 from skopax.agentproto import KEYS_MAX, VALUE_LIMIT
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
+from skopax.config import retired_info
 from skopax.contract import Field, InstanceInfo, Plugin, SourceData
 from skopax.errkind import InvalidInstance, SourceOwned, kind
 from skopax.messages import msg
@@ -121,6 +122,13 @@ def _pem_ok(text: str) -> bool:
     except (ssl.SSLError, ValueError, TypeError):
         return False
     return True
+
+
+def retired_route_sev(plugin: Plugin, values: dict) -> dict:
+    sev_field = plugin.outbound.sev_field if plugin.outbound is not None else None
+    if not sev_field or values.get(sev_field) != 'info':
+        return values
+    return {**values, sev_field: retired_info(f'{plugin.id} {sev_field}', 'info')}
 
 
 def _check(f, text: str) -> str:
@@ -1044,7 +1052,7 @@ class Instances:
                 off = frozenset(c for c in doc['offChecks'] if isinstance(c, str)) & {c.id for c in plugin.checks}
             if 'primary' in doc:
                 flag = bool(doc['primary'])
-        clean, found_error = _checked(plugin, {**values, **secrets}, False, required=unreadable is None, extra=extra)
+        clean, found_error = _checked(plugin, retired_route_sev(plugin, {**values, **secrets}), False, required=unreadable is None, extra=extra)
         error = error or found_error
         values = {k: v for k, v in clean.items() if fields[k].kind != 'secret'}
         secrets = {k: v for k, v in clean.items() if fields[k].kind == 'secret'}

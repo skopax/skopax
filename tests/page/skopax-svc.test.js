@@ -239,9 +239,9 @@ async function severityChipsFilterTheOpenCards() {
   const statusPressed = () => doc.querySelector('#tab-sub-anoms .tab-sub-g').querySelector('button:not(.child)[aria-pressed="true"]');
 
   //then
-  assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child')].map(txt), ['Critical 1', 'Warning 2', 'Info 0'], 'open counts in the side menu; muted and cleared cards left out');
+  assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child')].map(txt), ['Critical 1', 'Warning 2'], 'open counts in the side menu; muted and cleared cards left out, and no Info filter');
   assert.deepStrictEqual([...listGroup.querySelectorAll('button.tab-sub-i')].map(txt), ['Slack drafts 0', 'Archived 0', 'Closed '], 'Lists holds Slack drafts, Archived and Closed; Closed has no count until its list is loaded');
-  assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child.zero')].map((b) => b.dataset.f).concat([...listGroup.querySelectorAll('button.zero')].map((b) => b.dataset.f)), ['info', 'slack', 'archived', 'closed'], 'zero items are faded');
+  assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child.zero')].map((b) => b.dataset.f).concat([...listGroup.querySelectorAll('button.zero')].map((b) => b.dataset.f)), ['slack', 'archived', 'closed'], 'zero items are faded');
   assert.ok(sevItem('open').nextElementSibling === sevItem('crit') && !groups[0].querySelector('.tab-sub-l') && groups.indexOf(listGroup) === 1, 'the severities sit right under Open, in the unlabelled status group');
   assert.ok(groups.every((g) => !/Triage/.test(g.textContent)), 'no Triage group while nothing is investigating or investigated');
   assert.ok(!doc.getElementById('sev-chips') && !doc.getElementById('anom-chips') && !doc.getElementById('filters'), 'the chips row is gone from the Anomalies tab');

@@ -1,4 +1,4 @@
-from skopax.engine import AUTO_RESOLVED_BY, anomaly, auto_close_info, follow_parents, iso, merge
+from skopax.engine import AUTO_RESOLVED_BY, anomaly, follow_parents, iso, merge
 
 NOW = 1_793_790_000.0
 H = 3600
@@ -31,26 +31,6 @@ def test_an_open_card_its_check_stopped_reporting_closes_after_a_day_a_daily_one
     assert by['crux|shop.example.com']['status'] == 'open', 'a daily source gets 3 days'
     assert by['err|y']['status'] == 'open' and by['manual|z']['status'] == 'open'
     assert sorted(e['key'] for e in events if e['ev'] == 'cleared') == ['log|tracker', 'qan|x']
-
-
-def test_info_cards_that_fire_for_three_days_close_except_log_patterns_warn_counts_tickets_and_triaged_ones():
-    # given
-    state = {'anomalies': [
-        card('edge|shop.example.com', 'info', 'edge', 0.2, 80),
-        card('log|web-bff|WARN|x', 'info', 'logs', 0.2, 80),
-        card('warn|ns/svc', 'info', 'prom', 0.2, 80),
-        card('hpa-max|ns/a', 'info', 'capacity', 0.2, 80, ticket='INFRA-1'),
-        card('hpa-max|ns/b', 'info', 'capacity', 0.2, 80, triage='dived'),
-        card('hpa-max|ns/c', 'info', 'capacity', 0.2, 20),
-        card('edge|warn', 'warn', 'edge', 0.2, 80)]}
-
-    # when
-    out = auto_close_info(state, NOW)
-
-    # then
-    assert [x['key'] for x in out] == ['edge|shop.example.com']
-    a = state['anomalies'][0]
-    assert a['triage'] == 'handled' and a['triagedBy'] == AUTO_RESOLVED_BY and a['note']['text'].startswith('Auto-resolved: info firing since ')
 
 
 def test_an_auto_closed_info_card_that_escalates_opens_again_for_the_investigator():

@@ -14,7 +14,7 @@ from pymongo.database import Database
 from pymongo.errors import BulkWriteError, DuplicateKeyError, OperationFailure, PyMongoError
 from pymongo.results import UpdateResult
 
-from skopax import causes, history
+from skopax import causes, history, information
 from skopax.actors import is_token
 from skopax.errkind import Authored, kind as error_kind
 from skopax.tags import FIELDS as TAG_FIELDS
@@ -936,7 +936,7 @@ class Store:
         return {d['_id']: self._run(d) for d in self.investigations.find({'_id': {'$in': list(run_ids)}}, RUN_COST_FIELDS)}
 
     def record_card(self, card: dict, ev: str, ask: dict | None = None, said: dict | None = None) -> str | None:
-        if not card.get('key') or not card.get('firstSeen'):
+        if not card.get('key') or not card.get('firstSeen') or information.is_item(card):
             return None
         try:
             return self._record_card(card, ev, ask, said)
@@ -1460,6 +1460,16 @@ class Store:
             self.card_ids.insert_one({'_id': key, 'n': n, 'at': iso(utc_now())})
         except DuplicateKeyError:
             return self.card_ids.find_one({'_id': key})['n']
+        return n
+
+    def number_card(self, key: str) -> int | None:
+        doc = self._anomaly(key)
+        if doc.get('num') or not information.is_card(doc):
+            return doc.get('num')
+        n = self.card_number(key)
+        with self._locked():
+            self._claim(None)
+            self.anomalies.update_one({'_id': doc['_id']}, {'$set': {'num': n}})
         return n
 
     def key_of_number(self, n: int) -> str | None:

@@ -32,7 +32,7 @@ from skopax.cardposts import CardPosts, drawn_sig
 from skopax.codehosts import CodeHosts
 from skopax.auth import LOGIN_COOKIE, LOGIN_SECONDS, SESSION_COOKIE, bearer_token, safe_next
 from skopax import actions as page_actions
-from skopax import __version__, backfill, brand, causes, clock as clocks, costs, drafts, history, messages, redact as redaction, tags, toolusage
+from skopax import __version__, backfill, brand, causes, clock as clocks, costs, drafts, history, information, messages, redact as redaction, tags, toolusage
 from skopax.jiralinks import JiraLinks
 from skopax.kube import Kube
 from skopax import locales as core_locales
@@ -934,6 +934,14 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     intake = Intake(store, slack, operators, gate, talk, investigator, settings, base_url=base_url, ticket_extra=plugin_projects, on=lambda: features.on('slack-listener') and slack.enabled,
                     chat=lambda: features.on('chat'), not_ready=lambda: not_ready_text('slackevents.not_ready', 'slackevents.needs'), jira_site=jira_site)
 
+    def refuse_information(key: str) -> None:
+        try:
+            card = store.anomaly(key)
+        except NotFound:
+            return
+        if information.is_item(card):
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('cards.information_item', key=key))
+
     def apply_card_action(action: dict) -> str:
         before = notes.watch(action)
         seen = notices.watch(action)
@@ -1019,7 +1027,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             log.warning('check runs not recorded: %s', kind(e))
         applied = apply(store, results, now, links, dm=pusher.enabled, after=after, auto_resolve_hours=settings.auto_resolve_hours,
                         recurring_count=settings.recurring_count, recurring_days=settings.recurring_days, tag_rules=tags.rules(settings.tag_rules), alert_twins=settings.alert_twins, screen=screen, clusters=clusters, kind_windows=runtime.auto_windows(),
-                        severity_hours={'crit': settings.auto_resolve_hours_crit, 'warn': settings.auto_resolve_hours_warn}, info_close_days=settings.info_auto_close_days,
+                        severity_hours={'crit': settings.auto_resolve_hours_crit, 'warn': settings.auto_resolve_hours_warn},
                         business=clocks.zone() if settings.business_days else None)
         if applied and applied.resolved:
             for r in applied.resolved:
@@ -1877,7 +1885,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/', response_class=HTMLResponse)
     def page() -> str:
-        return render_page({**store.load(), 'archiveHours': settings.archive_hours, 'plugins': plugin_tiles(store.server_runs()['passes'])}, runtime.page_scripts())
+        return render_page({**information.page_state(store.load(), time.time()), 'archiveHours': settings.archive_hours, 'plugins': plugin_tiles(store.server_runs()['passes'])}, runtime.page_scripts())
 
     @app.get('/c/{num}', response_class=HTMLResponse)
     def card_page(num: int) -> HTMLResponse:
@@ -1890,6 +1898,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise HTTPException(status_code=404, detail=f'no card #{num}')
         try:
             card = store.anomaly(key)
+            if not information.is_card(card):
+                raise HTTPException(status_code=404, detail=f'no card #{num}')
             return card_view(card, True, store.children(key), parent_of(card)) | {'last': store.last_action(key)}
         except NotFound:
             past = store.last_past_card(key)
@@ -2244,7 +2254,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/state')
     def get_state() -> dict:
-        return {**store.load(), 'archiveHours': settings.archive_hours}
+        return {**information.page_state(store.load(), time.time()), 'archiveHours': settings.archive_hours}
 
     @app.get('/api/history/cards')
     def get_closed_cards(days: Annotated[int, Query(ge=1, le=history.CLOSED_DAYS_MAX)] = 7, start: Annotated[str | None, Query(alias='from', max_length=30)] = None,
@@ -2471,6 +2481,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.put('/api/assignee')
     def put_assignee(body: AssigneeIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         try:
             return assigner.assign(body.key, by if body.me else body.name, by if body.me and '@' in by else body.email, by)
         except NotFound as e:
@@ -2495,6 +2506,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.post('/api/tags')
     def post_tags(body: TagIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         try:
             fields = tags.toggled(store.anomaly(body.key), body.tag, body.on, by, iso(utc_now()))
         except tags.Refused as e:
@@ -2506,6 +2518,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     @app.put('/api/business')
     def put_business(body: BusinessIn, by: Annotated[str, Depends(require_operator)]) -> dict:
         store.anomaly(body.key)
+        refuse_information(body.key)
         fields = tags.business(body.text, by, iso(utc_now()), body.why, body.kind)
         return tagging(body.key, fields, by, 'business sentence ' + ('saved' if fields['business'] else 'removed'))
 
@@ -3504,6 +3517,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def put_state(state: Annotated[dict, Body()], background: BackgroundTasks, x_base_rev: Annotated[int | None, Header()] = None) -> dict:
         if any(not isinstance(a, dict) or not a.get('key') for a in state.get('anomalies') or []):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, 'every anomaly needs a key')
+        state = information.written_back(state, store.load())
         rev, pushed_before = store.save_state(state, x_base_rev)
         if (pusher.enabled or routes.enabled) and pushed_before is not None:
             pushed = new_pushes(pushed_before, state.get('anomalies') or [], time.time())
@@ -3541,6 +3555,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         action['requestedBy'] = by
         if via:
             action['via'] = via
+        if body.type not in page_actions.ANY_RECORD:
+            refuse_information(body.key)
         if body.type in INVESTIGATOR_WORK and not features.on('investigator'):
             raise FeatureOff('investigator')
         if body.type == 'postdeploy' and not features.on('postdeploy'):
@@ -3554,6 +3570,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             if sum(store.count_actions('ask', iso(utc_now() - dt.timedelta(seconds=ASK_WINDOW_S)), source=s) for s in PAGE_ASK_SOURCES) >= settings.page_ask_cap:
                 raise HTTPException(status_code=429, detail=f'{settings.page_ask_cap} asks an hour is the cap (Admin \u203a Investigator, Page asks per hour); try again later')
             action['cards'] = [k for k in dict.fromkeys(body.cards or []) if k]
+            for k in action['cards']:
+                refuse_information(k)
             said = page_topic_check(question, action['cards'], by)
             action['text'] = question
             action['label'] = (body.label or question)[:300]
@@ -3593,6 +3611,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.post('/api/slack-posts', status_code=status.HTTP_201_CREATED)
     def post_to_slack(body: SlackPostIn, request: Request, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         if not slack.enabled:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, 'Slack is not set up on this service yet')
         try:
@@ -3602,6 +3621,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.post('/api/slack-holds', status_code=status.HTTP_201_CREATED)
     def post_slack_hold(body: SlackHoldIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         held = store.hold_anomaly_auto_send(body.key, by)
         if held is None:
             raise HTTPException(status.HTTP_409_CONFLICT, 'nothing to hold: the auto-send already went out or was never armed')
@@ -3610,6 +3630,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.post('/api/slack-updates', status_code=status.HTTP_201_CREATED)
     def post_slack_update(body: SlackUpdateIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         if not slack.enabled:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, 'Slack is not set up on this service yet')
         text = body.text.strip()
@@ -3624,6 +3645,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.post('/api/routes/send')
     def post_routes_send(body: RouteSendIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         try:
             return routes.send(body.key, body.route, by)
         except RouteRefused as e:
@@ -3631,6 +3653,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.put('/api/slack-drafts')
     def put_slack_draft(body: SlackDraftIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         rev, draft, auto = store.slack_draft(body.key, body.text.strip(), by)
         log.info('slack draft for %s %s by %s', body.key, 'saved' if draft else 'cleared', by)
         return {'rev': rev, 'slackDraft': draft, 'autoSend': auto}

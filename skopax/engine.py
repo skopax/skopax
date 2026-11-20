@@ -9,7 +9,7 @@ from typing import Callable, Mapping
 
 from pymongo.errors import PyMongoError
 
-from skopax import causes, clock, history, summary, tags
+from skopax import causes, clock, history, information, summary, tags
 from skopax.actors import SYSTEM
 from skopax.businesstime import elapsed
 from skopax.errkind import kind as error_kind
@@ -21,7 +21,7 @@ log = logging.getLogger('skopax.engine')
 
 REOPEN_QUIET_S = 2 * 3600
 PUSH_SVC_QUIET_S = 30 * 60
-CLEARED_KEEP_S = 24 * 3600
+CLEARED_KEEP_S = information.ENDED_KEEP_S
 KEEP_UNTIL_ADDRESSED = ('warn', 'crit')
 ADDRESSED_TRIAGE = ('progress', 'handled')
 HANDLED = ('progress', 'handled')
@@ -49,9 +49,7 @@ STALE_DAILY_S = 3 * 24 * 3600
 STALE_MANUAL_S = 7 * 24 * 3600
 DAILY_KEYS = ('crux', 'ga', 'varnish-cache')
 PLUGIN_DAILY: frozenset[str] = frozenset()
-INFO_CLOSE_DAYS = 3
 SEVERITIES = ('crit', 'warn')
-INFO_KEEP_SIGS = ('warn', 'err')
 NO_DATA = ':no-data'
 
 
@@ -221,7 +219,7 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
                 a['parent'] = host['key']
         pushable = not first and not a['muted'] and SEV_RANK[a['sev']] >= 1
         should = False
-        if a.get('parent') and ev:
+        if a.get('parent') and ev and not information.under_information(a, prev):
             a['pushedAt'], a['pushedSev'], a['pushedPeak'] = t, a['sev'], a['now']
             pushable = False
         if pushable:
@@ -355,7 +353,7 @@ def follow_parents(state: dict, now: float) -> list[dict]:
     out = []
     for a in cards:
         pk = a.get('parent')
-        if not pk or pk == a['key'] or a.get('status') != 'cleared' or a.get('triage') in ADDRESSED_TRIAGE + ('investigating',) or a.get('muted'):
+        if not pk or pk == a['key'] or a.get('status') != 'cleared' or a.get('triage') in ADDRESSED_TRIAGE + ('investigating',) or a.get('muted') or information.is_item(a):
             continue
         p = by_key.get(pk)
         if p is not None and p.get('triage') not in ADDRESSED_TRIAGE:
@@ -375,24 +373,6 @@ def follow_parents(state: dict, now: float) -> list[dict]:
         if not a.get('note'):
             put_note(a, f'{head}: {why}', t)
         out.append({'key': a['key'], 'text': f"{head.lower()} {a.get('svc')} {a.get('label')} \u00b7 {why}", 'since': 'parent'})
-    return out
-
-
-def auto_close_info(state: dict, now: float, days: int = INFO_CLOSE_DAYS, business: tzinfo | None = None) -> list[dict]:
-    if days <= 0:
-        return []
-    t = iso(now)
-    out = []
-    for a in state.get('anomalies') or []:
-        if a.get('status') != 'open' or a.get('sev') != 'info' or a.get('muted') or a.get('triage') or a.get('ticket') or a.get('parent'):
-            continue
-        if a.get('src') == 'logs' or a.get('sig') in INFO_KEEP_SIGS or not a.get('firstSeen') or elapsed(parse_iso(a['firstSeen']), now, business) <= days * 86400:
-            continue
-        why = f"info firing since {clock.date(parse_iso(a['firstSeen']))}, nobody acted in " + (window_text(days * 24, business=True) if business is not None else f'{days} days')
-        a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
-        if not a.get('note'):
-            put_note(a, f'Auto-resolved: {why}', t)
-        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': days * 24, 'since': 'info'} | business_mark(business))
     return out
 
 
@@ -424,7 +404,7 @@ def auto_resolve_kinds(state: dict, now: float, windows: tuple, business: tzinfo
     out = []
     for a in state.get('anomalies') or []:
         hours = window_for(a, windows)
-        if not hours or hours <= 0 or acted_on(a) or a.get('parent') or not a.get('firstSeen'):
+        if not hours or hours <= 0 or acted_on(a) or a.get('parent') or not a.get('firstSeen') or information.is_item(a):
             continue
         first = parse_iso(a['firstSeen'])
         if elapsed(first, now, business) <= hours * 3600:
@@ -464,7 +444,7 @@ SIBLING_ORDINAL = re.compile(r'-\d+$')
 
 def group_alert_twins(state: dict, twins: tuple[str, ...] = ()) -> list[tuple[str, str]]:
     cards = state.get('anomalies') or []
-    hosts = [a for a in cards if a.get('status') == 'open' and a.get('src') not in ('alert', 'grafana') and not a.get('muted') and not a.get('parent') and a.get('ns') not in (None, '', '-')]
+    hosts = [a for a in cards if information.is_card(a) and a.get('status') == 'open' and a.get('src') not in ('alert', 'grafana') and not a.get('muted') and not a.get('parent') and a.get('ns') not in (None, '', '-')]
     out = []
     for a in cards:
         parts = a['key'].split('|')
@@ -524,11 +504,12 @@ def push_line(push: list[dict]) -> str:
 
 def new_pushes(before: dict[str, str | None], items: list[dict], now: float) -> list[dict]:
     out = []
+    by_key = {x.get('key'): x for x in items}
     for a in items:
         at = a.get('pushedAt')
         if not at or at == before.get(a['key']) or a.get('muted') or a.get('sev') not in ('warn', 'crit'):
             continue
-        if a.get('parent') and a.get('firstSeen') == at:
+        if a.get('parent') and a.get('firstSeen') == at and not information.under_information(a, by_key):
             continue
         try:
             fresh = now - parse_iso(at) < PUSH_FRESH_S
@@ -574,7 +555,7 @@ def reach_of(results: list[PassResult], clusters: Mapping[str, tuple[str | None,
 
 
 def number_cards(store: Store, cards: list[dict]) -> None:
-    missing = [a for a in cards if not a.get('num')]
+    missing = [a for a in cards if not a.get('num') and information.is_card(a)]
     if not missing:
         return
     try:
@@ -602,7 +583,7 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
           recurring_count: int = history.RECURRING_COUNT, recurring_days: int = history.RECURRING_DAYS, tag_rules: tuple | None = None,
           alert_twins: tuple[str, ...] = (), screen: Callable[[dict, list[PassResult]], list[PassResult]] | None = None,
           clusters: Mapping[str, tuple[str | None, ...]] | None = None, kind_windows: tuple = (),
-          severity_hours: Mapping[str, int] | None = None, info_close_days: int = INFO_CLOSE_DAYS, business: tzinfo | None = None) -> Applied | None:
+          severity_hours: Mapping[str, int] | None = None, business: tzinfo | None = None) -> Applied | None:
     all_results = results
     hooks = tags.text_hooks() if tag_rules is not None else []
     texts = None
@@ -636,8 +617,7 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
             after(state)
         by_severity = {sev: (severity_hours or {}).get(sev, auto_resolve_hours) for sev in SEVERITIES}
         resolved = (auto_resolve_kinds(state, now, kind_windows, business) + auto_resolve(state, now, auto_resolve_hours, kind_windows, by_severity, business)
-                    + (follow_parents(state, now) if any(h > 0 for h in by_severity.values()) else [])
-                    + auto_close_info(state, now, info_close_days, business))
+                    + (follow_parents(state, now) if any(h > 0 for h in by_severity.values()) else []))
         rows = store.history_rows([a['key'] for a in state['anomalies']])
         if rows is not None:
             try:

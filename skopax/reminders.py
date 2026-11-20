@@ -2,7 +2,7 @@ import logging
 import time
 from typing import Callable
 
-from skopax import causes
+from skopax import causes, information
 from skopax.cardlink import card_url
 from skopax.clearnotes import recurs
 from skopax.engine import iso, mute_for, parse_iso
@@ -22,7 +22,7 @@ GROUP_MAX = 10
 
 
 def waiting(card: dict, by_key: dict, state: dict, now: float) -> bool:
-    if not posted(card) or merged(card, by_key) or card.get('muted') or card.get('triage') in ADDRESSED or mute_for(state, card['key'], now):
+    if not posted(card) or not information.is_card(card) or merged(card, by_key) or card.get('muted') or card.get('triage') in ADDRESSED or mute_for(state, card['key'], now):
         return False
     return card.get('status') == 'open' or (card.get('status') == 'cleared' and card.get('sev') in WAITING_SEVS)
 

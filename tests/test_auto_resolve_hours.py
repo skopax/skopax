@@ -8,7 +8,7 @@ from tests.conftest import AUTH, settings
 from tests.test_engine import CART, NOW, ago, auto_lines, item, seeded, stored, waiting
 from skopax.app import create_app
 from skopax.contract import AutoResolve
-from skopax.engine import PassResult, auto_close_info, follow_parents, apply, auto_resolve, auto_resolve_kinds, window_text
+from skopax.engine import PassResult, follow_parents, apply, auto_resolve, auto_resolve_kinds, window_text
 from skopax.plugins import google_ads, vwo
 from skopax.runtime import Runtime
 from skopax.statenotes import auto_text
@@ -257,22 +257,18 @@ def test_a_plugin_that_raises_in_its_setting_does_not_stop_the_others():
     assert [(w[1], w[2]) for w in windows] == [(VERDICT, 24), (DISAPPROVED, 12)]
 
 
-def test_the_parent_and_info_passes_name_their_own_window_and_note():
+def test_the_parent_pass_names_its_own_window_and_note():
     # given
     child = stored('log|kid|ERROR|x', status='cleared', src='logs', clearedAt=ago(H), parent='log|dad|ERROR|x')
     dad = stored('log|dad|ERROR|x', status='cleared', src='logs', clearedAt=ago(H), triage='handled')
-    info = stored('edge|shop.example.com', src='edge', sev='info', firstSeen=ago(80 * H))
-    state = {'anomalies': [child, dad, info]}
+    state = {'anomalies': [child, dad]}
 
     # when
     followed = follow_parents(state, NOW)
-    closed = auto_close_info(state, NOW)
 
     # then
     assert [(r['key'], r['since']) for r in followed] == [('log|kid|ERROR|x', 'parent')]
-    assert [(r['key'], r['since'], r['hours']) for r in closed] == [('edge|shop.example.com', 'info', 72)]
     assert auto_text(0, 'parent') == '\u2705 Auto-resolved with its parent'
-    assert auto_text(72, 'info') == '\u2705 Auto-resolved: info card firing for 3 days with nobody acting'
 
 
 def test_a_stale_hidden_days_override_can_be_deleted_but_never_set(store: Store):

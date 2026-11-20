@@ -830,7 +830,7 @@
   "Auto-resolve info cards still firing after (days)": "Hâlâ tetiklenen bilgi kartlarını şu süre sonra otomatik çöz (gün)",
   "Closes a card that stopped firing and that nobody acted on after N hours, one value per severity; 0 turns it off for that severity. With Business days only on, only Monday to Friday counts": "Tetiklenmeyi bırakan ve kimsenin ilgilenmediği bir kartı N saat sonra kapatır; önem derecesi başına bir değer; 0 o önem derecesi için kapatır. Yalnızca iş günleri açıkken pazartesiden cumaya kadar olan süre sayılır",
   "Business days only": "Yalnızca iş günleri",
-  "Count only Monday to Friday (install time zone) for auto-resolve and info close timers": "Otomatik çözme ve bilgi kartı kapatma sürelerinde yalnızca pazartesiden cumaya kadar olan süreyi say (kurulumun saat dilimi)",
+  "Count only Monday to Friday (install time zone) for the auto-resolve timers": "Otomatik çözme sürelerinde yalnızca pazartesiden cumaya kadar olan süreyi say (kurulumun saat dilimi)",
   "Auto-resolved": "Otomatik çözüldü",
   "Cleared, nobody acted": "Normale döndü, kimse ilgilenmedi",
   "Expired": "Süresi doldu",
@@ -1183,7 +1183,17 @@
   "Responsibles not saved, try again": "Sorumlular kaydedilemedi, tekrar deneyin",
   "Slack app is missing users:read.email; responsibles are named without a ping": "Slack uygulamasında users:read.email eksik; sorumlular bildirim gönderilmeden anılıyor",
   "Needs Slack auto-send on (Admin › Features).": "Slack otomatik gönderiminin açık olması gerekir (Admin › Features).",
-  "No longer an active user": "Artık etkin bir kullanıcı değil"
+  "No longer an active user": "Artık etkin bir kullanıcı değil",
+  "Information": "Bilgiler",
+  "Move to Information": "Bilgilere taşı",
+  "Still firing": "Hâlâ firing",
+  "Back to the board": "Panoya geri dön",
+  "Clears the hand-set severity: the card goes back to the board with the severity its signal gives": "Elle ayarlanan önem derecesini kaldırır: kart, sinyalinin verdiği önem derecesiyle panoya geri döner",
+  "Info findings: worth knowing, nothing to act on. They are not cards, so they never reach the board, Slack or the investigator. Still firing first, newest first; an item that ended stays here for a day.": "Bilgi bulguları: bilmekte fayda var, yapılacak bir şey yok. Kart değiller, bu yüzden panoya, Slack'e ya da investigator'a hiç ulaşmazlar. Önce hâlâ firing olanlar, en yeniler önce; biten bir öğe burada bir gün kalır.",
+  "No information right now. Info findings show here while they fire and for a day after they end.": "Şu an bilgi yok. Bilgi bulguları firing oldukları sürece ve bittikten sonra bir gün burada görünür.",
+  "nothing firing": "firing olan yok",
+  "{0} item still firing": "{0} öğe hâlâ firing",
+  "{0} items still firing": "{0} öğe hâlâ firing"
  },
  "rules": [
   [
@@ -1433,6 +1443,34 @@
   [
    "^Held: the run read text that looks planted \\((.+)\\) in (.+)$",
    "Tutuldu: çalışma yerleştirilmiş gibi görünen metin okudu ($1) şurada: $2"
+  ],
+  [
+   "^Ended (.+)$",
+   "Bitti $1"
+  ],
+  [
+   "^First seen (.+)$",
+   "İlk görülme $1"
+  ],
+  [
+   "^Last seen (.+)$",
+   "Son görülme $1"
+  ],
+  [
+   "^Moved to Information by (.+)$",
+   "$1 tarafından Bilgilere taşındı"
+  ],
+  [
+   "^Severity now: (\\S+), from the signal\\. A hand-set severity stays through every check until you set it back; Critical pushes, Move to Information takes it off the board onto the Information page$",
+   "Şu anki önem derecesi: $1, sinyalden. Elle ayarlanan önem derecesi siz geri alana kadar her kontrolde kalır; Kritik bildirilir, Bilgilere taşı kartı panodan Bilgiler sayfasına alır"
+  ],
+  [
+   "^Severity now: (\\S+), set by hand by (.+); the signal says (\\S+)\\. A hand-set severity stays through every check until you set it back; Critical pushes, Move to Information takes it off the board onto the Information page$",
+   "Şu anki önem derecesi: $1, $2 tarafından elle ayarlandı; sinyal $3 diyor. Elle ayarlanan önem derecesi siz geri alana kadar her kontrolde kalır; Kritik bildirilir, Bilgilere taşı kartı panodan Bilgiler sayfasına alır"
+  ],
+  [
+   "^Moved to Information: (.+)$",
+   "Bilgilere taşındı: $1"
   ]
  ],
  "months": {

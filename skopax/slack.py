@@ -17,7 +17,7 @@ from skopax.actions import DEFAULT_MUTE_HOURS
 from skopax.config import RELEASE_NAME, RELEASE_PLACEHOLDER, release_problem
 from skopax.postdeploy import SERVER_BY
 from skopax.redact import redact, redact_lines
-from skopax import drafts, history, tags
+from skopax import drafts, history, information, tags
 from skopax.kit.text import duration
 
 log = logging.getLogger('skopax.slack')
@@ -841,7 +841,7 @@ def report_message(r: dict, link: str, by: str, draft: str | None = None, anomal
             where = f" ({esc(x['ns'])})" if x.get('svc') in twice and x.get('ns') else ''
             note = row_note(x)
             note = f' · {esc(note)}' if note else ''
-            line = f"• *{esc(x.get('svc', '?'))}*{where} · {flag_links(x, r, page, anomalies or [])}{note}"
+            line = f"• *{esc(x.get('svc', '?'))}*{where} · {flag_links(x, r, page, information.cards_only(anomalies))}{note}"
             lines.append(line if len(line) < SECTION_LIMIT - 20 else f"• *{esc(x.get('svc', '?'))}*{where} · {esc(', '.join(f.replace('=', ' ') for f in x['flags']))}{note}")
         if len(flagged) > MAX_REPORT_ROWS:
             lines.append(f"_{msg('slack.report.more', n=len(flagged) - MAX_REPORT_ROWS)}_")

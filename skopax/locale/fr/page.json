@@ -102,7 +102,7 @@
   "Auto-resolve info cards still firing after (days)": "Résoudre automatiquement les cartes d'information toujours actives après (jours)",
   "Closes a card that stopped firing and that nobody acted on after N hours, one value per severity; 0 turns it off for that severity. With Business days only on, only Monday to Friday counts": "Ferme une carte qui a cessé de se déclencher et sur laquelle personne n'a agi après N heures, une valeur par gravité ; 0 le désactive pour cette gravité. Avec Jours ouvrés uniquement activé, seuls les jours du lundi au vendredi comptent",
   "Business days only": "Jours ouvrés uniquement",
-  "Count only Monday to Friday (install time zone) for auto-resolve and info close timers": "Ne compter que du lundi au vendredi (fuseau horaire de l'installation) pour les délais de résolution automatique et de fermeture des cartes d'information",
+  "Count only Monday to Friday (install time zone) for the auto-resolve timers": "Ne compter que du lundi au vendredi (fuseau horaire de l'installation) pour les délais de résolution automatique",
   "Auto-resolved": "Résolue automatiquement",
   "Auto-send": "Envoi automatique",
   "Auto-send failed": "Échec de l'envoi automatique",
@@ -1183,7 +1183,17 @@
   "Responsibles not saved, try again": "Responsables non enregistrés, réessayez",
   "Slack app is missing users:read.email; responsibles are named without a ping": "Il manque users:read.email à l’app Slack ; les responsables sont nommés sans mention",
   "Needs Slack auto-send on (Admin › Features).": "Nécessite l’envoi automatique Slack activé (Admin › Features).",
-  "No longer an active user": "N’est plus un utilisateur actif"
+  "No longer an active user": "N’est plus un utilisateur actif",
+  "Information": "Informations",
+  "Move to Information": "Déplacer vers Informations",
+  "Still firing": "Toujours actif",
+  "Back to the board": "Retour au tableau",
+  "Clears the hand-set severity: the card goes back to the board with the severity its signal gives": "Efface la gravité fixée à la main : la carte revient sur le tableau avec la gravité donnée par son signal",
+  "Info findings: worth knowing, nothing to act on. They are not cards, so they never reach the board, Slack or the investigator. Still firing first, newest first; an item that ended stays here for a day.": "Constats d'information : bons à savoir, rien à faire. Ce ne sont pas des cartes, ils n'atteignent donc jamais le tableau, Slack ni l'investigateur. Les actifs d'abord, les plus récents d'abord ; un élément terminé reste ici un jour.",
+  "No information right now. Info findings show here while they fire and for a day after they end.": "Aucune information pour l'instant. Les constats d'information apparaissent ici tant qu'ils sont actifs et un jour après leur fin.",
+  "nothing firing": "rien d'actif",
+  "{0} item still firing": "{0} élément toujours actif",
+  "{0} items still firing": "{0} éléments toujours actifs"
  },
  "rules": [
   [
@@ -1433,6 +1443,34 @@
   [
    "^Held: the run read text that looks planted \\((.+)\\) in (.+)$",
    "Retenu : l'exécution a lu un texte qui semble planté ($1) dans $2"
+  ],
+  [
+   "^Ended (.+)$",
+   "Terminé $1"
+  ],
+  [
+   "^First seen (.+)$",
+   "Vu pour la première fois $1"
+  ],
+  [
+   "^Last seen (.+)$",
+   "Vu pour la dernière fois $1"
+  ],
+  [
+   "^Moved to Information by (.+)$",
+   "Déplacé vers Informations par $1"
+  ],
+  [
+   "^Severity now: (\\S+), from the signal\\. A hand-set severity stays through every check until you set it back; Critical pushes, Move to Information takes it off the board onto the Information page$",
+   "Gravité actuelle : $1, d'après le signal. Une gravité fixée à la main reste à chaque vérification jusqu'à ce que vous la remettiez ; Critique est poussée, Déplacer vers Informations retire la carte du tableau vers la page Informations"
+  ],
+  [
+   "^Severity now: (\\S+), set by hand by (.+); the signal says (\\S+)\\. A hand-set severity stays through every check until you set it back; Critical pushes, Move to Information takes it off the board onto the Information page$",
+   "Gravité actuelle : $1, fixée à la main par $2 ; le signal dit $3. Une gravité fixée à la main reste à chaque vérification jusqu'à ce que vous la remettiez ; Critique est poussée, Déplacer vers Informations retire la carte du tableau vers la page Informations"
+  ],
+  [
+   "^Moved to Information: (.+)$",
+   "Déplacé vers Informations : $1"
   ]
  ],
  "months": {

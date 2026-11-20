@@ -153,14 +153,15 @@ def test_routes_take_tags_or_card_keys_and_a_business_route_takes_every_severity
     assert [(r.instance, r.tags, r.keys, r.min_sev) for r in found] == [('bizdev', frozenset({'bizdev', 'marketing'}), (), 'warn'), ('seo', frozenset({'seo'}), (), 'warn'),
                                                                        ('tech', frozenset(), ('*',), 'crit')]
     assert [(r.business, r.label) for r in found] == [(True, 'bizdev'), (True, 'SEO'), (False, 'tech')]
-    assert found[0].takes(open_card('log|a|ERROR|x', 'info', tags=tag('marketing'))) and not found[2].takes(open_card('log|a|ERROR|x', 'warn'))
+    assert found[0].takes(open_card('log|a|ERROR|x', 'warn', tags=tag('marketing'))) and not found[2].takes(open_card('log|a|ERROR|x', 'warn'))
+    assert not found[0].takes(open_card('log|a|ERROR|x', 'info', tags=tag('marketing'))), 'information never reaches a channel'
 
 
 def test_a_business_channel_gets_a_tagged_open_card_once_with_only_the_sentence_and_links(store: Store):
     # given
     t = Transport()
     routes = routes_of(store, t, route('bizdev', BIZDEV, tags='bizdev'), route('tech', TECH, keys='*', sev='crit'))
-    typo = typo_card('https://shop.example.com/products', [TYPO]) | {'status': 'open', 'firstSeen': '2026-11-09T10:00:00Z', 'sev': 'info'}
+    typo = typo_card('https://shop.example.com/products', [TYPO]) | {'status': 'open', 'firstSeen': '2026-11-09T10:00:00Z', 'sev': 'warn'}
     tags.apply_rules([typo], tags.RULES, AT)
     typo['business'] = {'text': 'We recommend changing "Gift Crad" to "Gift Card" on shop.example.com/products.', 'by': 'rule', 'at': AT}
     crit = open_card('log|web-shop|ERROR|boom', 'crit', tags=tag('bizdev'), business=said('We recommend checking why the product page does not open.'))
@@ -655,9 +656,9 @@ def test_an_empty_route_severity_uses_the_teams_setting_and_a_key_route_own_seve
     sent = routes.deliver([], NOW, pushed=store.load()['anomalies'])
 
     # then
-    assert sent == 2 and sorted(u for u, _ in t.calls) == sorted([MARKETING, DATA])
+    assert sent == 1 and [u for u, _ in t.calls] == [MARKETING]
     assert [p['route'] for p in store.anomaly('log|quiet|ERROR|b').get('teamsPosts') or []] == ['quiet'] and not store.anomaly('log|quiet|ERROR|a').get('teamsPosts')
-    assert [p['route'] for p in store.anomaly('log|loud|ERROR|c')['teamsPosts']] == ['loud'], 'the key route set to info posts an info card under a crit setting'
+    assert not store.anomaly('log|loud|ERROR|c').get('teamsPosts'), 'even a key route set to info never posts information'
 
 
 def test_the_severity_help_says_what_empty_means_and_that_a_key_route_own_value_replaces_the_setting():

@@ -40,7 +40,7 @@ def docs(store: Store, key: str = KEY) -> list[dict]:
 
 def test_a_card_that_drops_out_of_the_state_leaves_its_occurrence_in_the_history(store: Store):
     # given
-    old = card_of(KEY, sev='info', status='cleared', first=3 * DAY, clearedAt=ago(2 * DAY), note={'text': 'one client', 'at': ago(2 * DAY)}, recommend='nothing to do')
+    old = card_of(KEY, sev='info', status='cleared', first=3 * DAY, clearedAt=ago(2 * DAY), note={'text': 'one client', 'at': ago(2 * DAY)}, recommend='nothing to do', owner='alice@example.com')
     seeded(store, old)
 
     # when

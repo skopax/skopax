@@ -17,7 +17,7 @@ from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from skopax import __version__, brand
+from skopax import __version__, brand, information
 from skopax.assign import Invalid as AssignInvalid, slug
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import off_text
@@ -307,15 +307,20 @@ class Tools:
                 raise ToolError(f'no card #{text}')
             if live:
                 try:
-                    self.store.anomaly(key)
+                    self.card_only(self.store.anomaly(key))
                 except NotFound:
                     raise ToolError(f'card #{text} is closed and no longer on the board') from None
             return key
         try:
-            self.store.anomaly(text)
+            self.card_only(self.store.anomaly(text))
         except NotFound:
             raise ToolError(f'no card with key {text}; list_cards shows the numbers and keys') from None
         return text
+
+    def card_only(self, card: dict) -> dict:
+        if information.is_item(card):
+            raise ToolError(msg('cards.information_item', key=card.get('key')))
+        return card
 
     def card(self, key: str) -> dict:
         try:
@@ -324,7 +329,7 @@ class Tools:
             raise ToolError(f'no card with key {key}') from None
 
     def visible(self, state: dict) -> tuple[list[dict], dict[str, int], list[dict]]:
-        cards = state.get('anomalies') or []
+        cards = information.cards_only(state.get('anomalies'))
         by_key = {a.get('key'): a for a in cards}
         mutes = {m.get('pattern'): m.get('at') for m in state.get('muted') or [] if isinstance(m, dict)}
 
@@ -386,7 +391,7 @@ class Tools:
         text = str(args.get('card') if args.get('card') is not None else '').strip().lstrip('#').strip()
         if text.isdigit() and (key := self.store.key_of_number(int(text))) is not None:
             try:
-                card = self.store.anomaly(key)
+                card = self.card_only(self.store.anomaly(key))
             except NotFound:
                 past = self.store.last_past_card(key)
                 if not past:
