@@ -1251,7 +1251,7 @@ async function thePhoneLayoutIsOneColumnWithLargeTargets() {
   const phone = [...t.doc.querySelector('style').sheet.cssRules].filter((r) => r.media && r.media.mediaText === '(max-width: 640px)' && [...r.cssRules].some((x) => /sso-btn-grid/.test(x.selectorText)));
   assert.strictEqual(phone.length, 1, 'the SSO phone rules sit in their own block');
   const rule = (sel) => [...phone[0].cssRules].filter((x) => x.selectorText === sel)[0];
-  assert.strictEqual(rule('.sso-btn-grid').style.gridTemplateColumns, 'minmax(0, 1fr)', 'the button card is one column');
+  assert.strictEqual(rule('.sso-btn-grid').style.gridTemplateColumns, 'minmax(0px, 1fr)', 'the button card is one column');
   assert.strictEqual(rule('#acc-sso .btn, #acc-sso .adm-in, #acc-sso select, #acc-sso .sso-map-v').style.minHeight, '44px', 'buttons and fields are 44 px tall');
   assert.deepStrictEqual([rule('.sso-chip-del').style.width, rule('.sso-chip-del').style.height], ['44px', '44px'], 'a chip remove button is a 44 px target');
   assert.strictEqual(rule('.sso-uri-row').style.flexDirection, 'column', 'the redirect URI and Copy stack');
