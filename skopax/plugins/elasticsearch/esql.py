@@ -27,6 +27,7 @@ SLOW = ('ES|QL HTTP 504: the query ran past the time limit of the gateway in fro
 LAST_DAY_NOTE = ('the full time range timed out, so this answer covers only the last day (NOW() - 1 day to now); ask for the earlier days one at a time')
 DESCRIPTION = ('ES|QL query on Elasticsearch, read only. cluster logs (the default) reads the log cluster, whose logs are in {field:log-index}; '
                'cluster apm reads the APM cluster: {field:apm-index}, logs-apm.error-* and metrics-apm.*. '
+               'Daily index names follow UTC dates, so never write a dated index name: use the pattern above with a wildcard and a WHERE on @timestamp. '
                'FROM comes first and names one to three indices; a wildcard or more indices is refused unless WHERE bounds @timestamp. '
                'Long answers are cut, so aggregate with STATS. A WHERE on a field that does not exist returns zero rows, not an error. '
                'first and last are reserved words, so never name a column first or last (use oldest / newest). '
@@ -45,6 +46,8 @@ def hints(config: Mapping[str, str]) -> tuple[tuple[re.Pattern, str], ...]:
     fields = f"the level in {named['level']}, the service in {named['service']}"
     return ((re.compile(r"mismatched input '(first|last)'", re.I), 'first and last are reserved words: name the column oldest / newest'),
             (re.compile(r'No matches found for pattern'), f"a KEEP or DROP pattern matched no column: name only columns the index has (the log line is {named['message']}, {fields})"),
+            (re.compile(r'index_not_found_exception|no such index', re.I),
+             f"daily index names follow UTC dates and today's may not exist yet: use the pattern with a * and a @timestamp bound, logs {index_of(config, 'logs')}, APM {index_of(config, 'apm')}"),
             (re.compile(r'Unknown index'), f"that index does not exist, or the API key cannot read it: logs are in {index_of(config, 'logs')}, APM in {index_of(config, 'apm')}"),
             (re.compile(r'is \[text\] so second argument must'), 'that field is text: compare it with a quoted string ("404") or use its .keyword field'),
             (re.compile(r'Unknown column \[(log|log\.message|msg|text|line|log_message)\]'), f"the log line is in {named['message']} ({fields})"))

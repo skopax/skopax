@@ -27,7 +27,7 @@ POD_REOPEN = ('dived',) + HANDLED
 HISTORY_KEEP = 300
 SEV_RANK = {'info': 0, 'warn': 1, 'crit': 2}
 OFFER_MARKS = ('takeOffered', 'resolveOffered', 'knownOffered', 'muteOffered', 'ticketOffered')
-CARRY = ('note', 'suspects', 'recommend', 'assessedAt', 'triage', 'ticket', 'owner', 'absorb', 'code', 'slackDraft', 'slackPost', 'autoSend', 'slackFallback', 'triagedBy', 'investigator', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'num', 'assigned', 'sevSet', 'resolution', 'cause')
+CARRY = ('note', 'suspects', 'recommend', 'assessedAt', 'triage', 'ticket', 'owner', 'absorb', 'code', 'slackDraft', 'slackPost', 'autoSend', 'slackFallback', 'triagedBy', 'investigator', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'num', 'assigned', 'sevSet', 'resolution', 'cause', 'noteBy', 'recommendBy')
 POST_LISTS = ('teamsPosts', 'fixPosts')
 SHOTS = 'screenshots'
 NO_SERVICE = (None, '', '-', '?')
@@ -287,10 +287,15 @@ def clearing_key(a: dict) -> str:
     return a.get('ranKey') or a.get('cluster') or a.get('src')
 
 
+def put_note(a: dict, text: str, t: str) -> None:
+    a['note'] = {'text': text, 'at': t}
+    a.pop('noteBy', None)
+
+
 def expire(a: dict, t: str, note: str) -> None:
     a.update(status='cleared', clearedAt=t, expired=True)
     if not a.get('note'):
-        a['note'] = {'text': note, 'at': t}
+        put_note(a, note, t)
 
 
 ANY_CLUSTER = object()
@@ -366,7 +371,7 @@ def follow_parents(state: dict, now: float) -> list[dict]:
         else:
             head, why = 'Auto-resolved', f'its parent {pk} was ' + ('handled and has left the page' if p is None else 'marked no action needed')
         if not a.get('note'):
-            a['note'] = {'text': f'{head}: {why}', 'at': t}
+            put_note(a, f'{head}: {why}', t)
         out.append({'key': a['key'], 'text': f"{head.lower()} {a.get('svc')} {a.get('label')} \u00b7 {why}", 'since': 'parent'})
     return out
 
@@ -384,7 +389,7 @@ def auto_close_info(state: dict, now: float, days: int = INFO_CLOSE_DAYS) -> lis
         why = f"info firing since {clock.date(parse_iso(a['firstSeen']))}, nobody acted in {days} days"
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
-            a['note'] = {'text': f'Auto-resolved: {why}', 'at': t}
+            put_note(a, f'Auto-resolved: {why}', t)
         out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': days * 24, 'since': 'info'})
     return out
 
@@ -420,7 +425,7 @@ def auto_resolve_kinds(state: dict, now: float, windows: tuple) -> list[dict]:
         why = f"first seen {clock.date(first)}, nobody acted in {window_text(hours)}"
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
-            a['note'] = {'text': f'Auto-resolved: {why}', 'at': t}
+            put_note(a, f'Auto-resolved: {why}', t)
         out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': hours, 'since': 'first'})
     return out
 
@@ -442,7 +447,7 @@ def auto_resolve(state: dict, now: float, hours: int, windows: tuple = (), by_se
         why = msg('engine.auto.event') if event else f"cleared {clock.date(cleared)}, nobody acted in {window_text(window)}"
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
-            a['note'] = {'text': why if event else f'Auto-resolved: {why}', 'at': t}
+            put_note(a, why if event else f'Auto-resolved: {why}', t)
         out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': waited} | ({'event': True} if event else {}))
     return out
 

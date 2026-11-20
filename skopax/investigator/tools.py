@@ -20,7 +20,7 @@ from skopax.config import Settings
 from skopax.contract import CodeHost, Knowledge, Missing, RunState, SourceDown
 from skopax.enrich import adf_text
 from skopax.errkind import Authored, kind as error_kind, text_of
-from skopax.investigator.flags import PHRASES, scan
+from skopax.investigator.flags import PHRASES, SOFT, scan
 from skopax.investigator.prompt import announced_hint, announced_text, card_link, shown_key
 from skopax.investigator.select import NO_SERVICE, announced
 from skopax.investigator.toolset import CORE, KNOWLEDGE, Run, ToolSet
@@ -29,6 +29,7 @@ from skopax.jiralinks import ticket_finder, ticket_pattern, ticket_projects
 from skopax.messages import msg
 from skopax.mcptools import PREFIX as BRIDGE_PREFIX
 from skopax.models import email_allowed
+from skopax.ownwords import REASONS as SKOPAX_REASONS
 from skopax.postdeploy import NUMBERS_BY, SERVER_BY
 from skopax.redact import redact, redact_text
 from skopax.store import NotFound, auto_sender, draft_hash, glob_match, new_id
@@ -60,6 +61,8 @@ NO_TABLES = 'No pass tables are available'
 CARD_FIELDS = ('key', 'svc', 'label', 'sub', 'ns', 'src', 'sev', 'status', 'now', 'd1', 'd7', 'unit', 'what', 'short', 'firstSeen', 'lastSeen', 'clearedAt',
                'triage', 'triagedBy', 'ticket', 'owner', 'parent', 'absorb', 'note', 'suspects', 'recommend', 'links', 'app', 'seenBefore', 'backAfterResolve', 'recurring', 'recurringCount', 'recurringDays', 'cause')
 SKOPAX_WRITTEN = ('outcomeText',)
+PROSE_FIELDS = ('recap',)
+
 PHRASE_IDS = {label: f'p{i}' for i, (label, _) in enumerate(PHRASES)}
 UNKNOWN_PHRASE = 'p?'
 HELD_NAME = '[a name that reads as planted text]'
@@ -106,6 +109,18 @@ LANGUAGES = {'kt': 'kotlin', 'kts': 'kotlin', 'java': 'java', 'py': 'python', 'j
 
 class ToolError(Authored, Exception):
     room = None
+    held = None
+    refused = False
+
+
+class BadInput(ToolError):
+    refused = True
+
+
+class Held(ToolError):
+    def __init__(self, text: str, what: str, flags: list[dict]):
+        super().__init__(text)
+        self.held = {'what': what, 'tools': sorted({f['tool'] for f in flags}), 'phrases': sorted({f['phrase'] for f in flags})}
 
 
 @dataclass
@@ -618,36 +633,36 @@ def check(value, s: dict, path: str, name: str) -> None:
     if isinstance(t, list):
         fitting = [x for x in t if x in FITS and FITS[x](value)]
         if not fitting:
-            raise ToolError(f'{path} must be {expected(s)}, got {kind(value)}')
+            raise BadInput(f'{path} must be {expected(s)}, got {kind(value)}')
         t = fitting[0]
     elif t in FITS and not FITS[t](value):
-        raise ToolError(f'{path} must be {expected(s)}, got {kind(value)}')
+        raise BadInput(f'{path} must be {expected(s)}, got {kind(value)}')
     if 'enum' in s and value not in s['enum']:
-        raise ToolError(f"{path} must be one of {', '.join(str(x) for x in s['enum'])}, got {json.dumps(value, ensure_ascii=False)[:60]}")
+        raise BadInput(f"{path} must be one of {', '.join(str(x) for x in s['enum'])}, got {json.dumps(value, ensure_ascii=False)[:60]}")
     if t in ('integer', 'number') and 'minimum' in s and value < s['minimum']:
-        raise ToolError(f"{path} must be at least {s['minimum']}, got {value}")
+        raise BadInput(f"{path} must be at least {s['minimum']}, got {value}")
     if t in ('integer', 'number') and 'maximum' in s and value > s['maximum']:
-        raise ToolError(f"{path} must be at most {s['maximum']}, got {value}")
+        raise BadInput(f"{path} must be at most {s['maximum']}, got {value}")
     if t == 'string' and 'minLength' in s and len(value) < s['minLength']:
-        raise ToolError(f"{path} must be at least {s['minLength']} characters, got {len(value)}")
+        raise BadInput(f"{path} must be at least {s['minLength']} characters, got {len(value)}")
     if t == 'string' and 'maxLength' in s and len(value) > s['maxLength']:
-        raise ToolError(f"{path} must be at most {s['maxLength']} characters, got {len(value)}")
+        raise BadInput(f"{path} must be at most {s['maxLength']} characters, got {len(value)}")
     if t == 'array':
         least = s.get('minItems', 0)
         if len(value) < least:
-            raise ToolError(f"{path} needs at least {least} item{'' if least == 1 else 's'}, got {len(value)}")
+            raise BadInput(f"{path} needs at least {least} item{'' if least == 1 else 's'}, got {len(value)}")
         if 'maxItems' in s and len(value) > s['maxItems']:
-            raise ToolError(f"{path} takes at most {s['maxItems']} items, got {len(value)}")
+            raise BadInput(f"{path} takes at most {s['maxItems']} items, got {len(value)}")
         for i, item in enumerate(value):
             check(item, s.get('items') or {}, f'{path}[{i}]', name)
     if t == 'object':
         props = s.get('properties') or {}
         extra = [k for k in value if k not in props] if s.get('additionalProperties') is False else []
         if extra:
-            raise ToolError(f'{path or name} has no field {extra[0]}; ' + (f"its fields are {', '.join(props)}" if props else 'it takes no fields'))
+            raise BadInput(f'{path or name} has no field {extra[0]}; ' + (f"its fields are {', '.join(props)}" if props else 'it takes no fields'))
         for k in s.get('required') or []:
             if value.get(k) is None:
-                raise ToolError(f"{f'{path}.{k}' if path else k} is required")
+                raise BadInput(f"{f'{path}.{k}' if path else k} is required")
         for k, sub in props.items():
             if value.get(k) is not None:
                 check(value[k], sub, f'{path}.{k}' if path else k, name)
@@ -657,7 +672,7 @@ def markup(value, path: str) -> None:
     if isinstance(value, str):
         m = TOOL_MARKUP.search(value)
         if m:
-            raise ToolError(f'{path} contains tool-call markup ({m.group(0)}); send the value again without it')
+            raise BadInput(f'{path} contains tool-call markup ({m.group(0)}); send the value again without it')
     elif isinstance(value, list):
         for i, item in enumerate(value):
             markup(item, f'{path}[{i}]')
@@ -668,7 +683,7 @@ def markup(value, path: str) -> None:
 
 def check_input(name: str, args, s: dict | None = None) -> None:
     if not isinstance(args, dict):
-        raise ToolError(f'{name} takes an object of fields, got {kind(args)}')
+        raise BadInput(f'{name} takes an object of fields, got {kind(args)}')
     check(args, s or SCHEMAS[name], '', name)
     if name in DRAFT_NAMES:
         markup(args, '')
@@ -785,8 +800,31 @@ def quiet_name(name: str) -> str:
     return HELD_NAME if scan('log', name) else name
 
 
+def own_muted(row: dict, muted_preset: bool) -> bool:
+    return muted_preset or str(row.get('muted') or '').strip() in SKOPAX_REASONS
+
+
+def pod_note(row: dict) -> bool:
+    return row.get('noteBy') == 'pod' and bool(row.get('note'))
+
+
+def prose_view(row: dict) -> dict:
+    out = {k: row[k] for k in PROSE_FIELDS if k in row}
+    if pod_note(row):
+        out['note'] = row['note']
+    if row.get('recommendBy') == 'pod' and 'recommend' in row:
+        out['recommend'] = row['recommend']
+    if isinstance(row.get('asks'), list):
+        out['asks'] = [{'answer': a['answer']} for a in row['asks'] if isinstance(a, dict) and 'answer' in a]
+    return out
+
+
 def scan_view(row: dict, muted_preset: bool = False) -> dict:
-    return {k: v for k, v in row.items() if k not in SKOPAX_WRITTEN and not (k == 'muted' and muted_preset)}
+    prose = prose_view(row)
+    out = {k: v for k, v in row.items() if k not in SKOPAX_WRITTEN and (k == 'asks' or k not in prose) and not (k == 'muted' and own_muted(row, muted_preset))}
+    if isinstance(out.get('asks'), list):
+        out['asks'] = [{k: v for k, v in a.items() if k != 'answer'} if isinstance(a, dict) else a for a in out['asks']]
+    return out
 
 
 def held_row(row: dict) -> dict:
@@ -1056,7 +1094,9 @@ class Toolbox:
                 check_input(name, {} if args is None else args, self._schema(name))
             except ToolError as e:
                 if plugin:
-                    raise self.sources.plugin_tools.refuse_input(name, args, e.args[0]) from None
+                    refusal = self.sources.plugin_tools.refuse_input(name, args, e.args[0])
+                    refusal.refused = isinstance(e, BadInput)
+                    raise refusal from None
                 raise
             if kind in ('write', 'propose'):
                 markup({} if args is None else args, '')
@@ -1084,11 +1124,18 @@ class Toolbox:
                 seen = self._scan_text(name, out)
             entry.update(rows=rows, truncated=cut)
             if name in SOURCE_TOOLS or name in SCANNED_OUTPUT or (plugin and self.sources.plugin_tools.scan(name)):
-                self.flags += scan(name, text if seen is None else seen)
+                if seen is None:
+                    self.flags += scan(name, text)
+                else:
+                    self.flags += scan(name, seen[0]) + scan(name, seen[1], skip=SOFT)
             return (text if content is None else content), False
         except ToolError as e:
             entry['error'] = e.text[:e.room or ERROR_LIMIT]
-            if scanned:
+            if e.held:
+                entry['held'] = e.held
+            elif e.refused:
+                entry['refused'] = True
+            if scanned and not e.refused:
                 self.flags += scan(name, entry['error'])
         except Exception as e:
             entry['error'] = text_of(e)[:ERROR_LIMIT]
@@ -1167,7 +1214,9 @@ class Toolbox:
                 self.marks_down = True
                 log.warning('past cards scanned whole: the marks of mute reasons Skopax wrote were not read: %s', error_kind(e))
             preset = set()
-        return json.dumps([scan_view(r, history.doc_id(r.get('key'), r.get('firstSeen')) in preset) if isinstance(r, dict) else r for r in out], ensure_ascii=False, default=str)
+        strict = json.dumps([scan_view(r, history.doc_id(r.get('key'), r.get('firstSeen')) in preset) if isinstance(r, dict) else r for r in out], ensure_ascii=False, default=str)
+        soft = json.dumps([prose_view(r) for r in out if isinstance(r, dict)], ensure_ascii=False, default=str)
+        return strict, soft
 
     def _searched(self, name) -> bool:
         if not isinstance(name, str) or name in CORE_TOOLS:
@@ -1443,7 +1492,7 @@ class Toolbox:
         return self._write('assess', key, summary, lambda: self._assessed(key, suspects, recommend, code))
 
     def _assessed(self, key: str, suspects: list[str], recommend: str, code: list[dict]) -> None:
-        self.store.assess(key, suspects, recommend, code or None)
+        self.store.assess(key, suspects, recommend, code or None, by='pod')
         if self.effects.fixes and any(c.get('suggestion') is not None for c in code):
             hold = self._flag_hold()
             if hold:
@@ -1465,7 +1514,7 @@ class Toolbox:
                 raise ToolError(problem)
             hold = self._flag_hold()
             if hold:
-                raise ToolError(f'this run read {hold}, so it sets no cause: the thread note when the card clears carries it to Slack with no person checking; name the trigger in the note text')
+                raise Held(f'this run read {hold}, so it sets no cause: the thread note when the card clears carries it to Slack with no person checking; name the trigger in the note text', 'cause', self.flags)
         dropped = 'cause' in a and cause is None
         return self._write('note', key, text, lambda: self.store.note(key, text, by='pod', cause=cause, drop_cause=dropped))
 
@@ -1489,7 +1538,7 @@ class Toolbox:
         teams = [t for t in wanted if t not in tags.TECHNICAL]
         hold = self._flag_hold()
         if hold and teams:
-            raise ToolError(f'this run read {hold}, so it tags no card for a business team (the team post has no hold): say in the note which team should act')
+            raise Held(f'this run read {hold}, so it tags no card for a business team (the team post has no hold): say in the note which team should act', 'tag', self.flags)
         text = tags.clip(a.get('text'), tags.TEXT_LIMIT)
         if teams:
             for field, value in (('text', text), ('why', tags.clip(a.get('why'), tags.WHY_LIMIT))):
@@ -1618,7 +1667,7 @@ class Toolbox:
     def _check_absorb(self, parent: str, host: dict, children: list[str], absorb: list[str]) -> None:
         hold = self._flag_hold()
         if hold:
-            raise ToolError(f'this run read {hold}, so it sets no absorb pattern: a pattern attaches later cards with no person checking; group the open cards without absorb')
+            raise Held(f'this run read {hold}, so it sets no absorb pattern: a pattern attaches later cards with no person checking; group the open cards without absorb', 'absorb', self.flags)
         if self.triaged.get(parent, host.get('triage')) == 'handled':
             raise ToolError(f'no absorb on a handled parent: a card that fires later, a critical one too, would go under it out of sight; group the open cards without absorb ({parent})')
         held = host.get('absorb') or []
@@ -1754,7 +1803,7 @@ class Toolbox:
     def _refuse_flagged_post(self) -> None:
         hold = self._flag_hold()
         if hold:
-            raise ToolError(f'this run read {hold}, so it does not post to the main channel itself; save a draft (it waits for a person) and say why in the note')
+            raise Held(f'this run read {hold}, so it does not post to the main channel itself; save a draft (it waits for a person) and say why in the note', 'post', self.flags)
 
     def _t_slack_send(self, a: dict):
         if self.ask:
@@ -1780,7 +1829,7 @@ class Toolbox:
             raise ToolError('slack_tell is for page asks only, when the asker tells you to pass something on')
         hold = self._flag_hold()
         if hold:
-            raise ToolError(f'this run read {hold}, so it posts nothing to Slack; tell the asker what to send instead')
+            raise Held(f'this run read {hold}, so it posts nothing to Slack; tell the asker what to send instead', 'slack', self.flags)
         if self.used['slack_tell'] >= TELL_MAX:
             raise ToolError(f'slack_tell already posted {TELL_MAX} messages in this ask')
         name = ' '.join(str(req(a, 'name')).split())

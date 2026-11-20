@@ -298,11 +298,11 @@ def test_an_expired_skopax_mute_leaves_no_mark_on_the_card(store: Store):
     assert card['muted'] is None and 'mutedPreset' not in card
 
 
-def test_a_past_card_written_before_the_mark_existed_still_holds_the_draft(store: Store):
+def test_a_past_card_written_before_the_mark_existed_still_holds_the_draft_when_the_reason_is_not_a_skopax_sentence(store: Store):
     # given
     seeded_past(store)
     store.card_history.insert_one({'_id': f'{PAST}|{FIRST}', 'key': PAST, 'svc': 'checkout-service', 'label': 'ERROR pattern', 'firstSeen': FIRST, 'lastSeen': FIRST,
-                                   'outcome': 'known', 'muted': 'marked as known noise on the page'})
+                                   'outcome': 'known', 'muted': 'known noise, expected after every deploy'})
     b = box(store)
 
     # when
@@ -339,7 +339,7 @@ def test_the_hold_line_trips_no_phrase_and_still_names_the_card_and_the_tool(sto
 def test_a_store_error_while_reading_the_marks_scans_the_rows_whole(store: Store, monkeypatch, caplog):
     # given
     seeded_past(store)
-    actions.apply(store, {'type': 'known', 'key': PAST, 'requestedBy': 'alice@example.com'})
+    actions.apply(store, {'type': 'known', 'key': PAST, 'requestedBy': 'alice', 'source': 'slack', 'reason': 'Known noise from Slack by alice', actions.PRESET: True})
 
     def down(ids):
         raise PyMongoError('down')

@@ -5,7 +5,7 @@ from collections.abc import MutableMapping, Sequence
 
 from skopax.contract import Knowledge, Plugin, ReadError, RunState, Tool
 from skopax.instances import Instance
-from skopax.investigator.tools import ERROR_LIMIT, READ_LIMIT_ROWS, ToolError, render, test_cluster, test_error
+from skopax.investigator.tools import ERROR_LIMIT, READ_LIMIT_ROWS, BadInput, ToolError, render, test_cluster, test_error
 from skopax.investigator.toolset import held, primary_of, runnable
 from skopax.messages import msg
 from skopax.monitor import refusal
@@ -114,8 +114,8 @@ class PluginTools:
         return None if entry is None else (entry[0], entry[1])
 
     @staticmethod
-    def _refuse(text: str, name: object) -> ToolError:
-        return ToolError(test_error(text) if isinstance(name, str) and test_cluster(name) else text)
+    def _refuse(text: str, name: object, refused: bool = False) -> ToolError:
+        return (BadInput if refused else ToolError)(test_error(text) if isinstance(name, str) and test_cluster(name) else text)
 
     def refuse_input(self, name: str, args: object, text: str) -> ToolError:
         entry = self._entry(name)
@@ -144,7 +144,7 @@ class PluginTools:
             raise ToolError(f"the default instance{f' {named.name}' if named is not None else ''} of {plugin.id} is not available; {field or 'instance'} must be one of {names}")
         chosen = next((i for i in found if i.name == asked), None) if isinstance(asked, str) else None
         if chosen is None:
-            raise self._refuse(f'{field} must be one of {names}', asked)
+            raise self._refuse(f'{field} must be one of {names}', asked, True)
         return chosen
 
     def call(self, name: str, args: dict, now: float, rendered: bool = False, states: MutableMapping[str, RunState] | None = None) -> object:
