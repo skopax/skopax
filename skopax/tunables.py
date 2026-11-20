@@ -568,11 +568,14 @@ class TunableStore:
     def all(self) -> dict[str, dict]:
         return {d['_id']: {'value': d.get('value'), 'by': d.get('by'), 'at': d.get('at')} for d in self.values.find({})}
 
-    def write(self, key: str, value: str | None, by: str, old: str | None, **extra) -> dict:
+    def write(self, key: str, value: str | None, by: str, old: str | None, record: bool = True, **extra) -> dict:
         if value is None:
             self.values.delete_one({'_id': key})
         else:
             self.values.replace_one({'_id': key}, {'_id': key, 'value': value, 'by': by, 'at': iso(utc_now())}, upsert=True)
+        if not record:
+            self.meta.find_one_and_update({'_id': REV_ID}, {'$inc': {'n': 1}}, upsert=True)
+            return {'key': key, 'old': old, 'new': value, 'by': by, 'at': iso(utc_now()), **extra}
         return self.write_change(key, old, value, by, **extra)
 
     def advance(self, key: str, value: str) -> None:
@@ -827,14 +830,14 @@ class Live:
         if value is not None and old is None:
             old = stored(getattr(now, field))
         for other, (other_field, other_sev) in SEV_HOURS_KEYS.items():
-            if other != key and other not in self.overrides and other_sev not in self.base.auto_resolve_sev_set:
+            if other != key and other not in self.overrides and other_sev not in self.base.auto_resolve_sev_set and getattr(now, other_field) != getattr(self.base, other_field):
                 self.tunables.write(other, stored(getattr(now, other_field)), by, None, legacy=True)
         if INFO_DAYS_KEY not in self.overrides and not self.base.info_auto_close_days_set and now.info_auto_close_days != self.base.info_auto_close_days:
             self.tunables.write(INFO_DAYS_KEY, stored(now.info_auto_close_days), by, None, legacy=True)
         cleared = [self.tunables.write(k, None, by, row.get('value'), legacy=True) for k, row in held]
         if value is None:
             return cleared[0]
-        return self.tunables.write(key, value, by, old)
+        return self.tunables.write(key, value, by, old, record=value != old)
 
     def mark_old_switch(self, out: dict) -> None:
         stored_old = self.overrides.get(CRIT_NOW_KEY)

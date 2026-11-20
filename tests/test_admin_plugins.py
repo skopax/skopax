@@ -1082,6 +1082,8 @@ def test_health_reads_only_the_checks_an_instance_runs(store):
     two_checks_plugin.PLAN['beat:east'] = {'fail': 'boom'}
     with served(store, PAIR) as c:
         c.app.state.scheduler.nudge = lambda name: None
+        c.app.state.sweeper.clock = lambda: NOW
+        c.app.state.instances.clock = lambda: NOW
         add(c, 'main', True)
         add(c, 'east', True, values=EAST)
         both_ran(c, NOW)

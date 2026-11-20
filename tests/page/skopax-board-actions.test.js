@@ -17,7 +17,7 @@ function state() {
     services: [], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
 }
 
-async function boot(me, actions) {
+async function boot(me, actions, hold) {
   const errors = [], posts = [];
   const vc = new VirtualConsole(); vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
   const dom = new JSDOM(pageHtml(TEMPLATE, {view: 'board'}).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state())), {
@@ -27,7 +27,7 @@ async function boot(me, actions) {
       w.fetch = async (p, opts) => {
         p = String(p);
         const ok = (b) => ({ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(b)), text: async () => JSON.stringify(b)});
-        if (opts && opts.method === 'POST' && p.startsWith('/api/actions')) { posts.push(JSON.parse(opts.body)); return ok({id: 'x', status: 'requested'}); }
+        if (opts && opts.method === 'POST' && p.startsWith('/api/actions')) { posts.push(JSON.parse(opts.body)); if (hold) await hold; return ok({id: 'x', status: 'requested'}); }
         if (p.startsWith('/api/me')) return ok(Object.assign({loginEnabled: true, user: 'op@example.com', operator: true, jira: true, jiraUrl: 'https://jira.example.com', teams: [], tags: []}, me || {}));
         if (p.startsWith('/api/actions')) return ok(actions || []);
         if (p.startsWith('/api/deploy-reports') || p.startsWith('/api/requests')) return ok([]);
@@ -214,6 +214,63 @@ async function aCardWithAQueuedActionHasItsTileMovesDisabled() {
   return 'a card with a queued action has its tile move buttons disabled, like the drawer';
 }
 
+async function aBusyCardCannotBeDragged() {
+  //given
+  const queued = [{id: 'q1', type: 'dive', target: OPEN, status: 'requested', requestedAt: iso(1), requestedBy: 'op@example.com', label: 'Investigate'}];
+  const {w, doc, errors} = await boot({}, queued);
+  const drag = (tile) => {
+    const e = new w.Event('dragstart', {bubbles: true, cancelable: true});
+    tile.dispatchEvent(e);
+    return e.defaultPrevented;
+  };
+
+  //when
+  const busyBlocked = drag(tileOf(doc, OPEN));
+  const busyDragging = tileOf(doc, OPEN).classList.contains('dragging');
+  const freeBlocked = drag(tileOf(doc, PROG));
+
+  //then
+  assert.strictEqual(tileOf(doc, OPEN).draggable, false, 'a card with a queued action is not draggable');
+  assert.strictEqual(tileOf(doc, PROG).draggable, true, 'other cards stay draggable');
+  assert.ok(busyBlocked && !busyDragging, 'a drag of the busy card is refused');
+  assert.ok(!freeBlocked && tileOf(doc, PROG).classList.contains('dragging'), 'a drag of a free card starts');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  return 'a card with a queued action is not draggable, like its tile buttons are disabled';
+}
+
+async function aTileRedrawnMidMoveLooksBusyAndCannotBeDragged() {
+  //given
+  let release;
+  const hold = new Promise((r) => { release = r; });
+  const {w, doc, errors, posts} = await boot({}, [], hold);
+  const move = (key) => tileOf(doc, key).querySelector('.tile-acts [data-move="progress"]');
+  const buttons = (key) => [...tileOf(doc, key).querySelectorAll('.tile-acts .ta-b[data-move]')];
+
+  //when
+  move(OPEN).click();
+  await wait(30);
+  w.bumpRender();
+  w.renderAnoms();
+  const redrawn = tileOf(doc, OPEN);
+  const during = {all: buttons(OPEN).every((b) => b.disabled), busy: move(OPEN).getAttribute('aria-busy'), others: buttons(OPEN).filter((b) => b !== move(OPEN)).some((b) => b.hasAttribute('aria-busy')), draggable: redrawn.draggable};
+  const e = new w.Event('dragstart', {bubbles: true, cancelable: true});
+  redrawn.dispatchEvent(e);
+  move(OPEN).click();
+  release();
+  await wait(400);
+
+  //then
+  assert.deepStrictEqual(during, {all: true, busy: 'true', others: false, draggable: false}, 'the redrawn tile looks busy: buttons disabled, the clicked one marked, not draggable');
+  assert.ok(e.defaultPrevented, 'the redrawn tile cannot be dragged while the move runs');
+  assert.strictEqual(posts.filter((p) => p.type === 'take').length, 1, 'one move was sent');
+  assert.ok(buttons(OPEN).length && buttons(OPEN).every((b) => !b.disabled && !b.hasAttribute('aria-busy')), 'when the move ends the redrawn tile is usable again');
+  assert.strictEqual(tileOf(doc, OPEN).draggable, true, 'and draggable again');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  return 'a tile redrawn while its move runs looks busy and cannot be dragged, and is usable again when the move ends';
+}
+
 function theTileOverlayLetsDragsThrough() {
   //given
   const css = fs.readFileSync(TEMPLATE, 'utf8');
@@ -256,6 +313,8 @@ function theTileRowAndTheDrawerGroupsHaveTheirStyles() {
   console.log('PASS ' + await aDoubleClickSendsOneMoveAndTheFocusComesBack());
   console.log('PASS ' + await aKeyOnATileButtonStillReachesThePage());
   console.log('PASS ' + await aCardWithAQueuedActionHasItsTileMovesDisabled());
+  console.log('PASS ' + await aBusyCardCannotBeDragged());
+  console.log('PASS ' + await aTileRedrawnMidMoveLooksBusyAndCannotBeDragged());
   console.log('PASS ' + theTileOverlayLetsDragsThrough());
   console.log('PASS ' + await aViewerOnlyGetsTheLinksOnATile());
   console.log('PASS ' + theTileRowAndTheDrawerGroupsHaveTheirStyles());

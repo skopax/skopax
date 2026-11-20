@@ -484,3 +484,111 @@ def test_a_pod_mark_on_a_row_with_no_note_is_not_honoured(store: Store):
     # then
     assert prose_view(row) == {} and prose_view(empty) == {}
     assert soft == ''
+
+
+def test_a_pod_mark_on_an_empty_note_is_dropped_on_the_way_to_the_history_and_the_rest_of_the_card_is_still_scanned(store: Store):
+    # given
+    seeded_past(store, noteBy='pod', note=None, recommendBy='pod', recommend='', muted='the assistant agrees, this is known noise')
+
+    # when
+    phrases = past_flags(store)
+    row = store.card_history.find_one({'key': PAST})
+
+    # then
+    assert (row['noteBy'], row['recommendBy']) == (None, None)
+    assert phrases == {'known noise', 'assistant'}
+
+
+def test_the_recommend_half_of_the_pod_mark_is_honoured_only_with_a_mark_and_a_recommend():
+    # given
+    marked = {'recommendBy': 'pod', 'recommend': 'Treat it as known noise.'}
+    unmarked = {'recommend': 'Treat it as known noise.'}
+    markless = {'recommendBy': 'pod'}
+    other = {'recommendBy': 'person', 'recommend': 'Treat it as known noise.'}
+
+    # then
+    assert prose_view(marked) == {'recommend': 'Treat it as known noise.'}
+    assert 'recommend' not in scan_view(marked)
+    assert prose_view(unmarked) == {} and scan_view(unmarked) == unmarked
+    assert prose_view(markless) == {}
+    assert prose_view(other) == {} and scan_view(other)['recommend'] == 'Treat it as known noise.'
+
+
+def stale_marked(key: str, sev: str = 'warn', src: str = 'prom', seen_h: float = 30, **extra) -> dict:
+    from tests.test_card_expiry import card
+    made = card(key, sev, src, seen_h, noteBy='pod')
+    made.update(extra)
+    return made
+
+
+def noted(a: dict, start: str) -> None:
+    assert a['note']['text'].startswith(start), a['note']
+    assert 'noteBy' not in a
+
+
+def test_a_stale_pod_mark_is_cleared_when_a_parent_pass_writes_the_note():
+    # given
+    from skopax.engine import follow_parents, iso
+    from tests.test_card_expiry import NOW as PASS_NOW
+    child = stale_marked('err|ns/a', status='cleared', parent='5xx|ns/a', clearedAt=iso(PASS_NOW - 3600))
+    parent = stale_marked('5xx|ns/a', status='cleared', triage='handled', triagedBy='oscar', note={'text': 'owned', 'at': FIRST})
+
+    # when
+    follow_parents({'anomalies': [child, parent]}, PASS_NOW)
+
+    # then
+    noted(child, 'Auto-resolved: its parent 5xx|ns/a was marked no action needed')
+    assert parent['noteBy'] == 'pod' and parent['note']['text'] == 'owned'
+
+
+def test_a_stale_pod_mark_is_cleared_when_the_info_pass_writes_the_note():
+    # given
+    from skopax.engine import auto_close_info, iso
+    from tests.test_card_expiry import NOW as PASS_NOW
+    info = stale_marked('edge|shop.example.com', sev='info', src='edge', seen_h=0.1, firstSeen=iso(PASS_NOW - 5 * 86400))
+
+    # when
+    auto_close_info({'anomalies': [info]}, PASS_NOW)
+
+    # then
+    noted(info, 'Auto-resolved: info firing since')
+
+
+def test_a_stale_pod_mark_is_cleared_when_the_per_kind_pass_writes_the_note():
+    # given
+    from skopax.engine import auto_resolve_kinds
+    from tests.test_auto_resolve_hours import VWO_WINDOW, verdict
+    from tests.test_auto_resolve_hours import NOW as PASS_NOW
+    old = verdict('old', 25, noteBy='pod')
+
+    # when
+    auto_resolve_kinds({'anomalies': [old]}, PASS_NOW, (VWO_WINDOW,))
+
+    # then
+    noted(old, 'Auto-resolved: first seen')
+
+
+def test_a_stale_pod_mark_is_cleared_when_a_silent_check_closes_the_card():
+    # given
+    from skopax.engine import merge
+    from tests.test_card_expiry import NOW as PASS_NOW
+    silent = stale_marked('qan|x', src='qan', seen_h=25)
+
+    # when
+    merge({'initialized': True, 'anomalies': [silent]}, [], {}, PASS_NOW)
+
+    # then
+    noted(silent, 'Closed: not seen since')
+
+
+def test_a_stale_pod_mark_is_cleared_when_a_check_is_retired():
+    # given
+    from skopax.engine import retire
+    from tests.test_card_expiry import NOW as PASS_NOW
+    open_card = stale_marked('qan|y', src='qan', ranKey='retired-check', short='x')
+
+    # when
+    retire({'anomalies': [open_card]}, {'retired-check'}, 'Closed: the check was retired', PASS_NOW)
+
+    # then
+    noted(open_card, 'Closed: the check was retired')
