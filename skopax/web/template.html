@@ -260,6 +260,51 @@ body:not(.is-rail) .s-grp.folded > a.tab:not([aria-current="page"]):not(.k-crit)
 .last-check b { font-weight: 500; color: var(--fg); margin-left: 6px; }
 .last-check .upd, .last-check .upd b { color: var(--ring); }
 .last-check .upd { animation: upd 6s ease-out forwards; }
+.run-ind { position: relative; flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--info); box-shadow: 0 0 0 2px color-mix(in srgb, var(--info) 25%, transparent); }
+.run-ind::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--info); animation: run-pulse 1.6s ease-out infinite; }
+.run-ind.run-q { background: transparent; border: 2px solid var(--info); box-sizing: border-box; box-shadow: none; }
+.run-ind.run-q::after { display: none; }
+@keyframes run-pulse { from { transform: scale(1); opacity: .7; } to { transform: scale(2.2); opacity: 0; } }
+.run-banner { flex: 1 0 100%; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 2px; padding: 9px 14px; border: 1px solid color-mix(in srgb, var(--info) 45%, transparent); border-left: 4px solid var(--info); border-radius: 6px; background: var(--info-bg); color: var(--fg); font-size: 0.86rem; min-width: 0; }
+.run-banner .run-say { font-weight: 650; color: var(--info); }
+.run-banner .run-bits { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; color: var(--fg-2); font: 0.78rem var(--font-data); min-width: 0; }
+.run-banner .run-bits > span + span::before { content: "\00b7"; margin: 0 7px; color: var(--muted); }
+.run-banner .run-step code { font: inherit; color: var(--fg); overflow-wrap: anywhere; }
+.run-banner .run-why { color: var(--fg); overflow-wrap: anywhere; }
+.run-banner .run-rec { margin-left: auto; font-size: 0.8rem; color: var(--link); }
+.run-banner.run-wait { border-color: var(--line-2); border-left-color: var(--info); background: var(--sunken); }
+.run-banner.run-ok { --info: var(--good); --info-bg: var(--good-bg); }
+.run-banner.run-bad { --info: var(--crit); --info-bg: var(--crit-bg); }
+article.inc:not(.open) .run-banner { display: none; }
+.tag.tri-inv .run-ind { width: 7px; height: 7px; }
+.run-pill { display: inline-flex; align-items: center; gap: 7px; min-width: 0; max-width: 46vw; height: 28px; box-sizing: border-box; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--info) 45%, transparent); border-radius: 14px; background: var(--info-bg); color: var(--info); font: 600 0.76rem var(--font-ui); text-decoration: none; white-space: nowrap; overflow: hidden; }
+.run-pill[hidden] { display: none; }
+.run-pill:hover { border-color: var(--info); }
+.run-pill:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.run-pill .rp-say { overflow: hidden; text-overflow: ellipsis; }
+.run-pill .rp-bit { font: 500 0.74rem var(--font-data); color: var(--fg-2); }
+.run-pill .rp-bit::before { content: "\00b7"; margin-right: 7px; color: var(--muted); }
+.run-pill .rp-n { display: none; font: 600 0.76rem var(--font-data); }
+.run-pill .rp-sep { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.run-pill.run-wait { background: var(--sunken); border-color: var(--line-2); }
+.run-pill.run-warn { --info: var(--warn); --info-bg: var(--warn-bg); }
+.run-pill.run-muted { --info: var(--muted); --info-bg: var(--sunken); border-color: var(--line-2); }
+.run-pill .run-mark { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--info); color: var(--surface); font: 700 0.68rem var(--font-ui); }
+@media (max-width: 640px) {
+  .run-pill { flex: none; padding: 0 9px; gap: 6px; }
+  .run-pill.run-paused { display: none; }
+  .top .crumb { flex-shrink: 0; }
+  .top .off-tag .ot-lead { display: none; }
+  #inv-btn { width: 30px; height: 30px; padding: 0; display: inline-grid; place-items: center; }
+  .top #inv-btn .ib-i { display: inline-block; }
+  #inv-btn .ib-t { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .run-pill .rp-say, .run-pill .rp-bit { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .run-pill .rp-n { display: inline; }
+  .run-pill .rp-n:empty { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-ind::after { display: none; animation: none; }
+}
 .pane { container: content / inline-size; min-width: 0; }
 .adm-shell { display: grid; grid-template-columns: 178px minmax(0, 1fr); gap: 16px 20px; align-items: start; min-width: 0; }
 .adm-nav { position: sticky; top: calc(var(--top-h) + 16px); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -401,6 +446,7 @@ td.any-wrap, td.any-wrap .svc { overflow-wrap: anywhere; white-space: normal; }
 .inv-pop .inv-link { font-size: 0.8rem; }
 #inv-btn.stopped { color: var(--warn); border-color: var(--warn); }
 #inv-btn.off { color: var(--muted); }
+#inv-btn .ib-i { display: none; width: 15px; height: 15px; }
 .tipbox { position: fixed; z-index: 80; max-width: 24rem; padding: 7px 11px; font-size: 0.8rem; line-height: 1.45; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 6px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2); pointer-events: none; white-space: pre-line; overflow-wrap: anywhere; }
 .modal-wrap { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: rgba(10, 13, 18, 0.4); animation: fade-in .2s ease; }
 .modal { width: min(26rem, 100%); box-sizing: border-box; background: var(--surface); border: 1px solid var(--line-2); border-radius: 6px; padding: 18px 20px; display: grid; gap: 12px; box-shadow: 0 18px 48px rgba(10, 13, 18, 0.22); animation: pop-in .22s var(--ease); }
@@ -2188,6 +2234,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <div class="crumb" id="crumb"><b id="crumb-page"></b></div>
       <span class="off-tag" id="off-tag" hidden>PAUSED</span>
       <div class="top-r">
+        <a class="run-pill" id="run-pill" hidden></a>
         <span class="last-check" id="last-check"></span>
         <div class="inv-menu" id="inv-menu"><button type="button" class="btn sec small" id="inv-btn" aria-haspopup="true" aria-expanded="false" title="Investigator: ask it a question, stop or resume it" hidden>Investigator</button><div class="inv-pop" id="inv-pop" hidden><p class="inv-state" id="inv-state"></p><button type="button" class="btn small op-btn" id="inv-chat">Chat with [[brand]]</button><button type="button" class="btn sec small op-btn" id="inv-ask">Ask the investigator&hellip;</button><button type="button" class="btn sec small op-btn admin-only" id="inv-stop">Stop investigator</button><a class="inv-link" href="#t=acts" id="inv-more">Runs, usage and actions on History</a></div></div>
         <button type="button" class="ibtn" id="theme-btn"></button>
@@ -2525,6 +2572,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
 <script src="/static/i18n.js"></script>
 <script type="text/plain" id="plugin-scripts"></script>
 <script src="/static/core.js"></script>
+<script src="/static/runshow.js"></script>
 <script src="/static/overview.js"></script>
 <script src="/static/sidebar.js"></script>
 <script src="/static/palette.js"></script>

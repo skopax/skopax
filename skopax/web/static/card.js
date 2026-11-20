@@ -2,7 +2,8 @@
   var SEV = {crit: ['Critical', 'crit'], warn: ['Warning', 'warn'], info: ['Info', 'info']};
   var WAITING = 'waiting to be addressed', INVESTIGATION = {investigating: 'investigating', dived: 'investigated'};
   var TAGS = {};
-  var POLL_MS = 60000;
+  var POLL_MS = 60000, STATUS_WAIT_MS = 5000;
+  RUN_KEEP_MS = POLL_MS;
   var num = (/\/c\/(\d+)/.exec(location.pathname) || [])[1];
   var box = document.getElementById('card');
   var techOpen = null;
@@ -378,6 +379,7 @@
     box.innerHTML = '<div class="head"><span class="state-pill ' + st[1] + '" id="state">' + esc(st[0]) + '</span><span class="pill ' + sev[1] + '">' + sev[0] + '</span>' + tags + '</div>' +
       '<h1 data-no-tx>' + esc(title(c)) + '</h1>' +
       (said ? '<p class="status">' + said + '</p>' : '') +
+      runBanner(c.key) +
       (b.text ? '<section class="todo"><h2>' + (b.kind === 'info' ? 'Info' : 'Recommended') + '</h2>' + (b.why ? '<p class="why"><b>Why:</b> <span data-no-tx>' + esc(b.why) + '</span></p>' : '') + '<p class="rec" data-no-tx>' + esc(b.text) + '</p></section>' : '') +
       actions(c) +
       (shots ? '<div class="shots">' + shots + '</div>' : '') +
@@ -392,6 +394,15 @@
     document.title = brandName();
   }
   var shownSig = '';
+  async function status() {
+    try {
+      var r = await fetch('/api/investigator/status', {headers: {'Accept': 'application/json'}, credentials: 'same-origin', signal: AbortSignal.timeout(STATUS_WAIT_MS)});
+      var d = r.ok ? await r.json() : null;
+      return d && Array.isArray(d.rooms) ? d : null;
+    } catch (e) {
+      return null;
+    }
+  }
   async function load(force) {
     if (!num) { missing('There is no card number in this address.'); return; }
     if (!force && typing()) return;
@@ -401,11 +412,18 @@
       if (!r.ok) throw new Error(String(r.status));
       var next = await r.json(), sig = JSON.stringify(next);
       current = next;
-      if (sig === shownSig && box.querySelector('h1')) { var upd = document.getElementById('upd'); if (upd) upd.textContent = 'Updated ' + when(new Date().toISOString()); return; }
-      shownSig = sig;
-      var y = window.scrollY;
-      render(current);
-      if (y) window.scrollTo(0, y);
+      if (sig === shownSig && box.querySelector('h1')) {
+        var upd = document.getElementById('upd');
+        if (upd) upd.textContent = 'Updated ' + when(new Date().toISOString());
+      } else {
+        shownSig = sig;
+        var y = window.scrollY;
+        render(current);
+        if (y) window.scrollTo(0, y);
+      }
+      var runs = await status();
+      if (runs) runTake(runs);
+      if (box.querySelector('h1')) runPatch(box, box.querySelector('.status') || box.querySelector('h1'), current.key);
     } catch (e) {
       if (!box.querySelector('h1')) missing('The card could not be loaded; reload the page.');
     }

@@ -405,6 +405,7 @@ class Store:
         self.slack_seen.create_index([('at', DESCENDING)])
         ttl_index(self.ledger, 'atDt', max(SPEND_KEEP_DAYS, self.investigate_days) * 86400)
         self.ledger.create_index([('day', ASCENDING), ('at', DESCENDING)])
+        self.ledger.create_index([('runId', ASCENDING), ('at', ASCENDING)])
         ttl_index(self.card_history, 'atDt', self.history_days * 86400)
         self.card_history.create_index([('key', ASCENDING), ('firstSeen', DESCENDING)])
         self.card_history.create_index([('svc', ASCENDING), ('label', ASCENDING), ('lastSeen', DESCENDING)])
@@ -1238,6 +1239,19 @@ class Store:
             row = out.setdefault(d['runId'], {'toolCalls': 0})
             row.update(toolCalls=row['toolCalls'] + 1, lastTool=d.get('tool'), lastToolAt=d.get('t'))
         return out
+
+    def run_spend(self, run_ids: list[str], since: str) -> dict[str, float]:
+        out: dict[str, float] = {}
+        if not run_ids:
+            return out
+        for d in self.ledger.find({'runId': {'$in': run_ids}, 'at': {'$gte': since}}, {'runId': 1, 'usd.total': 1}):
+            out[d['runId']] = out.get(d['runId'], 0.0) + float((d.get('usd') or {}).get('total') or 0)
+        return {k: round(v, 4) for k, v in out.items()}
+
+    def run_errors(self, run_ids: list[str]) -> dict[str, str]:
+        if not run_ids:
+            return {}
+        return {d['_id']: str(d['error']) for d in self.investigations.find({'_id': {'$in': run_ids}, 'error': {'$nin': [None, '']}} | NOT_CHAT, {'error': 1})}
 
     def askers(self, since: str, limit: int = 5) -> list[dict]:
         rows = self.actions.aggregate([{'$match': {'type': 'ask', 'source': 'slack', 'smallTalk': {'$ne': True}, 'requestedAt': {'$gte': since}}},

@@ -50,7 +50,7 @@ async function aBusinessCardLeadsWithTheActionAndFoldsTheTechnicalPart() {
   const {w, doc, errors, hits} = await boot(482, () => card);
 
   //then
-  assert.deepStrictEqual(hits, ['/api/cards/482']);
+  assert.deepStrictEqual(hits, ['/api/cards/482', '/api/investigator/status']);
   assert.strictEqual(doc.title, '#482 · example.com/orders / Typos · Skopax');
   assert.strictEqual(doc.getElementById('num').textContent, '#482');
   assert.deepStrictEqual([...doc.querySelectorAll('.head .pill')].map((p) => p.textContent), ['Warning', 'SEO']);

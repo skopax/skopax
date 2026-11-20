@@ -152,6 +152,22 @@ footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8p
 .merged li { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; min-width: 0; }
 .merged .m1 { overflow-wrap: anywhere; font-size: 0.92rem; }
 .merged p { margin: 4px 0 0; font-size: 0.88rem; overflow-wrap: anywhere; color: var(--fg-2); }
+.run-ind { position: relative; flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--info); box-shadow: 0 0 0 2px color-mix(in srgb, var(--info) 25%, transparent); }
+.run-ind::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--info); animation: run-pulse 1.6s ease-out infinite; }
+.run-ind.run-q { background: transparent; border: 2px solid var(--info); box-sizing: border-box; box-shadow: none; }
+.run-ind.run-q::after { display: none; }
+@keyframes run-pulse { from { transform: scale(1); opacity: .7; } to { transform: scale(2.2); opacity: 0; } }
+.run-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 14px; padding: 9px 14px; border: 1px solid color-mix(in srgb, var(--info) 45%, transparent); border-left: 4px solid var(--info); border-radius: 6px; background: var(--info-bg); color: var(--fg); font-size: 0.9rem; min-width: 0; }
+.run-banner .run-say { font-weight: 650; color: var(--info); }
+.run-banner .run-bits { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; color: var(--fg-2); font: 0.8rem var(--font-data); min-width: 0; }
+.run-banner .run-bits > span + span::before { content: "\00b7"; margin: 0 7px; color: var(--muted); }
+.run-banner .run-step code { font: inherit; color: var(--fg); overflow-wrap: anywhere; }
+.run-banner .run-why { color: var(--fg); overflow-wrap: anywhere; }
+.run-banner .run-rec { margin-left: auto; font-size: 0.84rem; color: var(--link); }
+.run-banner.run-wait { border-color: var(--line-2); border-left-color: var(--info); background: var(--sunken); }
+.run-banner.run-ok { --info: var(--good); --info-bg: var(--good-bg); }
+.run-banner.run-bad { --info: var(--crit); --info-bg: var(--crit-bg); }
+@media (prefers-reduced-motion: reduce) { .run-ind::after { display: none; animation: none; } }
 </style>
 </head>
 <body>
@@ -168,6 +184,7 @@ footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8p
 <script src="/static/i18n.js"></script>
 <script type="text/plain" id="plugin-scripts"></script>
 <script src="/static/suggest.js"></script>
+<script src="/static/runshow.js"></script>
 <script src="/static/card.js"></script>
 </body>
 </html>

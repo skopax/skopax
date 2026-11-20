@@ -75,7 +75,7 @@ function liveness() {
   document.querySelector('.page').classList.toggle('is-off', off);
   var tag = document.getElementById('off-tag');
   tag.hidden = !off;
-  tag.textContent = 'INVESTIGATOR STOPPED';
+  if (!tag.querySelector('.ot-lead')) tag.innerHTML = '<span class="ot-lead">INVESTIGATOR </span><span>STOPPED</span>';
   tag.title = 'The checks still run; only the investigator is stopped. Resume under Actions › Investigator.';
   var b = document.getElementById('banner');
   if (off) {
