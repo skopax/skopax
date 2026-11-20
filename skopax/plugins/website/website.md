@@ -1,6 +1,9 @@
 `page` and `screenshot` read the configured website as a visitor without cookies sees it.
 
 - `page` is one plain GET with up to 3 redirects, each hop reported. Use it for status, redirect, cache and "is this text on the page" questions; it opens no browser.
+- Every `page` answer carries `at`, and the `age` header when the cache sent one (without it the copy's age is unknown): when `at` minus age is before a deploy, the copy is older than the release, so say "not checked, cached copy" instead of calling a change missing or a page fine. Your own first load can warm the cache, so a hit on a second load says little.
+- A soft 404 answers 200 with a not-found page (its title or h1 says so, or it is far smaller than its siblings). Old or renamed URLs that arrive only from outside (no referrer, crawlers): check with `page` whether a redirect exists, and with `find` on listings and the sitemap whether a stale link is still published; list the old URLs that still lack a redirect.
+- A card about a page that is down cannot tell when the page is back: check it with `page` before the draft and in every later run, and end the note with the time and status of your last check.
 - `screenshot` loads the page in the headless browser of the instance and shows you the picture. Use it when how the page looks matters. It is slower and capped per run and per day.
 - Both refuse /api/ paths, login pages, click-counting paths and ad-tracking parameters, and both stay on the site hosts. A refusal is the rule working, not the site failing.
 - A Cloudflare challenge is the answer of Cloudflare to the check, never the status of the page.

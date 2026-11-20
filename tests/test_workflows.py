@@ -20,7 +20,7 @@ PR_EVENTS = ['opened', 'edited', 'synchronize', 'reopened', 'ready_for_review']
 DEPENDABOT_EMAIL = '49699333+dependabot[bot]@users.noreply.github.com'
 WORKFLOWS = ROOT / '.github' / 'workflows'
 EXAMPLE_DOCKERFILE = ROOT / 'examples' / 'hello-plugin' / 'Dockerfile'
-EXAMPLE_DOCKERFILES = [EXAMPLE_DOCKERFILE] + [ROOT / 'examples' / name / 'Dockerfile' for name in ('couchbase-plugin', 'managed-redis-plugin')]
+EXAMPLE_DOCKERFILES = [EXAMPLE_DOCKERFILE] + [ROOT / 'examples' / name / 'Dockerfile' for name in ('couchbase-plugin', 'managed-redis-plugin', 'batch-jobs-plugin')]
 PINNED = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_./-]+)?@[0-9a-f]{40}')
 DIGEST = re.compile(r'[^\s@]+@sha256:[0-9a-f]{64}')
 LOCAL_CALLS = {'./.github/workflows/ci.yml'}
@@ -384,8 +384,9 @@ def image_problems(image: dict) -> list[str]:
                    '/actuator/health/liveness', '/api/admin/plugins', 'p["hello"]', '== "ok"', '/plugins/hello/icon.svg', '[ "$icon" = 200 ]',
                    'import secrets; print(secrets.token_urlsafe(32))', '-e SKOPAX_TOKEN ', '-e SKOPAX_SECRET_KEY ', '$(seq 60)',
                    '--build-arg BASE_IMAGE=skopax-hello --build-arg SKOPAX_VERSION=smoke -t skopax-couchbase:smoke examples/couchbase-plugin',
-                   '--build-arg BASE_IMAGE=skopax-couchbase --build-arg SKOPAX_VERSION=smoke -t skopax-examples:smoke examples/managed-redis-plugin',
-                   '-e SKOPAX_SECRET_KEY skopax-examples:smoke', 'for i in ("couchbase", "managed-redis")', 'for plugin in couchbase managed-redis; do',
+                   '--build-arg BASE_IMAGE=skopax-couchbase --build-arg SKOPAX_VERSION=smoke -t skopax-managed-redis:smoke examples/managed-redis-plugin',
+                   '--build-arg BASE_IMAGE=skopax-managed-redis --build-arg SKOPAX_VERSION=smoke -t skopax-examples:smoke examples/batch-jobs-plugin',
+                   '-e SKOPAX_SECRET_KEY skopax-examples:smoke', 'for i in ("couchbase", "managed-redis", "batch-jobs")', 'for plugin in couchbase managed-redis batch-jobs; do',
                    '/plugins/$plugin/icon.svg'):
         if needle not in script:
             problems.append(f'layer-smoke lacks {needle}')
@@ -798,7 +799,7 @@ def test_dependabot_watches_actions_uv_docker_and_npm_weekly():
     assert config['version'] == 2
     assert set(found) == {'github-actions', 'uv', 'docker', 'npm'}
     assert {u['schedule']['interval'] for u in found.values()} == {'weekly'}
-    assert found['docker']['directories'] == ['/', '/examples/hello-plugin', '/examples/couchbase-plugin', '/examples/managed-redis-plugin']
+    assert found['docker']['directories'] == ['/', '/examples/hello-plugin', '/examples/couchbase-plugin', '/examples/managed-redis-plugin', '/examples/batch-jobs-plugin']
     assert found['docker']['groups'] == {'docker': {'group-by': 'dependency-name'}}
     assert found['npm']['directory'] == '/tests/page'
     assert {e: u['cooldown']['default-days'] for e, u in found.items() if e != 'docker'} == {'github-actions': 14, 'uv': 14, 'npm': 14}

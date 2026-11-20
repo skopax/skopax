@@ -329,7 +329,7 @@ def test_prometheus_identity_and_manifest():
     assert (loaded.state, loaded.reason) == ('ok', None) and 'skopax.plugins.prometheus' in BUILTIN
     assert Registry.load({}, entry_points=False).get('prometheus').state == 'ok'
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'Prometheus', '0.1.0', 'metrics', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
+        'Prometheus', '0.1.0', 'metrics', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url', '@ui-url'], 'secrets': ['token', 'password'], 'agentReads': False}
     assert [(f['key'], f['kind']) for f in manifest['fields']] == [('url', 'url'), ('ui-url', 'url'), ('auth', 'choice'), ('token', 'secret'), ('username', 'text'), ('password', 'secret'), ('ca', 'pem'), ('ca-pinned', 'bool'), ('namespaces', 'regex'), ('ingress-exclude', 'regex'), ('profiles', 'text')]
     assert manifest['checks'] == [{'id': 'prom', 'label': 'Errors, latency, restarts and alerts', 'period': 900, 'offset': 120, 'ran': ['prom', 'kube', 'alert']}]
@@ -355,7 +355,7 @@ def test_env_defines_the_primary_instance(store: Store, tmp_path):
     assert bare.sources[0].instances[0]['namespaces'] == '.*' and bare.sources[0].instances[0]['ui-url'] == ''
     assert none.sources[0].instances == ()
     assert (main.primary, main.enabled, main.problem, main.values['url'], main.values['namespaces']) == (True, True, None, PROD, 'shop|payments')
-    assert jobs == ['probe', 'postdeploy', 'prometheus.prom']
+    assert jobs == ['probe', 'version-check', 'postdeploy', 'prometheus.prom']
     assert not hasattr(b.settings, 'prometheus_url') and not hasattr(b.settings, 'prometheus_namespaces') and not hasattr(b.settings, 'prometheus_ui_url')
 
 
@@ -665,7 +665,7 @@ def test_the_postdeploy_job_follows_the_instances_present_at_boot_and_added_late
     # then
     assert 'postdeploy' not in before and before_info is False
     assert 'postdeploy' in after and after_info is True
-    assert at_boot == ['postdeploy', 'prometheus.prom']
+    assert at_boot == ['version-check', 'postdeploy', 'prometheus.prom']
 
 
 def test_the_postdeploy_job_runs_each_row_on_its_own_available_instance(store: Store):

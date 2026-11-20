@@ -71,9 +71,9 @@ def test_the_presets_are_listed_with_their_placeholders(store):
     # then
     assert got.status_code == 200
     items = got.json()['items']
-    assert [(i['id'], i['name'], i['source']) for i in items] == [('couchbase', 'Couchbase', 'prometheus'), ('managed-redis', 'Managed Redis', 'grafana')]
-    assert [p['key'] for p in items[1]['placeholders']] == ['instance', 'datasource', 'name', 'selector', 'prefix', 'label']
-    assert listed['presets'] == [{'id': 'couchbase', 'name': 'Couchbase', 'nameKey': 'cluster'}, {'id': 'managed-redis', 'name': 'Managed Redis', 'nameKey': 'name'}]
+    assert [(i['id'], i['name'], i['source']) for i in items] == [('couchbase', 'Couchbase', 'prometheus'), ('csp', 'CSP reports', 'elasticsearch'), ('managed-redis', 'Managed Redis', 'grafana')]
+    assert [p['key'] for p in items[2]['placeholders']] == ['instance', 'datasource', 'name', 'selector', 'prefix', 'label']
+    assert listed['presets'] == [{'id': 'couchbase', 'name': 'Couchbase', 'nameKey': 'cluster'}, {'id': 'csp', 'name': 'CSP reports', 'nameKey': 'name'}, {'id': 'managed-redis', 'name': 'Managed Redis', 'nameKey': 'name'}]
 
 
 def test_render_fills_the_placeholders_and_each_check_previews_against_a_fake_prometheus(store):

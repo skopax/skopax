@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import anthropic
 
+from skopax.ai import THINK_OFF, ModelSetting, key_for, maker, wrap
 from skopax.aikey import ClientBox
 from skopax.config import Setting
 from skopax.engine import iso as epoch_iso
@@ -33,14 +34,16 @@ class Reply:
 
 
 class SmallTalk:
-    model = Setting('investigate_gate_model')
+    provider = Setting('ai_provider')
+    model = ModelSetting('investigate_gate_model', 'gate')
     org = Setting('org_about')
 
     def __init__(self, store, settings, client=None, clock=time.time, key: Callable[[], str] | None = None, pack: Callable[[], OrgPack | None] | None = None):
         self.store = store
         self.settings = settings
-        self.key = key or (lambda: settings.anthropic_api_key)
-        self.box = ClientBox(self.key, lambda k: anthropic.Anthropic(api_key=k, timeout=GATE_TIMEOUT, max_retries=0), client)
+        self.key = key or key_for(settings, lambda: self.provider)
+        self.box = ClientBox(self.key, maker(lambda: self.provider, lambda k: anthropic.Anthropic(api_key=k, timeout=GATE_TIMEOUT, max_retries=0), GATE_TIMEOUT, 0), client,
+                             lambda: self.provider)
         self.clock = clock
         self.pack = pack or (lambda: None)
 
@@ -68,30 +71,30 @@ class SmallTalk:
         name = asker(by)
         system = prompt.small_talk_system(self.org, self.pack()) + self.rules()['rules'] + (prompt.SMALL_TALK_ASKER.format(name=name) if name else '')
         try:
-            client = self._client()
-            if client is None:
+            ai = wrap(self._client())
+            if ai is None:
                 return None
-            resp = client.messages.create(model=self.model, max_tokens=REPLY_MAX_TOKENS, system=system,
-                                                  messages=[{'role': 'user', 'content': text}], thinking={'type': 'disabled'}, output_config={'effort': 'low'})
+            model = pricing.effective(ai.provider, self.model, 'gate')
+            resp = ai.once(model, system, [{'role': 'user', 'content': text}], REPLY_MAX_TOKENS, 'low', THINK_OFF)
         except Exception as e:
             log.warning('small talk call failed: %s', error_kind(e))
             return None
         try:
-            usd = pricing.usd(self.model, resp.usage)
+            usd = pricing.usd(model, resp.usage)
         except Exception as e:
             log.warning('small talk usage could not be priced: %s', error_kind(e))
             return None
         day = clock.day(self.clock())
         self.store.add_spend(day, usd)
-        self._ledger(day, resp.usage, talk_for, by, keys)
-        if resp.stop_reason == 'refusal':
+        self._ledger(day, ai.provider, model, resp.usage, talk_for, by, keys)
+        if resp.stop == 'refusal':
             return None
-        answer = '\n'.join(b.text for b in resp.content if b.type == 'text').strip()
+        answer = '\n'.join(resp.texts).strip()
         return Reply(answer[:REPLY_LIMIT], usd) if answer else None
 
-    def _ledger(self, day: str, usage, talk_for: str, by: str | None, keys) -> None:
+    def _ledger(self, day: str, provider: str, model: str, usage, talk_for: str, by: str | None, keys) -> None:
         try:
-            self.store.add_ledger({'source': 'smalltalk', 'talkFor': talk_for, 'day': day, 'model': self.model, 'effort': 'low', 'runId': None, 'actionId': None,
-                                   'keys': list(keys), 'by': by, **pricing.split(self.model, usage)})
+            self.store.add_ledger({'source': 'smalltalk', 'talkFor': talk_for, 'day': day, 'provider': provider, 'model': model, 'effort': None if provider == pricing.OPENAI else 'low', 'runId': None, 'actionId': None,
+                                   'keys': list(keys), 'by': by, **pricing.split(model, usage)})
         except Exception as e:
             log.warning('spend ledger row for a %s small talk call not written: %s', talk_for, error_kind(e))

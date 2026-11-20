@@ -32,7 +32,7 @@ THREE_DAYS = 3 * DAY
 ISSUER = 'https://idp.example.com'
 ROLE = 'SKOPAX_OPERATOR'
 FEATURES_ON = {'investigator': True, 'chat': True, 'slack-autosend': True, 'slack-listener': True, 'mcp': True, 'public-read': True, 'push': True, 'postdeploy': True,
-               'self-review': False, 'hide-attribution': False}
+               'self-review': False, 'update-check': True, 'hide-attribution': False}
 FEATURES_OFF = {f: off_text(f) for f, on in FEATURES_ON.items() if not on}
 INSTANCES = {'current': {'name': 'skopax.example.com', 'letter': 'S'}, 'links': []}
 
@@ -104,7 +104,7 @@ def test_guest_reads_the_page_but_cannot_queue_actions(store: Store):
 
     # then
     assert page.status_code == 200
-    assert me == {'chatMax': 1000, 'loginEnabled': True, 'user': None, 'name': None, 'operator': False, 'jira': False, 'jiraUrl': '', 'gitlab': False, 'envLabel': '', 'task': {'project': 'OPS', 'projects': ['OPS', 'WEB', 'APP', 'MOB'], 'parent': '', 'points': 1.0, 'techProject': 'INFRA', 'techAssignee': True, 'titlePrefix': ''}, 'slack': False, 'slackChannel': '#skopax', 'tags': [{'id': k, 'label': v} for k, v in TEAM_TAGS.items()], 'routes': [], 'admin': False, 'chat': False, 'userRole': None, 'source': None, 'sso': True, 'canChangePassword': False, 'features': FEATURES_ON, 'featureOff': FEATURES_OFF, 'instances': INSTANCES}
+    assert me == {'chatMax': 1000, 'loginEnabled': True, 'user': None, 'name': None, 'operator': False, 'jira': False, 'jiraUrl': '', 'gitlab': False, 'envLabel': '', 'task': {'project': 'OPS', 'projects': ['OPS', 'WEB', 'APP', 'MOB'], 'parent': '', 'points': 1.0, 'techProject': 'INFRA', 'techAssignee': True, 'titlePrefix': ''}, 'slack': False, 'slackChannel': '#skopax', 'tags': [{'id': k, 'label': v} for k, v in TEAM_TAGS.items()], 'routes': [], 'admin': False, 'chat': False, 'userRole': None, 'source': None, 'sso': True, 'canChangePassword': False, 'canEditName': False, 'features': FEATURES_ON, 'featureOff': FEATURES_OFF, 'instances': INSTANCES}
     assert queued.status_code == 401
 
 
@@ -142,7 +142,7 @@ def test_operator_login_queues_actions_under_their_name(store: Store, endpoint: 
     assert challenge == params['code_challenge']
     assert call['code'] == 'auth-code'
     assert call['client_secret'] == 'client-secret'
-    assert me == {'chatMax': 1000, 'loginEnabled': True, 'user': 'oscar.green@example.com', 'name': 'oscar.green@example.com', 'operator': True, 'jira': False, 'jiraUrl': '', 'gitlab': False, 'envLabel': '', 'task': {'project': 'OPS', 'projects': ['OPS', 'WEB', 'APP', 'MOB'], 'parent': '', 'points': 1.0, 'techProject': 'INFRA', 'techAssignee': True, 'titlePrefix': ''}, 'slack': False, 'slackChannel': '#skopax', 'tags': [{'id': k, 'label': v} for k, v in TEAM_TAGS.items()], 'routes': [], 'admin': False, 'chat': False, 'userRole': 'operator', 'source': 'sso', 'sso': True, 'canChangePassword': False, 'features': FEATURES_ON, 'featureOff': FEATURES_OFF, 'instances': INSTANCES}
+    assert me == {'chatMax': 1000, 'loginEnabled': True, 'user': 'oscar.green@example.com', 'name': 'oscar.green@example.com', 'operator': True, 'jira': False, 'jiraUrl': '', 'gitlab': False, 'envLabel': '', 'task': {'project': 'OPS', 'projects': ['OPS', 'WEB', 'APP', 'MOB'], 'parent': '', 'points': 1.0, 'techProject': 'INFRA', 'techAssignee': True, 'titlePrefix': ''}, 'slack': False, 'slackChannel': '#skopax', 'tags': [{'id': k, 'label': v} for k, v in TEAM_TAGS.items()], 'routes': [], 'admin': False, 'chat': False, 'userRole': 'operator', 'source': 'sso', 'sso': True, 'canChangePassword': False, 'canEditName': True, 'features': FEATURES_ON, 'featureOff': FEATURES_OFF, 'instances': INSTANCES}
     assert queued.status_code == 201
     assert queued.json()['requestedBy'] == 'oscar.green@example.com'
 

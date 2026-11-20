@@ -1,6 +1,6 @@
 # Operations
 
-Running Skopax: the image, agents, the probe, logs, proxies and recovery.
+Running Skopax: the image, agents, the probe, the version check, logs, proxies and recovery.
 
 ## The image
 
@@ -65,7 +65,7 @@ Skopax writes one line per log record to standard error.
         {"timeMillis": 1795010712345, "thread": "MainThread", "level": "WARN", "loggerName": "skopax.roles", "message": "the role resolver of plug-in crm failed: RoleLookupDown", "endOfBatch": false, "loggerFqcn": "logging.Logger", "threadId": 8460, "threadPriority": 5}
 
 - **Colour.** `SKOPAX_LOG_COLOR` is `always` (the default), `auto` (only when the log goes to a terminal) or `never`, and a non-empty `NO_COLOR` turns colour off, also over a colour from Admin, the config file or a settings source. Only text lines have colour: the level (DEBUG dim, INFO green, WARN yellow, ERROR and FATAL bold red) and the logger (dim). The message stays plain, with its control characters shown escaped (such as `\n` and `\x1b`), so one record stays one line. The JSON formats never carry colour.
-- **Level.** `SKOPAX_LOG_LEVEL` is `DEBUG`, `INFO` (the default), `WARNING` (or `WARN`) or `ERROR`. The database driver and the HTTP and model libraries (`pymongo`, `httpcore`, `httpx`, `urllib3`, `anthropic` and `mcp`) stay at WARNING at every level, so DEBUG never logs database commands and replies, such as password hashes and session documents.
+- **Level.** `SKOPAX_LOG_LEVEL` is `DEBUG`, `INFO` (the default), `WARNING` (or `WARN`) or `ERROR`. The database driver and the HTTP and model libraries (`pymongo`, `httpcore`, `httpx`, `urllib3`, `anthropic`, `openai` and `mcp`) stay at WARNING at every level, so DEBUG never logs database commands and replies, such as password hashes and session documents.
 - **Bad values.** A value that is not one of these starts with the default and one warning that names it.
 - **At start and live.** The variables set the log from the first line of a start. Once the settings are read, Admin > General has Log format, Log colour and Log level (`core.log-format`, `core.log-color` and `core.log-level`, which the config file or a settings source can also give). A value saved there wins over the variable, except that a non-empty `NO_COLOR` keeps colour off (Log colour then reads `off (NO_COLOR)` in Admin), and applies from the next line on, without a restart; Reset goes back to the variable. The first lines of a start, written before the settings are read, always follow the variables or the defaults. An agent has no Admin settings and follows the variables only.
 
@@ -77,7 +77,17 @@ The proxy must pass the original `Host` header through. Skopax compares it with 
 
 ## Outbound gateway
 
-If outbound calls to Anthropic go through a gateway of your own, it must pass the `Authorization` header: the Anthropic client sends the API key as `Authorization: Bearer <key>`, not as `X-Api-Key`.
+If outbound calls to Anthropic or OpenAI go through a gateway of your own, it must pass the `Authorization` header: both clients send the API key as `Authorization: Bearer <key>`, not as `X-Api-Key`. Anthropic calls go to `api.anthropic.com`, OpenAI calls to `api.openai.com`.
+
+## Version check
+
+Skopax asks GitHub once a day whether a newer release exists, and tells admins when one does. It is on by default.
+
+- **What is requested.** One request: `GET https://api.github.com/repos/skopax/skopax/releases?per_page=20`. It runs once a day at 03:00 UTC plus a fixed delay of 0 to 600 seconds that is the same for every pod of one install and differs between installs. It also runs at start, after about 45 seconds, but only when no result is stored or the stored one is older than 20 hours, and one pod claims that run so the pods of an install make one request together; the daily run also skips a result younger than 20 hours. Only releases that are not drafts or pre-releases and whose tag looks like `vX.Y.Z` count. The newest is the highest version, not the latest date. A server that runs a pre-release or a development build does not check.
+- **What is sent.** Only what an HTTP client must send: the address and two headers, `User-Agent: Skopax/<version>` and `Accept: application/vnd.github+json`. No install id, no instance name, no usage data. The call goes through the same proxy settings as other outbound calls.
+- **What it shows.** Admins see a notice in the notices strip, "Skopax X.Y.Z is available; this server runs A.B.C.", with a Release notes link, and a small dot on the version line at the bottom of the sidebar. When any release newer than the version this server runs marks itself as a security release (see [Releases](development.md#releases)), the notice is a warning, "Skopax X.Y.Z is available and fixes a security issue; this server runs A.B.C. Update soon.", and the dot is the warning colour. Other people see nothing. The result is kept in the database, so every pod shows the same result; the level follows the version each pod runs.
+- **When it fails.** An offline server, a rate limit or an answer that is not JSON is ignored: the last good result stays, and there is no notice about the failure and no card.
+- **Turning it off.** Switch off Check for new versions in Admin > Features, or set `SKOPAX_UPDATE_CHECK=false`. While it is off, no request is made and the notice and the dot are gone. A value saved in Admin overrides the variable and applies at once.
 
 ## Lost setup code
 

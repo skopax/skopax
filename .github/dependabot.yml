@@ -24,6 +24,7 @@ updates:
       - /examples/hello-plugin
       - /examples/couchbase-plugin
       - /examples/managed-redis-plugin
+      - /examples/batch-jobs-plugin
     schedule:
       interval: weekly
     commit-message:

@@ -101,7 +101,7 @@ async function theSubNavListsTheSixSectionsWithTheirIconsAndCounts() {
   assert.deepStrictEqual(navRows(doc).map((a) => a.querySelector('svg.i').outerHTML), SUBNAV.map((r) => svg(doc, w.navIcon(r[2]))), 'each section has the mockup icon');
   assert.deepStrictEqual(navRows(doc).map((a) => a.getAttribute('href')), SUBNAV.map((r) => '#t=' + r[0].slice(4)));
   assert.strictEqual(doc.getElementById('count-integrations').textContent, '2', 'Integrations counts the plug-ins that are on and usable');
-  assert.strictEqual(doc.getElementById('count-features').textContent, '7/10', 'Features counts the switches that are on out of all of them');
+  assert.strictEqual(doc.getElementById('count-features').textContent, '8/11', 'Features counts the switches that are on out of all of them');
   assert.ok(!doc.getElementById('adm-shell').hidden && doc.getElementById('tab-settings').getAttribute('aria-current') === 'page');
   assert.strictEqual(doc.getElementById('crumb-page').textContent, 'Admin \u203a General');
   assert.deepStrictEqual(errors, []);

@@ -1,6 +1,6 @@
 # Custom checks
 
-A custom check turns a PromQL query into cards without a plug-in. An admin defines it in Admin > Integrations, under the integration tiles, and it reads through a Prometheus instance or through a Prometheus datasource of a Grafana instance that is already set up there. A check is plain data (JSON), so a ready-made set of checks can be shared as data too.
+A custom check turns a PromQL or ES|QL query into cards without a plug-in. An admin defines it in Admin > Integrations, under the integration tiles, and it reads through a Prometheus instance, through a Prometheus datasource of a Grafana instance, or through an Elasticsearch instance that is already set up there. A check is plain data (JSON), so a ready-made set of checks can be shared as data too.
 
 Only admins list, add, change, preview or delete checks. The cards they make are ordinary cards: they are pushed, assigned, muted and resolved like any other.
 
@@ -11,36 +11,65 @@ Only admins list, add, change, preview or delete checks. The cards they make are
 | `id` | 2 to 41 lowercase letters, digits or dashes, starting with a letter. Made from the name when it is left out (a name that starts with a digit gets `check-` in front; a name with too few letters or digits asks for an id). It never changes, so a rename keeps the open cards. |
 | `name` | 1 to 80 characters. Every card of the check carries it in the place of a service name, and Slack shows it as `<name> / <title>`. |
 | `enabled` | `true` (the default) or `false`. A check that is off runs no query and its cards clear. |
-| `source` | `prometheus` or `grafana`. |
-| `instance` | The name of the Prometheus or Grafana instance. |
+| `source` | `prometheus`, `grafana` or `elasticsearch`. |
+| `instance` | The name of the Prometheus, Grafana or Elasticsearch instance. |
 | `datasource` | For `grafana` only: the name or the uid of the datasource. A name is looked up in `GET /api/datasources` once a pass per Grafana instance; when a name is shared, the Prometheus-type datasource wins. A uid keeps working after the datasource is renamed. |
-| `query` | An instant PromQL query, at most 2000 characters. It must give an instant vector or a scalar. |
+| `query` | At most 2000 characters. For `prometheus` and `grafana` an instant PromQL query that gives an instant vector or a scalar; for `elasticsearch` an ES\|QL query that starts with `FROM` (see [Elasticsearch](#elasticsearch)). |
+| `window` | For `elasticsearch` only: 5 to 1440 minutes, 60 by default; the time between `?start` and `?end`. |
 | `op` and `threshold` | The comparison, one of `>`, `>=`, `<`, `<=`, `==` and `!=`, and a finite number. |
 | `baselines` and `baselineMode` | Optional: `1d` and `1w`, the same query at the same time 1 day or 1 week earlier, compared as a `ratio` (now / then, the default) or a `difference` (now - then). |
 | `severity` | `info`, `warn` (the default) or `crit`. |
-| `by` | At most 5 label names. One card per value set of these labels; empty means one card for the whole check. |
+| `by` | At most 5 label names (for `elasticsearch`, column names). One card per value set of these labels; empty means one card for the whole check. |
 | `for` | 1 to 12: how many passes in a row a label set must match before its card opens. |
 | `title` and `text` | The card title (at most 200 characters) and text (at most 1000), as plain text with placeholders. |
 
 Placeholders are `{value}` and `{<label>}` for any label of the series, such as `{instance}`. Nothing else is allowed in braces: no formats, attributes, indexes or expressions, and a stray brace is refused when the check is saved. A label the series lacks is filled with nothing. Each label value is cut to 200 characters and folded to one line, and a value that holds a placeholder is not filled again. In a label value, a `*` becomes U+2217 (a math asterisk) and a backtick an apostrophe, so a label value cannot bold text or open code in Slack; the card on the page shows them the same way; `<`, `>` and `&` are escaped on the page and in Slack, so `<!channel>` or a tag stays text. An empty title is the check name followed by the `by` label values. The text is followed by the comparison, such as `Redis memory: 93.5 > 90.`
 
+## Elasticsearch
+
+A check with the source `elasticsearch` runs ES|QL on the log cluster of an Elasticsearch instance, with that instance's address, API key and CA certificate, the way its `esql` tool reads: a read only `POST /_query`. The query must start with `FROM`; `ROW`, `SHOW` and anything else is refused when the check is saved.
+
+- **The value.** The query returns one number column named `value`, such as `STATS value = COUNT(*)`, and any other columns. A finite long, integer or double counts; a row whose `value` is text, true or false, a list, null or not finite fails the check, so drop empty rows with `WHERE value IS NOT NULL`.
+- **Groups.** `by` names grouping columns, such as `service` from `BY service = service.name`; a name must be a label name, so give a dotted field a short name in `BY`. Every column but `value` fills a `{column}` placeholder, a null as nothing and a list joined by commas. A `value` or `by` column the answer lacks fails the check, also when no row comes back.
+- **Time.** Skopax sends two named parameters, `?start` and `?end`: ISO times `window` minutes before the pass and at the pass. A query that should read only that time says so: `WHERE @timestamp >= ?start AND @timestamp < ?end`. To reach further back, subtract from it: `@timestamp >= TO_DATETIME(?start) - 1 day`. Only the parameters a query names are sent. A query without `?start` reads every document; Preview says `query has no ?start/?end: reads every document`. With baselines, the query runs again with both parameters moved back 1 day or 1 week.
+- **Rows.** At most 1000 rows are read, sorted by their columns; the rest are counted but not read. Elasticsearch itself gives at most 1000 rows unless the query sets a higher `LIMIT`, so Preview warns once an answer has 1000 rows.
+- **Failures.** An answer over 8 MB fails only that check. The first timeout on an instance in a pass fails only its check; a second one, or an Elasticsearch that cannot be reached, also holds back the other checks on the instance for the rest of that pass.
+- **Versions.** Tested on Elasticsearch 8.17.0.
+- **Links.** When the instance has an `https` Kibana URL, a card links to Kibana Discover with the query in ES|QL mode, `?start` and `?end` turned into Kibana's `?_tstart` and `?_tend`, over the last `window` minutes.
+
+Example: warn when a service writes more than 500 error lines in an hour.
+
+```json
+{
+  "name": "Error lines",
+  "source": "elasticsearch",
+  "instance": "central",
+  "query": "FROM logs-*\n| WHERE @timestamp >= ?start AND @timestamp < ?end AND log.level == \"ERROR\"\n| STATS value = COUNT(*) BY service = service.name\n| WHERE service IS NOT NULL",
+  "op": ">",
+  "threshold": 500,
+  "by": ["service"],
+  "title": "{service} wrote {value} error lines",
+  "text": "{service} wrote {value} error lines in the last hour."
+}
+```
+
 ## How a check runs
 
 The core pass `custom-checks` runs every 5 minutes, while at least one check or one of its cards exists, and soon after a check is added, changed or deleted. It runs each check that is on, the one that waited longest first:
 
-1. It runs the query at the pass time. Series whose value is NaN, +Inf or -Inf, or not a number, are left out and counted as not a number.
+1. It runs the query at the pass time. Series whose value is NaN, +Inf or -Inf, or not a number, are left out and counted as not a number (an Elasticsearch row with such a value fails the check instead).
 2. It groups the series by the `by` labels. When a group holds several series, the one with the largest value counts for `>` and `>=`, the smallest for `<` and `<=`, and the first for `==` and `!=`.
 3. With baselines, it runs the same query again with the time set 1 day and 1 week earlier; the query itself is not changed, so `a / b` works as it is. A group fires only when the comparison holds against every chosen baseline. A group with no baseline value, or with a ratio to a baseline of 0, does not fire.
 4. A group gets a card once it has fired for `for` passes in a row, counted by time: it must have fired since `(for - 1) x 5` minutes ago, give or take half a pass, so an extra pass soon after a change does not count. A pass where it does not fire, or where the check fails, starts its count again, so after an outage a card waits the full `for` once more. A group whose card is open keeps it while it fires, also right after an edit of the check.
 
-The card key is `custom-checks|<id>|<hash of the by values>`, and its ran key is `custom-checks:<id>`. The card value is the group's value, and with baselines the card also shows the 1 day and 1 week values. A link opens the query in Prometheus (when its UI URL is `https`) or in Grafana Explore.
+The card key is `custom-checks|<id>|<hash of the by values>`, and its ran key is `custom-checks:<id>`. The card value is the group's value, and with baselines the card also shows the 1 day and 1 week values. A link opens the query in Prometheus (when its UI URL is `https`), in Grafana Explore, or in Kibana Discover (when the Elasticsearch instance has an `https` Kibana URL).
 
 An empty result is a quiet pass: no card and no failure. Groups with no baseline value (a new series, or one older than the retention) are counted: the Admin row and Preview say `N groups had no baseline value`.
 
 ## Bounds
 
-- **Time:** the queries of one check, baselines included, have about 20 s together (a query that starts just before the limit may run a little past it); each query is also sent with a `timeout` of 20 s. The whole pass has 240 s; a check that does not start in time shows `not run: the pass ran out of time` and runs first at the next pass. When a source times out or cannot be reached, the other checks on that instance show `not run: <source> <instance> did not answer earlier in this pass` instead of waiting their turn, so one slow source does not hold up the checks on other sources.
-- **Series:** at most 500 series are read per check, sorted by their labels; the rest are counted but not read. An answer is at most 8 MiB.
+- **Time:** the queries of one check, baselines included, have about 20 s together (a query that starts just before the limit may run a little past it); each query is also sent with a `timeout` of 20 s. The whole pass has 240 s; a check that does not start in time shows `not run: the pass ran out of time` and runs first at the next pass. When a Prometheus or Grafana source times out, when an Elasticsearch instance times out a second time in the pass, or when any source cannot be reached, the other checks on that instance show `not run: <source> <instance> did not answer earlier in this pass` instead of waiting their turn, so one slow source does not hold up the checks on other sources.
+- **Series:** at most 500 series are read per check (1000 rows for Elasticsearch), sorted by their labels; the rest are counted but not read. An answer is at most 8 MB.
 - **Cards:** at most 20 cards per check. Past that, 19 label sets get a card (those with an open card first, then the largest values for `>` and `>=` and the smallest for `<` and `<=`) and one more card, `custom-checks|<id>|-|more`, counts and names the rest.
 - **Checks:** at most 50; two admins adding at the same moment cannot pass the cap.
 
@@ -48,7 +77,7 @@ The same bounds hold for Preview.
 
 ## When a check fails
 
-A bad query, an unreachable source, a refused read, a missing instance or datasource, or an answer that is not a query result fails that check only. Its row in Admin shows `failing` with the reason, such as `Prometheus main answered HTTP 400: 1:9: parse error: unexpected <EOF>`, `Grafana datasources: HTTP 403 (the token needs datasources:read)`, `the queries took longer than 20 s` or `no Grafana datasource named cloud-metrics`, and the pass status adds `1 of 3 custom checks failing: Redis memory` after `ok`. A failing check raises no card and closes none: its open cards stay as they were until it runs again, and like any card they close after a day unseen.
+A bad query, an unreachable source, a refused read, a missing instance or datasource, or an answer that is not a query result fails that check only. Its row in Admin shows `failing` with the reason, such as `Prometheus main answered HTTP 400: 1:9: parse error: unexpected <EOF>`, `Grafana datasources: HTTP 403 (the token needs datasources:read)`, `Elasticsearch central answered HTTP 403: the API key lacks the read privilege on logs-*`, `the query returns no column named value: ...`, `the queries took longer than 20 s`, `no Grafana datasource named cloud-metrics` or `no elasticsearch instance named central` (also when the instance was deleted or its plug-in is off), and the pass status adds `1 of 3 custom checks failing: Redis memory` after `ok`. A failing check raises no card and closes none: its open cards stay as they were until it runs again, and like any card they close after a day unseen.
 
 ## Cards that close
 
@@ -61,13 +90,13 @@ A bad query, an unreachable source, a refused read, a missing instance or dataso
 
 ## Preview
 
-Preview in the editor runs the check once, with the values in the form and without saving, and shows the cards it would make: title, text, value and severity, how many series it read and how many match, and how many groups had no baseline value. It ignores `for` and says after how many passes a card would open. A failing check shows the reason. Preview runs the same code as the pass, with the same time limit and caps.
+Preview in the editor runs the check once, with the values in the form and without saving, and shows the cards it would make: title, text, value and severity, how many series it read and how many match, and how many groups had no baseline value. Its `warnings` list notes what does not fail the check but may be wrong, such as an Elasticsearch query without `?start`. It ignores `for` and says after how many passes a card would open. A failing check shows the reason. Preview runs the same code as the pass, with the same time limit and caps.
 
 ## The API
 
 The page uses these routes; all of them need the admin role.
 
-- `GET /api/admin/custom-checks` lists the checks, each with `run` (its last state: `ok`, `failing` or `off`, the reason, the series read, the cards made) and, for a check added from a preset, `preset` and `presetValues`; then the instances that can be a source, the limits, the choices and the presets (`id`, `name` and `nameKey`).
+- `GET /api/admin/custom-checks` lists the checks, each with `run` (its last state: `ok`, `failing` or `off`, the reason, the series read, the cards made) and, for a check added from a preset, `preset` and `presetValues`; then the instances that can be a source (`prometheus`, `grafana` and `elasticsearch`), the limits (`rows` and the `window` default, `windowMin` and `windowMax` among them), the choices and the presets (`id`, `name` and `nameKey`).
 - `POST /api/admin/custom-checks` adds a check (201). A taken id or a full list is 409, a bad field 422 with the reason.
 - `PUT /api/admin/custom-checks/<id>` changes a check; the id in the path wins.
 - `DELETE /api/admin/custom-checks/<id>` deletes it and clears its cards (204).
@@ -88,12 +117,13 @@ A placeholder has a kind, and a value must have the shape of its kind:
 
 | Kind | Where it goes | A value |
 | --- | --- | --- |
-| `instance` | the check's `instance` | the Prometheus or Grafana instance, picked from the instances set up under Integrations |
+| `instance` | the check's `instance` | the Prometheus, Grafana or Elasticsearch instance, picked from the instances set up under Integrations |
 | `datasource` | the check's `datasource` (Grafana presets) | the name or uid of the datasource |
 | `name` | the check ids, names and texts | 2 to 20 lowercase letters, digits or dashes, such as `orders-prod`, so the same preset can be added once per cluster |
 | `matchers` | inside the braces of every selector in the queries | label matchers, `label op "value"` joined by commas, such as `job=~".*couchbase.*",env="prod"`. Skopax checks the shape only: a label name, one of `=`, `!=`, `=~` and `!~`, and a double-quoted value with backslash escapes, so a value cannot close the braces, add `or` or reach other series; whether Prometheus accepts a regex shows at Preview. Some presets allow it empty, which reads every series |
 | `prefix` | the start of the metric names | the start of a metric name, such as `redis_` |
 | `label` | the label the queries group by, and the `by` labels | a label name, such as `instance`; not `value`, `base` or a name that starts with `__` |
+| `index` | after `FROM` in the ES\|QL queries (Elasticsearch presets) | an index pattern, such as `logs-*` or `logs-web-*,remote:logs-*`: letters, digits and `-`, `_`, `.`, `*`, `:`, several joined by commas. No space, quote or `\|` fits, so a value cannot add `METADATA`, a second command or another source |
 
 An empty value takes the default where the preset has one. A value may be at most the preset's `max` characters long, chosen so that the longest value still fits every query in 2000 characters; a longer one is refused. A value is filled in once: a value that holds `${...}` stays as it is.
 
@@ -146,6 +176,19 @@ Reads Redis instances that you cannot reach directly, such as a managed cloud Re
 | `restart` | warn | the uptime is below 3600 s |
 
 A Redis that is down gets only the `down` card. The example plug-in has no hit rate, CPU or replication check, so neither has the preset; add them as your own checks when your series have them.
+
+### CSP reports
+
+Reads Content Security Policy violation reports from the logs of an Elasticsearch instance, with the rules of the CSP reports plug-in, which leaves in 0.4. It is for reports stored one per log line with the report JSON in the `message` field, plain or escaped inside a JSON log line, compact or with spaces around the colons, in either shape: the Reporting API (`blockedURL`, `effectiveDirective`, `sourceFile`) or the older `report-uri` one (`blocked-uri`, `effective-directive`, `source-file`). The checks first turn each `\"` into `"` and drop the spaces around a colon between two quotes, then read the fields. Reports whose blocked address or source file is a browser extension are left out. Placeholders: `instance` (the Elasticsearch instance), `name` (a name for the site, such as `shop`) and `index` (required, at most 200 characters: the index or data stream that holds only the CSP report logs, such as `logs-csp-*`; a wide pattern such as `logs-*` makes every pass scan all logs of the last 8 days). The checks pick the report lines in the index by `blockedURL` or `blocked-uri` in the message.
+
+| Check | Severity | Fires when |
+| --- | --- | --- |
+| `new-host` | warn | a blocked host has at least 10 reports in the last hour, its first report came in the last 24 hours and it had none in the 7 days before that; one card per host |
+| `reports-jump` | warn | the last hour has at least 100 reports and at least 5 times the larger count of the same hour 1 day and 1 week earlier (an earlier hour with no reports counts as 1) |
+
+The host is the part of the blocked address between `://` and the next `/` or `?`, without `:443`; an address with no scheme, such as `inline` or `eval`, is the host itself, and an empty one is `inline`. Both checks are one query each, with the 24 hours, the 7 days and the earlier hours in the query, so `reports-jump` compares with `>= 100` and its text names the two earlier counts.
+
+The preset differs from the plug-in in these ways: a host is new for 24 hours after its first report, where the plug-in counts it as new for 7 days, and its card stays open while it has at least 10 reports in an hour, where the plug-in keeps it until 24 h pass without a report; a host counts by itself, where the plug-in counts each directive and host apart; the jump compares with the same hour 1 day and 1 week earlier, where the plug-in compares with the average hour of the last 7 days, and it needs no history first, where the plug-in waits for 24 earlier hourly counts; there is no `csp` section on the page, no knowledge entry and no access card (a 401 or 403 makes the checks fail).
 
 ## A worked example
 

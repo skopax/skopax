@@ -99,7 +99,7 @@ def test_the_investigator_beta_call_carries_the_fallback_beta_header_and_body(st
     assert sent.headers['authorization'] == 'Bearer ' + KEY and 'x-api-key' not in sent.headers
     assert (body['fallbacks'], body['model'], body['thinking'], body['output_config']) == ('default', MODEL, {'type': 'adaptive'}, {'effort': 'high'})
     assert 'betas' not in body
-    assert (reply.content[0].text, reply.stop_reason, reply.usage.input_tokens) == ('ok', 'end_turn', 3)
+    assert (reply.text, reply.stop, reply.usage.input) == ('ok', 'end_turn', 3)
 
 
 def status(code: int):

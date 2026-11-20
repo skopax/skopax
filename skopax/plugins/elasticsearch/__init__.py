@@ -148,7 +148,7 @@ PLUGIN = Plugin(
         docs_label='Elastic: API keys',
     ),
     id=ID, name='Elasticsearch', version='0.1.0', category='logs', description='New and growing error and warning log patterns, APM latency and failures, and the log flow per namespace, read from Elasticsearch with ES|QL.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.4', edition='community',
     capabilities=Capabilities(hosts=('@url', '@apm-url', '@ui-url'), secrets=('api-key', 'apm-api-key', 'elastic.logging-api-key', 'elastic.apm-api-key'), agent_reads=True),
     client=client,
     fields=(Field('url', 'URL', 'url', required=True, help='Base URL of the Elasticsearch cluster that holds the logs.'),

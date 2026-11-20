@@ -153,7 +153,7 @@ def test_mcp_tools_identity_and_defaults_are_neutral():
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (loaded.state, loaded.reason) == ('ok', None) and 'skopax.plugins.mcp_tools' in BUILTIN
     assert (plugin.id, plugin.name, plugin.category, plugin.version, plugin.author, plugin.licence, plugin.core, plugin.edition) == \
-        ('mcp-tools', 'MCP server', 'other', '0.1.0', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
+        ('mcp-tools', 'MCP server', 'other', '0.1.0', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
     assert plugin.description == 'Adds the tools of an outside MCP server to the investigator and the chat, and can search one folder of company documents'
     assert (plugin.capabilities.hosts, plugin.capabilities.secrets, plugin.max_instances) == (('@url',), ('header-value', 'oauth-client-secret'), 20)
     assert {f.key: f.default for f in plugin.fields} == {'url': '', 'preset': '', 'auth': 'none', 'header-name': 'Authorization', 'header-value': '', 'oauth-scopes': '', 'oauth-client-id': '',
@@ -174,7 +174,7 @@ def test_the_presets_file_is_valid_data():
     # given
     data = json.loads(presets.FILE.read_text(encoding='utf-8'))
     github = next(i for i in data if i['id'] == 'github')
-    soon = next(i for i in data if i.get('soon'))
+    soon = {'id': 'example-soon', 'name': 'Example coming soon', 'soon': True}
 
     # when
     loaded = presets.load()
@@ -182,7 +182,7 @@ def test_the_presets_file_is_valid_data():
         [i if i is not github else {**github, 'url': 'http://api.githubcopilot.com/mcp/readonly'} for i in data],
         [i if i is not github else {**github, 'adapter': 'gitlab'} for i in data],
         [i if i is not github else {**github, 'knowledge': 'ready', 'adapter': '', 'linkHosts': [], 'knowledgeTools': []} for i in data],
-        [i if i is not soon else {**soon, 'url': 'https://sharepoint.example.com/mcp'} for i in data],
+        data + [{**soon, 'url': 'https://soon.example.com/mcp'}],
         [i if i is not github else {**github, 'linkHosts': ['github.example.com']} for i in data],
         [i if i is not github else {**github, 'knowledgeTools': ['search_code', 'create_issue']} for i in data],
         data + [{**github}],
@@ -191,7 +191,7 @@ def test_the_presets_file_is_valid_data():
     ]
 
     # then
-    assert [p.id for p in loaded] == ['atlassian', 'notion', 'github', 'google-drive', 'microsoft-365']
+    assert [p.id for p in loaded] == ['atlassian', 'notion', 'github', 'google-drive'] and not [p for p in loaded if p.soon]
     assert presets.load() is loaded
     for copy in bad:
         with pytest.raises(presets.PresetError):
@@ -205,24 +205,27 @@ def test_the_presets_file_is_valid_data():
     assert found['atlassian'].denied == ('executeWrite', 'executeDestructive')
     assert found['google-drive'].client_required and found['google-drive'].preview and found['google-drive'].scopes.split() == \
         ['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/drive.file']
-    assert (found['microsoft-365'].name, found['microsoft-365'].soon, found['microsoft-365'].url) == ('Microsoft SharePoint and OneDrive', True, '')
+    kept = presets.parse(data + [soon])[-1]
+    assert (kept.id, kept.name, kept.soon, kept.url) == ('example-soon', 'Example coming soon', True, '')
 
 
-def test_a_coming_soon_entry_is_accepted_by_no_route(store):
+def test_a_coming_soon_entry_is_accepted_by_no_route(store, monkeypatch):
     # given
+    data = json.loads(presets.FILE.read_text(encoding='utf-8')) + [{'id': 'example-soon', 'name': 'Example coming soon', 'soon': True}]
+    monkeypatch.setattr(presets, 'load', lambda: presets.parse(data))
     with app(store) as c:
 
         # when
-        made = add(c, values={'url': URL, 'preset': 'microsoft-365'})
+        made = add(c, values={'url': URL, 'preset': 'example-soon'})
         listed = c.get('/api/admin/mcp-tools/presets').json()
         paths = [p for _, p in walk(c.app.routes)]
 
     # then
     assert made.status_code == 422 and made.json()['field'] == 'preset'
-    assert 'microsoft-365' not in [i['id'] for i in listed['items']] and listed['soon'] == [{'id': 'microsoft-365', 'name': 'Microsoft SharePoint and OneDrive'}]
+    assert 'example-soon' not in [i['id'] for i in listed['items']] and listed['soon'] == [{'id': 'example-soon', 'name': 'Example coming soon'}]
     assert listed['texts'] == {'preview': msg('mcptools.preset.preview'), 'client': msg('mcptools.preset.client'), 'knowledgeSoon': msg('mcptools.knowledge.soon'), 'soon': msg('mcptools.soon')}
     assert {i['id']: i['headerHint'] for i in listed['items']}['github'] == 'Bearer <fine-grained personal access token>'
-    assert not [p for p in paths if 'microsoft' in p.lower()]
+    assert not [p for p in paths if 'example-soon' in p.lower()]
 
 
 def test_tool_names_fit_the_api_rule_and_clashes_get_a_hash():

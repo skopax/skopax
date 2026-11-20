@@ -21,6 +21,10 @@ __all__ = [
     'CHANNELS',
     'Capabilities',
     'Field',
+    'SuggestContext',
+    'Suggestions',
+    'SEPARATORS',
+    'SUGGEST_KINDS',
     'Setup',
     'InstanceInfo',
     'KEY_SEGMENT',
@@ -89,6 +93,8 @@ SETTING_KINDS = ('int', 'float', 'bool', 'text', 'choice', 'list')
 TOOL_KINDS = ('read', 'write', 'propose')
 CHANNELS = ('page', 'slack', 'mcp')
 KEY_SEGMENT = '@'
+SEPARATORS = ('', ',', ';')
+SUGGEST_KINDS = ('text', 'url')
 RUN_STATE_KEYS = 500
 CLEAR_OUTCOMES = ('fixed', 'handled')
 RUN_STATE_KEY_MAX = 200
@@ -113,6 +119,19 @@ class Setup:
 
 
 @dataclass(frozen=True)
+class SuggestContext:
+    values: Mapping[str, str] = field(repr=False)
+    transport: Transport = field(repr=False)
+    deadline: float = 0.0
+
+
+@dataclass(frozen=True)
+class Suggestions:
+    values: tuple[str, ...] = ()
+    note: str = ''
+
+
+@dataclass(frozen=True)
 class Field:
     key: str
     label: str
@@ -130,6 +149,8 @@ class Field:
     choice_labels: Mapping[str, str] = field(default_factory=dict)
     group: str = ''
     check: Callable[[str], str | None] | None = None
+    suggest: Callable[[SuggestContext], 'list[str] | Suggestions'] | None = None
+    separator: str = ''
 
 
 @dataclass(frozen=True)
@@ -594,3 +615,4 @@ class Plugin:
     card_text: Callable[[dict], str | None] | None = None
     auto_resolve: tuple[AutoResolve, ...] = ()
     setup: Setup | None = None
+    company_knowledge: str = ''

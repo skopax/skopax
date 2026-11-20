@@ -71,7 +71,7 @@ def test_an_admin_adds_lists_changes_and_deletes_a_check_and_each_change_lands_i
     assert made.status_code == 201 and made.json()['id'] == 'redis-memory' and made.json()['createdBy'] == made.json()['updatedBy']
     assert again.status_code == 409 and 'redis-memory' in again.json()['detail']
     assert [i['id'] for i in listed['items']] == ['redis-memory'] and listed['items'][0]['run'] is None
-    assert listed['sources'] == {'prometheus': ['main'], 'grafana': []}
+    assert listed['sources'] == {'prometheus': ['main'], 'grafana': [], 'elasticsearch': []}
     assert listed['limits']['cards'] == promqlchecks.CARDS_MAX and listed['limits']['series'] == promqlchecks.SERIES_MAX
     assert listed['choices']['op'] == list(promqlchecks.COMPARISONS) and listed['choices']['severity'] == ['info', 'warn', 'crit']
     assert changed.status_code == 200 and (changed.json()['id'], changed.json()['name'], changed.json()['threshold']) == ('redis-memory', 'Cache memory', 95.0)

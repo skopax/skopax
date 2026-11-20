@@ -5,13 +5,13 @@ from collections.abc import Callable
 import anthropic
 
 from skopax import clock
+from skopax.ai import THINK_AUTO, maker, wrap
 from skopax.aikey import ClientBox
 from skopax.contract import Check, InstanceInfo, Planted, Plugin, ReadError
 from skopax.errkind import kind
 from skopax.investigator import flags, pricing
 from skopax.messages import msg
 from skopax.postdeploy import SERVER_BY
-from skopax.selfreview import thinking_off
 from skopax.store import PLUGIN_NO_INSTANCE
 
 log = logging.getLogger('skopax.plugai')
@@ -51,20 +51,26 @@ def problem(system: object, messages: object, max_tokens: object, schema: object
 
 
 class PluginAi:
-    def __init__(self, store, key: Callable[[], str], halted: Callable[[float], str | None], client: object | None = None, clock: Callable[[], float] = time.time):
+    def __init__(self, store, key: Callable[[], str], halted: Callable[[float], str | None], client: object | None = None, clock: Callable[[], float] = time.time,
+                 provider: Callable[[], str] | None = None):
         self.store = store
         self.key = key
         self.halted = halted
-        self.box = ClientBox(key, lambda k: anthropic.Anthropic(api_key=k, timeout=TIMEOUT_S, max_retries=RETRIES), client)
+        self.provider = provider or (lambda: pricing.ANTHROPIC)
+        self.box = ClientBox(key, maker(self.provider, lambda k: anthropic.Anthropic(api_key=k, timeout=TIMEOUT_S, max_retries=RETRIES), TIMEOUT_S, RETRIES), client, self.provider)
         self.clock = clock
 
+    def model_of(self, model: object) -> object:
+        return pricing.effective(self.provider(), model, 'plugin') if isinstance(model, str) else model
+
     def ready(self, model: object) -> bool:
+        model = self.model_of(model)
         return isinstance(model, str) and bool(self.key()) and pricing.known(model) and self.halted(self.clock()) is None
 
     def for_check(self, plugin: Plugin, check: Check, info: InstanceInfo | None, model: object) -> 'AiCall | None':
         if not self.ready(model):
             return None
-        return AiCall(self, plugin.id, PLUGIN_NO_INSTANCE if info is None else info.name, str(model), source_of(plugin.id, check.id))
+        return AiCall(self, plugin.id, PLUGIN_NO_INSTANCE if info is None else info.name, str(self.model_of(model)), source_of(plugin.id, check.id))
 
 
 class AiCall:
@@ -85,12 +91,12 @@ class AiCall:
         now = self.ai.clock()
         if self.ai.halted(now) is not None or not self.ai.key():
             return None
-        client = self.ai.box.get()
-        if client is None:
+        ai = wrap(self.ai.box.get())
+        if ai is None:
             return None
-        output = {'effort': effort} | ({'format': {'type': 'json_schema', 'schema': schema}} if schema is not None else {})
+        self.model = pricing.effective(ai.provider, self.model, 'plugin')
         try:
-            resp = client.messages.create(model=self.model, max_tokens=max_tokens, system=system, messages=messages, thinking=thinking_off(self.model), output_config=output)
+            resp = ai.once(self.model, system, messages, max_tokens, effort, THINK_AUTO, schema)
         except Exception as e:
             log.warning('a plug-in model call for %s failed (%s)', self.source, kind(e))
             raise ReadError(502, msg('sweeps.ai_failed', kind=type(e).__name__)) from None
@@ -102,11 +108,11 @@ class AiCall:
         day = clock.day(now)
         self.ai.store.add_spend(day, usd)
         try:
-            self.ai.store.add_ledger({'source': self.source, 'day': day, 'model': self.model, 'effort': effort, 'runId': None, 'actionId': None, 'keys': [], 'by': SERVER_BY,
+            self.ai.store.add_ledger({'source': self.source, 'day': day, 'provider': ai.provider, 'model': self.model, 'effort': effort, 'runId': None, 'actionId': None, 'keys': [], 'by': SERVER_BY,
                                       'plugin': self.plugin_id, 'instance': self.instance, **pricing.split(self.model, resp.usage)})
         except Exception as e:
             log.warning('spend ledger row for a plug-in model call for %s not written: %s', self.source, kind(e))
-        if getattr(resp, 'stop_reason', None) == 'refusal':
+        if resp.stop == 'refusal':
             raise ReadError(502, msg('sweeps.ai_refused'))
-        said = ''.join(b.text for b in resp.content or [] if getattr(b, 'type', None) == 'text' and isinstance(getattr(b, 'text', None), str))
+        said = ''.join(resp.texts)
         return {'text': said, 'usd': usd}

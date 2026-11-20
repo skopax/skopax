@@ -857,3 +857,31 @@ def test_old_connection_keys_left_under_settings_get_one_boot_warning_naming_the
     assert 'plugins:' in warned[0] and 'instances:' in warned[0] and '- name: main' in warned[0]
     assert not any(value in warned[0] for value in ('hunter2-value', 'xoxb-value', 'glpat-value', 'jira.example.com'))
     assert quiet == []
+
+
+def test_post_at_once_from_set_and_removed_in_a_source_moves_with_its_set_mark(store, tmp_path):
+    # given
+    start = SourceData('feed', {'investigate.max-cards': '4'})
+    box = {'data': start}
+    sources = SourceSet([('feed', lambda: box['data'])], {'feed': start})
+    with TestClient(create_app(settings(), store, sources=sources, registry=Registry.of(), kube=Kube(root=tmp_path))) as c:
+        live = c.app.state.runtime.live
+        live.tunables.write('slack.crit-now', 'false', 'alice@example.com', None)
+        follower = Follower(sources, live, c.app.state.runtime.instances, {})
+
+        # when
+        live.refresh(force=True)
+        before = (live.current().slack_post_sev, live.current().slack_post_sev_set)
+        box['data'] = SourceData('feed', {'investigate.max-cards': '4', 'slack.post-sev': 'info'})
+        follower.tick()
+        live.refresh(force=True)
+        added = (live.current().slack_post_sev, live.current().slack_post_sev_set)
+        box['data'] = SourceData('feed', {'investigate.max-cards': '4'})
+        follower.tick()
+        live.refresh(force=True)
+        removed = (live.current().slack_post_sev, live.current().slack_post_sev_set)
+
+    # then
+    assert before == ('off', False), 'the stored old switch counts while the new setting is not set'
+    assert added == ('info', True), 'a source that sets the new setting wins over the stored old switch at once'
+    assert removed == ('off', False), 'and once it is gone the stored old switch counts again'

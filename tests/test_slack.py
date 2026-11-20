@@ -67,8 +67,9 @@ def test_send_posts_the_anomaly_and_records_who_sent_it(seeded: Store):
     assert blocks[0]['text']['text'] == ':red_circle: bootstrap shared a card \u00b7 Critical'
     assert blocks[1]['text']['text'] == '*<https://skopax.example.com/#a=log%7Cweb-bff%7CWARN%7CDefine%20logo%20for%20BRAND|web-bff / WARN pattern>*'
     assert blocks[2]['elements'][0]['text'] == '`Define logo for BRAND`'
-    assert [e['text'] for e in blocks[3]['elements']] == ['Open \u00b7 Critical \u00b7 since 13 Oct 09:22 UTC', 'Now *116* \u00b7 yesterday 0 \u00b7 last week 0',
+    assert [e['text'] for e in blocks[3]['elements']][:-1] == ['Open \u00b7 Critical \u00b7 since 13 Oct 09:22 UTC', 'Now *116* \u00b7 yesterday 0 \u00b7 last week 0',
                                                           '<https://kibana.prod.example.com/x|Log lines in Kibana> \u00b7 <https://kibana.prod.example.com/y|All errors> \u00b7 <https://prometheus.prod.example.com/z|Graph>']
+    assert 'skopax.io' in blocks[3]['elements'][-1]['text'], 'the powered-by line ends the bar'
     assert 'fix the icon source' not in str(blocks), 'the next step stays on the card'
     menu = blocks[0]['accessory']
     assert menu['type'] == 'overflow' and menu['action_id'] == 'card_menu'

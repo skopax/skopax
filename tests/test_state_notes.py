@@ -10,6 +10,7 @@ from tests.fake_slack import FakeSlackApi
 from tests.plugin_kit import idle_jira, serve_jira
 from tests.test_investigator_tools import sources
 from tests.test_jiralinks import FakeJira, closed, issue
+from skopax import locales, messages, statenotes
 from skopax.app import create_app
 from skopax.config import load_settings
 from skopax.engine import iso
@@ -329,7 +330,7 @@ def test_auto_resolve_replies_once_on_a_posted_card(store: Store):
     transport = Transport()
 
     # when
-    with app(store, transport, auto_resolve_hours=72) as client:
+    with app(store, transport, auto_resolve_hours_crit=72, auto_resolve_hours_warn=72) as client:
         client.app.state.server_apply([], now, None)
         client.app.state.server_apply([], now + 60, None)
 
@@ -367,3 +368,20 @@ def test_state_notes_are_off_without_a_slack_token(store: Store):
     assert StateNotes(store, Slack('', '#ops', Transport(), FakeSlackApi())).enabled is False
     assert StateNotes(store, Slack('xoxb-test', '#ops', Transport(), FakeSlackApi()), flag=False).enabled is False
     assert StateNotes(store, Slack('xoxb-test', '#ops', Transport(), FakeSlackApi())).enabled is True
+
+
+@pytest.mark.parametrize('hours, english', [(1.5, '\U0001F515 Muted for 1.5 h: alice'), (0.25, '\U0001F515 Muted for 0.25 h: alice'), (24.0, '\U0001F515 Muted for 24 h: alice')])
+def test_a_mute_note_shows_the_hours_short_in_english_and_in_a_pack_language(hours: float, english: str):
+    # given
+    pack = next(locale for locale in locales.packs() if locale.lang == 'tr')
+    messages.set_catalogs([('tr', pack.messages)])
+    shown = f'{hours:g}'
+
+    # when
+    plain = statenotes.muted_text('alice', hours)
+    with messages.speaking('tr'):
+        translated = statenotes.muted_text('alice', hours)
+
+    # then
+    assert plain == english
+    assert translated == pack.messages['notes.state.muted'].format(hours=shown, who='alice') and f' {shown} ' in translated and '.0 ' not in translated

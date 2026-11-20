@@ -62,7 +62,7 @@ def test(ctx: Context) -> TestResult:
 PLUGIN = Plugin(
     id=ID, name='GitHub', version='0.1.0', category='code',
     description='Commits, code, pull requests, checks, deployments and releases of one GitHub owner, for deploy authors, tickets and code links.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.2,<0.3', edition='community', capabilities=Capabilities(hosts=('@url', API_HOST), secrets=('token',)),
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.2,<0.4', edition='community', capabilities=Capabilities(hosts=('@url', API_HOST), secrets=('token',)),
     client=make_client, max_instances=1,
     fields=(Field('url', 'URL', 'url', required=True, default=GITHUB_URL, ui=True,
                   help='Address of GitHub: https://github.com, or a GitHub Enterprise Server, whose API is read under /api/v3.'),
@@ -86,4 +86,5 @@ PLUGIN = Plugin(
         'Choose Generate token, copy it, and paste it into Token. If the organization requires approval, an owner must approve it first.',
         'In URL keep https://github.com, or give the address of your GitHub Enterprise Server. Enter the organization or user in Owner, then choose Test connection.',
     ), docs='https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens', docs_label='GitHub: managing personal access tokens'),
+    company_knowledge='docs',
 )

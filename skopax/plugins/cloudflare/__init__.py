@@ -1,7 +1,8 @@
+import time
 from pathlib import Path
 
-from skopax.contract import (Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Panel, PassResult, Plugin, ReadError, RuleSet, Setup, Sweep, TestResult,
-                             Tool)
+from skopax.contract import (Capabilities, Check, Context, Field, HttpError, InstanceInfo, Knowledge, Panel, PassResult, Plugin, ReadError, Refused, RuleSet, Setup, SuggestContext,
+                             Suggestions, Sweep, TestResult, Tool)
 from skopax.kit import connection
 from skopax.kit.options import pairs
 from skopax.plugins.cloudflare import client as cf
@@ -23,6 +24,7 @@ SECTION_HELP = {
 
 
 PLAN_CHECKS = ('cf', 'edge')
+SUGGEST_MARGIN_S = 1.0
 PLAN_WORDS = ('all', 'none')
 
 
@@ -156,6 +158,51 @@ def test(ctx: Context) -> TestResult:
     return connection.result(ask)
 
 
+def _suggest_client(ctx: SuggestContext, token: str, margin: float = 0.0) -> Cloudflare:
+    return Cloudflare(token, ctx.transport, max(0.1, ctx.deadline - time.monotonic() - margin))
+
+
+def _zones_note(names: list[str], why: str) -> str:
+    return f"{why}; {len(names)} zone{'' if len(names) == 1 else 's'} listed, type a name to add another"
+
+
+def suggest_components(ctx: SuggestContext) -> list[str]:
+    try:
+        page = _suggest_client(ctx, '').status()
+    except CloudflareError as e:
+        raise ReadError(502, e.reason) from None
+    listed = page.get('components')
+    return [c['name'] for c in listed if isinstance(c, dict) and isinstance(c.get('name'), str)] if isinstance(listed, list) else []
+
+
+def suggest_zones(ctx: SuggestContext) -> Suggestions:
+    token = (ctx.values.get('token') or '').strip()
+    if not token:
+        raise Refused('Enter the API token first')
+    found: list[dict] = []
+    why = ''
+    for page in range(1, cf.MAX_PAGES + 1):
+        if ctx.deadline - time.monotonic() < SUGGEST_MARGIN_S:
+            why = 'Cloudflare did not list every zone in time'
+            break
+        try:
+            rows, total = _suggest_client(ctx, token, SUGGEST_MARGIN_S).page_of('/zones', page, 'Cloudflare API zones')
+        except CloudflareError as e:
+            if e.denied:
+                raise ReadError(400, f"Cloudflare cannot list the zones: {lacks('zones', e.invalid)}") from None
+            if not found:
+                raise ReadError(502, e.reason) from None
+            why = f'Cloudflare did not list every zone ({e.reason})'
+            break
+        found += rows
+        if page >= total:
+            break
+        if page == cf.MAX_PAGES:
+            why = f'Only the first {cf.MAX_PAGES} pages of zones are read'
+    names = [n for n in (str(z.get('name') or '').strip().lower().rstrip('.') for z in found) if ZONE_NAME.fullmatch(n)]
+    return Suggestions(tuple(names), _zones_note(names, why) if why else '')
+
+
 def _blind(got: Pass) -> bool:
     return bool(got.errors) and not got.reached
 
@@ -270,17 +317,19 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 PLUGIN = Plugin(
     id=ID, name='Cloudflare', version='0.1.0', category='web',
     description='Health checks, certificate packs, status-page components and edge 5xx shares of Cloudflare zones.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.4', edition='community',
     capabilities=Capabilities(hosts=('api.cloudflare.com', 'www.cloudflarestatus.com'), secrets=('token',)),
     fields=(Field('token', 'API token', 'secret', required=True, help='A read-only API token with Zone Read, Analytics Read, SSL and Certificates Read and Health Checks Read on the watched zones.'),
-            Field('zones', 'Zones', 'text', required=True, help='Comma-separated zone names to watch, for example example.com, example.org. Their ids are looked up with the token.'),
+            Field('zones', 'Zones', 'text', required=True, suggest=suggest_zones, separator=',',
+                  help='Comma-separated zone names to watch, for example example.com, example.org. Pick them from the list of zones the token can see, or type a name. '
+                       'Their ids are looked up with the token.'),
             Field('zone-checks', 'Checks per zone', 'text',
                   help='Comma-separated zone=checks entries that limit which checks run for a zone: cf (health checks and certificates), edge (edge 5xx), cf+edge or none, '
                        'for example example.org=edge, example.net=none. A zone that is not listed runs both. The status components are not per zone.'),
             Field('account', 'Account id', 'text', help='Account id for account-level GraphQL and dashboard links. Empty: the account of the first zone.'),
-            Field('status-components', 'Status components', 'text',
+            Field('status-components', 'Status components', 'text', suggest=suggest_components, separator=';',
                   help='Semicolon-separated Cloudflare status-page components to watch, written as the status page shows them, for example CDN/Cache; WAF; Tokyo, Japan - (NRT). '
-                       'Empty: no status check.')),
+                       'Pick them from the list the status page gives, or type a name. Empty: no status check.')),
     setup=Setup(
         steps=(
             'In the Cloudflare dashboard open My Profile, API Tokens and choose Create Token (an account owned token under Manage Account, API Tokens works too).',

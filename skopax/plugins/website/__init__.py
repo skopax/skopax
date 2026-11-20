@@ -71,7 +71,7 @@ SHOT_SCHEMA = {'type': 'object', 'properties': {'url': STR, 'viewport': {'type':
 SECTION_HELP = {SECTION: 'The screenshot browser of each Website instance: whether it answers, its version and when it last answered'}
 SCAN_HELP = {pagescan.SECTION: 'The last page scan of each Website instance: one row per page read, the pages that did not load and a summary row'}
 DIGEST_HELP = {pagescan.DIGEST_SECTION: 'The day the page scan digest was last posted to Slack and how many cards it named'}
-MODELS = ('claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5')
+MODELS = ('claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna')
 SCAN_DESCRIPTION = (
     'Loads one page of the site ({field:url}) in the headless browser of the instance, without a picture, and returns what the page scan checks: the visible text as lines '
     '(judge typos yourself: a misspelled word, a wrong or missing accented letter, a doubled word, words run together; never names, foreign terms, numbers or style), '
@@ -214,7 +214,7 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='web', description='Reads pages of your website, takes screenshots through a browser service, watches that browser and scans pages for typos and layout problems.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community',
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.4', edition='community',
     capabilities=Capabilities(hosts=('@url', '@browser-url', '*'), secrets=('scan-headers',)), uses=('umami',), client=client,
     fields=(Field('url', 'Site URL', 'url', required=True, help='The base URL of the site, https, for example https://www.example.com. The tools open only its host, its subdomains and the more hosts below.', ui=True),
             Field('hosts', 'More hosts', 'text', address='hosts', hosts_of=honoured_hosts, help='More hosts of the same site, separated by commas, for example example.net; their subdomains count too.'),

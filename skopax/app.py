@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Annotated, Callable, Mapping
 from urllib.parse import parse_qs, quote, urlsplit
 
-from fastapi import BackgroundTasks, Body, Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, Header, HTTPException, Path as PathParam, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -35,6 +35,7 @@ from skopax import actions as page_actions
 from skopax import __version__, backfill, brand, causes, clock as clocks, costs, drafts, history, messages, redact as redaction, tags, toolusage
 from skopax.jiralinks import JiraLinks
 from skopax.kube import Kube
+from skopax import locales as core_locales
 from skopax import mcpserver
 from skopax import mutemarks
 from skopax.mcpauth import McpAuth
@@ -50,13 +51,14 @@ from skopax.oidc import OidcError
 from skopax.operators import OperatorUnknown, Operators
 from skopax.postdeploy import JOB_OFFSET as POSTDEPLOY_OFFSET, JOB_PERIOD as POSTDEPLOY_PERIOD, SERVER_BY, PostDeploy
 from skopax.attach import Attacher
-from skopax.autosend import AutoSend, CritNow, Fallback, waiting as auto_send_waiting
+from skopax.autosend import AutoSend, Fallback, PostNow, fresh as fresh_cards, waiting as auto_send_waiting
 from skopax.config import ConfigurationError, Settings
 from skopax.contract import CodeHost, OrgPack, SourceDown
 from skopax.engine import Applied, PassResult, apply, iso as epoch_iso, new_pushes
 from skopax.enrich import Enricher
 from skopax.investigator import JOB_OFFSET as INVESTIGATE_OFFSET, JOB_PERIOD as INVESTIGATE_PERIOD, Investigator, prompt, select
 from skopax.investigator.gate import Gate, GateDown
+from skopax.investigator.pricing import ANTHROPIC, OPENAI, effective as effective_model, provider_of
 from skopax.investigator.smalltalk import DEFAULTS as SMALL_TALK_DEFAULTS, Reply, SmallTalk, WINDOW_S as SMALL_TALK_WINDOW_S
 from skopax.investigator.tools import CORE_TOOLS, FIX_FIELDS, Effects, Sources, allowed_link_hosts
 from skopax.investigator.toolset import NoProposal, ProposalClosed, ProposalUnavailable, Proposals, ToolSet
@@ -65,7 +67,7 @@ from skopax.chatui import CHAT_ID
 from skopax.chatui.text import set_texts as set_chat_texts
 from skopax.assign import Assigner, Invalid as AssignInvalid, people_of, slug
 from skopax.jiralinks import ticket_projects
-from skopax.models import email_allowed, NoticesReadIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn
+from skopax.models import email_allowed, NoticesReadIn, NameIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, FieldSuggestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn
 from skopax.selfreview import BY as SELF_REVIEW_BY, SelfReview, self_service, gather as review_facts, review_slot_offset
 from skopax.slackhealth import OFFSET as SLACK_POSTS_OFFSET, PASS as SLACK_POSTS, PERIOD as SLACK_POSTS_PERIOD, slack_posts_pass
 from skopax.jiraaccess import PASS as JIRA_ACCESS, access_pass as jira_access_pass
@@ -85,6 +87,7 @@ from skopax.settle import Settle, ignore_doc, ignored
 from skopax.slackevents import Clicks, Intake, Listener, Replier, TicketRefused, socket_client
 from skopax.clearnotes import ClearNotes
 from skopax.notices import Notices
+from skopax.versioncheck import OFFSET_S as VERSION_OFFSET, PERIOD_S as VERSION_PERIOD, START_DELAY_S as VERSION_START_DELAY, VersionCheck, jitter_of
 from skopax.reminders import Reminders
 from skopax.routes import TRIES, Echo, Refused as RouteRefused, Routes
 from skopax.models import RouteSendIn, SsoIn, SsoTestIn
@@ -98,7 +101,7 @@ from skopax.instances import InstanceExists, InstanceMissing, Instances, Invalid
 from skopax.registry import Registry, card_types_view, describe, locale_drops
 from skopax.plugai import PluginAi
 from skopax.plugintools import PluginTools
-from skopax.runtime import Runtime
+from skopax.runtime import Runtime, SuggestFailed
 from skopax.monitor import rules_of as monitor_rules
 from skopax.probe import CERT_RULES, Probe, cert_pass, public as public_reach, summary as probe_summary
 from skopax import promqlroutes
@@ -106,7 +109,7 @@ from skopax.promqlchecks import JOB_OFFSET as CUSTOM_CHECKS_OFFSET, JOB_PERIOD a
 from skopax.sweepout import Outputs
 from skopax.sweeps import Reads, Sweeper, owned, pass_name, watched
 from skopax.sealer import Sealer, master_key, stored_key
-from skopax.aikey import AiKey, InvalidKey, TestBusy
+from skopax.aikey import AiKey, AiKeys, InvalidKey, TestBusy
 from skopax.remote import Transport
 from skopax.sessions import LOGIN_KIND, SESSION_KIND, Sessions, User, role_at_least, session_secret
 from skopax.roles import Resolvers, role_map
@@ -181,6 +184,7 @@ PAGE_ASK_SOURCES = ('page', 'api')
 ACCESS_KIND = 'access'
 ADMIN_KIND = 'admin'
 TEST_TIMEOUT_S = 15
+SUGGEST_TIMEOUT_S = 10
 CHECK_MS_MAX_S = 1800
 INVESTIGATOR_WORK = ('ask', 'dive', 'assess')
 
@@ -211,6 +215,8 @@ def load_assets() -> dict[str, tuple[bytes, str]]:
     for f in sorted((WEB / 'static').glob('*.js')):
         body = f.read_bytes()
         assets[f.name] = (body, hashlib.sha256(body).hexdigest()[:12])
+    for name, body in core_locales.page_files().items():
+        assets[name] = (body, hashlib.sha256(body).hexdigest()[:12])
     return assets
 
 
@@ -263,6 +269,10 @@ def fill_brand(page: str) -> str:
     return json_in_html(brand.page_info()).join(fill_slots(part) for part in page.split(BRAND_PLACEHOLDER))
 
 
+def core_packs() -> list[str]:
+    return [f'/static/{name}?v={ASSETS[name][1]}' for name in core_locales.page_files() if name in ASSETS]
+
+
 def plugin_script_tags(paths: list[str]) -> str:
     return ''.join(f'<script src="{html.escape(path, quote=True)}"></script>' for path in paths)
 
@@ -270,13 +280,13 @@ def plugin_script_tags(paths: list[str]) -> str:
 def render_page(state: dict, plugin_scripts: list[str] = ()) -> str:
     blob = json.dumps(state, ensure_ascii=False).replace('<', '\\u003c')
     page = SCRIPT_SRC.sub(lambda m: f'<script src="/static/{m[1]}?v={ASSETS[m[1]][1]}"></script>', TEMPLATE.read_text(encoding='utf-8'))
-    page = page.replace(PLUGIN_SLOT, plugin_script_tags(list(plugin_scripts)))
+    page = page.replace(PLUGIN_SLOT, plugin_script_tags(core_packs() + list(plugin_scripts)))
     return blob.join(fill_brand(part) for part in page.split(PLACEHOLDER))
 
 
 def render_card_page(plugin_scripts: list[str] = ()) -> str:
     page = SCRIPT_SRC.sub(lambda m: f'<script src="/static/{m[1]}?v={ASSETS[m[1]][1]}"></script>', CARD_PAGE.read_text(encoding='utf-8'))
-    return fill_brand(page.replace(PLUGIN_SLOT, plugin_script_tags(list(plugin_scripts))))
+    return fill_brand(page.replace(PLUGIN_SLOT, plugin_script_tags(core_packs() + list(plugin_scripts))))
 
 
 MERGED_FIELDS = ('num', 'key', 'svc', 'label', 'sub', 'sev', 'status', 'url', 'what', 'business')
@@ -461,7 +471,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                gitlab: CodeHost | None = None, jira: object | None = None,
                investigator: Investigator | None = None, anthropic_client=None, slack_socket=None,
                kube: Kube | None = None, operators_lookup: Callable[[str], bool] | None = None, registry: Registry | None = None,
-               transport: Transport | None = None, sources: SourceSet | None = None, ai_factory: Callable[..., object] | None = None,
+               transport: Transport | None = None, sources: SourceSet | None = None, ai_factory: Callable[..., object] | None = None, openai_factory: Callable[..., object] | None = None,
                clients: Mapping[str, object] | None = None, probe: Probe | None = None, sso_http: SsoHttp | None = None,
                clock: Callable[[], float] | None = None) -> FastAPI:
     clock = clock or time.time
@@ -506,7 +516,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     brand.use_hidden(lambda: features.on('hide-attribution'))
 
     def chat_attribution() -> dict | None:
-        return brand.attribution_line() if settings.chat_attribution else None
+        return brand.attribution_line()
 
     follower = Follower(sources, live, instances, os.environ)
     redaction.use_rules(runtime.redaction_rules, runtime.redaction_timed_out)
@@ -657,6 +667,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     card_posts = CardPosts(store, slack, base_url, menu_on=lambda: started_at_boot('slack-socket'))
     attacher = Attacher(store, slack, settings.slack_attach_screenshots, base_url)
     notices = Notices(store)
+    versions = VersionCheck(store, transport, lambda: features.on('update-check'), clock=clock)
     reminders = Reminders(store, slack, settings.slack_remind_hours, base_url)
     clear_notes = ClearNotes(store, slack, settings.slack_clear_note_minutes, title_prefix=settings.jira_title_prefix)
     jira_links = JiraLinks(store, jira, settings.jira_links, notes, base_url, settings.jira_developer_field)
@@ -882,6 +893,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         card_posts.triaged(key, before)
 
     aikey = AiKey(db, get_sealer, lambda: live.base.anthropic_api_key, lambda: stored_key(db), live.tunables, factory=ai_factory)
+    openai_key = AiKey(db, get_sealer, lambda: live.base.openai_api_key, lambda: stored_key(db), live.tunables, factory=openai_factory, provider=OPENAI)
+    ai_keys = AiKeys(lambda: settings.ai_provider, {ANTHROPIC: aikey, OPENAI: openai_key})
 
     def org_pack() -> OrgPack | None:
         found = runtime.org_pack()
@@ -894,12 +907,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                                          lambda key: runtime.setting(MCPTOOLS_ID, key), FieldRefused, oauth=mcptools_auth)
     mcptools_bridge = ToolBridge(mcptools_deps, runtime, features, store)
 
-    talk = SmallTalk(store, settings, client=anthropic_client, key=aikey.current, pack=org_pack)
+    talk = SmallTalk(store, settings, client=anthropic_client, key=ai_keys.current, pack=org_pack)
     investigator = investigator or Investigator(
         store, Sources(gitlab=gitlab, jira=jira, plugin_tools=PluginTools(runtime), selfreview=lambda now: review_facts(store, server_info() | store.server_runs(), runtime.client('elasticsearch') if settings.self_log_index else None, now, own_commits, self_service(settings), settings.self_log_index, PluginTools(runtime)),
                               link_hosts=lambda: allowed_link_hosts(settings, runtime.org()['link_hosts'] + runtime.ui_hosts()), org=runtime.org,
                               bridge=mcptools_bridge),
-        Effects(pod_slack_send, slack_thread_update, replier.reply, state_note, tell=slack_tell, fixes=lambda key: post_fixes(key), slack_file=slack.file), settings, client=anthropic_client, base_url=base_url, talk=talk, key=aikey.current)
+        Effects(pod_slack_send, slack_thread_update, replier.reply, state_note, tell=slack_tell, fixes=lambda key: post_fixes(key), slack_file=slack.file), settings, client=anthropic_client, base_url=base_url, talk=talk, key=ai_keys.current)
 
     if isinstance(investigator, Investigator):
         investigator.notices = notices
@@ -907,7 +920,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         investigator.pack = org_pack
         investigator.role_of = lambda action: asker_role(action, users)
 
-    gate = Gate(store, settings, client=anthropic_client, key=aikey.current, pack=org_pack)
+    gate = Gate(store, settings, client=anthropic_client, key=ai_keys.current, pack=org_pack)
 
     intake = Intake(store, slack, operators, gate, talk, investigator, settings, base_url=base_url, ticket_extra=plugin_projects, on=lambda: features.on('slack-listener') and slack.enabled,
                     chat=lambda: features.on('chat'), not_ready=lambda: not_ready_text('slackevents.not_ready', 'slackevents.needs'), jira_site=jira_site)
@@ -985,7 +998,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     auto = AutoSend(store, lambda key: send_anomaly_to_slack(key, AUTO_BY), lambda report_id: send_report_to_slack(report_id, AUTO_BY), on=lambda: features.on('slack-autosend') and slack.enabled)
     fallback = Fallback(store, settings.slack_fallback_minutes)
-    crit_now = CritNow(store, lambda key: send_anomaly_to_slack(key, SERVER_BY), lambda: bool(settings.slack_crit_now and slack.enabled) and features.on('slack-autosend'))
+    post_now = PostNow(store, lambda key: send_anomaly_to_slack(key, SERVER_BY), lambda: settings.slack_post_sev if slack.enabled and features.on('slack-autosend') else 'off',
+                       lambda: investigator_ready() and settings.investigate_mode == 'live')
 
     def server_apply(results: list[PassResult], now: float, links, after=None, check: str | None = None, screen=None, clusters=None) -> Applied | None:
         try:
@@ -995,7 +1009,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except PyMongoError as e:
             log.warning('check runs not recorded: %s', kind(e))
         applied = apply(store, results, now, links, dm=pusher.enabled, after=after, auto_resolve_hours=settings.auto_resolve_hours,
-                        recurring_count=settings.recurring_count, recurring_days=settings.recurring_days, tag_rules=tags.rules(settings.tag_rules), alert_twins=settings.alert_twins, screen=screen, clusters=clusters, kind_windows=runtime.auto_windows())
+                        recurring_count=settings.recurring_count, recurring_days=settings.recurring_days, tag_rules=tags.rules(settings.tag_rules), alert_twins=settings.alert_twins, screen=screen, clusters=clusters, kind_windows=runtime.auto_windows(),
+                        severity_hours={'crit': settings.auto_resolve_hours_crit, 'warn': settings.auto_resolve_hours_warn}, info_close_days=settings.info_auto_close_days)
         if applied and applied.resolved:
             for r in applied.resolved:
                 notes.auto_resolved([r['key']], r.get('hours') or settings.auto_resolve_hours, r.get('since'), {r['key']} if r.get('event') else ())
@@ -1004,9 +1019,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             notices.fired(applied.events, applied.cards)
         if applied and applied.push:
             pusher.send(applied.push)
-            crit_now.run(applied.push, applied.cards, now)
-            if investigator.enabled and any(a.get('sev') == 'crit' for a in applied.push):
-                investigator.kick(time.time())
+        if applied:
+            post_now.run(fresh_cards(applied, now), applied.cards, now)
+        if applied and investigator.enabled and any(a.get('sev') == 'crit' for a in applied.push):
+            investigator.kick(time.time())
         if applied:
             routes.later(applied.cards, time.time(), applied.push)
         card_posts.swept(applied)
@@ -1065,7 +1081,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     self_review = SelfReview(store, settings, lambda now: review_facts(store, server_info() | store.server_runs(), runtime.client('elasticsearch') if settings.self_log_index else None, now, own_commits, self_service(settings), settings.self_log_index, PluginTools(runtime)),
                              lambda text: save_review(text, SELF_REVIEW_BY, *review_targets()) if slack.enabled else save_review(text, SELF_REVIEW_BY, []),
-                             client=anthropic_client, key=aikey.current)
+                             client=anthropic_client, key=ai_keys.current)
 
     def check_slack_scopes() -> None:
         try:
@@ -1143,10 +1159,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     custom_checks = CustomChecks(store, runtime, server_apply)
 
     def refresh_languages() -> None:
-        locales = [locale for _, locale in runtime.locales()]
+        core = list(core_locales.packs())
+        added = [locale for _, locale in runtime.locales()]
+        locales = core + added
+        trees = core_locales.chainlit_trees(core, added)
         messages.set_catalogs([(locale.lang, locale.messages) for locale in locales])
-        set_chat_texts([(locale.lang, locale.chat) for locale in locales], [(locale.lang, locale.chainlit) for locale in locales])
-        chatui.set_translations([(locale.lang, locale.chainlit) for locale in locales])
+        set_chat_texts([(locale.lang, locale.chat) for locale in locales], trees)
+        chatui.set_translations(trees)
         writing[0] = {locale.lang: locale.writing for locale in locales if locale.writing}
         outbound_language()
 
@@ -1161,7 +1180,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     runtime.after_refresh = lambda: sweeper.heal()
     instances.on_primary_moved = lambda plugin_id, old, new: sweeper.primary_changed(plugin_id, old, new, time.time())
     runtime.reader = lambda plugin: Reads(store, plugin, None)
-    runtime.ai = PluginAi(store, aikey.current, lambda now: investigator.why_halted(now), client=anthropic_client).for_check
+    runtime.ai = PluginAi(store, ai_keys.current, lambda now: investigator.why_halted(now), client=anthropic_client, provider=lambda: settings.ai_provider).for_check
     runtime.memos = store.plugin_memo
     core_jobs = [
         Job('enrich', SWEEP_PERIOD, ENRICH_OFFSET, lambda now: enricher.sweep(), lambda: enricher.enabled),
@@ -1174,6 +1193,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         Job('slack-clear-notes', CLEAR_NOTE_PERIOD, CLEAR_NOTE_OFFSET, clear_notes.run_once, lambda: clear_notes.enabled),
         Job('self-review', DAY_S, lambda now, hour=max(settings.selfreview_hour, 0): review_slot_offset(hour, now), self_review.scheduled, lambda: self_review.configured, background=True),
         Job('probe', PROBE_PERIOD, PROBE_OFFSET, probe_run, enabled=lambda: settings.probe),
+        Job('version-check', VERSION_PERIOD, VERSION_OFFSET + jitter_of(base_settings.mongo_uri + base_settings.mongo_db), versions.scheduled, lambda: features.on('update-check')),
         Job(CUSTOM_CHECKS, CUSTOM_CHECKS_PERIOD, CUSTOM_CHECKS_OFFSET, custom_checks.run_once, custom_checks.enabled),
     ]
     scheduler = Scheduler(store, boot=investigator.owner, jobs=lambda: core_jobs + [Job('postdeploy', POSTDEPLOY_PERIOD, POSTDEPLOY_OFFSET, lambda now: postdeploy.run_once(now), postdeploy.enabled)] + sweeper.jobs())
@@ -1335,7 +1355,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if not (settings.admin_email and settings.admin_password) or env_state['conflict']:
             return False
         try:
-            users.create(settings.admin_email, msg('setup.admin_name'), 'admin', settings.admin_password)
+            users.create(settings.admin_email, msg('setup.admin_name'), 'admin', settings.admin_password, name_from='default')
             log.info('admin created from env: %s', settings.admin_email.strip().lower())
         except UserExists:
             if setup_gate.needed():
@@ -1403,6 +1423,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 runtime.migrate = None
             await asyncio.to_thread(runtime.refresh)
             await asyncio.to_thread(aikey.refresh)
+            await asyncio.to_thread(openai_key.refresh)
             await asyncio.to_thread(sso_secret.refresh)
         except PyMongoError as e:
             if not checked:
@@ -1414,6 +1435,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         jobs = asyncio.create_task(scheduler.loop())
         ticking = asyncio.create_task(runtime.loop(instances.every))
         first_probe = asyncio.create_task(asyncio.to_thread(probe_at_start))
+
+        async def version_at_start() -> None:
+            await asyncio.sleep(VERSION_START_DELAY)
+            await asyncio.to_thread(versions.start)
+
+        first_version = asyncio.create_task(version_at_start())
         marked = threading.Event()
 
         def marks_job() -> None:
@@ -1431,6 +1458,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
         following = asyncio.create_task(follow_sources())
         keying = asyncio.create_task(aikey.loop())
+        openai_keying = asyncio.create_task(openai_key.loop())
         sso_keying = asyncio.create_task(sso_secret.loop())
         deciding = None
         if instances.age() is not None or listen_mode == 'off':
@@ -1442,7 +1470,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             async with mcp_manager.run():
                 yield
         finally:
-            running = [t for t in (task, jobs, ticking, following, keying, sso_keying, first_probe, deciding) if t is not None]
+            running = [t for t in (task, jobs, ticking, following, keying, openai_keying, sso_keying, first_probe, first_version, deciding) if t is not None]
             for t in running:
                 t.cancel()
             await asyncio.gather(*running, return_exceptions=True)
@@ -1478,10 +1506,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         return features.on('investigator') and investigator.enabled
 
     def no_ai_key() -> bool:
-        return not aikey.current()
+        return not ai_keys.current()
 
     feature_needs = {
-        'investigator': (('anthropic_key', no_ai_key), ('mode', lambda: investigator.mode == 'off')),
+        'investigator': (('anthropic_key', lambda: settings.ai_provider != OPENAI and no_ai_key()), ('openai_key', lambda: settings.ai_provider == OPENAI and no_ai_key()),
+                         ('mode', lambda: investigator.mode == 'off')),
         'chat': (('investigator', lambda: not investigator_ready()), ('chat_ui', lambda: not (settings.chat_ui and signon.active()))),
         'slack-autosend': (('slack_token', lambda: not slack.enabled),),
         'slack-listener': (('slack_app_token', lambda: link.app_token() == ''), ('slack_token', lambda: not slack.enabled), ('investigator', lambda: not investigator_ready()),
@@ -1489,7 +1518,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         'mcp': (('sso', lambda: not signon.active()),),
         'push': (('bot_token', lambda: link.token() == ''), ('push_users', lambda: not pusher.users)),
         'postdeploy': (('prometheus', lambda: not prom_watching()),),
-        'self-review': (('anthropic_key', no_ai_key), ('self_project', lambda: not (settings.self_project and settings.self_log_index))),
+        'self-review': (('anthropic_key', lambda: settings.ai_provider != OPENAI and no_ai_key()), ('openai_key', lambda: settings.ai_provider == OPENAI and no_ai_key()), ('self_project', lambda: not (settings.self_project and settings.self_log_index))),
     }
 
     def need_text(family: str, need: str) -> str:
@@ -1539,6 +1568,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     app.state.operators = operators
     app.state.gate = gate
     app.state.aikey = aikey
+    app.state.openai_key = openai_key
     app.state.self_review = self_review
     app.state.replier = replier
     app.state.intake = intake
@@ -1811,6 +1841,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     async def on_invalid_request(request: Request, e: RequestValidationError):
         if getattr(request.scope.get('route'), 'path', '').startswith('/api/admin/anthropic-key'):
             return JSONResponse({'detail': msg('aikey.invalid')}, status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
+        if getattr(request.scope.get('route'), 'path', '').startswith('/api/admin/openai-key'):
+            return JSONResponse({'detail': msg('openaikey.invalid')}, status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
         if getattr(request.scope.get('route'), 'path', '').startswith('/api/admin/users'):
             return refused_user(e)
         return await refused_request(request, e)
@@ -2145,6 +2177,26 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         log.info('password changed by %s', user.name)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    @app.patch('/api/me')
+    def rename_me(request: Request, body: NameIn, authorization: Annotated[str | None, Header()] = None) -> dict:
+        user = current_user(request) if not bearer_token(authorization) else None
+        if user is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, msg('password.needs_session'))
+        if not same_origin(request):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, msg('login.cross_site'))
+        name = user_field(clean_name, 'name', body.name)
+        held = users.get(user.name) or {}
+        if held.get('name') == name and held.get('nameFrom') == 'self':
+            return {'name': name}
+        try:
+            users.rename(user.name, name, 'self')
+        except InvalidUser as e:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, e.text) from e
+        finally:
+            user_cache.pop(user.name, None)
+        store.add_activity(ACCESS_KIND, user.name, msg('access.self_renamed', name=name))
+        return {'name': name}
+
     @app.get('/api/me')
     def me(request: Request) -> dict:
         user = current_user(request)
@@ -2156,6 +2208,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             'userRole': user.role if user else None,
             'source': user.source if user else None,
             'canChangePassword': bool(user and user.source == 'local'),
+            'canEditName': bool(user),
             'user': user.name if user else None,
             'name': name or None,
             'operator': bool(user and user.operator),
@@ -2307,7 +2360,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/chats')
     def get_chats(by: Annotated[str, Depends(require_login)]) -> dict:
-        return {'chats': store.chats(by, CHAT_LIST), 'cap': settings.chat_daily_cap, 'usedToday': chat_used(by), 'model': settings.chat_model}
+        return {'chats': store.chats(by, CHAT_LIST), 'cap': settings.chat_daily_cap, 'usedToday': chat_used(by), 'model': effective_model(settings.ai_provider, settings.chat_model, 'chat')}
 
     @app.get('/api/chats/{chat_id}')
     def get_chat(chat_id: str, by: Annotated[str, Depends(require_login)]) -> dict:
@@ -2504,7 +2557,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def post_admin_user(body: UserIn, by: Annotated[str, Depends(require_admin)]) -> dict:
         email = user_field(clean_email, 'email', body.email)
         role = user_field(clean_role, 'role', body.role)
-        name = email.partition('@')[0] if body.name == '' else user_field(clean_name, 'name', body.name)
+        named = body.name != ''
+        name = user_field(clean_name, 'name', body.name) if named else email.partition('@')[0]
+        name_from = 'admin' if named else 'default'
         password = body.password or None
         if body.sso and not signon.active():
             raise FieldRefused('sso', msg('access.sso_off'))
@@ -2515,7 +2570,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if body.sso and not sso_domain_allowed(email):
             raise FieldRefused('email', msg('access.sso_domain'))
         try:
-            made = users.add_sso(email, name, role) if password is None else users.create(email, name, role, password, link_by=by if body.sso else None)
+            made = users.add_sso(email, name, role, name_from) if password is None else users.create(email, name, role, password, link_by=by if body.sso else None, name_from=name_from)
         except UserExists as e:
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.user_exists')) from e
         except InvalidUser as e:
@@ -2581,6 +2636,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, e.text) from e
         except IdpManaged:
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.role_from_idp')) from None
+        if body.name is not None:
+            name = user_field(clean_name, 'name', body.name)
+            if current.get('name') == name and current.get('nameFrom') == 'admin':
+                body = body.model_copy(update={'name': None})
+            else:
+                fields |= {'name': name, 'nameFrom': 'admin'}
         if body.password is not None and current.get('source') == 'sso':
             fields.pop('pw', None)
             current = sso_to_local(key, body, fields, by)
@@ -2626,6 +2687,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             store.add_activity(ACCESS_KIND, by, msg('access.user_disabled' if body.disabled else 'access.user_enabled', email=key))
         if body.password is not None:
             store.add_activity(ACCESS_KIND, by, msg('access.user_password', email=key))
+        if body.name is not None:
+            store.add_activity(ACCESS_KIND, by, msg('access.user_renamed', email=key, name=clean_name(body.name)))
 
     @app.get('/api/admin/tokens')
     def get_admin_tokens(by: Annotated[str, Depends(require_admin)]) -> list[dict]:
@@ -2863,6 +2926,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 items.append({'id': f'source:{label}', 'level': 'warn', 'text': msg('settings.source_failed', source=label, error=state['error']), 'at': state['since']})
         if aikey.status()['unreadable']:
             items.append({'id': 'ai-key', 'level': 'warn', 'text': msg('aikey.unreadable')})
+        if openai_key.status()['unreadable']:
+            items.append({'id': 'openai-key', 'level': 'warn', 'text': msg('openaikey.unreadable')})
+        items += [{'id': f"ai-model:{i['key']}", 'level': 'warn', 'text': i['problem']} for i in live.entries()
+                  if i.get('problem') and provider_of(i['value']) not in (None, settings.ai_provider)]
         slack_scopes = store.slack_scopes() if slack.enabled else {'missing': []}
         if slack_scopes['missing']:
             items.append({'id': 'slack-scopes', 'level': 'warn', 'text': msg('integrations.slack_scopes', scopes=', '.join(slack_scopes['missing'])), 'at': slack_scopes['at']})
@@ -2879,6 +2946,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             provider = signon.status()
             if not provider['ok']:
                 items.append({'id': 'sso-provider', 'level': 'warn', 'text': msg('sso.notice.provider'), 'at': provider['since']})
+        update = versions.notice()
+        if update is not None:
+            items.append(update)
         return {'items': items}
 
     @app.get('/api/admin/features')
@@ -2902,38 +2972,44 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def get_admin_history(by: Annotated[str, Depends(require_admin)], limit: Annotated[int, Query(ge=1, le=200)] = 50) -> list[dict]:
         return live.tunables.history(limit)
 
-    @app.get('/api/admin/anthropic-key')
-    def get_admin_anthropic_key(by: Annotated[str, Depends(require_admin)]) -> dict:
-        return aikey.status()
+    def key_routes(path: str, key: AiKey, provider: str) -> None:
+        prefix = key.prefix
 
-    @app.put('/api/admin/anthropic-key')
-    def put_admin_anthropic_key(body: AiKeyIn, by: Annotated[str, Depends(require_admin)]) -> dict:
-        try:
-            found = aikey.set(body.key, by)
-        except InvalidKey:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('aikey.invalid')) from None
-        store.add_activity(ADMIN_KIND, by, msg('aikey.set'))
-        log.info('Anthropic API key set in Admin by %s', by)
-        return found
+        @app.get(path)
+        def get_admin_ai_key(by: Annotated[str, Depends(require_admin)]) -> dict:
+            return key.status()
 
-    @app.delete('/api/admin/anthropic-key', status_code=status.HTTP_204_NO_CONTENT)
-    def delete_admin_anthropic_key(by: Annotated[str, Depends(require_admin)]) -> Response:
-        if aikey.clear(by):
-            store.add_activity(ADMIN_KIND, by, msg('aikey.cleared'))
-            log.info('Anthropic API key cleared in Admin by %s', by)
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        @app.put(path)
+        def put_admin_ai_key(body: AiKeyIn, by: Annotated[str, Depends(require_admin)]) -> dict:
+            try:
+                found = key.set(body.key, by)
+            except InvalidKey:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg(prefix + 'invalid')) from None
+            store.add_activity(ADMIN_KIND, by, msg(prefix + 'set'))
+            log.info('%s API key set in Admin by %s', key.label, by)
+            return found
 
-    @app.post('/api/admin/anthropic-key/test')
-    def post_admin_anthropic_key_test(body: AiKeyTestIn, by: Annotated[str, Depends(require_admin)]) -> dict:
-        try:
-            return aikey.test(body.key, settings.investigate_model, lambda: store.add_activity(ADMIN_KIND, by, msg('aikey.test_used')))
-        except InvalidKey:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('aikey.invalid')) from None
-        except TestBusy:
-            raise HTTPException(status.HTTP_409_CONFLICT, msg('aikey.test_busy')) from None
-        except Exception as e:
-            log.warning('the Anthropic connection test could not run: %s', kind(e))
-            return {'ok': False, 'summary': msg('aikey.test_failed'), 'ms': 0}
+        @app.delete(path, status_code=status.HTTP_204_NO_CONTENT)
+        def delete_admin_ai_key(by: Annotated[str, Depends(require_admin)]) -> Response:
+            if key.clear(by):
+                store.add_activity(ADMIN_KIND, by, msg(prefix + 'cleared'))
+                log.info('%s API key cleared in Admin by %s', key.label, by)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+        @app.post(path + '/test')
+        def post_admin_ai_key_test(body: AiKeyTestIn, by: Annotated[str, Depends(require_admin)]) -> dict:
+            try:
+                return key.test(body.key, effective_model(provider, settings.investigate_model, 'card'), lambda: store.add_activity(ADMIN_KIND, by, msg(prefix + 'test_used')))
+            except InvalidKey:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg(prefix + 'invalid')) from None
+            except TestBusy:
+                raise HTTPException(status.HTTP_409_CONFLICT, msg(prefix + 'test_busy')) from None
+            except Exception as e:
+                log.warning('the %s connection test could not run: %s', key.label, kind(e))
+                return {'ok': False, 'summary': msg(prefix + 'test_failed'), 'ms': 0}
+
+    key_routes('/api/admin/anthropic-key', aikey, ANTHROPIC)
+    key_routes('/api/admin/openai-key', openai_key, OPENAI)
 
     def plugin_found(plugin_id: str):
         found = registry.get(plugin_id)
@@ -3132,6 +3208,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except Exception as e:
             log.warning('%s', msg('integrations.test_failed_log', plugin=plugin_id, error=kind(e)))
             return {'ok': False, 'summary': msg('integrations.test_failed', error=kind(e)), 'ms': 0}
+
+    @app.post('/api/admin/plugins/{plugin_id}/fields/{key}/suggestions')
+    def post_admin_field_suggestions(plugin_id: str, key: Annotated[str, PathParam(max_length=64)], body: FieldSuggestIn, by: Annotated[str, Depends(require_admin)]) -> dict:
+        plugin = plugin_usable(plugin_id)
+        try:
+            return runtime.suggestions(plugin, key, body.name, body.values, SUGGEST_TIMEOUT_S)
+        except SuggestFailed as e:
+            raise HTTPException(e.status, e.text) from None
+        except InvalidInstance as e:
+            raise FieldRefused(e.field, e.args[0]) from None
+        except InstanceMissing:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, msg('instances.unknown', name=body.name)) from None
 
     mcptools_routes.mount(app, mcptools_deps, require_admin)
     promqlroutes.mount(app, custom_checks, require_admin, lambda by, text: store.add_activity(ADMIN_KIND, by, text), lambda: scheduler.nudge(CUSTOM_CHECKS))

@@ -4,7 +4,7 @@ var INT_DOTS = {ok: 'ok', warn: 'warn', error: 'error', pending: 'pending', none
 var INT_MCP = 'mcp-tools', INT_MCP_PRESETS = null, INT_MCP_BACK = null, INT_MCP_SEQ = 0, INT_MCP_FRESH_MS = 600000, INT_MCP_WRITES = {}, INT_MCP_EXPIRED = false, INT_MCP_NOTE = '';
 var INT_MCP_KINDS = {read: ['Reads', 'k-good'], unknown: ['May change data', 'k-warn'], write: ['Changes data', 'k-crit']};
 var INT_MCP_STATES = {connected: 'Connected', reconnect: 'Needs a new sign-in', none: 'Not connected'};
-var INT_SEG_MAX = 3, INT_CUSTOM = '@custom';
+var INT_SEG_MAX = 3, INT_CUSTOM = '@custom', INT_KNOW = '@knowledge';
 function intBase(p) { return '/api/admin/plugins/' + encodeURIComponent(p.id); }
 function intStateOf(p) { return !p.state ? 'broken' : p.state === 'ok' ? (p.enabled ? 'on' : 'off') : p.state; }
 function intSay(msg, text, bad) {
@@ -35,6 +35,165 @@ function intInit(f, inst) { return inst && inst.values && inst.values[f.key] != 
 function intMoved(f, inst) {
   if (f.kind === 'secret') return !!(inst && inst.secrets && inst.secrets[f.key] && inst.secrets[f.key].set);
   return intInit(f, inst) !== (f.default || '');
+}
+var INT_SUG_SHOWN = 200;
+function intSuggests(f) { return f.suggest === true && (f.kind === 'text' || f.kind === 'url') && (f.separator === '' || f.separator === ',' || f.separator === ';' || f.separator == null); }
+function intSugSplit(v, sep) { return String(v || '').split(sep).map(function (x) { return x.trim(); }).filter(Boolean); }
+function intPicker(form, p, inst, w) {
+  var sep = w.dataset.sep || '', multi = !!sep, input = w.querySelector('.int-in'), box = w.querySelector('.int-sug-in'), pop = w.querySelector('.int-sug-pop');
+  var list = w.querySelector('.int-sug-list'), note = w.querySelector('.int-sug-note'), chipsEl = w.querySelector('.int-sug-chips'), tag = w.querySelector('.int-sug-one');
+  var st = {state: 'idle', values: [], canon: {}, note: '', seq: 0, active: -1, shown: [], quiet: false, edited: false};
+  var chosen = multi ? intSugSplit(input.value, sep) : [];
+  var known = function (v) { return st.state === 'ok' && Object.prototype.hasOwnProperty.call(st.canon, foldCase(v)); };
+  var canon = function (v) { return known(v) ? st.canon[foldCase(v)] : v; };
+  var has = function (v) { var k = foldCase(v); return chosen.some(function (c) { return foldCase(c) === k; }); };
+  var store = function () { intPut(input, chosen.join(sep + ' ')); };
+  var paintOne = function () {
+    if (multi || !tag) return;
+    tag.hidden = !(st.state === 'ok' && box.value.trim() && !known(box.value.trim()));
+  };
+  var paintChips = function () {
+    if (!multi) { paintOne(); return; }
+    chipsEl.textContent = '';
+    chosen.forEach(function (v) {
+      var li = accText('li', 'int-sug-chip'), x = accText('button', 'int-sug-x', '\u2715');
+      li.appendChild(accText('span', 'int-sug-v', v));
+      if (st.state === 'ok' && !known(v)) { li.classList.add('free'); li.appendChild(accText('span', 'int-sug-tag', 'not in the list')); }
+      x.type = 'button';
+      x.setAttribute('aria-label', 'Remove ' + v);
+      x.addEventListener('click', function () { chosen = chosen.filter(function (c) { return c !== v; }); store(); paintChips(); box.focus(); });
+      li.appendChild(x);
+      chipsEl.appendChild(li);
+    });
+  };
+  var mark = function (i) {
+    st.active = i;
+    [].forEach.call(list.children, function (o, n) { o.setAttribute('aria-selected', String(n === i)); });
+    if (i >= 0 && list.children[i]) { box.setAttribute('aria-activedescendant', list.children[i].id); list.children[i].scrollIntoView({block: 'nearest'}); } else box.removeAttribute('aria-activedescendant');
+  };
+  var paintList = function () {
+    list.textContent = '';
+    st.shown = [];
+    mark(-1);
+    if (st.state === 'loading') { note.textContent = 'Loading\u2026'; return; }
+    if (st.state === 'refused') { note.textContent = st.text; return; }
+    if (st.state !== 'ok') { note.textContent = ''; return; }
+    var q = foldCase((multi || box.dataset.typed === '1') ? box.value.trim() : '');
+    var hits = st.values.filter(function (v) { return !has(v) && foldCase(v).indexOf(q) >= 0; });
+    st.shown = hits.slice(0, INT_SUG_SHOWN);
+    st.shown.forEach(function (v, n) {
+      var o = accText('li', 'int-sug-o', v);
+      o.id = box.id + '-o' + n;
+      o.setAttribute('role', 'option');
+      o.setAttribute('aria-selected', 'false');
+      o.addEventListener('click', function () { take(v); });
+      list.appendChild(o);
+    });
+    var said = !hits.length ? 'No match' : hits.length > st.shown.length ? 'Showing ' + st.shown.length + ' of ' + hits.length + '; type to narrow the list' : '';
+    note.textContent = [said, st.note].filter(Boolean).join('. ');
+  };
+  var setOpen = function (on) {
+    pop.hidden = !on;
+    box.setAttribute('aria-expanded', String(on));
+    if (!on) mark(-1);
+  };
+  var load = async function () {
+    var seq = ++st.seq;
+    st.state = 'loading';
+    paintList();
+    try {
+      var r = await adminApi('POST', intBase(p) + '/fields/' + encodeURIComponent(w.dataset.key) + '/suggestions', {name: inst ? inst.name : undefined, values: intValues(form, 'test')});
+      if (seq !== st.seq) return;
+      st.values = intList(r && r.values).filter(function (v) { return typeof v === 'string'; });
+      st.canon = {};
+      st.values.forEach(function (v) { var k = foldCase(v); if (!Object.prototype.hasOwnProperty.call(st.canon, k)) st.canon[k] = v; });
+      st.note = r && typeof r.note === 'string' ? r.note : '';
+      st.state = 'ok';
+    } catch (e) {
+      if (seq !== st.seq) return;
+      st.state = 'refused';
+      st.text = e && e.detail ? String(e.detail) : 'The list could not be loaded';
+    }
+    paintChips();
+    paintList();
+  };
+  var open = function () {
+    setOpen(true);
+    if (st.state === 'idle' || st.state === 'refused') load(); else paintList();
+  };
+  var putOne = function (v) {
+    box.value = v;
+    st.quiet = true;
+    intPut(input, v);
+    st.quiet = false;
+    st.edited = false;
+  };
+  var take = function (v) {
+    v = canon(String(v).trim());
+    if (!v) return;
+    if (multi) {
+      if (!has(v)) chosen.push(v);
+      box.value = '';
+      store();
+      paintChips();
+    } else {
+      putOne(v);
+      delete box.dataset.typed;
+      paintOne();
+    }
+    paintList();
+    if (!multi) setOpen(false);
+  };
+  var commit = function () {
+    if (!multi) {
+      if (!st.edited) return;
+      var one = box.value.trim();
+      if (one && canon(one) !== one) putOne(canon(one));
+      return;
+    }
+    var parts = intSugSplit(box.value, sep).map(canon);
+    box.value = '';
+    var added = false;
+    parts.forEach(function (v) { if (!has(v)) { chosen.push(v); added = true; } });
+    if (added) { store(); paintChips(); }
+  };
+  w._sugFlush = commit;
+  pop.addEventListener('mousedown', function (e) { e.preventDefault(); });
+  box.addEventListener('focus', open);
+  box.addEventListener('blur', function () { delete box.dataset.typed; setOpen(false); });
+  box.addEventListener('input', function () {
+    if (st.quiet) return;
+    st.edited = true;
+    if (!multi) { box.dataset.typed = '1'; paintOne(); }
+    if (pop.hidden) open(); else paintList();
+  });
+  box.addEventListener('keydown', function (e) {
+    var n = st.shown.length;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (pop.hidden) { open(); return; }
+      if (n) mark(e.key === 'ArrowDown' ? (st.active + 1) % n : (st.active - 1 + n) % n);
+    } else if (e.key === 'Enter') {
+      if (!pop.hidden && st.active >= 0 && st.shown[st.active] != null) { e.preventDefault(); take(st.shown[st.active]); }
+      else if (multi) { e.preventDefault(); commit(); paintList(); }
+    } else if (e.key === 'Escape') {
+      if (pop.hidden) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+    } else if (e.key === 'Backspace' && multi && box.value === '' && chosen.length) {
+      e.preventDefault();
+      chosen.pop();
+      store();
+      paintChips();
+      paintList();
+    }
+  });
+  form.addEventListener('input', function (e) { if (!w.contains(e.target) && st.state !== 'loading') st.state = 'idle'; });
+  paintChips();
+}
+function intFlushPickers(form) {
+  form.querySelectorAll('.int-field').forEach(function (w) { if (typeof w._sugFlush === 'function') w._sugFlush(); });
 }
 function intFieldHtml(p, f, inst) {
   var id = 'int-' + p.id + '-' + (inst ? inst.name : 'new') + '-' + f.key;
@@ -69,11 +228,17 @@ function intFieldHtml(p, f, inst) {
         opts.map(function (c) { return '<button type="button" class="int-seg-b" role="radio" data-value="' + esc(c) + '" aria-checked="false" tabindex="-1">' + esc(intChoiceText(f, c, 'Not set')) + '</button>'; }).join('') + '</div>';
     } else {
       input = '<select id="' + esc(id) + '" class="int-in' + (entry ? '' : ' int-sel') + '"' + (entry ? ' hidden' : '') + '>' + opts.map(function (c) { return '<option value="' + esc(c) + '"' + (c === init ? ' selected' : '') + '>' + esc(text(c)) + '</option>'; }).join('') + '</select>';
-      if (entry) input = '<div class="int-entry"><span class="int-entry-chip"><span class="int-entry-n"></span><button type="button" class="int-entry-change">Change</button>' +
+      if (entry) input = '<div class="int-entry"><span class="int-entry-chip"><span class="int-entry-n"></span><button type="button" class="int-entry-change">Change\u2026</button>' +
         '<button type="button" class="int-entry-clear" aria-label="No catalog entry" title="No catalog entry">\u2715</button></span>' + input + '</div>';
     }
   } else if (f.kind === 'int') {
     input = '<input id="' + esc(id) + '" class="int-in" type="number" inputmode="numeric" step="1"' + (f.low != null ? ' min="' + esc(f.low) + '"' : '') + (f.high != null ? ' max="' + esc(f.high) + '"' : '') + ' value="' + esc(init) + '">';
+  } else if (intSuggests(f) && !owned) {
+    extra = ' data-sep="' + esc(f.separator || '') + '"';
+    var combo = ' role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="' + esc(id) + '-list" autocomplete="off" spellcheck="false"';
+    input = '<div class="int-sug">' + (f.separator ? '<input type="hidden" class="int-in" value="' + esc(init) + '"><ul class="int-sug-chips" aria-label="' + esc(f.label) + '"></ul>' +
+      '<input id="' + esc(id) + '" class="int-sug-in" type="text" maxlength="1000"' + combo + '>' : '<input id="' + esc(id) + '" class="int-in int-sug-in" type="text" maxlength="1000" value="' + esc(init) + '"' + combo + '><span class="int-sug-tag int-sug-one" hidden>not in the list</span>') +
+      '<div class="int-sug-pop" hidden><ul id="' + esc(id) + '-list" class="int-sug-list" role="listbox" aria-label="' + esc(f.label) + '"></ul><p class="int-sug-note" aria-live="polite"></p></div></div>';
   } else {
     input = '<input id="' + esc(id) + '" class="int-in" type="text" maxlength="1000" value="' + esc(init) + '"' + (owned ? ' readonly' : '') + '>';
   }
@@ -89,6 +254,18 @@ function intName(p) { return String(p.name || p.id); }
 function intUsable(p) { return p.state === 'ok'; }
 function intCatOf(p) { return typeof p.category === 'string' && p.category ? p.category : 'other'; }
 function intIsCustom(p) { return p.origin === 'package' || p.origin === 'env'; }
+function intKnowKey(p) { return typeof p.companyKnowledge === 'string' ? p.companyKnowledge : ''; }
+function intKnowing(p) {
+  var key = intKnowKey(p), insts = intList(p.instances);
+  if (p.id === INT_MCP) return insts.some(function (i) { return !!i && !!i.values && String(i.values.knowledge) === 'true'; });
+  if (key === 'always') return intUsable(p);
+  return !!key && insts.some(function (i) { return !!i && !!i.values && i.values[key] != null && String(i.values[key]).trim() !== ''; });
+}
+function intNativeKnow(id) { var p = intFind(id); return !!p && p.id !== INT_MCP && !!intKnowKey(p); }
+function intKnowNote(p) {
+  var key = intKnowKey(p);
+  return key && key !== 'always' ? 'with its ' + key.charAt(0).toUpperCase() + key.slice(1) + ' field' : '';
+}
 function intCustomSaid(p) {
   var parts = [];
   if (p.author) parts.push(' by ' + p.author);
@@ -134,6 +311,7 @@ function intSameSet(a, b) {
 }
 function intShown(h) {
   if (!h || typeof h.text !== 'string') return null;
+  if (h.state === 'none') return {state: 'off', text: '', none: true};
   var when = h.state === 'ok' && typeof h.at === 'string' && h.at ? ago(h.at) : '';
   return {state: INT_DOTS[h.state] || 'off', text: h.text + (when ? ' \u00b7 ' + when : '')};
 }
@@ -215,6 +393,7 @@ function intTile(p) {
   t.dataset.state = st;
   t.dataset.cat = intCatOf(p);
   t.dataset.origin = p.origin || 'builtin';
+  t.dataset.knowledge = intKnowing(p) ? '1' : '0';
   t.dataset.find = intHay(p);
   var tip = intTip(p, h);
   if (tip) t.title = tip;
@@ -229,7 +408,8 @@ function intTile(p) {
   open.appendChild(row);
   var custom = intIsCustom(p);
   if (!need || custom) line.appendChild(accText('span', 'int-cat', need ? 'Custom' : intCatLabel(intCatOf(p)) + (custom ? ' \u00b7 Custom' : '')));
-  if (h) line.appendChild(accText('span', 'int-health', intShort(p, h)));
+  var healthText = h ? (h.none ? (intList(p.instances).length > 1 ? intList(p.instances).length + ' instances' : '') : intShort(p, h)) : '';
+  if (healthText) line.appendChild(accText('span', 'int-health', healthText));
   var why = need && h && intList(p.instances).length > 1 ? intWhy(p) : '';
   if (why) line.appendChild(accText('span', 'int-why', why));
   open.appendChild(line);
@@ -281,7 +461,7 @@ async function intSwitch(p, sw, msg) {
 function intFilter() {
   var seen = 0, all = document.querySelectorAll('#integrations .int-tile'), none = document.querySelector('#integrations .int-none'), q = INT_Q.trim();
   all.forEach(function (t) {
-    t.hidden = (INT_CAT === INT_CUSTOM ? t.dataset.origin === 'builtin' : !!INT_CAT && t.dataset.cat !== INT_CAT) || !intMatches(t.dataset.find, q);
+    t.hidden = (INT_CAT === INT_KNOW ? t.dataset.knowledge !== '1' : INT_CAT === INT_CUSTOM ? t.dataset.origin === 'builtin' : !!INT_CAT && t.dataset.cat !== INT_CAT) || !intMatches(t.dataset.find, q);
     if (!t.hidden) seen++;
   });
   document.querySelectorAll('#integrations .int-group').forEach(function (g) { g.hidden = ![].some.call(g.querySelectorAll('.int-tile'), function (t) { return !t.hidden; }); });
@@ -353,8 +533,8 @@ function renderIntegrations(note) {
   var was = document.activeElement, held = !!was && was.id === 'int-find', caret = held ? [was.selectionStart, was.selectionEnd] : null;
   box.textContent = '';
   var shown = intPlugins().filter(intTiled), cats = intCatsOf(shown), need = shown.filter(intAttention).length, live = intPlugins().filter(intConnected).length;
-  var anyCustom = shown.some(intIsCustom);
-  if (INT_CAT && (INT_CAT === INT_CUSTOM ? !anyCustom : cats.indexOf(INT_CAT) < 0)) INT_CAT = '';
+  var anyCustom = shown.some(intIsCustom), anyKnow = shown.some(intKnowing);
+  if (INT_CAT && (INT_CAT === INT_CUSTOM ? !anyCustom : INT_CAT === INT_KNOW ? !anyKnow : cats.indexOf(INT_CAT) < 0)) INT_CAT = '';
   var top = accText('div', 'int-top'), head = accText('div', 'int-h');
   head.appendChild(accText('h3', 'int-title', 'Integrations'));
   if (shown.length) head.appendChild(intFindBox());
@@ -377,8 +557,8 @@ function renderIntegrations(note) {
     var chips = accText('div', 'int-chips');
     chips.setAttribute('role', 'group');
     chips.setAttribute('aria-label', 'Categories');
-    [''].concat(cats, anyCustom ? [INT_CUSTOM] : []).forEach(function (c) {
-      var b = accText('button', 'int-chip', c === INT_CUSTOM ? 'Custom' : c ? intCatLabel(c) : 'All');
+    [''].concat(anyKnow ? [INT_KNOW] : [], cats, anyCustom ? [INT_CUSTOM] : []).forEach(function (c) {
+      var b = accText('button', 'int-chip', c === INT_KNOW ? 'Knowledge' : c === INT_CUSTOM ? 'Custom' : c ? intCatLabel(c) : 'All');
       b.type = 'button';
       b.dataset.cat = c;
       b.addEventListener('click', function () { INT_CAT = c; intFilter(); });
@@ -390,15 +570,17 @@ function renderIntegrations(note) {
   var said = accText('p', 'adm-msg ok int-note', note || '');
   said.setAttribute('role', 'status');
   box.appendChild(said);
-  if (anyCustom) {
-    [['custom', 'Custom plug-ins', shown.filter(intIsCustom)], ['builtin', 'Built-in plug-ins', shown.filter(function (p) { return !intIsCustom(p); })]].forEach(function (g) {
+  if (anyCustom || anyKnow) {
+    var know = shown.filter(intKnowing), rest = shown.filter(function (p) { return know.indexOf(p) < 0; });
+    [['knowledge', 'Company knowledge', know], ['custom', 'Custom plug-ins', rest.filter(intIsCustom)], ['builtin', 'Built-in plug-ins', rest.filter(function (p) { return !intIsCustom(p); })]].forEach(function (g) {
       if (!g[2].length) return;
-      var sec = accText('section', 'int-group'), h = accText('h4', 'int-group-h', g[1] + ' '), grid = accText('div', 'int-grid');
+      var sec = accText('section', 'int-group' + (g[0] === 'knowledge' ? ' int-group-know' : '')), h = accText('h4', 'int-group-h', g[1] + ' '), grid = accText('div', 'int-grid');
       sec.dataset.group = g[0];
       h.id = 'int-group-' + g[0];
       h.appendChild(accText('span', 'int-group-n', String(g[2].length)));
       sec.setAttribute('aria-labelledby', h.id);
       sec.appendChild(h);
+      if (g[0] === 'knowledge') sec.appendChild(accText('p', 'muted int-group-sub', 'Runbooks, postmortems and design docs the investigator searches and cites'));
       g[2].forEach(function (p) { grid.appendChild(intTile(p)); });
       sec.appendChild(grid);
       box.appendChild(sec);
@@ -447,7 +629,7 @@ async function loadIntegrations(note) {
     return false;
   }
 }
-function intPick(p) {
+function intPick(p, note) {
   var b = accText('button', 'int-pick'), connected = intConnected(p);
   b.type = 'button';
   b.dataset.id = p.id;
@@ -457,6 +639,7 @@ function intPick(p) {
   var words = accText('span', 'int-pick-t'), n = intList(p.instances).length;
   words.appendChild(accText('span', 'int-pick-n', intName(p)));
   if (typeof p.description === 'string' && p.description) words.appendChild(accText('span', 'int-pick-d', p.description));
+  if (note) words.appendChild(accText('span', 'int-pick-k', note));
   b.appendChild(words);
   if (intIsCustom(p)) b.appendChild(accText('span', 'muted int-pick-c', 'Custom'));
   if (intOutside(p)) b.appendChild(accText('span', 'int-has idle', 'Set up outside Admin'));
@@ -509,12 +692,21 @@ function intPopOpen() {
   search.setAttribute('autocomplete', 'off');
   search.setAttribute('spellcheck', 'false');
   pop.appendChild(search);
-  var body = accText('div', 'int-pop-body');
-  intCatsOf(list).forEach(function (c) {
+  var body = accText('div', 'int-pop-body'), knows = list.filter(function (p) { return !!intKnowKey(p); }), rest = list.filter(function (p) { return !intKnowKey(p); });
+  if (knows.length || (mcp && mcp.state && mcp.state !== 'broken')) {
+    var kg = accText('section', 'int-cat-grp int-know-grp'), kgrid = accText('div', 'int-pg');
+    kg.dataset.cat = 'knowledge';
+    kg.hidden = !knows.length;
+    kg.appendChild(accText('h4', 'int-cat-h', 'Company knowledge'));
+    knows.forEach(function (p) { kgrid.appendChild(intPick(p, intKnowNote(p))); });
+    kg.appendChild(kgrid);
+    body.appendChild(kg);
+  }
+  intCatsOf(rest).forEach(function (c) {
     var g = accText('section', 'int-cat-grp'), grid = accText('div', 'int-pg');
     g.dataset.cat = c;
     g.appendChild(accText('h4', 'int-cat-h', intCatLabel(c)));
-    list.filter(function (p) { return intCatOf(p) === c; }).forEach(function (p) { grid.appendChild(intPick(p)); });
+    rest.filter(function (p) { return intCatOf(p) === c; }).forEach(function (p) { grid.appendChild(intPick(p)); });
     g.appendChild(grid);
     body.appendChild(g);
   });
@@ -707,7 +899,7 @@ function intCard(p, i, cur, said) {
   meta.appendChild(accText('span', 'int-icard-s', i.enabled ? 'On' : 'Off'));
   c.appendChild(meta);
   line.appendChild(accText('span', 'int-dot ' + (h ? h.state : 'off')));
-  line.appendChild(accText('span', 'int-icard-l', h ? h.text : 'Not checked yet'));
+  if (!(h && h.none)) line.appendChild(accText('span', 'int-icard-l', h ? h.text : 'Not checked yet'));
   c.appendChild(line);
   edit.setAttribute('aria-hidden', 'true');
   c.appendChild(edit);
@@ -770,7 +962,7 @@ function intInstHead(p, inst) {
   line.appendChild(rmsg);
   box.appendChild(line);
   var h = intInstHealth(p, inst);
-  if (h) box.appendChild(intHealthEl(h, 'int-ihealth'));
+  if (h && !h.none) box.appendChild(intHealthEl(h, 'int-ihealth'));
   if (inst.problem) box.appendChild(accText('p', 'adm-msg bad int-problem', String(inst.problem)));
   on.addEventListener('change', async function () {
     var want = on.checked, mcp = intMcpBoxOf(p);
@@ -940,6 +1132,7 @@ function intForm(slot, p, inst) {
     });
   });
   intWidgets(form);
+  form.querySelectorAll('.int-sug').forEach(function (b) { intPicker(form, p, inst, b.closest('.int-field')); });
   var cancel = form.querySelector('.int-cancel');
   if (cancel) cancel.addEventListener('click', function () {
     if (!intList(p.instances).length) { intClose(true); return; }
@@ -957,6 +1150,7 @@ function intForm(slot, p, inst) {
     result.className = 'int-result';
     result.hidden = false;
     try {
+      intFlushPickers(form);
       var off = intOffChecks(form), sent = {name: inst ? inst.name : undefined, values: intValues(form, 'test')};
       if (!intSameSet(off, inst ? intStoredOff(p, inst) : [])) sent.offChecks = off;
       var r = await adminApi('POST', intBase(p) + '/test', sent);
@@ -1051,6 +1245,7 @@ async function intSave(form, p, inst, turnOn) {
   var msg = form.querySelector('.int-form-msg'), body = {}, mcp = intMcpBoxOf(p);
   if (mcp && !intMcpClaim(mcp, msg)) return;
   form.querySelectorAll('.int-field-msg').forEach(function (m) { intSay(m, '', false); });
+  intFlushPickers(form);
   var values = intValues(form, inst ? 'edit' : 'create'), off = intOffChecks(form), pressed = document.activeElement;
   intHold(pressed);
   intBusy(form, true);
@@ -1123,13 +1318,14 @@ function intMcpPresets() {
 function intMcpGroup(pop, mcp) {
   var g = accText('section', 'int-cat-grp int-mcp-grp'), grid = accText('div', 'int-pg');
   g.dataset.cat = 'mcp';
-  g.appendChild(accText('h4', 'int-cat-h', 'MCP servers and company knowledge'));
+  g.appendChild(accText('h4', 'int-cat-h', 'MCP servers'));
   grid.appendChild(intMcpPick(mcp, null, {}));
   g.appendChild(grid);
   if (intUsable(mcp)) intMcpPresets().then(function (r) {
     if (!r || !g.isConnected) return;
     var texts = intMcpTexts(r), search = pop.querySelector('.int-search');
-    intList(r.items).filter(intMcpItem).forEach(function (it) { grid.appendChild(intMcpPick(mcp, it, texts)); });
+    var kgrid = pop.querySelector('.int-know-grp .int-pg');
+    intList(r.items).filter(intMcpItem).forEach(function (it) { (it.knowledge === 'ready' && kgrid && !intNativeKnow(it.id) ? kgrid : grid).appendChild(intMcpPick(mcp, it, texts)); });
     intList(r.soon).filter(intMcpItem).forEach(function (it) { grid.appendChild(intMcpSoon(it, texts)); });
     intPopFind(pop, search ? search.value : '');
   });

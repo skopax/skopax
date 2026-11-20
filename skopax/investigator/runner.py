@@ -1,17 +1,16 @@
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable
 
-import anthropic
-
+from skopax.ai import wrap
+from skopax.ai.anthropic_ai import CACHE, FALLBACK_BETA, answer_text, cache_marked
 from skopax.errkind import kind as error_kind
-from skopax.investigator.pricing import PRICES, UnknownModel, known, split, usd
+from skopax.investigator.pricing import TABLES, UnknownModel, effective, known, provider_of, split, usd
 from skopax.investigator.web import is_web_tool
 
 log = logging.getLogger('skopax.investigator.runner')
 
-FALLBACK_BETA = 'server-side-fallback-2026-07-01'
 MAX_TOKENS = 16000
 RECAP_LIMIT = 3000
 ERROR_LIMIT = 300
@@ -20,38 +19,10 @@ USAGE_FIELDS = ('input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cac
 LIMIT_TEXT = 'Tool-call limit reached for this run: call no more tools and give your final answer now.'
 CUT_TEXT = 'cut off at max_tokens and not run; send it again shorter'
 CUT_ERROR = 'tool call cut off at max_tokens'
+BROKEN_TEXT = 'the tool input was not valid JSON and the tool did not run; send it again'
 PAUSE_ERROR = 'the web tools kept pausing the turn'
 WEB_REFUSED = 'web tools refused by the API, the run went on without them'
 NO_SYSTEM = 'the system prompt is empty'
-CACHE = {'type': 'ephemeral'}
-
-
-def cache_marked(messages: list[dict]) -> list[dict]:
-    out = list(messages)
-    at = max(i for i, m in enumerate(out) if m['role'] == 'user')
-    last = dict(out[at])
-    content = last['content']
-    if isinstance(content, str):
-        last['content'] = [{'type': 'text', 'text': content, 'cache_control': CACHE}]
-    else:
-        blocks = list(content)
-        blocks[-1] = {**blocks[-1], 'cache_control': CACHE}
-        last['content'] = blocks
-    out[at] = last
-    return out
-
-
-def answer_text(content) -> str:
-    parts, gap = [], False
-    for b in content:
-        if getattr(b, 'type', None) == 'text':
-            if parts and gap:
-                parts.append('\n')
-            parts.append(b.text)
-            gap = False
-        elif parts:
-            gap = True
-    return ''.join(parts).strip()
 
 
 @dataclass(frozen=True)
@@ -61,6 +32,7 @@ class RunConfig:
     max_tool_calls: int
     max_seconds: float = 900
     cache_ttl: str | None = None
+    role: str = 'card'
 
 
 @dataclass
@@ -86,29 +58,25 @@ def stop(result: Result, why) -> bool:
 
 class Runner:
     def __init__(self, client, store, config: RunConfig, clock: Callable[[], float] = time.monotonic, tag: dict | None = None):
-        self.client = client
+        self.ai = wrap(client)
         self.store = store
         self.config = config
         self.clock = clock
         self.tag = tag
 
     def request(self, system: str, tools: list[dict], messages: list[dict]):
-        cache = {**CACHE, 'ttl': self.config.cache_ttl} if self.config.cache_ttl else CACHE
-        return self.client.beta.messages.create(
-            model=self.config.model, max_tokens=MAX_TOKENS, system=[{'type': 'text', 'text': system, 'cache_control': cache}], tools=tools, messages=cache_marked(messages),
-            thinking={'type': 'adaptive'}, output_config={'effort': self.config.effort}, betas=[FALLBACK_BETA],
-            extra_body={'fallbacks': 'default'})
+        return self.ai.turn(self.config.model, self.config.effort, system, tools, messages, MAX_TOKENS, self.config.cache_ttl)
 
-    def count(self, result: Result, resp, day: str) -> None:
-        usage = resp.usage
-        served = getattr(resp, 'model', None) or self.config.model
+    def count(self, result: Result, turn, day: str) -> None:
+        usage = turn.usage
+        served = turn.model or self.config.model
         result.models.append(served)
-        for f in USAGE_FIELDS:
-            result.usage[f] += int(getattr(usage, f, 0) or 0)
+        for f, n in usage.fields().items():
+            result.usage[f] += n
         try:
             priced, cost = served, usd(served, usage)
         except UnknownModel:
-            priced = max(PRICES, key=lambda m: usd(m, usage))
+            priced = max(TABLES[self.ai.provider], key=lambda m: usd(m, usage))
             cost = usd(priced, usage)
             result.error = f'unpriced model {served}, charged at the highest known rate'[:ERROR_LIMIT]
         result.usd += cost
@@ -119,7 +87,7 @@ class Runner:
         if self.tag is None:
             return
         try:
-            row = {**self.tag, 'day': day, 'model': served, 'effort': self.config.effort, **split(priced, usage)}
+            row = {**self.tag, 'day': day, 'provider': self.ai.provider, 'model': served, 'effort': self.config.effort, **split(priced, usage)}
             if priced != served:
                 row['pricedAs'] = priced
             self.store.add_ledger(row)
@@ -131,6 +99,10 @@ class Runner:
         if not known(self.config.model):
             result.outcome, result.error = 'failed', f'unknown model {self.config.model}'[:ERROR_LIMIT]
             return result
+        if provider_of(self.config.model) not in (self.ai.provider, None):
+            log.info('run %s: %s is a model of the other AI provider, %s runs instead', (self.tag or {}).get('runId'), self.config.model,
+                     effective(self.ai.provider, self.config.model, self.config.role))
+            self.config = replace(self.config, model=effective(self.ai.provider, self.config.model, self.config.role))
         if not str(system or '').strip():
             result.outcome, result.error = 'failed', NO_SYSTEM
             return result
@@ -147,7 +119,7 @@ class Runner:
                 break
             try:
                 resp = self.request(system, tools, messages)
-            except anthropic.BadRequestError as e:
+            except self.ai.bad_request as e:
                 if result.turns == 0 and any(is_web_tool(t) for t in tools):
                     log.warning('run %s: %s: %s', (self.tag or {}).get('runId'), WEB_REFUSED, error_kind(e))
                     tools = [t for t in tools if not is_web_tool(t)]
@@ -155,33 +127,33 @@ class Runner:
                     continue
                 result.outcome, result.error = 'failed', error_kind(e)[:ERROR_LIMIT]
                 break
-            except anthropic.APIError as e:
+            except self.ai.api_error as e:
                 result.outcome, result.error = 'failed', error_kind(e)[:ERROR_LIMIT]
                 break
             result.turns += 1
             self.count(result, resp, day)
-            if resp.stop_reason == 'refusal':
+            if resp.stop == 'refusal':
                 result.outcome = 'refused'
                 break
-            messages.append({'role': 'assistant', 'content': resp.content})
+            messages.append({'role': 'assistant', 'content': resp.native})
             if served is not None:
-                served(resp.content)
-            if resp.stop_reason == 'pause_turn':
+                served(resp.server)
+            if resp.stop == 'pause_turn':
                 pauses += 1
                 if pauses > MAX_PAUSES:
                     result.outcome, result.error = 'failed', PAUSE_ERROR
                     break
                 continue
-            uses = [b for b in resp.content if getattr(b, 'type', None) == 'tool_use']
+            uses = resp.calls
             if not uses:
-                result.recap = answer_text(resp.content)[:RECAP_LIMIT]
-                if resp.stop_reason == 'max_tokens':
+                result.recap = resp.text[:RECAP_LIMIT]
+                if resp.stop == 'max_tokens':
                     result.outcome, result.error = 'failed', 'the answer hit max_tokens'
                 break
             if limited:
                 result.outcome, result.error = 'capped', 'the model kept calling tools after the limit'
                 break
-            if resp.stop_reason == 'max_tokens':
+            if resp.stop == 'max_tokens':
                 if cut:
                     result.outcome, result.error = 'failed', CUT_ERROR
                     break
@@ -196,6 +168,8 @@ class Runner:
                     content, is_error = LIMIT_TEXT, True
                 elif halted := stop(result, halt()):
                     break
+                elif b.broken:
+                    content, is_error = BROKEN_TEXT, True
                 else:
                     content, is_error = toolbox.call(b.name, b.input or {})
                 results.append({'type': 'tool_result', 'tool_use_id': b.id, 'content': content, 'is_error': is_error})

@@ -174,7 +174,7 @@ def test_core_version_range_is_checked():
 
     # then
     assert loaded.state == 'incompatible'
-    assert skopax.__version__ == '0.2.0' and '0.2.0' in loaded.reason and '>=9' in loaded.reason
+    assert skopax.__version__ == '0.3.0' and '0.3.0' in loaded.reason and '>=9' in loaded.reason
     assert [p.id for p in reg.usable()] == ['demo']
 
 
@@ -430,6 +430,29 @@ def test_describe_serves_the_setup_guide_or_none():
     assert registry.describe(variant(setup=guide))['setup'] == {'steps': ['Open Settings', 'Copy the token'], 'docs': GOOD_DOCS, 'docsLabel': 'Example: tokens'}
     assert registry.describe(DEMO)['setup'] is None
     assert json.dumps(registry.describe(variant(setup=guide)))
+
+
+@pytest.mark.parametrize('value', ['', 'always', 'url', 'mode'])
+def test_a_company_knowledge_marker_of_empty_always_or_an_own_field_loads(value):
+    # then
+    assert solo(variant(company_knowledge=value)).state == 'ok'
+
+
+@pytest.mark.parametrize('value', ['docs', 'Always', 'token ', None, 3])
+def test_a_company_knowledge_marker_naming_no_own_field_breaks_the_plugin(value):
+    # when
+    loaded = solo(variant(company_knowledge=value))
+
+    # then
+    assert loaded.state == 'broken'
+    assert loaded.reason.startswith('Demo was not loaded: company_knowledge ')
+    assert 'must be empty, always, or the key of one of the plug-in' in loaded.reason
+
+
+def test_describe_serves_the_company_knowledge_marker():
+    assert registry.describe(DEMO)['companyKnowledge'] == ''
+    assert registry.describe(variant(company_knowledge='always'))['companyKnowledge'] == 'always'
+    assert registry.describe(variant(company_knowledge='mode'))['companyKnowledge'] == 'mode'
 
 
 def test_a_sixty_character_name_loads():

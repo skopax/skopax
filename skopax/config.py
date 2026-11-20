@@ -9,11 +9,16 @@ from urllib.parse import urlsplit
 from skopax import brand, logs
 from skopax.messages import msg
 from skopax.users import ROLES
+from skopax.ai import PROVIDERS as AI_PROVIDERS
 
 log = logging.getLogger('skopax.config')
 
 INVESTIGATE_MODES = ('off', 'shadow', 'live')
 SLACK_LISTEN_MODES = ('off', 'shadow', 'live')
+SLACK_POST_SEVS = ('crit', 'warn', 'info', 'off')
+SLACK_POST_SEV = 'warn'
+CRIT_NOW_TOLD = 'slack.crit-now'
+TOLD: set[str] = set()
 
 PLACEHOLDER = re.compile(r'\$\{([^}:]+)(?::([^}]*))?}')
 SESSION_IDLE_HOURS = 72
@@ -135,13 +140,14 @@ class Settings:
     slack_operator_cache_s: int = 600
     slack_fallback_minutes: int = 15
     slack_crit_now: bool = True
+    slack_post_sev: str = SLACK_POST_SEV
+    slack_post_sev_set: bool = False
     routes_slack_echo: bool = False
     release_settle: bool = False
     jira_links: bool = True
     assign_dm: bool = True
     postdeploy: bool = True
     probe: bool = False
-    chat_attribution: bool = False
     cert_rules: str = ''
     cert_skip: tuple[str, ...] = ()
     investigator_on: bool = True
@@ -150,6 +156,7 @@ class Settings:
     slack_listener_on: bool = True
     mcp_on: bool = True
     push_on: bool = True
+    update_check: bool = True
     hide_attribution: bool = False
     jira_project: str = ''
     jira_parent: str = ''
@@ -167,6 +174,8 @@ class Settings:
     jira_title_prefix: str = ''
     jira_release_name: str = RELEASE_NAME
     anthropic_api_key: str = field(default='', repr=False)
+    openai_api_key: str = field(default='', repr=False)
+    ai_provider: str = 'anthropic'
     investigate_mode: str = 'off'
     investigate_model: str = 'claude-opus-5-5'
     investigate_effort: str = 'medium'
@@ -193,6 +202,11 @@ class Settings:
     auto_resolve_hours: int = 6
     auto_resolve_days: int | None = None
     auto_resolve_hours_set: bool = False
+    auto_resolve_hours_crit: int = 6
+    auto_resolve_hours_warn: int = 6
+    auto_resolve_sev_set: tuple[str, ...] = ()
+    info_auto_close_days: int = 3
+    info_auto_close_days_set: bool = False
     archive_hours: int = 48
     history_keep_days: int = 365
     recurring_count: int = 3
@@ -333,6 +347,13 @@ def tags_rules_of(config: dict[str, str]) -> tuple:
     return rules_of({k: resolve(v, config) for k, v in config.items() if k.startswith('tags.')})
 
 
+def whole_in(raw: str, low: int, high: int) -> bool:
+    try:
+        return low <= int(raw) <= high
+    except ValueError:
+        return False
+
+
 def bounded(key: str, raw: str, low: int, high: int, default: int) -> int:
     try:
         value = int(raw)
@@ -389,6 +410,11 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         log.warning('investigate.mode %r is not one of %s; the investigator stays off', mode, ', '.join(INVESTIGATE_MODES))
         mode = 'off'
 
+    provider = get('investigate.provider', 'SKOPAX_AI_PROVIDER', 'anthropic').strip().lower() or 'anthropic'
+    if provider not in AI_PROVIDERS:
+        log.warning('investigate.provider %r is not one of %s; Anthropic is used', provider, ', '.join(AI_PROVIDERS))
+        provider = 'anthropic'
+
     listen = get('slack.listen', 'SLACK_LISTEN', 'off').strip().lower()
     if listen not in SLACK_LISTEN_MODES:
         log.warning('slack.listen %r is not one of %s; Slack listening stays off', listen, ', '.join(SLACK_LISTEN_MODES))
@@ -412,6 +438,16 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         auto_hours = bounded('core.auto-resolve-hours', auto_hours_raw, 0, 720, 6)
     else:
         auto_hours = min(max(auto_days, 0), 30) * 24 if auto_days is not None else 6
+    sev_hours, sev_set = {}, []
+    for sev in ('crit', 'warn'):
+        sev_raw = get(f'core.auto-resolve-hours-{sev}', f'SKOPAX_AUTO_RESOLVE_HOURS_{sev.upper()}', '').strip()
+        sev_hours[sev] = bounded(f'core.auto-resolve-hours-{sev}', sev_raw, 0, 720, auto_hours) if sev_raw else auto_hours
+        if sev_raw and whole_in(sev_raw, 0, 720):
+            sev_set.append(sev)
+    info_raw = get('core.info-auto-close-days', 'SKOPAX_INFO_AUTO_CLOSE_DAYS', '').strip()
+    info_fallback = 0 if auto_hours == 0 else 3
+    info_days = bounded('core.info-auto-close-days', info_raw, 0, 90, info_fallback) if info_raw else info_fallback
+    info_set = bool(info_raw) and whole_in(info_raw, 0, 90)
 
     default_role = get('sso.default-role', 'SSO_DEFAULT_ROLE', 'viewer').strip() or 'viewer'
     if default_role not in DEFAULT_ROLES:
@@ -429,6 +465,17 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         return logs.chosen(key, resolve(config[key], config), allowed, default) if key in config else logs.chosen(var, env.get(var, ''), allowed, default)
 
     log_color = logs.NEVER if env.get(logs.NO_COLOR_ENV) else log_setting(LOG_COLOR_KEY, logs.COLOR_ENV, logs.COLORS, logs.ALWAYS)
+
+    post_sev_raw = get('slack.post-sev', 'SLACK_POST_SEV', '').strip().lower()
+    crit_now_raw = get('slack.crit-now', 'SLACK_CRIT_NOW', '').strip().lower()
+    if crit_now_raw and CRIT_NOW_TOLD not in TOLD:
+        TOLD.add(CRIT_NOW_TOLD)
+        log.warning('slack.crit-now (SLACK_CRIT_NOW) is replaced by slack.post-sev (SLACK_POST_SEV); it still counts while slack.post-sev is not set')
+    if post_sev_raw and post_sev_raw not in SLACK_POST_SEVS:
+        log.warning('slack.post-sev %r is not one of %s; using %s', post_sev_raw, ', '.join(SLACK_POST_SEVS), SLACK_POST_SEV)
+    post_sev_set = post_sev_raw in SLACK_POST_SEVS
+    crit_now = crit_now_raw in ('', 'true')
+    post_sev = post_sev_raw if post_sev_set else SLACK_POST_SEV if crit_now else 'off'
 
     release_template = get('jira.release-name', 'JIRA_RELEASE_NAME', RELEASE_NAME).strip() or RELEASE_NAME
     release_refused = release_problem(release_template)
@@ -479,13 +526,14 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         slack_operator_cache_s=int(get('slack.operator-cache-seconds', 'SLACK_OPERATOR_CACHE_SECONDS', '600')),
         slack_fallback_minutes=int(get('slack.fallback-minutes', 'SLACK_FALLBACK_MINUTES', '15').strip() or 15),
         routes_slack_echo=get('routes.slack-echo', 'ROUTES_SLACK_ECHO', 'false').strip().lower() == 'true',
-        slack_crit_now=get('slack.crit-now', 'SLACK_CRIT_NOW', 'true').strip().lower() == 'true',
+        slack_crit_now=crit_now,
+        slack_post_sev=post_sev,
+        slack_post_sev_set=post_sev_set,
         release_settle=get('core.release-settle', 'SKOPAX_RELEASE_SETTLE', 'false').strip().lower() == 'true',
         jira_links=get('core.jira-links', 'SKOPAX_JIRA_LINKS', 'true').strip().lower() == 'true',
         assign_dm=get('core.assign-dm', 'SKOPAX_ASSIGN_DM', 'true').strip().lower() == 'true',
         postdeploy=get('core.postdeploy', 'SKOPAX_POSTDEPLOY', 'true').strip().lower() == 'true',
         probe=get('core.probe', 'SKOPAX_PROBE', 'true').strip().lower() == 'true',
-        chat_attribution=get('core.chat-attribution', 'SKOPAX_CHAT_ATTRIBUTION', 'false').strip().lower() == 'true',
         cert_rules=get('core.certs', 'SKOPAX_CERT_RULES', '').strip(),
         cert_skip=csv_of(get('core.cert-skip', 'SKOPAX_CERT_SKIP', '')),
         investigator_on=get('core.investigator', 'SKOPAX_FEATURE_INVESTIGATOR', 'true').strip().lower() == 'true',
@@ -494,6 +542,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         slack_listener_on=get('core.slack-listener', 'SKOPAX_FEATURE_SLACK_LISTENER', 'true').strip().lower() == 'true',
         mcp_on=get('core.mcp', 'SKOPAX_FEATURE_MCP', 'true').strip().lower() == 'true',
         push_on=get('core.push', 'SKOPAX_FEATURE_PUSH', 'true').strip().lower() == 'true',
+        update_check=get('core.update-check', 'SKOPAX_UPDATE_CHECK', 'true').strip().lower() == 'true',
         hide_attribution=get('core.hide-attribution', 'SKOPAX_FEATURE_HIDE_ATTRIBUTION', 'false').strip().lower() == 'true',
         jira_project=get('jira.project', 'JIRA_PROJECT', '').strip(),
         jira_parent=get('jira.parent', 'JIRA_PARENT', '').strip(),
@@ -511,6 +560,8 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         jira_title_prefix=get('jira.title-prefix', 'JIRA_TITLE_PREFIX', ''),
         jira_release_name=release_template,
         anthropic_api_key=get('anthropic.api-key', 'ANTHROPIC_API_KEY', '').strip(),
+        openai_api_key=get('openai.api-key', 'OPENAI_API_KEY', '').strip(),
+        ai_provider=provider,
         investigate_mode=mode,
         investigate_model=get('investigate.model', 'INVESTIGATE_MODEL', 'claude-opus-5-5').strip(),
         investigate_effort=get('investigate.effort', 'INVESTIGATE_EFFORT', 'medium').strip(),
@@ -537,6 +588,11 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         auto_resolve_hours=auto_hours,
         auto_resolve_days=auto_days,
         auto_resolve_hours_set=bool(auto_hours_raw),
+        auto_resolve_hours_crit=sev_hours['crit'],
+        auto_resolve_hours_warn=sev_hours['warn'],
+        auto_resolve_sev_set=tuple(sev_set),
+        info_auto_close_days=info_days,
+        info_auto_close_days_set=info_set,
         archive_hours=int(get('cards.archive-hours', 'CARDS_ARCHIVE_HOURS', '48').strip() or 48),
         history_keep_days=int(get('history.keep-days', 'HISTORY_KEEP_DAYS', '365').strip() or 365),
         recurring_count=int(get('recurring.count', 'RECURRING_COUNT', '3').strip() or 3),

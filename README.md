@@ -1,5 +1,10 @@
 # Skopax
 
+[![ci](https://github.com/skopax/skopax/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/skopax/skopax/actions/workflows/ci.yml)
+[![image](https://github.com/skopax/skopax/actions/workflows/image.yml/badge.svg)](https://github.com/skopax/skopax/actions/workflows/image.yml)
+[![release](https://img.shields.io/github/v/release/skopax/skopax)](https://github.com/skopax/skopax/releases/latest)
+[![licence](https://img.shields.io/github/license/skopax/skopax)](LICENSE)
+
 **The AI lookout for your production systems.**
 
 Every team has that one person who always knows why things are happening and what to do. Skopax is that person, for the whole team, at any hour.
@@ -10,7 +15,7 @@ Behind it, alerts and errors are grouped into one card per problem, so the team 
 
 The name comes from the Greek *skopos*, "lookout": the one who stands on a high place, scans the horizon and calls out what is coming.
 
-Status: 0.2.0 is the current release; 0.1.0 was the first stable one. Since 0.1.0, settings and the plug-in contract follow semantic versioning: before 1.0, no breaking change ships without a note in [CHANGELOG.md](CHANGELOG.md).
+Status: 0.3.0 is the current release; 0.1.0 was the first stable one. Since 0.1.0, settings and the plug-in contract follow semantic versioning: before 1.0, no breaking change ships without a note in [CHANGELOG.md](CHANGELOG.md).
 
 ## What it looks like
 
@@ -42,7 +47,7 @@ Status: 0.2.0 is the current release; 0.1.0 was the first stable one. Since 0.1.
 
 ## Plug-ins: connect what you already run
 
-Everything Skopax watches comes through plug-ins, and 33 of them ship in the image. Most are ready to switch on in Admin > Integrations; Spring Cloud Config is set up with `SPRING_CONFIG_URL` instead (see [Configuration](docs/configuration.md#spring-cloud-config)):
+Everything Skopax watches comes through plug-ins, and more than 30 of them ship in the image. Most are ready to switch on in Admin > Integrations; Spring Cloud Config is set up with `SPRING_CONFIG_URL` instead (see [Configuration](docs/configuration.md#spring-cloud-config)):
 
 <a href="docs/images/plugins-dark.png#gh-dark-mode-only"><img width="420" src="docs/images/plugins-dark.png#gh-dark-mode-only" alt="Admin, Integrations (0.1.0): all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a><a href="docs/images/plugins-light.png#gh-light-mode-only"><img width="420" src="docs/images/plugins-light.png#gh-light-mode-only" alt="Admin, Integrations (0.1.0): all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a>
 
@@ -53,18 +58,29 @@ Everything Skopax watches comes through plug-ins, and 33 of them ship in the ima
 | Web and edge | Website, Cloudflare, Varnish, Chrome UX Report, CSP reports, Safe Browsing |
 | Apps | App stores, Crashlytics |
 | Marketing and analytics | Google Ads, Google Analytics 4, Google Tag Manager, Umami, VWO |
-| Code, tickets and docs | GitLab, GitHub, SonarQube, Jira, Confluence |
+| Code, tickets and docs | GitLab, GitHub, SonarQube, Jira, Confluence, SharePoint and OneDrive |
 | Chat and AI | Slack, Microsoft Teams, Langfuse |
 | Settings | Spring Cloud Config |
 
 - **Any MCP server.** Connect an outside MCP server and pick which of its tools the investigator may use. The catalog has ready entries for Atlassian, Notion, GitHub and Google Drive.
 - **Several of each.** Every plug-in can have more than one instance, such as two Prometheus servers or a Kubernetes cluster per region, each with its own checks and thresholds.
 - **Shape it without code.** Admin switches whole features on and off, turns single checks on or off per instance, sets their thresholds, and changes branding and language. Settings can also come from a file or a settings source, so an install can be configured as code.
-- **Write your own.** A plug-in is a small Python package against a documented contract: checks that make cards, tools for the investigator, settings and an Admin form, all from one definition. Ship it in your own image built `FROM` Skopax. Start from `examples/hello-plugin`, or from the fuller `examples/couchbase-plugin` and `examples/managed-redis-plugin`. See [Integrations](docs/plugins.md) and [Extending Skopax](docs/extending.md).
+- **Write your own.** A plug-in is a small Python package against a documented contract: checks that make cards, tools for the investigator, settings and an Admin form, all from one definition. Ship it in your own image built `FROM` Skopax. Start from `examples/hello-plugin`, or from the fuller `examples/couchbase-plugin`, `examples/managed-redis-plugin` and `examples/batch-jobs-plugin`. See [Integrations](docs/plugins.md) and [Extending Skopax](docs/extending.md).
+
+## AI costs: see them, tune them, cap them
+
+The investigator calls the AI provider you pick, Anthropic or OpenAI, with your own key, so you pay the provider directly and Skopax shows where the money goes.
+
+<a href="docs/images/costs-dark.png#gh-dark-mode-only"><img width="420" src="docs/images/costs-dark.png#gh-dark-mode-only" alt="The Skopax Costs page for the last 7 days: 2.31 dollars today of a 10 dollar daily cap, 19.71 dollars over the week, averages per Slack ask and per investigator run, a 79 percent cache hit share, spend per day stacked by source and the by-source table with models"></a><a href="docs/images/costs-light.png#gh-light-mode-only"><img width="420" src="docs/images/costs-light.png#gh-light-mode-only" alt="The Skopax Costs page for the last 7 days: 2.31 dollars today of a 10 dollar daily cap, 19.71 dollars over the week, averages per Slack ask and per investigator run, a 79 percent cache hit share, spend per day stacked by source and the by-source table with models"></a>
+
+- **See it.** The Costs page, under Activity, shows the spend per source: investigator runs, page asks, Slack asks, deploy assessments, small talk, page scans and self-reviews. It also shows the spend per hour for today and per day over 7 or 30 days, the average cost of a Slack ask and of an investigator run, the models used and the cache hit share.
+- **Tune it.** Admin > Investigator sets the model and thinking effort for cards, Slack, Chat and the topic gate separately, so the cheap checks can stay on a small model. Prompts are cached between calls, and the Costs page shows how much of each prompt came from the cache.
+- **Cap it.** A daily dollar limit is shared by the investigator and the self-review: once it is reached they stop until the next day, and 0 stops them. Page and Slack asks have hourly caps, for everyone together and per person. Chat messages have a cap per person per day, and MCP investigations a cap per person per hour. Each card run, assessment and Slack ask has its own tool-call budget, and web searches and page reads per run are limited too. A warning card that clears and comes back keeps its earlier finding for a set number of hours instead of being investigated again.
+- **Stop it.** Set the investigator's mode to off or shadow, or press Stop investigator to halt a run at once.
 
 ## Quickstart
 
-Skopax ships as a ready image, so there is nothing to clone or build: `ghcr.io/skopax/skopax:0.2.0`, built for `linux/amd64` and `linux/arm64`. Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. [Operations](docs/operations.md#the-image) has more on the image.
+Skopax ships as a ready image, so there is nothing to clone or build: `ghcr.io/skopax/skopax:0.3.0`, built for `linux/amd64` and `linux/arm64`. Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. [Operations](docs/operations.md#the-image) has more on the image.
 
 Run it with a MongoDB of your own. The first line makes the secret key once:
 
@@ -75,7 +91,7 @@ Run it with a MongoDB of your own. The first line makes the secret key once:
       -e MONGO_URI=mongodb://skopax-mongo:27017/skopax \
       -e SKOPAX_BASE_URL=http://localhost:8080 \
       -e SKOPAX_SECRET_KEY="$SKOPAX_SECRET_KEY" \
-      ghcr.io/skopax/skopax:0.2.0
+      ghcr.io/skopax/skopax:0.3.0
 
 Then open http://localhost:8080. Keep that key, for example in your password manager (`echo "$SKOPAX_SECRET_KEY"` prints it), and pass the same value on every start. With another key, Skopax cannot open the integration secrets sealed with the old one, so each has to be entered again, and everyone has to sign in again (see [Settings](docs/configuration.md#settings)).
 
@@ -94,7 +110,7 @@ Save this as `compose.yml` in an empty folder:
           interval: 10s
           retries: 10
       skopax:
-        image: ghcr.io/skopax/skopax:0.2.0
+        image: ghcr.io/skopax/skopax:0.3.0
         restart: unless-stopped
         ports:
           - "127.0.0.1:8080:8080"
@@ -145,8 +161,8 @@ The full guide is in [docs/](docs/README.md):
 - [Configuration](docs/configuration.md): settings, the config file and settings sources, branding and languages.
 - [Sign-in](docs/sign-in.md): single sign-on, roles, local accounts and the MCP server.
 - [Integrations](docs/plugins.md): the plug-ins that ship with Skopax, their instances and outside MCP servers.
-- [Custom checks](docs/custom-checks.md): PromQL checks written in Admin, without a plug-in, and the presets for Couchbase and managed Redis.
-- [Extending Skopax](docs/extending.md): writing a plug-in, starting from the example in `examples/hello-plugin`, with two fuller examples next to it: `examples/couchbase-plugin` and `examples/managed-redis-plugin`.
+- [Custom checks](docs/custom-checks.md): PromQL and ES|QL checks written in Admin, without a plug-in, and the presets for Couchbase, managed Redis and CSP reports.
+- [Extending Skopax](docs/extending.md): writing a plug-in, starting from the example in `examples/hello-plugin`, with three fuller examples next to it: `examples/couchbase-plugin`, `examples/managed-redis-plugin` and `examples/batch-jobs-plugin`.
 - [Operations](docs/operations.md): the image, logs, agent mode, the probe, proxies and recovery.
 - [Development](docs/development.md): the tests, continuous integration, the licence gate and releases.
 

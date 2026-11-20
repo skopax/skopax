@@ -10,6 +10,7 @@ from collections.abc import Callable
 import anthropic
 
 from skopax import history
+from skopax.ai import ModelSetting, key_for, maker
 from skopax.aikey import ClientBox
 from skopax.config import Setting, Settings
 from skopax.contract import OrgPack
@@ -70,15 +71,16 @@ def clip(text: str, limit: int) -> str:
 
 class Investigator:
     mode = Setting('investigate_mode')
-    model = Setting('investigate_model')
+    provider = Setting('ai_provider')
+    model = ModelSetting('investigate_model', 'card')
     effort = Setting('investigate_effort')
     cap = Setting('investigate_daily_usd')
     max_cards = Setting('investigate_max_cards')
     refire_hours = Setting('investigate_refire_hours', lambda h: max(1.0, float(h)))
     max_tool_calls = Setting('investigate_max_tool_calls')
     assess_max_tool_calls = Setting('investigate_assess_max_tool_calls')
-    slack_model = Setting('investigate_slack_model')
-    chat_model = Setting('chat_model')
+    slack_model = ModelSetting('investigate_slack_model', 'slack')
+    chat_model = ModelSetting('chat_model', 'chat')
     language = Setting('investigate_language')
     slack_effort = Setting('investigate_slack_effort')
     slack_max_tool_calls = Setting('investigate_slack_max_tool_calls')
@@ -100,8 +102,9 @@ class Investigator:
         self.on: Callable[[], bool] = lambda: True
         self.pack: Callable[[], OrgPack | None] = lambda: None
         self.role_of: Callable[[dict | None], str | None] = lambda action: None
-        self.key = key or (lambda: settings.anthropic_api_key)
-        self.box = ClientBox(self.key, lambda k: anthropic.Anthropic(api_key=k, timeout=REQUEST_TIMEOUT, max_retries=MAX_RETRIES), client)
+        self.key = key or key_for(settings, lambda: self.provider)
+        self.box = ClientBox(self.key, maker(lambda: self.provider, lambda k: anthropic.Anthropic(api_key=k, timeout=REQUEST_TIMEOUT, max_retries=MAX_RETRIES), REQUEST_TIMEOUT, MAX_RETRIES),
+                             client, lambda: self.provider)
         self.clock = clock
         self.base_url = settings.base_url if base_url is None else base_url
         self.owner = f'{socket.gethostname()}:{uuid.uuid4().hex[:8]}'
@@ -427,9 +430,9 @@ class Investigator:
                 readable = [k for _, k in index] if pack is None or pack.plugin_sections else []
                 toolbox = Toolbox(self.sources, self.store, self.effects, keys, mode, now, self.base_url, run_id=run_id, ask=bool(ask), report_id=report_id or None, read_only=quick,
                                   strict=self.strict_tools, asker=action.get('requestedBy') if ask and not quick else None, chat=chat_ask, language=self.language,
-                                  web=web_from(self.web_domains, self.web_searches, self.web_fetches), settings=self.settings, role=self.role_of(action), knowledge=readable)
+                                  web=web_from(self.web_domains, self.web_searches, self.web_fetches if self.provider != pricing.OPENAI else 0), settings=self.settings, role=self.role_of(action), knowledge=readable)
                 if quick:
-                    config = RunConfig(quick_model, self.slack_effort, self.slack_max_tool_calls, cache_ttl='1h')
+                    config = RunConfig(quick_model, self.slack_effort, self.slack_max_tool_calls, cache_ttl='1h', role='chat' if chat_ask else 'slack')
                     blocks, images = self._images(action) if action.get('images') else ([], '')
                     brief = (prompt.slack_brief(cards, action, self.base_url, config.max_tool_calls, self.limits(now), images) if slack_ask
                              else prompt.chat_brief(cards, action, self.base_url, config.max_tool_calls, images))
@@ -465,9 +468,13 @@ class Investigator:
         try:
             client = self._client()
         except Exception as e:
-            log.warning('the Anthropic client was not built: %s', error_kind(e))
-            return None, Result(outcome='failed', error=f'the Anthropic client was not built: {error_kind(e)}')
-        return (client, None) if client is not None else (None, Result(outcome='failed', error='no Anthropic API key is set'))
+            log.warning('the %s client was not built: %s', self.label, error_kind(e))
+            return None, Result(outcome='failed', error=f'the {self.label} client was not built: {error_kind(e)}')
+        return (client, None) if client is not None else (None, Result(outcome='failed', error=f'no {self.label} API key is set'))
+
+    @property
+    def label(self) -> str:
+        return pricing.LABELS.get(self.provider, pricing.LABELS[pricing.ANTHROPIC])
 
     def _announced(self, cards: list[dict], now: float) -> dict[str, dict]:
         others = self.store.load().get('anomalies') or []

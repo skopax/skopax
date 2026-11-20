@@ -493,7 +493,7 @@ def test_a_disabled_sso_user_is_refused_without_any_write(store: Store):
     users = Users(store.db)
     users.create('carol@example.com', 'Carol', 'viewer', source='sso')
     users.set_disabled('carol@example.com', True)
-    users.create('bob@example.com', 'Bob', 'viewer', source='sso')
+    users.create('bob@example.com', 'Bob', 'viewer', source='sso', name_from='idp')
     before = raw(store, 'carol@example.com')
 
     # when

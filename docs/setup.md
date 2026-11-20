@@ -12,7 +12,7 @@ The sidebar groups the pages. Board, Requests, Chat and Investigator come first.
 - **Search:** press Ctrl K (Cmd K on a Mac) anywhere to search pages, cards and, for admins, settings. Up and Down move, Enter opens, Esc closes.
 - **Instance switcher:** the top of the sidebar names this deployment and lists the other instances you linked (see [Other instances](#other-instances)).
 
-Each page has its own link, such as `#t=anoms` for the Board, which opens that page from a bookmark or a Slack message.
+Each page has its own link, such as `#t=anoms` for the Board, which opens that page from a bookmark or a Slack message. The Board opens on the Open filter: `#t=anoms` and `#t=anoms/open` show the open cards, and `#t=anoms/all` shows every card. Copy link on a filtered Board writes the filter into the link, leaving it out only for Open.
 
 The Chat page answers questions about prod from the connected integrations, such as metrics and logs, and names what it read. It needs Chat on in [Feature switches](#feature-switches).
 
@@ -26,11 +26,11 @@ The Chat page answers questions about prod from the connected integrations, such
 
 Admin has six sections: General, Access & sign-in, Integrations, Features, Investigator and Changes. A notices strip above them lists what needs attention. The Admin row in the sidebar opens the section you used last (Integrations the first time) and shows a dot when a notice is a warning.
 
-- **Integrations:** "+ Add integration" lists the plug-ins that can be set up. Pick one, fill in its fields, choose Test connection, then Save & turn on; an MCP server connection is saved off instead, and is turned on once its warnings are confirmed (see [Outside MCP servers](plugins.md#outside-mcp-servers)). Each connected plug-in gets a tile with one health line for the plug-in and an on/off switch. Opening a tile shows its instances, each with its own health, and "+ Add instance". The board's Integrations strip shows every instance with the same health as Admin, a failed route, a Jira links refusal or a setup problem included, and a turned-off instance as off. A tile whose check was asked to run now reads queued until the check starts, at the next minute's poll or later when every run slot is busy. Each instance has a "What it watches" list of its checks, and a check can be switched off for that instance alone; its cards close and the other instances are untouched. Below the tiles, Custom checks lists the admin-defined PromQL checks, with an editor and Preview (see [Custom checks](custom-checks.md)).
+- **Integrations:** "+ Add integration" lists the plug-ins that can be set up. Pick one, fill in its fields, choose Test connection, then Save & turn on; an MCP server connection is saved off instead, and is turned on once its warnings are confirmed (see [Outside MCP servers](plugins.md#outside-mcp-servers)). Each connected plug-in gets a tile with one health line for the plug-in and an on/off switch. Opening a tile shows its instances, each with its own health, and "+ Add instance". The board's Integrations strip shows every instance with the same health as Admin, a failed route, a Jira links refusal or a setup problem included, and a turned-off instance as off. A tile whose check was asked to run now reads queued until the check starts, at the next minute's poll or later when every run slot is busy. Each instance has a "What it watches" list of its checks, and a check can be switched off for that instance alone; its cards close and the other instances are untouched. Below the tiles, Custom checks lists the admin-defined PromQL and ES|QL checks, with an editor and Preview (see [Custom checks](custom-checks.md)).
 - **General:** the tunable settings that are not on Access & sign-in, Features or Investigator, with search, and the Other instances list.
-- **Access & sign-in:** single sign-on, users, roles, API tokens and MCP access; see [Sign in with SSO](sign-in.md#sign-in-with-sso), [Roles](sign-in.md#roles) and [MCP](sign-in.md#mcp).
+- **Access & sign-in:** single sign-on, users, roles, API tokens and MCP access, as four tabs (People, Single sign-on, API tokens, MCP sign-in); see [Adding people](sign-in.md#adding-people), [Sign in with SSO](sign-in.md#sign-in-with-sso), [Roles](sign-in.md#roles) and [MCP](sign-in.md#mcp).
 - **Features:** one switch per feature, described below.
-- **Investigator:** the Anthropic API key, the model, the mode and the spend limits.
+- **Investigator:** the AI provider and its API key, the models, the mode and the spend limits.
 - **Changes:** what was changed in Admin, with Revert for each setting.
 
 ### Feature switches
@@ -41,23 +41,35 @@ Each switch has an environment name, which sets the starting value. A value save
 |---|---|---|
 | AI investigator | `SKOPAX_FEATURE_INVESTIGATOR` | investigates cards and answers questions |
 | Chat | `SKOPAX_FEATURE_CHAT` | the Chat page, Slack direct messages and MCP questions; needs `CHAT_UI` and SSO at boot |
-| Slack auto-send | `SKOPAX_FEATURE_SLACK_AUTOSEND` | posts armed drafts and critical cards on its own; armed drafts post once it is on again |
+| Slack auto-send | `SKOPAX_FEATURE_SLACK_AUTOSEND` | posts armed drafts, and new cards from Post at once from up (warnings and critical cards by default), on its own; armed drafts post once it is on again |
 | Slack listener | `SKOPAX_FEATURE_SLACK_LISTENER` | answers questions and button clicks in Slack |
 | MCP server | `SKOPAX_FEATURE_MCP` | lets AI assistants read and triage cards |
 | Read without login | `SKOPAX_PUBLIC_READ` | anyone who can reach the page may read |
 | Phone push | `SKOPAX_FEATURE_PUSH` | sends new critical cards and task notices to the push users by Slack direct message |
 | Post-deploy check | `SKOPAX_POSTDEPLOY` | checks every deploy and writes a report |
 | Self-review | `SKOPAX_SELF_REVIEW` | the daily self-review |
-| Hide "powered by Skopax" | `SKOPAX_FEATURE_HIDE_ATTRIBUTION` | Enterprise only; see [Branding](configuration.md#branding) |
+| Check for new versions | `SKOPAX_UPDATE_CHECK` | asks GitHub once a day for the latest release and shows admins a notice when a newer one exists; see [Version check](operations.md#version-check) |
+| Hide "powered by Skopax" | `SKOPAX_FEATURE_HIDE_ATTRIBUTION` | Enterprise only; hides the line on every page, in the chat and on Slack and Teams posts; see [Branding](configuration.md#branding) |
 
-### The Anthropic key
+### The AI provider and its key
 
-Set the key in Admin > Investigator. It is write-only: it is sealed with `SKOPAX_SECRET_KEY` (or the generated key), never shown again, and never written to the activity log or the change history. Test connection tells you in a fixed sentence whether the key works, never with the API's own error text. A key set in Admin takes the place of `ANTHROPIC_API_KEY` from the environment; remove it to fall back to the environment value. The spend limits stay on, with or without a key set here.
+One install uses one AI provider: Anthropic (the default) or OpenAI. Pick it with AI provider in Admin > Investigator (`investigate.provider`, or `SKOPAX_AI_PROVIDER`). A change applies from the next run or ask; a run already started keeps its provider. Every model call goes to that provider: card runs, page, Slack and chat asks, the topic gate, small talk, the self-review and plug-in model calls.
+
+Each provider has its own key. Set it in Admin > Investigator. It is write-only: it is sealed with `SKOPAX_SECRET_KEY` (or the generated key), never shown again, and never written to the activity log or the change history. Test connection tells you in a fixed sentence whether the key works, never with the API's own error text. A key set in Admin takes the place of `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` from the environment; remove it to fall back to the environment value. The spend limits stay on, with or without a key set here.
 
 Admin > Investigator lists the AI providers, in this order:
 
-- **Anthropic API key:** the provider in use. Its card shows where the key in use comes from (set here, from the configuration, or not set), an input labelled Key (New key once a key is in use), Save, Test connection, and Remove while a key is set here. Test connection tries the key typed in the input, or the key in use when the input is empty. Remove deletes the key set here; the key from the configuration is then used again, if there is one.
-- **OpenAI:** tagged Coming soon. The row has no controls and cannot be chosen yet.
+- **Anthropic API key** and **OpenAI API key:** one card each. The card of the provider in use is tagged AI provider in use. A card shows where its key comes from (set here, from the configuration, or not set), an input labelled Key (New key once a key is in use), Save, Test connection, and Remove while a key is set here. Test connection tries the key typed in the input, or the key in use when the input is empty, against the card model of that provider. Remove deletes the key set here; the key from the configuration is then used again, if there is one.
+
+Each model sits next to its thinking effort in one row of Admin > Investigator (card, Slack and topic gate); both stay separate settings with their own help, source and Reset. The model settings (card, Slack, chat, topic gate, self-review and the Website page scan) list the models of the provider in use. A model of the other provider, such as a Claude model left set after a switch to OpenAI, is never sent: the run uses the default model of the provider in use (OpenAI: `gpt-6.2-astra` for cards and plug-ins, `gpt-6.2-sol` for Slack, chat and the self-review, `gpt-6-luna` for the topic gate), and Admin shows a notice until you pick one of its models.
+
+With OpenAI, a few things work differently:
+
+- **Web page reads** have no limit of their own: OpenAI's web search finds and opens pages in one tool, so Web pages per run is greyed out with the reason. Web search works, limited by Web searches per run. Every web search call counts and costs as one search ($0.01, OpenAI's price per call), including a call that opens or searches within a page.
+- **Fallback models** are Anthropic only: when an Anthropic model is busy, the API can answer with another one; OpenAI has no such fallback.
+- **Effort** maps one to one to OpenAI's reasoning effort (low, medium, high, xhigh, max). The topic gate and small talk run with no reasoning on `gpt-6-luna` and `gpt-6.1-terra`, and with low reasoning on the other models, so Topic gate effort is greyed out with the reason. A single call that reasons (self-review, plug-in calls) gets 4000 more output tokens for that reasoning.
+- **Prompt caching** is automatic. Cached input counts as cache reads; cache writes are priced at OpenAI's write price.
+- **Requests are not stored** at OpenAI (`store: false`); the reasoning of a turn is sent back encrypted on the next turn.
 
 ### Event causes
 
@@ -65,11 +77,11 @@ When the investigator shows that a card follows a one-off trigger, such as a pus
 
 - **On the page** the card shows "Cause: an event" or "Cause: recurring" with the trigger. An event card that stops reads "Stopped after the event" instead of Cleared or Fixed: on the board tile, the list row, the side panel and the card page.
 - **In Slack** the thread note and the main post say "Stopped after the event" instead of "Back to normal" or "Recovered" (see [Slack](plugins.md#slack)). The thread note waits while an investigation of the card runs, so a cause written in that run is used.
-- **Auto-resolve** waits 6 hours longer for an event card that has no ticket, so with the default window of 6 hours it closes 12 hours after it stopped firing. A card kind with its own window, such as the VWO and Google Ads ones, gets no extra time. Its activity line and its Slack thread note say "Stopped after the event; nobody opened a task".
+- **Auto-resolve** waits 6 hours longer for an event card that has no ticket, so with the default window of 6 hours it closes 12 hours after it stopped firing. The window is set per severity (critical and warning) in Admin > Cards, and a separate Admin setting closes an info card that keeps firing after 3 days by default (0 turns that off). A card kind with its own window, such as the VWO and Google Ads ones, gets no extra time. Its activity line and its Slack thread note say "Stopped after the event; nobody opened a task".
 
 ### Notices
 
-The strip shows, for admins only: a generated secret key (set `SKOPAX_SECRET_KEY` to manage it yourself), a settings source that is failing, a stored Anthropic key that can no longer be read, single sign-on that cannot reach the identity provider (see [Sign in with SSO](sign-in.md#sign-in-with-sso)), a Slack app that lacks a scope Skopax reads the main channel or direct messages with (checked every 5 minutes and when the channel is saved), a plug-in that failed to load, an org pack that is ignored because another plug-in's pack is in use (see [Org packs](extending.md#org-packs)), a language pack with texts left out (see [Locale packs](extending.md#locale-packs); only for a plug-in that is on), a Teams route that stopped trying to post some cards (see [Microsoft Teams](plugins.md#microsoft-teams)), an MCP server connection that needs a new sign-in, whose tools changed on the server, or whose server refused it (see [Outside MCP servers](plugins.md#outside-mcp-servers)), and the proxy warning. The proxy warning appears when a client sent forwarded addresses from a peer that is not trusted. It lasts 24 hours after the last sighting. Add the proxy's address or range to `FORWARDED_ALLOW_IPS` (see [Behind a proxy or ingress](operations.md#behind-a-proxy-or-ingress)).
+The strip shows, for admins only: a generated secret key (set `SKOPAX_SECRET_KEY` to manage it yourself), a settings source that is failing, a stored Anthropic or OpenAI key that can no longer be read, a model setting that names a model of the other AI provider, single sign-on that cannot reach the identity provider (see [Sign in with SSO](sign-in.md#sign-in-with-sso)), a Slack app that lacks a scope Skopax reads the main channel or direct messages with (checked every 5 minutes and when the channel is saved), a plug-in that failed to load, an org pack that is ignored because another plug-in's pack is in use (see [Org packs](extending.md#org-packs)), a language pack with texts left out (see [Locale packs](extending.md#locale-packs); only for a plug-in that is on), a newer Skopax release (see [Version check](operations.md#version-check)), a Teams route that stopped trying to post some cards (see [Microsoft Teams](plugins.md#microsoft-teams)), an MCP server connection that needs a new sign-in, whose tools changed on the server, or whose server refused it (see [Outside MCP servers](plugins.md#outside-mcp-servers)), and the proxy warning. The proxy warning appears when a client sent forwarded addresses from a peer that is not trusted. It lasts 24 hours after the last sighting. Add the proxy's address or range to `FORWARDED_ALLOW_IPS` (see [Behind a proxy or ingress](operations.md#behind-a-proxy-or-ingress)).
 
 ### Other instances
 

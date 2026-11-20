@@ -100,12 +100,13 @@ def test_send_posts_the_report_and_records_it(saved: dict, store: Store):
     card = payload['attachments'][0]
     assert card['color'] == '#e08a00'
     blocks = card['blocks']
-    assert [b['type'] for b in blocks] == ['section', 'section', 'section', 'actions', 'context']
+    assert [b['type'] for b in blocks] == ['section', 'section', 'section', 'actions', 'context', 'context']
     assert blocks[0]['text']['text'] == '*WARNING* · *Release 05:06–05:28: 2 services*\norders-service restarted 3 times at startup\n• orders-service healthy since 05:14\n• checkout-service clean'
     assert plain(blocks[1]['text']['text']) == '*Flagged*\n• *orders-service* · restarts 3 · config binding failed until 05:14', 'no card on the page: the flag is plain text'
     assert blocks[2]['text']['text'] == '*Shipped* · 2 tickets\n<https://jira.example.com/browse/OPS-106|OPS-106>, <https://jira.example.com/browse/OPS-115|OPS-115>'
     assert blocks[3]['elements'] == [{'type': 'button', 'text': {'type': 'plain_text', 'text': 'Open report'}, 'url': f"https://skopax.example.com/#r={saved['id']}", 'style': 'primary'}]
     assert blocks[4]['elements'][0]['text'] == 'Window 05:06–05:35 UTC · Sent from Skopax by bootstrap'
+    assert 'skopax.io' in blocks[5]['elements'][0]['text'], 'the powered-by line ends the attachment'
 
 
 def test_draft_is_the_message_and_the_report_goes_under_it(saved: dict, store: Store):

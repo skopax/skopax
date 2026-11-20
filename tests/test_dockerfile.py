@@ -159,15 +159,15 @@ def test_a_package_the_base_ships_at_the_same_version_is_skipped_and_another_ver
 def test_every_image_the_dockerfiles_pull_is_pinned_by_digest():
     # given
     main, example = images(ROOT / 'Dockerfile'), images(ROOT / 'examples' / 'hello-plugin' / 'Dockerfile')
-    fuller = [images(ROOT / 'examples' / name / 'Dockerfile') for name in ('couchbase-plugin', 'managed-redis-plugin')]
+    fuller = [images(ROOT / 'examples' / name / 'Dockerfile') for name in ('couchbase-plugin', 'managed-redis-plugin', 'batch-jobs-plugin')]
     pulled = [image for image in main + example + sum(fuller, []) if image != OWN_BASE]
     text = (ROOT / 'Dockerfile').read_text(encoding='utf-8')
     froms = [args.split() for keyword, args in instructions() if keyword == 'FROM']
 
     # then
-    assert len(main) == 3 and OWN_BASE in example and len(pulled) == 6
+    assert len(main) == 3 and OWN_BASE in example and len(pulled) == 7
     assert all(layer == example for layer in fuller)
-    assert sorted(p.parent.name for p in (ROOT / 'examples').glob('*/Dockerfile')) == ['couchbase-plugin', 'hello-plugin', 'managed-redis-plugin']
+    assert sorted(p.parent.name for p in (ROOT / 'examples').glob('*/Dockerfile')) == ['batch-jobs-plugin', 'couchbase-plugin', 'hello-plugin', 'managed-redis-plugin']
     assert [image for image in pulled if not PINNED.fullmatch(image)] == []
     assert len({image for image in pulled if image.startswith('python:')}) == 1
     assert froms[0][1:] == ['AS', BASE] and froms[0][0].startswith(DISTROLESS) and final()[0][1] == BASE

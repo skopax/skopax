@@ -184,11 +184,11 @@ def connection_of(runtime: Runtime, name: str = 'main'):
     return cloudflare.test(runtime.context(cloudflare.PLUGIN, runtime.instances.get('cloudflare', name), NOW))
 
 
-def app_with(store: Store, http, slack: Slack | None = None, push_user: str = '', **instances: dict) -> TestClient:
+def app_with(store: Store, http, slack: Slack | None = None, push_user: str = '', post_sev: str = 'warn', **instances: dict) -> TestClient:
     key = master_key(store.db, settings())
     for index, (name, values) in enumerate(instances.items()):
         add_instance(store, cloudflare.PLUGIN, name, sealer_key=key, primary=index == 0, **({'token': TOKEN, 'zones': SHOP} | values))
-    return TestClient(create_app(dataclasses.replace(settings(), slack_push_user=push_user), store, transport=http, **({'slack': slack} if slack else {})))
+    return TestClient(create_app(dataclasses.replace(settings(), slack_push_user=push_user, slack_post_sev=post_sev), store, transport=http, **({'slack': slack} if slack else {})))
 
 
 def sweep(c: TestClient, *check_ids: str, now: float = NOW):
@@ -224,7 +224,7 @@ def test_cloudflare_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('cloudflare').state == 'ok'
     assert json.loads(json.dumps(manifest)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'Cloudflare', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.3', 'community')
+        'Cloudflare', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
     assert manifest['capabilities'] == {'hosts': ['api.cloudflare.com', 'www.cloudflarestatus.com'], 'secrets': ['token'], 'agentReads': False} and manifest['uses'] == []
     assert [(f['key'], f['kind'], f['required']) for f in manifest['fields']] == [('token', 'secret', True), ('zones', 'text', True), ('zone-checks', 'text', False), ('account', 'text', False), ('status-components', 'text', False)]
     assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('cf', 900, 60, ['cf']), ('edge', 900, 60, ['edge'])]
@@ -717,7 +717,7 @@ def test_a_cf_pass_push_is_sent_as_a_dm_and_marked_on_the_state(store: Store):
     store.save_state({'anomalies': [], 'initialized': True}, None)
 
     # when
-    with app_with(store, http, slack=Slack('xoxb-test', '#ops', transport, FakeSlackApi()), push_user=PUSH_USER, main={'status-components': SEEN}) as c:
+    with app_with(store, http, slack=Slack('xoxb-test', '#ops', transport, FakeSlackApi()), push_user=PUSH_USER, post_sev='crit', main={'status-components': SEEN}) as c:
         applied = sweep(c, 'cf')[0]
         sweep(c, 'edge')
         state = c.get('/api/state').json()
@@ -728,7 +728,8 @@ def test_a_cf_pass_push_is_sent_as_a_dm_and_marked_on_the_state(store: Store):
     posts = [p for _, p in transport.calls if p['channel'] != PUSH_USER]
     crit = {a['key'] for a in applied.push if a['sev'] == 'crit'}
     assert len(dms) == 1 and dms[0]['text'].startswith(f'Skopax: CRIT api-origin {SHOP} health check; ')
-    assert len(posts) == len(crit) and all(msg('autosend.crit_now.last') in json.dumps(p) for p in posts), 'each critical card is posted to the channel at once with its numbers'
+    assert len(posts) == len(crit) and all('Ongoing since' in p['text'] for p in posts), 'each critical card is posted to the channel at once with its numbers'
+    assert not any(msg('autosend.crit_now.last') in json.dumps(p) for p in posts), 'the investigator is off here, so no post promises an investigation'
     assert {k for k in crit if (store.anomaly(k).get('slackPost') or {}).get('at')} == crit
     assert state['serverPushes'][0]['dm'] is True
     assert state['sources']['cf'] == 'ok'

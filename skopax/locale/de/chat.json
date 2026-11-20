@@ -1,0 +1,62 @@
+{
+ "room": "Warten auf einen freien Raum…",
+ "halted": "Wartet: der Investigator ist {why}.",
+ "halted_stopped": "gestoppt",
+ "halted_capped": "am Limit",
+ "working": "Arbeitet…",
+ "call": "Arbeitet · {n} Tool-Aufruf{last}…",
+ "calls": "Arbeitet · {n} Tool-Aufrufe{last}…",
+ "last": ", zuletzt {tool}",
+ "still": "Arbeitet noch; öffnen Sie diesen Chat gleich noch einmal.",
+ "answered": "Beantwortet",
+ "none": "Keine Antwort",
+ "role_tip": "Braucht die Operator-Rolle",
+ "queued": "Untersuchung in der Warteschlange; die Ergebnisse erscheinen auf der Karte.",
+ "done": "Erledigt: {what}.",
+ "starters": [
+  [
+   "Was braucht jetzt Aufmerksamkeit?",
+   "Welche offenen Karten brauchen gerade Aufmerksamkeit, und warum?"
+  ],
+  [
+   "Etwas Ungewöhnliches in der letzten Stunde?",
+   "Gibt es in der letzten Stunde etwas Ungewöhnliches in Prod?"
+  ],
+  [
+   "Was hat die letzte Untersuchung ergeben?",
+   "Was hat die letzte Untersuchung ergeben, und was ist der nächste Schritt?"
+  ]
+ ],
+ "actions": {
+  "investigate": "Untersuchen",
+  "resolve": "Lösen",
+  "take": "Übernehmen",
+  "known": "Als bekanntes Rauschen markieren",
+  "mute": "Stummschalten"
+ },
+ "apply": "Anwenden",
+ "kinds": {
+  "fixed": "Behoben",
+  "duplicate": "Duplikat von {ref}"
+ },
+ "hours": "{n} h",
+ "continue": "Dies ist ein Schnappschuss eines geteilten Chats.",
+ "continue_link": "In Ihrem eigenen privaten Chat fortsetzen ↗",
+ "private_share": "Dieser Chat hat in einer Slack-Direktnachricht begonnen, bleibt daher privat und kann nicht geteilt werden.",
+ "untitled": "Chat",
+ "investigator_off": "Der KI-Investigator ist unter Verwaltung › Funktionen ausgeschaltet.",
+ "chat_off": "Der Chat ist unter Verwaltung › Funktionen ausgeschaltet.",
+ "feature_off": "{feature} ist unter Verwaltung › Funktionen ausgeschaltet.",
+ "login": "Zum Chatten brauchen Sie eine aktive {product}-Anmeldung mit der Operator-Rolle. Melden Sie sich erneut an oder bitten Sie einen Admin um die Rolle.",
+ "not_ready": "Der KI-Investigator ist noch nicht eingerichtet, daher bekäme diese Nachricht keine Antwort. {needs}",
+ "refused_cap": "Das Limit liegt bei {cap} Chat-Nachrichten pro Tag; es beginnt um Mitternacht neu.",
+ "refused_off": "Der Chat ist ausgeschaltet.",
+ "refused_busy": "Warten Sie auf die Antwort auf Ihre letzte Nachricht.",
+ "refused_missing": "Diesen Chat gibt es bei Ihnen nicht.",
+ "refused_long": "Eine Nachricht hat höchstens {limit} Zeichen.",
+ "refused_empty": "Schreiben Sie zuerst eine Nachricht.",
+ "refused_role": "Dafür braucht es die Operator-Rolle.",
+ "refused_bad": "Dieser Vorschlag kann nicht angewendet werden.",
+ "refused_failed": "Nicht angewendet: {reason}.",
+ "refused": "Das war nicht möglich."
+}

@@ -62,6 +62,10 @@ class TimedOut(Unreachable):
     pass
 
 
+class TooLarge(Unreachable):
+    pass
+
+
 @dataclass(frozen=True)
 class Reply:
     body: object
@@ -520,7 +524,7 @@ def sender(context: ssl.SSLContext | None = None, follow: bool = True, limit: in
             timer.cancel()
             WATCH.value = None
         if len(raw) > cap:
-            raise Unreachable(f'{where} answered more than {cap // MB} MB' if cap % MB == 0 else f'{where} answered more than {cap} bytes')
+            raise TooLarge(f'{where} answered more than {cap // MB} MB' if cap % MB == 0 else f'{where} answered more than {cap} bytes')
         if text is not None:
             return Reply(raw.decode('utf-8', 'replace'), head)
         try:

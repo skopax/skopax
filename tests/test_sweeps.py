@@ -170,7 +170,7 @@ def test_scheduler_runs_with_no_jobs_at_start(store, tmp_path):
             time.sleep(0.03)
 
     # then
-    assert scheduler.jobs == []
+    assert [j.name for j in scheduler.jobs] == ['version-check']
     assert beat is not None, 'the loop runs and beats even when no job is on yet'
 
 

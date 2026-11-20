@@ -82,7 +82,7 @@ def read(ctx: Context, args: dict) -> object:
 
 PLUGIN = Plugin(
     id=ID, name='Confluence', version='0.1.0', category='other', description='Search and read Confluence pages of the allowed spaces, read only.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url', 'api.atlassian.com'), secrets=('api-token',)),
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.4', edition='community', capabilities=Capabilities(hosts=('@url', 'api.atlassian.com'), secrets=('api-token',)),
     max_instances=1,
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Address of the Atlassian Cloud site, such as https://example.atlassian.net. Calls go through api.atlassian.com.'),
             Field('email', 'Email', 'text', required=True, help='Email of the Atlassian account that reads the pages.'),
@@ -98,4 +98,5 @@ PLUGIN = Plugin(
         'In URL give your Atlassian Cloud address, such as https://example.atlassian.net. In Spaces list the space keys the tool may read, such as ENG, OPS.',
         'Choose Test connection. It names any listed space the account cannot see.',
     ), docs='https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/', docs_label='Atlassian: manage API tokens'),
+    company_knowledge='always',
 )

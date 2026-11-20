@@ -6,7 +6,7 @@ import re
 import string
 import sys
 import threading
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -17,7 +17,7 @@ from packaging.version import InvalidVersion, Version
 import skopax
 from skopax.bounded import HOOK_TIMEOUT_S, Bound
 from skopax.chattext import STARTERS_MAX as CHAT_STARTERS_MAX, TEXT_MAX as CHAT_TEXT_MAX, chat_kept, chat_problem, tree_problem
-from skopax.contract import CATEGORIES, ECHO_FIELD, ROUTE_ECHO, EDITIONS, FIELD_KINDS, ID, KNOWLEDGE_INLINE_MAX, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Setup, Tag, TagRule, Tool
+from skopax.contract import CATEGORIES, ECHO_FIELD, ROUTE_ECHO, EDITIONS, FIELD_KINDS, ID, SEPARATORS, SUGGEST_KINDS, KNOWLEDGE_INLINE_MAX, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Setup, Tag, TagRule, Tool
 from skopax.errkind import Authored, kind as exc_kind
 from skopax.messages import LANG_TAG, msg, refusal as message_refusal
 
@@ -63,6 +63,7 @@ BUILTIN: tuple[str, ...] = (
     'skopax.plugins.mcp_tools',
     'skopax.plugins.spring_config',
     'skopax.plugins.sonarqube',
+    'skopax.plugins.sharepoint',
 )
 CORE_PREFIXES = (
     'core',
@@ -82,6 +83,7 @@ CORE_PREFIXES = (
     'routes',
     'mongo',
     'anthropic',
+    'openai',
     'agent',
     'small-talk',
 )
@@ -404,22 +406,27 @@ def _escaped(text: str) -> str:
     return ''.join(ch if ch.isprintable() else repr(ch)[1:-1] for ch in text)
 
 
-def _kept_locales(plugin: Plugin) -> tuple[Plugin, tuple[Drop, ...], tuple[tuple[str, int], ...]]:
-    if not isinstance(plugin.locales, (tuple, list)):
-        return plugin, (), ()
+def kept_packs(owner: str, packs: Sequence[object]) -> tuple[list[Locale], list[Drop], dict[str, int]]:
     kept: list[Locale] = []
     drops: list[Drop] = []
     counts: dict[str, int] = {}
-    for index, item in enumerate(plugin.locales):
+    for index, item in enumerate(packs):
         clean, dropped, lang = _kept_pack(item, index)
         shown = _escaped(lang)
         for part, label, (code, reason), size in dropped:
-            log.warning('%s', _escaped(msg('locales.part_dropped', lang=lang, plugin=plugin.id, part=label, reason=reason)))
+            log.warning('%s', _escaped(msg('locales.part_dropped', lang=lang, plugin=owner, part=label, reason=reason)))
             counts[shown] = counts.get(shown, 0) + size
             if len(drops) < DROPS_MAX:
-                drops.append(Drop(plugin.id, shown, part, _escaped(label), code))
+                drops.append(Drop(owner, shown, part, _escaped(label), code))
         if clean is not None:
             kept.append(clean)
+    return kept, drops, counts
+
+
+def _kept_locales(plugin: Plugin) -> tuple[Plugin, tuple[Drop, ...], tuple[tuple[str, int], ...]]:
+    if not isinstance(plugin.locales, (tuple, list)):
+        return plugin, (), ()
+    kept, drops, counts = kept_packs(plugin.id, plugin.locales)
     changed = counts or any(a is not b for a, b in zip(kept, plugin.locales))
     return (replace(plugin, locales=tuple(kept)) if changed else plugin), tuple(drops), tuple(counts.items())
 
@@ -670,6 +677,10 @@ def _check(plugin: Plugin, directory: Path | None) -> None:
     for f in (*plugin.fields, *(f for read in plugin.agent_reads for f in read.fields)):
         if f.check is not None and not callable(f.check):
             raise _why('field_check', key=f.key)
+        if f.suggest is not None and (not callable(f.suggest) or f.kind not in SUGGEST_KINDS):
+            raise _why('field_suggest', key=f.key, kinds=', '.join(SUGGEST_KINDS))
+        if not isinstance(f.separator, str) or f.separator not in SEPARATORS:
+            raise _why('field_separator', key=f.key)
     for f in plugin.fields:
         if f.show_if is not None and (len(f.show_if) != 2 or f.show_if[0] not in keys):
             raise _why('show_if', key=f.key, other=f.show_if[0] if f.show_if else '')
@@ -693,6 +704,8 @@ def _check(plugin: Plugin, directory: Path | None) -> None:
         raise _why('max_instances')
     if not _setup_ok(plugin.setup):
         raise _why('setup', steps=SETUP_STEPS_MAX, step=SETUP_STEP_MAX, docs=SETUP_DOCS_MAX, label=SETUP_LABEL_MAX)
+    if not isinstance(plugin.company_knowledge, str) or (plugin.company_knowledge not in ('', 'always') and plugin.company_knowledge not in {f.key for f in plugin.fields}):
+        raise _why('company_knowledge', value=str(plugin.company_knowledge)[:30])
     caps = plugin.capabilities
     for f in tuple(plugin.fields) + tuple(f for read in plugin.agent_reads for f in read.fields):
         if f.kind == 'secret' and f.key not in caps.secrets:
@@ -1207,9 +1220,11 @@ def describe(plugin: Plugin, icon: bool | None = None) -> dict:
         'migrations': [m.version for m in plugin.migrations],
         'agentReads': [{'op': r.op, 'args': list(r.args), 'keys': list(r.keys)} for r in plugin.agent_reads],
         'setup': None if plugin.setup is None else {'steps': list(plugin.setup.steps), 'docs': plugin.setup.docs, 'docsLabel': plugin.setup.docs_label},
+        'companyKnowledge': plugin.company_knowledge,
     }
 
 
 def field_view(f) -> dict:
     return {'key': f.key, 'label': f.label, 'kind': f.kind, 'required': f.required, 'default': f.default, 'help': f.help, 'choices': list(f.choices), 'low': f.low, 'high': f.high,
-            'showIf': list(f.show_if) if f.show_if else None, 'ui': f.ui, 'choiceLabels': dict(f.choice_labels), 'group': f.group}
+            'showIf': list(f.show_if) if f.show_if else None, 'ui': f.ui, 'choiceLabels': dict(f.choice_labels), 'group': f.group,
+            **({'suggest': True, 'separator': f.separator} if f.suggest is not None else {})}

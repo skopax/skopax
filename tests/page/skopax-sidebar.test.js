@@ -123,21 +123,21 @@ async function aRowOpensItsPageAndMarksItself() {
 
   //given
   const svcs = await boot({hash: '#t=svcs'});
-  const open = await boot({hash: '#t=anoms/open'});
+  const open = await boot({hash: '#t=anoms/all'});
   const linked = await boot({hash: '#t=svcs'});
   linked.w.location.hash = '#a=' + encodeURIComponent(KEY);
   await wait(100);
 
   //then
   assert.deepStrictEqual(current(svcs.doc), ['tab-svcs'], '#t=svcs opens Services');
-  assert.deepStrictEqual(current(open.doc), ['tab-anoms'], '#t=anoms/open opens the Board');
-  assert.strictEqual(open.doc.querySelector('#tab-sub-anoms button[aria-pressed="true"]').dataset.f, 'open', 'on the Open filter');
+  assert.deepStrictEqual(current(open.doc), ['tab-anoms'], '#t=anoms/all opens the Board');
+  assert.strictEqual(open.doc.querySelector('#tab-sub-anoms button[aria-pressed="true"]').dataset.f, 'all', 'on the All filter');
   assert.strictEqual(open.doc.getElementById('crumb-page').textContent, 'Board');
   assert.match(open.doc.getElementById('copy-f').title, /^Copies a link that opens Board with this filter/, 'tooltips name the Board too');
   assert.deepStrictEqual(current(linked.doc), ['tab-anoms'], '#a= opens the Board');
   assert.ok(linked.doc.querySelector('#anoms article.inc.linked[data-key="' + KEY + '"]'), 'with the card marked');
   for (const x of [svcs, open, linked]) { assert.deepStrictEqual(x.errors, []); x.dom.window.close(); }
-  return 'a row click marks only itself with aria-current, shows its panel, names it in the crumb and the title, and #t=, #t=anoms/open and #a= links still work';
+  return 'a row click marks only itself with aria-current, shows its panel, names it in the crumb and the title, and #t=, #t=anoms/all and #a= links still work';
 }
 
 async function moreFoldsAndOpensForItsRows() {

@@ -1,0 +1,254 @@
+{
+ "common": {
+  "actions": {
+   "cancel": "İptal",
+   "confirm": "Onayla",
+   "continue": "Devam",
+   "goBack": "Geri",
+   "reset": "Sıfırla",
+   "submit": "Gönder"
+  },
+  "status": {
+   "loading": "Yükleniyor...",
+   "error": {
+    "default": "Bir hata oluştu",
+    "serverConnection": "Sunucuya ulaşılamadı"
+   }
+  }
+ },
+ "auth": {
+  "login": {
+   "title": "Devam etmek için giriş yapın",
+   "form": {
+    "email": {
+     "label": "E-posta adresi",
+     "required": "e-posta zorunlu",
+     "placeholder": "E-posta adresiniz"
+    },
+    "password": {
+     "label": "Şifre",
+     "required": "şifre zorunlu"
+    },
+    "actions": {
+     "signin": "Giriş yap"
+    },
+    "alternativeText": {
+     "or": "VEYA"
+    }
+   },
+   "errors": {
+    "default": "Giriş yapılamadı",
+    "signin": "Farklı bir kullanıcıyla giriş yapmayı deneyin",
+    "oauthSignin": "Farklı bir kullanıcıyla giriş yapmayı deneyin",
+    "redirectUriMismatch": "Redirect URI, OAuth uygulama ayarıyla eşleşmiyor",
+    "oauthCallback": "Farklı bir kullanıcıyla giriş yapmayı deneyin",
+    "oauthCreateAccount": "Farklı bir kullanıcıyla giriş yapmayı deneyin",
+    "emailCreateAccount": "Farklı bir kullanıcıyla giriş yapmayı deneyin",
+    "callback": "Farklı bir kullanıcıyla giriş yapmayı deneyin",
+    "oauthAccountNotLinked": "Kimliğinizi doğrulamak için ilk kullandığınız giriş yöntemini kullanın",
+    "emailSignin": "E-posta gönderilemedi",
+    "emailVerify": "E-postanızı doğrulayın, yeni bir e-posta gönderildi",
+    "credentialsSignin": "Giriş başarısız. Girdiğiniz bilgileri kontrol edin",
+    "sessionRequired": "Bu sayfa için giriş yapın"
+   }
+  },
+  "provider": {
+   "continue": "{{provider}} ile devam et"
+  }
+ },
+ "chat": {
+  "input": {
+   "placeholder": "Mesajınızı buraya yazın...",
+   "actions": {
+    "send": "Mesajı gönder",
+    "stop": "Durdur",
+    "attachFiles": "Dosya ekle"
+   }
+  },
+  "favorites": {
+   "use": "Favori mesaj kullan",
+   "headline": "Favori mesajlar",
+   "remove": "Favoriden çıkar",
+   "empty": {
+    "title": "Henüz kayıtlı mesaj yok",
+    "description": "Bir mesaj gönderip yıldızlayın ya da önceki sohbetlerden birini yıldızlayın"
+   }
+  },
+  "commands": {
+   "button": "Araçlar",
+   "changeTool": "Aracı değiştir",
+   "availableTools": "Kullanılabilir araçlar"
+  },
+  "speech": {
+   "start": "Kaydı başlat",
+   "stop": "Kaydı durdur",
+   "connecting": "Bağlanıyor"
+  },
+  "fileUpload": {
+   "dragDrop": "Dosyaları buraya sürükleyip bırakın",
+   "browse": "Dosya seç",
+   "sizeLimit": "Limit:",
+   "errors": {
+    "failed": "Yüklenemedi",
+    "cancelled": "Yükleme iptal edildi:"
+   },
+   "actions": {
+    "cancelUpload": "Yüklemeyi iptal et",
+    "removeAttachment": "Eki kaldır"
+   }
+  },
+  "messages": {
+   "status": {
+    "using": "Kullanılıyor",
+    "used": "Kullanıldı"
+   },
+   "actions": {
+    "copy": {
+     "button": "Panoya kopyala",
+     "success": "Kopyalandı!"
+    }
+   },
+   "feedback": {
+    "positive": "Faydalı",
+    "negative": "Faydalı değil",
+    "edit": "Geri bildirimi düzenle",
+    "dialog": {
+     "title": "Yorum ekle",
+     "submit": "Geri bildirimi gönder",
+     "yourFeedback": "Geri bildiriminiz..."
+    },
+    "status": {
+     "updating": "Güncelleniyor",
+     "updated": "Geri bildirim güncellendi"
+    }
+   }
+  },
+  "history": {
+   "title": "Son mesajlar",
+   "empty": "Henüz bir şey yok...",
+   "show": "Geçmişi göster"
+  },
+  "settings": {
+   "title": "Ayarlar paneli",
+   "customize": "Sohbet ayarlarınızı buradan düzenleyin"
+  },
+  "watermark": "LLM'ler hata yapabilir. Önemli bilgileri kontrol edin."
+ },
+ "threadHistory": {
+  "sidebar": {
+   "title": "Geçmiş sohbetler",
+   "filters": {
+    "search": "Ara",
+    "placeholder": "Sohbetlerde ara..."
+   },
+   "timeframes": {
+    "today": "Bugün",
+    "yesterday": "Dün",
+    "previous7days": "Son 7 gün",
+    "previous30days": "Son 30 gün"
+   },
+   "empty": "Sohbet bulunamadı",
+   "actions": {
+    "close": "Kenar çubuğunu kapat",
+    "open": "Kenar çubuğunu aç"
+   }
+  },
+  "thread": {
+   "untitled": "Adsız sohbet",
+   "menu": {
+    "rename": "Yeniden adlandır",
+    "share": "Paylaş",
+    "delete": "Sil"
+   },
+   "actions": {
+    "share": {
+     "title": "Sohbet linkini paylaş",
+     "button": "Paylaş",
+     "status": {
+      "copied": "Link kopyalandı",
+      "created": "Paylaşım linki oluşturuldu!",
+      "unshared": "Bu sohbetin paylaşımı kapatıldı"
+     },
+     "error": {
+      "create": "Paylaşım linki oluşturulamadı",
+      "unshare": "Paylaşım kapatılamadı"
+     }
+    },
+    "delete": {
+     "title": "Silmeyi onayla",
+     "description": "Bu sohbet mesajlarıyla birlikte silinecek. Bu işlem geri alınamaz",
+     "success": "Sohbet silindi",
+     "inProgress": "Sohbet siliniyor"
+    },
+    "rename": {
+     "title": "Sohbeti yeniden adlandır",
+     "description": "Bu sohbet için yeni bir ad girin",
+     "success": "Sohbet yeniden adlandırıldı!",
+     "inProgress": "Yeniden adlandırılıyor"
+    }
+   }
+  }
+ },
+ "navigation": {
+  "header": {
+   "chat": "Sohbet",
+   "readme": "Readme",
+   "theme": {
+    "light": "Açık tema",
+    "dark": "Koyu tema",
+    "system": "Sistemi izle"
+   }
+  },
+  "newChat": {
+   "button": "Yeni sohbet",
+   "dialog": {
+    "title": "Yeni sohbet başlat",
+    "description": "Ekrandaki sohbet kapanacak. Devam etmek istiyor musunuz?",
+    "tooltip": "Yeni sohbet"
+   }
+  },
+  "user": {
+   "menu": {
+    "settings": "Ayarlar",
+    "settingsKey": "S",
+    "apiKeys": "API key'ler",
+    "logout": "Çıkış yap"
+   }
+  }
+ },
+ "apiKeys": {
+  "title": "Gerekli API key'ler",
+  "description": "Bu uygulamayı kullanmak için aşağıdaki API key'ler gerekli. Key'ler cihazınızın local storage'ında saklanır.",
+  "success": {
+   "saved": "Kaydedildi"
+  }
+ },
+ "alerts": {
+  "info": "Bilgi",
+  "note": "Not",
+  "tip": "İpucu",
+  "important": "Önemli",
+  "warning": "Uyarı",
+  "caution": "Dikkat",
+  "debug": "Debug",
+  "example": "Örnek",
+  "success": "Başarılı",
+  "help": "Yardım",
+  "idea": "Fikir",
+  "pending": "Bekliyor",
+  "security": "Güvenlik",
+  "beta": "Beta",
+  "best-practice": "Best practice"
+ },
+ "components": {
+  "MultiSelectInput": {
+   "placeholder": "Seçin..."
+  },
+  "DatePickerInput": {
+   "placeholder": {
+    "single": "Tarih seçin",
+    "range": "Tarih aralığı seçin"
+   }
+  }
+ }
+}

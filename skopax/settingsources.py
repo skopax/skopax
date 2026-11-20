@@ -300,6 +300,10 @@ def light_boot(env: Mapping[str, str] | None = None, registry: Registry | None =
     return Boot(env, registry, [d for d in loaded.values() if d is not None], None, loaders, loaded, failed)
 
 
+AUTO_RESOLVE_FIELDS = frozenset({'auto_resolve_hours', 'auto_resolve_days', 'auto_resolve_hours_crit', 'auto_resolve_hours_warn', 'auto_resolve_hours_set', 'auto_resolve_sev_set',
+                                 'info_auto_close_days', 'info_auto_close_days_set'})
+
+
 class Follower:
     def __init__(self, sources: SourceSet, live, instances, env: Mapping[str, str]):
         self.sources = sources
@@ -336,6 +340,10 @@ class Follower:
             else:
                 restart.append(key)
         base = self.live.base
+        if 'slack_post_sev' in fields:
+            fields.add('slack_post_sev_set')
+        if fields & AUTO_RESOLVE_FIELDS:
+            fields |= AUTO_RESOLVE_FIELDS
         if fields:
             try:
                 fresh = load_settings(fetch=lambda: after, env=self.env)

@@ -11,6 +11,8 @@ const FROM_CONFIG = 'The Anthropic API key in use comes from the configuration (
 const TYPED = 'sk-test-' + 'c'.repeat(32);
 const MARKER = 'sk-leak-' + 'z'.repeat(32);
 const BUSY = 'An earlier Anthropic connection test is still running; try again when it ends';
+const OPENAI_FROM_CONFIG = 'The OpenAI API key in use comes from the configuration (OPENAI_API_KEY or a settings source). A key set here takes its place.';
+const OFF = 'Not available with OpenAI: its web search finds pages but has no separate page read with a limit of its own. Web searches per run still applies';
 
 function status(using, extra) {
   return Object.assign({using, admin: using === 'admin', config: using === 'config', unreadable: false, updatedBy: using === 'admin' ? 'dora.lane@example.com' : null, updatedAt: using === 'admin' ? iso(30) : null,
@@ -29,7 +31,7 @@ async function boot(using, opts) {
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
   const state = {rev: 1, updatedAt: iso(0), sweptIso: iso(1), nextIso: new Date(Date.now() + 3600000).toISOString(), sources: {prom: 'ok'}, summary: {level: 'ok', headline: 'x', points: [], at: iso(1)},
     anomalies: [], services: [], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
-  const srv = {key: status(using, opts.extra), hold: null, test: {ok: true, summary: 'Connected: the key works and claude-opus-5-5 is available to it', ms: 312, key: MARKER}, busy: false};
+  const srv = {key: status(using, opts.extra), okey: Object.assign(status(opts.openai === undefined ? null : opts.openai), opts.openai === 'config' ? {note: OPENAI_FROM_CONFIG} : {}), otest: [], hold: null, test: {ok: true, summary: 'Connected: the key works and claude-opus-5-5 is available to it', ms: 312, key: MARKER}, busy: false};
   const dom = new JSDOM(pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state)), {
     url: 'https://skopax.example.com/#t=ai', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
@@ -48,12 +50,21 @@ async function boot(using, opts) {
             return ok(srv.test);
           }
           if (p === '/api/admin/anthropic-key' && method === 'GET') return ok(srv.key);
+          if (p === '/api/admin/openai-key' && method === 'GET') return opts.noOpenai ? bad(404, 'none') : ok(srv.okey);
+          if (p === '/api/admin/openai-key/test') { srv.otest.push(body); return ok({ok: true, summary: 'Connected: the key works and gpt-6.2-astra is available to it', ms: 210, key: MARKER}); }
+          if (p === '/api/admin/openai-key' && method === 'PUT') { srv.okey = status('admin', {updatedAt: iso(0)}); return ok(srv.okey); }
           if (p === '/api/admin/anthropic-key' && method === 'PUT') {
             if (body.key.length < 20) return bad(422, 'An Anthropic API key is 20-400 characters: letters, digits, dash and underscore.');
             srv.key = status('admin', {updatedAt: iso(0)});
             return ok(srv.key);
           }
           if (p === '/api/admin/anthropic-key' && method === 'DELETE') { srv.key = status(null); return {ok: true, status: 204, json: async () => { throw new Error('no body'); }}; }
+          if (p === '/api/admin/settings' && method === 'PUT') {
+            const was = (opts.items || settings()).filter((i) => i.key === body.key)[0];
+            const item = Object.assign({}, was, {value: body.value, source: 'admin', by: 'dora.lane@example.com', at: iso(0)});
+            opts.items = (opts.items || settings()).map((i) => i.key === body.key ? item : i);
+            return ok({item});
+          }
           if (p === '/api/admin/settings') return ok({items: opts.items || settings(), rev: 1, refreshSeconds: 15});
           if (p.startsWith('/api/admin/history')) return ok([]);
           if (p === '/api/admin/notices') return ok({items: []});
@@ -267,30 +278,120 @@ async function everyControlOnTheInvestigatorTabHasAName() {
   return 'every select, input and button on the Investigator tab has an accessible name; each setting control is named by its row label';
 }
 
-async function aiProvidersListAnthropicAndOpenAiComingSoon() {
+async function aiProvidersListAnthropicAndOpenAiKeyCards() {
   //given
-  const {dom, doc, errors} = await boot('admin');
+  const items = settings().concat([{key: 'investigate.provider', group: 'Investigator', label: 'AI provider', help: 'x', kind: 'choice', live: true, value: 'openai', base: 'anthropic', default: 'anthropic', source: 'admin', by: 'dora.lane@example.com', at: iso(5), choices: ['anthropic', 'openai']}]);
+  const {dom, w, doc, errors, calls, srv} = await boot('admin', {openai: 'config', items});
 
   //when
-  const list = doc.querySelector('#ai .ai-providers');
-  const rows = list ? [...list.children] : [];
+  const rows = [...doc.querySelectorAll('#ai .ai-providers > li')];
   const anthropic = rows[0], openai = rows[1];
+  openai.querySelector('.ai-test').click();
+  await wait(40);
+  typeIn(w, doc.getElementById('oai-key-in'), TYPED);
+  openai.querySelector('.ai-save').click();
+  await wait(60);
+  const after = doc.querySelector('#ai [data-provider="openai"]');
 
   //then
-  assert.ok(list, 'the Investigator card shows a provider list');
   assert.strictEqual(rows.length, 2);
-  assert.ok(anthropic.querySelector('.ai-key'), 'the Anthropic row is the key card');
   assert.strictEqual(anthropic.querySelector('#ai-key-h').textContent, 'Anthropic API key');
-  assert.ok(anthropic.querySelector('input#ai-key-in') && anthropic.querySelector('.ai-save') && anthropic.querySelector('.ai-test') && anthropic.querySelector('.ai-remove'));
-  assert.strictEqual(openai.getAttribute('aria-disabled'), 'true');
-  assert.strictEqual(openai.querySelector('.ai-provider-name').textContent, 'OpenAI');
-  assert.strictEqual(openai.querySelector('.tag').textContent, 'Coming soon');
-  assert.strictEqual(openai.textContent.replace(/\s+/g, ' ').trim(), 'OpenAI Coming soon');
-  assert.strictEqual(openai.querySelectorAll('input, button, a, select, textarea, [tabindex], [href], [role=button]').length, 0);
-  assert.strictEqual(doc.querySelectorAll('#ai [aria-disabled="true"]').length, 1);
+  assert.strictEqual(openai.querySelector('#oai-key-h').textContent, 'OpenAI API key');
+  assert.ok(!anthropic.querySelector('.ai-active') && openai.querySelector('.ai-active').textContent === 'AI provider in use', 'the card of the provider in use says so');
+  assert.strictEqual(openai.querySelector('.ai-state').textContent, OPENAI_FROM_CONFIG);
+  assert.deepStrictEqual(masks(doc, doc.getElementById('oai-key-in')), [{onScreen: true, value: 'disc'}], 'the OpenAI key field is masked too');
+  assert.ok(doc.querySelector('label[for="oai-key-in"]'));
+  assert.deepStrictEqual(srv.otest, [{}], 'Test connection on the OpenAI card tests the OpenAI key');
+  assert.strictEqual(calls.filter((c) => c[1] === '/api/admin/anthropic-key/test').length, 0);
+  assert.deepStrictEqual(calls.filter((c) => c[0] === 'PUT').map((c) => [c[1], c[2]]), [['/api/admin/openai-key', {key: TYPED}]]);
+  assert.strictEqual(after.querySelector('.ai-state').textContent, 'Using the key set here');
+  assert.strictEqual(after.querySelector('.ai-msg').textContent, 'Saved', 'the message lands on the card that saved');
+  assert.strictEqual(doc.querySelector('#ai [data-provider="anthropic"] .ai-msg').textContent, '');
+  assert.strictEqual(doc.getElementById('oai-key-in').value, '');
+  assert.ok(!leaked(doc));
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-  return 'the provider list has the Anthropic key card and an inert OpenAI coming-soon row';
+  return 'the provider list has an Anthropic and an OpenAI key card, each with its own field, test and save, and the provider in use is marked';
+}
+
+async function aSettingNotAvailableWithTheProviderIsDisabledWithItsReason() {
+  //given
+  const items = settings().concat([{key: 'investigate.web-fetches', group: 'Investigator', label: 'Web pages per run', help: 'x', kind: 'int', live: true, value: '4', base: '4', default: '4', source: 'default', by: null, at: null, low: 0, high: 10, off: OFF}]);
+  const {dom, doc, errors} = await boot('admin', {items, noOpenai: true});
+
+  //when
+  const row = doc.querySelector('#ai-rows .adm-row[data-key="investigate.web-fetches"]');
+  const input = row.querySelector('.adm-in');
+
+  //then
+  assert.ok(input.disabled && row.querySelector('.adm-save').disabled, 'the control and Save are disabled');
+  assert.strictEqual(row.querySelector('.adm-off-why').textContent, OFF);
+  assert.strictEqual(input.getAttribute('aria-describedby'), row.querySelector('.adm-off-why').id, 'the reason is tied to the control');
+  assert.ok(!doc.querySelector('#ai-rows .adm-row[data-key="investigate.rooms"] .adm-in').disabled, 'other settings stay usable');
+  const cards = [...doc.querySelectorAll('#ai .ai-providers > li')];
+  assert.strictEqual(cards.length, 2, 'a failed OpenAI key read still shows its card');
+  assert.strictEqual(cards[1].querySelector('.ai-msg').textContent, 'The OpenAI key did not load; open the tab again.');
+  assert.ok(!cards[1].querySelector('input') && cards[0].querySelector('#ai-key-in'), 'with no key controls, next to a working Anthropic card');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'a setting the AI provider cannot use is disabled with its reason next to it';
+}
+
+async function eachModelSitsNextToItsEffortInOneLabelledRow() {
+  //given
+  const row = (key, label, extra) => Object.assign({key, group: 'Investigator', label, help: label + ' help', kind: 'choice', live: true, value: 'low', base: 'low', default: 'low', source: 'default', by: null, at: null, choices: ['low', 'high']}, extra || {});
+  const model = (key, label) => row(key, label, {value: 'gpt-6.2-sol', base: 'gpt-6.2-sol', default: 'gpt-6.2-sol', choices: ['gpt-6.2-astra', 'gpt-6.2-sol']});
+  const items = [model('investigate.model', 'Card model'), row('investigate.rooms', 'Parallel rooms', {kind: 'int', value: '2', base: '2', default: '2', low: 1, high: 6}), model('investigate.slack-model', 'Slack model'),
+    model('chat.model', 'Chat model'), row('investigate.effort', 'Card effort', {source: 'admin', by: 'dora.lane@example.com', at: iso(3), value: 'high'}), row('investigate.slack-effort', 'Slack effort'),
+    model('investigate.gate-model', 'Topic gate model'), row('investigate.gate-effort', 'Topic gate effort', {off: 'Not available with this model'})];
+  const {dom, w, doc, errors, calls} = await boot('admin', {items, noOpenai: true});
+
+  //when
+  const pairs = [...doc.querySelectorAll('#ai-rows .adm-pair')].map((p) => [doc.getElementById(p.getAttribute('aria-labelledby')).textContent, ...[...p.querySelectorAll('.adm-row')].map((r) => r.dataset.key)]);
+  const order = [...doc.querySelectorAll('#ai-rows .adm-row')].map((r) => r.dataset.key);
+  const card = doc.querySelector('#ai-rows .adm-row[data-key="investigate.effort"]');
+  const gate = doc.querySelector('#ai-rows .adm-row[data-key="investigate.gate-effort"]');
+  const select = card.querySelector('select');
+  select.value = 'low';
+  select.dispatchEvent(new w.Event('input', {bubbles: true}));
+  card.querySelector('.adm-save').click();
+  await wait(60);
+
+  //then
+  assert.deepStrictEqual(pairs, [['Card model and effort', 'investigate.model', 'investigate.effort'], ['Slack model and effort', 'investigate.slack-model', 'investigate.slack-effort'],
+    ['Topic gate model and effort', 'investigate.gate-model', 'investigate.gate-effort']], 'each model and its effort share one labelled group');
+  assert.deepStrictEqual(order, ['investigate.model', 'investigate.effort', 'investigate.rooms', 'investigate.slack-model', 'investigate.slack-effort', 'chat.model', 'investigate.gate-model', 'investigate.gate-effort'], 'the effort moves next to its model and a model without one stays alone');
+  assert.ok(card.querySelector('.adm-reset') && card.querySelector('.adm-help').textContent === 'Card effort help' && card.querySelector('.tag').textContent.indexOf('Set by') === 0, 'the effort keeps its own help, source and reset');
+  assert.deepStrictEqual(calls.filter((c) => c[0] === 'PUT').map((c) => c[2]), [{key: 'investigate.effort', value: 'low'}], 'Save still writes the effort setting on its own');
+  assert.ok(gate.querySelector('select').disabled && gate.querySelector('.adm-off-why').textContent === 'Not available with this model', 'an effort the model has not shows as not available with the reason');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'each model and its thinking effort sit side by side in one labelled group, each with its own help, source, reset and save';
+}
+
+async function switchingTheProviderReloadsTheKeyCardsAndTheNotices() {
+  //given
+  const items = settings().concat([{key: 'investigate.provider', group: 'Investigator', label: 'AI provider', help: 'x', kind: 'choice', live: true, value: 'anthropic', base: 'anthropic', default: 'anthropic', source: 'default', by: null, at: null, choices: ['anthropic', 'openai']}]);
+  const {dom, w, doc, errors, calls} = await boot('admin', {openai: 'config', items});
+  const row = doc.querySelector('#ai-rows .adm-row[data-key="investigate.provider"]');
+  const before = [calls.filter((c) => c[1] === '/api/admin/notices').length, calls.filter((c) => c[1] === '/api/admin/openai-key').length];
+  const active = () => doc.querySelector('#ai .ai-active').closest('[data-provider]').dataset.provider;
+  const was = active();
+
+  //when
+  const pick = row.querySelector('select');
+  pick.value = 'openai';
+  pick.dispatchEvent(new w.Event('input', {bubbles: true}));
+  row.querySelector('.adm-save').click();
+  await wait(120);
+
+  //then
+  assert.deepStrictEqual([was, active()], ['anthropic', 'openai'], 'the in-use tag moves to the OpenAI card');
+  assert.ok(calls.filter((c) => c[1] === '/api/admin/notices').length > before[0], 'the notices strip is read again');
+  assert.ok(calls.filter((c) => c[1] === '/api/admin/openai-key').length > before[1], 'the key cards are read again');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'saving the AI provider reloads the key cards and the notices strip';
 }
 
 (async () => {
@@ -301,5 +402,8 @@ async function aiProvidersListAnthropicAndOpenAiComingSoon() {
   console.log('PASS ' + await removeAsksFirstAndThenDeletes());
   console.log('PASS ' + await aHostileUpdatedByIsText());
   console.log('PASS ' + await everyControlOnTheInvestigatorTabHasAName());
-  console.log('PASS ' + await aiProvidersListAnthropicAndOpenAiComingSoon());
+  console.log('PASS ' + await aiProvidersListAnthropicAndOpenAiKeyCards());
+  console.log('PASS ' + await aSettingNotAvailableWithTheProviderIsDisabledWithItsReason());
+  console.log('PASS ' + await eachModelSitsNextToItsEffortInOneLabelledRow());
+  console.log('PASS ' + await switchingTheProviderReloadsTheKeyCardsAndTheNotices());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

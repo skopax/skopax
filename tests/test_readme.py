@@ -21,11 +21,11 @@ VENDOR_DOCS = ('argo-cd.readthedocs.io', 'developer.chrome.com', 'developers.clo
                'support.microsoft.com', 'www.elastic.co')
 VENDOR_REPOS = ('github.com/oliver006/redis_exporter', 'github.com/danielqsj/kafka_exporter', 'github.com/chromedp/docker-headless-shell')
 LINK_HOSTS = ('skopax.io', 'docs.astral.sh', 'localhost:8080') + VENDOR_DOCS
-LINK_TREES = ('github.com/skopax', 'ghcr.io/skopax') + VENDOR_REPOS
+LINK_TREES = ('github.com/skopax', 'ghcr.io/skopax', 'img.shields.io/github/v/release/skopax/skopax', 'img.shields.io/github/license/skopax/skopax') + VENDOR_REPOS
 GENERATED_SECRET = '"$(openssl rand -hex 32)"'
 SECRET_NAME = r'[A-Z_]*(?:SECRET|TOKEN|PASSWORD|KEY)[A-Z_]*'
 DOCS = ('README.md', 'setup.md', 'configuration.md', 'sign-in.md', 'plugins.md', 'custom-checks.md', 'extending.md', 'operations.md', 'development.md')
-EXAMPLES = ('hello-plugin', 'couchbase-plugin', 'managed-redis-plugin')
+EXAMPLES = ('hello-plugin', 'couchbase-plugin', 'managed-redis-plugin', 'batch-jobs-plugin')
 COMMUNITY = ('CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'TRADEMARKS.md', 'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'CHANGELOG.md', *(f'examples/{name}/README.md' for name in EXAMPLES))
 COMMUNITY_HOSTS = ('modeltrademarkguidelines.org', 'www.modeltrademarkguidelines.org', 'creativecommons.org', 'www.contributor-covenant.org', 'contributor-covenant.org', 'developercertificate.org')
 COMMUNITY_TREES = ('github.com/mozilla',)
@@ -80,7 +80,8 @@ def known_names() -> set[str]:
     args = set(re.findall(r'^ARG ([A-Z_]+)', read('Dockerfile') + ''.join(read(f'examples/{name}/Dockerfile') for name in EXAMPLES), re.MULTILINE))
     ci = set(re.findall(r'\b([A-Z][A-Z0-9_]+)\b', read('.github/workflows/ci.yml') + read('.github/workflows/image.yml')))
     runner = set(re.findall(r'process\.env\.([A-Z_]+)', read('tests/page/run.js')))
-    return settings_env_names() | plugin_env_names() | constants | args | ci | runner | OUTSIDE_NAMES
+    live = set(re.findall(r"^ENV = '([A-Z_]+)'", read('tests/test_openai_live.py'), re.MULTILINE))
+    return settings_env_names() | plugin_env_names() | constants | args | ci | runner | live | OUTSIDE_NAMES
 
 
 def unknown_names(texts: dict[str, str], known: set[str]) -> list[str]:
@@ -644,7 +645,7 @@ def test_the_development_page_matches_the_workflows_the_dockerfile_and_the_gitle
     assert writers == ['build', 'promote'] and f'`packages: write` in {" and ".join(f"`{job}`" for job in writers)} only' in flat
     assert 'as environment secrets of `release`, not repository secrets' in flat
     assert '`/var/lib/dpkg/status.d/`' in flat and 'Syft' in flat
-    assert 'the `SKOPAX_VERSION` defaults in `Dockerfile` and in the example Dockerfiles (`examples/hello-plugin/Dockerfile`, `examples/couchbase-plugin/Dockerfile` and `examples/managed-redis-plugin/Dockerfile`)' in flat
+    assert 'the `SKOPAX_VERSION` defaults in `Dockerfile` and in the example Dockerfiles (`examples/hello-plugin/Dockerfile`, `examples/couchbase-plugin/Dockerfile`, `examples/managed-redis-plugin/Dockerfile` and `examples/batch-jobs-plugin/Dockerfile`)' in flat
     tests_runs = [step['run'] for step in ci['jobs']['tests']['steps'] if 'run' in step and not step['run'].startswith('uv python install')]
     tests_bullet = flat[flat.index('- `tests`:'):flat.index('- `pages`:')]
     assert 'uv lock --check' in tests_runs and [run for run in tests_runs if f'`{run}`' in tests_bullet] == tests_runs

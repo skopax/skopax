@@ -22,6 +22,12 @@ ALLOWED = {
     'skopax/mcpserver.py Tools.card_action: builds ToolError from e in ToolError(str(e.detail))': (1, 'the HTTPException comes from add_action, whose details are all fixed texts of app.py (FeatureOff and the action checks)'),
     'skopax/mcptools/bridge.py RunTools.call: builds ToolError from e in ToolError(read_refused(tool, e, secrets))':
         (1, "ReadRefused carries the outside server's own error words; read_refused scrubs the connection's secrets from them, redacts them, cuts them to 300 characters and frames them as outside data, as the isError branch does"),
+    "skopax/plugins/sharepoint/client.py Graph._failed: builds SourceDown from wait in SourceDown(msg('sharepoint.throttled', seconds=wait if wait.isdigit() else '60'))":
+        (1, 'wait is the Retry-After header, used only when it is all digits, else the fixed 60'),
+    "skopax/plugins/sharepoint/client.py Graph.token: builds Denied from e in Denied(msg('sharepoint.token_refused', status=e.code, error=error_code(e)), 'token', 'Client secret')":
+        (1, 'only the numeric status and the OAuth error code pass; error_code keeps a code only when it matches [a-z_]{1,60}, never error_description or the secret'),
+    "skopax/plugins/sharepoint/client.py Graph.token: msg of e in msg('sharepoint.token_refused', status=e.code, error=error_code(e))":
+        (1, 'the same call as the Denied above: the numeric status and an OAuth error code that matches [a-z_]{1,60}'),
 }
 MODULES: dict[int, tuple[str, 'Index']] = {}
 

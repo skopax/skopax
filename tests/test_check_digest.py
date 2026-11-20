@@ -47,7 +47,8 @@ def test_a_check_digest_goes_to_the_main_channel_as_one_plain_message_with_no_ca
 
     # then
     [top] = post.posted
-    assert top['channel'] == '#ops' and 'thread_ts' not in top and 'blocks' not in top
+    assert top['channel'] == '#ops' and 'thread_ts' not in top
+    assert top['blocks'][-1]['type'] == 'context' and 'skopax.io' in str(top['blocks'][-1]), 'a message Skopax starts ends with the powered-by line'
     assert top['text'].split('\n')[:4] == ['Weekly summary &lt;!channel&gt; &amp; co', '\u2022 12 deploys, 2 rolled back', '\u2022 Slowest page: /checkout &lt;@U123&gt;', '\u2022 Errors down 30%']
     assert store.load()['anomalies'] == []
     [action] = done

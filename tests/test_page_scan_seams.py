@@ -611,7 +611,7 @@ def test_a_post_or_reply_never_reaches_a_card_of_another_plugin(store: Store, tm
     # given
     slack, post, _ = fake_slack()
     foreign = anomaly('demo', 'err', 'shop', 'checkout-service', '', 'warn', 5, None, None, '', 'ERROR logs', 'five errors') | {'ranKey': 'demo'}
-    with running(store, tmp_path, slack=slack) as c:
+    with running(store, tmp_path, slack=slack, slack_post_sev='off') as c:
         c.app.state.server_apply([PassResult('demo', True, 'ok', [foreign], {}, ('demo',))], NOW, None)
         store.slack_posted(foreign['key'], {'channel': 'C7', 'ts': '1792220000.000100', 'at': iso(NOW + 60), 'by': 'server'})
         PLAN['scan'] = {'pages': ('chairs',), 'shots': [shot('chairs')]}

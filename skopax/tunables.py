@@ -15,12 +15,12 @@ from urllib.parse import urlsplit
 from pymongo import DESCENDING, ReturnDocument
 
 from skopax import brand, clock as zone_clock, logs, tags
-from skopax.config import DEFAULT_ROLES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SSO_CLAIM_MODES, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
+from skopax.config import AI_PROVIDERS, DEFAULT_ROLES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
 from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import BY_KEY as FEATURE_OF
-from skopax.investigator.pricing import PRICES
+from skopax.investigator.pricing import ALL_MODELS, LABELS as PROVIDER_LABELS, OPENAI, effective as effective_model, models_of, provider_of
 from skopax.investigator.prompt import writing_languages
 from skopax.messages import languages, msg
 from skopax.oidc import url_problem
@@ -30,7 +30,9 @@ from skopax.store import iso, utc_now
 
 log = logging.getLogger('skopax.tunables')
 
-MODELS = tuple(PRICES)
+MODELS = ALL_MODELS
+MODEL_ROLES = {'investigate.model': 'card', 'investigate.slack-model': 'slack', 'chat.model': 'chat', 'investigate.gate-model': 'gate', 'self-review.model': 'review'}
+OFF_WITH = {OPENAI: {'investigate.web-fetches': 'ai.off_openai', 'investigate.gate-effort': 'ai.off_openai_gate_effort'}}
 EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
 SEVS = ('info', 'warn', 'crit')
 REFRESH_S = 15
@@ -68,10 +70,11 @@ class Tunable:
     default: str | None = None
     rule_help: Mapping[str, str] | None = None
     hidden: bool = False
+    choice_labels: Mapping[str, str] | None = None
 
 
-def T(key, field, group, label, help, kind, low=None, high=None, choices=(), live=True, defaults=None, part=None, hidden=False) -> Tunable:
-    return Tunable(key, field, group, label, help, kind, low, high, choices if callable(choices) else tuple(choices), live, defaults, part, hidden=hidden)
+def T(key, field, group, label, help, kind, low=None, high=None, choices=(), live=True, defaults=None, part=None, hidden=False, choice_labels=None) -> Tunable:
+    return Tunable(key, field, group, label, help, kind, low, high, choices if callable(choices) else tuple(choices), live, defaults, part, hidden=hidden, choice_labels=choice_labels)
 
 
 def choices_of(t: Tunable) -> tuple[str, ...]:
@@ -90,6 +93,13 @@ def card_languages() -> tuple[str, ...]:
 
 HTTPS_KEYS = ()
 SLACK_CHANNEL_KEY = 'slack.channel'
+POST_SEV_KEY = 'slack.post-sev'
+CRIT_NOW_KEY = 'slack.crit-now'
+POST_SEV_LABELS = {'crit': 'Critical', 'warn': 'Warning', 'info': 'Info', 'off': 'Off'}
+RENAMED = {CRIT_NOW_KEY: POST_SEV_KEY}
+OLD_HOURS_KEYS = ('core.auto-resolve-hours', 'core.auto-resolve-days')
+SEV_HOURS_KEYS = {'core.auto-resolve-hours-crit': ('auto_resolve_hours_crit', 'crit'), 'core.auto-resolve-hours-warn': ('auto_resolve_hours_warn', 'warn')}
+INFO_DAYS_KEY = 'core.info-auto-close-days'
 TIMEZONE_KEY = 'general.timezone'
 RELEASE_NAME_KEY = 'jira.release-name'
 LINKS_KEY = 'core.instance-links'
@@ -171,6 +181,8 @@ STATIC = (
     T('sso.jwks-url', 'sso_jwks_url', SIGNIN, 'Keys (JWKS) URL', 'Replaces the signing keys (JWKS) address the provider lists; empty uses the listed one', 'text'),
     T('sso.button-text', 'sso_button_text', SIGNIN, 'Button text', 'The text of the single sign-on button on the login page, at most 40 characters, such as Sign in with Acme; empty uses Sign in with SSO', 'text'),
     T('sso.button-icon', 'sso_button_icon', SIGNIN, 'Button icon', 'The icon of the single sign-on button: auto picks a mark from the issuer host, company shows the image uploaded on the Single sign-on card, none shows the text only', 'choice', choices=SSO_BUTTON_ICONS),
+    T('investigate.provider', 'ai_provider', INV, 'AI provider', 'Which AI provider every model call goes to: anthropic or openai, one for the whole install. Each has its own key and models; '
+      'a change applies from the next run or ask, and a model of the other provider falls back to the default of this one until you pick another', 'choice', choices=AI_PROVIDERS),
     T('investigate.model', 'investigate_model', INV, 'Card model', 'Model for card runs, Investigate clicks, page asks and deploy-report assessments', 'choice', choices=MODELS),
     T('investigate.effort', 'investigate_effort', INV, 'Card effort', 'Thinking effort of the card model', 'choice', choices=EFFORTS),
     T('investigate.slack-model', 'investigate_slack_model', INV, 'Slack model', 'Model for questions asked in Slack', 'choice', choices=MODELS),
@@ -210,7 +222,9 @@ STATIC = (
     T('slack.remind-hours', 'slack_remind_hours', SLACK, 'Reminder after (h)', 'Reminds a posted card nobody acted on after N hours; 0 turns reminders off', 'float', 0, 168, live=False),
     T('slack.clear-note-minutes', 'slack_clear_note_minutes', SLACK, 'Cleared note after (min)', 'Says in the thread that a posted card cleared after N minutes', 'float', 0, 240, live=False),
     T('routes.slack-echo', 'routes_slack_echo', SLACK, 'Echo route posts to Slack', 'Also posts a card a route (such as a Teams channel) takes to the Slack channel when Slack has not posted it yet, and says in its thread which route got it; a route can override this with its own Also post to Slack field', 'bool'),
-    T('slack.crit-now', 'slack_crit_now', SLACK, 'Critical cards at once', 'Posts a critical card to the main channel with its numbers the moment it opens, like Teams; the investigator\'s findings follow as a reply in its thread', 'bool'),
+    T(POST_SEV_KEY, 'slack_post_sev', SLACK, 'Post at once from', 'Posts a card of this severity or higher to the main channel with its numbers when it is pushed (new, escalated or reopened; an info card only when it is brand new); the investigator\'s findings follow as a reply in its thread. '
+      'Many cards opening together are not posted at once, and the investigator, when it runs, groups them. Off leaves every card to the investigator\'s drafts and to people', 'choice', choices=SLACK_POST_SEVS, choice_labels=POST_SEV_LABELS),
+    T(CRIT_NOW_KEY, 'slack_crit_now', SLACK, 'Critical cards at once', 'Deprecated: use Post at once from. false turns posting at once off while Post at once from is not set', 'bool', live=False, hidden=True),
     T('slack.fallback-minutes', 'slack_fallback_minutes', SLACK, 'Numbers fallback after (min)', 'Posts the numbers of a critical card when no investigation finished in N minutes; 0 turns it off', 'int', 0, 240, live=False),
     T('slack.state-notes', 'slack_state_notes', SLACK, 'Status notes in threads', 'Posts a short line in the thread when a posted card is taken, resolved or muted', 'bool', live=False),
     T('slack.listen', 'slack_listen', SLACK, 'Listening', 'off, shadow (reads only) or live (answers)', 'choice', choices=SLACK_LISTEN_MODES, live=False),
@@ -221,7 +235,10 @@ STATIC = (
     T('self-review.dm', 'selfreview_dm', REVIEW, 'Send to', 'Emails that get the self-review as a Slack DM, separated by commas; empty uses the push users', 'text'),
     T('self-review.hour', 'selfreview_hour', REVIEW, 'Hour (local time)', 'Hour of the daily self-review; -1 turns it off', 'int', -1, 23, live=False),
     T('cards.archive-hours', 'archive_hours', CARDS, 'Archive after (hours)', 'A card that is not firing (or is muted) and had no change for N hours moves to Archived: hidden on the board, the lists and the counts, still under the Archived list. Waiting cards nobody acted on stay', 'int', 1, 720),
-    T('core.auto-resolve-hours', 'auto_resolve_hours', CARDS, 'Auto-resolve cleared cards after (hours)', 'Closes a card that stopped firing and that nobody acted on after N hours; 0 turns it off', 'int', 0, 720),
+    T('core.auto-resolve-hours', 'auto_resolve_hours', CARDS, 'Auto-resolve cleared cards after (hours)', 'Deprecated: use the critical and warning settings. Seeds the severities that have no setting of their own', 'int', 0, 720, hidden=True),
+    T('core.auto-resolve-hours-crit', 'auto_resolve_hours_crit', CARDS, 'Auto-resolve cleared critical cards after (hours)', 'Closes a critical card that stopped firing and that nobody acted on after N hours; 0 turns it off for critical cards', 'int', 0, 720),
+    T('core.auto-resolve-hours-warn', 'auto_resolve_hours_warn', CARDS, 'Auto-resolve cleared warning cards after (hours)', 'Closes a warning card that stopped firing and that nobody acted on after N hours; 0 turns it off for warning cards', 'int', 0, 720),
+    T('core.info-auto-close-days', 'info_auto_close_days', CARDS, 'Auto-resolve info cards still firing after (days)', 'Closes an info card that is still firing and that nobody acted on after N days; 0 turns it off. Log cards and info cards from warning or error signals are kept', 'int', 0, 90),
     T('core.auto-resolve-days', 'auto_resolve_days', CARDS, 'Auto-resolve after (days)', 'Deprecated: use the hours setting. Closes waiting cards nobody acted on after N days; 0 turns it off', 'int', 0, 30, hidden=True),
     T('recurring.count', 'recurring_count', CARDS, 'Recurring after (times)', 'A card that fired N times in the window with no ticket is marked recurring', 'int', 2, 20),
     T('recurring.days', 'recurring_days', CARDS, 'Recurring window (days)', 'Window of the recurring count', 'int', 1, 60),
@@ -238,17 +255,16 @@ STATIC = (
     T('core.assign-dm', 'assign_dm', FEATURES, 'Assignee message', 'Sends the person a card is assigned to one Slack direct message', 'bool'),
     T('core.jira-links', 'jira_links', FEATURES, 'Jira links', 'Moves cards to In progress when a Jira ticket names them', 'bool', live=False),
     T('core.postdeploy', 'postdeploy', FEATURES, 'Post-deploy checks', 'Checks every prod deploy and writes a deploy report', 'bool'),
-    T('self-review.enabled', 'self_review_enabled', FEATURES, 'Self-review', 'Writes the daily self-review of {product} itself and sends it as a Slack direct message; it also needs the Anthropic key, the self project and its log index. Switched on after the review hour, the first scheduled review comes the next day; Run now works at once', 'bool'),
+    T('self-review.enabled', 'self_review_enabled', FEATURES, 'Self-review', 'Writes the daily self-review of {product} itself and sends it as a Slack direct message; it also needs the key of the AI provider in use, the self project and its log index. Switched on after the review hour, the first scheduled review comes the next day; Run now works at once', 'bool'),
     T('core.probe', 'probe', FEATURES, 'Reachability probe', 'Checks from this server that every probe target of a serving integration answers, every 15 minutes and at start; '
       'its report gives tool status and certificate expiry cards', 'bool'),
-    T('core.chat-attribution', 'chat_attribution', FEATURES, 'Powered by on Slack and Teams posts', 'Ends every message {product} starts in Slack and Teams, its channel posts and '
-      'its own direct messages, with the "powered by" line; a reply to a person never carries it, and Hide "powered by Skopax" wins', 'bool'),
     feature_tunable('core.investigator', 'investigator_on'),
     feature_tunable('core.chat', 'chat_on'),
     feature_tunable('core.slack-autosend', 'slack_autosend'),
     feature_tunable('core.slack-listener', 'slack_listener_on'),
     feature_tunable('core.mcp', 'mcp_on'),
     feature_tunable('core.push', 'push_on'),
+    feature_tunable('core.update-check', 'update_check'),
     feature_tunable('core.hide-attribution', 'hide_attribution'),
 ) + tuple(T(key, field, RULES, label, 'Thresholds of the ' + label + ' cards; an empty field uses the default', 'rules', defaults=dict(defaults)) for key, field, label, defaults in RULE_SETS) + (
     T(CERT_SKIP_KEY, 'cert_skip', RULES, 'Certificates not watched', 'Hosts whose certificate expiry raises no card, separated by commas: shop.example.com also covers its subdomains, '
@@ -521,6 +537,14 @@ def apply(base: Settings, overrides: dict[str, str], extra: tuple[Tunable, ...] 
             changes[t.field] = value
     if 'auto_resolve_days' in changes and 'auto_resolve_hours' not in changes and not base.auto_resolve_hours_set:
         changes['auto_resolve_hours'] = changes['auto_resolve_days'] * 24
+    if 'auto_resolve_hours' in changes:
+        for sev in ('crit', 'warn'):
+            if f'auto_resolve_hours_{sev}' not in changes and sev not in base.auto_resolve_sev_set:
+                changes[f'auto_resolve_hours_{sev}'] = changes['auto_resolve_hours']
+        if 'info_auto_close_days' not in changes and not base.info_auto_close_days_set:
+            changes['info_auto_close_days'] = 0 if changes['auto_resolve_hours'] == 0 else defaults()['info_auto_close_days']
+    if 'slack_crit_now' in changes and 'slack_post_sev' not in changes and not base.slack_post_sev_set:
+        changes['slack_post_sev'] = SLACK_POST_SEV if changes['slack_crit_now'] else 'off'
     if tag_parts:
         held = dict(base.tag_rules or tags.RULES)
         held.update(tag_parts)
@@ -544,12 +568,12 @@ class TunableStore:
     def all(self) -> dict[str, dict]:
         return {d['_id']: {'value': d.get('value'), 'by': d.get('by'), 'at': d.get('at')} for d in self.values.find({})}
 
-    def write(self, key: str, value: str | None, by: str, old: str | None) -> dict:
+    def write(self, key: str, value: str | None, by: str, old: str | None, **extra) -> dict:
         if value is None:
             self.values.delete_one({'_id': key})
         else:
             self.values.replace_one({'_id': key}, {'_id': key, 'value': value, 'by': by, 'at': iso(utc_now())}, upsert=True)
-        return self.write_change(key, old, value, by)
+        return self.write_change(key, old, value, by, **extra)
 
     def advance(self, key: str, value: str) -> None:
         found = self.values.find_one({'_id': key})
@@ -584,6 +608,7 @@ class Live:
         self.labels: dict[str, str] = dict(labels)
         self.overrides: dict[str, dict] = {}
         self._warned: dict[tuple[str, int], str] = {}
+        self._told: set[str] = set()
         self._current = base
         self._rev: int | None = None
         self._checked: float | None = None
@@ -603,6 +628,7 @@ class Live:
             rev = self.tunables.rev()
             if rev != self._rev or force:
                 overrides = self.tunables.all()
+                self._tell_renamed(overrides)
                 self._current = apply(self.base, {k: v['value'] for k, v in overrides.items()}, self.extra())
                 zone_clock.set_zone(self._current.timezone)
                 logs.use(self._current.log_format, self._current.log_color, self._current.log_level)
@@ -613,6 +639,12 @@ class Live:
             log.warning('admin settings not read, keeping the last ones: %s', error_kind(e))
         finally:
             self._lock.release()
+
+    def _tell_renamed(self, overrides: Mapping[str, dict]) -> None:
+        for old, new in RENAMED.items():
+            if old in overrides and old not in self._told:
+                self._told.add(old)
+                log.warning('admin setting %s is replaced by %s; it still counts while %s is not set', old, new, new)
 
     def _seen(self) -> None:
         if self.watch is None:
@@ -707,6 +739,16 @@ class Live:
             if callable(t.choices) and out['value'] and out['value'] not in offered:
                 out['choices'] = list(dict.fromkeys(out['choices'] + [out['value']]))
                 out['problem'] = msg('settings.pack_missing', value=out['value'])
+        if t.choice_labels:
+            out['choiceLabels'] = dict(t.choice_labels)
+        self.provider_view(t, out)
+        if t.key == POST_SEV_KEY and not given and not self.base.slack_post_sev_set:
+            self.mark_old_switch(out)
+        if t.key in SEV_HOURS_KEYS and not given and SEV_HOURS_KEYS[t.key][1] not in self.base.auto_resolve_sev_set:
+            self.mark_old_hours(out)
+        if t.key == INFO_DAYS_KEY and not given and not self.base.info_auto_close_days_set and self.current().auto_resolve_hours == 0:
+            held = self.stored_old_hours()
+            out['oldSwitch'] = held[0][0] if held else next((k for k in OLD_HOURS_KEYS if k in self.values), OLD_HOURS_KEYS[0])
         if t.key == 'core.log-color' and logs.PLAIN[0]:
             out['value'] = NO_COLOR_SHOWN
             out['choices'] = list(dict.fromkeys(out['choices'] + [NO_COLOR_SHOWN]))
@@ -723,8 +765,87 @@ class Live:
             self.hide_refused_links(t, out, given, configured)
         return out
 
+    def refuse_other_provider(self, t: Tunable, value) -> None:
+        if not isinstance(value, str) or not t.choices or not set(choices_of(t)) <= set(MODELS):
+            return
+        provider = self.current().ai_provider
+        other = provider_of(value)
+        if other not in (provider, None):
+            raise Invalid(msg('ai.model_refused', model=value, owner=PROVIDER_LABELS[other], provider=PROVIDER_LABELS[provider]))
+
+    def provider_view(self, t: Tunable, out: dict) -> None:
+        provider = self.current().ai_provider
+        off = OFF_WITH.get(provider, {}).get(t.key)
+        if off:
+            out['off'] = msg(off)
+        if not out.get('choices') or not set(out['choices']) <= set(MODELS):
+            return
+        out['choices'] = list(models_of(provider))
+        role = MODEL_ROLES.get(t.key, 'plugin')
+        for part in ('base', 'default'):
+            if isinstance(out.get(part), str) and provider_of(out[part]) not in (provider, None):
+                out[part] = effective_model(provider, out[part], role)
+        other = provider_of(out['value'])
+        if other in (provider, None):
+            return
+        if out['source'] == 'default':
+            out['value'] = effective_model(provider, out['value'], MODEL_ROLES.get(t.key, 'plugin'))
+        else:
+            out['choices'] = out['choices'] + [out['value']]
+            out['choiceLabels'] = {**out.get('choiceLabels', {}), out['value']: f"{out['value']} ({PROVIDER_LABELS[other]}, not used)"}
+            out['problem'] = msg('ai.model_other', model=out['value'], owner=PROVIDER_LABELS[other], provider=PROVIDER_LABELS[provider],
+                                 used=effective_model(provider, out['value'], MODEL_ROLES.get(t.key, 'plugin')))
+
+    def set_post_sev(self, value: str | None, by: str, old: str | None) -> dict:
+        stored_old = self.overrides.get(CRIT_NOW_KEY)
+        if value is not None and old is None and not self.base.slack_post_sev_set and (stored_old or not self.base.slack_crit_now):
+            old = self.current().slack_post_sev
+        cleared = self.tunables.write(CRIT_NOW_KEY, None, by, stored_old.get('value'), legacy=True) if stored_old else None
+        if value is None and POST_SEV_KEY not in self.overrides and cleared:
+            return cleared
+        return self.tunables.write(POST_SEV_KEY, value, by, old)
+
+    def stored_old_hours(self, every: bool = False) -> list[tuple[str, dict]]:
+        held = [(k, self.overrides[k]) for k in OLD_HOURS_KEYS if k in self.overrides]
+        if not every and (self.base.auto_resolve_hours_set or OLD_HOURS_KEYS[0] in self.overrides):
+            held = [h for h in held if h[0] == OLD_HOURS_KEYS[0]]
+        return held
+
+    def mark_old_hours(self, out: dict) -> None:
+        held = self.stored_old_hours()
+        if held:
+            key, row = held[0]
+            out.update(source='admin', by=row.get('by'), at=row.get('at'), oldSwitch=key)
+
+    def set_severity(self, key: str, value: str | None, by: str, old: str | None) -> dict:
+        held = self.stored_old_hours(True)
+        field, sev = SEV_HOURS_KEYS[key]
+        if not held or key in self.overrides or sev in self.base.auto_resolve_sev_set:
+            return self.tunables.write(key, value, by, old)
+        now = self.current()
+        if value is not None and old is None:
+            old = stored(getattr(now, field))
+        for other, (other_field, other_sev) in SEV_HOURS_KEYS.items():
+            if other != key and other not in self.overrides and other_sev not in self.base.auto_resolve_sev_set:
+                self.tunables.write(other, stored(getattr(now, other_field)), by, None, legacy=True)
+        if INFO_DAYS_KEY not in self.overrides and not self.base.info_auto_close_days_set and now.info_auto_close_days != self.base.info_auto_close_days:
+            self.tunables.write(INFO_DAYS_KEY, stored(now.info_auto_close_days), by, None, legacy=True)
+        cleared = [self.tunables.write(k, None, by, row.get('value'), legacy=True) for k, row in held]
+        if value is None:
+            return cleared[0]
+        return self.tunables.write(key, value, by, old)
+
+    def mark_old_switch(self, out: dict) -> None:
+        stored_old = self.overrides.get(CRIT_NOW_KEY)
+        if stored_old:
+            out.update(source='admin', by=stored_old.get('by'), at=stored_old.get('at'), oldSwitch=CRIT_NOW_KEY)
+        elif not self.base.slack_crit_now:
+            out['oldSwitch'] = CRIT_NOW_KEY
+
     def label_of(self, t: Tunable) -> str:
         key = CONFIG_KEY.get(t.key, t.key)
+        if (key in SEV_HOURS_KEYS or key == INFO_DAYS_KEY) and key not in self.values:
+            key = next((k for k in OLD_HOURS_KEYS if k in self.values), key)
         raw = self.values.get(key)
         if t.key in TEXT_LIMITS and raw is not None:
             try:
@@ -771,7 +892,13 @@ class Live:
             value = now
         else:
             value = None if raw is None else stored(parse(t, raw, self.base))
-        change = self.tunables.write(key, value, by, old)
+        self.refuse_other_provider(t, value)
+        if key == POST_SEV_KEY:
+            change = self.set_post_sev(value, by, old)
+        elif key in SEV_HOURS_KEYS:
+            change = self.set_severity(key, value, by, old)
+        else:
+            change = self.tunables.write(key, value, by, old)
         self.refresh(force=True)
         return self.entry(t), {**change, 'label': t.label, 'before': before, 'after': hide_refused(key, self.now_text(t))}
 

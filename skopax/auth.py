@@ -17,8 +17,15 @@ def bearer_token(authorization: str | None) -> str | None:
     return parts[1].strip() if len(parts) == 2 and parts[0].lower() == 'bearer' and parts[1].strip() else None
 
 
+def claim_text(claims: dict, key: str) -> str:
+    value = claims.get(key)
+    return str(value).strip() if value else ''
+
+
 def login_name(claims: dict) -> str:
-    return next((str(claims[k]) for k in ('name', 'preferred_username', 'email', 'sub') if claims.get(k)), 'unknown')
+    given, family = claim_text(claims, 'given_name'), claim_text(claims, 'family_name')
+    full = f'{given} {family}' if given and family else ''
+    return claim_text(claims, 'name') or full or next((claim_text(claims, k) for k in ('preferred_username', 'email', 'sub') if claim_text(claims, k)), 'unknown')
 
 
 def sso_email(claims: dict) -> str | None:

@@ -2,6 +2,79 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.3.0 (2026-11-19)
+
+Custom checks that read Elasticsearch with ES|QL and a CSP reports preset, built-in language packs, Slack posts from a severity you choose, a batch jobs example plug-in, and sharper investigator prompts.
+
+**Upgrade notes:**
+
+- Warning cards now post to the main Slack channel at once by default, like critical cards. Set Post at once from (Admin > General > Slack) to Critical for the old behaviour. A stored or environment `slack.crit-now` / `SLACK_CRIT_NOW` that is not `true` still turns posting at once off until Post at once from is set.
+- With Language on Auto (the default), people whose browser prefers Turkish, German, Spanish or French now see the page and the chat in it; English stays one click away in Settings > Appearance.
+- A Slack reply to one person (an off-topic answer, a small-talk or ask limit notice) now follows that person's language when a built-in pack covers it. Channel posts, tickets and the card language stay English until an admin picks another.
+- Deprecated: the CSP reports plug-in. Use the CSP reports preset under custom checks instead; the plug-in leaves in 0.4.
+- Plug-ins built for 0.2 keep loading only if their `core` range allows 0.3; the built-in plug-ins and the examples now declare `>=0.1,<0.4`.
+
+New:
+
+- Custom checks can read Elasticsearch with ES|QL (source `elasticsearch`): a query that returns a numeric `value` column and optional `by` columns, run for a window of 5 to 1440 minutes passed as `?start` and `?end`, with the same comparisons, 1 day and 1 week baselines, Preview, presets and editor as PromQL checks, and a Kibana link when the instance has an https UI address.
+- A CSP reports preset: a newly blocked host (first seen within a day, at least 10 reports in the window) and a report jump (at least 100 reports and 5 times the larger of a day and a week ago). It reads compact, spaced and escaped report JSON and leaves out browser extensions.
+- Built-in language packs for `tr`, `de`, `es` and `fr` (`de`, `es` and `fr` are a preview), always on; a plug-in's pack for the same language wins text by text. `tools/locale_source.py` prints the English source texts for translators. A text a pack does not translate yet is shown or sent in English.
+- A batch jobs example plug-in, `examples/batch-jobs-plugin`: failing, missed and slow scheduled jobs read from one Prometheus timer per job, against the same hour 1 and 7 days earlier, with a page and investigator knowledge.
+
+Changed:
+
+- Slack's Critical cards at once switch is now Post at once from (`slack.post-sev`, `SLACK_POST_SEV`): Critical, Warning (the default), Info or Off. Each post ends with a line that is true for its severity and promises an investigation only while the investigator runs live. Admin marks a value that still comes from the old switch, and saving or Reset clears it.
+- The investigator prompt has a Common traps section (a slow outside dependency, a p95 moved by the request mix, provider HTML error pages behind JSON parse errors, 429s that look like 500s), also used for Slack questions. How to work covers short baselines, jumps from outside sends and the team's own probes, and a card that clears is no longer called fixed without a cause. The deploy assessment reads new ERROR lines and user-side numbers in a stated order and skips stale cached copies. Plug-in knowledge gained working notes for ES|QL, Prometheus, Kubernetes, Kafka, PMM and Website.
+- Two English labels changed so language packs can translate them apart: the open button of a Slack queue row is now View, and the catalog entry button is now Change... (the Open status and the Change column keep their names).
+
+## 0.2.2 (2026-11-19)
+
+Plug-in fields you pick from a list, starting with Cloudflare, names that follow single sign-on and can be edited, Access & sign-in as tabs, and compact custom checks.
+
+**Upgrade notes:**
+
+- At their next SSO sign-in, people whose name is still the setup default ("Admin") or their email address get the name from the identity provider. A name someone chose is kept.
+- Accounts that already sign in with SSO keep following the identity provider's name until someone edits it.
+
+New:
+
+- Plug-in fields can offer their values as a list: the field shows chips and a searchable list, free text still works and is marked "not in the list". Cloudflare lists the components of its public status page and the zones the token can see. Plug-ins declare it with `Field.suggest` and `Field.separator`; see docs/extending.md.
+- Admins rename people in Admin > Access & sign-in, and everyone can rename themselves from the user menu.
+
+Changed:
+
+- Names come from the identity provider at sign-in (name, else given and family name) unless someone chose one. Control and bidirectional characters are removed from names.
+- Admin > Access & sign-in shows People, Single sign-on, API tokens and MCP sign-in as tabs, one at a time, kept in the address.
+- Custom checks: a preset set folds into one header line with a summary such as "2 failing, 1 not run yet" and opens by itself when a check fails or has an open card. Rows are shorter and drop the repeated preset prefix.
+- Admin > Integrations: a plug-in without checks no longer says "No checks", and a tile with several instances reads "N instances".
+- The "How to set it up" box has a chevron that shows it opens.
+- The attribution line is centred on the sign-in and setup pages.
+
+## 0.2.1 (2026-11-19)
+
+Setup guides for every plug-in, a SharePoint and OneDrive knowledge plug-in (preview), a Company knowledge group in Integrations, a daily check for new versions, and the "powered by" line on Slack and Teams posts.
+
+**Upgrade notes:**
+
+- Without the Enterprise hide switch, Slack and Teams posts start ending with the "powered by" line.
+- The server makes one request a day to `api.github.com` unless `SKOPAX_UPDATE_CHECK=false`.
+- Removed: the switch "Powered by on Slack and Teams posts" (`core.chat-attribution`, `SKOPAX_CHAT_ATTRIBUTION`). A stored value is ignored.
+
+New:
+
+- Every plug-in has a "How to set it up" box in its side panel in Admin > Integrations: the steps to create the key, token, service account or app it needs, with the least permissions it checks, and a link to the vendor's guide. docs/plugins.md carries the same steps. Plug-ins declare it with `Plugin.setup`; custom plug-ins can too.
+- SharePoint and OneDrive (preview): the investigator searches one SharePoint or OneDrive folder by document name and path and reads Markdown, text and Word files there, masked and cited with links. It signs in as a Microsoft Entra app that needs only `Sites.Selected` and a read grant on one site; every read is checked to lie inside the folder. It replaces the "Coming soon" catalog entry. Not yet tried on a live tenant.
+- A Company knowledge group in Admin > Integrations, shown first, with a Knowledge chip, and as the first group of + Add integration: SharePoint and OneDrive, Confluence, GitHub with its Docs field, and outside MCP servers that are knowledge sources. Plug-ins declare it with `Plugin.company_knowledge`.
+- A daily check for new versions: once a day one server per install reads the 20 latest releases from GitHub, sending only a User-Agent and an Accept header. Admins see a notice with a Release notes link and a dot on the version line when a newer release exists; it is a warning when a newer release's notes have a line starting with `Security:`. On by default; off in Admin > Features (Check for new versions) or with `SKOPAX_UPDATE_CHECK=false`, which makes no request at all.
+
+Changed:
+
+- Every message Skopax starts in Slack and Teams ends with the "powered by" line whenever the page shows it; a reply to a person never carries it. Only the Enterprise switch Hide "powered by Skopax" removes it, everywhere at once.
+- Admin > Integrations shows custom plug-ins and built-in plug-ins in their own headed groups. Chat and Connect MCP no longer carry a New badge.
+- The Google Ads developer token is optional, since Google no longer requires it; a token that is set is still checked and sent.
+- The attribution line on the card page is centred.
+- Dependabot proposes Docker base image updates at once, so a fixed base reaches the image without a 14-day wait.
+
 ## 0.2.0 (2026-11-19)
 
 Custom PromQL checks with presets, native GitHub and SonarQube plug-ins, Spring Cloud Config as a settings source, a Teams to Slack echo, a redesigned Access page, and a vulnerability scan of every release image.

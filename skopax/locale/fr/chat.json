@@ -1,0 +1,53 @@
+{
+"room": "En attente d'une salle libre…",
+"halted": "En attente : l'enquêteur est {why}.",
+"halted_stopped": "arrêté",
+"halted_capped": "plafonné",
+"working": "En cours…",
+"call": "En cours · {n} appel d'outil{last}…",
+"calls": "En cours · {n} appels d'outils{last}…",
+"last": ", dernier : {tool}",
+"still": "Toujours en cours ; rouvrez ce chat dans un instant.",
+"answered": "Répondu",
+"none": "Pas de réponse",
+"role_tip": "Nécessite le rôle operator",
+"queued": "Enquête en file ; ses résultats seront sur la carte.",
+"done": "Terminé : {what}.",
+"starters": [
+["Qu'est-ce qui demande de l'attention ?", "Quelles cartes ouvertes demandent de l'attention en ce moment, et pourquoi ?"],
+["Quelque chose d'inhabituel cette dernière heure ?", "Y a-t-il quelque chose d'inhabituel en prod au cours de la dernière heure ?"],
+["Qu'a trouvé la dernière enquête ?", "Qu'a trouvé l'enquête la plus récente, et quelle est la prochaine étape ?"]
+],
+"actions": {
+"investigate": "Enquêter",
+"resolve": "Résoudre",
+"take": "Prendre en charge",
+"known": "Marquer comme bruit connu",
+"mute": "Mettre en sourdine"
+},
+"apply": "Appliquer",
+"kinds": {
+"fixed": "Corrigé",
+"duplicate": "Doublon de {ref}"
+},
+"hours": "{n} h",
+"continue": "Ceci est un instantané d'un chat partagé.",
+"continue_link": "Continuer dans votre propre chat privé ↗",
+"private_share": "Ce chat a commencé dans un message direct Slack, il reste donc privé et ne peut pas être partagé.",
+"untitled": "Chat",
+"investigator_off": "L'enquêteur IA est désactivé dans Administration › Fonctionnalités.",
+"chat_off": "Le chat est désactivé dans Administration › Fonctionnalités.",
+"feature_off": "{feature} est désactivé dans Administration › Fonctionnalités.",
+"login": "Le chat nécessite une connexion {product} active avec le rôle operator. Reconnectez-vous, ou demandez le rôle à un administrateur.",
+"not_ready": "L'enquêteur IA n'est pas encore configuré, ce message ne recevrait donc pas de réponse. {needs}",
+"refused_cap": "La limite est de {cap} messages de chat par jour ; elle repart à zéro à minuit.",
+"refused_off": "Le chat est désactivé.",
+"refused_busy": "Attendez la réponse à votre dernier message.",
+"refused_missing": "Aucun chat de ce type parmi les vôtres.",
+"refused_long": "Un message contient au plus {limit} caractères.",
+"refused_empty": "Écrivez d'abord un message.",
+"refused_role": "Cela nécessite le rôle operator.",
+"refused_bad": "Cette proposition ne peut pas être appliquée.",
+"refused_failed": "Non appliqué : {reason}.",
+"refused": "Cela n'a pas pu être fait."
+}

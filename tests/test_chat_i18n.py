@@ -72,6 +72,7 @@ def bundled(tag: str) -> dict:
     return json.loads((folder / f'{tag}.json').read_text(encoding='utf-8'))
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_a_pack_translates_chat_texts(store):
     # when
     with served(store, PACK, add=False):
@@ -90,6 +91,7 @@ def test_a_pack_translates_chat_texts(store):
     assert 'still' not in GERMAN and still == ENGLISH['still'], 'a key the pack leaves out stays English'
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_starters_and_actions_translate(store):
     # when
     with served(store, PACK, add=False):
@@ -189,6 +191,7 @@ def test_tags_that_differ_only_in_case_merge():
     assert (said('de-AT', 'working'), said('de-AT', 'still')) == ('Oida...', 'Gleich.')
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_lang_of_picks_cookie_then_accept_language(store):
     # given
     garbage = ',;;q=0.9,=,\x00\u00ff;q=,*;,' + 'x' * 300
@@ -419,6 +422,7 @@ def test_a_joined_address_whose_host_label_starts_with_a_dash_falls_back_to_engl
     assert lines == ['Waiting: the investigator is capped.', 'Waiting: the investigator is angehalten.']
 
 
+@pytest.mark.usefixtures('no_core_packs')
 def test_chat_texts_stop_when_the_plugin_stops_serving(store):
     # when
     with served(store, PACK, add=False) as client:

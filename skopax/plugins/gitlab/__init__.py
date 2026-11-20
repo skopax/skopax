@@ -60,7 +60,7 @@ def make_client(info: InstanceInfo, transport: Transport) -> GitLab:
 
 PLUGIN = Plugin(
     id=ID, name='GitLab', version='0.1.0', category='code', description='Commits, code, merge requests and pipelines of one GitLab group, for deploy authors, tickets and code links.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.4', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),
     client=make_client, max_instances=1,
     fields=(Field('url', 'URL', 'url', required=True, default=GITLAB_URL, ui=True, help='Address of GitLab; its API is read under /api/v4.'),
             Field('token', 'Token', 'secret', required=True, help='An access token with the read_api scope.'),

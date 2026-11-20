@@ -147,7 +147,7 @@ PLUGIN = Plugin(
         docs_label='redis_exporter',
     ),
     id=ID, name='Redis', version='0.1.0', category='infrastructure', description='Redis instances and the Redis calls of each service, read from redis_exporter and Lettuce series in Prometheus.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.3', edition='community', uses=('prometheus',),
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.4', edition='community', uses=('prometheus',),
     fields=(Field('prometheus', 'Prometheus', 'instance', required=True, choices=('prometheus',), help='The Prometheus instance that holds the redis_exporter and Lettuce client series.'),
             Field('selector', 'Selector', 'text', help='Extra label matchers added to every Redis query, such as env="prod". Empty reads every series.'),
             Field('peer-names', 'Redis names', 'text', help='Comma-separated address=name entries that show a friendly name for the Redis address a service calls, for example 10.0.4.12:6379=sessions-cache, 10.0.4.13=queue. An address without a port matches any port. Empty shows the address.')),

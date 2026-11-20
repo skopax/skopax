@@ -1,12 +1,12 @@
 var ADMIN_OK = false, ADMIN_ROLE = 'admin', ADMIN_WANTED = false, ADMIN = null, ADMIN_HIST = null, ADMIN_SEQ = 0, ADMIN_FIND = '', ADMIN_TALK = null;
-var ADMIN_NOTES = [], NOTES_SEQ = 0, FEATS = null, FEATS_SEQ = 0, AIKEY = null, AIKEY_SEQ = 0, AI_TESTING = false, CHANGES_SEQ = 0;
+var ADMIN_NOTES = [], NOTES_SEQ = 0, FEATS = null, FEATS_SEQ = 0, AIKEY = null, OAIKEY = null, AIKEY_SEQ = 0, AI_TESTING = {anthropic: false, openai: false}, CHANGES_SEQ = 0;
 var FEAT_PENDING = {}, FEAT_HELD = {}, FEAT_SAID = {}, FEAT_HOLD_MS = 15000;
 var TALK_NAMES = {'small-talk.enabled': 'Small talk replies', 'small-talk.hourly-cap': 'Small talk replies per hour', 'small-talk.rules': 'Small talk rules'};
 var ADMIN_FOLD = {}, ADMIN_HIST_SHOW = 10, ADMIN_HIST_STEP = 20, ADMIN_HIST_MAX = 200, ADMIN_CLIP = 140, ADMIN_LINE_MAX = 1000;
 var FEATURES_GROUP = 'Features', AI_GROUP = 'Investigator', SIGNIN_GROUP = 'Sign-in', MCP_GROUP = 'MCP', OTHER_SWITCHES = 'Other switches';
 var ADMIN_REVEAL = null, ADMIN_HIT_MS = 2000;
 var ADMIN_TITLES = {settings: 'General: the tunable settings', access: 'Access & sign-in: single sign-on, users, API tokens and MCP', integrations: 'Integrations: plug-ins and their instances',
-  features: 'Features: core features to switch on or off', ai: 'Investigator: the Anthropic API key and the investigator settings', changes: 'Changes: what was changed in Admin, with Revert'};
+  features: 'Features: core features to switch on or off', ai: 'Investigator: the AI provider, its API key and the investigator settings', changes: 'Changes: what was changed in Admin, with Revert'};
 function markAdminTab(id, on) {
   var tab = document.getElementById('tab-' + id);
   if (!tab) return;
@@ -34,6 +34,7 @@ function setAdminAccess(on) {
     FEAT_HELD = {};
     FEAT_SAID = {};
     AIKEY = null;
+    OAIKEY = null;
     if (typeof pqcClear === 'function') pqcClear();
     NOTES_SEQ++;
     adminNotes([]);
@@ -149,6 +150,13 @@ function adminNotes(list) {
       var p = accText('p', 'adm-notice ' + (n.level === 'warn' ? 'k-warn' : 'k-info'));
       if (typeof n.id === 'string') p.dataset.id = n.id;
       p.appendChild(accText('span', 'adm-notice-t', n.text));
+      if (typeof n.href === 'string' && /^https:\/\//i.test(n.href) && typeof n.linkText === 'string' && n.linkText) {
+        var a = accText('a', 'adm-notice-link', n.linkText);
+        a.setAttribute('href', n.href);
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+        p.appendChild(a);
+      }
       if (typeof n.at === 'string' && n.at) p.appendChild(accText('span', 'muted adm-notice-at', dayhm(n.at)));
       box.appendChild(p);
     });
@@ -187,15 +195,16 @@ async function loadFeatures() {
     adminFailed(box, adminDenied(e) ? null : 'Features did not load; open the tab again.');
   }
 }
-async function loadAi(said) {
+async function loadAi(said, saidFor) {
   var seq = ++AIKEY_SEQ, box = document.getElementById('ai');
   try {
-    var r = await Promise.all([adminApi('GET', '/api/admin/anthropic-key'), adminApi('GET', '/api/admin/settings').catch(adminNone)]);
+    var r = await Promise.all([adminApi('GET', '/api/admin/anthropic-key'), adminApi('GET', '/api/admin/settings').catch(adminNone), adminApi('GET', '/api/admin/openai-key').catch(function () { return {failed: true}; })]);
     if (seq !== AIKEY_SEQ) return;
     AIKEY = keyStatus(r[0]);
+    OAIKEY = r[2] && r[2].failed ? {failed: true} : keyStatus(r[2]);
     if (r[1]) ADMIN = r[1];
     markAdminCount();
-    paintAiKey(said);
+    paintAiKey(said, saidFor);
     renderAiRows();
     adminReveal('ai');
   } catch (e) {
@@ -218,14 +227,45 @@ async function loadChanges() {
   }
 }
 function adminSource(i) {
+  if (i.oldSwitch && i.oldSwitch.indexOf('core.auto-resolve-') === 0 && i.source !== 'admin') return '<span class="tag plain" title="' + esc('Off because the old Auto-resolve cleared cards after setting (' + i.oldSwitch + ') is 0; a value saved here wins over it') + '">old setting</span>';
+  if (i.oldSwitch && i.oldSwitch.indexOf('core.auto-resolve-') === 0) return '<span class="tag k-act" title="' + esc('From the old Auto-resolve cleared cards after setting (' + i.oldSwitch + '), set by ' + draftBy(i.by) + ' ' + dayhm(i.at) + '; Reset or saving a value here clears it') + '">old setting</span>';
+  if (i.oldSwitch) return '<span class="tag ' + (i.source === 'admin' ? 'k-act' : 'plain') + '" title="' + esc('From the old Critical cards at once switch (' + i.oldSwitch + ')' + (i.source === 'admin' ? ', set by ' + draftBy(i.by) + ' ' + dayhm(i.at) + '; Reset or saving a value here clears it' : ' in the service configuration; a value saved here wins over it')) + '">old switch</span>';
   if (i.source === 'admin') return '<span class="tag k-act" title="' + esc('Set on this page by ' + draftBy(i.by) + ' ' + dayhm(i.at) + (i.base !== i.value ? '\nWithout it: ' + (i.base || 'empty') : '')) + '">Set by ' + esc(draftBy(i.by)) + ' ' + esc(dayhm(i.at)) + '</span>';
   if (i.source === 'config') return '<span class="tag plain" title="From the service configuration; a value saved here wins over it">config</span>';
   return '<span class="tag plain" title="The built-in default">default</span>';
 }
+var SEV_ROW_KEYS = ['core.auto-resolve-hours-crit', 'core.auto-resolve-hours-warn'];
+var SEV_ROW_NAMES = ['Critical', 'Warning'];
+var SEV_ROW_LABEL = 'Auto-resolve cleared cards after (hours)';
+var SEV_ROW_HELP = 'Closes a card that stopped firing and that nobody acted on after N hours, one value per severity; 0 turns it off for that severity';
+function adminSevRow(items) {
+  var box = el('div', 'adm-multi');
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-labelledby', 'adm-sev-l');
+  box.appendChild(el('div', 'adm-multi-h', '<b id="adm-sev-l">' + esc(SEV_ROW_LABEL) + '</b><p class="adm-help">' + esc(SEV_ROW_HELP) + '</p>'));
+  items.forEach(function (i, n) {
+    var row = adminRow(i), name = row.querySelector('.adm-n b'), input = row.querySelector('.adm-in');
+    row.classList.add('adm-sub');
+    row.dataset.find += ' ' + SEV_ROW_LABEL.toLowerCase() + ' ' + SEV_ROW_NAMES[n].toLowerCase();
+    name.textContent = SEV_ROW_NAMES[n];
+    row.querySelector('.adm-help').remove();
+    input.setAttribute('aria-labelledby', 'adm-sev-l ' + name.id);
+    box.appendChild(row);
+  });
+  return box;
+}
+function adminRows(d, items) {
+  var found = SEV_ROW_KEYS.map(function (k) { return items.filter(function (i) { return i.key === k; })[0]; });
+  var grouped = found.every(Boolean), placed = false;
+  items.forEach(function (i) {
+    if (!grouped || found.indexOf(i) < 0) { d.appendChild(adminRow(i)); return; }
+    if (!placed) { d.appendChild(adminSevRow(found)); placed = true; }
+  });
+}
 function adminId(key) { return 'adm-' + key.replace(/[^a-z0-9]/gi, '-'); }
 function adminControl(i) {
   var id = adminId(i.key), named = ' aria-labelledby="' + esc(id + '-l') + '"';
-  if (i.kind === 'choice') return '<select id="' + esc(id) + '" class="adm-in"' + named + '>' + i.choices.map(function (c) { return '<option value="' + esc(c) + '"' + (c === i.value ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select>';
+  if (i.kind === 'choice') return '<select id="' + esc(id) + '" class="adm-in"' + named + '>' + i.choices.map(function (c) { return '<option value="' + esc(c) + '"' + (c === i.value ? ' selected' : '') + '>' + esc((i.choiceLabels || {})[c] || c) + '</option>'; }).join('') + '</select>';
   if (i.kind === 'bool') return '<select id="' + esc(id) + '" class="adm-in"' + named + '><option value="true"' + (i.value === 'true' ? ' selected' : '') + '>true</option><option value="false"' + (i.value === 'false' ? ' selected' : '') + '>false</option></select>';
   if (i.kind === 'int' || i.kind === 'float') return '<input id="' + esc(id) + '" class="adm-in"' + named + ' type="number" inputmode="decimal" step="' + (i.kind === 'int' ? '1' : 'any') + '" min="' + esc(i.low) + '" max="' + esc(i.high) + '" value="' + esc(i.value) + '">';
   if (i.kind === 'rules') {
@@ -286,6 +326,14 @@ function adminRow(i, card) {
     note.textContent = i.problem;
     row.querySelector('.adm-l').appendChild(note);
   }
+  if (i.off) {
+    row.classList.add('adm-off');
+    row.querySelectorAll('input, select, textarea').forEach(function (inp) { inp.disabled = true; inp.setAttribute('aria-describedby', adminId(i.key) + '-off'); });
+    var off = el('p', 'adm-help adm-off-why');
+    off.id = adminId(i.key) + '-off';
+    off.textContent = i.off;
+    row.querySelector('.adm-l').appendChild(off);
+  }
   var save = row.querySelector('.adm-save'), msg = row.querySelector('.adm-msg');
   row.querySelectorAll('input, select, textarea').forEach(function (inp) { inp.addEventListener('input', function () { if (save) save.disabled = adminValue(row, i) === adminCurrent(i); msg.textContent = ''; }); });
   if (save) save.addEventListener('click', function () { adminSave(i, adminValue(row, i), save, msg); });
@@ -343,7 +391,7 @@ function adminHistory() {
     var shownR = function (v) { return v == null ? '<span class="muted">' + (h.route ? 'none' : h.source || h.secret ? 'not set' : 'config / default') + '</span>' : shown(v); };
     var change = h.seen ? '<span class="muted">workflow link shown</span>' : shownR(h.old) + ' → ' + shownR(h.new);
     return '<tr><td>' + esc(dayhm(h.at)) + '</td><td>' + esc(draftBy(h.by)) + '</td><td title="' + esc(h.key) + '">' + esc(name) + '</td><td class="adm-ch">' + change + '</td>' +
-      '<td>' + (h.route || h.source || h.secret || h.talk ? '' : '<button type="button" class="btn sec small adm-revert" data-id="' + esc(h.id) + '" title="Put back the value before this change">Revert</button>') + '</td></tr>';
+      '<td>' + (h.route || h.source || h.secret || h.talk || h.legacy ? '' : '<button type="button" class="btn sec small adm-revert" data-id="' + esc(h.id) + '" title="Put back the value before this change">Revert</button>') + '</td></tr>';
   }).join('') + '</tbody></table>' + (rest > 0 ? '<p class="adm-hist-more"><button type="button" class="btn sec small adm-more">Show ' + Math.min(rest, ADMIN_HIST_STEP) + ' more</button><span class="muted">' + Math.min(ADMIN_HIST_SHOW, ADMIN_HIST.length) + ' of ' + ADMIN_HIST.length + '</span></p>' : ADMIN_HIST.length >= ADMIN_HIST_MAX ? '<p class="muted adm-hist-more">The latest ' + ADMIN_HIST_MAX + ' changes; older ones stay stored.</p>' : '');
 }
 async function adminRevert(h, b) {
@@ -418,6 +466,7 @@ function adminFilter() {
   document.querySelectorAll('#admin .adm-grp').forEach(function (d) {
     var n = 0;
     d.querySelectorAll('.adm-row').forEach(function (r) { var on = !ADMIN_FIND || r.dataset.find.indexOf(ADMIN_FIND) >= 0; r.hidden = !on; if (on) n++; });
+    d.querySelectorAll('.adm-multi').forEach(function (m) { m.hidden = !m.querySelector('.adm-row:not([hidden])'); });
     d.hidden = !n;
     if (ADMIN_FIND && n) d.open = true;
     else if (!ADMIN_FIND && d.dataset.group) d.open = ADMIN_FOLD[d.dataset.group] === 1;
@@ -475,6 +524,7 @@ async function adminDone(r, said, reverted) {
   ADMIN.items = ADMIN.items.map(function (x) { return x.key === r.item.key ? r.item : x; });
   try { ADMIN_HIST = await adminApi('GET', '/api/admin/history?limit=' + ADMIN_HIST_MAX); } catch (e) {}
   adminPaintAll(r.item.key);
+  if (r.item.key === 'investigate.provider') { await loadAi(); adminNotices(); }
   var row = adminRowEl(r.item.key);
   if (row) { var m = row.querySelector('.adm-msg'); m.textContent = said; m.className = 'adm-msg ok'; }
   var note = reverted && document.getElementById('adm-ch-msg');
@@ -522,7 +572,7 @@ function renderAdmin(saved) {
       d.dataset.group = g;
       var set = by[g].filter(function (i) { return i.source === 'admin'; }).length;
       d.appendChild(el('summary', 'chev', '<h3>' + esc(g) + '</h3><span class="count">' + by[g].length + '</span>' + (set ? '<span class="tag k-act">' + set + ' set here</span>' : '')));
-      by[g].forEach(function (i) { d.appendChild(adminRow(i)); });
+      adminRows(d, by[g]);
       d.open = ADMIN_FIND ? true : ADMIN_FOLD[g] === 1;
       d.addEventListener('toggle', function () {
         if (ADMIN_FIND) return;
@@ -553,6 +603,20 @@ function renderFeatOther(saved) {
     box.appendChild(d);
   });
 }
+var AI_PAIRS = {'investigate.model': ['investigate.effort', 'Card model and effort'], 'investigate.slack-model': ['investigate.slack-effort', 'Slack model and effort'],
+  'investigate.gate-model': ['investigate.gate-effort', 'Topic gate model and effort']};
+function aiPair(model, effort, title) {
+  var pair = el('div', 'adm-pair'), id = adminId(model.key) + '-pair';
+  pair.setAttribute('role', 'group');
+  pair.setAttribute('aria-labelledby', id);
+  pair.dataset.pair = model.key;
+  var h = accText('h4', 'adm-pair-h', title);
+  h.id = id;
+  pair.appendChild(h);
+  pair.appendChild(adminRow(model));
+  pair.appendChild(adminRow(effort));
+  return pair;
+}
 function renderAiRows(saved) {
   var box = document.getElementById('ai-rows');
   if (!box || !ADMIN) return;
@@ -563,7 +627,14 @@ function renderAiRows(saved) {
     var s = el('section', 'adm-grp ai-grp');
     s.dataset.group = AI_GROUP;
     s.appendChild(accText('h3', null, 'Investigator settings'));
-    items.forEach(function (i) { s.appendChild(adminRow(i)); });
+    var byKey = {}, paired = {};
+    items.forEach(function (i) { byKey[i.key] = i; });
+    Object.keys(AI_PAIRS).forEach(function (k) { if (byKey[k] && byKey[AI_PAIRS[k][0]]) paired[AI_PAIRS[k][0]] = k; });
+    items.forEach(function (i) {
+      if (paired[i.key]) return;
+      var mate = AI_PAIRS[i.key] && byKey[AI_PAIRS[i.key][0]];
+      s.appendChild(mate ? aiPair(i, mate, AI_PAIRS[i.key][1]) : adminRow(i));
+    });
     box.appendChild(s);
   });
 }
@@ -576,6 +647,8 @@ function adminReveal(tab) {
   if (!panel || panel.hidden) return;
   var hit = [].filter.call(panel.querySelectorAll(f ? '.feat' : tab === 'access' ? '.adm-row, .sso-f, .sso-sw' : '.adm-row'), function (n) { return f ? n.dataset.id === f.id : n.dataset.key === want.key; })[0];
   if (!hit) return;
+  var part = tab === 'access' ? hit.closest('.acc-part') : null;
+  if (part) accSelect(part.id.slice(4), false);
   var fold = hit.closest('details');
   if (fold) fold.open = true;
   hit.classList.add('adm-hit');
@@ -668,32 +741,68 @@ function keyStatus(r) {
   return {using: r.using === 'admin' || r.using === 'config' ? r.using : null, admin: r.admin === true, config: r.config === true,
     updatedBy: typeof r.updatedBy === 'string' ? r.updatedBy : null, updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : null, note: typeof r.note === 'string' ? r.note : ''};
 }
-function aiMsg() { return document.querySelector('#ai .ai-msg'); }
-function aiSay(text, bad) {
-  var msg = aiMsg();
+var AI_KINDS = [{id: 'anthropic', name: 'Anthropic', path: '/api/admin/anthropic-key', head: 'ai-key-h', input: 'ai-key-in', cls: 'ai-key'},
+  {id: 'openai', name: 'OpenAI', path: '/api/admin/openai-key', head: 'oai-key-h', input: 'oai-key-in', cls: 'ai-key ai-openai'}];
+function aiKind(id) { return AI_KINDS.filter(function (k) { return k.id === id; })[0] || AI_KINDS[0]; }
+function aiStatus(kind) { return kind.id === 'openai' ? OAIKEY : AIKEY; }
+function aiSetStatus(kind, s) { if (kind.id === 'openai') OAIKEY = s; else AIKEY = s; }
+function aiProvider() {
+  var i = (ADMIN && ADMIN.items || []).filter(function (x) { return x.key === 'investigate.provider'; })[0];
+  return i && i.value === 'openai' ? 'openai' : 'anthropic';
+}
+function aiMsg(card) { return (card || document.querySelector('#ai .ai-key')).querySelector('.ai-msg'); }
+function aiSay(text, bad, card) {
+  var msg = card ? aiMsg(card) : document.querySelector('#ai .ai-msg');
   if (!msg) return;
   msg.textContent = text || '';
   msg.className = 'adm-msg ai-msg' + (bad ? ' bad' : text ? ' ok' : '');
 }
-function paintAiKey(said) {
+function paintAiKey(said, saidFor) {
   var box = document.getElementById('ai');
   if (!box || !AIKEY) return;
-  var s = AIKEY;
   box.textContent = '';
-  var list = accText('ul', 'ai-providers'), first = accText('li', 'ai-provider');
-  var card = accText('section', 'ai-key');
-  card.setAttribute('aria-labelledby', 'ai-key-h');
-  var head = accText('div', 'ai-head'), h = accText('h3', null, 'Anthropic API key');
-  h.id = 'ai-key-h';
+  var list = accText('ul', 'ai-providers'), active = aiProvider();
+  AI_KINDS.forEach(function (kind) {
+    var s = aiStatus(kind);
+    if (!s) return;
+    var row = accText('li', 'ai-provider');
+    var card = s.failed ? aiKeyFailed(kind) : aiKeyCard(kind, s, kind.id === active);
+    row.appendChild(card);
+    list.appendChild(row);
+    if (said && (saidFor || 'anthropic') === kind.id) aiSay(said, false, card);
+  });
+  box.appendChild(list);
+}
+function aiKeyFailed(kind) {
+  var card = accText('section', kind.cls);
+  card.dataset.provider = kind.id;
+  card.setAttribute('aria-labelledby', kind.head);
+  var h = accText('h3', null, kind.name + ' API key');
+  h.id = kind.head;
+  var head = accText('div', 'ai-head');
+  head.appendChild(h);
+  card.appendChild(head);
+  var bad = accText('p', 'adm-msg ai-msg bad', 'The ' + kind.name + ' key did not load; open the tab again.');
+  bad.setAttribute('role', 'status');
+  card.appendChild(bad);
+  return card;
+}
+function aiKeyCard(kind, s, active) {
+  var card = accText('section', kind.cls);
+  card.dataset.provider = kind.id;
+  card.setAttribute('aria-labelledby', kind.head);
+  var head = accText('div', 'ai-head'), h = accText('h3', null, kind.name + ' API key');
+  h.id = kind.head;
   head.appendChild(h);
   head.appendChild(accText('span', 'tag ' + (s.using ? 'k-ok' : 'k-warn'), s.using === 'admin' ? 'set here' : s.using === 'config' ? 'from the configuration' : 'not set'));
+  if (active) head.appendChild(accText('span', 'tag k-act ai-active', 'AI provider in use'));
   card.appendChild(head);
   card.appendChild(accText('p', 'ai-state', s.using === 'admin' ? 'Using the key set here' : s.using === 'config' ? s.note : 'No key'));
   if (s.admin && s.updatedBy) card.appendChild(accText('p', 'adm-help ai-by', 'Set by ' + draftBy(s.updatedBy) + (s.updatedAt ? ' ' + dayhm(s.updatedAt) : '')));
   var field = accText('div', 'ai-field'), label = accText('label', null, s.using ? 'New key' : 'Key');
-  label.setAttribute('for', 'ai-key-in');
+  label.setAttribute('for', kind.input);
   var input = document.createElement('input');
-  input.id = 'ai-key-in';
+  input.id = kind.input;
   input.type = 'text';
   input.maxLength = 400;
   input.setAttribute('autocomplete', 'off');
@@ -712,7 +821,7 @@ function paintAiKey(said) {
   var saveB = accText('button', 'btn small ai-save', 'Save'), testB = accText('button', 'btn sec small ai-test', 'Test connection');
   saveB.type = testB.type = 'button';
   saveB.disabled = true;
-  testB.disabled = AI_TESTING;
+  testB.disabled = AI_TESTING[kind.id];
   acts.appendChild(saveB);
   acts.appendChild(testB);
   var remove = null;
@@ -725,72 +834,65 @@ function paintAiKey(said) {
   msg.setAttribute('role', 'status');
   acts.appendChild(msg);
   card.appendChild(acts);
-  first.appendChild(card);
-  list.appendChild(first);
-  var soon = accText('li', 'ai-provider ai-soon');
-  soon.setAttribute('aria-disabled', 'true');
-  soon.appendChild(accText('span', 'ai-provider-name', 'OpenAI'));
-  soon.appendChild(document.createTextNode(' '));
-  soon.appendChild(accText('span', 'tag', 'Coming soon'));
-  list.appendChild(soon);
-  box.appendChild(list);
-  if (said) aiSay(said);
-  input.addEventListener('input', function () { saveB.disabled = !input.value.trim(); aiSay(''); });
+  var say = function (text, bad) { aiSay(text, bad, card); };
+  input.addEventListener('input', function () { saveB.disabled = !input.value.trim(); say(''); });
   saveB.addEventListener('click', async function () {
     var key = input.value.trim();
     if (!key) return;
     saveB.disabled = true;
-    aiSay('Saving\u2026');
+    say('Saving\u2026');
     try {
-      var r = await adminApi('PUT', '/api/admin/anthropic-key', {key: key});
+      var r = await adminApi('PUT', kind.path, {key: key});
       input.value = '';
-      AIKEY = keyStatus(r);
-      paintAiKey('Saved');
+      aiSetStatus(kind, keyStatus(r));
+      paintAiKey('Saved', kind.id);
       adminNotices();
     } catch (e) {
-      aiSay(e && e.detail ? e.detail : 'Not saved, try again', true);
+      say(e && e.detail ? e.detail : 'Not saved, try again', true);
       saveB.disabled = !input.value.trim();
     }
   });
   testB.addEventListener('click', async function () {
-    if (AI_TESTING) return;
+    if (AI_TESTING[kind.id]) return;
     var typed = input.value.trim();
-    AI_TESTING = true;
+    AI_TESTING[kind.id] = true;
     testB.disabled = true;
-    aiSay('Testing\u2026');
+    say('Testing\u2026');
     try {
-      var r = await adminApi('POST', '/api/admin/anthropic-key/test', typed ? {key: typed} : {});
-      aiSay((r && r.ok ? '\u2713 ' : '') + String((r && r.summary) || '') + ' \u00b7 ' + Number((r && r.ms) || 0) + ' ms', !(r && r.ok));
+      var r = await adminApi('POST', kind.path + '/test', typed ? {key: typed} : {});
+      say((r && r.ok ? '\u2713 ' : '') + String((r && r.summary) || '') + ' \u00b7 ' + Number((r && r.ms) || 0) + ' ms', !(r && r.ok));
     } catch (e) {
-      aiSay(e && e.detail ? e.detail : 'The test could not run', true);
+      say(e && e.detail ? e.detail : 'The test could not run', true);
     }
-    AI_TESTING = false;
-    var now = document.querySelector('#ai .ai-test');
+    AI_TESTING[kind.id] = false;
+    var now = document.querySelector('#ai [data-provider="' + kind.id + '"] .ai-test');
     if (now) now.disabled = false;
   });
   if (remove) remove.addEventListener('click', async function () {
     var ask = window.__skopaxConfirm;
     if (typeof ask !== 'function') return;
-    var ok = await ask('Remove the Anthropic API key?', s.config ? 'The key set here is deleted, and the key from the configuration is used again.' : 'The key set here is deleted. The investigator, the chat and the self-review have no key until one is set again.', 'Remove key');
+    var ok = await ask('Remove the ' + kind.name + ' API key?', s.config ? 'The key set here is deleted, and the key from the configuration is used again.' : 'The key set here is deleted. The investigator, the chat and the self-review have no ' + kind.name + ' key until one is set again.', 'Remove key');
     if (!ok) { if (remove.isConnected) remove.focus(); return; }
     remove.disabled = true;
-    aiSay('Removing\u2026');
+    say('Removing\u2026');
     try {
-      await adminApi('DELETE', '/api/admin/anthropic-key');
+      await adminApi('DELETE', kind.path);
     } catch (e) {
       remove.disabled = false;
-      aiSay(e && e.detail ? e.detail : 'Not removed, try again', true);
+      say(e && e.detail ? e.detail : 'Not removed, try again', true);
       return;
     }
     adminNotices();
-    loadAi('Removed');
+    loadAi('Removed', kind.id);
   });
+  return card;
 }
 
 var ACCESS = null, ACCESS_SEQ = 0, ACCESS_N = null, ACCESS_ROLES = ['viewer', 'operator', 'admin'], ACCESS_IDP = ['claim', 'resolver'], ACCESS_LINKS = ['pending', 'bound', 'expired'];
 var ACCESS_PW_MIN = 12, ACCESS_PW_MAX = 256, ACCESS_EMAIL = /^[^@\s]{1,64}@[^@\s]{1,189}$/, ACCESS_ROLE_LABELS = {viewer: 'Viewer', operator: 'Operator', admin: 'Admin'};
 var ACCESS_FIND = '', ACCESS_ROLE_F = '', ACCESS_FAIL = {users: false, tokens: false}, ACCESS_MENU_WIRED = false, ACCESS_SOON_DAYS = 7, ACCESS_DAY_MS = 86400000;
 var ACCESS_SECTIONS = [['people', 'People', 'people'], ['sso', 'Single sign-on', 'single sign-on'], ['tokens', 'API tokens', 'API tokens'], ['mcp', 'MCP sign-in', 'MCP sign-in']];
+var ACCESS_TAB = 'people', ACCESS_TAB_KEYS = {ArrowRight: 1, ArrowLeft: -1, Home: 'first', End: 'last'};
 var ACCESS_USER_HEADS = ['Person', 'Role', 'Sign-in', 'Last sign-in', 'Disabled', 'SSO link', ''], ACCESS_TOKEN_HEADS = ['Name', 'Role', 'Token', 'Created by', 'Created', 'Last used', 'Expires', ''];
 var ACCESS_EXPIRY = [['', 'Never'], ['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['365', '1 year']];
 var ACCESS_LAST_ADMIN = 'The last admin keeps the admin role and stays enabled: make someone else an admin first';
@@ -919,26 +1021,34 @@ function clearAccessSecret() {
 function accShell(box) {
   if (box.querySelector('#acc-people')) return;
   box.textContent = '';
-  var page = accText('div', 'acc-page'), nav = accText('nav', 'acc-nav'), main = accText('div', 'acc-main');
+  var page = accText('div', 'acc-page'), nav = accText('div', 'acc-nav'), main = accText('div', 'acc-main');
+  nav.setAttribute('role', 'tablist');
   nav.setAttribute('aria-label', 'Access sections');
   ACCESS_SECTIONS.forEach(function (s) {
     var b = accText('button', 'acc-nav-b'), dot = accText('span', 'acc-dot');
     b.type = 'button';
+    b.id = 'acc-tab-' + s[0];
     b.dataset.sec = s[0];
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-controls', 'acc-' + s[0]);
     b.appendChild(accText('span', 'acc-nav-l', s[1]));
     b.appendChild(accText('span', 'count acc-nav-n', ''));
     dot.hidden = true;
     b.appendChild(dot);
-    b.addEventListener('click', function () { accJump(s[0]); });
+    b.addEventListener('click', function () { accSelect(s[0], true); });
     nav.appendChild(b);
     var part = accText('div', 'acc-part acc-' + s[0]);
     part.id = 'acc-' + s[0];
+    part.setAttribute('role', 'tabpanel');
+    part.setAttribute('aria-labelledby', 'acc-tab-' + s[0]);
     part.appendChild(accText('p', 'muted acc-loading', 'Loading ' + s[2] + '\u2026'));
     main.appendChild(part);
   });
+  nav.addEventListener('keydown', accTabKey);
   page.appendChild(nav);
   page.appendChild(main);
   box.appendChild(page);
+  accTabsPaint();
   if (!ACCESS_MENU_WIRED) {
     ACCESS_MENU_WIRED = true;
     document.addEventListener('click', function (e) { if (!e.target.closest || !e.target.closest('.acc-menu-w')) accMenuClose(null, false); });
@@ -958,11 +1068,32 @@ function renderAccess() {
   if (!ACCESS_FAIL.users) markAccessCount(ACCESS.users.length);
   accFocusBack(back);
 }
-function accJump(sec) {
-  var part = document.getElementById('acc-' + sec), head = part && part.querySelector('h3');
-  if (!part) return;
-  if (typeof part.scrollIntoView === 'function') part.scrollIntoView({block: 'start', behavior: 'smooth'});
-  if (head) { head.tabIndex = -1; head.focus({preventScroll: true}); }
+function accKnown(sec) { return ACCESS_SECTIONS.some(function (s) { return s[0] === sec; }); }
+function accTabsPaint() {
+  ACCESS_SECTIONS.forEach(function (s) {
+    var on = s[0] === ACCESS_TAB, b = document.getElementById('acc-tab-' + s[0]), part = document.getElementById('acc-' + s[0]);
+    if (b) { b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; }
+    if (part) part.hidden = !on;
+  });
+}
+function accWant(sec) {
+  ACCESS_TAB = accKnown(sec) ? sec : 'people';
+  accTabsPaint();
+}
+function accSelect(sec, focus) {
+  if (!accKnown(sec)) return;
+  ACCESS_TAB = sec;
+  accTabsPaint();
+  if (focus) { var b = document.getElementById('acc-tab-' + sec); if (b) b.focus(); }
+  if (typeof curTab !== 'undefined' && curTab === 'access' && typeof markTab === 'function') markTab();
+}
+function accTabKey(e) {
+  var step = ACCESS_TAB_KEYS[e.key], ids = ACCESS_SECTIONS.map(function (s) { return s[0]; });
+  if (step === undefined || !e.target.closest || !e.target.closest('[role=tab]')) return;
+  e.preventDefault();
+  var at = ids.indexOf(e.target.dataset.sec);
+  var to = step === 'first' ? 0 : step === 'last' ? ids.length - 1 : (at + step + ids.length) % ids.length;
+  accSelect(ids[to], true);
 }
 function accFailed(text) {
   var p = accText('p', 'adm-msg bad acc-failed', text + ' '), again = accText('button', 'btn sec small acc-again', 'Try again');
@@ -1207,10 +1338,48 @@ async function accPatch(u, body, msg, revert, said) {
     renderAccess();
     accStale(fresh, 'people');
     accNote(accRowMsg('user', u.email), said);
+    return saved || {};
   } catch (e) {
     if (revert) revert();
     accNote(accLive(msg, accRowMsg('user', u.email)), accError(e, 'Not saved, try again'), true);
+    return null;
   }
+}
+function accRenamed(email, name) {
+  if (!ACCESS) return;
+  accApply(function (a) { a.users = a.users.map(function (x) { return x.email === email ? Object.assign({}, x, {name: name}) : x; }); });
+  renderAccess();
+}
+function accNameForm(u, msg, menu) {
+  var form = accText('span', 'acc-name-form'), input = accInput('name', 'text', 120, 'Name of ' + u.email);
+  var save = accText('button', 'btn small acc-name-save', 'Save'), cancel = accText('button', 'btn sec small acc-name-cancel', 'Cancel');
+  form.hidden = true;
+  input.className = 'acc-name-in';
+  input.required = false;
+  input.autocomplete = 'off';
+  save.type = 'button';
+  cancel.type = 'button';
+  form.appendChild(input);
+  form.appendChild(save);
+  form.appendChild(cancel);
+  var close = function () { form.hidden = true; accMsg(msg, ''); var b = menu.querySelector('.acc-menu-b'); if (b) b.focus(); };
+  var go = async function () {
+    if (save.disabled) return;
+    save.disabled = true;
+    input.readOnly = true;
+    var name = input.value.trim(), saved = await accPatch(u, {name: name}, msg, null, 'Name saved');
+    save.disabled = false;
+    input.readOnly = false;
+    if (saved && typeof window.__skopaxRenamed === 'function') window.__skopaxRenamed(u.email, saved.name || name);
+  };
+  save.addEventListener('click', go);
+  cancel.addEventListener('click', close);
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); go(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+  });
+  form.open = function () { input.value = u.name || ''; form.hidden = false; input.focus(); input.select(); };
+  return form;
 }
 function accUserRow(u) {
   var tr = accText('tr', 'acc-user' + (u.disabled ? ' off' : ''));
@@ -1273,13 +1442,18 @@ function accUserRow(u) {
   form.appendChild(pw);
   form.appendChild(save);
   form.appendChild(cancel);
-  var showPw = function () { form.hidden = !form.hidden; if (!form.hidden) pw.focus(); };
-  var items = [{cls: 'acc-mi-role', text: 'Change role', off: sel.disabled, title: sel.disabled ? sel.title : '', run: function () { sel.focus(); }}];
+  var naming = null;
+  var showPw = function () { naming.hidden = true; form.hidden = !form.hidden; if (!form.hidden) pw.focus(); };
+  var items = [{cls: 'acc-mi-name', text: 'Edit name', run: function () { form.hidden = true; naming.open(); }},
+    {cls: 'acc-mi-role', text: 'Change role', off: sel.disabled, title: sel.disabled ? sel.title : '', run: function () { sel.focus(); }}];
   if (u.source !== 'sso') items.push({cls: 'acc-reset', text: 'Reset password', run: showPw});
   if (fresh) items.push({cls: 'acc-setpw', text: 'Turn into local account', title: 'Give this account a password: it becomes a local account, and its SSO link waits 7 days for the first sign-in', run: showPw});
   items.push({cls: 'acc-mi-off' + (u.disabled ? '' : ' acc-mi-danger'), text: u.disabled ? 'Enable sign-in' : 'Disable sign-in', off: last, title: last ? ACCESS_LAST_ADMIN : u.disabled ? '' : 'Stops sign-in for this person; their sessions and API tokens stop within 30 seconds',
     run: function () { off.checked = !off.checked; off.dispatchEvent(new Event('change', {bubbles: true})); }});
-  ctl.appendChild(accMenu(u, items));
+  var menu = accMenu(u, items);
+  naming = accNameForm(u, msg, menu);
+  ctl.appendChild(menu);
+  ctl.appendChild(naming);
   if (canPw) ctl.appendChild(form);
   ctl.appendChild(msg);
   cancel.addEventListener('click', function () { form.hidden = true; pw.value = ''; accMsg(msg, ''); });
