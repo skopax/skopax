@@ -317,7 +317,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 PLUGIN = Plugin(
     id=ID, name='Cloudflare', version='0.1.0', category='web',
     description='Health checks, certificate packs, status-page components and edge 5xx shares of Cloudflare zones.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.4', edition='community',
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.5', edition='community',
     capabilities=Capabilities(hosts=('api.cloudflare.com', 'www.cloudflarestatus.com'), secrets=('token',)),
     fields=(Field('token', 'API token', 'secret', required=True, help='A read-only API token with Zone Read, Analytics Read, SSL and Certificates Read and Health Checks Read on the watched zones.'),
             Field('zones', 'Zones', 'text', required=True, suggest=suggest_zones, separator=',',

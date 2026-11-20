@@ -4,9 +4,9 @@ const {JSDOM, VirtualConsole} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const RELEASE = 'https://github.com/skopax/skopax/releases/tag/v0.3.0';
-const INFO = {id: 'update', level: 'info', text: 'Skopax 0.3.0 is available; this server runs 0.2.0.', href: RELEASE, linkText: 'Release notes'};
-const WARN = {id: 'update', level: 'warn', text: 'Skopax 0.3.0 is available and fixes a security issue; this server runs 0.2.0. Update soon.', href: RELEASE, linkText: 'Release notes'};
+const RELEASE = 'https://github.com/skopax/skopax/releases/tag/v0.4.0';
+const INFO = {id: 'update', level: 'info', text: 'Skopax 0.4.0 is available; this server runs 0.2.0.', href: RELEASE, linkText: 'Release notes'};
+const WARN = {id: 'update', level: 'warn', text: 'Skopax 0.4.0 is available and fixes a security issue; this server runs 0.2.0. Update soon.', href: RELEASE, linkText: 'Release notes'};
 
 const BLOB = /(<script type="application\/json" id="brand-data">)[\s\S]*?(<\/script>)/;
 const HIDDEN = {name: 'Acme Ops', slug: 'acme-ops', version: '0.2.0', attribution: null};
@@ -85,7 +85,7 @@ async function aLinkThatIsNotHttpsIsNeverRenderedAndTextStaysText() {
   //given
   const evil = '<img src=x onerror=alert(1)>';
   const errors = [];
-  for (const href of ['javascript:alert(1)', 'http://github.com/skopax/skopax/releases/tag/v0.3.0']) {
+  for (const href of ['javascript:alert(1)', 'http://github.com/skopax/skopax/releases/tag/v0.4.0']) {
     const t = await boot({notices: [{id: 'update', level: 'info', text: evil, href, linkText: 'Release notes'}]});
     const note = t.doc.querySelector('#adm-notices .adm-notice[data-id="update"]');
 

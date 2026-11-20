@@ -45,7 +45,7 @@ From the root of the Skopax repository:
 As for Hello, the layer image installs the plug-in in a Python build stage and copies it into the Skopax image's `site-packages`:
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.3.0 -t skopax-couchbase examples/couchbase-plugin
+docker build --build-arg SKOPAX_VERSION=0.4.0 -t skopax-couchbase examples/couchbase-plugin
 ```
 
 Pin `SKOPAX_VERSION` to the Skopax release you run. Couchbase is then listed in Connect > Integrations; add a Prometheus instance first, then one Couchbase instance per cluster.

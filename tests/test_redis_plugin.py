@@ -131,7 +131,7 @@ def test_redis_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('redis').state == 'ok'
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'Redis', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
+        'Redis', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.5', 'community')
     assert manifest['uses'] == ['prometheus'] and manifest['capabilities'] == {'hosts': [], 'secrets': [], 'agentReads': False}
     assert [(f['key'], f['kind'], f['required'], f['choices']) for f in manifest['fields']] == [('prometheus', 'instance', True, ['prometheus']), ('selector', 'text', False, []), ('peer-names', 'text', False, [])]
     assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('redis', 900, 780, ['redis'])]
