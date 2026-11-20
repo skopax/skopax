@@ -891,6 +891,7 @@
   "For you": "Size özel",
   "Cards assigned to you and what happens on them. Showing this page marks them read.": "Size atanan kartlar ve onlarda olanlar. Bu sayfa açılınca okundu sayılır.",
   "Show more": "Daha fazla göster",
+  "Show less": "Daha az göster",
   "Admin sections": "Yönetim bölümleri",
   "Admin notices": "Yönetim bildirimleri",
   "Who can sign in and how: people and their roles, single sign-on, API tokens and MCP sign-in. Roles are viewer, operator and admin.": "Kimin nasıl giriş yapabileceği: kişiler ve rolleri, tek oturum açma (SSO), API token'ları ve MCP girişi. Roller viewer, operator ve admin.",
@@ -1213,7 +1214,9 @@
   "No information right now. Info findings show here while they fire and for a day after they end.": "Şu an bilgi yok. Bilgi bulguları firing oldukları sürece ve bittikten sonra bir gün burada görünür.",
   "nothing firing": "firing olan yok",
   "{0} item still firing": "{0} öğe hâlâ firing",
-  "{0} items still firing": "{0} öğe hâlâ firing"
+  "{0} items still firing": "{0} öğe hâlâ firing",
+  "Paste a new key": "Yeni anahtarı yapıştırın",
+  "Test connection tries the key typed here, or the key in use when the field is empty.": "Bağlantıyı test et, buraya yazılan anahtarı veya alan boşsa kullanılan anahtarı dener."
  },
  "rules": [
   [

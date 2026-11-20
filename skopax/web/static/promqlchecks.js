@@ -59,12 +59,12 @@ function pqcRender(said) {
   var items = pqcList(PQC.items), most = pqcLimit('checks', 50), head = pqcEl('div', 'pqc-head');
   head.appendChild(pqcEl('h3', '', 'Custom checks'));
   var ro = pqcRO();
-  var add = pqcEl('button', 'btn small pqc-add', '+ Add check');
+  var add = pqcEl('button', 'btn small' + (PQC_EDIT && !ro ? ' sec' : '') + ' pqc-add', '+ Add check');
   add.type = 'button';
   add.disabled = items.length >= most;
   add.addEventListener('click', function () { pqcEdit({}); });
   if (!ro) head.appendChild(add);
-  var from = pqcEl('button', 'btn small pqc-from-preset', 'Add from preset');
+  var from = pqcEl('button', 'btn sec small pqc-from-preset', 'Add from preset');
   from.type = 'button';
   from.disabled = items.length >= most;
   from.addEventListener('click', function () { pqcPick(''); });
@@ -351,7 +351,7 @@ function pqcRow(d, skip) {
   if (run && state === 'ok') meta += ' \u00b7 ' + (run.series || 0) + ' series, ' + pqcCount(run.cards, 'card', 'cards') + (run.noBaseline ? ', ' + pqcCount(run.noBaseline, 'group', 'groups') + ' had no baseline value' : '');
   li.appendChild(pqcEl('span', 'pqc-m', meta));
   if (pqcRO()) return li;
-  var edit = pqcEl('button', 'btn small pqc-edit', 'Edit');
+  var edit = pqcEl('button', 'btn sec small pqc-edit', 'Edit');
   edit.type = 'button';
   edit.setAttribute('aria-label', 'Edit ' + full);
   edit.addEventListener('click', function () { pqcEdit(d); var f = pqcBox().querySelector('.pqc-form [name="name"]'); if (f) f.focus(); });
@@ -485,8 +485,9 @@ function pqcForm(d) {
   f.appendChild(out);
   return f;
 }
+var PQC_MAIN = ['pqc-save', 'pqc-preset-add'];
 function pqcButton(cls, text) {
-  var b = pqcEl('button', 'btn small ' + cls, text);
+  var b = pqcEl('button', 'btn ' + (PQC_MAIN.indexOf(cls) >= 0 ? '' : 'sec ') + 'small ' + cls, text);
   b.type = 'button';
   return b;
 }

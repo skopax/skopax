@@ -811,6 +811,7 @@
   "Shipped, not in this release": "Entregado, no en esta release",
   "Show": "Mostrar",
   "Show more": "Mostrar más",
+  "Show less": "Mostrar menos",
   "Show older": "Mostrar anteriores",
   "Show on Services ›": "Mostrar en Servicios ›",
   "Show or hide the anomaly filters": "Mostrar u ocultar los filtros de anomalías",
@@ -1213,7 +1214,9 @@
   "No information right now. Info findings show here while they fire and for a day after they end.": "Ahora no hay información. Los hallazgos de información aparecen aquí mientras están activos y un día después de terminar.",
   "nothing firing": "nada activo",
   "{0} item still firing": "{0} elemento sigue activo",
-  "{0} items still firing": "{0} elementos siguen activos"
+  "{0} items still firing": "{0} elementos siguen activos",
+  "Paste a new key": "Pega una clave nueva",
+  "Test connection tries the key typed here, or the key in use when the field is empty.": "Probar conexión prueba la clave escrita aquí, o la clave en uso cuando el campo está vacío."
  },
  "rules": [
   [

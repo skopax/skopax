@@ -25,9 +25,74 @@ function admMeta(i) {
 function admRowHtml(i) {
   var name = typeof i.shortLabel === 'string' && i.shortLabel ? esc(i.shortLabel) + '<span class="sr">' + esc(i.label.slice(i.shortLabel.length)) + '</span>' : esc(i.label);
   return '<div class="adm-l"><div class="adm-n"><b id="' + esc(adminId(i.key) + '-l') + '">' + name + '</b>' + admDot(i) + '</div>' +
-    '<p class="adm-help">' + esc(i.help) + '</p><code class="adm-key">' + esc(i.key) + '</code></div>' +
+    admHelp(i.help) + '<code class="adm-key">' + esc(i.key) + '</code></div>' +
     '<div class="adm-c">' + adminControl(i) + (i.pluginTerms && i.pluginTerms.length ? '<p class="adm-help adm-plugin-terms">From plug-ins, not saved here: ' + i.pluginTerms.map(function (t) { return '<code>' + esc(t) + '</code>'; }).join(' ') + '</p>' : '') +
     '<div class="adm-acts"><button type="button" class="btn small adm-save" disabled>Save</button><span class="adm-msg" role="status"></span></div></div>' + admMeta(i);
+}
+var ADM_FOLD_AT = 160, ADM_FOLD_SEQ = 0;
+function admHelp(text) {
+  var long = String(text || '').length > ADM_FOLD_AT;
+  return '<p class="adm-help' + (long ? ' adm-fold' : '') + '">' + esc(text) + '</p>' + (long ? '<button type="button" class="adm-more" aria-expanded="false">Show more</button>' : '');
+}
+function admUnfold(row) {
+  var more = row.querySelector('.adm-more');
+  if (!more) return;
+  var help = more.previousElementSibling;
+  if (!help) return;
+  ADM_FOLD_SEQ += 1;
+  help.id = help.id || 'adm-fold-' + ADM_FOLD_SEQ;
+  more.setAttribute('aria-controls', help.id);
+  more.addEventListener('click', function () {
+    var open = !help.classList.contains('open');
+    help.classList.toggle('open', open);
+    more.setAttribute('aria-expanded', String(open));
+    more.textContent = open ? 'Show less' : 'Show more';
+  });
+}
+var ADM_SEG_MAX = 5, ADM_SEG_LEN = 12, ADM_NAMES = {anthropic: 'Anthropic', openai: 'OpenAI'};
+function admChoiceText(i, c) { return (i.choiceLabels || {})[c] || ADM_NAMES[c] || c; }
+function admSegOk(i) { return i.kind === 'choice' && Array.isArray(i.choices) && i.choices.length > 1 && i.choices.length <= ADM_SEG_MAX && i.choices.indexOf(i.value) >= 0 && i.choices.every(function (c) { return String(admChoiceText(i, c)).length <= ADM_SEG_LEN; }); }
+function admSeg(row, i) {
+  var sel = row.querySelector('select.adm-in');
+  if (!sel || !admSegOk(i)) return;
+  var seg = el('div', 'adm-seg');
+  seg.setAttribute('role', 'radiogroup');
+  seg.setAttribute('aria-labelledby', adminId(i.key) + '-l');
+  var pick = function (b) {
+    if (sel.disabled || sel.value === b.dataset.v) return;
+    sel.value = b.dataset.v;
+    sel.dispatchEvent(new Event('input', {bubbles: true}));
+    sel.dispatchEvent(new Event('change', {bubbles: true}));
+  };
+  i.choices.forEach(function (c) {
+    var b = accText('button', 'adm-seg-b', admChoiceText(i, c));
+    b.type = 'button';
+    b.dataset.v = c;
+    b.setAttribute('role', 'radio');
+    b.addEventListener('click', function () { pick(b); });
+    seg.appendChild(b);
+  });
+  var paint = function () {
+    [].forEach.call(seg.children, function (b) {
+      var on = b.dataset.v === sel.value;
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+      b.disabled = sel.disabled;
+    });
+  };
+  seg.addEventListener('keydown', function (e) {
+    var step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    var list = [].slice.call(seg.children), at = list.indexOf(document.activeElement), to = list[(at + step + list.length) % list.length];
+    if (!to) return;
+    pick(to);
+    to.focus();
+  });
+  ['input', 'change'].forEach(function (ev) { sel.addEventListener(ev, paint); });
+  sel.hidden = true;
+  sel.parentNode.insertBefore(seg, sel);
+  paint();
 }
 function admOrder(i) { return typeof i.order === 'number' ? i.order : 9999; }
 function admCards(into, items) {

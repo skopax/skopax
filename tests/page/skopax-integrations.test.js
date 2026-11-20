@@ -1301,7 +1301,7 @@ async function theSidePanelIsAViewportOverlayAndFullScreenOnAPhone() {
 
   //then
   assert.ok(/\.int-wrap \{[^}]*position: fixed;[^}]*inset: 0;/.test(css), 'the wrap covers the viewport');
-  assert.ok(/\.int-panel \{[^}]*width: 420px;/.test(css), '420 px wide');
+  assert.ok(/\.int-panel \{[^}]*width: 560px;/.test(css), '560 px wide');
   assert.ok(/@media \(max-width: 768px\) \{[^@]*\.int-panel \{ width: 100%;/.test(css), 'full screen at 768 px and below');
   assert.ok(/<div class="int-wrap" id="int-wrap" hidden>/.test(css) && css.indexOf('id="int-wrap"') > css.indexOf('</main>'), 'outside the content, at body level');
   console.log('PASS Integrations: the side panel is a fixed body-level overlay, 420 px wide, full screen on a phone');

@@ -811,6 +811,7 @@
   "Shipped, not in this release": "Ausgeliefert, nicht in diesem Release",
   "Show": "Anzeigen",
   "Show more": "Mehr anzeigen",
+  "Show less": "Weniger anzeigen",
   "Show older": "Ältere anzeigen",
   "Show on Services ›": "Unter Services anzeigen ›",
   "Show or hide the anomaly filters": "Anomaliefilter ein- oder ausblenden",
@@ -1213,7 +1214,9 @@
   "No information right now. Info findings show here while they fire and for a day after they end.": "Gerade keine Informationen. Info-Befunde stehen hier, solange sie auslösen, und einen Tag nach ihrem Ende.",
   "nothing firing": "nichts löst aus",
   "{0} item still firing": "{0} Eintrag löst noch aus",
-  "{0} items still firing": "{0} Einträge lösen noch aus"
+  "{0} items still firing": "{0} Einträge lösen noch aus",
+  "Paste a new key": "Neuen Key einfügen",
+  "Test connection tries the key typed here, or the key in use when the field is empty.": "Verbindung testen prüft den hier eingegebenen Key oder, wenn das Feld leer ist, den verwendeten Key."
  },
  "rules": [
   [

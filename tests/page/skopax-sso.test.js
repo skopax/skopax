@@ -1132,8 +1132,8 @@ async function theCardStylesItsOverrideLabelFoldCheckboxAndRows() {
   //then
   const css = (el) => t.w.getComputedStyle(el);
   const base = card(t.doc).querySelector('.sso-sw-l .sso-base'), tag = card(t.doc).querySelector('.sso-sw-l .sso-src');
-  assert.strictEqual(css(base).fontSize, css(tag).fontSize, 'the override label is the size of the tag beside it');
-  assert.ok(parseFloat(css(base).marginLeft) > 0, 'and does not touch it');
+  assert.strictEqual(tag.title, base.textContent, 'the override is the tooltip of the one source tag');
+  assert.strictEqual(css(base).clipPath, 'inset(50%)', 'and stays for screen readers without a second label beside the tag');
   assert.ok(card(t.doc).querySelector('.sso-adv > summary').classList.contains('chev'), 'Advanced: endpoints has a fold marker');
   assert.strictEqual(css(field(t.doc, 'require-verified-email').querySelector('input[type=checkbox]')).justifySelf, 'start', 'the checkbox sits under its label');
   const sheet = [...t.doc.querySelector('style').sheet.cssRules].filter((r) => r.selectorText === '.sso-map-t, .sso-inuse').map((r) => r.style.width);
