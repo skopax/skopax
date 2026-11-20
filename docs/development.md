@@ -59,7 +59,7 @@ The tests need no outside services: MongoDB is `mongomock`, and the services Sko
 
 - `tests/plugin_kit.py`: a plug-in, its instances and a context to run its checks and tools;
 - `tests/fake_http.py`: a fake transport that answers chosen routes, for plug-in reads through `ctx.http()`;
-- `tests/fake_anthropic.py`, `tests/fake_slack.py`, `tests/fake_google.py` and `tests/fake_cdp.py`: the Anthropic API, Slack, Google sign-in and the browser service;
+- `tests/fake_anthropic.py`, `tests/fake_openai.py`, `tests/fake_slack.py`, `tests/fake_google.py` and `tests/fake_cdp.py`: the Anthropic API, the OpenAI API, Slack, Google sign-in and the browser service;
 - `tests/mcp_fake.py`: an outside MCP server;
 - `tests/sso_kit.py`: an OpenID Connect provider;
 - `tests/agent_kit.py`, `tests/kube_kit.py`, `tests/teams_kit.py` and `tests/website_kit.py`: agents, Kubernetes, Teams routes and the Website plug-in;
@@ -73,6 +73,12 @@ The page suites run the page's scripts in jsdom, from `tests/page`:
 `run.js` runs every `*.test.js` file, at most 4 at a time, and prints one line per suite. Give it part of a file name to run only the matching suites, for example `node tests/page/run.js skopax-sidebar`. The page clock follows `SKOPAX_TEST_TZ` (default `UTC`); CI runs the suites in `UTC` and in `Asia/Tokyo`:
 
     SKOPAX_TEST_TZ=Asia/Tokyo node tests/page/run.js
+
+`tests/test_openai_live.py` calls the real OpenAI API and is skipped unless `SKOPAX_TEST_OPENAI_KEY` holds a key. It runs a short card run with two tool calls in one turn, a turn cut at a tiny output limit and replayed, web search, the lowest and highest effort on every offered model, a strict tool, and checks that the usage split adds up. It costs a few cents. Export a key of a test project as `SKOPAX_TEST_OPENAI_KEY` in your shell, then run it on its own, in one process:
+
+    .venv/bin/python -m pytest -q -n 0 tests/test_openai_live.py
+
+A failed call shows only the kind of error, such as `AuthenticationError`, never OpenAI's error text, so a key can never show up in the output. CI never sets the variable, so CI never calls OpenAI.
 
 Both the Python tests and the page suites must pass before a pull request.
 

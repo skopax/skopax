@@ -2,10 +2,10 @@ import logging
 import re
 from dataclasses import dataclass
 
+from skopax.ai import FETCH_TYPE, SEARCH_TYPE
+
 log = logging.getLogger('skopax.investigator.web')
 
-SEARCH_TYPE = 'web_search_20250305'
-FETCH_TYPE = 'web_fetch_20250910'
 TYPES = (SEARCH_TYPE, FETCH_TYPE)
 NAMES = ('web_fetch', 'web_search')
 RESULTS = {'web_search_tool_result': 'web_search', 'web_fetch_tool_result': 'web_fetch'}

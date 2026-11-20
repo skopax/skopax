@@ -666,7 +666,7 @@ def test_skopax_env_names_are_read(name):
     base = dataclasses.asdict(load_settings(env={}))
 
     # when
-    seen = [value for value in ('7', 'true', 'false', 'x') if differs(base, name, value)]
+    seen = [value for value in ('7', 'true', 'false', 'x', 'openai') if differs(base, name, value)]
 
     # then
     assert seen, f'{name} changes no setting'

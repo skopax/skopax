@@ -30,7 +30,7 @@ Admin has six sections: General, Access & sign-in, Integrations, Features, Inves
 - **General:** the tunable settings that are not on Access & sign-in, Features or Investigator, with search, and the Other instances list.
 - **Access & sign-in:** single sign-on, users, roles, API tokens and MCP access, as four tabs (People, Single sign-on, API tokens, MCP sign-in); see [Adding people](sign-in.md#adding-people), [Sign in with SSO](sign-in.md#sign-in-with-sso), [Roles](sign-in.md#roles) and [MCP](sign-in.md#mcp).
 - **Features:** one switch per feature, described below.
-- **Investigator:** the Anthropic API key, the model, the mode and the spend limits.
+- **Investigator:** the AI provider and its API key, the models, the mode and the spend limits.
 - **Changes:** what was changed in Admin, with Revert for each setting.
 
 ### Feature switches
@@ -51,14 +51,25 @@ Each switch has an environment name, which sets the starting value. A value save
 | Check for new versions | `SKOPAX_UPDATE_CHECK` | asks GitHub once a day for the latest release and shows admins a notice when a newer one exists; see [Version check](operations.md#version-check) |
 | Hide "powered by Skopax" | `SKOPAX_FEATURE_HIDE_ATTRIBUTION` | Enterprise only; hides the line on every page, in the chat and on Slack and Teams posts; see [Branding](configuration.md#branding) |
 
-### The Anthropic key
+### The AI provider and its key
 
-Set the key in Admin > Investigator. It is write-only: it is sealed with `SKOPAX_SECRET_KEY` (or the generated key), never shown again, and never written to the activity log or the change history. Test connection tells you in a fixed sentence whether the key works, never with the API's own error text. A key set in Admin takes the place of `ANTHROPIC_API_KEY` from the environment; remove it to fall back to the environment value. The spend limits stay on, with or without a key set here.
+One install uses one AI provider: Anthropic (the default) or OpenAI. Pick it with AI provider in Admin > Investigator (`investigate.provider`, or `SKOPAX_AI_PROVIDER`). A change applies from the next run or ask; a run already started keeps its provider. Every model call goes to that provider: card runs, page, Slack and chat asks, the topic gate, small talk, the self-review and plug-in model calls.
+
+Each provider has its own key. Set it in Admin > Investigator. It is write-only: it is sealed with `SKOPAX_SECRET_KEY` (or the generated key), never shown again, and never written to the activity log or the change history. Test connection tells you in a fixed sentence whether the key works, never with the API's own error text. A key set in Admin takes the place of `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` from the environment; remove it to fall back to the environment value. The spend limits stay on, with or without a key set here.
 
 Admin > Investigator lists the AI providers, in this order:
 
-- **Anthropic API key:** the provider in use. Its card shows where the key in use comes from (set here, from the configuration, or not set), an input labelled Key (New key once a key is in use), Save, Test connection, and Remove while a key is set here. Test connection tries the key typed in the input, or the key in use when the input is empty. Remove deletes the key set here; the key from the configuration is then used again, if there is one.
-- **OpenAI:** tagged Coming soon. The row has no controls and cannot be chosen yet.
+- **Anthropic API key** and **OpenAI API key:** one card each. The card of the provider in use is tagged AI provider in use. A card shows where its key comes from (set here, from the configuration, or not set), an input labelled Key (New key once a key is in use), Save, Test connection, and Remove while a key is set here. Test connection tries the key typed in the input, or the key in use when the input is empty, against the card model of that provider. Remove deletes the key set here; the key from the configuration is then used again, if there is one.
+
+Each model sits next to its thinking effort in one row of Admin > Investigator (card, Slack and topic gate); both stay separate settings with their own help, source and Reset. The model settings (card, Slack, chat, topic gate, self-review and the Website page scan) list the models of the provider in use. A model of the other provider, such as a Claude model left set after a switch to OpenAI, is never sent: the run uses the default model of the provider in use (OpenAI: `gpt-6.2-astra` for cards and plug-ins, `gpt-6.2-sol` for Slack, chat and the self-review, `gpt-6-luna` for the topic gate), and Admin shows a notice until you pick one of its models.
+
+With OpenAI, a few things work differently:
+
+- **Web page reads** have no limit of their own: OpenAI's web search finds and opens pages in one tool, so Web pages per run is greyed out with the reason. Web search works, limited by Web searches per run. Every web search call counts and costs as one search ($0.01, OpenAI's price per call), including a call that opens or searches within a page.
+- **Fallback models** are Anthropic only: when an Anthropic model is busy, the API can answer with another one; OpenAI has no such fallback.
+- **Effort** maps one to one to OpenAI's reasoning effort (low, medium, high, xhigh, max). The topic gate and small talk run with no reasoning on `gpt-6-luna` and `gpt-6.1-terra`, and with low reasoning on the other models, so Topic gate effort is greyed out with the reason. A single call that reasons (self-review, plug-in calls) gets 4000 more output tokens for that reasoning.
+- **Prompt caching** is automatic. Cached input counts as cache reads; cache writes are priced at OpenAI's write price.
+- **Requests are not stored** at OpenAI (`store: false`); the reasoning of a turn is sent back encrypted on the next turn.
 
 ### Event causes
 
@@ -70,7 +81,7 @@ When the investigator shows that a card follows a one-off trigger, such as a pus
 
 ### Notices
 
-The strip shows, for admins only: a generated secret key (set `SKOPAX_SECRET_KEY` to manage it yourself), a settings source that is failing, a stored Anthropic key that can no longer be read, single sign-on that cannot reach the identity provider (see [Sign in with SSO](sign-in.md#sign-in-with-sso)), a Slack app that lacks a scope Skopax reads the main channel or direct messages with (checked every 5 minutes and when the channel is saved), a plug-in that failed to load, an org pack that is ignored because another plug-in's pack is in use (see [Org packs](extending.md#org-packs)), a language pack with texts left out (see [Locale packs](extending.md#locale-packs); only for a plug-in that is on), a newer Skopax release (see [Version check](operations.md#version-check)), a Teams route that stopped trying to post some cards (see [Microsoft Teams](plugins.md#microsoft-teams)), an MCP server connection that needs a new sign-in, whose tools changed on the server, or whose server refused it (see [Outside MCP servers](plugins.md#outside-mcp-servers)), and the proxy warning. The proxy warning appears when a client sent forwarded addresses from a peer that is not trusted. It lasts 24 hours after the last sighting. Add the proxy's address or range to `FORWARDED_ALLOW_IPS` (see [Behind a proxy or ingress](operations.md#behind-a-proxy-or-ingress)).
+The strip shows, for admins only: a generated secret key (set `SKOPAX_SECRET_KEY` to manage it yourself), a settings source that is failing, a stored Anthropic or OpenAI key that can no longer be read, a model setting that names a model of the other AI provider, single sign-on that cannot reach the identity provider (see [Sign in with SSO](sign-in.md#sign-in-with-sso)), a Slack app that lacks a scope Skopax reads the main channel or direct messages with (checked every 5 minutes and when the channel is saved), a plug-in that failed to load, an org pack that is ignored because another plug-in's pack is in use (see [Org packs](extending.md#org-packs)), a language pack with texts left out (see [Locale packs](extending.md#locale-packs); only for a plug-in that is on), a newer Skopax release (see [Version check](operations.md#version-check)), a Teams route that stopped trying to post some cards (see [Microsoft Teams](plugins.md#microsoft-teams)), an MCP server connection that needs a new sign-in, whose tools changed on the server, or whose server refused it (see [Outside MCP servers](plugins.md#outside-mcp-servers)), and the proxy warning. The proxy warning appears when a client sent forwarded addresses from a peer that is not trusted. It lasts 24 hours after the last sighting. Add the proxy's address or range to `FORWARDED_ALLOW_IPS` (see [Behind a proxy or ingress](operations.md#behind-a-proxy-or-ingress)).
 
 ### Other instances
 

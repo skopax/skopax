@@ -122,7 +122,7 @@ def test_website_settings_and_the_scan_headers_field_are_declared_with_neutral_d
     assert {s.key: s.default for s in website.PLUGIN.settings} == {'page-scan': 'false', 'scan-hours': '1', 'recheck-days': '7', 'pages': '50', 'extra': '', 'ignore': '',
                                                                   'model': 'claude-opus-5-5', 'digest-hour': '10', 'scan-prompt': ''}
     found = {s.key: s for s in website.PLUGIN.settings}
-    assert set(found['model'].choices) == set(pricing.PRICES)
+    assert set(found['model'].choices) == set(pricing.ALL_MODELS)
     assert found['model'].default == settings().investigate_model
     assert (found['scan-prompt'].kind, found['scan-prompt'].high) == ('text', 20000) and (found['digest-hour'].low, found['digest-hour'].high) == (-1, 23)
     assert next(f for f in website.PLUGIN.fields if f.key == 'scan-headers').kind == 'secret' and website.PLUGIN.capabilities.secrets == ('scan-headers',)

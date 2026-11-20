@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from skopax import brand, logs
 from skopax.messages import msg
 from skopax.users import ROLES
+from skopax.ai import PROVIDERS as AI_PROVIDERS
 
 log = logging.getLogger('skopax.config')
 
@@ -173,6 +174,8 @@ class Settings:
     jira_title_prefix: str = ''
     jira_release_name: str = RELEASE_NAME
     anthropic_api_key: str = field(default='', repr=False)
+    openai_api_key: str = field(default='', repr=False)
+    ai_provider: str = 'anthropic'
     investigate_mode: str = 'off'
     investigate_model: str = 'claude-opus-5-5'
     investigate_effort: str = 'medium'
@@ -395,6 +398,11 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         log.warning('investigate.mode %r is not one of %s; the investigator stays off', mode, ', '.join(INVESTIGATE_MODES))
         mode = 'off'
 
+    provider = get('investigate.provider', 'SKOPAX_AI_PROVIDER', 'anthropic').strip().lower() or 'anthropic'
+    if provider not in AI_PROVIDERS:
+        log.warning('investigate.provider %r is not one of %s; Anthropic is used', provider, ', '.join(AI_PROVIDERS))
+        provider = 'anthropic'
+
     listen = get('slack.listen', 'SLACK_LISTEN', 'off').strip().lower()
     if listen not in SLACK_LISTEN_MODES:
         log.warning('slack.listen %r is not one of %s; Slack listening stays off', listen, ', '.join(SLACK_LISTEN_MODES))
@@ -530,6 +538,8 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         jira_title_prefix=get('jira.title-prefix', 'JIRA_TITLE_PREFIX', ''),
         jira_release_name=release_template,
         anthropic_api_key=get('anthropic.api-key', 'ANTHROPIC_API_KEY', '').strip(),
+        openai_api_key=get('openai.api-key', 'OPENAI_API_KEY', '').strip(),
+        ai_provider=provider,
         investigate_mode=mode,
         investigate_model=get('investigate.model', 'INVESTIGATE_MODEL', 'claude-opus-5-5').strip(),
         investigate_effort=get('investigate.effort', 'INVESTIGATE_EFFORT', 'medium').strip(),

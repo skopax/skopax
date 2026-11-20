@@ -1,12 +1,13 @@
 var COST_SOURCES = [{id: 'pod', label: 'Investigator runs'}, {id: 'page', label: 'Page asks'}, {id: 'slack', label: 'Slack asks'}, {id: 'chat', label: 'Chat'}, {id: 'assess', label: 'Assessments'}, {id: 'gate', label: 'Gate'}, {id: 'smalltalk', label: 'Small talk'}, {id: 'pagescan', label: 'Page scan'}, {id: 'selfreview', label: 'Self-review'}, {id: 'mcp', label: 'MCP'}];
-var COST_PARTS = [{id: 'cacheRead', label: 'Cache read'}, {id: 'input', label: 'Input'}, {id: 'cacheWrite5m', label: 'Cache write 5 m'}, {id: 'cacheWrite1h', label: 'Cache write 1 h'}, {id: 'output', label: 'Output'}, {id: 'webSearch', label: 'Web search'}];
+var COST_PARTS = [{id: 'cacheRead', label: 'Cache read'}, {id: 'input', label: 'Input'}, {id: 'cacheWrite5m', label: 'Cache write'}, {id: 'cacheWrite1h', label: 'Cache write, long'}, {id: 'output', label: 'Output'}, {id: 'webSearch', label: 'Web search'}];
 var COST_RANGES = [1, 7, 30];
 var COSTS = null;
 var COSTS_SEQ = 0;
 var COSTS_OP = null;
 var COSTS_LOCKED = false;
 var COSTS_DAYS = (function () { var d = parseInt(load('skopax-costs-days'), 10); return COST_RANGES.indexOf(d) >= 0 ? d : 7; })();
-function costBy(by) { return isTokenActor(by) ? tokenActorLabel(by, 'API calls') : by; }
+var COST_SHOWN_BY = {'Claude (self-review)': 'AI (self-review)', 'Claude': 'the investigator'};
+function costBy(by) { return isTokenActor(by) ? tokenActorLabel(by, 'API calls') : COST_SHOWN_BY[by] || by; }
 function costLabel(list, id) { var x = list.filter(function (s) { return s.id === id; })[0]; return x ? x.label : id; }
 function costPct(v) { return v == null ? '–' : Math.round(v * 100) + ' %'; }
 function costUsd(v) { return v == null ? '–' : '$' + (v > 0 && v < 0.01 ? Number(v).toFixed(4) : Number(v).toFixed(2)); }

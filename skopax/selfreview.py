@@ -9,6 +9,7 @@ from typing import Callable
 
 import anthropic
 
+from skopax.ai import THINK_AUTO, ModelSetting, key_for, maker, wrap
 from skopax.aikey import ClientBox
 from skopax.config import Setting
 from skopax import toolusage
@@ -209,16 +210,13 @@ def gather(store, info: dict, logs, now: float, commits: Callable[[str], list[di
     return scrubbed(out)
 
 
-def thinking_off(model: str) -> dict:
-    return {'type': 'disabled'} if model.startswith('claude-haiku') else {'type': 'between_tools'}
-
-
 def tidy(text: str) -> str:
     return MENTION.sub('', redact(text)).strip()[:TEXT_LIMIT]
 
 
 class SelfReview:
-    model = Setting('selfreview_model')
+    provider = Setting('ai_provider')
+    model = ModelSetting('selfreview_model', 'review')
     cap = Setting('investigate_daily_usd')
 
     def __init__(self, store, settings, facts: Callable[[float], dict], save: Callable[[str], dict], client=None, clock: Callable[[], float] = time.time,
@@ -226,10 +224,10 @@ class SelfReview:
         self.store = store
         self.settings = settings
         self.hour = settings.selfreview_hour
-        self.key = key or (lambda: settings.anthropic_api_key)
+        self.key = key or key_for(settings, lambda: self.provider)
         self.facts = facts
         self.save = save
-        self.box = ClientBox(self.key, lambda k: anthropic.Anthropic(api_key=k, timeout=TIMEOUT, max_retries=1), client)
+        self.box = ClientBox(self.key, maker(lambda: self.provider, lambda k: anthropic.Anthropic(api_key=k, timeout=TIMEOUT, max_retries=1), TIMEOUT, 1), client, lambda: self.provider)
         self.clock = clock
         self._thread: threading.Thread | None = None
 
@@ -272,23 +270,23 @@ class SelfReview:
         if self.store.spent(day) >= self.cap:
             self.store.add_activity('review', 'server', f'Self-review skipped: the daily cap of ${self.cap:g} is spent')
             return None
-        client = self._client()
-        if client is None:
-            self.store.add_activity('review', 'server', msg('selfreview.no_key'))
+        ai = wrap(self._client())
+        if ai is None:
+            self.store.add_activity('review', 'server', msg('selfreview.no_key_openai' if self.provider == pricing.OPENAI else 'selfreview.no_key'))
             return None
         facts = self.facts(now)
-        resp = client.messages.create(model=self.model, max_tokens=MAX_TOKENS, system=SYSTEM, thinking=thinking_off(self.model), output_config={'effort': 'medium'},
-                                              messages=[{'role': 'user', 'content': 'Facts (JSON):\n' + json.dumps(facts, ensure_ascii=False, default=str)}])
-        usd = pricing.usd(self.model, resp.usage)
+        model = pricing.effective(ai.provider, self.model, 'review')
+        resp = ai.once(model, SYSTEM, [{'role': 'user', 'content': 'Facts (JSON):\n' + json.dumps(facts, ensure_ascii=False, default=str)}], MAX_TOKENS, 'medium', THINK_AUTO)
+        usd = pricing.usd(model, resp.usage)
         self.store.add_spend(day, usd)
         try:
-            self.store.add_ledger({'source': PASS, 'day': day, 'model': self.model, 'effort': 'medium', 'runId': None, 'actionId': None, 'keys': [], 'by': BY,
-                                   **pricing.split(self.model, resp.usage)})
+            self.store.add_ledger({'source': PASS, 'day': day, 'provider': ai.provider, 'model': model, 'effort': 'medium', 'runId': None, 'actionId': None, 'keys': [], 'by': BY,
+                                   **pricing.split(model, resp.usage)})
         except Exception as e:
             log.warning('spend ledger row for the self-review not written: %s', error_kind(e))
-        if resp.stop_reason == 'refusal':
+        if resp.stop == 'refusal':
             raise RuntimeError('the review model refused')
-        text = tidy(''.join(b.text for b in resp.content if b.type == 'text'))
+        text = tidy(''.join(resp.texts))
         if not text:
             raise RuntimeError('the review model wrote nothing')
         saved = self.save(text)

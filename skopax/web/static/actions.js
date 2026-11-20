@@ -267,7 +267,7 @@ async function initActions() {
       hint.textContent = 'Cancelled “' + label(x) + '”.';
       await refresh();
     } catch (e) {
-      if (e && e.code === 409) { hint.textContent = 'Too late to cancel “' + label(x) + '”: Claude has already picked it up.'; b.textContent = 'Too late'; return; }
+      if (e && e.code === 409) { hint.textContent = 'Too late to cancel “' + label(x) + '”: the investigator has already picked it up.'; b.textContent = 'Too late'; return; }
       b.disabled = false;
       b.textContent = 'Cancel failed, try again';
     }

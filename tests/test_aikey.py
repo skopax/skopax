@@ -678,14 +678,14 @@ def test_the_status_says_where_a_config_key_comes_from_and_never_more(store: Sto
     assert all(KEY_A not in str(v) and KEY_B not in str(v) for v in (from_config, nothing, set_here))
 
 
-def test_no_openai_route_exists(store: Store):
+def test_the_openai_key_route_is_its_own_and_leaves_the_anthropic_key_alone(store: Store):
     # given
     c = TestClient(app(store, KEY_A))
 
     # when
-    paths = [getattr(route, 'path', '') for route in c.app.routes]
-    got = c.get('/api/admin/openai-key', headers=AUTH)
+    put = c.put('/api/admin/openai-key', json={'key': KEY_B}, headers=AUTH)
+    anthropic_side = c.get(PATH, headers=AUTH).json()
 
     # then
-    assert [p for p in paths if 'openai' in p.lower()] == []
-    assert got.status_code == 404
+    assert put.status_code == 200 and put.json()['using'] == 'admin'
+    assert anthropic_side['using'] == 'config' and c.app.state.aikey.current() == KEY_A and c.app.state.openai_key.current() == KEY_B

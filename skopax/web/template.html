@@ -945,11 +945,10 @@ a.shot.phone img { width: 60px; }
 .ai-field { display: grid; gap: 4px; width: 100%; max-width: 420px; font-size: 0.82rem; color: var(--fg-2); }
 .ai-field input { font: inherit; font-size: 0.88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 10px; box-sizing: border-box; width: 100%; }
 .ai-field input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
-#ai-key-in { -webkit-text-security: disc; }
+#ai-key-in, #oai-key-in { -webkit-text-security: disc; }
 .ai-providers { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; max-width: 46rem; }
 .ai-provider { min-width: 0; }
-.ai-soon { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px 16px; border: 1px dashed var(--line); border-radius: 6px; color: var(--fg-2); opacity: 0.7; cursor: not-allowed; }
-.ai-provider-name { font-size: 0.98rem; font-weight: 600; }
+.adm-off .adm-in { opacity: 0.6; cursor: not-allowed; }
 .ai-grp > h3 { margin: 0; padding: 10px 14px; font-size: 0.95rem; }
 .adm-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .adm-head input[type="search"], .adm-c .adm-in, .adm-rules input { font: inherit; font-size: 0.88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 10px; box-sizing: border-box; }
@@ -974,6 +973,9 @@ a.shot.phone img { width: 60px; }
 .adm-hist-more { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; font-size: 0.82rem; }
 .adm-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 18px; padding: 12px 14px; border-top: 1px solid var(--line); min-width: 0; }
 .adm-row.set { box-shadow: inset 3px 0 0 var(--link); }
+.adm-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 12px; border-top: 1px solid var(--line); min-width: 0; }
+.adm-pair-h { grid-column: 1 / -1; margin: 0; padding: 12px 14px 0; font-size: 0.92rem; }
+.adm-pair > .adm-row { grid-template-columns: minmax(0, 1fr); border-top: 0; }
 .adm-rule-q { margin-left: 6px; cursor: help; }
 .adm-n { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .adm-help { margin: 4px 0 2px; color: var(--muted); font-size: 0.82rem; }
@@ -1513,7 +1515,7 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
 .adm-hist { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .adm-hist th, .adm-hist td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
 .adm-ch { overflow-wrap: anywhere; }
-@container content (max-width: 720px) { .adm-row { grid-template-columns: minmax(0, 1fr); } .adm-hist th:nth-child(2), .adm-hist td:nth-child(2) { display: none; } }
+@container content (max-width: 720px) { .adm-row, .adm-pair { grid-template-columns: minmax(0, 1fr); } .adm-hist th:nth-child(2), .adm-hist td:nth-child(2) { display: none; } }
 .reviews { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
 .inv { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; min-width: 0; }
 .chat-wrap { position: relative; }
@@ -2140,7 +2142,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
 
     <section class="panel" id="panel-ai" hidden>
       <div class="toolbar">
-        <p class="panel-note">The Anthropic API key that the investigator, the chat and the self-review use, and the investigator settings. A key set here is saved sealed, takes the place of ANTHROPIC_API_KEY and is never shown again.</p>
+        <p class="panel-note">The AI provider keys that the investigator, the chat and the self-review use, and the investigator settings. AI provider picks Anthropic or OpenAI for the whole install. A key set here is saved sealed, takes the place of ANTHROPIC_API_KEY or OPENAI_API_KEY and is never shown again.</p>
       </div>
       <div class="admin" id="ai"><p class="muted">Loading the key&hellip;</p></div>
       <div class="admin" id="ai-rows"></div>

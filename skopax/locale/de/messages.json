@@ -192,6 +192,7 @@
  "slackevents.empty_tag": "Ich bin da 👋 Was möchten Sie fragen?",
  "slackevents.feature_off": "{feature} ist unter Verwaltung › Funktionen ausgeschaltet.",
  "slackevents.needs.anthropic_key": "Braucht den Anthropic-API-Key (Verwaltung › Investigator oder ANTHROPIC_API_KEY in der Umgebung).",
+ "slackevents.needs.openai_key": "Braucht den OpenAI-API-Key (Verwaltung › Investigator oder OPENAI_API_KEY in der Umgebung).",
  "slackevents.needs.mode": "Braucht einen anderen Modus als „aus“ (Verwaltung › Investigator › Modus).",
  "slackevents.not_ready": "Der KI-Investigator ist noch nicht eingerichtet, daher bekäme diese Nachricht keine Antwort.",
  "slackevents.off_topic": "Dabei kann ich nicht helfen; ich beantworte nur Fragen zu {product} und den Systemen, die es überwacht.",
