@@ -32,7 +32,7 @@ from skopax.cardposts import CardPosts, drawn_sig
 from skopax.codehosts import CodeHosts
 from skopax.auth import LOGIN_COOKIE, LOGIN_SECONDS, SESSION_COOKIE, bearer_token, safe_next
 from skopax import actions as page_actions
-from skopax import __version__, backfill, brand, causes, clock as clocks, costs, drafts, history, messages, redact as redaction, tags, toolusage
+from skopax import __version__, backfill, brand, causes, clock as clocks, costs, drafts, history, information, messages, redact as redaction, tags, toolusage
 from skopax.jiralinks import JiraLinks
 from skopax.kube import Kube
 from skopax import locales as core_locales
@@ -75,7 +75,7 @@ from skopax.slacklink import SlackLink
 from skopax.kit.promql import Prometheus, client_for
 from skopax.kit.promql import CHECK as PROMETHEUS_CHECK, ID as PROMETHEUS_ID
 from skopax.tickets import PROJECT_KEY, projects_of
-from skopax.users import IDP_SOURCES, NAME_MAX, PASSWORD_MAX, PASSWORD_MIN, ROLES, IdpManaged, InvalidUser, LastAdmin, LINK_PENDING_S, UserExists, Users, admin_row, clean_email, clean_name, clean_password, clean_role, leaves_admin, link_admits
+from skopax.users import EMAIL, IDP_SOURCES, LOCAL_AFTER, NAME_MAX, PASSWORD_MAX, PASSWORD_MIN, ROLES, IdpManaged, InvalidUser, ChangeReverted, ChangeUnsure, LastAdmin, LINK_PENDING_S, NoPasswordAdmin, UserExists, Users, admin_row, clean_email, clean_name, clean_password, clean_role, cut_admits, leaves_admin, link_admits
 from skopax.settingsources import Follower, SourceSet, boot, labelled, merged
 from skopax.settingsources import core_knowledge_ids, core_setting_ids
 from skopax.tunables import SESSIONS_AFTER_KEY, SLACK_CHANNEL_KEY, SSO_SWITCH_KEY, Invalid as TunableInvalid, Live, TunableStore, View, apply as apply_tunables, parse as parse_tunable, plugin_tunables, stored as stored_text
@@ -305,6 +305,7 @@ def card_view(card: dict, live: bool, merged: list[dict] = (), parent: dict | No
 
 
 TICKET_HITS = 8
+EMAIL_MAX = 254
 ROUTES_STOP_S = 5
 MARKS_STOP_S = 10
 TICKET_KEY = re.compile(r'[A-Za-z][A-Za-z0-9]+-\d+')
@@ -934,6 +935,14 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     intake = Intake(store, slack, operators, gate, talk, investigator, settings, base_url=base_url, ticket_extra=plugin_projects, on=lambda: features.on('slack-listener') and slack.enabled,
                     chat=lambda: features.on('chat'), not_ready=lambda: not_ready_text('slackevents.not_ready', 'slackevents.needs'), jira_site=jira_site)
 
+    def refuse_information(key: str) -> None:
+        try:
+            card = store.anomaly(key)
+        except NotFound:
+            return
+        if information.is_item(card):
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('cards.information_item', key=key))
+
     def apply_card_action(action: dict) -> str:
         before = notes.watch(action)
         seen = notices.watch(action)
@@ -1019,7 +1028,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             log.warning('check runs not recorded: %s', kind(e))
         applied = apply(store, results, now, links, dm=pusher.enabled, after=after, auto_resolve_hours=settings.auto_resolve_hours,
                         recurring_count=settings.recurring_count, recurring_days=settings.recurring_days, tag_rules=tags.rules(settings.tag_rules), alert_twins=settings.alert_twins, screen=screen, clusters=clusters, kind_windows=runtime.auto_windows(),
-                        severity_hours={'crit': settings.auto_resolve_hours_crit, 'warn': settings.auto_resolve_hours_warn}, info_close_days=settings.info_auto_close_days,
+                        severity_hours={'crit': settings.auto_resolve_hours_crit, 'warn': settings.auto_resolve_hours_warn},
                         business=clocks.zone() if settings.business_days else None)
         if applied and applied.resolved:
             for r in applied.resolved:
@@ -1646,6 +1655,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return None
         if payload.get('src') == 'sso' and doc.get('source') != 'sso' and not link_admits(doc, payload.get('login')):
             return None
+        if not cut_admits(doc, payload.get('src'), payload.get('login')):
+            return None
         return User(name=name, role=doc['role'], source=doc.get('source', 'local'))
 
     def current_user(request: Request) -> User | None:
@@ -1781,6 +1792,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         after = stop_time()
         return after is not None and made < after
 
+    def password_made_before_cut(doc: dict, owner: dict) -> bool:
+        cut = owner.get(LOCAL_AFTER)
+        if doc.get('via') == 'sso' or not isinstance(cut, (int, float)) or isinstance(cut, bool):
+            return False
+        made = clocks.parse_stamp(doc.get('createdAt'))
+        return made is None or made <= cut
+
     def bearer_actor(authorization: str) -> Actor:
         given = bearer_token(authorization) or ''
         if settings.token and hmac.compare_digest(given.encode(), settings.token.encode()):
@@ -1792,6 +1810,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if doc['createdBy'] != BOOTSTRAP:
             owner = users.get(doc['createdBy'])
             if owner is None or owner.get('disabled'):
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, msg('access.token_invalid'))
+            if password_made_before_cut(doc, owner):
                 raise HTTPException(status.HTTP_401_UNAUTHORIZED, msg('access.token_invalid'))
             role = ROLES[min(ROLES.index(role), ROLES.index(owner['role']))] if owner.get('role') in ROLES else ROLES[0]
         return Actor(f"token:{doc['name']}", role, doc['createdBy'], doc.get('via'))
@@ -1877,7 +1897,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/', response_class=HTMLResponse)
     def page() -> str:
-        return render_page({**store.load(), 'archiveHours': settings.archive_hours, 'plugins': plugin_tiles(store.server_runs()['passes'])}, runtime.page_scripts())
+        return render_page({**information.page_state(store.load(), time.time()), 'archiveHours': settings.archive_hours, 'plugins': plugin_tiles(store.server_runs()['passes'])}, runtime.page_scripts())
 
     @app.get('/c/{num}', response_class=HTMLResponse)
     def card_page(num: int) -> HTMLResponse:
@@ -1890,6 +1910,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise HTTPException(status_code=404, detail=f'no card #{num}')
         try:
             card = store.anomaly(key)
+            if not information.is_card(card):
+                raise HTTPException(status_code=404, detail=f'no card #{num}')
             return card_view(card, True, store.children(key), parent_of(card)) | {'last': store.last_action(key)}
         except NotFound:
             past = store.last_past_card(key)
@@ -2244,7 +2266,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/state')
     def get_state() -> dict:
-        return {**store.load(), 'archiveHours': settings.archive_hours}
+        return {**information.page_state(store.load(), time.time()), 'archiveHours': settings.archive_hours}
 
     @app.get('/api/history/cards')
     def get_closed_cards(days: Annotated[int, Query(ge=1, le=history.CLOSED_DAYS_MAX)] = 7, start: Annotated[str | None, Query(alias='from', max_length=30)] = None,
@@ -2471,6 +2493,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.put('/api/assignee')
     def put_assignee(body: AssigneeIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         try:
             return assigner.assign(body.key, by if body.me else body.name, by if body.me and '@' in by else body.email, by)
         except NotFound as e:
@@ -2495,6 +2518,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.post('/api/tags')
     def post_tags(body: TagIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         try:
             fields = tags.toggled(store.anomaly(body.key), body.tag, body.on, by, iso(utc_now()))
         except tags.Refused as e:
@@ -2506,6 +2530,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     @app.put('/api/business')
     def put_business(body: BusinessIn, by: Annotated[str, Depends(require_operator)]) -> dict:
         store.anomaly(body.key)
+        refuse_information(body.key)
         fields = tags.business(body.text, by, iso(utc_now()), body.why, body.kind)
         return tagging(body.key, fields, by, 'business sentence ' + ('saved' if fields['business'] else 'removed'))
 
@@ -2601,8 +2626,6 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     def checked_patch(key: str, body: UserPatch, current: dict) -> None:
         to_local = body.password is not None and current.get('source') == 'sso'
-        if to_local and current.get('opened') is not False:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_password'))
         if body.ssoLink is not None and current.get('source') != 'local' and not to_local:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_link_local_only'))
         try:
@@ -2620,7 +2643,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if leaves_admin(fields) and users.is_last_admin(key):
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_admin'))
 
-    def sso_to_local(key: str, body: UserPatch, fields: dict, by: str) -> dict:
+    def sso_to_local(key: str, body: UserPatch, fields: dict, by: str, current_from: str | None = None) -> dict:
         link = sso_domain_allowed(key)
         try:
             made = users.make_local(key, body.password, by, fields, link)
@@ -2630,11 +2653,46 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             user_cache.pop(key, None)
             mcp_auth.forget(key)
         if made is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_password'))
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.changed_meanwhile'))
         store.add_activity(ACCESS_KIND, by, msg('access.user_password', email=key))
+        if current_from in IDP_SOURCES and made.get('roleFrom') == 'admin':
+            store.add_activity(ACCESS_KIND, by, msg('access.user_role_admin_set', email=key, role=made.get('role')))
         if link:
             store.add_activity(ACCESS_KIND, by, msg('access.sso_linked', email=key, days=LINK_PENDING_S // 86400))
         return made
+
+    def unsure_sso_only(key: str, by: str) -> None:
+        log.error('the change of %s to SSO only failed half way and could not be put back, so the person may now sign in with SSO only', key)
+        try:
+            store.add_activity(ACCESS_KIND, by, msg('access.user_sso_only', email=key))
+        except PyMongoError as e:
+            log.error('the SSO-only activity line for %s was not saved: %s', key, kind(e))
+
+    def make_sso_only(key: str, body: UserPatch, current: dict, by: str) -> dict:
+        if body.ssoOnly is not True or body.model_dump(exclude={'ssoOnly'}, exclude_none=True):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.user_fields'))
+        if current.get('source') != 'local':
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.sso_only_local'))
+        if not signon.active():
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.sso_only_off'))
+        if not sso_domain_allowed(key):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_only_domain'))
+        try:
+            made = users.make_sso_only(key)
+        except NoPasswordAdmin:
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.sso_only_last_password_admin')) from None
+        except ChangeReverted:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, msg('access.not_changed')) from None
+        except ChangeUnsure:
+            unsure_sso_only(key, by)
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, msg('access.sso_only_unsure')) from None
+        finally:
+            user_cache.pop(key, None)
+            mcp_auth.forget(key)
+        if made is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.sso_only_local'))
+        store.add_activity(ACCESS_KIND, by, msg('access.user_sso_only', email=key))
+        return admin_row(made, clock())
 
     @app.patch('/api/admin/users/{email}')
     def patch_admin_user(email: str, body: UserPatch, by: Annotated[str, Depends(require_admin)]) -> dict:
@@ -2642,6 +2700,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         current = users.get(key)
         if current is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, msg('access.unknown_user'))
+        if body.ssoOnly is not None:
+            return make_sso_only(key, body, current, by)
         checked_patch(key, body, current)
         try:
             fields, unset = users.prepare_change(body.role, body.disabled, body.password, current)
@@ -2657,7 +2717,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 fields |= {'name': name, 'nameFrom': 'admin'}
         if body.password is not None and current.get('source') == 'sso':
             fields.pop('pw', None)
-            current = sso_to_local(key, body, fields, by)
+            current = sso_to_local(key, body, fields, by, current.get('roleFrom'))
             log_change(key, body.model_copy(update={'password': None}), by)
             fields = {}
         if fields:
@@ -2680,6 +2740,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def change_user(key: str, fields: dict, unset: tuple[str, ...], body: UserPatch, by: str) -> None:
         if leaves_admin(fields) and users.is_last_admin(key):
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_admin'))
+        if leaves_admin(fields) and users.is_last_password_admin(key):
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_password_admin'))
         only = {'roleFrom': {'$nin': list(IDP_SOURCES)}} if 'role' in fields else None
         try:
             if users.guarded_update(key, fields, unset, only=only) is None:
@@ -2688,6 +2750,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 raise HTTPException(status.HTTP_404_NOT_FOUND, msg('access.unknown_user'))
         except LastAdmin:
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_admin')) from None
+        except NoPasswordAdmin:
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_password_admin')) from None
         finally:
             user_cache.pop(key, None)
             mcp_auth.forget(key)
@@ -2748,19 +2812,26 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def get_admin_settings(by: Annotated[str, Depends(require_admin)]) -> dict:
         return {'items': scope_marked(live.entries()), 'rev': live.tunables.rev(), 'refreshSeconds': live.every}
 
+    def responsible_email(email: str) -> bool:
+        domain = email.rpartition('@')[2]
+        return len(email) <= EMAIL_MAX and bool(EMAIL.match(email)) and '@' not in email.partition('@')[2] and '.' in domain.strip('.') and not domain.startswith('.') and not domain.endswith('.')
+
     def all_people() -> dict[str, str]:
         return {u['email']: u.get('name') or '' for u in users.list() if u and u.get('email')}
 
+    def owner_name(email: str, everyone: dict[str, str]) -> str:
+        return everyone.get(email) or slack_ids.name(email) or email.split('@')[0]
+
     def owner_rows(emails: list[str], named: dict[str, str]) -> list[dict]:
         everyone = all_people()
-        return [{'email': e, 'name': everyone.get(e) or e.split('@')[0]} | ({} if e in named else {'stale': True}) for e in emails]
+        return [{'email': e, 'name': owner_name(e, everyone), 'slack': slack_ids.peek(e)} | ({} if e in named or e not in everyone else {'stale': True}) for e in emails]
 
     def tag_view(tag: str, label: str, held: dict[str, list[str]], named: dict[str, str]) -> dict:
         return {'id': tag, 'label': label, 'responsibles': owner_rows(held.get(tag, []), named)}
 
     def people_named(names: list[str]) -> str:
         everyone = all_people()
-        return ', '.join(everyone.get(e) or e.split('@')[0] for e in names) or '\u2013'
+        return ', '.join(owner_name(e, everyone) for e in names) or '\u2013'
 
     @app.get('/api/admin/tags')
     def get_admin_tags(by: Annotated[str, Depends(require_admin)]) -> dict:
@@ -2779,13 +2850,14 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         wanted = list(dict.fromkeys(e.strip().lower() for e in body.emails if e.strip()))
         if len(wanted) > tagreport.OWNERS_MAX:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('tags.too_many', n=tagreport.OWNERS_MAX))
+        invalid = [e for e in wanted if not responsible_email(e)]
+        if invalid:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('tags.bad_email', email=cut(invalid[0], 80)))
         named = active_people()
         before = store.tag_owners().get(tag, [])
-        unknown = [e for e in wanted if e not in named and e not in before]
-        if unknown:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('tags.no_user', email=cut(unknown[0], 80)))
         if wanted != before:
             store.set_tag_owners(tag, wanted)
+            slack_ids.check_all([e for e in wanted if e not in before])
             live.tunables.write_change(f'tags.{tag}.responsibles', ', '.join(before) or None, ', '.join(wanted) or None, by, owners=True, tag=tag)
             store.add_activity(ACCESS_KIND, by, f"Responsibles of {known[tag]}: {people_named(before)} \u2192 {people_named(wanted)}"[:300])
             log.info('responsibles of tag %s changed by %s', tag, by)
@@ -3504,6 +3576,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def put_state(state: Annotated[dict, Body()], background: BackgroundTasks, x_base_rev: Annotated[int | None, Header()] = None) -> dict:
         if any(not isinstance(a, dict) or not a.get('key') for a in state.get('anomalies') or []):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, 'every anomaly needs a key')
+        state = information.written_back(state, store.load())
         rev, pushed_before = store.save_state(state, x_base_rev)
         if (pusher.enabled or routes.enabled) and pushed_before is not None:
             pushed = new_pushes(pushed_before, state.get('anomalies') or [], time.time())
@@ -3541,6 +3614,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         action['requestedBy'] = by
         if via:
             action['via'] = via
+        if body.type not in page_actions.ANY_RECORD:
+            refuse_information(body.key)
         if body.type in INVESTIGATOR_WORK and not features.on('investigator'):
             raise FeatureOff('investigator')
         if body.type == 'postdeploy' and not features.on('postdeploy'):
@@ -3554,6 +3629,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             if sum(store.count_actions('ask', iso(utc_now() - dt.timedelta(seconds=ASK_WINDOW_S)), source=s) for s in PAGE_ASK_SOURCES) >= settings.page_ask_cap:
                 raise HTTPException(status_code=429, detail=f'{settings.page_ask_cap} asks an hour is the cap (Admin \u203a Investigator, Page asks per hour); try again later')
             action['cards'] = [k for k in dict.fromkeys(body.cards or []) if k]
+            for k in action['cards']:
+                refuse_information(k)
             said = page_topic_check(question, action['cards'], by)
             action['text'] = question
             action['label'] = (body.label or question)[:300]
@@ -3593,6 +3670,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.post('/api/slack-posts', status_code=status.HTTP_201_CREATED)
     def post_to_slack(body: SlackPostIn, request: Request, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         if not slack.enabled:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, 'Slack is not set up on this service yet')
         try:
@@ -3602,6 +3680,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.post('/api/slack-holds', status_code=status.HTTP_201_CREATED)
     def post_slack_hold(body: SlackHoldIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         held = store.hold_anomaly_auto_send(body.key, by)
         if held is None:
             raise HTTPException(status.HTTP_409_CONFLICT, 'nothing to hold: the auto-send already went out or was never armed')
@@ -3610,6 +3689,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.post('/api/slack-updates', status_code=status.HTTP_201_CREATED)
     def post_slack_update(body: SlackUpdateIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         if not slack.enabled:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, 'Slack is not set up on this service yet')
         text = body.text.strip()
@@ -3624,6 +3704,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.post('/api/routes/send')
     def post_routes_send(body: RouteSendIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         try:
             return routes.send(body.key, body.route, by)
         except RouteRefused as e:
@@ -3631,6 +3712,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.put('/api/slack-drafts')
     def put_slack_draft(body: SlackDraftIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        refuse_information(body.key)
         rev, draft, auto = store.slack_draft(body.key, body.text.strip(), by)
         log.info('slack draft for %s %s by %s', body.key, 'saved' if draft else 'cleared', by)
         return {'rev': rev, 'slackDraft': draft, 'autoSend': auto}

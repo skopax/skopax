@@ -614,19 +614,19 @@ async function initActions() {
     var open = btn('Change severity', 'sec sev-act acts-keep');
     var auto = a.sevAuto || (a.sevSet && a.sevSet.auto);
     open.dataset.tip = open.title = 'Severity now: ' + (SEV[a.sev] || SEV.info)[0] + (a.sevSet ? ', set by hand by ' + draftBy(a.sevSet.by) + '; the signal says ' + (SEV[auto] || SEV.info)[0] : ', from the signal') +
-      '. A hand-set severity stays through every check until you set it back; Critical pushes, Info never does';
+      '. A hand-set severity stays through every check until you set it back; Critical pushes, Move to Information takes it off the board onto the Information page';
     var form = el('div', 'reason sev-form acts-keep');
     form.hidden = true;
     form.setAttribute('role', 'group');
     form.setAttribute('aria-label', 'Severity for ' + name);
-    [['crit', 'Critical'], ['warn', 'Warning'], ['info', 'Info']].concat(a.sevSet ? [['auto', 'Back to the signal']] : []).forEach(function (o) {
+    [['crit', 'Critical'], ['warn', 'Warning'], ['info', 'Move to Information']].concat(a.sevSet ? [['auto', 'Back to the signal']] : []).forEach(function (o) {
       var b = btn(o[1], 'sec small sev-pick');
       b.dataset.sev = o[0];
       if (o[0] === a.sev && a.sevSet) b.setAttribute('aria-pressed', 'true');
       if (o[0] === 'auto') b.title = 'The signal says ' + (SEV[auto] || SEV.info)[0];
       b.addEventListener('click', function () {
         if (o[0] === a.sev && o[0] !== 'auto' && !a.sevSet) { form.hidden = true; return; }
-        queue({type: 'severity', target: a.key, key: a.key, sev: o[0], label: (o[0] === 'auto' ? 'Severity back to the signal: ' : 'Severity ' + o[1] + ': ') + name}, b);
+        queue({type: 'severity', target: a.key, key: a.key, sev: o[0], label: (o[0] === 'auto' ? 'Severity back to the signal: ' : o[0] === 'info' ? 'Moved to Information: ' : 'Severity ' + o[1] + ': ') + name}, b);
       });
       form.appendChild(b);
     });

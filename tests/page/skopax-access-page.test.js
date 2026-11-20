@@ -164,7 +164,7 @@ async function theSectionsComeInOrderWithANavThatCountsAndFlags() {
   const s = await boot({sso: ssoView({active: false, problem: 'Single sign-on needs the client secret (sso.client-secret).'}), tokens: tokens().slice(0, 1)});
 
   //then
-  assert.deepStrictEqual(nav(s.doc), {people: ['6', false, ''], sso: ['Needs setup', true, 'Single sign-on is on but needs setup'], tokens: ['1', false, ''],
+  assert.deepStrictEqual(nav(s.doc), {people: ['6', false, ''], sso: ['Needs attention', true, 'Single sign-on is on but needs setup'], tokens: ['1', false, ''],
     mcp: ['Off', true, 'The MCP server is switched on, but single sign-on is not on']});
 
   //given
@@ -260,7 +260,8 @@ async function theLastAdminKeepsRoleAndSignInWithTheReason() {
   assert.deepStrictEqual([sel.disabled, sel.title, off.disabled, off.title], [true, LAST_ADMIN, true, LAST_ADMIN]);
   assert.deepStrictEqual([alice.querySelector('.acc-last-admin').textContent, alice.querySelector('.acc-last-admin').title], ['Last admin', LAST_ADMIN]);
   const items = [...alice.querySelectorAll('.acc-menu [role=menuitem]')].map((m) => [m.textContent, m.disabled, m.title]);
-  assert.deepStrictEqual(items, [['Edit name', false, ''], ['Change role', true, LAST_ADMIN], ['Reset password', false, ''], ['Disable sign-in', true, LAST_ADMIN]]);
+  assert.deepStrictEqual(items, [['Edit name', false, ''], ['Change role', true, LAST_ADMIN], ['Reset password', false, ''],
+    ['Make SSO only', true, 'The last active admin with a password keeps it, so there is a way in when SSO fails: give another admin a password first'], ['Disable sign-in', true, LAST_ADMIN]]);
   assert.ok(!frank.querySelector('select.acc-role').disabled && !frank.querySelector('.acc-last-admin'), 'a disabled admin does not count and is not the last admin');
 
   //when
@@ -300,8 +301,8 @@ async function theRowMenuWorksByKeyboard() {
   assert.strictEqual(second, 'Change role');
   assert.deepStrictEqual(closed, [true, true], 'Escape closes the menu and gives focus back');
   assert.ok(!chloe.querySelector('.acc-pw-form').hidden && t.doc.activeElement === pw, 'Reset password opens the password field');
-  assert.deepStrictEqual([...rowOf(t.doc, 'dana@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Change role', 'Turn into local account', 'Disable sign-in']);
-  assert.deepStrictEqual([...rowOf(t.doc, 'erin@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Change role', 'Reset password', 'Enable sign-in']);
+  assert.deepStrictEqual([...rowOf(t.doc, 'dana@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Change role', 'Set a password', 'Disable sign-in']);
+  assert.deepStrictEqual([...rowOf(t.doc, 'erin@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Change role', 'Reset password', 'Make SSO only', 'Enable sign-in']);
   assert.deepStrictEqual([rowOf(t.doc, 'chloe@example.com').querySelector('.acc-mi-off').classList.contains('acc-mi-danger'), rowOf(t.doc, 'erin@example.com').querySelector('.acc-mi-off').classList.contains('acc-mi-danger')],
     [true, false], 'Disable is a danger action, Enable is not');
 
@@ -580,13 +581,20 @@ async function theCardGroupsItsFieldsAndShowsItsStatus() {
   const t = await boot({tab: 'sso'});
 
   //then
-  const groups = [...card(t.doc).querySelectorAll('.sso-grp')].map((g) => [g.querySelector('legend').textContent, [...g.querySelectorAll('.sso-f')].map((f) => f.dataset.field)]);
-  assert.deepStrictEqual(groups, [['Provider', ['issuer', 'client-id', 'client-secret', 'scope', 'claims', 'require-verified-email']], ['Who can sign in', ['new-accounts', 'allowed-domains']],
-    ['Roles', ['roles-claim', 'role-map', 'default-role']], ['Sign-in button', ['button-text', 'button-icon']]]);
+  const groups = [...card(t.doc).querySelectorAll('.sso-grp')].map((g) => [g.querySelector('.sso-num').textContent, g.querySelector('h4 .sso-grp-l').textContent, [...g.querySelectorAll('.sso-f')].map((f) => f.dataset.field)]);
+  assert.deepStrictEqual(groups, [['1', 'Provider', ['issuer', 'client-id', 'client-secret', 'scope', 'claims', 'require-verified-email', 'authorize-url', 'token-url', 'jwks-url', 'client-auth']],
+    ['2', 'Redirect URI', []], ['3', 'Who may sign in', ['new-accounts', 'allowed-domains']], ['4', 'Roles from groups', ['roles-claim', 'role-map', 'default-role']], ['5', 'Sign-in button', ['button-text', 'button-icon']]]);
+  const step = (key) => card(t.doc).querySelector('.sso-grp[data-grp="' + key + '"]');
+  assert.ok(step('provider').querySelector('.sso-adv') && step('provider').querySelector('.sso-test') && step('provider').querySelector('.sso-result'), 'Advanced, Test connection and its result sit in the Provider card');
+  assert.ok(step('redirect').querySelector('.sso-redirect .sso-copy'), 'the redirect URI and Copy sit in their own card');
+  assert.ok(step('roles').querySelector('.sso-roles'), 'Last known role sits in the roles card');
+  assert.ok(step('button').querySelector('.sso-icon-box') && step('button').querySelector('.sso-preview'), 'the icon upload and the preview sit in the button card');
+  assert.strictEqual(card(t.doc).querySelectorAll('.sso-f').length, 17, 'every field shows once');
+  [...card(t.doc).querySelectorAll('.sso-grp')].forEach((g) => assert.strictEqual(g.getAttribute('aria-labelledby'), g.querySelector('h4').id, 'each card is named by its heading'));
   assert.strictEqual(card(t.doc).querySelector('.sso-status').textContent, 'Provider: Okta \u00b7 acme.okta.com \u00b7 Not tested since this page opened');
   assert.ok(card(t.doc).querySelector('.sso-adv') && !card(t.doc).querySelector('.sso-adv').open, 'Advanced stays folded');
   t.close();
-  return 'the SSO card shows provider, issuer host and test state, and groups Provider, Who can sign in, Roles and Sign-in button';
+  return 'the SSO card shows provider, issuer host and test state, and shows numbered cards Provider, Redirect URI, Who may sign in, Roles from groups and Sign-in button with every field once';
 }
 
 async function thePreviewFollowsUnsavedEdits() {

@@ -125,6 +125,7 @@ def test_access_changes_in_the_stream_are_shown_to_admins_only(store: Store):
     # given
     users = Users(store.db)
     users.create('carol@example.com', 'Carol', 'viewer')
+    users.set_password(ADMIN_EMAIL, 'admin-long-password-1')
     sealer = Sessions(session_secret(store.db, settings()), 3600, 7200)
     viewer = {'Cookie': f"{SESSION_COOKIE}={sealer.issue('carol@example.com', 'viewer', 'local')}"}
     admin = {'Cookie': f"{SESSION_COOKIE}={sealer.issue(ADMIN_EMAIL, 'admin', 'local')}"}

@@ -75,7 +75,7 @@ def board(store: Store, *cards: dict) -> None:
 def cards() -> tuple[dict, ...]:
     return (anomaly(CARD, sev='crit', num=14, what='checkout-service ERROR lines went up 40 times'),
             anomaly(OTHER_CARD, sev='warn', num=15, svc='payments-api', label='5xx rate', what='5xx rate is high'),
-            anomaly('log|old|x|z', sev='info', status='cleared', num=16, svc='old-service'))
+            anomaly('log|old|x|z', sev='info', status='cleared', num=16, svc='old-service', owner='paul.stone@example.com'))
 
 
 def test_without_a_token_mcp_answers_401_with_the_resource_metadata_and_the_metadata_points_at_the_login_host(store: Store):

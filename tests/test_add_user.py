@@ -272,20 +272,20 @@ def test_setting_a_password_on_a_never_signed_in_sso_account_makes_it_local_with
     assert msg('access.user_password', email=DANA) in access_lines(store)
 
 
-def test_a_password_on_an_sso_account_that_signed_in_is_still_refused(store: Store):
+def test_a_password_on_an_sso_account_that_signed_in_makes_it_local_too(store: Store):
     # given
     client = sso_client(store)
     admin = admin_of(client)
     admin.post(USERS, json={'email': DANA, 'name': 'Dana', 'role': 'operator', 'sso': True})
     sso(client)
-    before = raw(store, DANA)
 
     # when
     res = admin.patch(f'{USERS}/{DANA}', json={'password': PASSWORD})
 
     # then
-    assert (res.status_code, res.json()['detail']) == (422, msg('access.sso_password'))
-    assert raw(store, DANA) == before
+    assert res.status_code == 200
+    assert (raw(store, DANA)['source'], raw(store, DANA)['ssoLink']['state']) == ('local', 'pending')
+    assert Users(store.db).authenticate(DANA, PASSWORD) is not None
 
 
 def test_an_unverified_email_never_binds_the_link_of_a_new_account(store: Store):
@@ -433,7 +433,7 @@ def test_users_store_adds_sso_accounts_and_links_in_one_write(store: Store):
     assert users.authenticate(DANA, '') is None
 
 
-def test_users_store_makes_only_a_never_signed_in_sso_account_local(store: Store):
+def test_users_store_makes_any_sso_account_local(store: Store):
     # given
     users = Users(store.db, now=lambda: 2000.0)
     users.add_sso(DANA, 'Dana', 'viewer')
@@ -446,7 +446,8 @@ def test_users_store_makes_only_a_never_signed_in_sso_account_local(store: Store
     # then
     assert made is not None and (made['source'], made['ssoLink']['state'], made['ssoLink']['atTs']) == ('local', 'pending', 2000.0)
     assert users.authenticate(DANA, PASSWORD) is not None
-    assert signed_in is None and 'pw' not in raw(store, ERIN) and raw(store, ERIN)['source'] == 'sso'
+    assert signed_in is not None and raw(store, ERIN)['source'] == 'local' and users.authenticate(ERIN, PASSWORD) is not None
+    assert users.make_local(DANA, PASSWORD, 'admin@example.com') is None
 
 
 def test_users_store_binds_a_pre_added_password_account_on_its_first_verified_sso_sign_in(store: Store):

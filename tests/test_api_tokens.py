@@ -639,7 +639,7 @@ def test_one_patch_applies_every_field_and_records_the_admin_role(store: Store):
     assert 'User ivy@example.com now has the operator role' in activity and 'User ivy@example.com disabled' in activity and 'Password changed for ivy@example.com' in activity
 
 
-def test_admin_cannot_set_a_password_on_an_sso_user(store: Store):
+def test_admin_sets_a_password_on_an_sso_user_who_signed_in(store: Store):
     # given
     client = admin_client(store)
     Users(store.db).upsert_sso('carol@example.com', 'Carol', 'viewer')
@@ -649,9 +649,9 @@ def test_admin_cannot_set_a_password_on_an_sso_user(store: Store):
     role = client.patch('/api/admin/users/carol@example.com', json={'role': 'operator'})
 
     # then
-    assert res.status_code == 422
-    assert res.json()['detail'] == 'An SSO user signs in with SSO and has no local password.'
-    assert 'pw' not in store.db['users'].find_one({'_id': 'carol@example.com'})
+    assert res.status_code == 200
+    assert store.db['users'].find_one({'_id': 'carol@example.com'})['source'] == 'local'
+    assert Users(store.db).authenticate('carol@example.com', PASSWORD) is not None
     assert role.status_code == 200
 
 
@@ -745,21 +745,20 @@ def test_revoking_twice_is_a_no_op_the_second_time(store: Store):
     assert [a['text'] for a in store.activity.find()].count('API token ci revoked') == 1
 
 
-def test_a_role_and_password_patch_on_an_sso_user_writes_nothing(store: Store):
+def test_a_role_and_password_patch_on_an_sso_user_writes_both_in_one_change(store: Store):
     # given
     client = admin_client(store)
     users = Users(store.db)
     users.upsert_sso('sam@example.com', 'Sam', 'viewer')
-    before = users.col.find_one({'_id': 'sam@example.com'})
-    rows = store.activity.count_documents({})
 
     # when
     res = client.patch('/api/admin/users/sam@example.com', json={'role': 'operator', 'password': 'another long passphrase'})
+    doc = users.col.find_one({'_id': 'sam@example.com'})
 
     # then
-    assert (res.status_code, res.json()['detail']) == (422, msg('access.sso_password'))
-    assert users.col.find_one({'_id': 'sam@example.com'}) == before, 'neither the role nor a password was written'
-    assert store.activity.count_documents({}) == rows
+    assert res.status_code == 200
+    assert (doc['source'], doc['role'], doc['roleFrom']) == ('local', 'operator', 'admin')
+    assert users.authenticate('sam@example.com', 'another long passphrase') is not None
 
 
 STOP_ADMINS = json.dumps([{'value': 'ops-admins', 'role': 'admin'}])

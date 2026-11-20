@@ -80,9 +80,9 @@ async function theSidebarListsTheMapInOrder() {
   assert.strictEqual(groups[0].getAttribute('aria-label'), 'Board and investigator', 'the first group has no header, only a name for screen readers');
   assert.deepStrictEqual(groups.slice(1, 4).map((g) => g.querySelector('.g-h').textContent), ['Observe', 'Activity', 'Connect']);
   assert.deepStrictEqual(groups.slice(1, 4).map((g) => g.getAttribute('aria-labelledby')), groups.slice(1, 4).map((g) => g.querySelector('.g-h').id));
-  assert.deepStrictEqual(groups.map(labels), [['Board', 'Requests', 'Chat', 'Investigator'], ['Services', 'Latency', 'Releases', 'Deploy reports'], ['Notifications', 'Events', 'History', 'Costs'], ['Integrations', 'Tools', 'Connect MCP'], ['Review', 'Docs']]);
+  assert.deepStrictEqual(groups.map(labels), [['Board', 'Requests', 'Chat', 'Investigator'], ['Services', 'Information', 'Latency', 'Releases', 'Deploy reports'], ['Notifications', 'Events', 'History', 'Costs'], ['Integrations', 'Tools', 'Connect MCP'], ['Review', 'Docs']]);
   assert.deepStrictEqual(labels(doc.getElementById('pinned')), [], 'a signed-in person has Settings and Admin in the user menu, not as rows');
-  const ids = ['anoms', 'reqs', 'chat', 'inv', 'svcs', 'lat', 'rels', 'reps', 'slack', 'hist', 'acts', 'costs', 'integrations', 'tools', 'mcp', 'review', 'docs', 'prefs'];
+  const ids = ['anoms', 'reqs', 'chat', 'inv', 'svcs', 'info', 'lat', 'rels', 'reps', 'slack', 'hist', 'acts', 'costs', 'integrations', 'tools', 'mcp', 'review', 'docs', 'prefs'];
   assert.deepStrictEqual([...doc.querySelectorAll('#side a.tab[data-tab]')].map((a) => a.id), ids.map((id) => 'tab-' + id), 'every row is tab-<id>');
   assert.ok(ids.every((id) => doc.getElementById('count-' + id) && doc.getElementById('tab-' + id).contains(doc.getElementById('count-' + id))), 'and carries count-<id>');
   assert.ok(ids.every((id) => doc.getElementById('tab-' + id).getAttribute('href') === '#t=' + id || id === 'anoms'), 'rows are #t= links');

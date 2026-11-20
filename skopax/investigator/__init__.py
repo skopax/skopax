@@ -9,7 +9,7 @@ from collections.abc import Callable
 
 import anthropic
 
-from skopax import history
+from skopax import history, information
 from skopax.ai import ModelSetting, key_for, maker
 from skopax.aikey import ClientBox
 from skopax.config import Setting, Settings
@@ -24,6 +24,7 @@ from skopax.investigator.tools import Effects, Sources, Toolbox
 from skopax.investigator.web import web_from
 from skopax.postdeploy import NUMBERS_BY
 from skopax import clock
+from skopax.messages import msg
 from skopax.store import LEASE_ID, ActionMoved, NotFound, Store, new_id
 
 log = logging.getLogger('skopax.investigator')
@@ -351,10 +352,21 @@ class Investigator:
                     continue
                 try:
                     if act['type'] == 'ask':
-                        return [self.store.anomaly(k) for k in act.get('cards') or []], self._caught_up(act)
+                        cards = [self.store.anomaly(k) for k in act.get('cards') or []]
+                        item = next((c for c in cards if information.is_item(c)), None)
+                        if item is not None:
+                            log.info('ask %s dropped: %s is information, not a card', act['id'], item['key'])
+                            self._slack_reply(self.store.update_action(act['id'], 'failed', msg('cards.information_item', key=item['key']), 'processing'), 'failed', '')
+                            continue
+                        return cards, self._caught_up(act)
                     if act['type'] == 'assess':
                         return [], act
-                    return [self.store.anomaly(act['key'])], act
+                    card = self.store.anomaly(act['key'])
+                    if information.is_item(card):
+                        log.info('investigate on %s dropped: it is information, not a card', act['key'])
+                        self._slack_reply(self.store.update_action(act['id'], 'failed', msg('cards.information_item', key=act['key']), 'processing'), 'failed', '')
+                        continue
+                    return [card], act
                 except NotFound:
                     self._slack_reply(self.store.update_action(act['id'], 'failed', 'no card with that key any more', 'processing'), 'failed', '')
                 except Exception as e:

@@ -93,7 +93,7 @@ def test_teams_defaults_are_neutral():
     # then
     assert fields == {'webhook': '', 'tags': '', 'mentions': '', 'keys': '', 'min-sev': ''}
     assert kinds == {'webhook': ('secret', True), 'tags': ('text', False), 'mentions': ('text', False), 'keys': ('text', False), 'min-sev': ('choice', False)}
-    assert settings == {'repeat-days': ('float', '7', 0, 365, ()), 'min-sev': ('choice', 'warn', None, None, ('info', 'warn', 'crit')), 'fixed-posts': ('bool', 'false', None, None, ())}
+    assert settings == {'repeat-days': ('float', '7', 0, 365, ()), 'min-sev': ('choice', 'warn', None, None, ('warn', 'crit')), 'fixed-posts': ('bool', 'false', None, None, ())}
 
 
 def test_a_post_answers_ok_or_the_status_and_never_the_webhook(store: Store):

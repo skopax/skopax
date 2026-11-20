@@ -11,7 +11,7 @@ from skopax.contract import SourceData
 from skopax.kube import Kube
 from skopax.registry import Registry
 from skopax.settingsources import Follower, SourceSet
-from skopax.engine import apply, auto_close_info, auto_resolve
+from skopax.engine import apply, auto_resolve
 from skopax.statenotes import auto_text
 from skopax.store import Store
 from skopax.tunables import Live, TunableStore, apply as apply_overrides
@@ -197,14 +197,13 @@ def test_an_admin_old_hours_value_seeds_only_severities_without_their_own_key():
     assert [getattr(days_chain, HOURS_FIELDS[s]) for s in SEVS] == [48, 48]
 
 
-def test_admin_lists_two_severity_rows_and_the_info_days_and_hides_the_old_hours_key(store):
+def test_admin_lists_two_severity_rows_and_hides_the_old_hours_key_and_the_info_days(store):
     # given
     live = Live(load_settings(lambda: {}), TunableStore(store.db))
 
     # when
     listed = {e['key']: e for e in live.entries()}
     change = live.set(HOURS_KEYS['crit'], '48', 'alice@example.com')[1]
-    live.set('core.info-auto-close-days', '5', 'alice@example.com')
     after = live.current()
 
     # then
@@ -213,15 +212,13 @@ def test_admin_lists_two_severity_rows_and_the_info_days_and_hides_the_old_hours
     assert [e['label'] for e in (crit, warn)] == ['Auto-resolve cleared critical cards after (hours)', 'Auto-resolve cleared warning cards after (hours)']
     assert [(e['group'], e['kind'], e['low'], e['high'], e['default'], e['live']) for e in (crit, warn)] == [('Cards', 'int', 0, 720, '6', True)] * 2
     assert 'core.auto-resolve-hours-info' not in listed
-    days = listed['core.info-auto-close-days']
-    assert (days['group'], days['label'], days['kind'], days['low'], days['high'], days['default'], days['live']) == (
-        'Cards', 'Auto-resolve info cards still firing after (days)', 'int', 0, 90, '3', True)
-    assert 'Closes an info card that is still firing and that nobody acted on after N days; 0 turns it off.' in days['help']
-    assert 'Log cards and info cards from warning or error signals are kept' in days['help']
+    assert 'core.info-auto-close-days' not in listed, 'information is never closed, so Admin hides the old days row'
     assert (change['label'], change['before'], change['after']) == ('Auto-resolve cleared critical cards after (hours)', '6', '48')
-    assert (after.auto_resolve_hours_crit, after.auto_resolve_hours_warn, after.info_auto_close_days) == (48, 6, 5)
+    assert (after.auto_resolve_hours_crit, after.auto_resolve_hours_warn, after.info_auto_close_days) == (48, 6, 3)
     with pytest.raises(KeyError):
         live.set('core.auto-resolve-hours', '10', 'alice@example.com')
+    with pytest.raises(KeyError):
+        live.set('core.info-auto-close-days', '5', 'alice@example.com')
 
 
 def test_a_stored_old_hours_value_still_seeds_the_severities_through_live(store):
@@ -248,15 +245,14 @@ def test_the_admin_api_saves_a_severity_window_and_the_history_names_it(store: S
     # when
     with TestClient(create_app(settings(), store)) as c:
         saved = c.put('/api/admin/settings', json={'key': HOURS_KEYS['warn'], 'value': '2'}, headers=AUTH)
-        bad = c.put('/api/admin/settings', json={'key': 'core.info-auto-close-days', 'value': '91'}, headers=AUTH)
-        c.put('/api/admin/settings', json={'key': 'core.info-auto-close-days', 'value': '5'}, headers=AUTH)
+        hidden = c.put('/api/admin/settings', json={'key': 'core.info-auto-close-days', 'value': '5'}, headers=AUTH)
         history = c.get('/api/admin/history', headers=AUTH).json()
         live = c.app.state.runtime.live.current()
 
     # then
-    assert saved.status_code == 200 and bad.status_code == 422
-    assert (live.auto_resolve_hours_warn, live.info_auto_close_days) == (2, 5)
-    assert {(h['key'], h['new']) for h in history} >= {(HOURS_KEYS['warn'], '2'), ('core.info-auto-close-days', '5')}
+    assert saved.status_code == 200 and hidden.status_code == 404
+    assert (live.auto_resolve_hours_warn, live.info_auto_close_days) == (2, 3)
+    assert (HOURS_KEYS['warn'], '2') in {(h['key'], h['new']) for h in history}
 
 
 def test_each_severity_resolves_on_its_own_window(store: Store):
@@ -339,51 +335,16 @@ def test_auto_resolve_takes_a_per_severity_map_directly():
     assert [d['key'] for d in done] == ['log|b|ERROR|warn']
 
 
-def test_an_info_card_closes_after_the_configured_days_and_not_before():
-    # given
-    state = {'anomalies': [firing_info('edge|a.example.com', 6.5), firing_info('edge|b.example.com', 5.5), firing_info('edge|c.example.com', 3.5)]}
-
-    # when
-    out = auto_close_info(state, NOW, 6)
-
-    # then
-    assert [(r['key'], r['hours'], r['since']) for r in out] == [('edge|a.example.com', 144, 'info')]
-    assert out[0]['text'].endswith('nobody acted in 6 days')
-    assert auto_text(144, 'info') == '\u2705 Auto-resolved: info card firing for 6 days with nobody acting'
-
-
-def test_zero_info_close_days_turns_only_the_info_rule_off(store: Store):
+def test_information_still_firing_is_never_auto_closed(store: Store):
     # given
     seeded(store, firing_info('edge|a.example.com', 80), waiting('log|b|ERROR|plain', cleared=90 * H, sev='warn'))
 
     # when
-    applied = apply(store, [], NOW, info_close_days=0)
+    applied = apply(store, [], NOW)
 
     # then
     assert {r['key'] for r in applied.resolved} == {'log|b|ERROR|plain'}
     assert by_key(store)['edge|a.example.com'].get('triage') is None
-
-
-def test_the_info_still_firing_rule_runs_with_the_configured_days_through_apply(store: Store):
-    # given
-    seeded(store, firing_info('edge|a.example.com', 6.5), firing_info('edge|b.example.com', 5.5))
-
-    # when
-    applied = apply(store, [], NOW, info_close_days=6)
-
-    # then
-    assert [(r['key'], r['hours']) for r in applied.resolved] == [('edge|a.example.com', 144)]
-
-
-def test_the_info_still_firing_rule_ignores_the_hours_windows(store: Store):
-    # given
-    seeded(store, firing_info('edge|a.example.com', 80))
-
-    # when
-    applied = apply(store, [], NOW, severity_hours={'crit': 0, 'warn': 0}, info_close_days=3)
-
-    # then
-    assert [r['key'] for r in applied.resolved] == ['edge|a.example.com']
 
 
 def test_parents_are_followed_while_any_severity_window_is_positive(store: Store):
@@ -402,7 +363,7 @@ def test_parents_are_followed_while_any_severity_window_is_positive(store: Store
     assert [r['key'] for r in on.resolved] == ['log|kid|ERROR|x']
 
 
-def test_the_server_pass_uses_the_severity_windows_and_the_info_days_with_matching_notes(store: Store):
+def test_the_server_pass_uses_the_severity_windows_and_ignores_the_info_days(store: Store):
     # given
     seeded(store, waiting('log|a|ERROR|crit', cleared=7 * H, sev='crit'), waiting('log|b|ERROR|warn', cleared=7 * H, sev='warn'), firing_info('edge|a.example.com', 6.5))
     config = dataclasses.replace(settings(), auto_resolve_hours_crit=24, auto_resolve_hours_warn=6, info_auto_close_days=6)
@@ -415,8 +376,7 @@ def test_the_server_pass_uses_the_severity_windows_and_the_info_days_with_matchi
     # then
     assert cards['log|a|ERROR|crit'].get('triage') is None
     assert cards['log|b|ERROR|warn']['triage'] == 'handled'
-    assert cards['edge|a.example.com']['triage'] == 'handled'
-    assert cards['edge|a.example.com']['note']['text'].endswith('nobody acted in 6 days')
+    assert cards['edge|a.example.com'].get('triage') is None
 
 
 def test_an_old_explicit_off_turns_the_info_days_off_unless_they_are_set(monkeypatch):
@@ -478,7 +438,7 @@ def test_admin_shows_a_value_seeded_by_the_stored_old_hours_as_an_old_setting_wi
     # then
     for key in HOURS_KEYS.values():
         assert (listed[key]['source'], listed[key]['by'], listed[key]['value'], listed[key]['oldSwitch']) == ('admin', 'bob@example.com', '9', 'core.auto-resolve-hours')
-    assert 'oldSwitch' not in listed['core.info-auto-close-days']
+    assert 'core.info-auto-close-days' not in listed
 
 
 def test_a_severity_with_its_own_value_or_config_is_not_marked_as_the_old_setting(store):
@@ -607,21 +567,6 @@ def test_clearing_a_stored_old_off_pins_the_info_days_as_a_legacy_row(store):
     assert [(r['old'], r['new'], r.get('legacy')) for r in pin] == [(None, '0', True)]
 
 
-def test_the_info_days_row_names_the_old_key_that_turned_it_off_without_claiming_admin(store):
-    # given
-    base = load_settings(lambda: {'core.auto-resolve-hours': '0'})
-    live = Live(base, TunableStore(store.db), values={'core.auto-resolve-hours': '0'}, labels={'core.auto-resolve-hours': 'config file'})
-
-    # when
-    row = {e['key']: e for e in live.entries()}['core.info-auto-close-days']
-    on = old_hours_live(store)
-    quiet = {e['key']: e for e in on.entries()}['core.info-auto-close-days']
-
-    # then
-    assert (row['oldSwitch'], row['source'], row['from'], row['value']) == ('core.auto-resolve-hours', 'config', 'config file', '0')
-    assert 'oldSwitch' not in quiet
-
-
 def test_a_stored_days_row_beside_a_stored_hours_row_is_ignored_for_the_tag_but_cleared_with_it(store):
     # given
     tunables = TunableStore(store.db)
@@ -693,21 +638,6 @@ def test_saving_a_severity_at_its_seeded_value_writes_no_history_row_but_still_p
     assert live.tunables.rev() > 0
 
 
-def test_a_stored_old_off_names_itself_on_the_info_days_row_while_the_row_stays_a_default(store):
-    # given
-    tunables = TunableStore(store.db)
-    tunables.write('core.auto-resolve-hours', '0', 'bob@example.com', None)
-    live = Live(load_settings(lambda: {}), tunables)
-    live.refresh(force=True)
-
-    # when
-    row = {e['key']: e for e in live.entries()}['core.info-auto-close-days']
-
-    # then
-    assert (row['oldSwitch'], row['source'], row['value']) == ('core.auto-resolve-hours', 'default', '0')
-    assert row['by'] is None
-
-
 def test_a_stored_old_days_row_is_ignored_when_the_config_sets_the_old_hours(store):
     # given
     tunables = TunableStore(store.db)
@@ -727,13 +657,3 @@ def test_a_stored_old_days_row_is_ignored_when_the_config_sets_the_old_hours(sto
     assert 'oldSwitch' not in row
 
 
-def test_an_old_off_set_outside_the_files_names_the_environment_on_the_info_days_row(store):
-    # given
-    base = load_settings(lambda: {'core.auto-resolve-hours': '0'})
-    live = Live(base, TunableStore(store.db), values={'core.auto-resolve-hours': '0'})
-
-    # when
-    row = {e['key']: e for e in live.entries()}['core.info-auto-close-days']
-
-    # then
-    assert (row['oldSwitch'], row['source'], row['from'], row['value']) == ('core.auto-resolve-hours', 'config', 'environment', '0')

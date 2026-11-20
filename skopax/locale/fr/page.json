@@ -102,7 +102,7 @@
   "Auto-resolve info cards still firing after (days)": "Résoudre automatiquement les cartes d'information toujours actives après (jours)",
   "Closes a card that stopped firing and that nobody acted on after N hours, one value per severity; 0 turns it off for that severity. With Business days only on, only Monday to Friday counts": "Ferme une carte qui a cessé de se déclencher et sur laquelle personne n'a agi après N heures, une valeur par gravité ; 0 le désactive pour cette gravité. Avec Jours ouvrés uniquement activé, seuls les jours du lundi au vendredi comptent",
   "Business days only": "Jours ouvrés uniquement",
-  "Count only Monday to Friday (install time zone) for auto-resolve and info close timers": "Ne compter que du lundi au vendredi (fuseau horaire de l'installation) pour les délais de résolution automatique et de fermeture des cartes d'information",
+  "Count only Monday to Friday (install time zone) for the auto-resolve timers": "Ne compter que du lundi au vendredi (fuseau horaire de l'installation) pour les délais de résolution automatique",
   "Auto-resolved": "Résolue automatiquement",
   "Auto-send": "Envoi automatique",
   "Auto-send failed": "Échec de l'envoi automatique",
@@ -1175,15 +1175,45 @@
   "More actions: mute for a week, known noise, group": "Plus d'actions : sourdine une semaine, bruit connu, grouper",
   "Responsibles": "Responsables",
   "No one yet": "Personne pour l’instant",
-  "Add a person": "Ajouter une personne",
   "Add a responsible": "Ajouter un responsable",
+  "Not found in Slack: shown as plain text in the report": "Introuvable dans Slack : affiché en texte brut dans le rapport",
+  "E-mail address": "Adresse e-mail",
   "Added": "Ajouté",
   "Removed": "Retiré",
   "Remove from the responsibles": "Retirer des responsables",
   "Responsibles not saved, try again": "Responsables non enregistrés, réessayez",
   "Slack app is missing users:read.email; responsibles are named without a ping": "Il manque users:read.email à l’app Slack ; les responsables sont nommés sans mention",
   "Needs Slack auto-send on (Admin › Features).": "Nécessite l’envoi automatique Slack activé (Admin › Features).",
-  "No longer an active user": "N’est plus un utilisateur actif"
+  "No longer an active user": "N’est plus un utilisateur actif",
+  "Who may sign in": "Qui peut se connecter",
+  "Roles from groups": "Rôles depuis les groupes",
+  "Redirect URI": "URI de redirection",
+  "Checks the provider with the values typed here, without saving them.": "Vérifie le fournisseur avec les valeurs saisies ici, sans les enregistrer.",
+  "Register this address in your identity provider as an allowed redirect (callback) URI.": "Enregistrez cette adresse chez votre fournisseur d’identité comme URI de redirection (callback) autorisée.",
+  "Set up single sign-on in three steps": "Configurer l’authentification unique en trois étapes",
+  "Copy the redirect URI below and register it in your identity provider.": "Copiez l’URI de redirection ci-dessous et enregistrez-la chez votre fournisseur d’identité.",
+  "Enter the issuer URL, client ID and client secret the provider gives you.": "Saisissez l’URL de l’émetteur, l’ID client et le secret client fournis par le fournisseur.",
+  "Test the connection, then save and turn single sign-on on.": "Testez la connexion, puis enregistrez et activez l’authentification unique.",
+  "Unsaved changes": "Modifications non enregistrées",
+  "Claim value": "Valeur du claim",
+  "Make SSO only": "Passer en SSO uniquement",
+  "Removes the password; this person signs in with SSO only": "Supprime le mot de passe ; cette personne se connecte uniquement avec le SSO",
+  "Remove the password? This person then signs in with SSO only.": "Supprimer le mot de passe ? Cette personne se connectera uniquement avec le SSO.",
+  "You will be signed out if you signed in with your password": "Vous serez déconnecté si vous vous êtes connecté avec votre mot de passe",
+  "Signs in with SSO only now": "Se connecte maintenant uniquement avec le SSO",
+  "Set a password": "Définir un mot de passe",
+  "Give this person a password: they become a local account, and their SSO link waits {0} days for the next SSO sign-in": "Donne un mot de passe à cette personne : elle devient un compte local, et son lien SSO attend {0} jours la prochaine connexion SSO",
+  "The last active admin with a password keeps it, so there is a way in when SSO fails: give another admin a password first": "Le dernier admin actif avec un mot de passe le garde, pour qu’il reste un moyen d’entrer si le SSO tombe en panne : donnez d’abord un mot de passe à un autre admin",
+  "Information": "Informations",
+  "Move to Information": "Déplacer vers Informations",
+  "Still firing": "Toujours actif",
+  "Back to the board": "Retour au tableau",
+  "Clears the hand-set severity: the card goes back to the board with the severity its signal gives": "Efface la gravité fixée à la main : la carte revient sur le tableau avec la gravité donnée par son signal",
+  "Info findings: worth knowing, nothing to act on. They are not cards, so they never reach the board, Slack or the investigator. Still firing first, newest first; an item that ended stays here for a day.": "Constats d'information : bons à savoir, rien à faire. Ce ne sont pas des cartes, ils n'atteignent donc jamais le tableau, Slack ni l'investigateur. Les actifs d'abord, les plus récents d'abord ; un élément terminé reste ici un jour.",
+  "No information right now. Info findings show here while they fire and for a day after they end.": "Aucune information pour l'instant. Les constats d'information apparaissent ici tant qu'ils sont actifs et un jour après leur fin.",
+  "nothing firing": "rien d'actif",
+  "{0} item still firing": "{0} élément toujours actif",
+  "{0} items still firing": "{0} éléments toujours actifs"
  },
  "rules": [
   [
@@ -1433,6 +1463,34 @@
   [
    "^Held: the run read text that looks planted \\((.+)\\) in (.+)$",
    "Retenu : l'exécution a lu un texte qui semble planté ($1) dans $2"
+  ],
+  [
+   "^Ended (.+)$",
+   "Terminé $1"
+  ],
+  [
+   "^First seen (.+)$",
+   "Vu pour la première fois $1"
+  ],
+  [
+   "^Last seen (.+)$",
+   "Vu pour la dernière fois $1"
+  ],
+  [
+   "^Moved to Information by (.+)$",
+   "Déplacé vers Informations par $1"
+  ],
+  [
+   "^Severity now: (\\S+), from the signal\\. A hand-set severity stays through every check until you set it back; Critical pushes, Move to Information takes it off the board onto the Information page$",
+   "Gravité actuelle : $1, d'après le signal. Une gravité fixée à la main reste à chaque vérification jusqu'à ce que vous la remettiez ; Critique est poussée, Déplacer vers Informations retire la carte du tableau vers la page Informations"
+  ],
+  [
+   "^Severity now: (\\S+), set by hand by (.+); the signal says (\\S+)\\. A hand-set severity stays through every check until you set it back; Critical pushes, Move to Information takes it off the board onto the Information page$",
+   "Gravité actuelle : $1, fixée à la main par $2 ; le signal dit $3. Une gravité fixée à la main reste à chaque vérification jusqu'à ce que vous la remettiez ; Critique est poussée, Déplacer vers Informations retire la carte du tableau vers la page Informations"
+  ],
+  [
+   "^Moved to Information: (.+)$",
+   "Déplacé vers Informations : $1"
   ]
  ],
  "months": {

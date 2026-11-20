@@ -4,9 +4,9 @@ const {JSDOM} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
 const CHECKS = [
-  ['Connect MCP at 1024 px: the info grid sizes to the panel, not to the setup command', '.mcp-info', 'grid-template-columns', 'minmax(0, 1fr)'],
-  ['Connect MCP at 1024 px: so do its numbered steps', '.mcp-info ol', 'grid-template-columns', 'minmax(0, 1fr)'],
-  ['Connect MCP at 1024 px: and its lists', '.mcp-info ul', 'grid-template-columns', 'minmax(0, 1fr)'],
+  ['Connect MCP at 1024 px: the info grid sizes to the panel, not to the setup command', '.mcp-info', 'grid-template-columns', 'minmax(0px, 1fr)'],
+  ['Connect MCP at 1024 px: so do its numbered steps', '.mcp-info ol', 'grid-template-columns', 'minmax(0px, 1fr)'],
+  ['Connect MCP at 1024 px: and its lists', '.mcp-info ul', 'grid-template-columns', 'minmax(0px, 1fr)'],
   ['Connect MCP on a phone: the tools table scrolls inside its own box', '.mcp-tools-box', 'overflow-x', 'auto'],
   ['Connect MCP on a phone: and the box is never wider than the panel', '.mcp-tools-box', 'max-width', '100%'],
   ['a long source pill on a phone: the pill is never wider than its row', '.sg-pill', 'max-width', '100%'],
@@ -16,6 +16,10 @@ const CHECKS = [
   ['a long source pill on a phone: with an ellipsis', '.sg-bad', 'text-overflow', 'ellipsis'],
   ['the card drawer on a phone: its width holds the border and the padding', '.cd-panel', 'box-sizing', 'border-box'],
   ['the card drawer on a phone: 94 % of the screen at most, and 760 px of content on a wide one', '.cd-panel', 'width', 'min(793px, 94vw)'],
+  ['the Information page on a phone: one column that sizes to the panel', '.info-list', 'grid-template-columns', 'minmax(0px, 1fr)'],
+  ['the Information page on a phone: a row may shrink', '.info-row', 'min-width', '0px'],
+  ['the Information page on a phone: long words wrap inside the row', '.info-row', 'overflow-wrap', 'anywhere'],
+  ['the Information page on a phone: its head wraps', '.info-head', 'flex-wrap', 'wrap'],
 ];
 
 function rules(list) {
@@ -38,7 +42,7 @@ async function everySurfaceOnTheListHasTheRulesThatKeepItFromScrollingSideways()
   assert.ok(all.length > 500, 'the page styles are read: ' + all.length + ' rules');
   assert.deepStrictEqual(missing, [], 'surfaces that would scroll sideways');
   dom.window.close();
-  return 'Connect MCP (its grid at 1024 px and its tools table on a phone), the source pills and the card drawer keep the rules that stop them scrolling sideways';
+  return 'Connect MCP (its grid at 1024 px and its tools table on a phone), the source pills, the card drawer and the Information page keep the rules that stop them scrolling sideways';
 }
 
 (async () => {

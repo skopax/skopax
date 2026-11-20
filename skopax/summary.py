@@ -1,6 +1,6 @@
 import datetime as dt
 
-from skopax import clock
+from skopax import clock, information
 from skopax.settle import RELEASE_GAP_HOURS, REPORT_LOOKBACK_HOURS, SETTLE_MINUTES, WINDOW_HOURS, covered, ignored, newest_release, when
 from skopax.store import Store, iso
 
@@ -60,7 +60,7 @@ def release_line(store: Store, now: dt.datetime) -> str | None:
 
 
 def build(state: dict, store: Store, now: float) -> dict:
-    anomalies = state.get('anomalies') or []
+    anomalies = information.cards_only(state.get('anomalies'))
     cards = [a for a in open_cards(anomalies) if health_card(a)]
     waiting = [a for a in waiting_cards(anomalies) if health_card(a)]
     level = max((a.get('sev') for a in cards), key=lambda s: RANK.get(s, 0), default='warn' if waiting else 'ok')

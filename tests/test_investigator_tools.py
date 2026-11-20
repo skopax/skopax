@@ -727,7 +727,7 @@ def test_handled_is_refused_on_a_card_without_a_known_severity(store: Store):
     out, err = b.call('triage', {'key': KEY, 'state': 'handled'})
 
     # then
-    assert err and 'warn or info' in out
+    assert err and 'only for a warn card' in out
     assert store.anomaly(KEY)['triage'] == 'dived'
 
 

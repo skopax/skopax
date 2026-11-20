@@ -43,7 +43,7 @@ def test_open_cards_lead_worst_first_with_their_change_and_the_rest_are_counted(
 
     # then
     assert box['level'] == 'crit'
-    assert box['headline'] == 'orders-service 5xx ×15; checkout-service ERROR pattern ×8.0; sms-sender ERROR pattern new; email-service restarts new; +1 more; 1 waiting to be addressed'
+    assert box['headline'] == 'orders-service 5xx ×15; checkout-service ERROR pattern ×8.0; sms-sender ERROR pattern new; email-service restarts new; 1 waiting to be addressed', 'information never counts'
     assert box['points'] == []
 
 
@@ -134,7 +134,7 @@ def test_cleared_cards_that_are_muted_addressed_info_or_nested_do_not_wait(store
         anomaly('h1', 'crit', status='cleared', triage='handled'),
         anomaly('p1', 'warn', status='cleared', triage='progress'),
         anomaly('i1', 'info', status='cleared'),
-        anomaly('parent', 'info', status='cleared'),
+        anomaly('parent', 'warn', status='cleared', triage='handled'),
         anomaly('kid', 'warn', status='cleared', parent='parent'),
     ]
 

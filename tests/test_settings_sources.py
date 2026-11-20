@@ -872,7 +872,7 @@ def test_post_at_once_from_set_and_removed_in_a_source_moves_with_its_set_mark(s
         # when
         live.refresh(force=True)
         before = (live.current().slack_post_sev, live.current().slack_post_sev_set)
-        box['data'] = SourceData('feed', {'investigate.max-cards': '4', 'slack.post-sev': 'info'})
+        box['data'] = SourceData('feed', {'investigate.max-cards': '4', 'slack.post-sev': 'crit'})
         follower.tick()
         live.refresh(force=True)
         added = (live.current().slack_post_sev, live.current().slack_post_sev_set)
@@ -883,5 +883,5 @@ def test_post_at_once_from_set_and_removed_in_a_source_moves_with_its_set_mark(s
 
     # then
     assert before == ('off', False), 'the stored old switch counts while the new setting is not set'
-    assert added == ('info', True), 'a source that sets the new setting wins over the stored old switch at once'
+    assert added == ('crit', True), 'a source that sets the new setting wins over the stored old switch at once'
     assert removed == ('off', False), 'and once it is gone the stored old switch counts again'

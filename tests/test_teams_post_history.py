@@ -85,14 +85,15 @@ def test_a_card_that_left_the_page_and_fires_again_inside_the_repeat_days_is_not
     routes = seo(store, t)
     store.save({**state(), 'initialized': True}, None)
     now = time.time()
-    passed(store, [found('info')], now - 60, said=ACTION)
+    passed(store, [found()], now - 60, said=ACTION)
     first = routes.tagged(store.load()['anomalies'], now=now)
+    store.triage(KEY, 'handled', at=iso_at(now + 60))
     passed(store, [], now + 3600)
     passed(store, [], now + 26 * 3600)
     gone = KEY not in [a['key'] for a in store.load()['anomalies']]
 
     # when
-    passed(store, [found('info')], now + 3 * 86400, said=ACTION)
+    passed(store, [found()], now + 3 * 86400, said=ACTION)
     back = routes.tagged(store.load()['anomalies'], now=now + 3 * 86400 + 60)
     store.triage(KEY, 'progress', owner='nina.white@example.com')
     taken = routes.tagged(store.load()['anomalies'], now=now + 3 * 86400 + 360)
@@ -102,17 +103,18 @@ def test_a_card_that_left_the_page_and_fires_again_inside_the_repeat_days_is_not
     assert back == {} and taken == {} and len(t.calls) == 1, 'the channel got this card three days ago and never heard it was fixed, also after a Take wrote its new firing to the history'
 
 
-def test_an_info_card_that_expired_left_the_page_and_came_back_gets_its_fixed_post_when_it_really_stops(store: Store):
+def test_a_card_that_was_resolved_left_the_page_and_came_back_gets_its_fixed_post_when_it_really_stops(store: Store):
     # given
     t = Transport()
     routes = seo(store, t)
     store.save({**state(), 'initialized': True}, None)
     now = time.time()
-    passed(store, [found('info')], now - 60, said=INFO)
+    passed(store, [found()], now - 60, said=INFO)
     routes.tagged(store.load()['anomalies'], now=now)
-    passed(store, [], now + 25 * 3600, ran=False)
-    passed(store, [], now + 50 * 3600, ran=False)
-    passed(store, [found('info')], now + 3 * 86400, said=INFO)
+    store.triage(KEY, 'handled', at=iso_at(now + 60))
+    passed(store, [], now + 25 * 3600)
+    passed(store, [], now + 50 * 3600)
+    passed(store, [found()], now + 3 * 86400, said=INFO)
     held = routes.tagged(store.load()['anomalies'], now=now + 3 * 86400 + 60)
     store.triage(KEY, 'progress', owner='nina.white@example.com')
     passed(store, [], now + 3 * 86400 + 3600)

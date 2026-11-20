@@ -93,13 +93,13 @@ def test_an_admin_sets_and_clears_responsibles_and_each_change_is_a_history_row_
 
     # then
     assert saved.status_code == 200
-    assert saved.json()['responsibles'] == [{'email': NINA, 'name': 'Nina White'}, {'email': ADMIN_EMAIL, 'name': 'Admin'}]
-    assert same.status_code == 200 and cleared.json()['responsibles'] == [{'email': ADMIN_EMAIL, 'name': 'Admin'}]
+    assert saved.json()['responsibles'] == [{'email': NINA, 'name': 'Nina White', 'slack': 'unchecked'}, {'email': ADMIN_EMAIL, 'name': 'Admin', 'slack': 'unchecked'}]
+    assert same.status_code == 200 and cleared.json()['responsibles'] == [{'email': ADMIN_EMAIL, 'name': 'Admin', 'slack': 'unchecked'}]
     rows = [(h['key'], h['old'], h['new'], h['owners'], h['tag'], h['by']) for h in history]
     assert rows == [('tags.developer.responsibles', f'{NINA}, {ADMIN_EMAIL}', ADMIN_EMAIL, True, 'developer', OSCAR),
                     ('tags.developer.responsibles', None, f'{NINA}, {ADMIN_EMAIL}', True, 'developer', OSCAR)]
     dev = next(t for t in listed['tags'] if t['id'] == 'developer')
-    assert dev['label'] == 'Developer' and dev['responsibles'] == [{'email': ADMIN_EMAIL, 'name': 'Admin'}]
+    assert dev['label'] == 'Developer' and dev['responsibles'] == [{'email': ADMIN_EMAIL, 'name': 'Admin', 'slack': 'unchecked'}]
     assert listed['canEdit'] is True
     assert {u['email'] for u in listed['users']} >= {NINA, ADMIN_EMAIL, OSCAR}
     lines = [a['text'] for a in store.list_activity(None, 50) if a['text'].startswith('Responsibles of')]
@@ -107,14 +107,13 @@ def test_an_admin_sets_and_clears_responsibles_and_each_change_is_a_history_row_
     assert all('@' not in line for line in lines)
 
 
-def test_an_unknown_tag_or_person_is_refused(store: Store):
+def test_an_unknown_tag_or_a_disabled_person_or_too_many_are_refused(store: Store):
     # given
     store.save(state(), None)
     admin = signed_in(store)
 
     # when
     no_tag = admin.put('/api/admin/tags/nope/responsibles', json={'emails': [ADMIN_EMAIL]})
-    no_user = admin.put('/api/admin/tags/developer/responsibles', json={'emails': ['ghost@example.com']})
     too_many = admin.put('/api/admin/tags/developer/responsibles', json={'emails': [f'u{n}@example.com' for n in range(21)]})
     people(store)
     Users(store.db).set_disabled(NINA, True)
@@ -122,10 +121,9 @@ def test_an_unknown_tag_or_person_is_refused(store: Store):
 
     # then
     assert no_tag.status_code == 404 and 'nope' in no_tag.json()['detail']
-    assert no_user.status_code == 422 and 'ghost@example.com' in no_user.json()['detail']
-    assert disabled.status_code == 422 and NINA in disabled.json()['detail']
+    assert disabled.status_code == 200
     assert too_many.status_code == 422
-    assert store.tag_owners() == {}
+    assert store.tag_owners() == {'developer': [NINA]}
 
 
 def test_a_removed_tag_drops_out_of_the_list_and_the_token_can_set_responsibles(store: Store, client):
@@ -179,7 +177,7 @@ def test_a_stale_chip_is_marked_does_not_block_adding_someone_and_can_be_removed
     removed = client.put('/api/admin/tags/developer/responsibles', json={'emails': [OSCAR]}, headers=AUTH)
 
     # then
-    assert [(p['email'], p.get('stale', False)) for p in listed['responsibles']] == [(NINA, True), ('gone@example.com', True)]
+    assert [(p['email'], p.get('stale', False)) for p in listed['responsibles']] == [(NINA, True), ('gone@example.com', False)]
     assert added.status_code == 200 and [p['email'] for p in added.json()['responsibles']] == [NINA, 'gone@example.com', OSCAR]
     assert removed.status_code == 200 and store.tag_owners() == {'developer': [OSCAR]}
 
@@ -229,3 +227,119 @@ def test_a_missing_email_scope_shows_as_a_notice_and_next_to_the_report_setting(
     assert item['problem'] == warning
     assert listed['emailScopeMissing'] is True
     assert [n for n in after if n['id'] == 'tag-report-scope'] == []
+
+
+def test_an_address_without_a_skopax_account_is_saved_and_named_by_its_local_part(store: Store, client):
+    # given
+    store.save(state(), None)
+
+    # when
+    put = client.put('/api/admin/tags/developer/responsibles', json={'emails': [' Ghost.Person@Example.com ']}, headers=AUTH)
+
+    # then
+    assert put.status_code == 200
+    assert put.json()['responsibles'] == [{'email': 'ghost.person@example.com', 'name': 'ghost.person', 'slack': 'unchecked'}]
+    assert store.tag_owners() == {'developer': ['ghost.person@example.com']}
+
+
+def test_an_invalid_address_is_refused_with_its_own_message_and_nothing_is_saved(store: Store, client):
+    # given
+    store.save(state(), None)
+    bad = ['not-an-email', 'a b@example.com', 'a@localhost', 'a@@example.com', 'x' * 250 + '@example.com']
+
+    # when
+    refused = [client.put('/api/admin/tags/developer/responsibles', json={'emails': [NINA, e]}, headers=AUTH) for e in bad]
+
+    # then
+    assert [r.status_code for r in refused] == [422] * len(bad)
+    assert all('e-mail' in r.json()['detail'] and 'No active' not in r.json()['detail'] for r in refused)
+    assert store.tag_owners() == {}
+
+
+def test_slack_marks_each_responsible_found_or_unknown_and_a_found_one_is_named_by_its_slack_name(store: Store):
+    # given
+    store.save(state(), None)
+    slack, _, api = fake_slack(emails={'U0ALICE': 'alice@example.com'})
+    api.names['U0ALICE'] = 'Alice Moss'
+
+    # when
+    with TestClient(create_app(settings(), store, slack=slack)) as c:
+        put = c.put('/api/admin/tags/developer/responsibles', json={'emails': ['alice@example.com', 'bob@example.com', NINA]}, headers=AUTH)
+        listed = next(t for t in c.get('/api/admin/tags', headers=AUTH).json()['tags'] if t['id'] == 'developer')
+
+    # then
+    assert put.status_code == 200
+    expected = [{'email': 'alice@example.com', 'name': 'Alice Moss', 'slack': 'found'}, {'email': 'bob@example.com', 'name': 'bob', 'slack': 'unknown'},
+                {'email': NINA, 'name': 'nina.white', 'slack': 'unknown'}]
+    assert put.json()['responsibles'] == expected
+    assert listed['responsibles'] == expected
+
+
+def test_a_slack_error_never_blocks_the_save_and_marks_unchecked(store: Store):
+    # given
+    store.save(state(), None)
+    slack, _, api = fake_slack(emails={'U0ALICE': 'alice@example.com'})
+    api.fail = {'users.lookupByEmail'}
+
+    # when
+    with TestClient(create_app(settings(), store, slack=slack)) as c:
+        put = c.put('/api/admin/tags/developer/responsibles', json={'emails': ['alice@example.com', 'bob@example.com']}, headers=AUTH)
+
+    # then
+    assert put.status_code == 200
+    assert [p['slack'] for p in put.json()['responsibles']] == ['unchecked', 'unchecked']
+    assert store.tag_owners() == {'developer': ['alice@example.com', 'bob@example.com']}
+
+
+def test_listing_makes_no_slack_call_and_a_save_looks_up_only_the_newly_added_address(store: Store):
+    # given
+    store.save(state(), None)
+    store.set_tag_owners('developer', ['bob@example.com'])
+    slack, _, api = fake_slack(emails={'U0ALICE': 'alice@example.com'})
+
+    # when
+    with TestClient(create_app(settings(), store, slack=slack)) as c:
+        before = c.get('/api/admin/tags', headers=AUTH).json()
+        calls_before = api.methods().count('users.lookupByEmail')
+        c.put('/api/admin/tags/developer/responsibles', json={'emails': ['bob@example.com', 'alice@example.com']}, headers=AUTH)
+        calls_saved = api.methods().count('users.lookupByEmail')
+        after = c.get('/api/admin/tags', headers=AUTH).json()
+
+    # then
+    marks = lambda body: [p['slack'] for p in next(t for t in body['tags'] if t['id'] == 'developer')['responsibles']]
+    assert (marks(before), calls_before) == (['unchecked'], 0)
+    assert calls_saved == 1
+    assert marks(after) == ['unchecked', 'found'] and api.methods().count('users.lookupByEmail') == calls_saved
+
+
+def test_a_failing_slack_is_called_once_per_save_and_not_again_for_a_while_and_the_owners_are_saved(store: Store):
+    # given
+    store.save(state(), None)
+    slack, _, api = fake_slack()
+    api.fail = {'users.lookupByEmail'}
+    people = [f'u{n}@example.com' for n in range(5)]
+
+    # when
+    with TestClient(create_app(settings(), store, slack=slack)) as c:
+        first = c.put('/api/admin/tags/developer/responsibles', json={'emails': people}, headers=AUTH)
+        calls_first = api.methods().count('users.lookupByEmail')
+        second = c.put('/api/admin/tags/seo/responsibles', json={'emails': people}, headers=AUTH)
+        calls_second = api.methods().count('users.lookupByEmail')
+
+    # then
+    assert first.status_code == second.status_code == 200
+    assert store.tag_owners() == {'developer': people, 'seo': people}
+    assert calls_first == 1 and calls_second == 1
+    assert {p['slack'] for p in first.json()['responsibles']} == {'unchecked'}
+
+
+def test_the_activity_line_for_an_outside_address_names_it_by_the_local_part_only(store: Store, client):
+    # given
+    store.save(state(), None)
+
+    # when
+    client.put('/api/admin/tags/developer/responsibles', json={'emails': ['ghost.person@example.com']}, headers=AUTH)
+
+    # then
+    lines = [a['text'] for a in store.list_activity(None, 50) if a['text'].startswith('Responsibles of')]
+    assert lines == ['Responsibles of Developer: \u2013 \u2192 ghost.person']

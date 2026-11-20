@@ -84,7 +84,7 @@ async function theHeadingFoldsFromTheKeyboardAndTheRailIgnoresIt() {
 
   //then
   assert.deepStrictEqual([enter.defaultPrevented, afterEnter, space.defaultPrevented, afterSpace], [true, 'false', true, 'true'], 'Enter and Space toggle once');
-  assert.strictEqual(count, '3', 'the folded count leaves out the hidden row: ' + count);
+  assert.strictEqual(count, '4', 'the folded count leaves out the hidden row: ' + count);
   assert.ok(/^Observe folded/.test(label), 'the tooltip names the group, not its id: ' + label);
   assert.deepStrictEqual([rb.getAttribute('tabindex'), rb.getAttribute('aria-expanded'), rb.getAttribute('aria-hidden')], ['-1', 'true', 'true'], 'in the rail the heading is not a tab stop and does not toggle');
   assert.deepStrictEqual(t.errors.concat(rail.errors), []);
@@ -116,7 +116,7 @@ async function theHeadingFoldsFromTheKeyboardAndTheRailIgnoresIt() {
   assert.deepStrictEqual(defaults, ['true', 'true', 'true', 'false'], 'More folded, the others open');
   assert.strictEqual(mainHasButton, false, 'the unlabelled group stays as it is');
   assert.ok(focused, 'the heading is a focusable button');
-  assert.deepStrictEqual(folded, ['false', false, true, true, '4'], 'Observe folds alone and its heading counts its rows');
+  assert.deepStrictEqual(folded, ['false', false, true, true, '5'], 'Observe folds alone and its heading counts its rows');
   assert.deepStrictEqual(reopened, ['true', true]);
   assert.deepStrictEqual(JSON.parse(stored), {observe: 'folded'});
 

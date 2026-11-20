@@ -100,19 +100,21 @@ def test_link_puts_a_jira_key_on_the_card_in_progress_and_keeps_the_assignee_and
     assert (words['status'], words['result']) == ('failed', 'link needs a Jira key like OPS-123') and card(client)['ticket'] == 'OPS-145'
 
 
-def test_severity_is_set_by_hand_and_auto_gives_the_signal_s_back(client: TestClient):
+def test_severity_is_set_by_hand_and_auto_gives_the_signal_s_back(client: TestClient, store):
     # given
     seed(client)
 
     # when
     down = client.post('/api/actions', json={'type': 'severity', 'key': KEY, 'sev': 'info', 'label': 'Severity'}, headers=AUTH).json()
-    set_card = card(client)
+    set_card = store.anomaly(KEY)
+    listed = client.get('/api/state').json()
     back = client.post('/api/actions', json={'type': 'severity', 'key': KEY, 'sev': 'auto', 'label': 'Severity'}, headers=AUTH).json()
     wrong = client.post('/api/actions', json={'type': 'severity', 'key': KEY, 'sev': 'high', 'label': 'Severity'}, headers=AUTH)
 
     # then
     assert (down['status'], down['result']) == ('done', 'severity set to Info by hand (the signal says Warning)')
     assert (set_card['sev'], set_card['sevAuto'], set_card['sevSet']['sev'], set_card['sevSet']['auto']) == ('info', 'warn', 'info', 'warn')
+    assert KEY not in [a['key'] for a in listed['anomalies']] and [r['key'] for r in listed['information']] == [KEY], 'Info moves it to the Information page'
     assert back['result'] == 'severity back to the signal (Warning)' and card(client)['sev'] == 'warn' and 'sevSet' not in card(client) and 'sevAuto' not in card(client)
     assert wrong.status_code == 422
 

@@ -992,7 +992,7 @@ async function tabsAreLinks() {
   const selected = () => doc.querySelector('a.tab[data-tab][aria-current="page"]').dataset.tab;
 
   //then
-  assert.ok(tabs.length === 13 && tabs.every((t) => t.tagName === 'A'), 'every row is a real link, so copy-link and middle-click work');
+  assert.ok(tabs.length === 14 && tabs.every((t) => t.tagName === 'A'), 'every row is a real link, so copy-link and middle-click work');
   assert.deepStrictEqual(tabs.map((t) => t.getAttribute('href')), tabs.map((t) => '#t=' + t.dataset.tab), 'each one points at its own #t= path');
   assert.ok(tabs.every((t) => !t.hasAttribute('role') && !t.hasAttribute('type')), 'they are plain links: no tab role and no button type');
   assert.strictEqual(w.location.hash, '#t=anoms', 'a load without a hash writes the open tab in the address bar');
@@ -1076,7 +1076,7 @@ async function tabGroupsCarryTheHealthState() {
   //then
   assert.deepStrictEqual(groups.map((g) => (g.querySelector('.tabs-l') || {}).textContent || ''), ['Anomaly filters'], 'the side menu keeps only the anomaly filters');
   const rows = (grp) => [...doc.querySelectorAll('#snav .s-grp[data-grp="' + grp + '"] a.tab[data-tab]')].map((t) => t.dataset.tab);
-  assert.deepStrictEqual(['main', 'observe', 'activity', 'connect', 'more'].map(rows), [['anoms', 'reqs', 'chat', 'inv'], ['svcs', 'lat', 'rels', 'reps'], ['slack', 'hist', 'acts', 'costs'], ['integrations', 'tools', 'mcp'], ['review', 'docs']], 'the sidebar groups the tabs: the Board group, then Observe (the old Metrics and Delivery), Activity, Connect and More');
+  assert.deepStrictEqual(['main', 'observe', 'activity', 'connect', 'more'].map(rows), [['anoms', 'reqs', 'chat', 'inv'], ['svcs', 'info', 'lat', 'rels', 'reps'], ['slack', 'hist', 'acts', 'costs'], ['integrations', 'tools', 'mcp'], ['review', 'docs']], 'the sidebar groups the tabs: the Board group, then Observe (the old Metrics and Delivery), Activity, Connect and More');
   assert.ok(!doc.getElementById('toptabs') && !doc.getElementById('menu-metrics') && !doc.getElementById('tabs-metrics'), 'no top-bar menus any more');
   assert.deepStrictEqual(['hist', 'acts'].map((id) => tab(id).querySelector('.lbl').textContent), ['Events', 'History'], 'the action log is History, the anomaly events are Events');
   assert.ok(groups.every((g) => g.getAttribute('role') === 'presentation') && !doc.querySelector('#tabs .tabs-l[role="tab"]'), 'labels are not tabs');
@@ -1087,10 +1087,10 @@ async function tabGroupsCarryTheHealthState() {
   assert.deepStrictEqual([...layout.children].filter((c) => !c.hidden).map((c) => c.tagName + '#' + c.id), ['NAV#tabs', 'MAIN#', 'ASIDE#live'], 'the menu sits left of the main column, the Activity rail right of it');
   assert.ok(['reco', 'queue-strip', 'banner'].concat([...doc.querySelectorAll('#side a.tab[data-tab]')].map((t) => 'panel-' + t.dataset.tab)).every((id) => layout.querySelector('main').contains(doc.getElementById(id))), 'the summary, the queue strip and every panel are in the main column');
   const narrow = rules.filter((r) => r.cssRules && /max-width: 900px/.test(r.conditionText || (r.media && r.media.mediaText) || '')).flatMap((r) => [...r.cssRules]);
-  assert.ok(narrow.some((r) => r.selectorText === '.layout' && r.style.getPropertyValue('grid-template-columns') === 'minmax(0, 1fr)'), 'on a narrow content the main column takes the full width');
+  assert.ok(narrow.some((r) => r.selectorText === '.layout' && r.style.getPropertyValue('grid-template-columns') === 'minmax(0px, 1fr)'), 'on a narrow content the main column takes the full width');
   assert.ok(narrow.some((r) => r.selectorText === '.tabs' && r.style.getPropertyValue('position') === 'fixed') && narrow.some((r) => r.selectorText === 'body.nav-open .tabs'), 'and the menu becomes a drawer');
   assert.deepStrictEqual([...doc.querySelector('section.overview').children].map((c) => c.id), ['reco', 'meta'], 'the overview keeps the Skopax summary and the source pills');
-  assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms button')].map((b) => b.dataset.f).slice(0, 5), ['all', 'open', 'crit', 'warn', 'info'], 'All first, then the Open counts right under Open in the Anomalies side sub menu');
+  assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms button')].map((b) => b.dataset.f).slice(0, 4), ['all', 'open', 'crit', 'warn'], 'All first, then the Open counts right under Open in the Anomalies side sub menu');
   assert.strictEqual(tab('anoms').title, '1 critical', 'the Anomalies tab tooltip counts by severity');
   assert.ok(tab('svcs').classList.contains('hot') && tab('svcs').classList.contains('k-crit'), 'Services is coloured by its worst service: ' + tab('svcs').className);
   assert.strictEqual(doc.getElementById('count-svcs').textContent, '1/2');

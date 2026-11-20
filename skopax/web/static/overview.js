@@ -103,7 +103,7 @@ function renderBrief() {
   var icon = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1.55 13.82 10.4 1 14.8 1 3.05 14.98ZM12.95 14.98 1.2 1 5.6 1 14.45 13.82Z' fill='#3cc8f0'/><path d='M6.25 7.01 8 4.48 9.75 7.01 8 9.09Z' fill='#b3eefc'/>" +
     (dot ? "<circle cx='12.5' cy='3.5' r='3.5' fill='" + dot + "' stroke='#14171c' stroke-width='1.2'/>" : '') + '</svg>';
   document.getElementById('favicon').href = 'data:image/svg+xml,' + encodeURIComponent(icon);
-  var sevTxt = ['crit', 'warn', 'info'].map(function (s) { var n = briefOpen.filter(function (a) { return a.sev === s; }).length; return n ? n + ' ' + SEV[s][0].toLowerCase() : ''; }).filter(Boolean).join(' · ');
+  var sevTxt = ['crit', 'warn'].map(function (s) { var n = briefOpen.filter(function (a) { return a.sev === s; }).length; return n ? n + ' ' + SEV[s][0].toLowerCase() : ''; }).filter(Boolean).join(' · ');
   var links = (briefOpen.length ? '<button type="button" class="xlink" data-open-anoms title="Show the open cards">' + esc(sevTxt || openTxt) + ' open</button>' : '<span>Nothing open</span>') +
     (D.summary && /\brelease\b/i.test(D.summary.headline || '') ? ' · <button type="button" class="xlink" data-reps>Deploy reports ›</button>' : '');
   r.innerHTML = '<div class="brief-top"><span class="sev ' + L[1] + '" title="' + esc(BRIEF_BY) + '">' + esc(L[0]) + '</span><span class="brief-when">' + links + '</span></div>';
@@ -409,13 +409,14 @@ function renderTabs() {
   var bad = S.filter(function (s) { return s.status !== 'ok'; });
   var svcK = bad.some(function (s) { return s.status === 'crit'; }) ? 'k-crit' : bad.some(function (s) { return s.status === 'warn'; }) ? 'k-warn' : 'k-info';
   var badTip = bad.slice(0, 5).map(function (s) { return s.svc + ' (' + (SEV[s.status] || SEV.info)[0] + ')'; }).join(', ') + (bad.length > 5 ? ', +' + (bad.length - 5) + ' more' : '');
-  var openNow = openAll(), openTop = ['crit', 'warn', 'info'].filter(function (s) { return openNow.some(function (a) { return healthCard(a) && a.sev === s; }); })[0];
-  var anomTip = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning'], [openBySev('info').length, 'info']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; });
+  var openNow = openAll(), openTop = ['crit', 'warn'].filter(function (s) { return openNow.some(function (a) { return healthCard(a) && a.sev === s; }); })[0];
+  var anomTip = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; });
   if (!openAll().length) anomTip.push('nothing open');
   if (slackRec.length) anomTip.push(plural(slackRec.length, 'Slack draft', 'Slack drafts'));
   var T = {
     anoms: [String(openNow.length), openTop ? SEV[openTop][1] : SEV[worst][1], !!openNow.length, anomTip.join(' · ')],
     svcs: [S.length ? svcOk + '/' + S.length : '–', svcK, !!bad.length, !S.length ? 'no services yet' : bad.length ? bad.length + ' of ' + S.length + ' not healthy: ' + badTip : 'all ' + S.length + ' healthy'],
+    info: [infoFiring().length, 'k-info', false, infoFiring().length ? plural(infoFiring().length, 'item', 'items') + ' still firing' : 'nothing firing'],
     lat: [(D.routes || []).length, 'k-info', false, ''],
     hist: [H.length, 'k-cleared', false, ''],
     slack: slackTabState(),
@@ -500,7 +501,6 @@ function renderFilters() {
     {id: 'dived', label: 'Investigated', k: 'k-cleared', n: triCount('dived'), seg: 'tri-chips'},
     {id: 'crit', label: 'Critical', k: 'k-crit', n: openBySev('crit').length, seg: 'sev-chips', tip: 'open critical items (pushed)'},
     {id: 'warn', label: 'Warning', k: 'k-warn', n: openBySev('warn').length, seg: 'sev-chips', tip: 'open warning items (pushed)'},
-    {id: 'info', label: 'Info', k: 'k-info', n: openBySev('info').length, seg: 'sev-chips', tip: 'open info items (page only)'},
     {id: 'slack', label: 'Slack recommended', chip: 'Slack drafts', k: 'k-act', n: slackRec.length, seg: 'list-chips', tip: 'cards with a Slack draft waiting to be sent, whatever their status'},
     {id: 'recurring', label: 'Recurring', k: 'k-warn', n: recurringL.length, seg: 'list-chips', whenAny: true, tip: 'cards that keep coming back with no Jira ticket on them, whatever their status'},
     {id: 'archived', label: 'Archived', k: 'k-cleared', n: ARCHIVED.length, seg: 'list-chips', tip: 'cards not firing (or muted) with no change for ' + archiveHours() + ' hours; hidden everywhere else'},
@@ -519,7 +519,7 @@ function renderFilterNote(c) {
   var note = document.getElementById('filter-note');
   var f = c ? c.id : 'open', refocus = document.activeElement && document.activeElement.id === 'filter-menu';
   note.className = 'filter-note ' + (c ? c.k : SEV[worst][1]) + (f !== 'open' || typeF ? ' on' : '');
-  note.title = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning'], [openBySev('info').length, 'info'], [inprog.length, 'in progress'], [taken.length, 'action taken'], [muted.length, 'muted'], [cleared.length, 'cleared'], [slackRec.length, 'Slack drafts'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
+  note.title = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning'], [inprog.length, 'in progress'], [taken.length, 'action taken'], [muted.length, 'muted'], [cleared.length, 'cleared'], [slackRec.length, 'Slack drafts'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
   note.innerHTML = '<span class="fn-cur">Showing <b>' + esc(c ? c.label : 'Open') + '</b>' + (typeF ? ' · <b>' + esc(typeName(typeF)) + '</b>' : '') +
     '<span class="count">' + esc(typeF ? shownN : c ? c.n : openAll().length) + '</span></span>' +
     (f === 'svc' ? '<button class="xlink" type="button" id="back-svcs">← Back to Services</button>' : '') +
