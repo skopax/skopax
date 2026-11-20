@@ -77,7 +77,7 @@ When the investigator shows that a card follows a one-off trigger, such as a pus
 
 - **On the page** the card shows "Cause: an event" or "Cause: recurring" with the trigger. An event card that stops reads "Stopped after the event" instead of Cleared or Fixed: on the board tile, the list row, the side panel and the card page.
 - **In Slack** the thread note and the main post say "Stopped after the event" instead of "Back to normal" or "Recovered" (see [Slack](plugins.md#slack)). The thread note waits while an investigation of the card runs, so a cause written in that run is used.
-- **Auto-resolve** waits 6 hours longer for an event card that has no ticket, so with the default window of 6 hours it closes 12 hours after it stopped firing. A card kind with its own window, such as the VWO and Google Ads ones, gets no extra time. Its activity line and its Slack thread note say "Stopped after the event; nobody opened a task".
+- **Auto-resolve** waits 6 hours longer for an event card that has no ticket, so with the default window of 6 hours it closes 12 hours after it stopped firing. The window is set per severity (critical and warning) in Admin > Cards, and a separate Admin setting closes an info card that keeps firing after 3 days by default (0 turns that off). A card kind with its own window, such as the VWO and Google Ads ones, gets no extra time. Its activity line and its Slack thread note say "Stopped after the event; nobody opened a task".
 
 ### Notices
 

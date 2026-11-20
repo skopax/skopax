@@ -229,11 +229,11 @@ def test_the_server_passes_the_hours_and_the_slack_note_says_hours(store: Store)
     seeded(store, waiting(CART, cleared=7 * H))
 
     # when
-    with TestClient(create_app(dataclasses.replace(settings(), auto_resolve_hours=6), store)) as c:
+    with TestClient(create_app(dataclasses.replace(settings(), auto_resolve_hours_crit=6, auto_resolve_hours_warn=6), store)) as c:
         c.app.state.server_apply([], NOW, None)
     on = store.anomaly(CART)
     seeded(store, waiting(CART, cleared=7 * H))
-    with TestClient(create_app(dataclasses.replace(settings(), auto_resolve_hours=0), store)) as c:
+    with TestClient(create_app(dataclasses.replace(settings(), auto_resolve_hours_crit=0, auto_resolve_hours_warn=0), store)) as c:
         c.app.state.server_apply([], NOW, None)
 
     # then

@@ -48,6 +48,7 @@ STALE_MANUAL_S = 7 * 24 * 3600
 DAILY_KEYS = ('crux', 'ga', 'varnish-cache')
 PLUGIN_DAILY: frozenset[str] = frozenset()
 INFO_CLOSE_DAYS = 3
+SEVERITIES = ('crit', 'warn')
 INFO_KEEP_SIGS = ('warn', 'err')
 NO_DATA = ':no-data'
 
@@ -371,6 +372,8 @@ def follow_parents(state: dict, now: float) -> list[dict]:
 
 
 def auto_close_info(state: dict, now: float, days: int = INFO_CLOSE_DAYS) -> list[dict]:
+    if days <= 0:
+        return []
     t = iso(now)
     out = []
     for a in state.get('anomalies') or []:
@@ -422,22 +425,21 @@ def auto_resolve_kinds(state: dict, now: float, windows: tuple) -> list[dict]:
     return out
 
 
-def auto_resolve(state: dict, now: float, hours: int, windows: tuple = ()) -> list[dict]:
-    if hours <= 0:
-        return []
+def auto_resolve(state: dict, now: float, hours: int, windows: tuple = (), by_severity: Mapping[str, int] | None = None) -> list[dict]:
     t = iso(now)
     out = []
     cards = state.get('anomalies') or []
     by_key = {a['key']: a for a in cards}
     for a in summary.waiting_cards(cards):
-        if a.get('triage') == 'investigating' or a.get('autoResolvedAt') or not a.get('clearedAt') or window_for(a, windows):
+        window = (by_severity or {}).get(a.get('sev'), hours)
+        if window <= 0 or a.get('triage') == 'investigating' or a.get('autoResolvedAt') or not a.get('clearedAt') or window_for(a, windows):
             continue
         cleared = parse_iso(a['clearedAt'])
         event = causes.event(a, by_key) and not a.get('ticket')
-        waited = hours + (causes.EVENT_EXTRA_HOURS if event else 0)
+        waited = window + (causes.EVENT_EXTRA_HOURS if event else 0)
         if now - cleared <= waited * 3600:
             continue
-        why = msg('engine.auto.event') if event else f"cleared {clock.date(cleared)}, nobody acted in {window_text(hours)}"
+        why = msg('engine.auto.event') if event else f"cleared {clock.date(cleared)}, nobody acted in {window_text(window)}"
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
             a['note'] = {'text': why if event else f'Auto-resolved: {why}', 'at': t}
@@ -587,7 +589,8 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
           attempts: int = APPLY_ATTEMPTS, after: Callable[[dict], None] | None = None, auto_resolve_hours: int = AUTO_RESOLVE_HOURS,
           recurring_count: int = history.RECURRING_COUNT, recurring_days: int = history.RECURRING_DAYS, tag_rules: tuple | None = None,
           alert_twins: tuple[str, ...] = (), screen: Callable[[dict, list[PassResult]], list[PassResult]] | None = None,
-          clusters: Mapping[str, tuple[str | None, ...]] | None = None, kind_windows: tuple = ()) -> Applied | None:
+          clusters: Mapping[str, tuple[str | None, ...]] | None = None, kind_windows: tuple = (),
+          severity_hours: Mapping[str, int] | None = None, info_close_days: int = INFO_CLOSE_DAYS) -> Applied | None:
     all_results = results
     hooks = tags.text_hooks() if tag_rules is not None else []
     texts = None
@@ -619,8 +622,10 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
         state['serverPasses'] = runs
         if after:
             after(state)
-        resolved = (auto_resolve_kinds(state, now, kind_windows) + auto_resolve(state, now, auto_resolve_hours, kind_windows)
-                    + (follow_parents(state, now) + auto_close_info(state, now) if auto_resolve_hours > 0 else []))
+        by_severity = {sev: (severity_hours or {}).get(sev, auto_resolve_hours) for sev in SEVERITIES}
+        resolved = (auto_resolve_kinds(state, now, kind_windows) + auto_resolve(state, now, auto_resolve_hours, kind_windows, by_severity)
+                    + (follow_parents(state, now) if any(h > 0 for h in by_severity.values()) else [])
+                    + auto_close_info(state, now, info_close_days))
         rows = store.history_rows([a['key'] for a in state['anomalies']])
         if rows is not None:
             try:
