@@ -85,18 +85,29 @@ class Assigner:
             raise Invalid('that is not an email address')
         before = self.store.anomaly(key)
         if not name:
-            rev, card = self.store.set_tagging(key, {'owner': None, 'assigned': None})
+            rev, card = self.store.set_tagging(key, {'owner': None, 'assigned': None, 'handAssigned': True})
             self.store.add_activity('assign', by, f'assignee removed · {key}', key=key)
             self.notify(before, None, None, by)
             return {'rev': rev, 'owner': None, 'assigned': None, 'dm': None, 'thread': self.noted(key, None, by) if before.get('owner') else False}
         same = slug(before.get('owner')) == slug(name)
         assigned = {'by': by, 'at': iso(utc_now())} | ({'email': email} if email else {})
-        rev, card = self.store.set_tagging(key, {'owner': name, 'assigned': assigned})
+        rev, card = self.store.set_tagging(key, {'owner': name, 'assigned': assigned, 'handAssigned': True})
         self.store.add_activity('assign', by, f'assigned to {name} · {key}', key=key)
         if not same:
             self.notify(before, name, email, by)
         log.info('%s assigned by %s', key, by)
         return {'rev': rev, 'owner': name, 'assigned': assigned, 'dm': SAME if same else self.tell(card, name, email, by), 'thread': False if same else self.noted(key, name, by)}
+
+    def announce(self, before: dict, name: str, email: str | None, by: str) -> None:
+        self.notify(before, name, email, by)
+        try:
+            self.tell(self.store.anomaly(before['key']), name, email, by)
+        except Exception as e:
+            log.warning('assignee message for %s not sent: %s', before.get('key'), error_kind(e))
+        try:
+            self.noted(before['key'], name, by)
+        except Exception as e:
+            log.warning('assignee note for %s not sent: %s', before.get('key'), error_kind(e))
 
     def notify(self, before: dict, name: str | None, email: str | None, by: str) -> None:
         if self.notices is None:

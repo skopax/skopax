@@ -385,43 +385,227 @@ function tagOwnersBox(i) {
     list.appendChild(li);
   });
   box.appendChild(list);
-  if (edit) {
-    var people = Array.isArray(ADMIN_TAGS.users) ? ADMIN_TAGS.users.filter(function (u) { return u && !u.disabled && have.indexOf(u.email) < 0; }) : [];
-    var add = el('div', 'adm-owner-add'), pick = el('input', 'adm-owner-pick'), go = accText('button', 'btn sec small adm-owner-go', 'Add'), dl = el('datalist');
-    dl.id = 'adm-own-' + t.id + '-d';
-    people.forEach(function (u) {
-      var o = accText('option', null, u.name && u.name !== u.email ? u.name + ' \u00b7 ' + u.email : u.email);
-      o.value = u.email;
-      dl.appendChild(o);
-    });
-    pick.type = 'email';
-    pick.setAttribute('list', dl.id);
-    pick.setAttribute('aria-label', 'Add a responsible');
-    pick.setAttribute('placeholder', 'E-mail address');
-    pick.setAttribute('autocomplete', 'off');
-    pick.setAttribute('autocapitalize', 'off');
-    pick.setAttribute('spellcheck', 'false');
-    go.type = 'button';
-    go.disabled = true;
-    var wanted = function () { return pick.value.trim().toLowerCase(); };
-    var submit = function () {
-      var v = wanted();
-      if (!v) return;
-      if (have.indexOf(v) >= 0) { pick.value = ''; go.disabled = true; return; }
-      tagOwnersSave(i, t, have.concat([v]), box, 'Added');
-    };
-    pick.addEventListener('input', function () { go.disabled = !wanted(); });
-    pick.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
-    go.addEventListener('click', submit);
-    add.appendChild(pick);
-    add.appendChild(dl);
-    add.appendChild(go);
-    box.appendChild(add);
-  }
+  if (edit) box.appendChild(tagOwnerPicker(i, t, have, box));
+  if (edit) box.appendChild(tagAutoSwitch(i, t, box));
+  if (t.autoAssign !== false && t.responsibles.length && t.autoReady === false) box.appendChild(accText('p', 'adm-help adm-owner-auto-note', 'Auto-assign needs a responsible with a Skopax account'));
   var said = accText('span', 'adm-msg adm-owner-msg');
   said.setAttribute('role', 'status');
   box.appendChild(said);
   return box;
+}
+var OWNER_PICK_ROWS = 8;
+var OWNER_PICK_WAIT = 200;
+var OWNER_PICK_AGAIN = 1500;
+var OWNER_SOURCES = {skopax: 'Skopax', responsible: 'Responsible elsewhere', slack: 'Slack'};
+var OWNER_SOURCE_ORDER = ['skopax', 'responsible', 'slack'];
+var OWNER_EMAIL = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
+function ownerFold(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+function ownerInitials(p) {
+  var words = String(p.name || '').split(/[\s._-]+/).filter(Boolean);
+  if (!words.length) words = [String(p.email || '?')];
+  return (words[0].charAt(0) + (words.length > 1 ? words[words.length - 1].charAt(0) : '')).toUpperCase();
+}
+function ownerLocal(have) {
+  var out = [], seen = {};
+  var add = function (email, name, source) {
+    email = String(email || '').toLowerCase();
+    if (!email || seen[email] || have.indexOf(email) >= 0) return;
+    seen[email] = true;
+    out.push({email: email, name: name || email.split('@')[0], source: source});
+  };
+  (Array.isArray(ADMIN_TAGS.users) ? ADMIN_TAGS.users : []).forEach(function (u) {
+    if (u && !u.disabled) add(u.email, u.name, 'skopax');
+    else if (u && u.email) seen[String(u.email).toLowerCase()] = true;
+  });
+  (Array.isArray(ADMIN_TAGS.tags) ? ADMIN_TAGS.tags : []).forEach(function (x) { (x.responsibles || []).forEach(function (p) { if (!p.stale) add(p.email, p.name, 'responsible'); }); });
+  return out;
+}
+function ownerMatches(list, q) {
+  var want = ownerFold(q.trim());
+  var hits = list.filter(function (p) { return !want || ownerFold(p.name).indexOf(want) >= 0 || ownerFold(p.email).indexOf(want) >= 0; });
+  var starts = function (p) { return (ownerFold(p.name) + ' ' + ownerFold(p.email)).split(/[\s@._-]+/).some(function (w) { return want && w.indexOf(want) === 0; }) ? 0 : 1; };
+  return hits.sort(function (a, b) {
+    return starts(a) - starts(b) || OWNER_SOURCE_ORDER.indexOf(a.source) - OWNER_SOURCE_ORDER.indexOf(b.source) || (ownerFold(a.name) < ownerFold(b.name) ? -1 : ownerFold(a.name) > ownerFold(b.name) ? 1 : 0);
+  });
+}
+function tagOwnerPicker(i, t, have, box) {
+  var base = 'adm-own-' + t.id, add = el('div', 'adm-owner-add'), combo = el('div', 'adm-owner-combo');
+  var pick = el('input', 'adm-owner-pick'), opts = el('ul', 'adm-owner-opts'), go = accText('button', 'btn sec small adm-owner-go', 'Add');
+  var live = accText('span', 'adm-owner-live'), note = accText('span', 'adm-owner-slack', 'Slack names unavailable');
+  var local = ownerLocal(have), remote = [], shown = [], active = -1, held = null, timer = null, again = null, seq = 0, ctrl = null, retried = false;
+  opts.id = base + '-opts';
+  opts.hidden = true;
+  opts.setAttribute('role', 'listbox');
+  opts.setAttribute('aria-label', 'Suggestions for responsibles');
+  pick.type = 'text';
+  pick.setAttribute('role', 'combobox');
+  pick.setAttribute('aria-autocomplete', 'list');
+  pick.setAttribute('aria-expanded', 'false');
+  pick.setAttribute('aria-controls', opts.id);
+  pick.setAttribute('aria-label', 'Add a responsible');
+  pick.setAttribute('placeholder', 'Name or e-mail');
+  pick.setAttribute('inputmode', 'email');
+  pick.setAttribute('autocomplete', 'off');
+  pick.setAttribute('autocapitalize', 'off');
+  pick.setAttribute('spellcheck', 'false');
+  live.setAttribute('aria-live', 'polite');
+  note.hidden = true;
+  go.type = 'button';
+  go.disabled = true;
+  var wanted = function () { return pick.value.trim().toLowerCase(); };
+  var highlight = function (n) {
+    active = n;
+    [].forEach.call(opts.children, function (o, k) { o.setAttribute('aria-selected', k === n ? 'true' : 'false'); o.classList.toggle('on', k === n); });
+    if (n >= 0 && opts.children[n]) { pick.setAttribute('aria-activedescendant', opts.children[n].id); opts.children[n].scrollIntoView({block: 'nearest'}); }
+    else pick.removeAttribute('aria-activedescendant');
+  };
+  var close = function () {
+    opts.hidden = true;
+    pick.setAttribute('aria-expanded', 'false');
+    highlight(-1);
+  };
+  var picked = function () { return active >= 0 && shown[active] ? shown[active].email : held; };
+  var typedIn = function () {
+    var v = wanted();
+    if (!v) return;
+    if (!OWNER_EMAIL.test(v)) {
+      var said = box.querySelector('.adm-owner-msg');
+      said.textContent = 'Pick a suggestion or type a full e-mail';
+      said.className = 'adm-msg adm-owner-msg bad';
+      return;
+    }
+    choose(v);
+  };
+  var choose = function (email) {
+    if (!email) return;
+    if (have.indexOf(email) >= 0) { pick.value = ''; go.disabled = true; close(); return; }
+    clearTimeout(timer);
+    clearTimeout(again);
+    seq++;
+    close();
+    tagOwnersSave(i, t, have.concat([email]), box, 'Added');
+  };
+  var row = function (p, k, fresh) {
+    var o = el('li', 'adm-owner-opt' + (fresh ? ' adm-owner-new' : ''));
+    o.id = base + '-opt-' + k;
+    o.dataset.email = p.email;
+    o.setAttribute('role', 'option');
+    o.setAttribute('aria-selected', 'false');
+    if (fresh) {
+      o.appendChild(accText('span', 'adm-owner-nomatch', 'No match: press Enter to add'));
+      o.appendChild(document.createTextNode(' '));
+      var e = accText('span', 'adm-owner-oe', p.email);
+      e.setAttribute('data-no-tx', '');
+      o.appendChild(e);
+    } else {
+      var av = accText('span', 'adm-owner-av', ownerInitials(p)), who = el('span', 'adm-owner-who'), n = accText('span', 'adm-owner-on', p.name || p.email), m = accText('span', 'adm-owner-oe', p.email);
+      av.setAttribute('aria-hidden', 'true');
+      n.setAttribute('data-no-tx', '');
+      m.setAttribute('data-no-tx', '');
+      who.appendChild(n);
+      who.appendChild(m);
+      o.appendChild(av);
+      o.appendChild(who);
+      o.appendChild(accText('span', 'adm-owner-src', OWNER_SOURCES[p.source] || p.source));
+    }
+    o.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    o.addEventListener('click', function () { choose(p.email); });
+    return o;
+  };
+  var render = function (force) {
+    var q = pick.value.trim(), keep = active >= 0 && shown[active] ? shown[active].email : null;
+    if (!q && !force) { shown = []; opts.textContent = ''; close(); live.textContent = ''; return; }
+    var seen = {}, pool = local.concat(remote).filter(function (p) { if (seen[p.email] || have.indexOf(p.email) >= 0) return false; seen[p.email] = true; return true; });
+    shown = ownerMatches(pool, q).slice(0, OWNER_PICK_ROWS);
+    var typed = wanted(), fresh = !shown.length && OWNER_EMAIL.test(typed) && have.indexOf(typed) < 0;
+    opts.textContent = '';
+    shown.forEach(function (p, k) { opts.appendChild(row(p, k, false)); });
+    if (fresh) { shown = [{email: typed}]; opts.appendChild(row(shown[0], 0, true)); }
+    opts.hidden = !shown.length;
+    pick.setAttribute('aria-expanded', shown.length ? 'true' : 'false');
+    var back = -1;
+    shown.forEach(function (p, k) { if (p.email === keep) back = k; });
+    highlight(back);
+    live.textContent = fresh ? '' : 'Suggestions: ' + shown.filter(function (p) { return p.name; }).length;
+  };
+  var ask = function () {
+    var q = pick.value.trim(), mine = ++seq;
+    if (ctrl) ctrl.abort();
+    ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    adminApi('GET', '/api/admin/people?q=' + encodeURIComponent(q), undefined, ctrl ? ctrl.signal : undefined).then(function (r) {
+      if (mine !== seq || !box.isConnected || !r) return;
+      remote = (Array.isArray(r.people) ? r.people : []).filter(function (p) { return p && p.email; }).map(function (p) { return {email: String(p.email).toLowerCase(), name: p.name, source: p.source}; });
+      note.hidden = r.slack !== 'unavailable';
+      if (r.slack === 'loading' && !retried) { retried = true; again = setTimeout(function () { if (box.isConnected && pick.value.trim() === q) ask(); }, OWNER_PICK_AGAIN); }
+      if (document.activeElement === pick) render();
+    }, function () {});
+  };
+  pick.addEventListener('input', function () {
+    held = null;
+    go.disabled = !wanted();
+    remote = [];
+    clearTimeout(timer);
+    seq++;
+    render();
+    if (pick.value.trim().length >= 2) timer = setTimeout(ask, OWNER_PICK_WAIT);
+  });
+  pick.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (opts.hidden) { render(true); if (!shown.length) return; }
+      var n = shown.length, step = e.key === 'ArrowDown' ? 1 : -1;
+      highlight(active < 0 ? (step > 0 ? 0 : n - 1) : (active + step + n) % n);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (picked()) choose(picked()); else typedIn();
+    } else if (e.key === 'Escape') {
+      if (!opts.hidden) { e.preventDefault(); close(); }
+    }
+  });
+  pick.addEventListener('blur', function () { held = picked(); close(); });
+  pick.addEventListener('focus', function () { held = null; });
+  go.addEventListener('mousedown', function (e) { e.preventDefault(); });
+  go.addEventListener('click', function () { if (picked()) choose(picked()); else typedIn(); });
+  combo.appendChild(pick);
+  combo.appendChild(opts);
+  add.appendChild(combo);
+  add.appendChild(go);
+  add.appendChild(live);
+  add.appendChild(note);
+  return add;
+}
+function tagAutoSwitch(i, t, box) {
+  var wrap = el('label', 'adm-owner-auto'), sw = el('input');
+  sw.type = 'checkbox';
+  sw.checked = t.autoAssign !== false;
+  wrap.appendChild(sw);
+  wrap.appendChild(accText('span', null, 'Auto-assign new cards'));
+  sw.addEventListener('change', function () { tagAutoSave(i, t, sw.checked, box); });
+  return wrap;
+}
+async function tagAutoSave(i, t, on, box) {
+  var said = box.querySelector('.adm-owner-msg');
+  box.querySelectorAll('button, select, input').forEach(function (c) { c.disabled = true; });
+  said.textContent = 'Saving\u2026';
+  said.className = 'adm-msg adm-owner-msg';
+  try {
+    var r = await adminApi('PUT', '/api/admin/tags/' + encodeURIComponent(t.id) + '/auto-assign', {on: on});
+    ADMIN_TAGS.tags = ADMIN_TAGS.tags.map(function (x) { return x.id === r.id ? r : x; });
+    var fresh = tagOwnersBox(i);
+    if (!fresh) return;
+    box.replaceWith(fresh);
+    var note = fresh.querySelector('.adm-owner-msg');
+    note.textContent = on ? 'Auto-assign on' : 'Auto-assign off';
+    note.className = 'adm-msg adm-owner-msg ok';
+    var back = fresh.querySelector('.adm-owner-auto input');
+    if (back) back.focus();
+  } catch (e) {
+    box.querySelectorAll('button, select, input').forEach(function (c) { c.disabled = c.classList.contains('adm-owner-go') && !((box.querySelector('.adm-owner-pick') || {}).value || '').trim(); });
+    var back2 = box.querySelector('.adm-owner-auto input');
+    if (back2) back2.checked = !on;
+    said.textContent = e && e.detail ? e.detail : 'Auto-assign not saved, try again';
+    said.className = 'adm-msg adm-owner-msg bad';
+  }
 }
 async function tagOwnersSave(i, t, emails, box, done) {
   var said = box.querySelector('.adm-owner-msg');

@@ -115,6 +115,7 @@
  "reminder.group.owner": "{owner} atandı, ",
  "assign.dm.mine": "Bu {product} kartını kendinize atadınız: *{title}*",
  "assign.dm.other": "{who} size bir {product} kartı atadı: *{title}*",
+ "assign.auto": "{name} kişisine otomatik atandı (etiket {tag}) · {key}",
  "assign.dm.links": "\n<{link}|Kartı aç> · <{chat}|Sohbet et>",
  "routes.title": "{product} · {label}",
  "routes.title_fixed": "{product} · {label} · düzeltildi",

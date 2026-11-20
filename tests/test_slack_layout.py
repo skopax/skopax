@@ -15,7 +15,7 @@ from skopax.cardposts import CardPosts, drawn_sig
 from skopax.engine import Applied, PassResult, anomaly as found_card
 from skopax.messages import MESSAGES, msg
 from skopax.postdeploy import SERVER_BY
-from skopax.slack import AUTO_BY, CARD_MENU, KNOWN_VIEW, POST_ACTIONS, Slack, SlackDown, SlackError, anomaly_message
+from skopax.slack import AUTO_BY, CARD_MENU, KNOWN_VIEW, POST_ACTIONS, Slack, SlackDown, SlackError, anomaly_message, slowed
 from skopax.store import Store
 
 LINK = 'https://skopax.example.com/c/14'
@@ -760,6 +760,33 @@ def test_drain_waits_for_a_rewrite_that_is_waiting_to_be_tried_again(store: Stor
 
     # then
     assert drained and len(rewrites(api)) == 2, 'drain returns only after the retry ran'
+
+
+def test_a_rate_limited_rewrite_backs_off_and_is_tried_again_like_a_slack_that_did_not_answer(store: Store):
+    # given
+    store.save(state(anomaly(KEY, num=14, status='cleared')), None)
+    posted(store, KEY)
+    answers = iter([slowed('1')])
+
+    class Limited(FakeSlackApi):
+        def __call__(self, token, method, payload):
+            if method == 'chat.update':
+                err = next(answers, None)
+                if err is not None:
+                    self.calls.append((method, payload))
+                    raise err
+            return super().__call__(token, method, payload)
+
+    api = Limited()
+    posts = CardPosts(store, Slack('xoxb-test', '#ops', FakePost(), api), BASE, retry_after_s=0.2)
+
+    # when
+    posts.swept(Applied(rev=1, events=[{'key': KEY, 'ev': 'cleared'}], push=[]))
+    drained = posts.drain(5)
+
+    # then
+    assert drained and len(rewrites(api)) == 2, 'a 429 waits and is tried again instead of being given up'
+    assert 'gone' not in (store.anomaly(KEY).get('slackPost') or {}).get('drawn', {})
 
 
 def test_a_post_made_while_the_listener_was_off_gets_a_menu_once_it_runs(store: Store):
