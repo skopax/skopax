@@ -1126,7 +1126,41 @@ a.shot.phone img { width: 60px; }
 .acc-link-state { font-size: 0.8rem; color: var(--fg-2); }
 .acc-link-again { margin-top: 4px; }
 .acc-mcp-note { margin: 0; padding: 0 14px 10px; }
-.sso-card { justify-items: stretch; }
+.sso-card { justify-items: stretch; gap: 14px; }
+.sso-top { display: grid; gap: 6px; min-width: 0; }
+.sso-top .ai-head h3 { font-size: 1.06rem; }
+.sso-sw-w { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-left: auto; min-width: 0; }
+.sso-sw-w .feat-sw { margin: 0; }
+.sso-at { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sso-at-ico { flex: none; width: 18px; height: 18px; background: no-repeat center / contain; }
+.sso-at-ico[hidden] { display: none; }
+.sso-at .sso-status { overflow-wrap: anywhere; }
+.sso-top .adm-help { margin: 0; }
+.sso-card[data-state="k-warn"] .sso-provider { color: var(--warn); }
+.sso-intro { padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--info) 35%, var(--line)); border-radius: 6px; background: var(--info-bg); min-width: 0; }
+.sso-intro-h { margin: 0 0 6px; font-size: 0.9rem; color: var(--fg); }
+.sso-intro-l { display: grid; gap: 3px; margin: 0; padding-left: 1.3rem; font-size: 0.86rem; color: var(--fg-2); }
+.sso-grp-h { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 14px; font-size: 0.76rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg-2); background: var(--sunken); border-bottom: 1px solid var(--line); border-radius: 6px 6px 0 0; }
+.sso-num { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%; font: 600 11px/1 var(--font-data); letter-spacing: 0; color: var(--surface); background: var(--fg-2); }
+.sso-grp-b { display: grid; gap: 14px; padding: 14px; min-width: 0; }
+.sso-btn-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(15rem, 22rem); gap: 14px 22px; align-items: start; min-width: 0; }
+.sso-test-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding-top: 12px; border-top: 1px dashed var(--line-2); }
+.sso-test-row .adm-help { margin: 0; }
+.sso-result:empty { display: none; }
+.sso-uri-row { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.sso-uri { display: flex; flex: 1 1 auto; align-items: center; min-width: 0; padding: 6px 10px; font-size: 0.86rem; color: var(--fg); background: var(--sunken); border: 1px solid var(--line-2); border-radius: 4px; overflow-wrap: anywhere; user-select: all; }
+.sso-redirect .adm-help { margin: 0; }
+.sso-redirect .adm-msg:empty { display: none; }
+.sso-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.sso-bar[data-dirty="true"] { position: sticky; bottom: 12px; z-index: 5; border-color: var(--btn-line); box-shadow: 0 -8px 20px -12px rgba(10, 13, 18, 0.35), 0 4px 12px rgba(10, 13, 18, 0.12); }
+.sso-dirty-l { display: inline-flex; align-items: center; gap: 6px; font-size: 0.84rem; font-weight: 600; color: var(--fg); }
+.sso-dirty-l::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+.sso-dirty-l[hidden] { display: none; }
+.sso-bar-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.sso-bar .sso-msg:empty { display: none; }
+.sso-map-t th { padding: 0 8px 4px 0; background: none; border: 0; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.03em; text-align: left; text-transform: uppercase; color: var(--muted); }
+.sso-map-t:has(tbody:empty) thead { display: none; }
+.sso-map-t tbody td { padding: 3px 8px 3px 0; }
 .sso-roles { display: grid; min-width: 0; }
 .sso-roles .adm-row { padding-inline: 0; }
 .sso-roles:empty { display: none; }
@@ -1151,8 +1185,7 @@ a.shot.phone img { width: 60px; }
 .sso-inuse-v { overflow-wrap: anywhere; }
 .sso-map-v { width: min(22rem, 48vw); }
 .sso-adv > summary { cursor: pointer; font-size: 0.86rem; color: var(--fg-2); margin-bottom: 8px; }
-.sso-redirect { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
-.sso-redirect code { overflow-wrap: anywhere; font-size: 0.82rem; padding: 3px 8px; background: var(--sunken); border: 1px solid var(--line); border-radius: 4px; user-select: all; min-width: 0; }
+.sso-redirect { display: grid; gap: 6px; min-width: 0; }
 .sso-summary { margin: 0 0 6px; }
 .sso-checks { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 0.84rem; }
 .sso-check { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
@@ -1219,9 +1252,8 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
 .sso-status { margin: 0; font-size: 0.84rem; color: var(--fg-2); }
 .sso-status[data-tested="ok"] { color: var(--good); }
 .sso-status[data-tested="bad"] { color: var(--crit); }
-.sso-grp { display: grid; gap: 10px; min-width: 0; margin: 4px 0 0; padding: 12px 0 0; border: 0; border-top: 1px solid var(--line); }
-.sso-grp-l { padding: 0; font-size: 0.8rem; font-weight: 650; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); }
-.sso-grp .sso-roles, .sso-grp .sso-preview-w { grid-column: 1 / -1; }
+.sso-grp { display: grid; min-width: 0; margin: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.sso-grp .sso-roles { grid-column: 1 / -1; }
 .sso-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .sso-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 9px; font-size: 0.82rem; border: 1px solid var(--line-2); border-radius: 99px; background: var(--raised); }
 .sso-chip-t { overflow-wrap: anywhere; }
@@ -1238,7 +1270,7 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
 .sso-icon-pick:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
 .sso-icon-file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 .sso-icon-msg:empty { display: none; }
-.sso-preview-w { display: grid; gap: 6px; max-width: 26rem; }
+.sso-preview-w { display: grid; gap: 6px; min-width: 0; }
 .sso-pv-note { margin: 0; }
 .sso-preview { padding: 14px; border: 1px dashed var(--line-2); border-radius: 8px; background: var(--sunken); }
 .sso-pv { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 41px; padding: 8px 12px; box-sizing: border-box; font-weight: 600; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 6px; overflow-wrap: anywhere; }
@@ -1279,6 +1311,22 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
   .sso-map-t td:first-child { flex: 1 1 100%; }
   .sso-map-v { width: 100%; }
   .sso-map { overflow-x: visible; }
+}
+@media (max-width: 640px) {
+  .sso-btn-grid { grid-template-columns: minmax(0, 1fr); }
+  .sso-grp-b { padding: 12px; }
+  .sso-sw-w { flex-basis: 100%; margin-left: 0; }
+  .sso-uri-row { flex-direction: column; }
+  #acc-sso .btn, #acc-sso .adm-in, #acc-sso select, #acc-sso .sso-map-v { min-height: 44px; }
+  .sso-chip-del { width: 44px; height: 44px; margin: -10px -6px -10px -10px; }
+  #acc-sso .sso-sw::before { content: ""; position: absolute; inset: -14px -8px; }
+  #acc-sso .sso-f input[type="checkbox"] { width: 24px; height: 24px; padding: 10px; margin: -6px 0 0 -10px; box-sizing: content-box; }
+  #acc-sso .sso-adv > summary { display: flex; align-items: center; min-height: 44px; margin-bottom: 0; }
+  .sso-map-t thead { display: none; }
+  .sso-bar { padding: 10px 12px; }
+  .sso-bar[data-dirty="true"] { bottom: 8px; }
+  .sso-bar-acts { flex: 1 1 100%; }
+  .sso-bar-acts .btn { flex: 1 1 auto; }
 }
 .int-top { display: grid; gap: 8px; min-width: 0; }
 .int-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-width: 0; }
