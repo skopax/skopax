@@ -5,7 +5,7 @@ const path = require('path');
 const {JSDOM, VirtualConsole} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
-const PHONE = '(max-width: 640px)';
+const PHONE = '(max-width: 640px), (max-height: 500px) and (pointer: coarse)';
 const PACKS = ['tr', 'de', 'es', 'fr'];
 const TABLES_IN_A_BOX = ['.inv-recent', '.ntable', '.ttable', '.csrc, .cruns', '.rel-deps', '#svcs', '#logs', '#routes', '#hist'];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -19,7 +19,7 @@ function state() {
     services: [], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
 }
 
-async function boot(hash) {
+async function boot(hash, phone) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
@@ -28,6 +28,18 @@ async function boot(hash) {
     url: 'https://skopax.example.com/' + hash, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
       w.localStorage.setItem('skopax-card-view', 'board');
+      if (phone === 'short') w.matchMedia = (q) => ({matches: /max-height: 500px/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}});
+      if (phone === true) {
+        const listeners = [];
+        w.__media = {matches: true, listeners};
+        w.matchMedia = (q) => ({get matches() { return q === PHONE ? w.__media.matches : false; }, media: q, addEventListener(t, f) { if (q === PHONE) listeners.push(f); }, removeEventListener() {}, addListener(f) { if (q === PHONE) listeners.push(f); }, removeListener() {}});
+        const pos = new WeakMap();
+        const step = (e) => e.classList.contains('bcol') ? 310 : 90;
+        Object.defineProperty(w.HTMLElement.prototype, 'offsetLeft', {configurable: true, get() { return this.parentElement ? [...this.parentElement.children].indexOf(this) * step(this) : 0; }});
+        Object.defineProperty(w.HTMLElement.prototype, 'offsetWidth', {configurable: true, get() { return 80; }});
+        Object.defineProperty(w.Element.prototype, 'clientWidth', {configurable: true, get() { return 300; }});
+        Object.defineProperty(w.Element.prototype, 'scrollLeft', {configurable: true, get() { return pos.get(this) || 0; }, set(v) { pos.set(this, v); }});
+      }
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () {};
       w.fetch = async (p) => {
@@ -99,26 +111,97 @@ async function theBoardHasAColumnSwitcherThatKeepsItsColumnAcrossARefresh() {
 
   //when
   const names = tabs().map((b) => [b.dataset.col, b.firstChild.textContent, b.querySelector('.count').textContent]);
-  const cols = [...doc.querySelectorAll('#anoms .board > .bcol')].map((c) => c.dataset.col);
+  const cols = [...doc.querySelectorAll('#anoms .board > .bcol')];
+  const wideMarks = cols.filter((c) => c.hasAttribute('aria-labelledby') || c.hasAttribute('tabindex')).length;
+  const hint = doc.getElementById('card-search').getAttribute('placeholder');
   const first = current();
   tabs()[2].click();
   const picked = current();
   w.setFilter('all');
   await wait(50);
   const kept = current();
+  const inert = [...doc.querySelectorAll('#anoms .bcol[inert]')].length;
 
   //then
   assert.ok(bar(), 'the board carries a column switcher');
-  assert.strictEqual(bar().getAttribute('aria-label'), 'Board columns');
+  assert.deepStrictEqual([bar().getAttribute('role'), bar().getAttribute('aria-label')], ['group', 'Board columns'], 'a labelled group');
   assert.strictEqual(bar().nextElementSibling.id, 'board-note', 'it sits above the board and its note');
   assert.deepStrictEqual(names, [['open', 'Open', '1'], ['progress', 'In progress', '1'], ['done', 'Done', '1'], ['muted', 'Muted', '0']], 'one tab per column, with its name and count');
-  assert.deepStrictEqual(cols, ['open', 'progress', 'done', 'muted'], 'the columns keep their order and data-col');
+  assert.deepStrictEqual(cols.map((c) => c.dataset.col), ['open', 'progress', 'done', 'muted'], 'the columns keep their order and data-col');
+  assert.strictEqual(wideMarks, 0, 'on a wide screen the columns get no new label or tab stop');
+  assert.strictEqual(hint, 'Search cards: number, service, text, assignee, ticket', 'the full search hint fits a wide screen');
   assert.deepStrictEqual(first, ['open'], 'Open is shown first');
   assert.deepStrictEqual(picked, ['done'], 'a tap picks a column');
   assert.deepStrictEqual(kept, ['done'], 'and a refresh of the board keeps it');
+  assert.strictEqual(inert, 0, 'on a wide screen no column is inert');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-  return 'the board shows Open, In progress, Done and Muted tabs with counts; a tap picks a column and a refresh keeps it';
+  return 'the board shows a labelled group of Open, In progress, Done and Muted tabs with counts; a tap picks a column and a refresh keeps it';
+}
+
+async function onAPhoneTheSwitcherScrollsFocusesAndFollowsSwipes() {
+  //given
+  const {dom, w, doc, errors} = await boot('#t=anoms/all', true);
+  const board = () => doc.querySelector('#anoms .board');
+  const col = (c) => doc.querySelector('#anoms .bcol[data-col="' + c + '"]');
+  const tab = (c) => doc.querySelector('#anoms .board-tab[data-col="' + c + '"]');
+  const inert = () => [...doc.querySelectorAll('#anoms .bcol')].filter((c) => c.hasAttribute('inert')).map((c) => c.dataset.col);
+  const current = () => [...doc.querySelectorAll('#anoms .board-tab[aria-current="true"]')].map((b) => b.dataset.col);
+
+  //when
+  const start = {inert: inert(), x: board().scrollLeft};
+  const labels = [...doc.querySelectorAll('#anoms .bcol')].map((c) => [doc.getElementById(c.getAttribute('aria-labelledby')).textContent, c.getAttribute('tabindex')]);
+  const hint = doc.getElementById('card-search').getAttribute('placeholder');
+  tab('done').click();
+  const picked = {x: board().scrollLeft, focus: doc.activeElement === col('done'), inert: inert(), bar: doc.querySelector('#anoms .board-tabs').scrollLeft};
+  w.setFilter('all');
+  const redrawn = {x: board().scrollLeft, current: current(), inert: inert()};
+  board().scrollLeft = 3 * 310 - 20;
+  board().dispatchEvent(new w.Event('scroll'));
+  const swiped = {current: current(), inert: inert(), bar: doc.querySelector('#anoms .board-tabs').scrollLeft};
+  board().scrollLeft = 0;
+  const panel = doc.getElementById('panel-anoms');
+  panel.hidden = true;
+  panel.hidden = false;
+  await wait(20);
+  const shown = board().scrollLeft;
+  w.__media.matches = false;
+  w.__media.listeners.forEach((f) => f({matches: false}));
+  const wide = inert();
+  const wideMarks = [...doc.querySelectorAll('#anoms .bcol')].filter((c) => c.hasAttribute('aria-labelledby') || c.hasAttribute('tabindex')).length;
+  const wideHint = doc.getElementById('card-search').getAttribute('placeholder');
+
+  //then
+  assert.deepStrictEqual(start, {inert: ['progress', 'done', 'muted'], x: 0}, 'Open shows first and the other columns are out of the tab order');
+  assert.deepStrictEqual(picked, {x: 620, focus: true, inert: ['open', 'progress', 'muted'], bar: 0}, 'a tab scrolls to its column, moves the focus there and frees only that column');
+  assert.deepStrictEqual(redrawn, {x: 620, current: ['done'], inert: ['open', 'progress', 'muted']}, 'a refresh puts the same column back at once');
+  assert.deepStrictEqual(swiped, {current: ['muted'], inert: ['open', 'progress', 'done'], bar: 50}, 'a swipe moves the current tab and scrolls it into view');
+  assert.strictEqual(shown, 930, 'showing the board page again lines up the current column');
+  assert.deepStrictEqual(wide, [], 'growing past phone width frees every column');
+  assert.deepStrictEqual(labels, [['Open', '-1'], ['In progress', '-1'], ['Done', '-1'], ['Muted', '-1']], 'on a phone each column is named by its heading and can take the focus');
+  assert.strictEqual(wideMarks, 0, 'and loses both again on a wide screen');
+  assert.deepStrictEqual([hint, wideHint], ['Search cards', 'Search cards: number, service, text, assignee, ticket'], 'the search hint is short on a phone and full again on a wide screen');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'on a phone a tab scrolls to its column and focuses it, other columns are inert, refreshes and page switches keep the column, a swipe moves the tab, and a wide screen frees every column';
+}
+
+async function aShortLandscapePhoneGetsTheDrawerMenuToo() {
+  //given
+  const {dom, doc, errors} = await boot('#t=anoms', 'short');
+  const hamb = doc.getElementById('side-open');
+
+  //when
+  const rail = doc.getElementById('side-rail').getAttribute('aria-label');
+  hamb.click();
+  const opened = {open: doc.body.classList.contains('drawer-open'), inert: doc.getElementById('content').hasAttribute('inert'), expanded: hamb.getAttribute('aria-expanded')};
+
+  //then
+  assert.strictEqual(rail, 'Close menu', 'the sidebar runs as a drawer on a short coarse screen');
+  assert.deepStrictEqual(opened, {open: true, inert: true, expanded: 'true'}, 'and opens over the content like on a phone');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'a phone held sideways (500 px high or less, coarse pointer) gets the drawer menu';
 }
 
 function onAPhoneTheStylesGiveOneColumnAFullScreenDrawerBigTargetsAnd16pxInputs() {
@@ -133,6 +216,10 @@ function onAPhoneTheStylesGiveOneColumnAFullScreenDrawerBigTargetsAnd16pxInputs(
     snap: value(phone, '.board', 'scroll-snap-type'),
     column: value(phone, '.board', 'grid-auto-columns'),
     colSnap: value(phone, '.bcol', 'scroll-snap-align'),
+    headClip: [value(phone, '.board .bcol-h', 'clip'), value(phone, '.board .bcol-h', 'position')],
+    viewIcon: value(phone, '#card-view > button[data-view]', 'font-size'),
+    switchHit: value(phone, '.feat-sw::before, .int-switch::before, .adm-c .adm-sw::before'.split(', ')[0], 'inset'),
+    chips: value(phone, '#card-qf .qf-g', 'flex-wrap'),
     drawer: value(phone, '.card-drawer > .cd-panel', 'width'),
     drawerEdge: value(phone, '.card-drawer > .cd-panel', 'border-left-width') || value(phone, '.card-drawer > .cd-panel', 'border-left'),
     ibtn: [value(phone, '.ibtn', 'width'), value(phone, '.ibtn', 'height')],
@@ -147,11 +234,30 @@ function onAPhoneTheStylesGiveOneColumnAFullScreenDrawerBigTargetsAnd16pxInputs(
   //then
   assert.ok(phone.length > 10, 'the phone rules are read: ' + phone.length);
   assert.deepStrictEqual(got, {
-    tabsHidden: 'none', tabsShown: 'flex', snap: 'x mandatory', column: '100%', colSnap: 'start',
+    tabsHidden: 'none', tabsShown: 'flex', snap: 'x mandatory', column: '100%', colSnap: 'start', headClip: ['rect(0px)', 'absolute'], viewIcon: '0px', switchHit: '-14px -8px', chips: 'nowrap',
     drawer: '100%', drawerEdge: '0px', ibtn: ['44px', '44px'], btn: '44px', tile: ['44px', '44px'],
     input: '16px', inputPriority: 'important', chat: 'calc(100dvh - 150px)', safeTop: 'max(16px, env(safe-area-inset-left))',
   });
   return 'at 640 px and below the board snaps one column at a time under its tabs, the card drawer fills the screen, targets are 44 px, inputs 16 px and the top bar and chat respect the safe area and dynamic viewport';
+}
+
+function onAPhoneTheBoardHeaderKeepsItsDomOrderOnScreen() {
+  //given
+  const phone = phoneRules(sheet());
+  const dom = new JSDOM(pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', '{}'));
+  const panel = dom.window.document.getElementById('panel-anoms');
+
+  //when
+  const reordered = phone.filter((r) => r.style.getPropertyValue('order') !== '').map((r) => r.selectorText);
+  const flattened = phone.filter((r) => r.style.getPropertyValue('display') === 'contents').map((r) => r.selectorText);
+  const ids = [...panel.querySelectorAll('#card-search, #card-view, #card-qf, #filter-note, #anoms')].map((e) => e.id);
+  dom.window.close();
+
+  //then
+  assert.deepStrictEqual(reordered, [], 'no phone rule moves a control away from its place in the page, so the visual order is the focus order');
+  assert.deepStrictEqual(flattened, ['#panel-anoms:not(.closed-on) > .card-search, #panel-anoms:not(.closed-on) > #filter-note'], 'the header boxes are flattened into one row flow, not reordered');
+  assert.deepStrictEqual(ids, ['card-search', 'card-view', 'card-qf', 'filter-note', 'anoms'], 'search, Board/List, chips, the Showing line with Filters, then the board');
+  return 'the compact phone board header sets no CSS order, so search, Board/List, chips, the Showing line with Filters and the board read in DOM order';
 }
 
 function noRuleGivesAnythingAFixedWidthWiderThanAPhone() {
@@ -187,7 +293,10 @@ function theNewWordsAreInEveryPack() {
 (async () => {
   console.log('PASS ' + await onAPhoneTheMenuOpensAsAnOffCanvasDrawerAndClosesOnEscapeAndTapOut());
   console.log('PASS ' + await theBoardHasAColumnSwitcherThatKeepsItsColumnAcrossARefresh());
+  console.log('PASS ' + await onAPhoneTheSwitcherScrollsFocusesAndFollowsSwipes());
+  console.log('PASS ' + await aShortLandscapePhoneGetsTheDrawerMenuToo());
   console.log('PASS ' + onAPhoneTheStylesGiveOneColumnAFullScreenDrawerBigTargetsAnd16pxInputs());
+  console.log('PASS ' + onAPhoneTheBoardHeaderKeepsItsDomOrderOnScreen());
   console.log('PASS ' + noRuleGivesAnythingAFixedWidthWiderThanAPhone());
   console.log('PASS ' + theNewWordsAreInEveryPack());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

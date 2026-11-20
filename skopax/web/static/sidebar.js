@@ -35,7 +35,7 @@ var ADMIN_COUNTED = ['settings', 'access', 'features'];
 var ADMIN_KEY = 'skopax-admin-tab', ADMIN_HOME = 'settings';
 var SIDE_HOT = ['k-crit', 'k-warn', 'k-info', 'k-act', 'k-ok'];
 var SIDE_THEMES = ['system', 'light', 'dark'];
-var SIDE_FOLD_KEY = 'skopax-sidebar-folds', SIDE_KEY = 'skopax-sidebar', SIDE_PHONE = '(max-width: 768px)', SIDE_FULL_W = 252, SIDE_RAIL_W = 64;
+var SIDE_FOLD_KEY = 'skopax-sidebar-folds', SIDE_KEY = 'skopax-sidebar', SIDE_PHONE = '(max-width: 768px)', SIDE_SHORT = '(max-height: 500px) and (pointer: coarse)', SIDE_FULL_W = 252, SIDE_RAIL_W = 64;
 var SIDE_PAGE_TAB = /^[a-z][a-z0-9-]{1,30}$/, SIDE_PAGE_ICON = /^\/plugins\/[a-z][a-z0-9-]{1,30}\/[A-Za-z0-9._-]{1,80}$/;
 var SIDE_MENU = false, SIDE_PAGES = null, SIDE_WANTED = null, sideRailOn = false;
 var TABS = [];
@@ -375,7 +375,7 @@ function sideChat(me) {
   var row = document.getElementById('tab-chat');
   if (row) row.hidden = !(me && me.chat && (me.features || {}).chat !== false);
 }
-function sidePhone() { return !!(window.matchMedia && window.matchMedia(SIDE_PHONE).matches); }
+function sidePhone() { return !!(window.matchMedia && (window.matchMedia(SIDE_PHONE).matches || window.matchMedia(SIDE_SHORT).matches)); }
 function sideWidth() { return sidePhone() ? 0 : sideRailOn ? SIDE_RAIL_W : SIDE_FULL_W; }
 function sideLayout() {
   var phone = sidePhone(), rail = sideRailOn && !phone, btn = document.getElementById('side-rail');
@@ -499,8 +499,7 @@ function sideRender() {
   window.addEventListener('resize', sideFade);
   if (typeof MutationObserver === 'function') new MutationObserver(sideFade).observe(nav, {childList: true, subtree: true, attributes: true, attributeFilter: ['hidden']});
   if (window.matchMedia) {
-    var phone = window.matchMedia(SIDE_PHONE);
-    if (phone.addEventListener) phone.addEventListener('change', sideLayout);
+    [SIDE_PHONE, SIDE_SHORT].forEach(function (q) { var m = window.matchMedia(q); if (m && m.addEventListener) m.addEventListener('change', sideLayout); });
   }
   sideTheme(false);
   sideRail(load(SIDE_KEY) === 'rail', false);
