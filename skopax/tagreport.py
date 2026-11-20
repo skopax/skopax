@@ -8,7 +8,7 @@ from skopax.cardlink import card_url
 from skopax.engine import parse_iso
 from skopax.errkind import kind as error_kind
 from skopax.messages import fold, msg
-from skopax.slack import BLOCK_LIMIT, EMOJI, SCOPE_ERRORS, SECTION_LIMIT, SlackDown, SlackError, cut, esc, reason_of
+from skopax.slack import BLOCK_LIMIT, EMOJI, SCOPE_ERRORS, SECTION_LIMIT, SlackDown, SlackError, cut, esc
 from skopax.store import Store
 
 log = logging.getLogger('skopax.tagreport')
@@ -279,7 +279,7 @@ class SlackPeople:
         try:
             found = self.slack.members()
         except Exception as e:
-            log.warning('Slack members were not listed, the responsible picker offers Skopax people only for a while: %s', reason_of(e))
+            log.warning('Slack members were not listed, the responsible picker offers Skopax people only for a while: %s', getattr(e, 'code', None) or error_kind(e))
             with self._guard:
                 self._busy = False
                 self._down_until = self.clock() + FAILURE_TTL_S

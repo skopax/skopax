@@ -512,7 +512,7 @@ class Store:
         self.db['meta'].update_one({'_id': TAG_AUTO_ID}, change, upsert=True)
 
     def auto_assign_since(self, now: str) -> str:
-        doc = self.db['meta'].find_one_and_update({'_id': AUTO_SINCE_ID}, {'$setOnInsert': {'since': now}}, upsert=True, return_document=ReturnDocument.AFTER)
+        doc = self.counters.find_one_and_update({'_id': AUTO_SINCE_ID}, {'$setOnInsert': {'since': now}}, upsert=True, return_document=ReturnDocument.AFTER)
         return str(doc.get('since') or now)
 
     def next_auto_turn(self, tag: str) -> int:
