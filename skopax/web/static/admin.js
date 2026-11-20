@@ -365,9 +365,9 @@ function tagOwnersBox(i) {
   var list = el('ul', 'adm-owner-list'), have = t.responsibles.map(function (p) { return p.email; });
   if (!t.responsibles.length) list.appendChild(accText('li', 'muted adm-owner-none', 'No one yet'));
   t.responsibles.forEach(function (p) {
-    var li = el('li', 'tag plain adm-owner');
+    var li = el('li', 'tag plain adm-owner' + (p.stale ? ' adm-owner-stale' : ''));
     li.dataset.email = p.email;
-    li.title = p.email;
+    li.title = p.stale ? 'No longer an active user' : p.email;
     li.appendChild(accText('span', 'adm-owner-n', p.name || p.email));
     if (edit) {
       var x = accText('button', 'adm-owner-x', '\u00d7');

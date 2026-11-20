@@ -128,7 +128,7 @@ READS = {
     '/api/admin/settings': 'admin',
     '/api/admin/sso': 'admin',
     '/api/admin/small-talk': 'admin',
-    '/api/admin/tags': 'login',
+    '/api/admin/tags': 'admin',
     '/api/admin/tokens': 'admin',
     '/api/admin/users': 'admin',
     '/api/card-runs': 'read',

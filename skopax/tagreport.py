@@ -1,5 +1,4 @@
 import logging
-import re
 import time
 from collections.abc import Callable
 
@@ -8,7 +7,7 @@ from skopax.cardlink import card_url
 from skopax.engine import parse_iso
 from skopax.errkind import kind as error_kind
 from skopax.messages import msg
-from skopax.slack import BLOCK_LIMIT, EMOJI, SCOPE_ERRORS, SECTION_LIMIT, SlackError, cut, esc
+from skopax.slack import BLOCK_LIMIT, EMOJI, SCOPE_ERRORS, SECTION_LIMIT, SlackDown, SlackError, cut, esc
 from skopax.store import Store
 
 log = logging.getLogger('skopax.tagreport')
@@ -16,8 +15,6 @@ log = logging.getLogger('skopax.tagreport')
 RUN = 'tag-report'
 FEATURE = 'tag-report'
 KEY = 'tags.report-at'
-DEFAULT_AT = '10:00'
-HM = re.compile(r'(?:[01]\d|2[0-3]):[0-5]\d')
 PERIOD = 300
 OFFSET = 45
 SHOWN = 3
@@ -32,10 +29,12 @@ STOPPED = ('progress', 'handled')
 SEV_ORDER = {'crit': 0, 'warn': 1, 'info': 2}
 QUIET_KEPT = ('crit', 'warn')
 DAY_H = 24
+REPEAT_GAP_S = 20 * 3600
+GONE_CHANNEL = ('not_in_channel', 'channel_not_found', 'is_archived', 'invalid_auth', 'account_inactive', 'token_revoked', 'missing_scope', 'not_allowed_token_type')
 
 
 def valid_at(text) -> bool:
-    return isinstance(text, str) and bool(HM.fullmatch(text))
+    return tags.report_at_ok(text)
 
 
 def business_day(now: float) -> bool:
@@ -85,6 +84,16 @@ def seen_at(a: dict, now: float) -> float:
         return now
 
 
+def counted(kind: str, n: int) -> str:
+    return msg(f'tagreport.{kind}.{"one" if n == 1 else "many"}', n=n)
+
+
+def counts(total: int, crit: int, warn: int) -> str:
+    split = [counted(kind, n) for kind, n in (('crit', crit), ('warn', warn)) if n]
+    head = counted('open', total)
+    return msg('tagreport.split', open=head, parts=', '.join(split)) if split else head
+
+
 def person(email: str, names: dict[str, str], mention: Callable[[str], str | None]) -> str:
     found = mention(email)
     if found:
@@ -117,8 +126,8 @@ def build(cards: list[dict], owners: dict[str, list[str]], names: dict[str, str]
     blocks, lines = [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': head}}], [head]
     for tag, emails, mine, crit in rows[:TAGS_MAX]:
         link = board_link(base_url, tag)
-        line = msg('tagreport.tag', who=', '.join(person(e, names, mention) for e in emails), link=link, tag=link_text(labels[tag]), open=len(mine), crit=crit,
-                   warn=sum(1 for a in mine if a.get('sev') == 'warn'))
+        line = msg('tagreport.tag', who=', '.join(person(e, names, mention) for e in emails), link=link, tag=link_text(labels[tag]),
+                   counts=counts(len(mine), crit, sum(1 for a in mine if a.get('sev') == 'warn')))
         body = [line] + [card_line(a, base_url, now) for a in mine[:SHOWN]]
         if len(mine) > SHOWN:
             body.append(msg('tagreport.more', link=link, n=len(mine) - SHOWN))
@@ -130,30 +139,45 @@ def build(cards: list[dict], owners: dict[str, list[str]], names: dict[str, str]
 
 
 class SlackIds:
-    def __init__(self, slack, ttl: float = LOOKUP_TTL_S, clock: Callable[[], float] = time.monotonic, on_scope: Callable[[bool], None] = lambda missing: None):
+    def __init__(self, slack, ttl: float = LOOKUP_TTL_S, clock: Callable[[], float] = time.monotonic, on_scope: Callable[[bool], None] = lambda missing: None,
+                 flagged: Callable[[], bool] = lambda: False):
         self.slack = slack
         self.ttl = ttl
         self.clock = clock
         self.on_scope = on_scope
+        self.flagged = flagged
         self._held: dict[str, tuple[float, str | None]] = {}
-        self._missing: bool | None = None
+        self._missing = False
         self._stopped = False
+        self._recheck = False
         self._told = False
 
     @property
     def missing(self) -> bool:
-        return bool(self._missing)
+        return self._missing
 
     def start(self) -> None:
         self._stopped = False
+        self._recheck = self._stored()
+
+    def _stored(self) -> bool:
+        try:
+            return bool(self.flagged())
+        except Exception as e:
+            log.warning('the Slack scope flag of the tag report was not read: %s', error_kind(e))
+            return False
 
     def mention(self, email: str) -> str | None:
         email = str(email or '').strip().lower()
-        if not email or self._stopped:
+        if not email:
             return None
         held = self._held.get(email)
-        if held is not None and self.clock() - held[0] < self.ttl:
-            return held[1]
+        fresh = held is not None and self.clock() - held[0] < self.ttl
+        cached = held[1] if fresh else None
+        if fresh and not self._recheck:
+            return cached
+        if self._stopped:
+            return cached
         try:
             user = self.slack.user_by_email(email)
         except SlackError as e:
@@ -162,19 +186,20 @@ class SlackIds:
                 self._scope(True)
             else:
                 log.warning('Slack user lookups stopped for this report, responsibles are named without a ping: %s', e.code or error_kind(e))
-            return None
+            return cached
         found = f"<@{user['id']}>" if user else None
         self._held[email] = (self.clock(), found)
+        self._recheck = False
         self._scope(False)
         return found
 
     def _scope(self, missing: bool) -> None:
-        if missing == self._missing:
-            return
         self._missing = missing
         if missing and not self._told:
             self._told = True
             log.warning('the Slack app lacks the scope %s: responsibles in the tag report are named without a ping', SCOPE)
+        if missing == self._stored():
+            return
         try:
             self.on_scope(missing)
         except Exception as e:
@@ -195,31 +220,52 @@ class TagReport:
         self.labels = labels
         self.clock = clock
 
-    def held(self) -> dict[str, list[str]]:
+    def held(self, names: dict[str, str] | None = None) -> dict[str, list[str]]:
         known = self.labels()
-        return {tag: emails for tag, emails in self.owners().items() if tag in known and emails}
+        active = self.names() if names is None else names
+        out = {tag: [e for e in emails if e in active] for tag, emails in self.owners().items() if tag in known}
+        return {tag: emails for tag, emails in out.items() if emails}
+
+    @property
+    def wanted(self) -> bool:
+        return bool(self.on() and valid_at(self.at()) and self.held())
 
     @property
     def enabled(self) -> bool:
-        return bool(self.on() and self.slack.enabled and valid_at(self.at()) and self.held())
+        return bool(self.slack.enabled and self.wanted)
 
     def run_once(self, now: float | None = None) -> dict | None:
         now = self.clock() if now is None else now
         if not self.enabled or not due(self.at(), now):
+            return None
+        last = self.store.tag_report_at()
+        if last is not None and 0 <= now - last < REPEAT_GAP_S:
             return None
         day = f'{RUN}:{clock.day(now)}'
         if not self.store.claim_run(day):
             return None
         try:
             self.ids.start()
-            message = build(self.store.load().get('anomalies') or [], self.held(), self.names(), self.ids.mention, self.base_url, now, self.labels())
-            if message is None:
-                log.info('daily tag report: no tag with responsibles has an open card, nothing posted')
-                return None
-            sent = self.slack.post(message)
+            names = self.names()
+            message = build(self.store.load().get('anomalies') or [], self.held(names), names, self.ids.mention, self.base_url, now, self.labels())
         except Exception:
             self.store.drop_run(day)
             raise
+        if message is None:
+            log.info('daily tag report: no tag with responsibles has an open card, nothing posted')
+            return None
+        try:
+            sent = self.slack.post(message)
+        except SlackDown as e:
+            log.warning('daily tag report: Slack did not answer the post, so it may have gone out; it is not sent again today (%s)', error_kind(e))
+            return None
+        except SlackError as e:
+            if e.code in GONE_CHANNEL:
+                log.warning('daily tag report not posted today: Slack refused it (%s)', e.code)
+                return None
+            self.store.drop_run(day)
+            raise
+        self.store.note_tag_report(now)
         shown = sum(1 for b in message['blocks'] if b['type'] == 'section') - 1
         self.store.add_activity('slack', 'server', f'Daily tag report posted \u00b7 {shown} tag{"" if shown == 1 else "s"}')
         log.info('daily tag report posted for %d tags', shown)

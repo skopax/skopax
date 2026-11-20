@@ -1170,7 +1170,9 @@
   "Removed": "Quitado",
   "Remove from the responsibles": "Quitar de los responsables",
   "Responsibles not saved, try again": "No se guardaron los responsables, inténtalo de nuevo",
-  "Slack app is missing users:read.email; responsibles are named without a ping": "A la app de Slack le falta users:read.email; los responsables se nombran sin mención"
+  "Slack app is missing users:read.email; responsibles are named without a ping": "A la app de Slack le falta users:read.email; los responsables se nombran sin mención",
+  "Needs Slack auto-send on (Admin › Features).": "Necesita el envío automático a Slack activado (Admin › Features).",
+  "No longer an active user": "Ya no es un usuario activo"
  },
  "rules": [
   [

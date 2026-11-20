@@ -39,6 +39,7 @@ SLACK_SCOPES_ID = 'slack-scopes'
 VERSION_CHECK_ID = 'version-check'
 TAG_OWNERS_ID = 'tag-owners'
 EMAIL_SCOPE_ID = 'tag-report-scope'
+TAG_REPORT_ID = 'tag-report-last'
 SEVERITIES = ('crit', 'warn', 'info')
 CLAIM_ATTEMPTS = 3
 WRITE_LEASE_S = 30
@@ -469,6 +470,13 @@ class Store:
     def email_scope(self) -> dict | None:
         doc = self.db['meta'].find_one({'_id': EMAIL_SCOPE_ID})
         return {'missing': True, 'at': doc.get('at') if isinstance(doc.get('at'), str) else None} if doc and doc.get('missing') else None
+
+    def note_tag_report(self, at: float) -> None:
+        self.db['meta'].replace_one({'_id': TAG_REPORT_ID}, {'_id': TAG_REPORT_ID, 'at': float(at)}, upsert=True)
+
+    def tag_report_at(self) -> float | None:
+        at = (self.db['meta'].find_one({'_id': TAG_REPORT_ID}) or {}).get('at')
+        return float(at) if isinstance(at, (int, float)) and not isinstance(at, bool) else None
 
     def tag_owners(self) -> dict[str, list[str]]:
         held = (self.db['meta'].find_one({'_id': TAG_OWNERS_ID}) or {}).get('owners')

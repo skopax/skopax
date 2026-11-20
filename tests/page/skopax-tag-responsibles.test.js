@@ -25,7 +25,7 @@ async function boot(opts) {
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
   const html = pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(board(opts.cards)));
-  const owners = {developer: [{email: ALICE, name: 'Alice Moss'}], data: [], seo: []};
+  const owners = {developer: [{email: ALICE, name: 'Alice Moss'}], data: [], seo: [{email: 'gone@example.com', name: 'gone', stale: true}]};
   const hist = [];
   const dom = new JSDOM(html, {
     url: 'https://skopax.example.com/' + (opts.hash || '#t=settings'), runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
@@ -105,6 +105,8 @@ async function aReadOnlyListShowsChipsWithoutControlsAndTheScopeWarningShows() {
   //then
   assert.deepStrictEqual([...box.querySelectorAll('.adm-owner-n')].map((n) => n.textContent), ['Alice Moss']);
   assert.strictEqual(box.querySelectorAll('button, select').length, 0, 'no add or remove control without edit rights');
+  const stale = doc.querySelector('#admin .adm-row[data-key="tags.seo.rules"] .adm-owner');
+  assert.ok(stale.classList.contains('adm-owner-stale') && stale.title === 'No longer an active user', 'a removed or disabled person is struck through');
   assert.strictEqual(report.querySelector('.adm-problem').textContent, WARNING, 'the warning sits next to the report setting');
   assert.ok([...doc.querySelectorAll('.adm-notice-t')].some((n) => n.textContent === WARNING), 'the notices strip carries it too');
   assert.deepStrictEqual(errors, []);

@@ -1170,7 +1170,9 @@
   "Removed": "Kaldırıldı",
   "Remove from the responsibles": "Sorumlulardan kaldır",
   "Responsibles not saved, try again": "Sorumlular kaydedilemedi, tekrar deneyin",
-  "Slack app is missing users:read.email; responsibles are named without a ping": "Slack uygulamasında users:read.email eksik; sorumlular bildirim gönderilmeden anılıyor"
+  "Slack app is missing users:read.email; responsibles are named without a ping": "Slack uygulamasında users:read.email eksik; sorumlular bildirim gönderilmeden anılıyor",
+  "Needs Slack auto-send on (Admin › Features).": "Slack otomatik gönderiminin açık olması gerekir (Admin › Features).",
+  "No longer an active user": "Artık etkin bir kullanıcı değil"
  },
  "rules": [
   [

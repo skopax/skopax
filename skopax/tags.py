@@ -27,6 +27,8 @@ INFO = 'info'
 KINDS = ('action', INFO)
 WHY_LIMIT = 300
 RULES_KEY = re.compile(r'tags\.([a-z0-9-]{1,30})\.rules')
+REPORT_AT = re.compile(r'(?:[01]\d|2[0-3]):[0-5]\d')
+REPORT_LAST = '23:55'
 EXTRA: list = [{}]
 DEFS: list = [{}]
 TEXTS: list = [(), HOOK_TIMEOUT_S]
@@ -69,6 +71,10 @@ def plugin_rules() -> dict[str, tuple[str, ...]]:
         return {}
     known = all_tags()
     return {tag: tuple(terms) for tag, terms in extra.items() if tag in known}
+
+
+def report_at_ok(text) -> bool:
+    return isinstance(text, str) and bool(REPORT_AT.fullmatch(text)) and text <= REPORT_LAST
 
 
 def clean_label(raw) -> str:

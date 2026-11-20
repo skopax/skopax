@@ -671,8 +671,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     notices = Notices(store)
     versions = VersionCheck(store, transport, lambda: features.on('update-check'), clock=clock)
     reminders = Reminders(store, slack, settings.slack_remind_hours, base_url)
-    slack_ids = tagreport.SlackIds(slack, on_scope=lambda missing: store.note_email_scope(missing, iso(utc_now())))
-    tag_report = tagreport.TagReport(store, slack, slack_ids, store.tag_owners, lambda: {u['email']: u.get('name') or '' for u in users.list() if u and u.get('email')},
+    slack_ids = tagreport.SlackIds(slack, on_scope=lambda missing: store.note_email_scope(missing, iso(utc_now())), flagged=lambda: store.email_scope() is not None)
+
+    def active_people() -> dict[str, str]:
+        return {u['email']: u.get('name') or '' for u in users.list() if u and u.get('email') and not u.get('disabled')}
+
+    tag_report = tagreport.TagReport(store, slack, slack_ids, store.tag_owners, active_people,
                                      lambda: settings.tag_report_at, lambda: features.on(tagreport.FEATURE) and features.on('slack-autosend'), base_url)
     clear_notes = ClearNotes(store, slack, settings.slack_clear_note_minutes, title_prefix=settings.jira_title_prefix)
     jira_links = JiraLinks(store, jira, settings.jira_links, notes, base_url, settings.jira_developer_field)
@@ -1519,7 +1523,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                          ('mode', lambda: investigator.mode == 'off')),
         'chat': (('investigator', lambda: not investigator_ready()), ('chat_ui', lambda: not (settings.chat_ui and signon.active()))),
         'slack-autosend': (('slack_token', lambda: not slack.enabled),),
-        'tag-report': (('slack_token', lambda: not slack.enabled),),
+        'tag-report': (('slack_token', lambda: not slack.enabled), ('slack_autosend', lambda: not features.on('slack-autosend'))),
         'slack-listener': (('slack_app_token', lambda: link.app_token() == ''), ('slack_token', lambda: not slack.enabled), ('investigator', lambda: not investigator_ready()),
                            ('listen_mode', lambda: settings.slack_listen == 'off')),
         'mcp': (('sso', lambda: not signon.active()),),
@@ -1545,6 +1549,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     app.state.features = features
     app.state.feature_needs = feature_needs
     app.state.auto_send = auto
+    app.state.tag_report = tag_report
     app.state.slack_fallback = fallback
     app.state.scheduler = scheduler
     app.state.sweeper = sweeper
@@ -2730,8 +2735,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             store.add_activity(ACCESS_KIND, by, msg('access.token_revoked', name=doc['name']))
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    def scope_warning() -> dict | None:
+        return store.email_scope() if tag_report.wanted else None
+
     def scope_marked(items: list[dict]) -> list[dict]:
-        if store.email_scope() is None:
+        if scope_warning() is None:
             return items
         return [i | {'problem': msg('tags.scope_missing')} if i.get('key') == tagreport.KEY else i for i in items]
 
@@ -2739,22 +2747,28 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def get_admin_settings(by: Annotated[str, Depends(require_admin)]) -> dict:
         return {'items': scope_marked(live.entries()), 'rev': live.tunables.rev(), 'refreshSeconds': live.every}
 
+    def all_people() -> dict[str, str]:
+        return {u['email']: u.get('name') or '' for u in users.list() if u and u.get('email')}
+
     def owner_rows(emails: list[str], named: dict[str, str]) -> list[dict]:
-        return [{'email': e, 'name': named.get(e) or e.split('@')[0]} for e in emails]
+        everyone = all_people()
+        return [{'email': e, 'name': everyone.get(e) or e.split('@')[0]} | ({} if e in named else {'stale': True}) for e in emails]
 
     def tag_view(tag: str, label: str, held: dict[str, list[str]], named: dict[str, str]) -> dict:
         return {'id': tag, 'label': label, 'responsibles': owner_rows(held.get(tag, []), named)}
 
+    def people_named(names: list[str]) -> str:
+        everyone = all_people()
+        return ', '.join(everyone.get(e) or e.split('@')[0] for e in names) or '\u2013'
+
     @app.get('/api/admin/tags')
-    def get_admin_tags(request: Request, by: Annotated[str, Depends(require_login)]) -> dict:
-        actor = getattr(request.state, 'actor', None)
-        admin = bool(actor) and role_at_least(actor.role, 'admin')
+    def get_admin_tags(by: Annotated[str, Depends(require_admin)]) -> dict:
         listed = users.list()
-        named = {u['email']: u.get('name') or '' for u in listed if u and u.get('email')}
+        named = active_people()
         held = store.tag_owners()
-        return {'tags': [tag_view(tag, label, held, named) for tag, label in tags.all_tags().items()], 'canEdit': admin,
-                'users': [{'email': u['email'], 'name': u.get('name') or u['email'].split('@')[0], 'disabled': bool(u.get('disabled'))} for u in listed if u and u.get('email')] if admin else [],
-                'reportAt': settings.tag_report_at, 'emailScopeMissing': store.email_scope() is not None}
+        return {'tags': [tag_view(tag, label, held, named) for tag, label in tags.all_tags().items()], 'canEdit': True,
+                'users': [{'email': u['email'], 'name': u.get('name') or u['email'].split('@')[0], 'disabled': bool(u.get('disabled'))} for u in listed if u and u.get('email')],
+                'reportAt': settings.tag_report_at, 'emailScopeMissing': scope_warning() is not None}
 
     @app.put('/api/admin/tags/{tag}/responsibles')
     def put_tag_owners(tag: str, body: TagOwnersIn, by: Annotated[str, Depends(require_admin)]) -> dict:
@@ -2764,15 +2778,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         wanted = list(dict.fromkeys(e.strip().lower() for e in body.emails if e.strip()))
         if len(wanted) > tagreport.OWNERS_MAX:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('tags.too_many', n=tagreport.OWNERS_MAX))
-        named = {u['email']: u.get('name') or '' for u in users.list() if u and u.get('email')}
-        unknown = [e for e in wanted if e not in named]
+        named = active_people()
+        before = store.tag_owners().get(tag, [])
+        unknown = [e for e in wanted if e not in named and e not in before]
         if unknown:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('tags.no_user', email=cut(unknown[0], 80)))
-        before = store.tag_owners().get(tag, [])
         if wanted != before:
             store.set_tag_owners(tag, wanted)
             live.tunables.write_change(f'tags.{tag}.responsibles', ', '.join(before) or None, ', '.join(wanted) or None, by, owners=True, tag=tag)
-            store.add_activity(ADMIN_KIND, by, f"Responsibles of {known[tag]}: {', '.join(before) or '\u2013'} \u2192 {', '.join(wanted) or '\u2013'}"[:300])
+            store.add_activity(ACCESS_KIND, by, f"Responsibles of {known[tag]}: {people_named(before)} \u2192 {people_named(wanted)}"[:300])
             log.info('responsibles of tag %s changed by %s', tag, by)
         return tag_view(tag, known[tag], store.tag_owners(), named)
 
@@ -2995,7 +3009,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             provider = signon.status()
             if not provider['ok']:
                 items.append({'id': 'sso-provider', 'level': 'warn', 'text': msg('sso.notice.provider'), 'at': provider['since']})
-        scope = store.email_scope()
+        scope = scope_warning()
         if scope is not None:
             items.append({'id': 'tag-report-scope', 'level': 'warn', 'text': msg('tags.scope_missing'), 'at': scope['at']})
         update = versions.notice()

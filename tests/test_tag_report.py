@@ -51,8 +51,8 @@ def test_only_tags_with_responsibles_and_an_open_card_get_a_line_sorted_by_criti
     # then
     lines = [b['text']['text'].split('\n')[0] for b in out['blocks'][1:]]
     assert len(lines) == 2
-    assert lines[0] == '<@U0BOB> \u00b7 *<https://skopax.example.com/#t=anoms/open/tag:data|Data>* \u00b7 1 open: 1 critical, 0 warning'
-    assert lines[1] == '<@U0ALICE> \u00b7 *<https://skopax.example.com/#t=anoms/open/tag:developer|Developer>* \u00b7 3 open: 0 critical, 2 warning'
+    assert lines[0] == '<@U0BOB> \u00b7 *<https://skopax.example.com/#t=anoms/open/tag:data|Data>* \u00b7 1 open card: 1 critical'
+    assert lines[1] == '<@U0ALICE> \u00b7 *<https://skopax.example.com/#t=anoms/open/tag:developer|Developer>* \u00b7 3 open cards: 2 warnings'
     assert '<@U0ALICE>' in out['text'] and '<@U0BOB>' in out['text']
 
 
@@ -146,7 +146,7 @@ def test_many_tags_stay_within_the_slack_block_limit_and_say_how_many_were_left_
 
 def test_the_report_time_must_be_hh_mm():
     # then
-    assert [tagreport.valid_at(v) for v in ('10:00', '00:00', '23:59', '9:00', '24:00', '10:60', '', 'ten')] == [True, True, True, False, False, False, False, False]
+    assert [tagreport.valid_at(v) for v in ('10:00', '00:00', '23:55', '23:56', '23:59', '9:00', '24:00', '10:60', '', 'ten')] == [True, True, True] + [False] * 7
 
 
 @pytest.mark.parametrize('now, zone, expected', [
@@ -161,13 +161,19 @@ def test_the_report_is_due_at_or_after_the_time_on_business_days_in_the_install_
 
 
 class Reporter:
-    def __init__(self, store: Store, owners=None, at='10:00', on=True, autosend=True, emails=None, slack=None):
+    def __init__(self, store: Store, owners=None, at='10:00', on=True, autosend=True, emails=None, slack=None, names=None):
         self.slack, self.post, self.api = slack or fake_slack(emails=emails or {'U0ALICE': ALICE})
         self.flags = []
-        self.ids = tagreport.SlackIds(self.slack, on_scope=self.flags.append)
+
+        def noted(missing: bool) -> None:
+            self.flags.append(missing)
+            store.note_email_scope(missing, iso(FRI_1000))
+
+        self.ids = tagreport.SlackIds(self.slack, on_scope=noted, flagged=lambda: store.email_scope() is not None)
         self.at, self.on, self.autosend = at, on, autosend
         self.owners = {'developer': [ALICE]} if owners is None else owners
-        self.report = tagreport.TagReport(store, self.slack, self.ids, lambda: self.owners, lambda: NAMES, lambda: self.at, lambda: self.on and self.autosend, BASE, labels=lambda: LABELS)
+        self.names = dict(NAMES) if names is None else names
+        self.report = tagreport.TagReport(store, self.slack, self.ids, lambda: self.owners, lambda: self.names, lambda: self.at, lambda: self.on and self.autosend, BASE, labels=lambda: LABELS)
 
 
 def open_cards(store: Store, *cards: dict) -> None:
@@ -248,10 +254,10 @@ def test_a_day_with_no_qualifying_tag_posts_nothing_and_counts_as_reported(store
     assert (first, later) == (None, None) and r.post.posted == []
 
 
-def test_a_failed_post_leaves_the_day_open_for_the_next_pass(store: Store):
+def test_a_post_refused_before_it_went_out_leaves_the_day_open_for_the_next_pass(store: Store):
     # given
     open_cards(store, card('a', num=1))
-    slack = fake_slack(emails={'U0ALICE': ALICE}, post_fail=True)
+    slack = fake_slack(emails={'U0ALICE': ALICE}, post_fail=SlackError('ratelimited', code='ratelimited'))
     r = Reporter(store, slack=slack)
 
     # when
@@ -272,17 +278,23 @@ def test_the_report_is_off_with_an_empty_time_the_feature_off_autosend_off_or_no
 
     # when
     out = r.report.enabled
+    posted = r.report.run_once(FRI_1000)
 
     # then
-    assert out is False
+    assert out is False and posted is None and r.post.posted == []
 
 
 def test_the_report_is_off_without_slack(store: Store):
     # given
-    r = Reporter(store, slack=(Slack('', '', FakePost(), FakeSlackApi()), None, None))
+    open_cards(store, card('a', num=1))
+    post = FakePost()
+    r = Reporter(store, slack=(Slack('', '', post, FakeSlackApi()), post, None))
+
+    # when
+    posted = r.report.run_once(FRI_1000)
 
     # then
-    assert r.report.enabled is False
+    assert r.report.enabled is False and posted is None and post.calls == []
 
 
 def test_lookups_are_cached_for_a_day_misses_included():
@@ -358,7 +370,7 @@ def test_a_missing_email_scope_sets_the_flag_logs_once_poisons_no_cache_and_the_
     text = json.dumps(post.posted[0]['blocks'])
     assert 'Alice Moss' in text and 'Bob Reed' in text and '<@' not in text
     assert looked == 1, 'one refused lookup stops the others in the same report'
-    assert r.flags[0] is True and r.flags[-1] is False
+    assert r.flags == [True, False] and store.email_scope() is None
     assert later == '<@U0ALICE>', 'the refusal was not cached as a miss'
     assert len([m for m in caplog.messages if 'users:read.email' in m]) == 1
 
@@ -379,15 +391,143 @@ def test_the_scope_flag_is_logged_once_across_reports(store: Store, caplog):
     assert len([m for m in caplog.messages if 'users:read.email' in m]) == 1
 
 
-def test_a_slack_down_lookup_does_not_set_the_scope_flag():
+class DownApi(FakeSlackApi):
+    def __call__(self, token, method, payload):
+        if method == 'users.lookupByEmail' and self.down:
+            self.calls.append((method, payload))
+            raise SlackDown('Slack did not answer')
+        return super().__call__(token, method, payload)
+
+
+def test_a_slack_down_lookup_does_not_set_the_scope_flag_and_cached_ids_still_mention():
     # given
-    api = FakeSlackApi(emails={'U0ALICE': ALICE})
+    api = DownApi(emails={'U0ALICE': ALICE})
+    api.down = False
     flags = []
-    slack = Slack('xoxb-test', '#ops', FakePost(), lambda token, method, payload: (_ for _ in ()).throw(SlackDown('down')))
-    ids = tagreport.SlackIds(slack, on_scope=flags.append)
+    ids = tagreport.SlackIds(Slack('xoxb-test', '#ops', FakePost(), api), on_scope=flags.append)
+    known = ids.mention(ALICE)
 
     # when
-    out = ids.mention(ALICE)
+    api.down = True
+    ids.start()
+    down = ids.mention(BOB)
+    cached = ids.mention(ALICE)
 
     # then
-    assert out is None and flags == [] and ids.missing is False and api.calls == []
+    assert (known, down, cached) == ('<@U0ALICE>', None, '<@U0ALICE>')
+    assert flags == [] and ids.missing is False
+    assert api.methods().count('users.lookupByEmail') == 2
+
+
+def test_a_flag_set_by_another_replica_is_cleared_by_a_real_lookup_even_when_this_replica_has_the_id_cached(store: Store):
+    # given
+    open_cards(store, card('a', num=1))
+    one, two = Reporter(store), Reporter(store)
+    two.ids.start()
+    two.ids.mention(ALICE)
+    one.api.__class__ = ScopeApi
+    one.api.code, one.api.refuse = 'missing_scope', True
+    one.ids.start()
+    one.ids.mention(ALICE)
+    flagged = store.email_scope() is not None
+    before = two.api.methods().count('users.lookupByEmail')
+
+    # when
+    out = two.report.run_once(FRI_1000)
+
+    # then
+    assert flagged is True
+    assert out is not None and '<@U0ALICE>' in json.dumps(two.post.posted[0]['blocks'])
+    assert two.api.methods().count('users.lookupByEmail') == before + 1, 'the flag forces one real lookup past the cache'
+    assert store.email_scope() is None
+
+
+def test_a_cache_hit_alone_keeps_no_stale_flag_once_the_report_looked_again(store: Store):
+    # given
+    open_cards(store, card('a', num=1))
+    r = Reporter(store)
+    r.ids.start()
+    r.ids.mention(ALICE)
+    store.note_email_scope(True, iso(FRI_0930))
+
+    # when
+    r.report.run_once(FRI_1000)
+
+    # then
+    assert store.email_scope() is None
+
+
+def test_disabled_or_deleted_responsibles_are_left_out_and_a_tag_with_none_left_does_not_qualify(store: Store):
+    # given
+    open_cards(store, card('a', num=1), card('b', 'warn', ('data',), num=2))
+    r = Reporter(store, owners={'developer': [ALICE, 'gone@example.com'], 'data': [BOB]}, names={ALICE: 'Alice Moss'})
+
+    # when
+    r.report.run_once(FRI_1000)
+
+    # then
+    blocks = r.post.posted[0]['blocks']
+    assert len(blocks) == 2 and blocks[1]['text']['text'].split(' \u00b7 ')[0] == '<@U0ALICE>'
+
+
+def test_a_post_slack_did_not_answer_may_have_gone_out_so_the_day_is_not_tried_again(store: Store, caplog):
+    # given
+    open_cards(store, card('a', num=1))
+    slack = fake_slack(emails={'U0ALICE': ALICE}, post_fail=SlackDown('Slack did not answer'))
+    r = Reporter(store, slack=slack)
+
+    # when
+    first = r.report.run_once(FRI_1000)
+    r.post.fail = False
+    again = r.report.run_once(FRI_1405)
+
+    # then
+    assert (first, again) == (None, None) and r.post.posted == [] and len(r.post.calls) == 1
+
+
+@pytest.mark.parametrize('code', ['not_in_channel', 'channel_not_found', 'is_archived'])
+def test_a_permanent_refusal_marks_the_day_done_with_one_log_line(store: Store, caplog, code: str):
+    # given
+    open_cards(store, card('a', num=1))
+    slack = fake_slack(emails={'U0ALICE': ALICE}, post_fail=SlackError(code, code=code))
+    r = Reporter(store, slack=slack)
+    caplog.set_level(logging.WARNING, 'skopax.tagreport')
+
+    # when
+    outs = [r.report.run_once(FRI_1000), r.report.run_once(FRI_1405)]
+
+    # then
+    assert outs == [None, None] and len(r.post.calls) == 1
+    assert len([m for m in caplog.messages if code in m]) == 1
+
+
+def test_a_time_zone_change_during_the_day_does_not_post_a_second_report(store: Store):
+    # given
+    thu_1000 = FRI_1000 - 86400
+    open_cards(store, card('a', num=1, now=thu_1000))
+    r = Reporter(store)
+    r.report.run_once(thu_1000)
+
+    # when
+    clock.set_zone('Asia/Tokyo')
+    r.at = '01:00'
+    tokyo_friday = r.report.run_once(thu_1000 + 6 * 3600)
+    next_day = r.report.run_once(thu_1000 + 21 * 3600)
+
+    # then
+    assert tokyo_friday is None, 'a new local day six hours after the last report posts nothing'
+    assert next_day is not None and len(r.post.posted) == 2
+
+
+def test_the_last_allowed_time_fires_on_the_last_pass_of_the_day():
+    # given
+    last_pass = dt.datetime(2026, 11, 20, 23, 55, 45, tzinfo=dt.timezone.utc).timestamp()
+
+    # then
+    assert tagreport.due('23:55', last_pass) is True
+
+
+def test_the_counts_line_leaves_out_zero_parts_and_says_one_card():
+    # then
+    assert [tagreport.counts(*c) for c in ((1, 1, 0), (3, 0, 2), (2, 0, 0), (5, 2, 1))] == [
+        '1 open card: 1 critical', '3 open cards: 2 warnings', '2 open cards', '5 open cards: 2 critical, 1 warning']
