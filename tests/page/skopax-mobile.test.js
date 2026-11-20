@@ -186,6 +186,31 @@ async function onAPhoneTheSwitcherScrollsFocusesAndFollowsSwipes() {
   return 'on a phone a tab scrolls to its column and focuses it, other columns are inert, refreshes and page switches keep the column, a swipe moves the tab, and a wide screen frees every column';
 }
 
+async function theCardDrawerShowsChatAndInvestigateAsAnAiSegmentLikeStatus() {
+  //given
+  const {dom, w, doc, errors} = await boot('#t=anoms/all');
+
+  //when
+  w.openDrawer('log|checkout-service|ERROR|boom', true);
+  await wait(50);
+  const acts = doc.querySelector('.card-drawer .acts');
+  const groups = [...acts.querySelectorAll(':scope > .act-group')].map((g) => doc.getElementById(g.getAttribute('aria-labelledby')).textContent);
+  const ai = acts.querySelector(':scope > .act-group.ai');
+  const segs = [...ai.querySelectorAll(':scope > .ag-body > .seg > .seg-b')].map((b) => [b.tagName.toLowerCase(), b.classList.contains('chat-btn') ? 'chat' : b.classList.contains('inv-btn') ? 'investigate' : '?', b.getAttribute('aria-label') || b.textContent, !!b.querySelector('svg[aria-hidden="true"]'), b.querySelector('.lbl') ? b.querySelector('.lbl').textContent : null]);
+  const chat = ai.querySelector('.chat-btn');
+
+  //then
+  assert.deepStrictEqual(groups, ['AI', 'Status', 'Owner', 'Links'], 'the drawer reads AI, Status, Owner, Links');
+  assert.strictEqual(ai.getAttribute('role'), 'group', 'AI is a labelled group like Status');
+  assert.deepStrictEqual(segs, [['a', 'chat', 'Chat about this card', true, 'Chat about this card'], ['button', 'investigate', 'Investigate', true, 'Investigate']], 'Chat and Investigate are icon and word segments with their names');
+  assert.strictEqual(chat.getAttribute('href'), '/#t=chat/new/14', 'Chat still opens a new chat with the card');
+  assert.strictEqual(acts.querySelector('.act-primary'), null, 'there is no filled primary button row any more');
+  assert.ok(![...ai.querySelectorAll('.seg-b')].some((b) => b.hasAttribute('aria-pressed')), 'they are actions, not toggles');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'the card drawer shows Chat and Investigate as an AI group of icon and word segments like Status, with their names, and no filled primary button';
+}
+
 async function aShortLandscapePhoneGetsTheDrawerMenuToo() {
   //given
   const {dom, doc, errors} = await boot('#t=anoms', 'short');
@@ -277,7 +302,7 @@ function noRuleGivesAnythingAFixedWidthWiderThanAPhone() {
 
 function theNewWordsAreInEveryPack() {
   //given
-  const words = ['Board columns'];
+  const words = ['Board columns', 'AI'];
 
   //when
   const missing = PACKS.flatMap((lang) => {
@@ -295,6 +320,7 @@ function theNewWordsAreInEveryPack() {
   console.log('PASS ' + await theBoardHasAColumnSwitcherThatKeepsItsColumnAcrossARefresh());
   console.log('PASS ' + await onAPhoneTheSwitcherScrollsFocusesAndFollowsSwipes());
   console.log('PASS ' + await aShortLandscapePhoneGetsTheDrawerMenuToo());
+  console.log('PASS ' + await theCardDrawerShowsChatAndInvestigateAsAnAiSegmentLikeStatus());
   console.log('PASS ' + onAPhoneTheStylesGiveOneColumnAFullScreenDrawerBigTargetsAnd16pxInputs());
   console.log('PASS ' + onAPhoneTheBoardHeaderKeepsItsDomOrderOnScreen());
   console.log('PASS ' + noRuleGivesAnythingAFixedWidthWiderThanAPhone());

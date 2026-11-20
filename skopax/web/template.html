@@ -1784,14 +1784,7 @@ a.btn.chat-link svg { width: 17px; height: 17px; flex: none; }
 .acts .stat:empty, .acts .asg-msg:empty { display: none; }
 .acts.acts-grouped { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; max-width: none; margin-top: 4px; padding: 12px 0 2px; border-top: 1px solid var(--line); container-type: inline-size; }
 #anoms .inc.open .inc-head .acts.acts-grouped { padding-left: 0; }
-.acts-grouped .act-primary { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 8px; }
-.acts-grouped .act-primary .btn { height: 38px; width: auto; padding: 0 16px; border-radius: 6px; font-size: 0.9rem; font-weight: 600; gap: 8px; }
-.acts-grouped .act-primary .btn svg { width: 17px; height: 17px; }
-.acts-grouped .chat-btn { flex: 1 1 220px; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; background: var(--btn-bg); color: var(--btn-fg); border: 1px solid var(--btn-bg); text-decoration: none; }
-.acts-grouped .chat-btn:hover { background: var(--btn-hover); }
-.acts-grouped .chat-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .acts-grouped .act-group { display: grid; grid-template-columns: 60px minmax(0, 1fr); align-items: start; column-gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); min-width: 0; }
-.acts-grouped .act-primary + .act-group { border-top: 0; }
 .acts-grouped .ag-h { line-height: 32px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .acts-grouped .ag-body { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; min-height: 32px; }
 .acts-grouped .seg { max-width: 100%; box-sizing: border-box; }
@@ -1801,8 +1794,6 @@ a.btn.chat-link svg { width: 17px; height: 17px; flex: none; }
 .acts.acts-grouped .seg > .btn[aria-pressed="true"] { --c: var(--info); background: var(--surface); color: var(--fg); font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, var(--line-2)); }
 .acts.acts-grouped .seg > .btn[aria-pressed="true"] svg { color: var(--c); }
 .acts-grouped .links .btn, .acts.acts-grouped .sev-act, .acts.acts-grouped .acts-tog { background: transparent; border-color: transparent; color: var(--fg-2); font-weight: 500; }
-.acts-grouped .act-primary .inv-btn { background: var(--surface); color: var(--fg); border: 1px solid var(--line-2); }
-.acts-grouped .act-primary .inv-btn:hover:not(:disabled) { background: var(--sunken); }
 .acts-grouped .links .btn:hover:not(:disabled), .acts-grouped .sev-act:hover:not(:disabled), .acts-grouped .acts-tog:hover:not(:disabled) { background: var(--sunken); color: var(--fg); }
 .acts-grouped .links .btn svg { color: var(--muted); }
 .acts-grouped .links .jira-acts { display: inline-flex; align-items: center; gap: 2px; }
@@ -1810,6 +1801,7 @@ a.btn.chat-link svg { width: 17px; height: 17px; flex: none; }
 .acts-grouped .links .jira-key svg { color: currentColor; }
 .acts-grouped .links .btn.icon { height: 30px; padding: 0 10px; }
 .acts-grouped .asg-msg { flex-basis: 100%; text-align: left; }
+.acts-grouped .act-group.ai { border-top: 0; }
 .acts-grouped .act-group .ag-body { position: relative; }
 .acts.acts-grouped .asg-btn.labeled { width: auto; padding: 0 12px 0 6px; }
 .acts.acts-grouped .asg-btn.labeled .lbl { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; }
@@ -1826,7 +1818,6 @@ a.btn.chat-link svg { width: 17px; height: 17px; flex: none; }
   .acts-grouped .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); width: 100%; }
   .acts.acts-grouped .seg > .btn { flex-direction: column; justify-content: center; gap: 2px; height: auto; min-height: 42px; padding: 4px; font-size: 0.78rem; line-height: 1.15; text-align: center; }
   .acts-grouped > .reason, .acts-grouped > div.res-form, .acts-grouped > .sev-form, .acts-grouped > .jira-form { margin-left: 0; }
-  .acts-grouped .act-primary .btn { flex: 1 1 100%; justify-content: center; }
 }
 .notif { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; border-top: 1px solid var(--line); padding: 8px 14px 10px; }
 .notif .nl { font-size: 0.78rem; font-weight: 600; color: var(--muted); margin-right: 2px; }

@@ -120,7 +120,7 @@
     return '<div class="act-group' + (cls ? ' ' + cls : '') + '" role="group" aria-labelledby="ag-' + id + '"><span class="ag-h" id="ag-' + id + '">' + label + '</span><div class="ag-body">' + body + '</div></div>';
   }
   function chatLink(c) {
-    return '<a class="btn big chat-btn" id="chat-about" href="/#t=chat/new/' + encodeURIComponent(c.num) + '" title="Opens a new private chat with this card attached: ask why it fired, what the investigation found, who should look">' + ICONS.chat + 'Chat about this card</a>';
+    return '<a class="btn seg-b chat-btn" id="chat-about" href="/#t=chat/new/' + encodeURIComponent(c.num) + '" title="Opens a new private chat with this card attached: ask why it fired, what the investigation found, who should look">' + ICONS.chat + '<span>Chat about this card</span></a>';
   }
   function segBtn(id, icon, text, pressed, off, tip) {
     return '<button type="button" class="btn seg-b" id="' + id + '" aria-pressed="' + (pressed ? 'true' : 'false') + '"' + (tip ? ' title="' + esc(tip) + '"' : '') + off + '>' + icon + '<span>' + text + '</span></button>';
@@ -182,18 +182,18 @@
     b.disabled = false;
   }
   function actions(c) {
-    var primary = '<div class="act-primary">' + chatLink(c);
+    var ai = function (inv) { return group('ai', 'AI', '<div class="seg">' + chatLink(c) + (inv || '') + '</div>', 'ai'); };
     var owner = c.owner ? group('owner', 'Owner', ownerChip(c)) : '';
-    if (!c.live) return '<div class="acts">' + primary + '</div>' + owner + group('links', 'Links', boardLinks(c), 'links') + '</div>';
+    if (!c.live) return '<div class="acts">' + ai() + owner + group('links', 'Links', boardLinks(c), 'links') + '</div>';
     if (!me.operator) {
       var why = me.user ? 'Actions need the operator role.' : me.loginEnabled ? '<a href="/login?next=' + encodeURIComponent(location.pathname) + '">Log in</a>: actions need the operator role.' : '';
-      return '<div class="acts">' + primary + '</div>' + owner + group('links', 'Links', boardLinks(c), 'links') + (why ? '<p class="act-note">' + why + '</p>' : '') + foot(c) + '</div>';
+      return '<div class="acts">' + ai() + owner + group('links', 'Links', boardLinks(c), 'links') + (why ? '<p class="act-note">' + why + '</p>' : '') + foot(c) + '</div>';
     }
     var off = busy(c) ? ' disabled' : '';
     var handled = c.triage === 'handled';
     var takeTip = 'The card goes In progress and you become its owner' + (me.jira ? '; you can add a Jira ticket' : '');
-    return '<div class="acts op">' + primary +
-      '<button type="button" class="btn sec inv-b" id="act-dive" title="Investigate: the investigator starts within about two minutes" aria-label="Investigate"' + off + '>' + SPARKLES + '<span>Investigate</span></button></div>' +
+    return '<div class="acts op">' + ai(
+      '<button type="button" class="btn seg-b inv-b" id="act-dive" title="Investigate: the investigator starts within about two minutes" aria-label="Investigate"' + off + '>' + SPARKLES + '<span>Investigate</span></button>') +
       group('status', 'Status', '<div class="seg">' + segBtn('act-take', ICONS.play, c.triage === 'progress' ? 'In progress' : 'Start progress', c.triage === 'progress', off, takeTip) +
         (handled ? '' : segBtn('act-resolve', ICONS.check, 'Resolve', false, off)) +
         (c.muted ? segBtn('act-unmute', ICONS.bell, 'Unmute', true, off) : segBtn('act-mute', ICONS.bellOff, 'Mute 24 h', false, off)) + '</div>') +

@@ -516,14 +516,15 @@ async function initActions() {
   function groupActs(a, box, p) {
     var keep = function (n) { return n || null; };
     box.classList.add('acts-grouped');
-    var primary = el('div', 'act-primary');
+    var ai = actGroup(box, 'ai', 'AI', 'ai'), aseg = el('div', 'seg');
     if (a.num) {
-      var chat = el('a', 'btn chat-btn', ICON_CHAT + 'Chat about this card');
+      var chat = el('a', 'btn sec seg-b chat-btn', ICON_CHAT + '<span class="lbl">Chat about this card</span>');
       chat.href = '/#t=chat/new/' + encodeURIComponent(a.num);
       chat.title = 'Opens a new private chat with this card attached: ask why it fired, what the investigation found, who should look';
-      primary.append(chat);
+      aseg.append(chat);
     }
-    primary.append(showWord(p.dive));
+    if (p.dive) { p.dive.classList.add('seg-b'); aseg.append(showWord(p.dive)); }
+    if (aseg.children.length) ai.body.append(aseg);
     var status = actGroup(box, 'status', 'Status'), seg = el('div', 'seg');
     [[p.take, a.triage === 'progress'], [p.res, false], [p.mute, false], [p.un, true]].forEach(function (x) {
       if (!x[0]) return;
@@ -550,7 +551,8 @@ async function initActions() {
     if (stat) foot.append(stat);
     var forms = [keep(p.tform), keep(p.rform), box.querySelector('.sev-form')].filter(Boolean);
     var after = [box.querySelector(':scope > .jira-form')].filter(Boolean);
-    box.append(primary, status);
+    if (aseg.children.length) box.append(ai);
+    box.append(status);
     forms.forEach(function (f) { box.append(f); });
     box.append(owner, links);
     after.forEach(function (f) { box.append(f); });

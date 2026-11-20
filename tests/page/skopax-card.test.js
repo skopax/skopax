@@ -64,7 +64,7 @@ async function aBusinessCardLeadsWithTheActionAndFoldsTheTechnicalPart() {
   assert.ok(!doc.getElementById('card').textContent.includes('To do'));
   assert.strictEqual(doc.getElementById('open-page').getAttribute('href'), 'https://example.com/orders');
   const chat = doc.getElementById('chat-about');
-  assert.ok(chat.classList.contains('big') && chat.textContent === 'Chat about this card', 'a big chat button leads the actions');
+  assert.ok(chat.classList.contains('seg-b') && chat.closest('.act-group.ai') && chat.textContent === 'Chat about this card', 'Chat leads the actions as the first AI segment');
   assert.match(chat.getAttribute('href'), /^\/#t=chat\/new\/\d+$/, 'it opens a new chat with this card attached: ' + chat.getAttribute('href'));
   assert.ok(chat.compareDocumentPosition(doc.querySelector('.act-group.links')) & 4, 'above the other buttons');
   assert.strictEqual(doc.getElementById('board').getAttribute('href'), '/#a=page-typos%7Cexample.com%2Forders');
