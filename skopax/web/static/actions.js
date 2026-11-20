@@ -466,7 +466,7 @@ async function initActions() {
     if (card) { if (on) ACTS_OPEN[card.dataset.key] = true; else delete ACTS_OPEN[card.dataset.key]; }
     more.hidden = !on;
     tog.setAttribute('aria-expanded', on ? 'true' : 'false');
-    tog.dataset.tip = tog.title = on ? 'Close this menu' : 'More actions: mute, known noise, group, resolve, copy link';
+    tog.dataset.tip = tog.title = on ? 'Close this menu' : menu.closest('.acts-grouped') ? 'More actions: mute for a week, known noise, group' : 'More actions: mute, known noise, group, resolve, copy link';
   }
   document.addEventListener('click', function (e) {
     if (!e.target.isConnected) return;
@@ -497,6 +497,66 @@ async function initActions() {
     box.insertBefore(menu, stat);
     actsMenu(menu, !!ACTS_OPEN[a.key]);
   }
+  var ICON_CHAT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+  function actGroup(box, id, label, cls) {
+    var g = el('div', 'act-group' + (cls ? ' ' + cls : '')), h = el('span', 'ag-h'), body = el('div', 'ag-body');
+    h.id = 'ag-' + id + '-' + box.dataset.i;
+    h.textContent = label;
+    g.setAttribute('role', 'group');
+    g.setAttribute('aria-labelledby', h.id);
+    g.append(h, body);
+    g.body = body;
+    return g;
+  }
+  function showWord(b) {
+    var sr = b && b.querySelector(':scope > .sr');
+    if (sr) sr.className = 'lbl';
+    return b;
+  }
+  function groupActs(a, box, p) {
+    var keep = function (n) { return n || null; };
+    box.classList.add('acts-grouped');
+    var primary = el('div', 'act-primary');
+    if (a.num) {
+      var chat = el('a', 'btn chat-btn', ICON_CHAT + 'Chat about this card');
+      chat.href = '/#t=chat/new/' + encodeURIComponent(a.num);
+      chat.title = 'Opens a new private chat with this card attached: ask why it fired, what the investigation found, who should look';
+      primary.append(chat);
+    }
+    primary.append(showWord(p.dive));
+    var status = actGroup(box, 'status', 'Status'), seg = el('div', 'seg');
+    [[p.take, a.triage === 'progress'], [p.res, false], [p.mute, false], [p.un, true]].forEach(function (x) {
+      if (!x[0]) return;
+      x[0].classList.add('seg-b');
+      x[0].setAttribute('aria-pressed', x[1] ? 'true' : 'false');
+      if (x[0] === p.take) {
+        x[0].innerHTML = ICON_PLAY + '<span class="sr">' + (x[1] ? 'In progress' : 'Start progress') + '</span>';
+        x[0].setAttribute('aria-label', x[1] ? 'In progress' : 'Start progress');
+      }
+      seg.append(showWord(x[0]));
+    });
+    if (seg.children.length) status.body.append(seg);
+    var sev = box.querySelector('.sev-act'), menu = box.querySelector('.acts-menu');
+    if (sev) status.body.append(sev);
+    if (menu) { status.body.append(menu); menu.hidden = !menu.querySelector('.acts-more').children.length; actsMenu(menu, !!ACTS_OPEN[a.key]); }
+    var owner = actGroup(box, 'owner', 'Owner');
+    [box.querySelector(':scope > .asg-btn'), box.querySelector(':scope > .asg-form'), box.querySelector(':scope > .asg-msg')].forEach(function (n) { if (n) owner.body.append(n); });
+    var links = actGroup(box, 'links', 'Links', 'links');
+    var jira = box.querySelector(':scope > .jira-acts');
+    if (jira) links.body.append(jira);
+    if (p.copy) links.body.append(showWord(p.copy));
+    var foot = el('div', 'act-foot'), stat = box.querySelector(':scope > .stat'), last = box.closest('article.inc').querySelector('.last-act');
+    if (last) foot.append(last);
+    if (stat) foot.append(stat);
+    var forms = [keep(p.tform), keep(p.rform), box.querySelector('.sev-form')].filter(Boolean);
+    var after = [box.querySelector(':scope > .jira-form')].filter(Boolean);
+    box.append(primary, status);
+    forms.forEach(function (f) { box.append(f); });
+    box.append(owner, links);
+    after.forEach(function (f) { box.append(f); });
+    box.append(foot);
+  }
+  var ICON_PLAY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M10 8.5l5 3.5-5 3.5z"></path></svg>';
   var ICON_SPARKLES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5Q11 12 18 13Q11 14 10 21Q9 14 2 13Q9 12 10 5Z"></path><path d="M19 2v6"></path><path d="M16 5h6"></path></svg>';
   var ICON_BELL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
   var ICON_BELL_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><path d="M18.63 13A17.89 17.89 0 0 1 18 8"></path><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"></path><path d="M18 8a6 6 0 0 0-9.33-5"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
@@ -1201,6 +1261,7 @@ async function initActions() {
       copy.addEventListener('click', function () { copyLink(a, copy); });
       box.append(copy, el('span', 'stat'));
       foldActs(a, box, dive);
+      if (box.closest('.card-drawer')) groupActs(a, box, {dive: dive, take: take, tform: tform, res: res, rform: rform, mute: mute, un: un, copy: copy});
       var nbox = box.closest('article.inc').querySelector('.notif');
       nbox.innerHTML = '';
       nbox.append(el('span', 'nl', 'Notify'));
@@ -1237,11 +1298,19 @@ async function initActions() {
     });
     gate();
   }
+  var LATEST = {};
+  function cardBusy(key) { var x = LATEST[key]; return !!(x && (x.status === 'requested' || x.status === 'processing')); }
+  window.__cardBusy = cardBusy;
   function render() {
     wire();
     askStatus(all);
     var latest = {};
     all.forEach(function (x) { if (!latest[x.target] || latest[x.target].requestedAt < x.requestedAt) latest[x.target] = x; });
+    LATEST = latest;
+    document.querySelectorAll('#anoms .tile').forEach(function (t) {
+      var busy = cardBusy(t.dataset.key);
+      t.querySelectorAll('.tile-acts .ta-b[data-move]').forEach(function (b) { if (!b.hasAttribute('aria-busy')) b.disabled = busy; });
+    });
     renderPdc(latest.postdeploy);
     document.querySelectorAll('.rep-acts .reassess-btn').forEach(function (b) { reassessState(b, b.closest('.rep-acts').__rep); });
     document.querySelectorAll('#anoms .acts').forEach(function (box) {

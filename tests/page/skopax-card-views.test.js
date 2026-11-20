@@ -339,7 +339,7 @@ async function theBoardPutsCardsInStatusColumnsAndATileOpensTheCardInASidePanel(
   const info = {role: drawer.getAttribute('role'), title: drawer.querySelector('.cd-t').textContent, open: inDrawer.classList.contains('open'), key: inDrawer.dataset.key, focus: doc.activeElement.className};
   drawer.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
   await wait(20);
-  const after = {gone: !doc.querySelector('#anoms .card-drawer'), focus: doc.activeElement === [...doc.querySelectorAll('#anoms .tile')].find((t) => t.dataset.key === NEW)};
+  const after = {gone: !doc.querySelector('#anoms .card-drawer'), focus: doc.activeElement === [...doc.querySelectorAll('#anoms .tile')].find((t) => t.dataset.key === NEW).querySelector('.tile-open')};
   const again = await boot('#t=anoms/all', {'skopax-card-view': 'board'});
 
   //then

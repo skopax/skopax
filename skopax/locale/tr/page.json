@@ -1150,7 +1150,18 @@
   "the business-team tag was left out and the note names the team": "iş ekibi etiketi dışarıda bırakıldı ve not ekibi adlandırıyor",
   "the absorb pattern was left out and the cards are grouped without it": "absorb kalıbı dışarıda bırakıldı ve kartlar onsuz gruplandı",
   "it did not post to the main channel itself and saved a draft that waits for a person": "ana kanala kendisi göndermedi ve bir kişinin onayını bekleyen bir taslak kaydetti",
-  "nothing was sent to Slack and the asker is told what to send instead": "Slack'e hiçbir şey gönderilmedi ve soran kişiye ne göndermesi gerektiği söylendi"
+  "nothing was sent to Slack and the asker is told what to send instead": "Slack'e hiçbir şey gönderilmedi ve soran kişiye ne göndermesi gerektiği söylendi",
+  "Owner": "Sahip",
+  "Links": "Linkler",
+  "Change assignee": "Atananı değiştir",
+  "Reopen": "Yeniden aç",
+  "Actions for card #{0}": "#{0} kartı için aksiyonlar",
+  "Actions for this card": "Bu kart için aksiyonlar",
+  "Chat about this card": "Bu kart hakkında sohbet et",
+  "Reopen: back to Open, like a drag to the Open column": "Yeniden aç: Açık sütununa sürüklemek gibi, kart Açık'a döner",
+  "Start progress: the card goes In progress with you as owner": "İşe başla: kart, sahibi siz olarak Üzerinde çalışılıyor'a geçer",
+  "Mute: for 24 hours, a week or for good": "Sessize al: 24 saat, bir hafta ya da kalıcı olarak",
+  "More actions: mute for a week, known noise, group": "Diğer işlemler: bir hafta sessize al, bilinen gürültü, grupla"
  },
  "rules": [
   [

@@ -66,11 +66,11 @@ async function aRefreshKeepsTheOpenDrawerItsScrollFormMenuAndFocus() {
   //given
   const inner = panel.querySelector('article.inc');
   const more = panel.querySelector('.acts-tog');
-  more.click();
   [...panel.querySelectorAll('.acts button')].find((b) => b.textContent === 'Resolve').click();
   const why = panel.querySelector('.res-form input[id^="why-"]');
   why.value = 'rolled back';
   panel.querySelector('.res-form .res-kind[data-kind="handled"]').click();
+  more.click();
   panel.querySelector('.res-form .res-kind[data-kind="handled"]').focus();
 
   //when

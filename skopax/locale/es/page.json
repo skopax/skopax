@@ -1150,7 +1150,18 @@
   "the business-team tag was left out and the note names the team": "se dejó fuera la etiqueta del equipo de negocio y la nota nombra al equipo",
   "the absorb pattern was left out and the cards are grouped without it": "se dejó fuera el patrón de absorción y las tarjetas se agrupan sin él",
   "it did not post to the main channel itself and saved a draft that waits for a person": "no publicó por sí mismo en el canal principal y guardó un borrador que espera a una persona",
-  "nothing was sent to Slack and the asker is told what to send instead": "no se envió nada a Slack y a quien preguntó se le dice qué enviar en su lugar"
+  "nothing was sent to Slack and the asker is told what to send instead": "no se envió nada a Slack y a quien preguntó se le dice qué enviar en su lugar",
+  "Owner": "Responsable",
+  "Links": "Enlaces",
+  "Change assignee": "Cambiar persona asignada",
+  "Reopen": "Reabrir",
+  "Actions for card #{0}": "Acciones de la tarjeta #{0}",
+  "Actions for this card": "Acciones de esta tarjeta",
+  "Chat about this card": "Chatear sobre esta tarjeta",
+  "Reopen: back to Open, like a drag to the Open column": "Reabrir: vuelve a Abierta, como al arrastrarla a la columna Abierta",
+  "Start progress: the card goes In progress with you as owner": "Pasar a En curso: la tarjeta pasa a En curso contigo como responsable",
+  "Mute: for 24 hours, a week or for good": "Silenciar: 24 horas, una semana o para siempre",
+  "More actions: mute for a week, known noise, group": "Más acciones: silenciar una semana, ruido conocido, agrupar"
  },
  "rules": [
   [
