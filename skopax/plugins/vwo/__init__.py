@@ -14,7 +14,7 @@ TEST_TIMEOUT_S = 4
 STR = {'type': 'string'}
 CHANGES_HELP = {CHECK: 'the VWO campaigns the check saw (part campaign), their recent starts, stops and edits (part change) and a summary row with running and total counts'}
 VERDICTS_HELP = {VERDICT_SECTION: 'one row per running VWO campaign: when its results were last read, and VWO\'s own decision on it when there is one'}
-RESOLVE_HELP = 'Closes an A/B result card nobody acted on this many hours after it first appeared, whether or not it still fires; 0 uses the general auto-resolve rule'
+RESOLVE_HELP = 'Closes an A/B result card nobody acted on this many hours after it first appeared, whether or not it still fires; 0 uses the general auto-resolve rule. With Business days only on, only Monday to Friday counts'
 DESCRIPTION = ('VWO (Wingify), the A/B testing tool on the site, read only: which experiments run and on which pages. An experiment changes what part of the visitors see without a deploy. '
                'op campaigns (default): every campaign with type, status, pages and traffic share, running ones first; narrow with status (RUNNING, PAUSED...) or contains '
                '(part of the name or of a page URL); more: true means the account has more campaigns than the first 300 that were read. '

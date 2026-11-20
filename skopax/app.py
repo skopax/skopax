@@ -1011,10 +1011,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             log.warning('check runs not recorded: %s', kind(e))
         applied = apply(store, results, now, links, dm=pusher.enabled, after=after, auto_resolve_hours=settings.auto_resolve_hours,
                         recurring_count=settings.recurring_count, recurring_days=settings.recurring_days, tag_rules=tags.rules(settings.tag_rules), alert_twins=settings.alert_twins, screen=screen, clusters=clusters, kind_windows=runtime.auto_windows(),
-                        severity_hours={'crit': settings.auto_resolve_hours_crit, 'warn': settings.auto_resolve_hours_warn}, info_close_days=settings.info_auto_close_days)
+                        severity_hours={'crit': settings.auto_resolve_hours_crit, 'warn': settings.auto_resolve_hours_warn}, info_close_days=settings.info_auto_close_days,
+                        business=clocks.zone() if settings.business_days else None)
         if applied and applied.resolved:
             for r in applied.resolved:
-                notes.auto_resolved([r['key']], r.get('hours') or settings.auto_resolve_hours, r.get('since'), {r['key']} if r.get('event') else ())
+                notes.auto_resolved([r['key']], r.get('hours') or settings.auto_resolve_hours, r.get('since'), {r['key']} if r.get('event') else (), bool(r.get('businessTime')))
             notices.auto_resolved([r['key'] for r in applied.resolved])
         if applied:
             notices.fired(applied.events, applied.cards)

@@ -806,7 +806,7 @@ def test_the_registry_import_closure_is_the_allowlist():
 
     root = Path(__file__).resolve().parent.parent
     code = 'import sys; sys.path.insert(0, sys.argv[1]); import skopax.registry; print(sorted(m for m in sys.modules if m.startswith("skopax")))'
-    allowed = {'skopax', 'skopax.actors', 'skopax.bounded', 'skopax.brand', 'skopax.cardlink', 'skopax.causes', 'skopax.chattext', 'skopax.clock', 'skopax.contract', 'skopax.engine', 'skopax.errkind', 'skopax.history', 'skopax.jiralinks', 'skopax.messages', 'skopax.redact', 'skopax.registry', 'skopax.remote',
+    allowed = {'skopax', 'skopax.actors', 'skopax.bounded', 'skopax.brand', 'skopax.businesstime', 'skopax.cardlink', 'skopax.causes', 'skopax.chattext', 'skopax.clock', 'skopax.contract', 'skopax.engine', 'skopax.errkind', 'skopax.history', 'skopax.jiralinks', 'skopax.messages', 'skopax.redact', 'skopax.registry', 'skopax.remote',
                'skopax.settle', 'skopax.store', 'skopax.summary', 'skopax.tags'}
 
     # when
