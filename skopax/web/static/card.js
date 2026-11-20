@@ -18,6 +18,21 @@
   var RES_KINDS = [['fixed', 'Fixed'], ['handled', 'No action needed'], ['duplicate', 'Duplicate']];
   var resPick = 'fixed';
   var SPARKLES = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5Q11 12 18 13Q11 14 10 21Q9 14 2 13Q9 12 10 5Z"></path><path d="M19 2v6"></path><path d="M16 5h6"></path></svg>';
+  function svg(body, size) { return '<svg viewBox="0 0 24 24" width="' + (size || 16) + '" height="' + (size || 16) + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + body + '</svg>'; }
+  var ICONS = {
+    chat: svg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>', 20),
+    play: svg('<circle cx="12" cy="12" r="9"></circle><path d="M10 8.5l5 3.5-5 3.5z"></path>'),
+    check: svg('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>'),
+    bellOff: svg('<path d="M13.73 21a2 2 0 0 1-3.46 0"></path><path d="M18.63 13A17.89 17.89 0 0 1 18 8"></path><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"></path><path d="M18 8a6 6 0 0 0-9.33-5"></path><line x1="1" y1="1" x2="23" y2="23"></line>'),
+    bell: svg('<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>'),
+    ticket: svg('<rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>'),
+    link: svg('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>'),
+    send: svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>'),
+    board: svg('<rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect>'),
+    page: svg('<circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"></path>'),
+    history: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"></path>', 14)
+  };
+  var EXT = '<span class="ext" aria-hidden="true">\u2197</span>';
   var when = (function () {
     try {
       var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -91,10 +106,29 @@
     var by = String(l.requestedBy || ''), who = isTokenActor(by) ? tokenActorLabel(by, 'Investigator') : by === 'Claude' ? 'Investigator' : by.split('@')[0];
     var back = Date.parse(c.firstSeen || ''), did = Date.parse(l.doneAt || l.requestedAt || ''), old = l.status === 'done' && !isNaN(back) && !isNaN(did) && did < back;
     var head = (old ? 'Last action (before the card fired again ' + when(c.firstSeen) + '): ' : 'Last action: ') + (ACT_NAMES[l.type] || l.type) + ' \u00b7 ' + (ACT_STATES[l.status] || l.status) + (l.requestedAt ? ' \u00b7 ' + when(l.requestedAt) : '');
-    return '<span class="act-last' + (l.status === 'failed' ? ' bad' : old ? ' old' : '') + '">' + line([head, who ? {data: who} : '', l.result && l.status !== 'done' ? {data: l.result} : '']) + '</span>';
+    return '<span class="act-last' + (l.status === 'failed' ? ' bad' : old ? ' old' : '') + '">' + ICONS.history + line([head, who ? {data: who} : '', l.result && l.status !== 'done' ? {data: l.result} : '']) + '</span>';
   }
   function assignButton(c) {
-    return '<button type="button" class="btn sec small" id="act-assign" title="Pick the card owner; its status does not change">' + (c.owner ? 'Change assignee' : 'Assign') + '</button>';
+    return '<button type="button" class="btn lnk" id="act-assign" title="Pick the card owner; its status does not change">' + (c.owner ? 'Change assignee' : 'Assign') + '</button>';
+  }
+  function initials(o) { return ownerName(o).split(/[._\s-]/).filter(Boolean).slice(0, 2).map(function (p) { return p.charAt(0).toUpperCase(); }).join(''); }
+  function ownerChip(c) {
+    if (!c.owner) return '<span class="chip none">Unassigned</span>';
+    return '<span class="owner chip" data-no-tx data-ini="' + esc(initials(c.owner)) + '" title="' + esc(c.assigned && c.assigned.by ? tx('Assigned by:') + ' ' + ownerName(c.assigned.by) + (c.assigned.at ? ' \u00b7 ' + tx(when(c.assigned.at)) : '') : '') + '"><span class="sr">' + esc(tx('Assignee:')) + ' </span><b data-no-tx>' + esc(ownerName(c.owner)) + '</b></span>';
+  }
+  function group(id, label, body, cls) {
+    return '<div class="act-group' + (cls ? ' ' + cls : '') + '" role="group" aria-labelledby="ag-' + id + '"><span class="ag-h" id="ag-' + id + '">' + label + '</span><div class="ag-body">' + body + '</div></div>';
+  }
+  function chatLink(c) {
+    return '<a class="btn big chat-btn" id="chat-about" href="/#t=chat/new/' + encodeURIComponent(c.num) + '" title="Opens a new private chat with this card attached: ask why it fired, what the investigation found, who should look">' + ICONS.chat + 'Chat about this card</a>';
+  }
+  function segBtn(id, icon, text, pressed, off, tip) {
+    return '<button type="button" class="btn seg-b" id="' + id + '" aria-pressed="' + (pressed ? 'true' : 'false') + '"' + (tip ? ' title="' + esc(tip) + '"' : '') + off + '>' + icon + '<span>' + text + '</span></button>';
+  }
+  function boardLinks(c) {
+    var page = String(c.url || '').startsWith('https://') ? '<a class="btn lnk" id="open-page" href="' + esc(c.url) + '" target="_blank" rel="noopener">' + ICONS.page + 'Open the page' + EXT + '</a>' : '';
+    return '<button type="button" class="btn lnk" id="copy-link">' + ICONS.link + '<span class="lnk-t">Copy link</span></button>' +
+      '<a class="btn lnk" id="board" href="' + esc(c.key ? '/#a=' + encodeURIComponent(c.key) : '/') + '">' + ICONS.board + 'Open on the board</a>' + page;
   }
   function assignForm(c) {
     return '<div class="act-form" id="form-assign" hidden><input id="assign-who" type="text" maxlength="80" placeholder="' + (me.jira ? 'Name, searched in Jira' : 'Name') + '" aria-label="Assign to">' +
@@ -114,7 +148,7 @@
   function routeControl(c, off) {
     var list = routesFor(c);
     if (!list.length) return '';
-    return '<button type="button" class="btn sec small" id="act-route" title="Post this card to a chat channel through one of its routes" aria-expanded="false" aria-controls="form-route"' + off + '>Send to\u2026</button>';
+    return '<button type="button" class="btn lnk" id="act-route" title="Post this card to a chat channel through one of its routes" aria-expanded="false" aria-controls="form-route"' + off + '>' + ICONS.send + 'Send to\u2026</button>';
   }
   function routeForm(c) {
     var list = routesFor(c);
@@ -148,38 +182,43 @@
     b.disabled = false;
   }
   function actions(c) {
-    var copy = '<button type="button" class="btn sec small" id="copy-link">Copy link</button>';
-    if (!c.live) return '<div class="acts">' + copy + '</div>';
+    var primary = '<div class="act-primary">' + chatLink(c);
+    var owner = c.owner ? group('owner', 'Owner', ownerChip(c)) : '';
+    if (!c.live) return '<div class="acts">' + primary + '</div>' + owner + group('links', 'Links', boardLinks(c), 'links') + '</div>';
     if (!me.operator) {
       var why = me.user ? 'Actions need the operator role.' : me.loginEnabled ? '<a href="/login?next=' + encodeURIComponent(location.pathname) + '">Log in</a>: actions need the operator role.' : '';
-      return '<div class="acts">' + copy + (why ? '<span class="act-note">' + why + '</span>' : '') + lastLine(c) + '</div>';
+      return '<div class="acts">' + primary + '</div>' + owner + group('links', 'Links', boardLinks(c), 'links') + (why ? '<p class="act-note">' + why + '</p>' : '') + foot(c) + '</div>';
     }
     var off = busy(c) ? ' disabled' : '';
     var handled = c.triage === 'handled';
-    return '<div class="acts op">' +
-      '<button type="button" class="btn icon" id="act-dive" title="Investigate: the investigator starts within about two minutes" aria-label="Investigate"' + off + '>' + SPARKLES + '</button>' +
-      '<button type="button" class="btn sec small" id="act-take" title="The card goes In progress and you become its owner' + (me.jira ? '; you can add a Jira ticket' : '') + '"' + off + '>Start progress</button>' + jiraButtons(c, off) +
-      (handled ? '' : '<button type="button" class="btn sec small" id="act-resolve"' + off + '>Resolve</button>') +
-      (c.muted ? '<button type="button" class="btn sec small" id="act-unmute"' + off + '>Unmute</button>' : '<button type="button" class="btn sec small" id="act-mute"' + off + '>Mute 24 h</button>') +
-      assignButton(c) + routeControl(c, off) + copy + lastLine(c) + assignForm(c) + routeForm(c) +
+    var takeTip = 'The card goes In progress and you become its owner' + (me.jira ? '; you can add a Jira ticket' : '');
+    return '<div class="acts op">' + primary +
+      '<button type="button" class="btn sec inv-b" id="act-dive" title="Investigate: the investigator starts within about two minutes" aria-label="Investigate"' + off + '>' + SPARKLES + '<span>Investigate</span></button></div>' +
+      group('status', 'Status', '<div class="seg">' + segBtn('act-take', ICONS.play, c.triage === 'progress' ? 'In progress' : 'Start progress', c.triage === 'progress', off, takeTip) +
+        (handled ? '' : segBtn('act-resolve', ICONS.check, 'Resolve', false, off)) +
+        (c.muted ? segBtn('act-unmute', ICONS.bell, 'Unmute', true, off) : segBtn('act-mute', ICONS.bellOff, 'Mute 24 h', false, off)) + '</div>') +
       '<div class="act-form" id="form-take" hidden>' + (me.jira ? '<input id="take-ticket" type="text" maxlength="100" placeholder="Jira key, or a task name to search (optional)" aria-label="Jira key">' : '') + '<input id="take-why" type="text" maxlength="300" placeholder="Note (optional)" aria-label="Start progress note"><button type="button" class="btn small" id="take-go">Start progress</button></div>' +
-      '<div class="act-form" id="form-link" hidden><input id="link-ticket" type="text" maxlength="100" placeholder="Jira key, or words from the task title" aria-label="Jira ticket"><button type="button" class="btn small" id="link-go">Link</button><span class="act-note" id="link-msg"></span></div>' +
       '<div class="act-form" id="form-resolve" hidden><div class="res-kinds" role="group" aria-label="How it was resolved">' + RES_KINDS.map(function (k) {
         return '<button type="button" class="btn sec small sev-pick res-kind" id="resolve-' + k[0] + '" data-kind="' + k[0] + '" aria-pressed="' + (k[0] === resPick) + '">' + k[1] + '</button>';
       }).join('') + '<p class="res-hint" id="resolve-hint">' + esc(resHint(resPick)) + '</p></div>' +
       '<input id="resolve-why" type="text" maxlength="300" placeholder="' + RES_PLACEHOLDER_WHY + '" title="' + esc(RES_TITLE_WHY) + '" aria-label="Why it was resolved"' + (resPick === 'duplicate' ? ' hidden' : '') + '>' +
       '<input id="resolve-dup" type="text" maxlength="200" placeholder="' + RES_PLACEHOLDER_DUP + '" title="' + esc(RES_TITLE_DUP) + '" aria-label="Duplicate of"' + (resPick === 'duplicate' ? '' : ' hidden') + '>' +
       '<button type="button" class="btn small" id="resolve-go">Resolve</button></div>' +
+      group('owner', 'Owner', ownerChip(c) + assignButton(c)) + assignForm(c) +
+      group('links', 'Links', jiraButtons(c, off) + routeControl(c, off) + boardLinks(c), 'links') +
+      '<div class="act-form" id="form-link" hidden><input id="link-ticket" type="text" maxlength="100" placeholder="Jira key, or words from the task title" aria-label="Jira ticket"><button type="button" class="btn small" id="link-go">Link</button><span class="act-note" id="link-msg"></span></div>' +
+      routeForm(c) + foot(c) +
       '</div>';
   }
+  function foot(c) { var l = lastLine(c); return l ? '<div class="act-foot">' + l + '</div>' : ''; }
   function jiraKey(t) { return (/\b[A-Z][A-Z0-9]{1,9}-\d{1,7}\b/.exec(String(t || '').toUpperCase()) || [])[0]; }
   function jiraButtons(c, off) {
     var k = jiraKey(c.ticket), base = String(me.jiraUrl || '').replace(/\/+$/, '');
-    var open = k ? (base ? '<a class="btn sec small" id="jira-open" href="' + esc(base + '/browse/' + encodeURIComponent(k)) + '" target="_blank" rel="noopener" title="Open ' + esc(k) + ' in Jira">' + esc(k) + ' \u2197</a>' : '<span class="btn sec small" id="jira-open">' + esc(k) + '</span>') : '';
+    var open = k ? (base ? '<a class="btn lnk jira-key" id="jira-open" href="' + esc(base + '/browse/' + encodeURIComponent(k)) + '" target="_blank" rel="noopener" title="Open ' + esc(k) + ' in Jira">' + ICONS.ticket + '<span data-no-tx>' + esc(k) + '</span>' + EXT + '</a>' : '<span class="btn lnk jira-key" id="jira-open">' + ICONS.ticket + '<span data-no-tx>' + esc(k) + '</span></span>') : '';
     var tip = me.jira ? 'Links an existing Jira ticket: the card goes In progress and stays there until the ticket closes; the assignee does not change'
       : 'Links a ticket by its key: the card goes In progress; Jira is not set up, so nothing closes the card when the ticket closes';
-    return k ? open + '<button type="button" class="btn sec small" id="act-link"' + off + '>Change ticket</button>'
-      : '<button type="button" class="btn sec small" id="act-link"' + off + ' title="' + tip + '">' + (me.jira ? 'Link Jira ticket' : 'Link ticket') + '</button>';
+    return k ? '<span class="jira-pair">' + open + '<button type="button" class="btn lnk sub" id="act-link"' + off + '>Change ticket</button></span>'
+      : '<button type="button" class="btn lnk" id="act-link"' + off + ' title="' + tip + '">' + ICONS.ticket + (me.jira ? 'Link Jira ticket' : 'Link ticket') + '</button>';
   }
   function mine(c) {
     var o = String(c.owner || '').toLowerCase(), u = String(me.user || '').toLowerCase();
@@ -239,7 +278,7 @@
     var form = function (id) { var f = document.getElementById(id); f.hidden = !f.hidden; var i = f.querySelector('input'); if (!f.hidden && i) i.focus(); };
     on('copy-link', function (b) {
       var link = location.origin + '/c/' + c.num;
-      var done = function (t) { b.textContent = t; setTimeout(function () { b.textContent = 'Copy link'; }, 2000); };
+      var t0 = b.querySelector('.lnk-t') || b, done = function (t) { t0.textContent = t; setTimeout(function () { t0.textContent = 'Copy link'; }, 2000); };
       if (navigator.clipboard) navigator.clipboard.writeText(link).then(function () { done('Copied'); }, function () { done(link); }); else done(link);
     });
     on('act-dive', function (b) { queue(Object.assign({type: 'dive', label: 'Investigate ' + name}, base), b); });
@@ -339,14 +378,9 @@
     box.innerHTML = '<div class="head"><span class="state-pill ' + st[1] + '" id="state">' + esc(st[0]) + '</span><span class="pill ' + sev[1] + '">' + sev[0] + '</span>' + tags + '</div>' +
       '<h1 data-no-tx>' + esc(title(c)) + '</h1>' +
       (said ? '<p class="status">' + said + '</p>' : '') +
-      (c.owner ? '<p class="owner" data-no-tx title="' + esc(c.assigned && c.assigned.by ? tx('Assigned by:') + ' ' + ownerName(c.assigned.by) + (c.assigned.at ? ' \u00b7 ' + tx(when(c.assigned.at)) : '') : '') + '">' + esc(tx('Assignee:')) + ' <b data-no-tx>' + esc(ownerName(c.owner)) + '</b></p>' : '') +
-      '<a class="btn big chat-btn" id="chat-about" href="/#t=chat/new/' + encodeURIComponent(c.num) + '" title="Opens a new private chat with this card attached: ask why it fired, what the investigation found, who should look">' +
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Chat about this card</a>' +
       (b.text ? '<section class="todo"><h2>' + (b.kind === 'info' ? 'Info' : 'Recommended') + '</h2>' + (b.why ? '<p class="why"><b>Why:</b> <span data-no-tx>' + esc(b.why) + '</span></p>' : '') + '<p class="rec" data-no-tx>' + esc(b.text) + '</p></section>' : '') +
-      '<div class="btns">' + (String(c.url || '').startsWith('https://') ? '<a class="btn" href="' + esc(c.url) + '" target="_blank" rel="noopener">Open the page \u2197</a>' : '') +
-      '<a class="btn sec" id="board" href="' + esc(c.key ? '/#a=' + encodeURIComponent(c.key) : '/') + '">Open on the board</a></div>' +
-      (shots ? '<div class="shots">' + shots + '</div>' : '') +
       actions(c) +
+      (shots ? '<div class="shots">' + shots + '</div>' : '') +
       merged(c.merged || []) +
       '<details class="tech"' + (open ? ' open' : '') + '><summary>Technical details</summary><div class="tech-body">' + tech(c) + '</div></details>';
     box.querySelector('details.tech').addEventListener('toggle', function (e) { techOpen = e.target.open; });

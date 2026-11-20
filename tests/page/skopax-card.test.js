@@ -62,11 +62,11 @@ async function aBusinessCardLeadsWithTheActionAndFoldsTheTechnicalPart() {
   assert.strictEqual(doc.querySelector('.todo .why').textContent, 'Why: Visitors see the wrong spelling.');
   assert.ok(doc.querySelector('.todo .why').compareDocumentPosition(doc.querySelector('.todo p.rec')) & 4, 'the why shows first');
   assert.ok(!doc.getElementById('card').textContent.includes('To do'));
-  assert.strictEqual(doc.querySelector('.btns a.btn').getAttribute('href'), 'https://example.com/orders');
+  assert.strictEqual(doc.getElementById('open-page').getAttribute('href'), 'https://example.com/orders');
   const chat = doc.getElementById('chat-about');
-  assert.ok(chat.classList.contains('big') && chat.textContent === 'Chat about this card', 'a big chat button sits at the top of the card');
+  assert.ok(chat.classList.contains('big') && chat.textContent === 'Chat about this card', 'a big chat button leads the actions');
   assert.match(chat.getAttribute('href'), /^\/#t=chat\/new\/\d+$/, 'it opens a new chat with this card attached: ' + chat.getAttribute('href'));
-  assert.ok(chat.compareDocumentPosition(doc.querySelector('.btns')) & 4, 'above the other buttons');
+  assert.ok(chat.compareDocumentPosition(doc.querySelector('.act-group.links')) & 4, 'above the other buttons');
   assert.strictEqual(doc.getElementById('board').getAttribute('href'), '/#a=page-typos%7Cexample.com%2Forders');
   assert.strictEqual(doc.getElementById('board').textContent, 'Open on the board');
   assert.strictEqual(doc.querySelector('.merged h2').textContent, 'Merged topics (1)');
@@ -129,7 +129,7 @@ async function operatorsGetTheCardActionsAndOthersAReadOnlyCard() {
   const d = op.doc;
 
   //then
-  assert.deepStrictEqual([...d.querySelectorAll('.acts.op button')].map((b) => b.id), ['act-dive', 'act-take', 'act-link', 'act-resolve', 'act-mute', 'act-assign', 'copy-link', 'assign-go', 'assign-me', 'take-go', 'link-go', 'resolve-fixed', 'resolve-handled', 'resolve-duplicate', 'resolve-go']);
+  assert.deepStrictEqual([...d.querySelectorAll('.acts.op button')].map((b) => b.id), ['act-dive', 'act-take', 'act-resolve', 'act-mute', 'take-go', 'resolve-fixed', 'resolve-handled', 'resolve-duplicate', 'resolve-go', 'act-assign', 'assign-go', 'assign-me', 'act-link', 'copy-link', 'link-go']);
   assert.strictEqual(d.getElementById('act-link').textContent, 'Link Jira ticket', 'a card without a ticket offers Link Jira ticket as text');
   assert.strictEqual(d.getElementById('act-dive').getAttribute('aria-label'), 'Investigate');
   assert.deepStrictEqual(['act-take', 'act-resolve', 'act-mute'].map((id) => d.getElementById(id).textContent), ['Start progress', 'Resolve', 'Mute 24 h'], 'the operator buttons are English');
