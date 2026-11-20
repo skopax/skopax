@@ -17,7 +17,7 @@ TOOL_BUDGET_S = 100
 TEST_BUDGET_S = 12
 STR = {'type': 'string', 'maxLength': 200}
 SECTION_HELP = {'adLinks': 'The ad links opened on the last pass: each final URL with its HTTP status, where it ended and how many ads use it'}
-RESOLVE_HELP = 'Closes a disapproved-ads card nobody acted on this many hours after it first appeared, whether or not it still fires; 0 uses the general auto-resolve rule'
+RESOLVE_HELP = 'Closes a disapproved-ads card nobody acted on this many hours after it first appeared, whether or not it still fires; 0 uses the general auto-resolve rule. With Business days only on, only Monday to Friday counts'
 DESCRIPTION = ('Google Ads, read only, with the service account of the instance: what the paid campaigns spend and bring, and where their ads point. '
                f'op campaigns (default): the top {CAMPAIGN_ROWS} campaigns of the last `days` (default 7, at most {MAX_DAYS}, today left out) with status, channel, '
                'cost in the account currency, clicks, impressions and conversions. '

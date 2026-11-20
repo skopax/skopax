@@ -75,14 +75,18 @@ def muted_text(who: str, hours: float) -> str:
     return msg('notes.state.muted', hours=f'{hours:g}', who=esc(who))
 
 
-def auto_text(hours: int, since: str | None = None) -> str:
+def note_span(hours: int, business: bool) -> str:
+    return window_text(hours, words='notes.window.business_') if business else window_text(hours)
+
+
+def auto_text(hours: int, since: str | None = None, business: bool = False) -> str:
     if since == 'parent':
         return msg('notes.state.auto_parent')
-    return msg({'first': 'notes.state.auto_first', 'info': 'notes.state.auto_info'}.get(since, 'notes.state.auto'), span=window_text(hours))
+    return msg({'first': 'notes.state.auto_first', 'info': 'notes.state.auto_info'}.get(since, 'notes.state.auto'), span=note_span(hours, business))
 
 
-def auto_event_text(hours: int) -> str:
-    return msg('notes.state.auto_event', span=window_text(hours))
+def auto_event_text(hours: int, business: bool = False) -> str:
+    return msg('notes.state.auto_event', span=note_span(hours, business))
 
 
 def assigned_text(name: str, who: str) -> str:
@@ -180,9 +184,9 @@ class StateNotes:
             if now is not None and now != marked(kind, before, None):
                 self._send(card, kind, resolved_text(shown(who), resolution=card.get('resolution'), jira_url=self.jira_url) if kind == 'handled' else progress_text(shown(who), card.get('ticket'), self.jira_url), who)
 
-    def auto_resolved(self, keys: list[str], hours: int, since: str | None = None, events: Collection[str] = ()) -> None:
+    def auto_resolved(self, keys: list[str], hours: int, since: str | None = None, events: Collection[str] = (), business: bool = False) -> None:
         for key in keys:
-            self._note(key, 'handled', auto_event_text(hours) if key in events else auto_text(hours, since))
+            self._note(key, 'handled', auto_event_text(hours, business) if key in events else auto_text(hours, since, business))
 
     def jira_closed(self, key: str, ticket: str, status: str) -> None:
         self._note(key, 'handled', closed_text(ticket, status, self.jira_url))

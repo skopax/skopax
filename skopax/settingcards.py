@@ -30,7 +30,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
         ('Daily review', ('self-review.model', 'self-review.dm', 'self-review.hour')),
     ),
     'Cards': (
-        ('Archive and resolve', ('cards.archive-hours', 'core.auto-resolve-hours-crit', 'core.auto-resolve-hours-warn', 'core.info-auto-close-days')),
+        ('Archive and resolve', ('cards.archive-hours', 'core.auto-resolve-hours-crit', 'core.auto-resolve-hours-warn', 'core.info-auto-close-days', 'core.business-days')),
         ('Recurring', ('recurring.count', 'recurring.days')),
     ),
     'Jira tasks': (

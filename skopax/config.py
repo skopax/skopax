@@ -207,6 +207,7 @@ class Settings:
     auto_resolve_sev_set: tuple[str, ...] = ()
     info_auto_close_days: int = 3
     info_auto_close_days_set: bool = False
+    business_days: bool = True
     archive_hours: int = 48
     history_keep_days: int = 365
     recurring_count: int = 3
@@ -593,6 +594,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         auto_resolve_sev_set=tuple(sev_set),
         info_auto_close_days=info_days,
         info_auto_close_days_set=info_set,
+        business_days=get('core.business-days', 'SKOPAX_BUSINESS_DAYS', 'true').strip().lower() == 'true',
         archive_hours=int(get('cards.archive-hours', 'CARDS_ARCHIVE_HOURS', '48').strip() or 48),
         history_keep_days=int(get('history.keep-days', 'HISTORY_KEEP_DAYS', '365').strip() or 365),
         recurring_count=int(get('recurring.count', 'RECURRING_COUNT', '3').strip() or 3),

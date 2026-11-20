@@ -35,7 +35,8 @@ def settings(token: str = TOKEN, language: str = 'en', public_read: bool = True)
     return Settings(mongo_uri='mongodb://unused', mongo_db='skopax', token=token, commit_id='test', investigate_language=language, public_read=public_read,
                     jira_project='OPS', jira_projects=('OPS', 'WEB', 'APP', 'MOB'), jira_tech_project='INFRA', jira_tech_assignee='712020:tech',
                     jira_developer_field='customfield_4', jira_scope_field='customfield_1', jira_points_field='customfield_2', jira_sprint_field='customfield_3', base_url='https://skopax.example.com',
-                    self_project='platform/skopax', self_log_index='logs-platform-*', self_deploy='platform/skopax', release_ignore=RELEASE_IGNORE)
+                    self_project='platform/skopax', self_log_index='logs-platform-*', self_deploy='platform/skopax', release_ignore=RELEASE_IGNORE,
+                    business_days=False)
 
 
 READY = {'anthropic_api_key': 'sk-test', 'investigate_mode': 'live'}

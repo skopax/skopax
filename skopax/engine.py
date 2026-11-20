@@ -4,12 +4,14 @@ import datetime as dt
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import tzinfo
 from typing import Callable, Mapping
 
 from pymongo.errors import PyMongoError
 
 from skopax import causes, clock, history, summary, tags
 from skopax.actors import SYSTEM
+from skopax.businesstime import elapsed
 from skopax.errkind import kind as error_kind
 from skopax.jiralinks import ticket_pattern
 from skopax.messages import msg
@@ -376,7 +378,7 @@ def follow_parents(state: dict, now: float) -> list[dict]:
     return out
 
 
-def auto_close_info(state: dict, now: float, days: int = INFO_CLOSE_DAYS) -> list[dict]:
+def auto_close_info(state: dict, now: float, days: int = INFO_CLOSE_DAYS, business: tzinfo | None = None) -> list[dict]:
     if days <= 0:
         return []
     t = iso(now)
@@ -384,21 +386,26 @@ def auto_close_info(state: dict, now: float, days: int = INFO_CLOSE_DAYS) -> lis
     for a in state.get('anomalies') or []:
         if a.get('status') != 'open' or a.get('sev') != 'info' or a.get('muted') or a.get('triage') or a.get('ticket') or a.get('parent'):
             continue
-        if a.get('src') == 'logs' or a.get('sig') in INFO_KEEP_SIGS or not a.get('firstSeen') or now - parse_iso(a['firstSeen']) <= days * 86400:
+        if a.get('src') == 'logs' or a.get('sig') in INFO_KEEP_SIGS or not a.get('firstSeen') or elapsed(parse_iso(a['firstSeen']), now, business) <= days * 86400:
             continue
-        why = f"info firing since {clock.date(parse_iso(a['firstSeen']))}, nobody acted in {days} days"
+        why = f"info firing since {clock.date(parse_iso(a['firstSeen']))}, nobody acted in " + (window_text(days * 24, business=True) if business is not None else f'{days} days')
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
             put_note(a, f'Auto-resolved: {why}', t)
-        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': days * 24, 'since': 'info'})
+        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': days * 24, 'since': 'info'} | business_mark(business))
     return out
 
 
-def window_text(hours: int) -> str:
+def window_text(hours: int, business: bool = False, words: str = '') -> str:
+    words = words or ('engine.window.business_' if business else 'engine.window.')
     if hours > 0 and hours % 24 == 0:
         days = hours // 24
-        return msg('engine.window.day' if days == 1 else 'engine.window.days', n=days)
-    return msg('engine.window.hour' if hours == 1 else 'engine.window.hours', n=hours)
+        return msg(words + ('day' if days == 1 else 'days'), n=days)
+    return msg(words + ('hour' if hours == 1 else 'hours'), n=hours)
+
+
+def business_mark(business: tzinfo | None) -> dict:
+    return {'businessTime': True} if business is not None else {}
 
 
 def window_for(a: dict, windows: tuple) -> int | None:
@@ -410,7 +417,7 @@ def acted_on(a: dict) -> bool:
     return bool(a.get('triage') in ADDRESSED_TRIAGE + ('investigating',) or a.get('ticket') or a.get('owner') or a.get('muted'))
 
 
-def auto_resolve_kinds(state: dict, now: float, windows: tuple) -> list[dict]:
+def auto_resolve_kinds(state: dict, now: float, windows: tuple, business: tzinfo | None = None) -> list[dict]:
     if not windows:
         return []
     t = iso(now)
@@ -420,17 +427,17 @@ def auto_resolve_kinds(state: dict, now: float, windows: tuple) -> list[dict]:
         if not hours or hours <= 0 or acted_on(a) or a.get('parent') or not a.get('firstSeen'):
             continue
         first = parse_iso(a['firstSeen'])
-        if now - first <= hours * 3600:
+        if elapsed(first, now, business) <= hours * 3600:
             continue
-        why = f"first seen {clock.date(first)}, nobody acted in {window_text(hours)}"
+        why = f"first seen {clock.date(first)}, nobody acted in {window_text(hours, business=business is not None)}"
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
             put_note(a, f'Auto-resolved: {why}', t)
-        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': hours, 'since': 'first'})
+        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': hours, 'since': 'first'} | business_mark(business))
     return out
 
 
-def auto_resolve(state: dict, now: float, hours: int, windows: tuple = (), by_severity: Mapping[str, int] | None = None) -> list[dict]:
+def auto_resolve(state: dict, now: float, hours: int, windows: tuple = (), by_severity: Mapping[str, int] | None = None, business: tzinfo | None = None) -> list[dict]:
     t = iso(now)
     out = []
     cards = state.get('anomalies') or []
@@ -442,13 +449,13 @@ def auto_resolve(state: dict, now: float, hours: int, windows: tuple = (), by_se
         cleared = parse_iso(a['clearedAt'])
         event = causes.event(a, by_key) and not a.get('ticket')
         waited = window + (causes.EVENT_EXTRA_HOURS if event else 0)
-        if now - cleared <= waited * 3600:
+        if elapsed(cleared, now, business) <= waited * 3600:
             continue
-        why = msg('engine.auto.event') if event else f"cleared {clock.date(cleared)}, nobody acted in {window_text(window)}"
+        why = msg('engine.auto.event') if event else f"cleared {clock.date(cleared)}, nobody acted in {window_text(window, business=business is not None)}"
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
             put_note(a, why if event else f'Auto-resolved: {why}', t)
-        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': waited} | ({'event': True} if event else {}))
+        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': waited} | ({'event': True} if event else {}) | business_mark(business))
     return out
 
 
@@ -595,7 +602,7 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
           recurring_count: int = history.RECURRING_COUNT, recurring_days: int = history.RECURRING_DAYS, tag_rules: tuple | None = None,
           alert_twins: tuple[str, ...] = (), screen: Callable[[dict, list[PassResult]], list[PassResult]] | None = None,
           clusters: Mapping[str, tuple[str | None, ...]] | None = None, kind_windows: tuple = (),
-          severity_hours: Mapping[str, int] | None = None, info_close_days: int = INFO_CLOSE_DAYS) -> Applied | None:
+          severity_hours: Mapping[str, int] | None = None, info_close_days: int = INFO_CLOSE_DAYS, business: tzinfo | None = None) -> Applied | None:
     all_results = results
     hooks = tags.text_hooks() if tag_rules is not None else []
     texts = None
@@ -628,9 +635,9 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
         if after:
             after(state)
         by_severity = {sev: (severity_hours or {}).get(sev, auto_resolve_hours) for sev in SEVERITIES}
-        resolved = (auto_resolve_kinds(state, now, kind_windows) + auto_resolve(state, now, auto_resolve_hours, kind_windows, by_severity)
+        resolved = (auto_resolve_kinds(state, now, kind_windows, business) + auto_resolve(state, now, auto_resolve_hours, kind_windows, by_severity, business)
                     + (follow_parents(state, now) if any(h > 0 for h in by_severity.values()) else [])
-                    + auto_close_info(state, now, info_close_days))
+                    + auto_close_info(state, now, info_close_days, business))
         rows = store.history_rows([a['key'] for a in state['anomalies']])
         if rows is not None:
             try:

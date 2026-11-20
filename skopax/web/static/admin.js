@@ -234,7 +234,7 @@ function adminSource(i) {
 var SEV_ROW_KEYS = ['core.auto-resolve-hours-crit', 'core.auto-resolve-hours-warn'];
 var SEV_ROW_NAMES = ['Critical', 'Warning'];
 var SEV_ROW_LABEL = 'Auto-resolve cleared cards after (hours)';
-var SEV_ROW_HELP = 'Closes a card that stopped firing and that nobody acted on after N hours, one value per severity; 0 turns it off for that severity';
+var SEV_ROW_HELP = 'Closes a card that stopped firing and that nobody acted on after N hours, one value per severity; 0 turns it off for that severity. With Business days only on, only Monday to Friday counts';
 function adminSevRow(items) {
   var box = el('div', 'adm-multi');
   box.setAttribute('role', 'group');
