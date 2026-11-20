@@ -190,6 +190,7 @@
  "slackevents.feature_off": "{feature}, Yönetim › Özellikler altında kapalı.",
  "slackevents.not_ready": "AI investigator henüz kurulmadı; bu mesaj cevapsız kalır.",
  "slackevents.needs.anthropic_key": "Anthropic API anahtarı gerekir (Yönetim › Investigator ya da ortamda ANTHROPIC_API_KEY).",
+ "slackevents.needs.openai_key": "OpenAI API anahtarı gerekir (Yönetim › Investigator ya da ortamda OPENAI_API_KEY).",
  "slackevents.needs.mode": "Off dışında bir mod gerekir (Yönetim › Investigator › Mod).",
  "slack.task.opened": "<{url}|{key}> açıldı, kart Üzerinde çalışılıyor · {who}",
  "slack.tell": "<@{id}> {text} (soran: {who})",

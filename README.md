@@ -69,7 +69,7 @@ Everything Skopax watches comes through plug-ins, and more than 30 of them ship 
 
 ## AI costs: see them, tune them, cap them
 
-The investigator calls the Anthropic API with your own key, so you pay Anthropic directly and Skopax shows where the money goes.
+The investigator calls the AI provider you pick, Anthropic or OpenAI, with your own key, so you pay the provider directly and Skopax shows where the money goes.
 
 <a href="docs/images/costs-dark.png#gh-dark-mode-only"><img width="420" src="docs/images/costs-dark.png#gh-dark-mode-only" alt="The Skopax Costs page for the last 7 days: 2.31 dollars today of a 10 dollar daily cap, 19.71 dollars over the week, averages per Slack ask and per investigator run, a 79 percent cache hit share, spend per day stacked by source and the by-source table with models"></a><a href="docs/images/costs-light.png#gh-light-mode-only"><img width="420" src="docs/images/costs-light.png#gh-light-mode-only" alt="The Skopax Costs page for the last 7 days: 2.31 dollars today of a 10 dollar daily cap, 19.71 dollars over the week, averages per Slack ask and per investigator run, a 79 percent cache hit share, spend per day stacked by source and the by-source table with models"></a>
 

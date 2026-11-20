@@ -25,6 +25,7 @@ PATTERNS = {
 }
 WRITES = {
     ('DELETE', '/api/admin/anthropic-key'): 'admin',
+    ('DELETE', '/api/admin/openai-key'): 'admin',
     ('DELETE', '/api/admin/custom-checks/{check_id}'): 'admin',
     ('DELETE', '/api/admin/mcp-tools/instances/{name}/oauth'): 'admin',
     ('DELETE', '/api/admin/plugins/{plugin_id}/instances/{name}'): 'admin',
@@ -41,6 +42,7 @@ WRITES = {
     ('PATCH', '/api/me'): 'session',
     ('POST', '/api/actions'): 'operator',
     ('POST', '/api/admin/anthropic-key/test'): 'admin',
+    ('POST', '/api/admin/openai-key/test'): 'admin',
     ('POST', '/api/admin/custom-checks'): 'admin',
     ('POST', '/api/admin/custom-checks/preview'): 'admin',
     ('POST', '/api/admin/custom-checks/presets/{preset_id}'): 'admin',
@@ -78,6 +80,7 @@ WRITES = {
     ('POST', '/mcp'): 'idp-token',
     ('POST', '/setup'): 'open',
     ('PUT', '/api/admin/anthropic-key'): 'admin',
+    ('PUT', '/api/admin/openai-key'): 'admin',
     ('PUT', '/api/admin/custom-checks/{check_id}'): 'admin',
     ('PUT', '/api/admin/features/{feature_id}'): 'admin',
     ('PUT', '/api/admin/mcp-tools/instances/{name}/scope'): 'admin',
@@ -110,6 +113,7 @@ READS = {
     '/api/actions': 'read',
     '/api/activity': 'read',
     '/api/admin/anthropic-key': 'admin',
+    '/api/admin/openai-key': 'admin',
     '/api/admin/custom-checks': 'admin',
     '/api/admin/custom-checks/presets': 'admin',
     '/api/admin/features': 'admin',

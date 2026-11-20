@@ -320,7 +320,7 @@ async function theBySourceTableShowsSplitHitShareAverageAndModels() {
   const rows = [...doc.querySelectorAll('#costs-sources tbody tr')];
   //then
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-sources thead th')].map((th) => th.textContent),
-    ['Source', 'Calls', 'Runs', 'Total', 'Cache read', 'Input', 'Cache write 5 m', 'Cache write 1 h', 'Output', 'Web search', 'Cache hit', 'Avg / run', 'Models']);
+    ['Source', 'Calls', 'Runs', 'Total', 'Cache read', 'Input', 'Cache write', 'Cache write, long', 'Output', 'Web search', 'Cache hit', 'Avg / run', 'Models']);
   assert.deepStrictEqual(rows.map((r) => r.dataset.source), SOURCES);
   assert.deepStrictEqual(cells(rows[0]), ['Investigator runs', '2', '1', '$1.50', '$0.60', '$0.20', '$0.30', '$0.00', '$0.40', '$0.00', '95 %', '$1.50', 'opus-5-5 2']);
   assert.deepStrictEqual(cells(rows[2]).slice(7), ['$0.20', '$0.00', '$0.00', '0 %', '$0.25', 'sonnet-5-5 1']);
@@ -451,6 +451,25 @@ async function everyChartColourIsDefinedForLightAndBothDarkScopes() {
   console.log('PASS every chart colour has a light value and the same dark value under the media query and the theme switch');
 }
 
+async function theStoredModelAuthorsShowAProviderNeutralName() {
+  //given
+  const {dom, w, doc, errors} = await boot();
+  doc.getElementById('tab-costs').click();
+  await wait(100);
+  const body = costsBody(7);
+  body.topAskers = [{by: 'Claude (self-review)', runs: 1, calls: 1, usd: 0.1}, {by: 'Claude', runs: 1, calls: 1, usd: 0.1}];
+
+  //when
+  w.renderCosts(body);
+  const shown = [...doc.querySelectorAll('#costs-people tbody tr')].map((r) => r.querySelector('td').textContent);
+
+  //then
+  assert.deepStrictEqual(shown, ['AI (self-review)', 'the investigator']);
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  console.log('PASS the stored model authors show a provider-neutral name');
+}
+
 async function hostileTextIsRenderedAsTextAndEmptyOrZeroDataNeverProducesNaN() {
   //given
   const {dom, w, doc, errors} = await boot();
@@ -505,11 +524,11 @@ async function theRunListShowsTheSplitBarAndLinksTheFullRunRecord() {
   assert.deepStrictEqual(cells(rows[0]).slice(1), ['Investigator runs', 'pod', 'checkout-service / ERROR pattern', 'opus-5-5 · medium', '2', '95 s', '', '$1.50']);
   assert.deepStrictEqual([link.getAttribute('href'), link.getAttribute('target'), link.getAttribute('rel')], ['/api/investigations/r1', '_blank', 'noopener'], 'the time opens the full run record');
   assert.deepStrictEqual([...split.children].map((b) => [b.className, b.style.width]), [['p-cacheRead', '40%'], ['p-input', '13.3%'], ['p-cacheWrite5m', '20%'], ['p-output', '26.7%']]);
-  assert.strictEqual(split.title, 'Cache read $0.60 · Input $0.20 · Cache write 5 m $0.30 · Cache write 1 h $0.00 · Output $0.40 · Web search $0.00');
+  assert.strictEqual(split.title, 'Cache read $0.60 · Input $0.20 · Cache write $0.30 · Cache write, long $0.00 · Output $0.40 · Web search $0.00');
   assert.deepStrictEqual(cells(rows[1]).slice(1, 2), ['Assessments failed'], 'a run that did not finish says so');
   assert.deepStrictEqual(cells(rows[2]).slice(5, 7), ['–', '–'], 'an expired run record leaves tools and duration empty');
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-runs .clegend span')].map((s) => [s.textContent, s.querySelector('.sw').className]),
-    [['Cache read', 'sw p-cacheRead'], ['Input', 'sw p-input'], ['Cache write 5 m', 'sw p-cacheWrite5m'], ['Cache write 1 h', 'sw p-cacheWrite1h'], ['Output', 'sw p-output'], ['Web search', 'sw p-webSearch']], 'the split legend runs from the cheapest token to the dearest, then the search fee');
+    [['Cache read', 'sw p-cacheRead'], ['Input', 'sw p-input'], ['Cache write', 'sw p-cacheWrite5m'], ['Cache write, long', 'sw p-cacheWrite1h'], ['Output', 'sw p-output'], ['Web search', 'sw p-webSearch']], 'the split legend runs from the cheapest token to the dearest, then the search fee');
   dom.window.close();
   console.log('PASS the run list shows source, who, card or question, model, tools, duration, a $-split bar and the total, and links the full run record');
 }
@@ -637,4 +656,5 @@ async function accessResolvingBeforeTheInvestigationsDoesNotRenderAnEmptyHistory
   await theUsageLineFollowsWhoLooksAndWhetherUsageIsThere();
   await accessResolvingBeforeTheInvestigationsDoesNotRenderAnEmptyHistory();
   await hostileTextIsRenderedAsTextAndEmptyOrZeroDataNeverProducesNaN();
+  await theStoredModelAuthorsShowAProviderNeutralName();
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -192,6 +192,7 @@
  "slackevents.empty_tag": "Aquí estoy 👋 ¿Qué quieres preguntar?",
  "slackevents.feature_off": "{feature} está desactivado en Admin › Funciones.",
  "slackevents.needs.anthropic_key": "Necesita la clave de API de Anthropic (Admin › Investigador, o ANTHROPIC_API_KEY en el entorno).",
+ "slackevents.needs.openai_key": "Necesita la clave de API de OpenAI (Admin › Investigador, o OPENAI_API_KEY en el entorno).",
  "slackevents.needs.mode": "Necesita un modo distinto de off (Admin › Investigador › Modo).",
  "slackevents.not_ready": "El investigador de IA aún no está configurado, así que este mensaje no recibiría respuesta.",
  "slackevents.off_topic": "No puedo ayudar con eso; solo respondo preguntas sobre {product} y los sistemas que vigila.",

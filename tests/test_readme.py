@@ -80,7 +80,8 @@ def known_names() -> set[str]:
     args = set(re.findall(r'^ARG ([A-Z_]+)', read('Dockerfile') + ''.join(read(f'examples/{name}/Dockerfile') for name in EXAMPLES), re.MULTILINE))
     ci = set(re.findall(r'\b([A-Z][A-Z0-9_]+)\b', read('.github/workflows/ci.yml') + read('.github/workflows/image.yml')))
     runner = set(re.findall(r'process\.env\.([A-Z_]+)', read('tests/page/run.js')))
-    return settings_env_names() | plugin_env_names() | constants | args | ci | runner | OUTSIDE_NAMES
+    live = set(re.findall(r"^ENV = '([A-Z_]+)'", read('tests/test_openai_live.py'), re.MULTILINE))
+    return settings_env_names() | plugin_env_names() | constants | args | ci | runner | live | OUTSIDE_NAMES
 
 
 def unknown_names(texts: dict[str, str], known: set[str]) -> list[str]:

@@ -83,6 +83,7 @@ CORE_PREFIXES = (
     'routes',
     'mongo',
     'anthropic',
+    'openai',
     'agent',
     'small-talk',
 )

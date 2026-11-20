@@ -405,7 +405,7 @@ def test_every_investigator_need_has_a_slack_twin_and_a_missing_one_falls_back(s
     said = app.state.intake.not_ready()
 
     # then
-    assert needs == ['anthropic_key', 'mode'] and [n for n in needs if f'slackevents.needs.{n}' not in MESSAGES] == []
+    assert needs == ['anthropic_key', 'openai_key', 'mode'] and [n for n in needs if f'slackevents.needs.{n}' not in MESSAGES] == []
     assert said == ' '.join([msg('slackevents.not_ready'), msg('slackevents.needs.mode'), msg('features.needs.chat_ui')]), 'a need without a Slack twin uses its page text'
 
 

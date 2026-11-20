@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import anthropic
 
+from skopax.ai import THINK_OFF, ModelSetting, api_errors, key_for, maker, wrap
 from skopax.aikey import ClientBox
 from skopax.config import Setting
 from skopax import clock
@@ -62,15 +63,17 @@ EXAMPLES_DEFAULT = {'examples': '', 'updatedAt': None, 'updatedBy': None}
 
 
 class Gate:
-    model = Setting('investigate_gate_model')
+    provider = Setting('ai_provider')
+    model = ModelSetting('investigate_gate_model', 'gate')
     effort = Setting('investigate_gate_effort')
     org = Setting('org_about')
 
     def __init__(self, store, settings, client=None, clock=time.time, key: Callable[[], str] | None = None, pack: Callable[[], OrgPack | None] | None = None):
         self.store = store
         self.settings = settings
-        self.key = key or (lambda: settings.anthropic_api_key)
-        self.box = ClientBox(self.key, lambda k: anthropic.Anthropic(api_key=k, timeout=GATE_TIMEOUT, max_retries=0), client)
+        self.key = key or key_for(settings, lambda: self.provider)
+        self.box = ClientBox(self.key, maker(lambda: self.provider, lambda k: anthropic.Anthropic(api_key=k, timeout=GATE_TIMEOUT, max_retries=0), GATE_TIMEOUT, 0), client,
+                             lambda: self.provider)
         self.clock = clock
         self.pack = pack or (lambda: None)
 
@@ -90,31 +93,31 @@ class Gate:
         if not pricing.known(self.model):
             raise GateDown(NO_PRICE)
         try:
-            client = self._client()
-            if client is None:
+            ai = wrap(self._client())
+            if ai is None:
                 raise GateDown(NO_KEY)
-            resp = client.messages.create(model=self.model, max_tokens=GATE_MAX_TOKENS, system=prompt.gate_system(self.examples()['examples'], self.org, self.pack()), messages=[{'role': 'user', 'content': text}],
-                                                  thinking={'type': 'disabled'}, output_config={'effort': self.effort, 'format': {'type': 'json_schema', 'schema': GATE_SCHEMA}})
+            model = pricing.effective(ai.provider, self.model, 'gate')
+            resp = ai.once(model, prompt.gate_system(self.examples()['examples'], self.org, self.pack()), [{'role': 'user', 'content': text}], GATE_MAX_TOKENS, self.effort, THINK_OFF, GATE_SCHEMA)
         except GateDown:
             raise
-        except anthropic.APIError as e:
+        except (anthropic.APIError, *api_errors()) as e:
             log.warning('gate call failed: %s', error_kind(e))
             raise GateDown(API + type(e).__name__) from None
         except Exception as e:
             log.warning('gate call failed unexpectedly: %s', error_kind(e))
             raise GateDown(API + type(e).__name__) from None
         try:
-            usd = pricing.usd(self.model, resp.usage)
+            usd = pricing.usd(model, resp.usage)
         except Exception as e:
             log.warning('gate usage could not be priced: %s', error_kind(e))
             raise GateDown(NO_PRICE) from None
         day = clock.day(self.clock())
         self.store.add_spend(day, usd)
-        self._ledger(day, resp.usage, gate_for, by, keys)
-        if resp.stop_reason == 'refusal':
+        self._ledger(day, ai.provider, model, resp.usage, gate_for, by, keys)
+        if resp.stop == 'refusal':
             raise GateDown(REFUSED)
         try:
-            body = json.loads(next(b.text for b in resp.content if b.type == 'text'))
+            body = json.loads(next(iter(resp.texts)))
             if not all(isinstance(body[k], bool) for k in FLAGS) or body['cardIntent'] not in CARD_INTENTS:
                 raise ValueError('addressed, onTopic, smallTalk, agrees, mindBlown and great must be booleans, cardIntent one of its enum')
             return Verdict(body['addressed'], body['onTopic'], language_of(body.get('language')), str(body['reason'])[:REASON_LIMIT], usd, body['smallTalk'], body['cardIntent'], body['agrees'],
@@ -122,9 +125,9 @@ class Gate:
         except (StopIteration, ValueError, KeyError, TypeError):
             raise GateDown(SCHEMA) from None
 
-    def _ledger(self, day: str, usage, gate_for: str, by: str | None, keys) -> None:
+    def _ledger(self, day: str, provider: str, model: str, usage, gate_for: str, by: str | None, keys) -> None:
         try:
-            self.store.add_ledger({'source': 'gate', 'gateFor': gate_for, 'day': day, 'model': self.model, 'effort': self.effort, 'runId': None, 'actionId': None,
-                                   'keys': list(keys), 'by': by, **pricing.split(self.model, usage)})
+            self.store.add_ledger({'source': 'gate', 'gateFor': gate_for, 'day': day, 'provider': provider, 'model': model, 'effort': None if provider == pricing.OPENAI else self.effort, 'runId': None, 'actionId': None,
+                                   'keys': list(keys), 'by': by, **pricing.split(model, usage)})
         except Exception as e:
             log.warning('spend ledger row for a %s gate call not written: %s', gate_for, error_kind(e))

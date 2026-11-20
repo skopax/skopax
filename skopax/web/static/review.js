@@ -18,7 +18,7 @@ function renderReview(d) {
   var box = document.getElementById('review');
   if (!box) return;
   var rows = (d && d.reviews) || [];
-  if (!rows.length) { box.innerHTML = '<p class="muted">No self-review yet. A Claude session writes one each morning.</p>'; return; }
+  if (!rows.length) { box.innerHTML = '<p class="muted">No self-review yet. The AI writes one each morning.</p>'; return; }
   box.innerHTML = rows.map(function (r, i) {
     var when = dayhmZone(r.at);
     var dm = r.dm && r.dm.length ? ' · DM ' + esc(r.dm.join(', ')) : '';

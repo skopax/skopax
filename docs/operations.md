@@ -65,7 +65,7 @@ Skopax writes one line per log record to standard error.
         {"timeMillis": 1795010712345, "thread": "MainThread", "level": "WARN", "loggerName": "skopax.roles", "message": "the role resolver of plug-in crm failed: RoleLookupDown", "endOfBatch": false, "loggerFqcn": "logging.Logger", "threadId": 8460, "threadPriority": 5}
 
 - **Colour.** `SKOPAX_LOG_COLOR` is `always` (the default), `auto` (only when the log goes to a terminal) or `never`, and a non-empty `NO_COLOR` turns colour off, also over a colour from Admin, the config file or a settings source. Only text lines have colour: the level (DEBUG dim, INFO green, WARN yellow, ERROR and FATAL bold red) and the logger (dim). The message stays plain, with its control characters shown escaped (such as `\n` and `\x1b`), so one record stays one line. The JSON formats never carry colour.
-- **Level.** `SKOPAX_LOG_LEVEL` is `DEBUG`, `INFO` (the default), `WARNING` (or `WARN`) or `ERROR`. The database driver and the HTTP and model libraries (`pymongo`, `httpcore`, `httpx`, `urllib3`, `anthropic` and `mcp`) stay at WARNING at every level, so DEBUG never logs database commands and replies, such as password hashes and session documents.
+- **Level.** `SKOPAX_LOG_LEVEL` is `DEBUG`, `INFO` (the default), `WARNING` (or `WARN`) or `ERROR`. The database driver and the HTTP and model libraries (`pymongo`, `httpcore`, `httpx`, `urllib3`, `anthropic`, `openai` and `mcp`) stay at WARNING at every level, so DEBUG never logs database commands and replies, such as password hashes and session documents.
 - **Bad values.** A value that is not one of these starts with the default and one warning that names it.
 - **At start and live.** The variables set the log from the first line of a start. Once the settings are read, Admin > General has Log format, Log colour and Log level (`core.log-format`, `core.log-color` and `core.log-level`, which the config file or a settings source can also give). A value saved there wins over the variable, except that a non-empty `NO_COLOR` keeps colour off (Log colour then reads `off (NO_COLOR)` in Admin), and applies from the next line on, without a restart; Reset goes back to the variable. The first lines of a start, written before the settings are read, always follow the variables or the defaults. An agent has no Admin settings and follows the variables only.
 
@@ -77,7 +77,7 @@ The proxy must pass the original `Host` header through. Skopax compares it with 
 
 ## Outbound gateway
 
-If outbound calls to Anthropic go through a gateway of your own, it must pass the `Authorization` header: the Anthropic client sends the API key as `Authorization: Bearer <key>`, not as `X-Api-Key`.
+If outbound calls to Anthropic or OpenAI go through a gateway of your own, it must pass the `Authorization` header: both clients send the API key as `Authorization: Bearer <key>`, not as `X-Api-Key`. Anthropic calls go to `api.anthropic.com`, OpenAI calls to `api.openai.com`.
 
 ## Version check
 

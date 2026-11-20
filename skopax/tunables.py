@@ -15,12 +15,12 @@ from urllib.parse import urlsplit
 from pymongo import DESCENDING, ReturnDocument
 
 from skopax import brand, clock as zone_clock, logs, tags
-from skopax.config import DEFAULT_ROLES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
+from skopax.config import AI_PROVIDERS, DEFAULT_ROLES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
 from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import BY_KEY as FEATURE_OF
-from skopax.investigator.pricing import PRICES
+from skopax.investigator.pricing import ALL_MODELS, LABELS as PROVIDER_LABELS, OPENAI, effective as effective_model, models_of, provider_of
 from skopax.investigator.prompt import writing_languages
 from skopax.messages import languages, msg
 from skopax.oidc import url_problem
@@ -30,7 +30,9 @@ from skopax.store import iso, utc_now
 
 log = logging.getLogger('skopax.tunables')
 
-MODELS = tuple(PRICES)
+MODELS = ALL_MODELS
+MODEL_ROLES = {'investigate.model': 'card', 'investigate.slack-model': 'slack', 'chat.model': 'chat', 'investigate.gate-model': 'gate', 'self-review.model': 'review'}
+OFF_WITH = {OPENAI: {'investigate.web-fetches': 'ai.off_openai', 'investigate.gate-effort': 'ai.off_openai_gate_effort'}}
 EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
 SEVS = ('info', 'warn', 'crit')
 REFRESH_S = 15
@@ -176,6 +178,8 @@ STATIC = (
     T('sso.jwks-url', 'sso_jwks_url', SIGNIN, 'Keys (JWKS) URL', 'Replaces the signing keys (JWKS) address the provider lists; empty uses the listed one', 'text'),
     T('sso.button-text', 'sso_button_text', SIGNIN, 'Button text', 'The text of the single sign-on button on the login page, at most 40 characters, such as Sign in with Acme; empty uses Sign in with SSO', 'text'),
     T('sso.button-icon', 'sso_button_icon', SIGNIN, 'Button icon', 'The icon of the single sign-on button: auto picks a mark from the issuer host, company shows the image uploaded on the Single sign-on card, none shows the text only', 'choice', choices=SSO_BUTTON_ICONS),
+    T('investigate.provider', 'ai_provider', INV, 'AI provider', 'Which AI provider every model call goes to: anthropic or openai, one for the whole install. Each has its own key and models; '
+      'a change applies from the next run or ask, and a model of the other provider falls back to the default of this one until you pick another', 'choice', choices=AI_PROVIDERS),
     T('investigate.model', 'investigate_model', INV, 'Card model', 'Model for card runs, Investigate clicks, page asks and deploy-report assessments', 'choice', choices=MODELS),
     T('investigate.effort', 'investigate_effort', INV, 'Card effort', 'Thinking effort of the card model', 'choice', choices=EFFORTS),
     T('investigate.slack-model', 'investigate_slack_model', INV, 'Slack model', 'Model for questions asked in Slack', 'choice', choices=MODELS),
@@ -245,7 +249,7 @@ STATIC = (
     T('core.assign-dm', 'assign_dm', FEATURES, 'Assignee message', 'Sends the person a card is assigned to one Slack direct message', 'bool'),
     T('core.jira-links', 'jira_links', FEATURES, 'Jira links', 'Moves cards to In progress when a Jira ticket names them', 'bool', live=False),
     T('core.postdeploy', 'postdeploy', FEATURES, 'Post-deploy checks', 'Checks every prod deploy and writes a deploy report', 'bool'),
-    T('self-review.enabled', 'self_review_enabled', FEATURES, 'Self-review', 'Writes the daily self-review of {product} itself and sends it as a Slack direct message; it also needs the Anthropic key, the self project and its log index. Switched on after the review hour, the first scheduled review comes the next day; Run now works at once', 'bool'),
+    T('self-review.enabled', 'self_review_enabled', FEATURES, 'Self-review', 'Writes the daily self-review of {product} itself and sends it as a Slack direct message; it also needs the key of the AI provider in use, the self project and its log index. Switched on after the review hour, the first scheduled review comes the next day; Run now works at once', 'bool'),
     T('core.probe', 'probe', FEATURES, 'Reachability probe', 'Checks from this server that every probe target of a serving integration answers, every 15 minutes and at start; '
       'its report gives tool status and certificate expiry cards', 'bool'),
     feature_tunable('core.investigator', 'investigator_on'),
@@ -725,6 +729,7 @@ class Live:
                 out['problem'] = msg('settings.pack_missing', value=out['value'])
         if t.choice_labels:
             out['choiceLabels'] = dict(t.choice_labels)
+        self.provider_view(t, out)
         if t.key == POST_SEV_KEY and not given and not self.base.slack_post_sev_set:
             self.mark_old_switch(out)
         if t.key == 'core.log-color' and logs.PLAIN[0]:
@@ -742,6 +747,37 @@ class Live:
         if t.key == LINKS_KEY:
             self.hide_refused_links(t, out, given, configured)
         return out
+
+    def refuse_other_provider(self, t: Tunable, value) -> None:
+        if not isinstance(value, str) or not t.choices or not set(choices_of(t)) <= set(MODELS):
+            return
+        provider = self.current().ai_provider
+        other = provider_of(value)
+        if other not in (provider, None):
+            raise Invalid(msg('ai.model_refused', model=value, owner=PROVIDER_LABELS[other], provider=PROVIDER_LABELS[provider]))
+
+    def provider_view(self, t: Tunable, out: dict) -> None:
+        provider = self.current().ai_provider
+        off = OFF_WITH.get(provider, {}).get(t.key)
+        if off:
+            out['off'] = msg(off)
+        if not out.get('choices') or not set(out['choices']) <= set(MODELS):
+            return
+        out['choices'] = list(models_of(provider))
+        role = MODEL_ROLES.get(t.key, 'plugin')
+        for part in ('base', 'default'):
+            if isinstance(out.get(part), str) and provider_of(out[part]) not in (provider, None):
+                out[part] = effective_model(provider, out[part], role)
+        other = provider_of(out['value'])
+        if other in (provider, None):
+            return
+        if out['source'] == 'default':
+            out['value'] = effective_model(provider, out['value'], MODEL_ROLES.get(t.key, 'plugin'))
+        else:
+            out['choices'] = out['choices'] + [out['value']]
+            out['choiceLabels'] = {**out.get('choiceLabels', {}), out['value']: f"{out['value']} ({PROVIDER_LABELS[other]}, not used)"}
+            out['problem'] = msg('ai.model_other', model=out['value'], owner=PROVIDER_LABELS[other], provider=PROVIDER_LABELS[provider],
+                                 used=effective_model(provider, out['value'], MODEL_ROLES.get(t.key, 'plugin')))
 
     def set_post_sev(self, value: str | None, by: str, old: str | None) -> dict:
         stored_old = self.overrides.get(CRIT_NOW_KEY)
@@ -807,6 +843,7 @@ class Live:
             value = now
         else:
             value = None if raw is None else stored(parse(t, raw, self.base))
+        self.refuse_other_provider(t, value)
         if key == POST_SEV_KEY:
             change = self.set_post_sev(value, by, old)
         else:
