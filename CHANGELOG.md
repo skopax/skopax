@@ -2,6 +2,34 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.4.1 (2026-11-20)
+
+Tag responsibles with a daily Slack report, business-day timers, a phone layout, Knowledge badges in Integrations, and an AI action group on cards.
+
+**Upgrade notes:**
+
+- New Admin switch Cards > Business days only (`core.business-days`, `SKOPAX_BUSINESS_DAYS`) is on by default: weekend time (Saturday and Sunday in `core.timezone`) no longer counts toward auto-resolve windows or info close days, so a card that stopped firing on Friday evening closes on Monday. Auto-resolve notes say "business hours" or "business days". Card posts to Slack and Teams still go out on any day. Set it to `false` for the old wall-clock timing.
+- The daily tag report and the weekend rule both follow `core.timezone` (default UTC). Set it to your local zone so the report arrives at the time you expect.
+- Tag report mentions need the Slack scope `users:read.email` (already in the example app manifest); without it names are shown in plain text and Admin says so.
+- Connect > Integrations has no Company knowledge group any more: each plug-in is one tile in its own group, and knowledge sources carry a Knowledge badge.
+- `GET /api/admin/tags` is admin-only.
+
+**Added:**
+
+- Tag responsibles: admins pick people per tag in Admin > General.
+- A daily Slack tag report (`tags.report-at`, default 10:00, Monday to Friday, empty turns it off): one line per tag with open cards, mentioning its responsibles, with the critical and warning split, a link to the board filtered to that tag, up to three linked cards and "+N more". Posted once per day across server copies.
+- Knowledge badges (Knowledge, Knowledge off, Knowledge needs setup) on knowledge plug-ins and MCP connections, with the Knowledge chip listing exactly them.
+- A "+ Add custom MCP" button next to "+ Add integration".
+- Chat and Investigate as an AI group on the card page and in the drawer, styled like Status.
+- Phone layout: one board column at a time with column tabs, a compact board header, a full-screen card drawer, larger tap targets, no zoom on inputs, safe-area insets; short landscape phones get it too.
+- The Tools page shows Held and Refused input as their own columns.
+
+**Fixed:**
+
+- Saving a severity at its current value no longer writes an empty History row or pins the other severity.
+- A board card cannot be dragged while one of its actions is still running.
+- Tests that depended on today's date (screenshot retention, spend backfill) no longer fail as time passes.
+
 ## 0.4.0 (2026-11-20)
 
 OpenAI as an AI provider, Admin settings grouped into cards, Integrations under Connect and read-only for non-admins, per-severity auto-resolve, clearer card actions on the card page, the drawer and board tiles, and a board that opens on Open.
