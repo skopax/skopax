@@ -224,7 +224,7 @@ def test_cloudflare_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('cloudflare').state == 'ok'
     assert json.loads(json.dumps(manifest)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'Cloudflare', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
+        'Cloudflare', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.5', 'community')
     assert manifest['capabilities'] == {'hosts': ['api.cloudflare.com', 'www.cloudflarestatus.com'], 'secrets': ['token'], 'agentReads': False} and manifest['uses'] == []
     assert [(f['key'], f['kind'], f['required']) for f in manifest['fields']] == [('token', 'secret', True), ('zones', 'text', True), ('zone-checks', 'text', False), ('account', 'text', False), ('status-components', 'text', False)]
     assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('cf', 900, 60, ['cf']), ('edge', 900, 60, ['edge'])]

@@ -51,7 +51,7 @@ def served(store: Store, http, **over) -> TestClient:
     return TestClient(create_app(dataclasses.replace(settings(), **over), store, transport=http, registry=Registry.of()), base_url='https://testserver')
 
 
-@pytest.mark.parametrize('tag, newer', [('v0.2.1', True), ('v0.3.0', True), ('v1.0.0', True), ('v0.10.0', True), ('v0.2.0', False), ('v0.1.9', False)])
+@pytest.mark.parametrize('tag, newer', [('v0.2.1', True), ('v0.4.0', True), ('v1.0.0', True), ('v0.10.0', True), ('v0.2.0', False), ('v0.1.9', False)])
 def test_a_release_is_newer_by_semantic_version(store: Store, tag: str, newer: bool):
     # given
     check = checker(store, github(release(tag)))
@@ -66,7 +66,7 @@ def test_a_release_is_newer_by_semantic_version(store: Store, tag: str, newer: b
 
 def test_the_latest_is_the_highest_version_and_not_the_newest_in_the_list(store: Store):
     # given
-    check = checker(store, github(release('v0.2.9'), release('v0.10.0'), release('v0.3.0'), release('v0.9.9', prerelease=True), release('v9.0.0', draft=True)))
+    check = checker(store, github(release('v0.2.9'), release('v0.10.0'), release('v0.4.0'), release('v0.9.9', prerelease=True), release('v9.0.0', draft=True)))
 
     # when
     stored = check.run_once()
@@ -75,8 +75,8 @@ def test_the_latest_is_the_highest_version_and_not_the_newest_in_the_list(store:
     assert (stored['latest'], stored['url']) == ('0.10.0', PAGE + 'v0.10.0')
 
 
-@pytest.mark.parametrize('entry', [release('v0.3.0', prerelease=True), release('v0.3.0', draft=True), release('0.3.0'), release('v0.3'), release('v0.3.0-rc.1'), release('v0.03.0'),
-                                   release('v0.3.0', html_url='http://evil.example.com/x'), release('v0.3.0', html_url=None), {'tag_name': 3}, 'text', None])
+@pytest.mark.parametrize('entry', [release('v0.4.0', prerelease=True), release('v0.4.0', draft=True), release('0.4.0'), release('v0.3'), release('v0.4.0-rc.1'), release('v0.03.0'),
+                                   release('v0.4.0', html_url='http://evil.example.com/x'), release('v0.4.0', html_url=None), {'tag_name': 3}, 'text', None])
 def test_only_a_plain_published_release_counts(store: Store, entry):
     # given
     check = checker(store, github(entry))
@@ -88,7 +88,7 @@ def test_only_a_plain_published_release_counts(store: Store, entry):
     assert stored is None and store.version_check() is None and check.notice() is None
 
 
-@pytest.mark.parametrize('version', ['0.3.0rc1', '0.3.0-rc.1', 'dev', '', '1.2', '0.2.0+local'])
+@pytest.mark.parametrize('version', ['0.4.0rc1', '0.4.0-rc.1', 'dev', '', '1.2', '0.2.0+local'])
 def test_a_development_or_unparseable_version_never_asks(store: Store, version: str):
     # given
     http = github(release('v9.9.9'))
@@ -103,7 +103,7 @@ def test_a_development_or_unparseable_version_never_asks(store: Store, version: 
 
 def test_one_request_asks_for_the_list_and_sends_nothing_but_the_agent_and_accept(store: Store):
     # given
-    http = github(release('v0.3.0'), release('v0.2.5'))
+    http = github(release('v0.4.0'), release('v0.2.5'))
 
     # when
     checker(store, http).run_once()
@@ -119,14 +119,14 @@ SECURE = 'Notes.\nSecurity: fixes a login bug'
 
 
 @pytest.mark.parametrize('listed, found', [
-    ([release('v0.3.0'), release('v0.2.5', body=SECURE), release('v0.2.0')], ['0.2.5']),
-    ([release('v0.3.0', body='Security: fixes it'), release('v0.2.5')], ['0.3.0']),
-    ([release('v0.3.0', body='Security: a'), release('v0.2.5', body='Security: b'), release('v0.1.0', body='Security: older')], ['0.1.0', '0.2.5', '0.3.0']),
-    ([release('v0.3.0', body='security: lower case'), release('v0.2.5', body='This is a Security: not at line start'), release('v0.2.4', body=' Security: indented')], []),
-    ([release('v0.3.0'), release('v0.2.9', body='Security: pre-release', prerelease=True), release('v0.2.8', body='Security: draft', draft=True)], []),
-    ([release('v0.3.0'), release('0.2.7', body='Security: bad tag'), release('v0.2.6-rc.1', body='Security: rc')], []),
-    ([release('v0.3.0'), release('v0.2.1', body='Fixes.\r\nSecurity: windows line ends\r\n')], ['0.2.1']),
-    ([release('v0.3.0'), release('v0.2.1', body=None), 'junk', None], []),
+    ([release('v0.4.0'), release('v0.2.5', body=SECURE), release('v0.2.0')], ['0.2.5']),
+    ([release('v0.4.0', body='Security: fixes it'), release('v0.2.5')], ['0.4.0']),
+    ([release('v0.4.0', body='Security: a'), release('v0.2.5', body='Security: b'), release('v0.1.0', body='Security: older')], ['0.1.0', '0.2.5', '0.4.0']),
+    ([release('v0.4.0', body='security: lower case'), release('v0.2.5', body='This is a Security: not at line start'), release('v0.2.4', body=' Security: indented')], []),
+    ([release('v0.4.0'), release('v0.2.9', body='Security: pre-release', prerelease=True), release('v0.2.8', body='Security: draft', draft=True)], []),
+    ([release('v0.4.0'), release('0.2.7', body='Security: bad tag'), release('v0.2.6-rc.1', body='Security: rc')], []),
+    ([release('v0.4.0'), release('v0.2.1', body='Fixes.\r\nSecurity: windows line ends\r\n')], ['0.2.1']),
+    ([release('v0.4.0'), release('v0.2.1', body=None), 'junk', None], []),
 ])
 def test_every_security_release_in_the_window_is_stored(store: Store, listed, found):
     # given
@@ -142,7 +142,7 @@ def test_every_security_release_in_the_window_is_stored(store: Store, listed, fo
 @pytest.mark.parametrize('version, level', [('0.2.0', 'warn'), ('0.2.4', 'warn'), ('0.2.5', 'info'), ('0.2.6', 'info')])
 def test_the_level_is_decided_by_the_pod_that_shows_the_notice(store: Store, version: str, level: str):
     # given
-    http = github(release('v0.3.0'), release('v0.2.5', body=SECURE), release('v0.2.0'))
+    http = github(release('v0.4.0'), release('v0.2.5', body=SECURE), release('v0.2.0'))
     checker(store, http, version='0.2.6').run_once()
     other = checker(store, http, version='0.2.0')
     other.run_once()
@@ -157,7 +157,7 @@ def test_the_level_is_decided_by_the_pod_that_shows_the_notice(store: Store, ver
 
 def test_a_check_run_as_an_old_pod_and_shown_by_a_newer_one_is_info(store: Store):
     # given
-    checker(store, github(release('v0.3.0'), release('v0.2.5', body=SECURE)), version='0.2.0').run_once()
+    checker(store, github(release('v0.4.0'), release('v0.2.5', body=SECURE)), version='0.2.0').run_once()
 
     # when
     newer = checker(store, FakeHttp(), version='0.2.6').notice()
@@ -169,7 +169,7 @@ def test_a_check_run_as_an_old_pod_and_shown_by_a_newer_one_is_info(store: Store
 
 def test_a_failed_check_is_silent_and_keeps_the_last_good_result(store: Store, caplog):
     # given
-    checker(store, github(release('v0.3.0', body='Security: fix'))).run_once()
+    checker(store, github(release('v0.4.0', body='Security: fix'))).run_once()
     first = store.version_check()
     failures = [
         FakeHttp({('GET', LIST): HttpError(403, 'api.github.com', 'rate limit exceeded')}),
@@ -204,7 +204,7 @@ def test_a_handled_bad_shape_leaves_no_failure_record(store: Store, caplog, answ
 
 def test_a_later_good_check_replaces_the_result(store: Store):
     # given
-    checker(store, github(release('v0.3.0'))).run_once()
+    checker(store, github(release('v0.4.0'))).run_once()
 
     # when
     checker(store, github(release('v0.3.1', body='Security: x'))).run_once()
@@ -216,8 +216,8 @@ def test_a_later_good_check_replaces_the_result(store: Store):
 
 def test_the_off_switch_makes_no_request_and_shows_no_notice(store: Store):
     # given
-    http = github(release('v0.3.0'))
-    store.note_version_check({'latest': '0.3.0', 'url': PAGE + 'v0.3.0', 'securityIn': ['0.3.0'], 'at': '2026-11-19T00:00:00Z'})
+    http = github(release('v0.4.0'))
+    store.note_version_check({'latest': '0.4.0', 'url': PAGE + 'v0.4.0', 'securityIn': ['0.4.0'], 'at': '2026-11-19T00:00:00Z'})
     off = checker(store, http, enabled=False)
 
     # when
@@ -229,36 +229,36 @@ def test_the_off_switch_makes_no_request_and_shows_no_notice(store: Store):
 
 def test_the_notice_levels_texts_and_link(store: Store):
     # given
-    info = checker(store, github(release('v0.3.0')))
+    info = checker(store, github(release('v0.4.0')))
     info.run_once()
 
     # when
     plain = info.notice()
-    checker(store, github(release('v0.3.0', body='Security: fix'))).run_once()
+    checker(store, github(release('v0.4.0', body='Security: fix'))).run_once()
     warn = info.notice()
 
     # then
-    link = {'href': PAGE + 'v0.3.0', 'linkText': 'Release notes'}
-    assert plain == {'id': 'update', 'level': 'info', 'text': 'Skopax 0.3.0 is available; this server runs 0.2.0.', **link}
-    assert warn == {'id': 'update', 'level': 'warn', 'text': 'Skopax 0.3.0 is available and fixes a security issue; this server runs 0.2.0. Update soon.', **link}
-    assert plain['text'] == msg('update.available', upstream='Skopax', latest='0.3.0', current='0.2.0')
+    link = {'href': PAGE + 'v0.4.0', 'linkText': 'Release notes'}
+    assert plain == {'id': 'update', 'level': 'info', 'text': 'Skopax 0.4.0 is available; this server runs 0.2.0.', **link}
+    assert warn == {'id': 'update', 'level': 'warn', 'text': 'Skopax 0.4.0 is available and fixes a security issue; this server runs 0.2.0. Update soon.', **link}
+    assert plain['text'] == msg('update.available', upstream='Skopax', latest='0.4.0', current='0.2.0')
 
 
 def test_the_notice_goes_away_once_the_server_runs_the_new_version(store: Store):
     # given
-    checker(store, github(release('v0.3.0'))).run_once()
+    checker(store, github(release('v0.4.0'))).run_once()
 
     # when
-    after_upgrade = checker(store, FakeHttp(), version='0.3.0').notice()
+    after_upgrade = checker(store, FakeHttp(), version='0.4.0').notice()
 
     # then
     assert after_upgrade is None
 
 
-@pytest.mark.parametrize('url', ['javascript:alert(1)', 'http://github.com/skopax/skopax/releases/tag/v0.3.0', 'https://evil.example.com/x'])
+@pytest.mark.parametrize('url', ['javascript:alert(1)', 'http://github.com/skopax/skopax/releases/tag/v0.4.0', 'https://evil.example.com/x'])
 def test_a_stored_link_that_is_not_https_github_is_not_shown(store: Store, url: str):
     # given
-    store.note_version_check({'latest': '0.3.0', 'url': url, 'securityIn': [], 'at': '2026-11-19T00:00:00Z'})
+    store.note_version_check({'latest': '0.4.0', 'url': url, 'securityIn': [], 'at': '2026-11-19T00:00:00Z'})
 
     # then
     assert checker(store, FakeHttp()).notice() is None
@@ -266,7 +266,7 @@ def test_a_stored_link_that_is_not_https_github_is_not_shown(store: Store, url: 
 
 def test_the_first_check_waits_for_a_stale_result_only(store: Store):
     # given
-    check = checker(store, github(release('v0.3.0')))
+    check = checker(store, github(release('v0.4.0')))
     empty = check.due_at_start()
     check.run_once()
 
@@ -280,7 +280,7 @@ def test_the_first_check_waits_for_a_stale_result_only(store: Store):
 
 def test_the_scheduled_run_skips_a_fresh_result(store: Store):
     # given
-    http = github(release('v0.3.0'))
+    http = github(release('v0.4.0'))
     check = checker(store, http)
 
     # when
@@ -318,7 +318,7 @@ def test_the_daily_job_stores_the_result_and_every_pod_shows_the_same_notice(sto
 
 def test_a_server_with_the_check_off_never_asks_and_lists_no_job(store: Store):
     # given
-    http = github(release('v0.3.0'))
+    http = github(release('v0.4.0'))
     c = served(store, http, update_check=False)
 
     # when
@@ -395,14 +395,14 @@ def waited(http: FakeHttp, count: int, seconds: float = 3.0) -> None:
 
 def stored_at(store: Store, seconds_ago: float) -> None:
     at = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() - seconds_ago))
-    store.note_version_check({'latest': '0.3.0', 'url': PAGE + 'v0.3.0', 'securityIn': [], 'at': at})
+    store.note_version_check({'latest': '0.4.0', 'url': PAGE + 'v0.4.0', 'securityIn': [], 'at': at})
 
 
 @pytest.mark.parametrize('stored, calls', [(None, 1), (25 * 3600, 1), (3600, 0)])
 def test_the_start_check_runs_once_for_a_missing_or_stale_result_and_not_for_a_fresh_one(store: Store, monkeypatch, stored, calls: int):
     # given
     monkeypatch.setattr('skopax.app.VERSION_START_DELAY', 0)
-    http = github(release('v0.3.0'))
+    http = github(release('v0.4.0'))
     if stored is not None:
         stored_at(store, stored)
 
@@ -417,7 +417,7 @@ def test_the_start_check_runs_once_for_a_missing_or_stale_result_and_not_for_a_f
 def test_the_start_check_makes_no_request_while_the_switch_is_off(store: Store, monkeypatch):
     # given
     monkeypatch.setattr('skopax.app.VERSION_START_DELAY', 0)
-    http = github(release('v0.3.0'))
+    http = github(release('v0.4.0'))
 
     # when
     with served(store, http, update_check=False):
@@ -430,7 +430,7 @@ def test_the_start_check_makes_no_request_while_the_switch_is_off(store: Store, 
 def test_two_pods_starting_together_make_one_start_request(store: Store, monkeypatch):
     # given
     monkeypatch.setattr('skopax.app.VERSION_START_DELAY', 0)
-    http = github(release('v0.3.0'))
+    http = github(release('v0.4.0'))
 
     # when
     with served(store, http), served(store, http):
@@ -442,7 +442,7 @@ def test_two_pods_starting_together_make_one_start_request(store: Store, monkeyp
 
 def test_leaving_the_app_during_the_start_delay_does_not_hang(store: Store):
     # given
-    http = github(release('v0.3.0'))
+    http = github(release('v0.4.0'))
     began = time.monotonic()
 
     # when

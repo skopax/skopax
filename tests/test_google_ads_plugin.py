@@ -779,7 +779,7 @@ def test_google_ads_identity_and_manifest():
     assert 'skopax.plugins.google_ads' in BUILTIN and found is not None and found.state == 'ok' and found.plugin is google_ads.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'google-ads', 'Google Ads', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
+        'google-ads', 'Google Ads', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.5', 'community')
     assert manifest['capabilities'] == {'hosts': ['googleads.googleapis.com', 'oauth2.googleapis.com', '*'], 'secrets': ['developer-token', 'credentials'], 'agentReads': False}
     assert 'only that site' in next(f for f in google_ads.PLUGIN.fields if f.key == 'website').help
     assert manifest['uses'] == ['website']

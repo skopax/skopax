@@ -24,7 +24,7 @@ hello = "skopax_hello:PLUGIN"
   - `id`, `name`, `version` (`X.Y.Z`);
   - `category` (one of the contract's `CATEGORIES`);
   - `description`, `icon`, `author`, `licence`;
-  - `core`, the range of Skopax versions the plug-in works with, as a PEP 440 specifier such as `>=0.3,<0.4`.
+  - `core`, the range of Skopax versions the plug-in works with, as a PEP 440 specifier such as `>=0.4,<0.5`.
 - **The `core` range and release candidates.** A release candidate counts as the release it leads to: Skopax `0.1.0rc1` is checked as `0.1.0`, so `>=0.1,<0.2` loads on it. A range that names a pre-release itself, such as `>=0.1.0rc2` or `==0.1.0rc1`, is compared with the full version, pre-releases included. A plug-in whose range does not match is listed under "+ Add integration" but cannot be set up, and the reason names the installed version.
 - **`fields`.** One required field, `Field('url', 'URL', 'url', required=True, help=...)`. An admin adds an instance in Connect > Integrations and fills in the field, and the code reads it as `ctx.instance.config['url']`. A plug-in can have many instances, and each one runs the checks with its own values.
 - **`capabilities`.** `Capabilities(hosts=('@url',))` declares the hosts the plug-in talks to. Here that is the host of its `url` field.
@@ -75,7 +75,7 @@ The example carries a copy of the Apache License 2.0. `license-files = ["LICENSE
 
 Skopax is not published to a package index; only its images are. A plug-in in a repository of its own runs its tests against a clone of Skopax at the release it targets, next to the plug-in's folder. From the plug-in's folder:
 
-    git clone --branch v0.3.0 https://github.com/skopax/skopax ../skopax
+    git clone --branch v0.4.0 https://github.com/skopax/skopax ../skopax
     (cd ../skopax && uv sync --frozen)
     PYTHONPATH=../skopax:. ../skopax/.venv/bin/python -m pytest -q tests
 
@@ -87,7 +87,7 @@ The Skopax image is distroless, so it has no `pip` and no shell. Install the plu
 
 ```dockerfile
 ARG BASE_IMAGE=ghcr.io/skopax/skopax
-ARG SKOPAX_VERSION=0.3.0
+ARG SKOPAX_VERSION=0.4.0
 
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS build
 
@@ -102,7 +102,7 @@ COPY --from=build /plugins /usr/local/lib/python3.15/site-packages/
 ```
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.3.0 -t skopax-hello examples/hello-plugin
+docker build --build-arg SKOPAX_VERSION=0.4.0 -t skopax-hello examples/hello-plugin
 ```
 
 - `BASE_IMAGE` (default `ghcr.io/skopax/skopax`) names the Skopax image to build on, for example a mirror or your own registry. `SKOPAX_VERSION` (default: the current release) picks its tag.

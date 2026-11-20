@@ -88,7 +88,7 @@ def test_website_identity_and_manifest():
     # then
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'website', 'Website', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
+        'website', 'Website', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.5', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url', '@browser-url', '*'], 'secrets': ['scan-headers'], 'agentReads': False}
     assert manifest['uses'] == ['umami']
     assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('browser', 300, 45, ['browser']), ('pagescan', 3600, 2700, ['pagescan']),

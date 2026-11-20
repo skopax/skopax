@@ -50,7 +50,7 @@ def run(ctx: Context) -> Sweep:
 
 PLUGIN = Plugin(
     id=ID, name='Hello', version='0.1.0', category='other', description='Example plug-in: opens a card when an address does not answer HTTP 200.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.4',
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.5',
     capabilities=Capabilities(hosts=('@url',)),
     fields=(Field('url', 'URL', 'url', required=True, help='The address to ask, for example https://shop.example.com/health.'),),
     test=test,

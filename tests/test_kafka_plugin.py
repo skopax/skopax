@@ -166,7 +166,7 @@ def test_kafka_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('kafka').state == 'ok'
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'Kafka', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
+        'Kafka', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.5', 'community')
     assert manifest['uses'] == ['prometheus'] and manifest['capabilities'] == {'hosts': [], 'secrets': [], 'agentReads': False}
     assert [(f['key'], f['kind'], f['required'], f['choices']) for f in manifest['fields']] == [
         ('prometheus', 'instance', True, ['prometheus']), ('preset', 'choice', False, ['strimzi', 'kafka-exporter']), ('namespaces', 'regex', False, [])]

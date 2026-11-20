@@ -2,6 +2,34 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.4.0 (2026-11-20)
+
+OpenAI as an AI provider, Admin settings grouped into cards, Integrations under Connect and read-only for non-admins, per-severity auto-resolve, clearer card actions on the card page, the drawer and board tiles, and a board that opens on Open.
+
+**Upgrade notes:**
+
+- Prompt cache writes are now counted in AI spend (Costs page and the daily cap). The bill does not change, but the shown spend for the same work is a little higher, so the daily cap is reached a little sooner.
+- `SKOPAX_AUTO_RESOLVE_HOURS` (`core.auto-resolve-hours`) is deprecated and hidden in Admin. It still seeds the new `core.auto-resolve-hours-crit` and `core.auto-resolve-hours-warn` while they are not set, and an old value of 0 keeps info auto-close off too.
+- Integrations moved from Admin to Connect > Integrations in the sidebar. Admins edit there as before; everyone else sees a read-only view with secrets masked.
+- The board now opens on the Open filter instead of All, and the way back reads "Back to Open".
+- Plug-ins built for 0.3 keep working; the example plug-ins now declare `core` as `<0.5`.
+
+**Added:**
+
+- OpenAI as an AI provider, one provider per install (`SKOPAX_AI_PROVIDER`, `OPENAI_API_KEY`, Admin > Investigator > Provider). It uses the Responses API with no data stored at OpenAI. OpenAI has no fallback model and no web page reads.
+- Model and effort are picked side by side in Admin.
+- Admin General and Investigator settings are grouped into titled cards with units and source tags.
+- Auto-resolve hours per severity (Critical, Warning) and close-after days for info cards still firing (`SKOPAX_INFO_AUTO_CLOSE_DAYS`, default 3), all editable in Admin.
+- A read-only Integrations view for non-admins, and a `knowledge_also` plug-in option that shows when a plug-in such as Jira also feeds company knowledge.
+- Card actions in labelled groups (Status, Owner, Links) with icons on the card page and in the drawer, and a quiet action row on board tiles.
+- The Tools page lists guard holds and refused tool input apart from real errors.
+
+**Fixed:**
+
+- The planted-text guard no longer fires on Skopax's own words, such as the default "known noise" reason, while text a person or a source wrote is still checked.
+- The ES|QL tool points the investigator at the configured index pattern when a dated index does not exist yet (daily index names follow UTC).
+- The Preferences language list offers every loaded language pack by its own name, not only Auto and English.
+
 ## 0.3.0 (2026-11-19)
 
 Custom checks that read Elasticsearch with ES|QL and a CSP reports preset, built-in language packs, Slack posts from a severity you choose, a batch jobs example plug-in, and sharper investigator prompts.

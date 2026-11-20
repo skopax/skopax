@@ -327,7 +327,7 @@ def test_crux_identity_and_manifest():
     assert 'skopax.plugins.crux' in BUILTIN and got is not None and got.state == 'ok' and got.plugin is crux.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'crux', 'Chrome UX Report', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.4', 'community')
+        'crux', 'Chrome UX Report', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.5', 'community')
     assert manifest['capabilities'] == {'hosts': ['chromeuxreport.googleapis.com'], 'secrets': ['api-key'], 'agentReads': False} and manifest['uses'] == []
     assert [(f.key, f.kind, f.required, f.ui) for f in crux.PLUGIN.fields] == [('api-key', 'secret', True, False), ('origins', 'text', True, False)]
     assert (check.id, check.period, check.offset, check.ran, check.sections, check.tool, check.once) == ('crux', 86400, 28800, ('crux',), ('crux',), 'crux', False)

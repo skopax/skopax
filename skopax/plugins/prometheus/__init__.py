@@ -115,7 +115,7 @@ PLUGIN = Plugin(
         docs_label='Prometheus: basic authentication',
     ),
     id=ID, name='Prometheus', version='0.1.0', category='metrics', description='Errors, latency, restarts, alerts and image changes read from Prometheus.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.4', edition='community', capabilities=Capabilities(hosts=('@url', '@ui-url'), secrets=('token', 'password')),
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.5', edition='community', capabilities=Capabilities(hosts=('@url', '@ui-url'), secrets=('token', 'password')),
     fields=(Field('url', 'URL', 'url', required=True, group='connection', help='Base URL of the Prometheus API.'),
             Field('ui-url', 'UI URL', 'url', ui=True, group='connection', help='Address people open for graph links. Defaults to the URL.'),
             Field('auth', 'Authentication', 'choice', default='none', choices=('none', 'bearer', 'basic'),

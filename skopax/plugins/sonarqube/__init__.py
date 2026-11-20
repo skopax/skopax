@@ -85,7 +85,7 @@ def links(card_: dict, info: InstanceInfo) -> list[dict] | None:
 
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='code', description='A card for each SonarQube project whose quality gate starts to fail, checked once a day.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.2,<0.4', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),
+    author='Skopax', licence='Apache-2.0', core='>=0.2,<0.5', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Address of SonarQube, for example https://sonar.example.com.'),
             Field('token', 'Token', 'secret', required=True, help='A user or project analysis token that can browse the projects. It is sent as the user name of a basic sign-in.'),
             Field('projects', 'Projects', 'text', help='Comma-separated project keys or names; * matches any characters. Empty watches every project the token can browse.'),
