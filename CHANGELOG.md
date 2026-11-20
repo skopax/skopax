@@ -2,6 +2,29 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.4.3 (2026-11-20)
+
+A running investigation you can see at a glance, investigator status in the top bar, responsible autocomplete with auto-assign by tag, and a calmer, consistent settings design.
+
+**Upgrade notes:**
+
+- Auto-assign is on by default for every tag that has responsibles: a new critical or warning card that gets such a tag, with nobody on it, is assigned to one of the tag's responsibles in turn (people with a Skopax account only). Switch it off per tag in Admin > General. Cards open before the upgrade, cards a person has assigned, taken or unassigned, muted cards and grouped cards are never auto-assigned.
+- The responsible picker can suggest Slack workspace members; listing them needs the Slack scope `users:read` (already implied by `users:read.email`). Without it the picker offers Skopax people only.
+- On a phone the top bar shows "STOPPED" and an icon-only investigator spend button when the investigator is stopped.
+
+**Added:**
+
+- A run banner under the card header while an investigation is queued or running: elapsed time, tool calls, cost so far and the last tool, then the result ("done" or "failed" with the reason). The Investigating tag and board tiles carry a live dot, and the card's cost line includes the running cost.
+- An investigator pill in the top bar on every page: the card or cards being investigated, the queue, and when the investigator is paused, over its daily AI cap, or missing a key or model.
+- Responsible autocomplete: type any part of a name or e-mail to pick from Skopax users, people responsible on other tags, and Slack members.
+- Auto-assign new cards by tag, in turn among the tag's responsibles, with the usual assignment notification and an "Auto-assigned to … (tag …)" line in History.
+- One settings design across Admin, Preferences and Integrations: titled section cards, label and help beside each control with Show more for long help, quiet source tags, segmented choices, a single Save per key, a wider add-integration list with whole badges and two-line descriptions, a switch for an instance's On, and 44 px targets on phones.
+
+**Fixed:**
+
+- The card page no longer waits for the investigator status before it shows.
+- A Slack rate limit is retried later instead of dropping card post updates.
+
 ## 0.4.2 (2026-11-20)
 
 Info findings become information instead of cards, SSO-only people, a clearer Single sign-on admin page, any e-mail address as a tag responsible, and jsdom 31 for the page tests.
