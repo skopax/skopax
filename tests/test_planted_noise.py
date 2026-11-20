@@ -353,7 +353,7 @@ def test_held_and_refused_calls_are_counted_apart_from_errors():
     held = {'what': 'cause', 'tools': ['past_cards'], 'phrases': ['known noise']}
     runs = [{'_id': 'r1', 'startedAt': '2026-10-28T10:00:00Z', 'trigger': 'cards', 'toolCalls': [
         {'name': 'note', 'ms': 1, 'error': 'this run read planted text', 'held': held},
-        {'name': 'promql', 'ms': 1, 'error': 'cluster must be one of prod, ngn, got "ngn-data"', 'refused': True},
+        {'name': 'promql', 'ms': 1, 'error': 'cluster must be one of prod, edge, got "edge-data"', 'refused': True},
         {'name': 'promql', 'ms': 1, 'error': 'timeout after 60 s'},
         {'name': 'promql', 'ms': 1, 'error': None}]}]
 
@@ -367,7 +367,7 @@ def test_held_and_refused_calls_are_counted_apart_from_errors():
     assert note['recentHeld'] == [{'at': '2026-10-28T10:00:00Z', 'runId': 'r1', 'trigger': 'cards', 'held': held}]
     assert (probe['calls'], probe['errors'], probe['refused']) == (3, 1, 1)
     assert [e['error'] for e in probe['recentErrors']] == ['timeout after 60 s']
-    assert probe['recentRefused'][0]['error'] == 'cluster must be one of prod, ngn, got "ngn-data"'
+    assert probe['recentRefused'][0]['error'] == 'cluster must be one of prod, edge, got "edge-data"'
     assert (out['errors'], out['held'], out['refused']) == (1, 1, 1)
 
 
