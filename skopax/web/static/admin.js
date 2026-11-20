@@ -369,6 +369,11 @@ function tagOwnersBox(i) {
     li.dataset.email = p.email;
     li.title = p.stale ? 'No longer an active user' : p.email;
     li.appendChild(accText('span', 'adm-owner-n', p.name || p.email));
+    if (p.slack === 'unknown') {
+      var warn = accText('span', 'adm-owner-warn', 'Not found in Slack: shown as plain text in the report');
+      warn.title = p.email;
+      li.appendChild(warn);
+    }
     if (edit) {
       var x = accText('button', 'adm-owner-x', '\u00d7');
       x.type = 'button';
@@ -380,22 +385,36 @@ function tagOwnersBox(i) {
     list.appendChild(li);
   });
   box.appendChild(list);
-  var free = edit && Array.isArray(ADMIN_TAGS.users) ? ADMIN_TAGS.users.filter(function (u) { return u && !u.disabled && have.indexOf(u.email) < 0; }) : [];
-  if (free.length) {
-    var add = el('div', 'adm-owner-add'), pick = el('select', 'adm-owner-pick'), go = accText('button', 'btn sec small adm-owner-go', 'Add');
-    pick.setAttribute('aria-label', 'Add a responsible');
-    pick.appendChild(accText('option', null, 'Add a person'));
-    pick.options[0].value = '';
-    free.forEach(function (u) {
+  if (edit) {
+    var people = Array.isArray(ADMIN_TAGS.users) ? ADMIN_TAGS.users.filter(function (u) { return u && !u.disabled && have.indexOf(u.email) < 0; }) : [];
+    var add = el('div', 'adm-owner-add'), pick = el('input', 'adm-owner-pick'), go = accText('button', 'btn sec small adm-owner-go', 'Add'), dl = el('datalist');
+    dl.id = 'adm-own-' + t.id + '-d';
+    people.forEach(function (u) {
       var o = accText('option', null, u.name && u.name !== u.email ? u.name + ' \u00b7 ' + u.email : u.email);
       o.value = u.email;
-      pick.appendChild(o);
+      dl.appendChild(o);
     });
+    pick.type = 'email';
+    pick.setAttribute('list', dl.id);
+    pick.setAttribute('aria-label', 'Add a responsible');
+    pick.setAttribute('placeholder', 'E-mail address');
+    pick.setAttribute('autocomplete', 'off');
+    pick.setAttribute('autocapitalize', 'off');
+    pick.setAttribute('spellcheck', 'false');
     go.type = 'button';
     go.disabled = true;
-    pick.addEventListener('change', function () { go.disabled = !pick.value; });
-    go.addEventListener('click', function () { if (pick.value) tagOwnersSave(i, t, have.concat([pick.value]), box, 'Added'); });
+    var wanted = function () { return pick.value.trim().toLowerCase(); };
+    var submit = function () {
+      var v = wanted();
+      if (!v) return;
+      if (have.indexOf(v) >= 0) { pick.value = ''; go.disabled = true; return; }
+      tagOwnersSave(i, t, have.concat([v]), box, 'Added');
+    };
+    pick.addEventListener('input', function () { go.disabled = !wanted(); });
+    pick.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+    go.addEventListener('click', submit);
     add.appendChild(pick);
+    add.appendChild(dl);
     add.appendChild(go);
     box.appendChild(add);
   }
@@ -406,7 +425,7 @@ function tagOwnersBox(i) {
 }
 async function tagOwnersSave(i, t, emails, box, done) {
   var said = box.querySelector('.adm-owner-msg');
-  box.querySelectorAll('button, select').forEach(function (c) { c.disabled = true; });
+  box.querySelectorAll('button, select, input').forEach(function (c) { c.disabled = true; });
   said.textContent = 'Saving\u2026';
   said.className = 'adm-msg adm-owner-msg';
   try {
@@ -420,10 +439,10 @@ async function tagOwnersSave(i, t, emails, box, done) {
     note.textContent = done;
     note.className = 'adm-msg adm-owner-msg ok';
     var back = fresh.querySelector('.adm-owner-pick') || document.getElementById('adm-own-' + t.id + '-l');
-    if (back) { if (!back.matches('select')) back.tabIndex = -1; back.focus(); }
+    if (back) { if (!back.matches('input')) back.tabIndex = -1; back.focus(); }
     renderChanges();
   } catch (e) {
-    box.querySelectorAll('button, select').forEach(function (c) { c.disabled = c.classList.contains('adm-owner-go') && !(box.querySelector('.adm-owner-pick') || {}).value; });
+    box.querySelectorAll('button, select, input').forEach(function (c) { c.disabled = c.classList.contains('adm-owner-go') && !((box.querySelector('.adm-owner-pick') || {}).value || '').trim(); });
     said.textContent = e && e.detail ? e.detail : 'Responsibles not saved, try again';
     said.className = 'adm-msg adm-owner-msg bad';
   }

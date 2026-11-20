@@ -42,7 +42,7 @@ async function boot(opts) {
           const named = {[ALICE]: 'Alice Moss', [BOB]: 'Bob Reed', [NINA]: 'Nina White'};
           hist.unshift({id: 'h' + (hist.length + 1), key: 'tags.' + m[1] + '.responsibles', old: owners[m[1]].map((x) => x.email).join(', ') || null, new: body.emails.join(', ') || null,
             by: NINA, at: iso(0), owners: true, tag: m[1]});
-          owners[m[1]] = body.emails.map((e) => ({email: e, name: named[e]}));
+          owners[m[1]] = body.emails.map((e) => Object.assign({email: e, name: named[e] || e.split('@')[0]}, named[e] ? {} : {slack: 'unknown'}));
           return ok({id: m[1], label: TAGS.filter((t) => t.id === m[1])[0].label, responsibles: owners[m[1]]});
         }
         if (p === '/api/admin/tags') return ok({tags: TAGS.map((t) => Object.assign({}, t, {responsibles: owners[t.id]})), canEdit: opts.canEdit !== false,
@@ -70,12 +70,15 @@ async function anAdminAddsAndRemovesResponsiblesOnTheCardTagsRows() {
   const box = (tag) => doc.querySelector('#admin .adm-row[data-key="tags.' + tag + '.rules"] .adm-owners');
   const chips = (tag) => [...box(tag).querySelectorAll('.adm-owner .adm-owner-n')].map((n) => n.textContent);
   const first = {dev: chips('developer'), data: box('data').querySelector('.adm-owner-none').textContent, label: box('developer').querySelector('.adm-owners-l').textContent,
-    offered: [...box('developer').querySelectorAll('.adm-owner-pick option')].map((o) => o.value), addOff: box('developer').querySelector('.adm-owner-go').disabled};
+    offered: [...box('developer').querySelectorAll('datalist option')].map((o) => o.value), labels: [...box('developer').querySelectorAll('datalist option')].map((o) => o.textContent),
+    kind: box('developer').querySelector('.adm-owner-pick').tagName + '/' + box('developer').querySelector('.adm-owner-pick').getAttribute('aria-label'), linked: box('developer').querySelector('.adm-owner-pick').getAttribute('list') === box('developer').querySelector('datalist').id,
+    addOff: box('developer').querySelector('.adm-owner-go').disabled};
 
   //when
   const pick = box('developer').querySelector('.adm-owner-pick');
   pick.value = BOB;
-  pick.dispatchEvent(new w.Event('change'));
+  pick.dispatchEvent(new w.Event('input'));
+  const addOn = !box('developer').querySelector('.adm-owner-go').disabled;
   box('developer').querySelector('.adm-owner-go').click();
   await wait(80);
   const added = {chips: chips('developer'), said: box('developer').querySelector('.adm-owner-msg').textContent};
@@ -85,7 +88,9 @@ async function anAdminAddsAndRemovesResponsiblesOnTheCardTagsRows() {
   const histRows = [...doc.querySelectorAll('#changes .adm-hist tbody tr')].map((tr) => [tr.children[2].textContent, !!tr.querySelector('.adm-revert')]);
 
   //then
-  assert.deepStrictEqual(first, {dev: ['Alice Moss'], data: 'No one yet', label: 'Responsibles', offered: ['', BOB], addOff: true}, 'the chips show, disabled people and present ones are not offered');
+  assert.deepStrictEqual(first, {dev: ['Alice Moss'], data: 'No one yet', label: 'Responsibles', offered: [BOB], labels: ['Bob Reed \u00b7 ' + BOB], kind: 'INPUT/Add a responsible', linked: true, addOff: true},
+    'the chips show, disabled people and present ones are not suggested');
+  assert.strictEqual(addOn, true, 'typing enables Add');
   assert.deepStrictEqual(calls.map((c) => [c[1], c[2].emails]), [['/api/admin/tags/developer/responsibles', [ALICE, BOB]], ['/api/admin/tags/developer/responsibles', [BOB]]]);
   assert.deepStrictEqual(added, {chips: ['Alice Moss', 'Bob Reed'], said: 'Added'});
   assert.deepStrictEqual(removed, ['Bob Reed']);
@@ -96,6 +101,29 @@ async function anAdminAddsAndRemovesResponsiblesOnTheCardTagsRows() {
   return 'Admin \u00b7 Card tags: each tag row lists its responsibles as chips, adds a person picked from the users and removes one with the cross, and each change is a Changes row without Revert';
 }
 
+async function anyAddressTypedAndEnteredIsAddedAndAnUnknownOneShowsTheSlackWarning() {
+  //given
+  const {w, doc, errors, calls} = await boot();
+  const box = () => doc.querySelector('#admin .adm-row[data-key="tags.data.rules"] .adm-owners');
+  const pick = box().querySelector('.adm-owner-pick');
+
+  //when
+  pick.value = '  Carol.Outside@Example.com ';
+  pick.dispatchEvent(new w.Event('input'));
+  pick.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
+  await wait(80);
+
+  //then
+  assert.deepStrictEqual(calls.map((c) => c[2].emails), [['carol.outside@example.com']]);
+  assert.deepStrictEqual([...box().querySelectorAll('.adm-owner-n')].map((n) => n.textContent), ['carol.outside']);
+  assert.deepStrictEqual([...box().querySelectorAll('.adm-owner-warn')].map((n) => n.textContent), ['Not found in Slack: shown as plain text in the report']);
+  assert.strictEqual(box().querySelector('.adm-owner-msg').textContent, 'Added');
+  assert.strictEqual(doc.activeElement, box().querySelector('.adm-owner-pick'), 'focus returns to the input');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  return 'Enter in the responsible field adds any typed e-mail, lower-cased, and a person Slack does not know carries the plain-text warning';
+}
+
 async function aReadOnlyListShowsChipsWithoutControlsAndTheScopeWarningShows() {
   //given
   const {w, doc, errors} = await boot({canEdit: false, scope: true});
@@ -104,7 +132,7 @@ async function aReadOnlyListShowsChipsWithoutControlsAndTheScopeWarningShows() {
 
   //then
   assert.deepStrictEqual([...box.querySelectorAll('.adm-owner-n')].map((n) => n.textContent), ['Alice Moss']);
-  assert.strictEqual(box.querySelectorAll('button, select').length, 0, 'no add or remove control without edit rights');
+  assert.strictEqual(box.querySelectorAll('button, select, input').length, 0, 'no add or remove control without edit rights');
   const stale = doc.querySelector('#admin .adm-row[data-key="tags.seo.rules"] .adm-owner');
   assert.ok(stale.classList.contains('adm-owner-stale') && stale.title === 'No longer an active user', 'a removed or disabled person is struck through');
   assert.strictEqual(report.querySelector('.adm-problem').textContent, WARNING, 'the warning sits next to the report setting');
@@ -152,6 +180,7 @@ async function aSlackLinkOpensTheBoardOnOpenFilteredToTheTagWithARemovableChip()
 
 (async () => {
   console.log('PASS ' + await anAdminAddsAndRemovesResponsiblesOnTheCardTagsRows());
+  console.log('PASS ' + await anyAddressTypedAndEnteredIsAddedAndAnUnknownOneShowsTheSlackWarning());
   console.log('PASS ' + await aReadOnlyListShowsChipsWithoutControlsAndTheScopeWarningShows());
   console.log('PASS ' + await aSlackLinkOpensTheBoardOnOpenFilteredToTheTagWithARemovableChip());
 })().catch((e) => { console.error('FAIL', e); process.exit(1); });
