@@ -706,6 +706,8 @@ def _check(plugin: Plugin, directory: Path | None) -> None:
         raise _why('setup', steps=SETUP_STEPS_MAX, step=SETUP_STEP_MAX, docs=SETUP_DOCS_MAX, label=SETUP_LABEL_MAX)
     if not isinstance(plugin.company_knowledge, str) or (plugin.company_knowledge not in ('', 'always') and plugin.company_knowledge not in {f.key for f in plugin.fields}):
         raise _why('company_knowledge', value=str(plugin.company_knowledge)[:30])
+    if not isinstance(plugin.knowledge_also, bool) or (plugin.knowledge_also and not plugin.company_knowledge):
+        raise _why('knowledge_also', value=str(plugin.knowledge_also)[:30])
     caps = plugin.capabilities
     for f in tuple(plugin.fields) + tuple(f for read in plugin.agent_reads for f in read.fields):
         if f.kind == 'secret' and f.key not in caps.secrets:
@@ -1221,6 +1223,7 @@ def describe(plugin: Plugin, icon: bool | None = None) -> dict:
         'agentReads': [{'op': r.op, 'args': list(r.args), 'keys': list(r.keys)} for r in plugin.agent_reads],
         'setup': None if plugin.setup is None else {'steps': list(plugin.setup.steps), 'docs': plugin.setup.docs, 'docsLabel': plugin.setup.docs_label},
         'companyKnowledge': plugin.company_knowledge,
+        'knowledgeAlso': plugin.knowledge_also,
     }
 
 

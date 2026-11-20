@@ -156,6 +156,7 @@ async function aTileNamesTheTabItOpensAndANonAdminTileWithoutATabOpensNothing() 
   const before = cluster.getAttribute('title');
 
   //when
+  t.w.setIntView(false, false);
   t.w.setAdminAccess(false);
   const after = tile(t.doc, 'cluster').getAttribute('title');
   tile(t.doc, 'cluster').click();
@@ -163,9 +164,9 @@ async function aTileNamesTheTabItOpensAndANonAdminTileWithoutATabOpensNothing() 
 
   //then
   assert.strictEqual(tile(t.doc, 'acme').getAttribute('title'), 'Acme <i>metrics</i> \u00b7 opens Services');
-  assert.strictEqual(before, 'Cluster \u00b7 opens Admin \u203a Integrations');
+  assert.strictEqual(before, 'Cluster \u00b7 opens Integrations');
   assert.strictEqual(after, 'Cluster');
-  assert.ok(t.doc.getElementById('panel-integrations').hidden, 'no admin tab opened');
+  assert.ok(t.doc.getElementById('panel-integrations').hidden, 'a visitor without a login opens no Integrations page');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
   console.log('PASS a tile names the tab it opens, and for a non-admin a tile without a tab promises and opens nothing');

@@ -37,7 +37,7 @@ Status: 0.3.0 is the current release; 0.1.0 was the first stable one. Since 0.1.
 </td>
 <td width="33%" valign="top">
 
-<a href="docs/images/integrations-dark.png#gh-dark-mode-only"><img width="280" src="docs/images/integrations-dark.png#gh-dark-mode-only" alt="Admin, Integrations: connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches"></a><a href="docs/images/integrations-light.png#gh-light-mode-only"><img width="280" src="docs/images/integrations-light.png#gh-light-mode-only" alt="Admin, Integrations: connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches"></a>
+<a href="docs/images/integrations-dark.png#gh-dark-mode-only"><img width="280" src="docs/images/integrations-dark.png#gh-dark-mode-only" alt="Connect, Integrations: connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches"></a><a href="docs/images/integrations-light.png#gh-light-mode-only"><img width="280" src="docs/images/integrations-light.png#gh-light-mode-only" alt="Connect, Integrations: connected tiles, and the panel of an MCP server connection listing its read tools switched on, a write tool switched off and the repository it searches"></a>
 
 <b>Integrations</b>: every connection uses the same form, here an outside MCP server and its tools.
 
@@ -47,9 +47,9 @@ Status: 0.3.0 is the current release; 0.1.0 was the first stable one. Since 0.1.
 
 ## Plug-ins: connect what you already run
 
-Everything Skopax watches comes through plug-ins, and more than 30 of them ship in the image. Most are ready to switch on in Admin > Integrations; Spring Cloud Config is set up with `SPRING_CONFIG_URL` instead (see [Configuration](docs/configuration.md#spring-cloud-config)):
+Everything Skopax watches comes through plug-ins, and more than 30 of them ship in the image. Most are ready to switch on in Connect > Integrations; Spring Cloud Config is set up with `SPRING_CONFIG_URL` instead (see [Configuration](docs/configuration.md#spring-cloud-config)):
 
-<a href="docs/images/plugins-dark.png#gh-dark-mode-only"><img width="420" src="docs/images/plugins-dark.png#gh-dark-mode-only" alt="Admin, Integrations (0.1.0): all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a><a href="docs/images/plugins-light.png#gh-light-mode-only"><img width="420" src="docs/images/plugins-light.png#gh-light-mode-only" alt="Admin, Integrations (0.1.0): all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a>
+<a href="docs/images/plugins-dark.png#gh-dark-mode-only"><img width="420" src="docs/images/plugins-dark.png#gh-dark-mode-only" alt="Connect, Integrations (0.1.0): all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a><a href="docs/images/plugins-light.png#gh-light-mode-only"><img width="420" src="docs/images/plugins-light.png#gh-light-mode-only" alt="Connect, Integrations (0.1.0): all 30 built-in plug-ins connected, from GitLab, Jira, Slack and Prometheus to Kubernetes with two instances, Cloudflare, Google Ads and an MCP server, each with its switch and health"></a>
 
 | Area | Plug-ins |
 |---|---|
@@ -161,7 +161,7 @@ The full guide is in [docs/](docs/README.md):
 - [Configuration](docs/configuration.md): settings, the config file and settings sources, branding and languages.
 - [Sign-in](docs/sign-in.md): single sign-on, roles, local accounts and the MCP server.
 - [Integrations](docs/plugins.md): the plug-ins that ship with Skopax, their instances and outside MCP servers.
-- [Custom checks](docs/custom-checks.md): PromQL and ES|QL checks written in Admin, without a plug-in, and the presets for Couchbase, managed Redis and CSP reports.
+- [Custom checks](docs/custom-checks.md): PromQL and ES|QL checks written in Connect > Integrations, without a plug-in, and the presets for Couchbase, managed Redis and CSP reports.
 - [Extending Skopax](docs/extending.md): writing a plug-in, starting from the example in `examples/hello-plugin`, with three fuller examples next to it: `examples/couchbase-plugin`, `examples/managed-redis-plugin` and `examples/batch-jobs-plugin`.
 - [Operations](docs/operations.md): the image, logs, agent mode, the probe, proxies and recovery.
 - [Development](docs/development.md): the tests, continuous integration, the licence gate and releases.

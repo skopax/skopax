@@ -455,6 +455,39 @@ def test_describe_serves_the_company_knowledge_marker():
     assert registry.describe(variant(company_knowledge='mode'))['companyKnowledge'] == 'mode'
 
 
+@pytest.mark.parametrize('marker', ['always', 'mode'])
+def test_a_secondary_knowledge_source_loads_and_is_described(marker):
+    # when
+    plugin = variant(company_knowledge=marker, knowledge_also=True)
+
+    # then
+    assert solo(plugin).state == 'ok'
+    assert registry.describe(plugin)['knowledgeAlso'] is True
+    assert registry.describe(DEMO)['knowledgeAlso'] is False
+
+
+@pytest.mark.parametrize('over', [{'knowledge_also': True}, {'knowledge_also': 'yes', 'company_knowledge': 'always'}, {'knowledge_also': 1, 'company_knowledge': 'always'}])
+def test_knowledge_also_needs_a_bool_and_a_company_knowledge_marker(over):
+    # when
+    loaded = solo(variant(**over))
+
+    # then
+    assert loaded.state == 'broken'
+    assert loaded.reason.startswith('Demo was not loaded: knowledge_also ')
+
+
+def test_jira_and_github_are_secondary_knowledge_sources_and_the_pure_ones_are_not():
+    # given
+    from skopax.plugins import confluence, github, jira, sharepoint
+
+    # when
+    shown = {p.id: (registry.describe(p)['companyKnowledge'], registry.describe(p)['knowledgeAlso']) for p in (jira.PLUGIN, github.PLUGIN, confluence.PLUGIN, sharepoint.PLUGIN)}
+
+    # then
+    assert shown == {'jira': ('always', True), 'github': ('docs', True), 'confluence': ('always', False), 'sharepoint': ('always', False)}
+    assert all(solo(p).state == 'ok' for p in (jira.PLUGIN, github.PLUGIN))
+
+
 def test_a_sixty_character_name_loads():
     # then
     assert solo(variant(name='D' * 60)).state == 'ok'

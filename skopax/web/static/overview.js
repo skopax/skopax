@@ -1,6 +1,7 @@
 function srcDest(k) {
   var tab = SRC_TAB[k] ? SRC_TAB[k][1] : 'integrations';
   var t = TABS.filter(function (x) { return x.id === tab; })[0] || TABS.filter(function (x) { return x.id === 'integrations'; })[0];
+  if (t.id === 'integrations' && typeof INT_SIGNED !== 'undefined' && !INT_SIGNED) return null;
   return ADMIN_TABS.indexOf(t.id) >= 0 && typeof ADMIN_OK !== 'undefined' && !ADMIN_OK ? null : t;
 }
 function openSource(k) {
@@ -449,6 +450,7 @@ function pickTab(id) {
 function showTab(id) {
   if (id === 'costs' && COSTS_OP === false) id = 'anoms';
   if (ADMIN_TABS.indexOf(id) >= 0 && typeof ADMIN_OK !== 'undefined' && !ADMIN_OK) { ADMIN_WANTED = id; id = 'anoms'; }
+  else if (id === 'integrations' && typeof INT_SIGNED !== 'undefined' && INT_SIGNED === false) { INT_WANTED = true; id = 'anoms'; }
   else if (typeof ADMIN_WANTED !== 'undefined') ADMIN_WANTED = false;
   TABS.forEach(function (t) {
     var panel = document.getElementById('panel-' + t.id);
@@ -462,7 +464,7 @@ function showTab(id) {
   if (moved && curTab === 'integrations' && typeof intLeave === 'function') intLeave();
   curTab = id;
   if (moved && typeof window.__skopaxPoll === 'function') window.__skopaxPoll();
-  var bare = ADMIN_TABS.indexOf(id) >= 0 || id === 'chat';
+  var bare = ADMIN_TABS.indexOf(id) >= 0 || id === 'chat' || id === 'integrations';
   document.getElementById('reco').hidden = bare;
   document.getElementById('reco').parentNode.hidden = bare;
   var live = document.getElementById('live');
@@ -482,6 +484,7 @@ function showTab(id) {
   if (id === 'chat') loadChat();
   if (id === 'review') loadReview();
   if (ADMIN_TABS.indexOf(id) >= 0 && typeof adminShow === 'function') adminShow(id);
+  if (id === 'integrations' && typeof intShow === 'function') intShow();
 }
 
 function renderFilters() {

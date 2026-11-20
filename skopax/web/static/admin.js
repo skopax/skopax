@@ -5,7 +5,7 @@ var TALK_NAMES = {'small-talk.enabled': 'Small talk replies', 'small-talk.hourly
 var ADMIN_FOLD = {}, ADMIN_HIST_SHOW = 10, ADMIN_HIST_STEP = 20, ADMIN_HIST_MAX = 200, ADMIN_CLIP = 140, ADMIN_LINE_MAX = 1000;
 var FEATURES_GROUP = 'Features', AI_GROUP = 'Investigator', SIGNIN_GROUP = 'Sign-in', MCP_GROUP = 'MCP', OTHER_SWITCHES = 'Other switches';
 var ADMIN_REVEAL = null, ADMIN_HIT_MS = 2000;
-var ADMIN_TITLES = {settings: 'General: the tunable settings', access: 'Access & sign-in: single sign-on, users, API tokens and MCP', integrations: 'Integrations: plug-ins and their instances',
+var ADMIN_TITLES = {settings: 'General: the tunable settings', access: 'Access & sign-in: single sign-on, users, API tokens and MCP',
   features: 'Features: core features to switch on or off', ai: 'Investigator: the AI provider, its API key and the investigator settings', changes: 'Changes: what was changed in Admin, with Revert'};
 function markAdminTab(id, on) {
   var tab = document.getElementById('tab-' + id);
@@ -39,6 +39,7 @@ function setAdminAccess(on) {
     NOTES_SEQ++;
     adminNotes([]);
     if (ADMIN_TABS.indexOf(curTab) >= 0) showTab('anoms');
+    if (curTab === 'integrations' && typeof intLeave === 'function') { intLeave(); var ib = document.getElementById('integrations'); if (ib) ib.textContent = ''; if (typeof intShow === 'function') intShow(); }
     return;
   }
   if (typeof sideAdmin === 'function') sideAdmin();
@@ -53,7 +54,6 @@ function adminShow(id) {
   adminNotices();
   if (id === 'settings') loadAdmin();
   else if (id === 'access') loadAccess();
-  else if (id === 'integrations') { loadIntegrations(); if (typeof pqcLoad === 'function') pqcLoad(); }
   else if (id === 'features') loadFeatures();
   else if (id === 'ai') loadAi();
   else loadChanges();
@@ -104,17 +104,15 @@ function setFeats(data) {
   markAdminCount();
 }
 async function adminCounts(id) {
-  var settings = !ADMIN && (id === 'access' || id === 'integrations'), feats = !FEATS && id !== 'features' && id !== 'settings', plugins = !INTEG && id !== 'integrations', users = ACCESS_N === null && !ACCESS && id !== 'access';
+  var settings = !ADMIN && id === 'access', feats = !FEATS && id !== 'features' && id !== 'settings', users = ACCESS_N === null && !ACCESS && id !== 'access';
   if (users) ACCESS_N = -1;
   var r = await Promise.all([settings ? adminApi('GET', '/api/admin/settings').catch(adminNone) : null, feats ? adminApi('GET', '/api/admin/features').catch(adminNone) : null,
-    plugins ? adminApi('GET', '/api/admin/plugins').catch(adminNone) : null, users ? adminApi('GET', '/api/admin/users').catch(adminNone) : null]);
+    users ? adminApi('GET', '/api/admin/users').catch(adminNone) : null]);
   if (!ADMIN_OK) return;
   if (r[0] && !ADMIN) ADMIN = r[0];
   if (r[1] && !FEATS) setFeats(r[1]);
-  if (r[2] && !INTEG) INTEG = r[2];
-  if (users && !ACCESS) { if (Array.isArray(r[3])) markAccessCount(r[3].length); else ACCESS_N = null; }
+  if (users && !ACCESS) { if (Array.isArray(r[2])) markAccessCount(r[2].length); else ACCESS_N = null; }
   markAdminCount();
-  markIntegCount(INTEG);
 }
 function markAccessCount(n) {
   ACCESS_N = n;
@@ -143,8 +141,7 @@ async function adminNotices() {
 }
 function adminNotes(list) {
   ADMIN_NOTES = list.filter(function (n) { return n && typeof n.text === 'string' && n.text; });
-  var box = document.getElementById('adm-notices');
-  if (box) {
+  document.querySelectorAll('.adm-notices').forEach(function (box) {
     box.textContent = '';
     ADMIN_NOTES.forEach(function (n) {
       var p = accText('p', 'adm-notice ' + (n.level === 'warn' ? 'k-warn' : 'k-info'));
@@ -161,7 +158,7 @@ function adminNotes(list) {
       box.appendChild(p);
     });
     box.hidden = !ADMIN_NOTES.length;
-  }
+  });
   if (typeof sideAdmin === 'function') sideAdmin();
 }
 async function loadAdmin() {
@@ -266,8 +263,8 @@ function adminId(key) { return 'adm-' + key.replace(/[^a-z0-9]/gi, '-'); }
 function adminControl(i) {
   var id = adminId(i.key), named = ' aria-labelledby="' + esc(id + '-l') + '"';
   if (i.kind === 'choice') return '<select id="' + esc(id) + '" class="adm-in"' + named + '>' + i.choices.map(function (c) { return '<option value="' + esc(c) + '"' + (c === i.value ? ' selected' : '') + '>' + esc((i.choiceLabels || {})[c] || c) + '</option>'; }).join('') + '</select>';
-  if (i.kind === 'bool') return '<select id="' + esc(id) + '" class="adm-in"' + named + '><option value="true"' + (i.value === 'true' ? ' selected' : '') + '>true</option><option value="false"' + (i.value === 'false' ? ' selected' : '') + '>false</option></select>';
-  if (i.kind === 'int' || i.kind === 'float') return '<input id="' + esc(id) + '" class="adm-in"' + named + ' type="number" inputmode="decimal" step="' + (i.kind === 'int' ? '1' : 'any') + '" min="' + esc(i.low) + '" max="' + esc(i.high) + '" value="' + esc(i.value) + '">';
+  if (i.kind === 'bool') return admSwitch(i, id, named);
+  if (i.kind === 'int' || i.kind === 'float') return admUnit(i, '<input id="' + esc(id) + '" class="adm-in"' + named + ' type="number" inputmode="decimal" step="' + (i.kind === 'int' ? '1' : 'any') + '" min="' + esc(i.low) + '" max="' + esc(i.high) + '" value="' + esc(i.value) + '">');
   if (i.kind === 'rules') {
     return '<table class="adm-rules"><tbody>' + Object.keys(i.defaults).map(function (k) {
       var v = i.rules[k], d = i.defaults[k];
@@ -286,8 +283,9 @@ function unsaved(box, saved) {
     var id = rowId(row);
     if (!id || id === saved) return;
     row.querySelectorAll('input:not(.r-link), select, textarea').forEach(function (inp) {
-      var was = inp.tagName === 'SELECT' ? ([].filter.call(inp.options, function (o) { return o.defaultSelected; })[0] || inp.options[0] || {}).value : inp.defaultValue, on = inp === document.activeElement;
-      if (inp.value !== was || on) out.push({id: id, sel: '.' + inp.className.trim().split(/\s+/).join('.') + (inp.dataset.rule ? '[data-rule="' + inp.dataset.rule + '"]' : ''), value: inp.value, on: on});
+      var box = inp.type === 'checkbox', was = box ? String(inp.defaultChecked) : inp.tagName === 'SELECT' ? ([].filter.call(inp.options, function (o) { return o.defaultSelected; })[0] || inp.options[0] || {}).value : inp.defaultValue, on = inp === document.activeElement;
+      var now = box ? String(inp.checked) : inp.value;
+      if (now !== was || on) out.push({id: id, sel: '.' + inp.className.trim().split(/\s+/).join('.') + (inp.dataset.rule ? '[data-rule="' + inp.dataset.rule + '"]' : ''), value: now, on: on});
     });
   });
   return out;
@@ -296,14 +294,15 @@ function restoreUnsaved(box, list) {
   list.forEach(function (u) {
     var row = [].filter.call(box.querySelectorAll('.adm-row'), function (r) { return rowId(r) === u.id; })[0], inp = row && row.querySelector(u.sel);
     if (!inp || inp.disabled) return;
-    if (inp.value !== u.value) { inp.value = u.value; inp.dispatchEvent(new Event('input')); }
+    if (inp.type === 'checkbox') { if (String(inp.checked) !== u.value) { inp.checked = u.value === 'true'; inp.dispatchEvent(new Event('input')); } }
+    else if (inp.value !== u.value) { inp.value = u.value; inp.dispatchEvent(new Event('input')); }
     var form = inp.closest('.route-form');
     if (form) form.hidden = false;
     if (u.on) inp.focus();
   });
 }
 function adminValue(row, i) {
-  if (i.kind !== 'rules') return row.querySelector('.adm-in').value;
+  if (i.kind !== 'rules') { var inp = row.querySelector('.adm-in'); return inp.type === 'checkbox' ? (inp.checked ? 'true' : 'false') : inp.value; }
   var out = {};
   row.querySelectorAll('.adm-rule').forEach(function (inp) {
     var k = inp.dataset.rule, v = inp.value.trim();
@@ -315,7 +314,7 @@ function adminRow(i, card) {
   var row = el('div', 'adm-row' + (i.source === 'admin' ? ' set' : '') + (card ? ' adm-field' : ''));
   row.dataset.key = i.key;
   row.dataset.find = (i.label + ' ' + i.key + ' ' + i.help + ' ' + Object.keys(i.ruleHelp || {}).map(function (k) { return k + ' ' + i.ruleHelp[k]; }).join(' ')).toLowerCase();
-  row.innerHTML = '<div class="adm-l"><div class="adm-n"><b id="' + esc(adminId(i.key) + '-l') + '">' + esc(i.label) + '</b>' + adminSource(i) +
+  row.innerHTML = !card ? admRowHtml(i) : '<div class="adm-l"><div class="adm-n"><b id="' + esc(adminId(i.key) + '-l') + '">' + esc(i.label) + '</b>' + adminSource(i) +
     (i.live ? '' : '<span class="tag k-warn" title="Read when the service starts: saved now, used after the next restart">after restart</span>') + '</div>' +
     '<p class="adm-help">' + esc(i.help) + '</p><code class="adm-key">' + esc(i.key) + '</code></div>' +
     '<div class="adm-c">' + adminControl(i) + (i.pluginTerms && i.pluginTerms.length ? '<p class="adm-help adm-plugin-terms">From plug-ins, not saved here: ' + i.pluginTerms.map(function (t) { return '<code>' + esc(t) + '</code>'; }).join(' ') + '</p>' : '') + '<div class="adm-acts">' + (card ? '' : '<button type="button" class="btn small adm-save" disabled>Save</button>') +
@@ -335,7 +334,7 @@ function adminRow(i, card) {
     row.querySelector('.adm-l').appendChild(off);
   }
   var save = row.querySelector('.adm-save'), msg = row.querySelector('.adm-msg');
-  row.querySelectorAll('input, select, textarea').forEach(function (inp) { inp.addEventListener('input', function () { if (save) save.disabled = adminValue(row, i) === adminCurrent(i); msg.textContent = ''; }); });
+  row.querySelectorAll('input, select, textarea').forEach(function (inp) { ['input', 'change'].forEach(function (ev) { inp.addEventListener(ev, function () { if (save) save.disabled = adminValue(row, i) === adminCurrent(i); msg.textContent = ''; }); }); });
   if (save) save.addEventListener('click', function () { adminSave(i, adminValue(row, i), save, msg); });
   var reset = row.querySelector('.adm-reset');
   if (reset) reset.addEventListener('click', function () { adminReset(i, reset, msg); });
@@ -471,6 +470,7 @@ function adminFilter() {
     if (ADMIN_FIND && n) d.open = true;
     else if (!ADMIN_FIND && d.dataset.group) d.open = ADMIN_FOLD[d.dataset.group] === 1;
   });
+  admFilterCards(document.getElementById('admin'), ADMIN_FIND);
 }
 
 function adminRowEl(key) {
@@ -572,7 +572,7 @@ function renderAdmin(saved) {
       d.dataset.group = g;
       var set = by[g].filter(function (i) { return i.source === 'admin'; }).length;
       d.appendChild(el('summary', 'chev', '<h3>' + esc(g) + '</h3><span class="count">' + by[g].length + '</span>' + (set ? '<span class="tag k-act">' + set + ' set here</span>' : '')));
-      adminRows(d, by[g]);
+      admCards(d, by[g]);
       d.open = ADMIN_FIND ? true : ADMIN_FOLD[g] === 1;
       d.addEventListener('toggle', function () {
         if (ADMIN_FIND) return;
@@ -597,7 +597,7 @@ function renderFeatOther(saved) {
     var d = el('details', 'adm-grp feat-other');
     d.dataset.group = OTHER_SWITCHES;
     d.appendChild(el('summary', 'chev', '<h3>' + OTHER_SWITCHES + '</h3><span class="count">' + items.length + '</span>'));
-    items.forEach(function (i) { d.appendChild(adminRow(i)); });
+    admCards(d, items);
     d.open = ADMIN_FOLD[OTHER_SWITCHES] === 1;
     d.addEventListener('toggle', function () { ADMIN_FOLD[OTHER_SWITCHES] = d.open ? 1 : 0; });
     box.appendChild(d);
@@ -627,14 +627,7 @@ function renderAiRows(saved) {
     var s = el('section', 'adm-grp ai-grp');
     s.dataset.group = AI_GROUP;
     s.appendChild(accText('h3', null, 'Investigator settings'));
-    var byKey = {}, paired = {};
-    items.forEach(function (i) { byKey[i.key] = i; });
-    Object.keys(AI_PAIRS).forEach(function (k) { if (byKey[k] && byKey[AI_PAIRS[k][0]]) paired[AI_PAIRS[k][0]] = k; });
-    items.forEach(function (i) {
-      if (paired[i.key]) return;
-      var mate = AI_PAIRS[i.key] && byKey[AI_PAIRS[i.key][0]];
-      s.appendChild(mate ? aiPair(i, mate, AI_PAIRS[i.key][1]) : adminRow(i));
-    });
+    admCards(s, items);
     box.appendChild(s);
   });
 }

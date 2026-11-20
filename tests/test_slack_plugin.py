@@ -334,8 +334,8 @@ def test_slack_needs_point_at_admin_and_follow_the_instance(store: Store, web: S
     assert set_up['push']['needs'] == [] and set_up['slack-autosend']['needs'] == [] and msg('features.needs.slack_app_token') not in set_up['slack-listener']['needs']
     assert off['push']['needs'] == [msg('features.needs.bot_token')] and off['slack-autosend']['needs'] == [msg('features.needs.slack_token')]
     for key in ('features.needs.slack_token', 'features.needs.bot_token', 'features.needs.slack_app_token'):
-        assert 'Admin \u203a Integrations \u203a Slack' in msg(key) and 'SLACK_' not in msg(key)
-    assert 'Admin \u203a Integrations \u203a Slack' in msg('cards.slack_posts_failed', count=1, plural='', since='12:00', errors='x', names='y')
+        assert 'Connect \u203a Integrations \u203a Slack' in msg(key) and 'SLACK_' not in msg(key)
+    assert 'Connect \u203a Integrations \u203a Slack' in msg('cards.slack_posts_failed', count=1, plural='', since='12:00', errors='x', names='y')
 
 
 def test_slack_link_reads_the_serving_primary_instance_only(store: Store, tmp_path):

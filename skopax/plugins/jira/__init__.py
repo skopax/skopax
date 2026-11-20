@@ -94,4 +94,6 @@ PLUGIN = Plugin(
         'In Site give your Jira Cloud address, such as https://example.atlassian.net. Leave Cloud id empty unless asked, then choose Test connection.',
         "A token made with the plain Create API token button also works, but it carries all the account's access.",
     ), docs='https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/', docs_label='Atlassian: manage API tokens'),
+    company_knowledge='always',
+    knowledge_also=True,
 )

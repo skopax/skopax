@@ -5,10 +5,13 @@ from typing import Annotated
 from fastapi import Body, Depends, FastAPI, HTTPException, Response, status
 
 from skopax import checkpresets, promqlchecks
+from skopax.integrationview import masked_tree, reader_run
 from skopax.messages import msg
 from skopax.promqlchecks import BASELINES, COMPARISONS, MODES, SEVERITIES, SOURCES, CustomChecks, Exists, Full, Invalid, Missing, clean
 
 PATH = '/api/admin/custom-checks'
+READ_PATH = '/api/integrations/custom-checks'
+READ_KEYS = promqlchecks.FIELDS + promqlchecks.TAGS + ('createdAt', 'updatedAt')
 
 
 def limits() -> dict:
@@ -28,7 +31,7 @@ def refused(e: Invalid) -> HTTPException:
 
 
 def mount(app: FastAPI, checks: CustomChecks, admin: Callable[..., str], activity: Callable[[str, str], None], nudge: Callable[[], None] = lambda: None,
-          clock: Callable[[], float] = time.time) -> None:
+          clock: Callable[[], float] = time.time, reader: Callable[..., str] | None = None) -> None:
     app.state.custom_checks = checks
     checkpresets.presets()
     By = Annotated[str, Depends(admin)]
@@ -39,6 +42,13 @@ def mount(app: FastAPI, checks: CustomChecks, admin: Callable[..., str], activit
         states = checks.defs.states()
         return {'items': [d | {'run': states.get(d['id'])} for d in checks.defs.list()], 'sources': checks.sources(), 'limits': limits(), 'choices': choices(),
                 'presets': [{'id': p.id, 'name': p.name, 'nameKey': checkpresets.name_key(p)} for p in checkpresets.presets().values()]}
+
+    if reader is not None:
+        @app.get(READ_PATH)
+        def get_custom_checks_read(by: Annotated[str, Depends(reader)]) -> dict:
+            states = checks.defs.states()
+            return {'readOnly': True, 'items': [masked_tree({k: d.get(k) for k in READ_KEYS}) | {'run': reader_run(states.get(d['id']))} for d in checks.defs.list()], 'limits': limits(), 'choices': choices(),
+                    'presets': [{'id': p.id, 'name': p.name, 'nameKey': checkpresets.name_key(p)} for p in checkpresets.presets().values()]}
 
     @app.post(PATH, status_code=status.HTTP_201_CREATED)
     def post_custom_check(body: Given, by: By) -> dict:

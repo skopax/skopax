@@ -350,8 +350,8 @@ async function aViewerNeverLoadsTheChecks() {
 
   //then
   assert.deepStrictEqual(calls.filter((c) => c[1].startsWith('/api/admin/custom-checks')), []);
-  assert.strictEqual(box(doc).textContent, '');
-  console.log('PASS a viewer never loads the checks');
+  assert.ok(!box(doc).querySelector('.pqc-add, .pqc-from-preset, .pqc-edit, .pqc-form'), 'and gets no way to change them');
+  console.log('PASS a viewer never loads the admin checks and gets no way to change them');
 }
 
 async function theStylesUseThemeColoursAndStackAtPhoneWidth() {

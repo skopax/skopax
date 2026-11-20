@@ -104,7 +104,7 @@ def test_only_admins_and_the_token_read_and_change_settings_and_admin_counts_as_
     assert listed.status_code == 200 and by_token.status_code == 200 and queued.status_code == 201
     items = {i['key']: i for i in listed.json()['items']}
     assert items['investigate.model'] == {'key': 'investigate.model', 'group': 'Investigator', 'label': 'Card model', 'help': items['investigate.model']['help'], 'kind': 'choice', 'live': True,
-                                          'value': 'claude-opus-5-5', 'base': 'claude-opus-5-5', 'default': 'claude-opus-5-5', 'source': 'default', 'by': None, 'at': None,
+                                          'value': 'claude-opus-5-5', 'base': 'claude-opus-5-5', 'default': 'claude-opus-5-5', 'source': 'default', 'by': None, 'at': None, 'card': 'Models', 'order': 100,
                                           'choices': ['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5']}
     assert items['slack.remind-hours']['live'] is False
     endpoints = {'sso.authorize-url', 'sso.token-url', 'sso.jwks-url'}

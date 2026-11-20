@@ -80,9 +80,9 @@ async function theSidebarListsTheMapInOrder() {
   assert.strictEqual(groups[0].getAttribute('aria-label'), 'Board and investigator', 'the first group has no header, only a name for screen readers');
   assert.deepStrictEqual(groups.slice(1, 4).map((g) => g.querySelector('.g-h').textContent), ['Observe', 'Activity', 'Connect']);
   assert.deepStrictEqual(groups.slice(1, 4).map((g) => g.getAttribute('aria-labelledby')), groups.slice(1, 4).map((g) => g.querySelector('.g-h').id));
-  assert.deepStrictEqual(groups.map(labels), [['Board', 'Requests', 'Chat', 'Investigator'], ['Services', 'Latency', 'Releases', 'Deploy reports'], ['Notifications', 'Events', 'History', 'Costs'], ['Tools', 'Connect MCP'], ['Review', 'Docs']]);
+  assert.deepStrictEqual(groups.map(labels), [['Board', 'Requests', 'Chat', 'Investigator'], ['Services', 'Latency', 'Releases', 'Deploy reports'], ['Notifications', 'Events', 'History', 'Costs'], ['Integrations', 'Tools', 'Connect MCP'], ['Review', 'Docs']]);
   assert.deepStrictEqual(labels(doc.getElementById('pinned')), [], 'a signed-in person has Settings and Admin in the user menu, not as rows');
-  const ids = ['anoms', 'reqs', 'chat', 'inv', 'svcs', 'lat', 'rels', 'reps', 'slack', 'hist', 'acts', 'costs', 'tools', 'mcp', 'review', 'docs', 'prefs'];
+  const ids = ['anoms', 'reqs', 'chat', 'inv', 'svcs', 'lat', 'rels', 'reps', 'slack', 'hist', 'acts', 'costs', 'integrations', 'tools', 'mcp', 'review', 'docs', 'prefs'];
   assert.deepStrictEqual([...doc.querySelectorAll('#side a.tab[data-tab]')].map((a) => a.id), ids.map((id) => 'tab-' + id), 'every row is tab-<id>');
   assert.ok(ids.every((id) => doc.getElementById('count-' + id) && doc.getElementById('tab-' + id).contains(doc.getElementById('count-' + id))), 'and carries count-<id>');
   assert.ok(ids.every((id) => doc.getElementById('tab-' + id).getAttribute('href') === '#t=' + id || id === 'anoms'), 'rows are #t= links');
@@ -357,14 +357,14 @@ async function theAdminRowShowsForAdminsOnly() {
   //then
   assert.ok(viewer.doc.getElementById('side-admin').hidden, 'a viewer sees no Admin row');
   assert.ok(row.hidden && !admin.doc.getElementById('um-admin').hidden && viewer.doc.getElementById('um-admin').hidden, 'an admin has Admin in the user menu, a viewer does not');
-  assert.ok(!admin.doc.getElementById('panel-integrations').hidden, 'the first time it opens Integrations');
+  assert.ok(!admin.doc.getElementById('panel-settings').hidden, 'the first time it opens General');
   assert.deepStrictEqual(current(admin.doc), ['side-admin', 'user-btn'], 'and the user button is marked current');
-  assert.strictEqual(admin.doc.getElementById('crumb-page').textContent, 'Admin \u203a Integrations');
-  assert.deepStrictEqual([...admin.doc.querySelectorAll('#adm-nav a.tab')].map((a) => [a.id, a.querySelector('.lbl').textContent]), [['tab-settings', 'General'], ['tab-access', 'Access & sign-in'], ['tab-integrations', 'Integrations'], ['tab-features', 'Features'], ['tab-ai', 'Investigator'], ['tab-changes', 'Changes']], 'the admin pages keep their tab ids');
+  assert.strictEqual(admin.doc.getElementById('crumb-page').textContent, 'Admin \u203a General');
+  assert.deepStrictEqual([...admin.doc.querySelectorAll('#adm-nav a.tab')].map((a) => [a.id, a.querySelector('.lbl').textContent]), [['tab-settings', 'General'], ['tab-access', 'Access & sign-in'], ['tab-features', 'Features'], ['tab-ai', 'Investigator'], ['tab-changes', 'Changes']], 'the admin pages keep their tab ids');
   assert.ok(!admin.doc.getElementById('adm-shell').hidden && viewer.doc.getElementById('adm-shell').hidden, 'their sub-nav shows only on an admin page');
   assert.deepStrictEqual(viewer.errors.concat(admin.errors), []);
   viewer.dom.window.close(); admin.dom.window.close();
-  return 'the Admin row is hidden for a viewer and shown for an admin, opens the last admin section (Integrations the first time) and marks itself current';
+  return 'the Admin row is hidden for a viewer and shown for an admin, opens the last admin section (General the first time) and marks itself current';
 }
 
 async function aPluginPageGetsARowAndASection() {

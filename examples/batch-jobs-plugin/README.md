@@ -58,7 +58,7 @@ As for Hello, the layer image installs the plug-in in a Python build stage and c
 docker build --build-arg SKOPAX_VERSION=0.3.0 -t skopax-batch-jobs examples/batch-jobs-plugin
 ```
 
-Pin `SKOPAX_VERSION` to the Skopax release you run. Batch jobs is then listed in Admin > Integrations; add a Prometheus instance first, then one Batch jobs instance per set of jobs.
+Pin `SKOPAX_VERSION` to the Skopax release you run. Batch jobs is then listed in Connect > Integrations; add a Prometheus instance first, then one Batch jobs instance per set of jobs.
 
 ## Licence
 

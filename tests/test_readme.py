@@ -112,7 +112,8 @@ def test_the_setup_page_names_the_admin_sections_in_the_order_of_the_sub_nav():
     named = [labels[t] for t in tabs]
 
     # then
-    assert f"Admin has six sections: {', '.join(named[:-1])} and {named[-1]}." in read('docs/setup.md')
+    count = {4: 'four', 5: 'five', 6: 'six', 7: 'seven'}[len(named)]
+    assert f"Admin has {count} sections: {', '.join(named[:-1])} and {named[-1]}" in read('docs/setup.md')
 
 
 def test_the_setup_page_lists_every_feature_switch_and_the_docs_promise_no_restart_or_reset_the_page_lacks():
