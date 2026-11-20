@@ -76,7 +76,7 @@ async function aLinkOpensTheFilterAndTypeAndTheChipsKeepTheLinkCurrent() {
 
   //then
   assert.strictEqual(shown().length, 4, 'a second click shows every type again');
-  assert.strictEqual(w.location.hash, '#t=anoms', 'All is the default, so its link is the bare tab');
+  assert.strictEqual(w.location.hash, '#t=anoms/all', 'All is written out, since Open is the default');
   assert.deepStrictEqual(errors, []);
   w.close();
   console.log('PASS #t=anoms/all/page-typos opens All with Typos, a type chip filters and updates the link, a second click clears it');
@@ -128,11 +128,11 @@ async function aShortTypeLinkOpensOpenWithThatType() {
   const {w, errors, shown} = await boot('#t=anoms/page-typos');
 
   //then
-  assert.deepStrictEqual(shown(), ['page-typos|pages//shipping-calculator', 'page-typos|pages//gift-cards']);
-  assert.strictEqual(w.location.hash, '#t=anoms/all/page-typos', 'the link is written out in full');
+  assert.deepStrictEqual(shown(), ['page-typos|pages//shipping-calculator']);
+  assert.strictEqual(w.location.hash, '#t=anoms/open/page-typos', 'the link is written out in full');
   assert.deepStrictEqual(errors, []);
   w.close();
-  console.log('PASS #t=anoms/page-typos opens All with Typos and writes the full link');
+  console.log('PASS #t=anoms/page-typos opens Open with Typos and writes the full link');
 }
 
 async function typeCountsFollowTheFilterTheGroupFoldsAndTheViewCopiesItsLink() {

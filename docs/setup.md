@@ -12,7 +12,7 @@ The sidebar groups the pages. Board, Requests, Chat and Investigator come first.
 - **Search:** press Ctrl K (Cmd K on a Mac) anywhere to search pages, cards and, for admins, settings. Up and Down move, Enter opens, Esc closes.
 - **Instance switcher:** the top of the sidebar names this deployment and lists the other instances you linked (see [Other instances](#other-instances)).
 
-Each page has its own link, such as `#t=anoms` for the Board, which opens that page from a bookmark or a Slack message.
+Each page has its own link, such as `#t=anoms` for the Board, which opens that page from a bookmark or a Slack message. The Board opens on the Open filter: `#t=anoms` and `#t=anoms/open` show the open cards, and `#t=anoms/all` shows every card. Copy link on a filtered Board writes the filter into the link, leaving it out only for Open.
 
 The Chat page answers questions about prod from the connected integrations, such as metrics and logs, and names what it read. It needs Chat on in [Feature switches](#feature-switches).
 

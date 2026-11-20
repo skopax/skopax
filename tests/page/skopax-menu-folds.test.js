@@ -56,11 +56,11 @@ async function everyAssigneeIsAFilterUnderAssignee() {
   const nina = shown(doc);
   doc.querySelector('#tab-sub-anoms .who-g [data-type="who:u:nina.white"]').click();
   const back = shown(doc);
-  const reload = await boot('#t=anoms/all/who%3Au%3Apaul.stone');
+  const reload = await boot('#t=anoms/open/who%3Au%3Apaul.stone');
 
   //then
   assert.deepStrictEqual(listed, ['Assigned 3', 'Me 2', 'Unassigned 1', 'Nina White 2', 'Paul Stone 1'], 'after Assigned / Mine / Unassigned each person with cards, most first; a name and an email of one person count once');
-  assert.deepStrictEqual(paul, {cards: [M1], hash: '#t=anoms/all/who%3Au%3Apaul.stone', pressed: 'true'});
+  assert.deepStrictEqual(paul, {cards: [M1], hash: '#t=anoms/open/who%3Au%3Apaul.stone', pressed: 'true'});
   assert.deepStrictEqual(nina, [A2, A1].sort(), 'both spellings of one person are theirs');
   assert.deepStrictEqual(back, [A1, A2, FREE, M1].sort(), 'a second click shows everyone again');
   assert.deepStrictEqual(shown(reload.doc), [M1], 'a copied link keeps the person');

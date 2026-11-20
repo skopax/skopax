@@ -67,10 +67,10 @@ async function theSearchBoxFindsCardsInEveryListByNumberTextAssigneeTicketAndMer
   const cleared = await type('');
 
   //then
-  assert.deepStrictEqual(before.sort(), [DISK, CART, DONE].sort(), 'All before the search');
+  assert.deepStrictEqual(before.sort(), [DISK, CART].sort(), 'Open before the search');
   assert.deepStrictEqual(byNumber, [DONE], 'a handled card is found too');
   assert.strictEqual(note, '1 card found in every list');
-  assert.ok(hash.endsWith('#t=anoms'), hash);
+  assert.ok(hash.endsWith('#t=anoms/all'), hash);
   assert.deepStrictEqual(byPlainNumber, [DISK]);
   assert.deepStrictEqual(byAssignee, [DISK]);
   assert.deepStrictEqual(byTicket, [CART]);
@@ -79,7 +79,7 @@ async function theSearchBoxFindsCardsInEveryListByNumberTextAssigneeTicketAndMer
   assert.deepStrictEqual(accented, [DONE], 'a lower-case accented word finds the capitalised one');
   assert.deepStrictEqual(nothing, []);
   assert.strictEqual(none, 'No card matches');
-  assert.deepStrictEqual(cleared.sort(), [DISK, CART, DONE].sort(), 'clearing the box goes back to the list that was open');
+  assert.deepStrictEqual(cleared.sort(), [DISK, CART].sort(), 'clearing the box goes back to the list that was open');
   assert.strictEqual(doc.getElementById('card-search-n').textContent, '');
   assert.deepStrictEqual(errors, []);
   w.close();

@@ -38,7 +38,7 @@ document.querySelectorAll('a.s-mark').forEach(function (a) {
 });
 var hash = (location.hash || '').replace('#', '');
 showTab(TABS.some(function (t) { return t.id === hash; }) ? hash : defaultTab());
-setFilter('all');
+setFilter('open');
 window.addEventListener('hashchange', function () { followHash((location.hash || '').replace('#', '')); });
 function followHash(h) {
   var m = /^(a|r|rel|t)=(.*)$/.exec(h);

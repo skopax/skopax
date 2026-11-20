@@ -68,7 +68,7 @@ function initLive() {
     var y = window.scrollY, seen = {}, cards = cardsState();
     ALL.forEach(function (a) { seen[a.key] = 1; });
     paint(state);
-    if (!CH.some(function (c) { return c.id === filter && (c.seg !== 'tri-chips' || c.n); })) filter = 'all';
+    if (!CH.some(function (c) { return c.id === filter && (c.seg !== 'tri-chips' || c.n); })) filter = 'open';
     setFilter(filter);
     var fresh = restoreCards(cards, seen);
     window.scrollTo(0, y);

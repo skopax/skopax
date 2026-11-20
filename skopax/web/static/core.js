@@ -1,7 +1,7 @@
 var D = {}, ALL = [], S = [], H = [], KIDS = {}, A = [];
 var open = [], muted = [], stale = [], cleared = [], inprog = [], taken = [], slackRec = [], recurringL = [], ARCHIVED = [], CARDS = [], worst = 'ok';
 var src = {}, down = [], svcOk = 0, deps = [], CH = [];
-var filter = 'all', kind = 'all', svcF = null, typeF = '', shownN = 0, typesFold = false;
+var filter = 'open', kind = 'all', svcF = null, typeF = '', shownN = 0, typesFold = false;
 var TYPE_NAMES = {'page-typos': 'Typos', 'page-layout': 'Layout', log: 'Log errors', alert: 'Alerts', err: 'Error rate', '5xx': '5xx', 'avg-latency': 'Latency', 'apm-p95': 'APM p95',
   'apm-fail': 'APM failures', 'pvc-disk': 'Disk', 'db-disk': 'Host disk', 'hpa-max': 'Autoscalers', 'jvm-heap': 'JVM heap', 'varnish-cache': 'Varnish cache', 'varnish-hit': 'Varnish hit rate',
   'kafka-consume-err': 'Kafka consume errors', 'kafka-lag': 'Kafka lag', 'airbyte-long-run': 'Airbyte long runs', 'airbyte-failed': 'Airbyte failures',
