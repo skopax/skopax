@@ -164,9 +164,10 @@ function adminNotes(list) {
 async function loadAdmin() {
   var seq = ++ADMIN_SEQ, box = document.getElementById('admin');
   try {
-    var r = await Promise.all([adminApi('GET', '/api/admin/settings'), adminApi('GET', '/api/admin/small-talk').catch(adminNone), adminApi('GET', '/api/admin/features').catch(adminNone)]);
+    var r = await Promise.all([adminApi('GET', '/api/admin/settings'), adminApi('GET', '/api/admin/small-talk').catch(adminNone), adminApi('GET', '/api/admin/features').catch(adminNone),
+      adminApi('GET', '/api/admin/tags').catch(adminNone)]);
     if (seq !== ADMIN_SEQ) return;
-    ADMIN = r[0]; ADMIN_TALK = r[1];
+    ADMIN = r[0]; ADMIN_TALK = r[1]; ADMIN_TAGS = r[3] && Array.isArray(r[3].tags) ? r[3] : null;
     if (r[2]) setFeats(r[2]);
     renderAdmin();
   } catch (e) {
@@ -338,7 +339,98 @@ function adminRow(i, card) {
   if (save) save.addEventListener('click', function () { adminSave(i, adminValue(row, i), save, msg); });
   var reset = row.querySelector('.adm-reset');
   if (reset) reset.addEventListener('click', function () { adminReset(i, reset, msg); });
+  var owners = i.kind === 'tagrules' ? tagOwnersBox(i) : null;
+  if (owners) {
+    row.querySelector('.adm-c').appendChild(owners);
+    row.dataset.find += ' responsibles ' + tagOwnersOf(owners.dataset.tag).responsibles.map(function (p) { return p.name + ' ' + p.email; }).join(' ').toLowerCase();
+  }
   return row;
+}
+var ADMIN_TAGS = null;
+var TAG_RULES_KEY = /^tags\.([a-z0-9-]{1,30})\.rules$/;
+function tagOwnersOf(id) {
+  var list = ADMIN_TAGS && Array.isArray(ADMIN_TAGS.tags) ? ADMIN_TAGS.tags : [];
+  return list.filter(function (t) { return t && t.id === id && Array.isArray(t.responsibles); })[0] || null;
+}
+function tagOwnersBox(i) {
+  var m = TAG_RULES_KEY.exec(i.key), t = m && tagOwnersOf(m[1]);
+  if (!t) return null;
+  var edit = !!ADMIN_TAGS.canEdit, box = el('div', 'adm-owners'), lid = 'adm-own-' + t.id + '-l';
+  box.dataset.tag = t.id;
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-labelledby', lid);
+  var head = accText('span', 'adm-owners-l', 'Responsibles');
+  head.id = lid;
+  box.appendChild(head);
+  var list = el('ul', 'adm-owner-list'), have = t.responsibles.map(function (p) { return p.email; });
+  if (!t.responsibles.length) list.appendChild(accText('li', 'muted adm-owner-none', 'No one yet'));
+  t.responsibles.forEach(function (p) {
+    var li = el('li', 'tag plain adm-owner');
+    li.dataset.email = p.email;
+    li.title = p.email;
+    li.appendChild(accText('span', 'adm-owner-n', p.name || p.email));
+    if (edit) {
+      var x = accText('button', 'adm-owner-x', '\u00d7');
+      x.type = 'button';
+      x.title = 'Remove from the responsibles';
+      x.setAttribute('aria-label', 'Remove ' + (p.name || p.email));
+      x.addEventListener('click', function () { tagOwnersSave(i, t, have.filter(function (e) { return e !== p.email; }), box, 'Removed'); });
+      li.appendChild(x);
+    }
+    list.appendChild(li);
+  });
+  box.appendChild(list);
+  var free = edit && Array.isArray(ADMIN_TAGS.users) ? ADMIN_TAGS.users.filter(function (u) { return u && !u.disabled && have.indexOf(u.email) < 0; }) : [];
+  if (free.length) {
+    var add = el('div', 'adm-owner-add'), pick = el('select', 'adm-owner-pick'), go = accText('button', 'btn sec small adm-owner-go', 'Add');
+    pick.setAttribute('aria-label', 'Add a responsible');
+    pick.appendChild(accText('option', null, 'Add a person'));
+    pick.options[0].value = '';
+    free.forEach(function (u) {
+      var o = accText('option', null, u.name && u.name !== u.email ? u.name + ' \u00b7 ' + u.email : u.email);
+      o.value = u.email;
+      pick.appendChild(o);
+    });
+    go.type = 'button';
+    go.disabled = true;
+    pick.addEventListener('change', function () { go.disabled = !pick.value; });
+    go.addEventListener('click', function () { if (pick.value) tagOwnersSave(i, t, have.concat([pick.value]), box, 'Added'); });
+    add.appendChild(pick);
+    add.appendChild(go);
+    box.appendChild(add);
+  }
+  var said = accText('span', 'adm-msg adm-owner-msg');
+  said.setAttribute('role', 'status');
+  box.appendChild(said);
+  return box;
+}
+async function tagOwnersSave(i, t, emails, box, done) {
+  var said = box.querySelector('.adm-owner-msg');
+  box.querySelectorAll('button, select').forEach(function (c) { c.disabled = true; });
+  said.textContent = 'Saving\u2026';
+  said.className = 'adm-msg adm-owner-msg';
+  try {
+    var r = await adminApi('PUT', '/api/admin/tags/' + encodeURIComponent(t.id) + '/responsibles', {emails: emails});
+    ADMIN_TAGS.tags = ADMIN_TAGS.tags.map(function (x) { return x.id === r.id ? r : x; });
+    try { ADMIN_HIST = await adminApi('GET', '/api/admin/history?limit=' + ADMIN_HIST_MAX); } catch (e) {}
+    var fresh = tagOwnersBox(i);
+    if (!fresh) return;
+    box.replaceWith(fresh);
+    var note = fresh.querySelector('.adm-owner-msg');
+    note.textContent = done;
+    note.className = 'adm-msg adm-owner-msg ok';
+    var back = fresh.querySelector('.adm-owner-pick') || document.getElementById('adm-own-' + t.id + '-l');
+    if (back) { if (!back.matches('select')) back.tabIndex = -1; back.focus(); }
+    renderChanges();
+  } catch (e) {
+    box.querySelectorAll('button, select').forEach(function (c) { c.disabled = c.classList.contains('adm-owner-go') && !(box.querySelector('.adm-owner-pick') || {}).value; });
+    said.textContent = e && e.detail ? e.detail : 'Responsibles not saved, try again';
+    said.className = 'adm-msg adm-owner-msg bad';
+  }
+}
+function tagLabelOf(id) {
+  var t = tagOwnersOf(id);
+  return t ? t.label : id;
 }
 function rulesDiff(i) {
   var out = {};
@@ -386,11 +478,11 @@ function adminHistory() {
   };
   var rest = ADMIN_HIST.length - ADMIN_HIST_SHOW;
   return '<table class="adm-hist"><thead><tr><th>When</th><th>Who</th><th>Setting</th><th>Change</th><th></th></tr></thead><tbody>' + ADMIN_HIST.slice(0, ADMIN_HIST_SHOW).map(function (h) {
-    var name = h.route ? 'Teams route ' + h.key.slice(6) : h.source ? 'Agent ' + h.key.slice(7) : h.secret ? 'Secret ' + h.key : h.talk ? TALK_NAMES[h.key] || 'Small talk' : label[h.key] || h.key;
-    var shownR = function (v) { return v == null ? '<span class="muted">' + (h.route ? 'none' : h.source || h.secret ? 'not set' : 'config / default') + '</span>' : shown(v); };
+    var name = h.route ? 'Teams route ' + h.key.slice(6) : h.source ? 'Agent ' + h.key.slice(7) : h.secret ? 'Secret ' + h.key : h.talk ? TALK_NAMES[h.key] || 'Small talk' : h.owners ? 'Responsibles of ' + tagLabelOf(h.tag) : label[h.key] || h.key;
+    var shownR = function (v) { return v == null ? '<span class="muted">' + (h.route || h.owners ? 'none' : h.source || h.secret ? 'not set' : 'config / default') + '</span>' : shown(v); };
     var change = h.seen ? '<span class="muted">workflow link shown</span>' : shownR(h.old) + ' → ' + shownR(h.new);
     return '<tr><td>' + esc(dayhm(h.at)) + '</td><td>' + esc(draftBy(h.by)) + '</td><td title="' + esc(h.key) + '">' + esc(name) + '</td><td class="adm-ch">' + change + '</td>' +
-      '<td>' + (h.route || h.source || h.secret || h.talk || h.legacy ? '' : '<button type="button" class="btn sec small adm-revert" data-id="' + esc(h.id) + '" title="Put back the value before this change">Revert</button>') + '</td></tr>';
+      '<td>' + (h.route || h.source || h.secret || h.talk || h.owners || h.legacy ? '' : '<button type="button" class="btn sec small adm-revert" data-id="' + esc(h.id) + '" title="Put back the value before this change">Revert</button>') + '</td></tr>';
   }).join('') + '</tbody></table>' + (rest > 0 ? '<p class="adm-hist-more"><button type="button" class="btn sec small adm-more">Show ' + Math.min(rest, ADMIN_HIST_STEP) + ' more</button><span class="muted">' + Math.min(ADMIN_HIST_SHOW, ADMIN_HIST.length) + ' of ' + ADMIN_HIST.length + '</span></p>' : ADMIN_HIST.length >= ADMIN_HIST_MAX ? '<p class="muted adm-hist-more">The latest ' + ADMIN_HIST_MAX + ' changes; older ones stay stored.</p>' : '');
 }
 async function adminRevert(h, b) {

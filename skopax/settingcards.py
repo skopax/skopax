@@ -41,6 +41,9 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     'Monitor rules': (
         ('Certificates', ('core.certs', 'core.cert-skip')),
     ),
+    'Card tags': (
+        ('Daily report', ('tags.report-at',)),
+    ),
 }
 SECTION_CARD = {'Card tags': 'Tag rules', 'Features': 'Switches'}
 UNITS = {

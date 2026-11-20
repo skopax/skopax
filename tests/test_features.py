@@ -35,7 +35,7 @@ from skopax.slack import CREATE_TASK, Slack
 from skopax.store import Store
 from skopax.tunables import STATIC, Live, TunableStore
 
-IDS = ('investigator', 'chat', 'slack-autosend', 'slack-listener', 'mcp', 'public-read', 'push', 'postdeploy', 'self-review', 'update-check', 'hide-attribution')
+IDS = ('investigator', 'chat', 'slack-autosend', 'slack-listener', 'mcp', 'public-read', 'push', 'postdeploy', 'self-review', 'update-check', 'tag-report', 'hide-attribution')
 ICONS = Path(__file__).resolve().parent.parent / 'skopax' / 'web' / 'static' / 'icons.js'
 KEY = 'log|checkout-service|ERROR|boom'
 DRAFT = 'checkout-service showed 116 ERROR lines, 13:05 UTC.\nhttps://skopax.example.com/#a=x'
@@ -652,7 +652,7 @@ def test_a_community_feature_never_asks_for_the_edition(store: Store):
     locked = features.locked('hide-attribution')
 
     # then
-    assert len(community) == 10 and before == []
+    assert len(community) == 11 and before == []
     assert locked is True and asked == ['edition']
 
 

@@ -1378,7 +1378,7 @@ async function initActions() {
   ME_CHANNEL = me.slackChannel || '';
   if (ME_CHANNEL !== channelBefore && typeof loadRequests === 'function') loadRequests();
   if (me.task) setTicketProjects(me.task.projects);
-  if (useTagLabels(me.tags)) renderAnoms();
+  if (useTagLabels(me.tags)) { if (fParts(typeF).some(isTagF)) setType(typeF); else renderAnoms(); }
   if (me.jiraUrl) { setJiraBase(me.jiraUrl); renderAnoms(); }
   if (me.chatMax) {
     ASK_MAX = me.chatMax;

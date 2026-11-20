@@ -13,7 +13,7 @@ log = logging.getLogger('skopax.messages')
 
 ENGLISH = 'en'
 LANG_TAG = re.compile(r'[a-z]{2,3}(-[A-Za-z0-9]{2,8})?')
-OUTBOUND = frozenset({'proposals', 'slack', 'slackevents', 'slackhealth', 'reminder', 'clear', 'autosend', 'notes', 'tickets', 'postdeploy', 'review', 'push', 'gate', 'assign', 'routes', 'pagescan'})
+OUTBOUND = frozenset({'proposals', 'slack', 'slackevents', 'slackhealth', 'reminder', 'clear', 'autosend', 'notes', 'tickets', 'postdeploy', 'review', 'push', 'gate', 'assign', 'routes', 'pagescan', 'tagreport'})
 TEXT_MAX = 4000
 SHOWN_MAX = 80
 
@@ -154,6 +154,18 @@ MESSAGES: dict[str, str] = {
     'clear.took.min': '{n} min',
     'clear.took.hour': '{h} h',
     'clear.took.hourmin': '{h} h {m} min',
+    'tagreport.head': ':label: *Open cards by tag* \u00b7 {date}',
+    'tagreport.tag': '{who} \u00b7 *<{link}|{tag}>* \u00b7 {open} open: {crit} critical, {warn} warning',
+    'tagreport.card': '\u2022 <{link}|{name}> {emoji} {sev} \u00b7 {svc} \u00b7 {age}',
+    'tagreport.more': '<{link}|+{n} more>',
+    'tagreport.more_tags': '+{n} more tags',
+    'tagreport.age.min': '{n} min',
+    'tagreport.age.hours': '{n} h',
+    'tagreport.age.days': '{n} d',
+    'tags.scope_missing': 'Slack app is missing users:read.email; responsibles are named without a ping',
+    'tags.no_tag': 'No tag named {tag}',
+    'tags.no_user': 'No {product} user with the e-mail {email}; add the person in Admin \u203a Access first',
+    'tags.too_many': 'A tag takes at most {n} responsibles',
     'reminder.card': '\u23f0 Reminder: this card has been waiting {age}, {who} {state} <{link}|Open card>',
     'reminder.nobody': 'nobody has taken it yet.',
     'reminder.owned': '{owner} was assigned but has not started yet.',

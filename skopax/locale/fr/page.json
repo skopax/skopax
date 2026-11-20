@@ -1161,7 +1161,16 @@
   "Reopen: back to Open, like a drag to the Open column": "Rouvrir : retour à Ouverte, comme un glisser vers la colonne Ouverte",
   "Start progress: the card goes In progress with you as owner": "Passer En cours : la carte passe En cours avec vous comme responsable",
   "Mute: for 24 hours, a week or for good": "Sourdine : 24 heures, une semaine ou définitivement",
-  "More actions: mute for a week, known noise, group": "Plus d'actions : sourdine une semaine, bruit connu, grouper"
+  "More actions: mute for a week, known noise, group": "Plus d'actions : sourdine une semaine, bruit connu, grouper",
+  "Responsibles": "Responsables",
+  "No one yet": "Personne pour l’instant",
+  "Add a person": "Ajouter une personne",
+  "Add a responsible": "Ajouter un responsable",
+  "Added": "Ajouté",
+  "Removed": "Retiré",
+  "Remove from the responsibles": "Retirer des responsables",
+  "Responsibles not saved, try again": "Responsables non enregistrés, réessayez",
+  "Slack app is missing users:read.email; responsibles are named without a ping": "Il manque users:read.email à l’app Slack ; les responsables sont nommés sans mention"
  },
  "rules": [
   [
