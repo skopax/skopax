@@ -21,6 +21,7 @@ SHOWN = 3
 TAGS_MAX = BLOCK_LIMIT - 2
 TEXT_LIMIT = 3000
 NAME_LIMIT = 60
+FAILURE_TTL_S = 600
 LOOKUP_TTL_S = 86400
 WEEKEND = (5, 6)
 SCOPE = 'users:read.email'
@@ -146,8 +147,9 @@ class SlackIds:
         self.clock = clock
         self.on_scope = on_scope
         self.flagged = flagged
-        self._held: dict[str, tuple[float, str | None]] = {}
+        self._held: dict[str, tuple[float, str | None, str]] = {}
         self._missing = False
+        self._down_until = -FAILURE_TTL_S
         self._stopped = False
         self._recheck = False
         self._told = False
@@ -188,10 +190,36 @@ class SlackIds:
                 log.warning('Slack user lookups stopped for this report, responsibles are named without a ping: %s', e.code or error_kind(e))
             return cached
         found = f"<@{user['id']}>" if user else None
-        self._held[email] = (self.clock(), found)
+        self._held[email] = (self.clock(), found, str((user or {}).get('name') or '').strip())
         self._recheck = False
         self._scope(False)
         return found
+
+    def peek(self, email: str) -> str:
+        held = self._held.get(str(email or '').strip().lower())
+        if held is None:
+            return 'unchecked'
+        return 'found' if held[1] else 'unknown'
+
+    def name(self, email: str) -> str:
+        held = self._held.get(str(email or '').strip().lower())
+        return held[2] if held else ''
+
+    def check_all(self, emails: list[str]) -> None:
+        for email in emails:
+            email = str(email or '').strip().lower()
+            held = self._held.get(email)
+            if held is not None and self.clock() - held[0] < self.ttl:
+                continue
+            if not self.slack.enabled or self.clock() < self._down_until:
+                continue
+            try:
+                user = self.slack.user_by_email(email)
+            except Exception as e:
+                self._down_until = self.clock() + FAILURE_TTL_S
+                log.warning('a responsible was not looked up in Slack, lookups pause for a while: %s', getattr(e, 'code', None) or error_kind(e))
+                return
+            self._held[email] = (self.clock(), f"<@{user['id']}>" if user else None, str((user or {}).get('name') or '').strip())
 
     def _scope(self, missing: bool) -> None:
         self._missing = missing

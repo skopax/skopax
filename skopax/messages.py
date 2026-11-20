@@ -179,7 +179,7 @@ MESSAGES: dict[str, str] = {
     'tagreport.age.days': '{n} d',
     'tags.scope_missing': 'Slack app is missing users:read.email; responsibles are named without a ping',
     'tags.no_tag': 'No tag named {tag}',
-    'tags.no_user': 'No active {product} user with the e-mail {email}; add or re-enable the person in Admin \u203a Access first',
+    'tags.bad_email': '{email} is not a valid e-mail address',
     'tags.too_many': 'A tag takes at most {n} responsibles',
     'reminder.card': '\u23f0 Reminder: this card has been waiting {age}, {who} {state} <{link}|Open card>',
     'reminder.nobody': 'nobody has taken it yet.',

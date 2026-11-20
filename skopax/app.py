@@ -75,7 +75,7 @@ from skopax.slacklink import SlackLink
 from skopax.kit.promql import Prometheus, client_for
 from skopax.kit.promql import CHECK as PROMETHEUS_CHECK, ID as PROMETHEUS_ID
 from skopax.tickets import PROJECT_KEY, projects_of
-from skopax.users import IDP_SOURCES, NAME_MAX, PASSWORD_MAX, PASSWORD_MIN, ROLES, IdpManaged, InvalidUser, LastAdmin, LINK_PENDING_S, UserExists, Users, admin_row, clean_email, clean_name, clean_password, clean_role, leaves_admin, link_admits
+from skopax.users import EMAIL, IDP_SOURCES, NAME_MAX, PASSWORD_MAX, PASSWORD_MIN, ROLES, IdpManaged, InvalidUser, LastAdmin, LINK_PENDING_S, UserExists, Users, admin_row, clean_email, clean_name, clean_password, clean_role, leaves_admin, link_admits
 from skopax.settingsources import Follower, SourceSet, boot, labelled, merged
 from skopax.settingsources import core_knowledge_ids, core_setting_ids
 from skopax.tunables import SESSIONS_AFTER_KEY, SLACK_CHANNEL_KEY, SSO_SWITCH_KEY, Invalid as TunableInvalid, Live, TunableStore, View, apply as apply_tunables, parse as parse_tunable, plugin_tunables, stored as stored_text
@@ -305,6 +305,7 @@ def card_view(card: dict, live: bool, merged: list[dict] = (), parent: dict | No
 
 
 TICKET_HITS = 8
+EMAIL_MAX = 254
 ROUTES_STOP_S = 5
 MARKS_STOP_S = 10
 TICKET_KEY = re.compile(r'[A-Za-z][A-Za-z0-9]+-\d+')
@@ -2748,19 +2749,26 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def get_admin_settings(by: Annotated[str, Depends(require_admin)]) -> dict:
         return {'items': scope_marked(live.entries()), 'rev': live.tunables.rev(), 'refreshSeconds': live.every}
 
+    def responsible_email(email: str) -> bool:
+        domain = email.rpartition('@')[2]
+        return len(email) <= EMAIL_MAX and bool(EMAIL.match(email)) and '@' not in email.partition('@')[2] and '.' in domain.strip('.') and not domain.startswith('.') and not domain.endswith('.')
+
     def all_people() -> dict[str, str]:
         return {u['email']: u.get('name') or '' for u in users.list() if u and u.get('email')}
 
+    def owner_name(email: str, everyone: dict[str, str]) -> str:
+        return everyone.get(email) or slack_ids.name(email) or email.split('@')[0]
+
     def owner_rows(emails: list[str], named: dict[str, str]) -> list[dict]:
         everyone = all_people()
-        return [{'email': e, 'name': everyone.get(e) or e.split('@')[0]} | ({} if e in named else {'stale': True}) for e in emails]
+        return [{'email': e, 'name': owner_name(e, everyone), 'slack': slack_ids.peek(e)} | ({} if e in named or e not in everyone else {'stale': True}) for e in emails]
 
     def tag_view(tag: str, label: str, held: dict[str, list[str]], named: dict[str, str]) -> dict:
         return {'id': tag, 'label': label, 'responsibles': owner_rows(held.get(tag, []), named)}
 
     def people_named(names: list[str]) -> str:
         everyone = all_people()
-        return ', '.join(everyone.get(e) or e.split('@')[0] for e in names) or '\u2013'
+        return ', '.join(owner_name(e, everyone) for e in names) or '\u2013'
 
     @app.get('/api/admin/tags')
     def get_admin_tags(by: Annotated[str, Depends(require_admin)]) -> dict:
@@ -2779,13 +2787,14 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         wanted = list(dict.fromkeys(e.strip().lower() for e in body.emails if e.strip()))
         if len(wanted) > tagreport.OWNERS_MAX:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('tags.too_many', n=tagreport.OWNERS_MAX))
+        invalid = [e for e in wanted if not responsible_email(e)]
+        if invalid:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('tags.bad_email', email=cut(invalid[0], 80)))
         named = active_people()
         before = store.tag_owners().get(tag, [])
-        unknown = [e for e in wanted if e not in named and e not in before]
-        if unknown:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('tags.no_user', email=cut(unknown[0], 80)))
         if wanted != before:
             store.set_tag_owners(tag, wanted)
+            slack_ids.check_all([e for e in wanted if e not in before])
             live.tunables.write_change(f'tags.{tag}.responsibles', ', '.join(before) or None, ', '.join(wanted) or None, by, owners=True, tag=tag)
             store.add_activity(ACCESS_KIND, by, f"Responsibles of {known[tag]}: {people_named(before)} \u2192 {people_named(wanted)}"[:300])
             log.info('responsibles of tag %s changed by %s', tag, by)
