@@ -68,6 +68,7 @@ async function boot(opts) {
     beforeParse(w) {
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () {};
+      if (opts.pack) { w.SKOPAX_I18N = opts.pack; w.document.cookie = 'skopax_lang=' + Object.keys(opts.pack)[0] + '; path=/'; }
       w.fetch = async (path, o) => {
         const p = String(path), method = (o && o.method) || 'GET', body = o && o.body ? JSON.parse(o.body) : null;
         const ok = (b, status) => ({ok: true, status: status || 200, json: async () => JSON.parse(JSON.stringify(b)), text: async () => JSON.stringify(b)});
@@ -1540,95 +1541,170 @@ function knowCatalog(over) {
   return c;
 }
 
-async function companyKnowledgeLeadsAsItsOwnGroupAndEachTileSitsInOneGroup() {
+const KNOW_TIP = 'Knowledge source: the investigator searches and cites it';
+const badgeOf = (doc, id) => doc.querySelector('#integrations .int-tile[data-id="' + id + '"] .int-know-tag');
+const badgedIds = (doc) => [...doc.querySelectorAll('#integrations .int-tile')].filter((x) => x.querySelector('.int-know-tag')).map((x) => x.dataset.id);
+
+async function thereIsNoKnowledgeGroupAndEveryKnowledgeTileSitsOnceInItsCategoryWithABadge() {
   //given
   const t = await boot({catalog: knowCatalog()});
   await open(t);
   const {doc} = t;
-  const groups = () => [...doc.querySelectorAll('#integrations .int-group')];
 
   //when
-  const read = groups().map((g) => [g.dataset.group, g.querySelector('.int-group-h').textContent, [...g.querySelectorAll('.int-tile')].map((x) => x.dataset.id)]);
-  const know = groups()[0];
-  const sub = know.querySelector('.int-group-sub');
-  const everyTile = groups().reduce((all, g) => all.concat([...g.querySelectorAll('.int-tile')].map((x) => x.dataset.id)), []);
-  const accents = groups().map((g) => g.classList.contains('int-group-know'));
-  const named = groups().map((g) => doc.getElementById(g.getAttribute('aria-labelledby')) === g.querySelector('.int-group-h'));
+  const groups = [...doc.querySelectorAll('#integrations .int-group')].map((g) => [g.dataset.group, [...g.querySelectorAll('.int-tile')].map((x) => x.dataset.id)]);
+  const everyTile = [...doc.querySelectorAll('#integrations .int-tile')].map((x) => x.dataset.id);
+  const ids = [...doc.querySelectorAll('#integrations [id]')].map((x) => x.id);
+  const cats = ['sharepoint', 'github', 'mcp-tools'].map((id) => doc.querySelector('#integrations .int-tile[data-id="' + id + '"]').dataset.cat);
 
   //then
-  assert.deepStrictEqual(read, [['knowledge', 'Company knowledge 3', ['sharepoint', 'github', 'mcp-tools']], ['custom', 'Custom plug-ins 3', ['pager', 'cracked', 'evil']], ['builtin', 'Built-in plug-ins 2', ['acme', 'gold']]]);
-  assert.strictEqual(sub.textContent, 'Runbooks, postmortems and design docs the investigator searches and cites');
-  assert.ok(sub.classList.contains('muted') && !know.querySelector('.int-group-h').contains(sub), 'a muted line under the heading');
-  assert.deepStrictEqual(accents, [true, false, false], 'only the Company knowledge group carries the accent');
-  assert.deepStrictEqual(named, [true, true, true]);
-  assert.strictEqual(new Set(everyTile).size, everyTile.length, 'a tile sits in exactly one group');
+  assert.deepStrictEqual(groups, [['custom', ['pager', 'cracked', 'evil']], ['builtin', ['acme', 'gold', 'sharepoint', 'github', 'mcp-tools']]]);
+  assert.ok(!doc.querySelector('#integrations [data-group="knowledge"], #integrations .int-group-know, #integrations .int-group-sub'), 'no Company knowledge group');
+  assert.deepStrictEqual(badgedIds(doc), ['sharepoint', 'github', 'mcp-tools'], 'every knowledge tile carries the badge, no other does');
+  assert.deepStrictEqual(['sharepoint', 'github', 'mcp-tools'].map((id) => [badgeOf(doc, id).textContent, badgeOf(doc, id).title, badgeOf(doc, id).dataset.state]), [1, 2, 3].map(() => ['Knowledge', KNOW_TIP, 'on']));
+  assert.deepStrictEqual(cats, ['other', 'tickets', 'other'], 'each stays in its own category');
+  assert.strictEqual(new Set(everyTile).size, everyTile.length, 'a plug-in is one tile');
+  assert.strictEqual(new Set(ids).size, ids.length, 'no duplicate DOM id');
   assert.strictEqual(tiles(doc).length, everyTile.length);
   const css = TEMPLATE_CSS();
-  assert.ok(/\.int-group-know \{[^}]*border-left: 3px solid var\(--brand\)/.test(css) && /\.int-group-know \{[^}]*color-mix\(in srgb, var\(--brand\)/.test(css), 'the accent uses the brand variable, which both themes share');
+  assert.ok(!/\.int-group-know|\.int-group-sub/.test(css), 'the group CSS is gone');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Integrations: Company knowledge is the first group with its muted line and quiet accent, and each tile sits in exactly one group');
+  console.log('PASS Integrations: there is no Company knowledge group, and each knowledge tile sits once in its own category with a Knowledge badge');
 }
 
-async function aTileIsKnowledgeOnlyWhenItsSourceIsSetAndWithoutKnowledgeOrCustomThereAreNoGroups() {
+function badgeRead(doc, id) {
+  const b = badgeOf(doc, id);
+  return b ? [b.textContent, b.dataset.state, b.className.includes('k-muted') ? 'muted' : b.className.includes('k-warn') ? 'warn' : 'info', b.title] : null;
+}
+const FILL_TIP = 'Knowledge source: fill the Docs field of an instance so the investigator can search it';
+const ROW_ERR = [{name: 'docs', state: 'error', text: 'Down'}];
+const ROW_WARN = [{name: 'docs', state: 'warn', text: 'Slow'}];
+
+async function theKnowledgeBadgeReadsOffForASwitchedOffSourceAndNeedsSetupOnlyForAKnowledgeProblem() {
   //given
-  const unset = await boot({catalog: knowCatalog({docs: '', mcp: 'false'})});
-  await open(unset);
-  const blank = await boot({catalog: knowCatalog({docs: '   ', mcp: 'false', sharepoint: false})});
-  await open(blank);
-  const flat = await boot({catalog: (() => { const c = knowCatalog({docs: '', mcp: 'false', sharepoint: false}); c.plugins = c.plugins.filter((x) => !['pager', 'cracked', 'evil', 'prometheus'].includes(x.id)); c.plugins.forEach((x) => { x.origin = 'builtin'; }); return c; })()});
-  await open(flat);
-  const read = (t) => [...t.doc.querySelectorAll('#integrations .int-group')].map((g) => [g.dataset.group, [...g.querySelectorAll('.int-tile')].map((x) => x.dataset.id)]);
-  const chips = (t) => [...t.doc.querySelectorAll('#integrations .int-chip')].map((c) => c.textContent);
+  const off = knowCatalog();
+  off.plugins.filter((x) => x.id === 'sharepoint')[0].enabled = false;
+  off.plugins.filter((x) => x.id === 'mcp-tools')[0].enabled = false;
+  const empty = knowCatalog({docs: ''});
+  const broken = knowCatalog();
+  broken.plugins.filter((x) => x.id === 'sharepoint')[0].state = 'broken';
+  const errored = knowCatalog();
+  errored.plugins.filter((x) => x.id === 'sharepoint')[0].health = health('error', 'Down', iso(2), ROW_ERR);
+  errored.plugins.filter((x) => x.id === 'mcp-tools')[0].health = health('error', 'Down', iso(2), ROW_ERR);
+  const warned = knowCatalog();
+  warned.plugins.filter((x) => x.id === 'sharepoint')[0].health = health('warn', 'Slow', iso(2), ROW_WARN);
+  warned.plugins.filter((x) => x.id === 'github')[0].health = health('warn', 'Slow', iso(2));
+  const none = knowCatalog({mcp: 'false'});
+  const runs = [];
+  for (const c of [off, empty, broken, errored, warned, none]) {
+    const t = await boot({catalog: c});
+    await open(t);
+    runs.push(t);
+  }
+  const [o, e, b, r, w, n] = runs;
 
   //then
-  assert.deepStrictEqual(read(unset), [['knowledge', ['sharepoint']], ['custom', ['pager', 'cracked', 'evil']], ['builtin', ['acme', 'gold', 'github', 'mcp-tools']]], 'with SharePoint present only it is knowledge');
-  assert.ok(!chips(blank).includes('Knowledge'), 'no knowledge tile: no Knowledge chip');
-  assert.deepStrictEqual(read(blank), [['custom', ['pager', 'cracked', 'evil']], ['builtin', ['acme', 'gold', 'github', 'mcp-tools']]], 'GitHub with a blank Docs field and mcp-tools with the knowledge switch off are not knowledge');
-  assert.deepStrictEqual([read(flat), flat.doc.querySelectorAll('#integrations .int-grid').length, chips(flat).includes('Knowledge')], [[], 1, false], 'no knowledge and no custom tile: one plain grid');
-  [unset, blank, flat].forEach((t) => { assert.deepStrictEqual(t.errors, []); t.w.close(); });
-  console.log('PASS Integrations: GitHub counts only with its Docs set, mcp-tools only with a knowledge instance, and with no knowledge or custom tile there are no groups');
+  assert.deepStrictEqual(badgeRead(o.doc, 'sharepoint').slice(0, 3), ['Knowledge off', 'off', 'muted'], 'a switched-off source');
+  assert.deepStrictEqual(badgeRead(o.doc, 'mcp-tools').slice(0, 3), ['Knowledge off', 'off', 'muted'], 'a switched-off MCP plug-in with knowledge on');
+  assert.strictEqual(badgeRead(o.doc, 'sharepoint')[3], 'Knowledge source, off while this plug-in is off');
+  assert.deepStrictEqual(badgeRead(e.doc, 'github'), ['Knowledge needs setup', 'setup', 'warn', FILL_TIP], 'an empty knowledge field');
+  assert.deepStrictEqual(badgeRead(b.doc, 'sharepoint').slice(0, 3), ['Knowledge needs setup', 'setup', 'warn'], 'a plug-in that is not working');
+  assert.strictEqual(badgeRead(b.doc, 'sharepoint')[3], 'Knowledge source: the plug-in is not working, so the investigator cannot search it');
+  assert.deepStrictEqual(['sharepoint', 'mcp-tools'].map((id) => badgeRead(r.doc, id).slice(0, 3)), [['Knowledge needs setup', 'setup', 'warn'], ['Knowledge needs setup', 'setup', 'warn']], 'an instance in error, MCP too');
+  assert.strictEqual(badgeRead(r.doc, 'sharepoint')[3], 'Knowledge source: fix the problem shown on this tile so the investigator can search it');
+  assert.deepStrictEqual(['sharepoint', 'github'].map((id) => badgeRead(w.doc, id).slice(0, 3)), [['Knowledge', 'on', 'info'], ['Knowledge', 'on', 'info']], 'a warning keeps the plain badge');
+  assert.strictEqual(badgeOf(n.doc, 'mcp-tools'), null, 'an MCP server with no knowledge connection carries none');
+  assert.deepStrictEqual(badgedIds(o.doc), ['sharepoint', 'github', 'mcp-tools'], 'a source that is off or needs setup is still a knowledge tile');
+  runs.forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
+  console.log('PASS Integrations: the Knowledge badge reads off for a switched-off source (MCP too) and needs setup only for an empty field, a broken plug-in or an instance error');
 }
 
-async function theKnowledgeChipSitsAfterAllFiltersWithSearchAndHidesEmptyGroups() {
+async function theKnowledgeBadgeAndItsTooltipsTranslateWithAPackAndTheFieldNameFillsTheTemplate() {
+  //given
+  const de = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'skopax', 'locale', 'de', 'page.json'), 'utf8'));
+  const pack = {de: Object.assign({}, de.page, {'@rules': de.rules})};
+  const c = knowCatalog({docs: ''});
+  c.plugins.filter((x) => x.id === 'sharepoint')[0].enabled = false;
+  const t = await boot({catalog: c, pack});
+  await open(t);
+
+  //when
+  addBtn(t.doc).click();
+  await wait(60);
+  const sp = badgeRead(t.doc, 'sharepoint'), gh = badgeRead(t.doc, 'github'), mcp = badgeRead(t.doc, 'mcp-tools');
+  const picked = pick(t.doc, 'github').querySelector('.int-know-tag');
+
+  //then
+  assert.deepStrictEqual([sp[0], gh[0], mcp[0]], ['Wissen aus', 'Wissen braucht Einrichtung', 'Wissen']);
+  assert.strictEqual(sp[3], 'Wissensquelle, aus, solange dieses Plug-in ausgeschaltet ist');
+  assert.strictEqual(gh[3], 'Wissensquelle: Das Feld Doku einer Instanz ausf\u00fcllen, damit der Investigator sie durchsuchen kann', 'the field name is filled into the German template, translated too');
+  assert.strictEqual(mcp[3], 'Wissensquelle: Der Investigator durchsucht sie und zitiert daraus');
+  assert.deepStrictEqual([picked.textContent, picked.title], ['Wissen', 'Wissensquelle: Der Investigator durchsucht sie und zitiert daraus'], 'the catalog badge too');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Integrations: in German the Knowledge badge states and tooltips translate, with the field name filled into the template');
+}
+
+async function withoutCustomTilesThereAreNoGroupsAndTheKnowledgeChipListsOnlyBadgedTiles() {
+  //given
+  const flat = await boot({catalog: (() => { const c = knowCatalog(); c.plugins = c.plugins.filter((x) => !['pager', 'cracked', 'evil', 'prometheus'].includes(x.id)); c.plugins.forEach((x) => { x.origin = 'builtin'; }); return c; })()});
+  await open(flat);
+  const none = await boot({catalog: knowCatalog({docs: '', mcp: 'false', sharepoint: false})});
+  await open(none);
+  const chips = (t) => [...t.doc.querySelectorAll('#integrations .int-chip')].map((c) => c.textContent);
+
+  //when
+  const chip = [...flat.doc.querySelectorAll('#integrations .int-chip')].filter((c) => c.textContent === 'Knowledge')[0];
+  chip.click();
+
+  //then
+  assert.deepStrictEqual([flat.doc.querySelectorAll('#integrations .int-group').length, flat.doc.querySelectorAll('#integrations .int-grid').length], [0, 1], 'no custom tile: one plain grid');
+  assert.deepStrictEqual(shown(flat.doc), badgedIds(flat.doc), 'the chip lists exactly the badged tiles');
+  assert.ok(chips(none).includes('Knowledge'), 'GitHub with an empty Docs field still carries the badge, so the chip stays');
+  [flat, none].forEach((t) => { assert.deepStrictEqual(t.errors, []); t.w.close(); });
+  console.log('PASS Integrations: with no custom tile the tiles are one plain grid, and the Knowledge chip lists exactly the badged tiles');
+}
+
+async function theKnowledgeChipFiltersWithSearchCountsEachTileOnceAndFollowsAll() {
   //given
   const t = await boot({catalog: knowCatalog()});
   await open(t);
   const {doc, w} = t;
   const chip = (label) => [...doc.querySelectorAll('#integrations .int-chip')].filter((c) => c.textContent === label)[0];
-  const groupsShown = () => [...doc.querySelectorAll('#integrations .int-group')].filter((g) => !g.hidden).map((g) => g.dataset.group);
   const find = doc.getElementById('int-find');
 
   //when
   const labels = [...doc.querySelectorAll('#integrations .int-chip')].map((c) => c.textContent);
   chip('Knowledge').click();
-  const only = [shown(doc), groupsShown(), chip('Knowledge').getAttribute('aria-pressed'), chip('All').getAttribute('aria-pressed')];
+  const only = [shown(doc), chip('Knowledge').getAttribute('aria-pressed'), chip('All').getAttribute('aria-pressed')];
   find.value = 'git';
   find.dispatchEvent(new w.Event('input'));
-  const searched = [shown(doc), groupsShown()];
+  const searched = shown(doc);
   find.value = 'acme';
   find.dispatchEvent(new w.Event('input'));
-  const missed = [shown(doc), groupsShown()];
+  const missed = shown(doc);
   find.value = '';
   find.dispatchEvent(new w.Event('input'));
   chip('Custom').click();
-  const custom = [shown(doc), groupsShown(), chip('Knowledge').getAttribute('aria-pressed')];
+  const custom = [shown(doc), chip('Knowledge').getAttribute('aria-pressed')];
   chip('All').click();
-  const all = groupsShown();
+  const all = shown(doc).length;
 
   //then
   assert.deepStrictEqual(labels.slice(0, 3), ['All', 'Knowledge', 'Metrics']);
-  assert.deepStrictEqual(only, [['sharepoint', 'github', 'mcp-tools'], ['knowledge'], 'true', 'false']);
-  assert.deepStrictEqual(searched, [['github'], ['knowledge']], 'the chip works with the search');
-  assert.deepStrictEqual(missed, [[], []], 'a group with nothing shown hides');
-  assert.deepStrictEqual(custom, [['pager', 'cracked', 'evil'], ['custom'], 'false'], 'the Custom chip replaces the Knowledge chip and hides the knowledge group');
-  assert.deepStrictEqual(all, ['knowledge', 'custom', 'builtin']);
+  assert.strictEqual(labels.filter((l) => l === 'Knowledge').length, 1, 'one Knowledge chip');
+  assert.deepStrictEqual(only, [['sharepoint', 'github', 'mcp-tools'], 'true', 'false'], 'each knowledge plug-in once');
+  assert.deepStrictEqual(searched, ['github'], 'the chip works with the search');
+  assert.deepStrictEqual(missed, []);
+  assert.deepStrictEqual(custom, [['pager', 'cracked', 'evil'], 'false'], 'the Custom chip replaces the Knowledge chip');
+  assert.strictEqual(all, tiles(doc).length);
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Integrations: the Knowledge chip follows All, filters to knowledge tiles with the search, and empty groups hide');
+  console.log('PASS Integrations: the Knowledge chip follows All, lists each knowledge plug-in once and filters with the search');
 }
 
-async function theCatalogLeadsWithCompanyKnowledgeAndListsEachPluginOnce() {
+async function theCatalogHasNoKnowledgeGroupAndBadgesEveryKnowledgeEntryOnce() {
   //given
   const t = await boot({catalog: knowCatalog()});
   await open(t);
@@ -1641,6 +1717,7 @@ async function theCatalogLeadsWithCompanyKnowledgeAndListsEachPluginOnce() {
   const start = groups();
   const note = pick(doc, 'github').querySelector('.int-pick-k').textContent;
   const quiet = !pick(doc, 'sharepoint').querySelector('.int-pick-k');
+  const badged = picks(doc).filter((b) => b.querySelector('.int-know-tag')).map((b) => b.dataset.id);
   const every = picks(doc).map((b) => b.dataset.id);
   const search = doc.querySelector('#int-pop .int-search');
   search.value = 'sharepoint';
@@ -1648,23 +1725,25 @@ async function theCatalogLeadsWithCompanyKnowledgeAndListsEachPluginOnce() {
   const found = groups();
 
   //then
-  assert.deepStrictEqual(start[0], ['Company knowledge', ['sharepoint', 'github']], 'the first group lists the native knowledge plug-ins');
-  assert.ok(start.slice(1).every((g) => !g[1].includes('sharepoint') && !g[1].includes('github')), 'they are in no other group');
+  assert.ok(!doc.querySelector('#int-pop [data-cat="knowledge"]') && !start.some((g) => g[0] === 'Company knowledge'), 'no Company knowledge group');
+  assert.ok(start.some((g) => g[1].includes('sharepoint')) && start.some((g) => g[1].includes('github')), 'each entry is in its own category');
+  assert.deepStrictEqual(badged.sort(), ['github', 'sharepoint'], 'every knowledge entry carries the badge');
   assert.strictEqual(note, 'with its Docs field');
   assert.ok(quiet, 'an always-on source carries no note');
   assert.strictEqual(new Set(every).size, every.length, 'no entry appears twice');
-  assert.deepStrictEqual(found, [['Company knowledge', ['sharepoint']]], 'the catalog search still finds it');
+  assert.deepStrictEqual(found.map((g) => g[1]), [['sharepoint']], 'the catalog search still finds it');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Integrations: the add-integration catalog leads with Company knowledge, notes the GitHub Docs field and lists nothing twice');
+  console.log('PASS Integrations: the add-integration catalog has no knowledge group, badges each knowledge entry and lists nothing twice');
 }
 
-async function aCustomKnowledgePluginSitsOnlyInCompanyKnowledgeAndABrokenOneStaysOut() {
+async function aCustomKnowledgePluginCarriesTheBadgeInItsGroupAndABrokenOneHasNone() {
   //given
   const c = customCatalog();
   const by = (id) => c.plugins.filter((x) => x.id === id)[0];
   by('pager').companyKnowledge = 'always';
   by('cracked').companyKnowledge = 'always';
+  by('pager').health = health('ok', 'Healthy', iso(2));
   const t = await boot({catalog: c});
   await open(t);
 
@@ -1672,10 +1751,13 @@ async function aCustomKnowledgePluginSitsOnlyInCompanyKnowledgeAndABrokenOneStay
   const read = [...t.doc.querySelectorAll('#integrations .int-group')].map((g) => [g.dataset.group, [...g.querySelectorAll('.int-tile')].map((x) => x.dataset.id)]);
 
   //then
-  assert.deepStrictEqual(read, [['knowledge', ['pager']], ['custom', ['cracked', 'evil']], ['builtin', ['acme', 'gold']]], 'a custom knowledge plug-in is only in Company knowledge, and a broken one is not knowledge');
+  assert.deepStrictEqual(read, [['custom', ['pager', 'cracked', 'evil']], ['builtin', ['acme', 'gold']]], 'a custom knowledge plug-in stays in Custom plug-ins');
+  assert.strictEqual(badgeOf(t.doc, 'pager').textContent, 'Knowledge');
+  assert.strictEqual(badgeOf(t.doc, 'cracked').textContent, 'Knowledge needs setup', 'a broken one needs setup');
+  assert.ok(!badgeOf(t.doc, 'evil'));
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Integrations: a custom knowledge plug-in sits only in Company knowledge and a broken one stays out');
+  console.log('PASS Integrations: a custom knowledge plug-in carries the badge in its own group and a broken one needs setup');
 }
 
 async function aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin() {
@@ -2232,9 +2314,11 @@ async function thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne() 
   await thePickerListsRowsWithDescriptionsAndWhatIsAddedAndMovesByKeyboard();
   await theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton();
   await thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne();
-  await companyKnowledgeLeadsAsItsOwnGroupAndEachTileSitsInOneGroup();
-  await aTileIsKnowledgeOnlyWhenItsSourceIsSetAndWithoutKnowledgeOrCustomThereAreNoGroups();
-  await theKnowledgeChipSitsAfterAllFiltersWithSearchAndHidesEmptyGroups();
-  await theCatalogLeadsWithCompanyKnowledgeAndListsEachPluginOnce();
-  await aCustomKnowledgePluginSitsOnlyInCompanyKnowledgeAndABrokenOneStaysOut();
+  await thereIsNoKnowledgeGroupAndEveryKnowledgeTileSitsOnceInItsCategoryWithABadge();
+  await theKnowledgeBadgeReadsOffForASwitchedOffSourceAndNeedsSetupOnlyForAKnowledgeProblem();
+  await theKnowledgeBadgeAndItsTooltipsTranslateWithAPackAndTheFieldNameFillsTheTemplate();
+  await withoutCustomTilesThereAreNoGroupsAndTheKnowledgeChipListsOnlyBadgedTiles();
+  await theKnowledgeChipFiltersWithSearchCountsEachTileOnceAndFollowsAll();
+  await theCatalogHasNoKnowledgeGroupAndBadgesEveryKnowledgeEntryOnce();
+  await aCustomKnowledgePluginCarriesTheBadgeInItsGroupAndABrokenOneHasNone();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

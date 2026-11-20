@@ -191,9 +191,8 @@ const section = (doc, name) => panel(doc).querySelector('.int-mcp-' + name);
 const toolRow = (doc, name) => [...panel(doc).querySelectorAll('.int-mcp-tool')].filter((r) => r.dataset.tool === name)[0];
 const toolSwitch = (doc, name) => toolRow(doc, name).querySelector('.int-mcp-sw');
 const group = (doc) => [...doc.querySelectorAll('#int-pop .int-cat-grp')].filter((g) => g.dataset.cat === 'mcp')[0];
-const knowGroup = (doc) => [...doc.querySelectorAll('#int-pop .int-cat-grp')].filter((g) => g.dataset.cat === 'knowledge')[0];
 const mcpPicks = (doc) => [...group(doc).querySelectorAll('.int-pick')];
-const presetPick = (doc, id) => [...mcpPicks(doc), ...knowGroup(doc).querySelectorAll('.int-pick')].filter((b) => b.dataset.preset === id)[0];
+const presetPick = (doc, id) => mcpPicks(doc).filter((b) => b.dataset.preset === id)[0];
 const setValue = (w, el, v) => { el.value = v; el.dispatchEvent(new w.Event('input', {bubbles: true})); el.dispatchEvent(new w.Event('change', {bubbles: true})); };
 const key = (w, el, k) => el.dispatchEvent(new w.KeyboardEvent('keydown', {key: k, bubbles: true, cancelable: true}));
 const sent = (t, from) => t.calls.slice(from).filter((c) => c[0] !== 'GET' || c[1].indexOf('/folders') >= 0);
@@ -207,6 +206,34 @@ async function openInstance(t, name) {
 async function openPopup(t) {
   t.doc.getElementById('int-add-btn').click();
   await wait(80);
+}
+
+async function theAddCustomMcpButtonOpensTheSameBlankFormAsThePicker() {
+  //given
+  const read = (doc) => [!wrap(doc).hidden, !!panel(doc).querySelector('.int-form'), !panel(doc).querySelector('.int-form').dataset.name, ['url', 'auth', 'header-name', 'preset'].map((k) => fieldIn(doc, k).value)];
+  const viaPicker = await boot();
+  await open(viaPicker);
+  await openPopup(viaPicker);
+  mcpPicks(viaPicker.doc)[0].click();
+  await wait(80);
+  const viaButton = await boot();
+  await open(viaButton);
+  const {doc} = viaButton;
+  const btn = doc.getElementById('int-add-mcp');
+
+  //when
+  btn.click();
+  await wait(80);
+
+  //then
+  assert.strictEqual(btn.textContent, '+ Add custom MCP');
+  assert.deepStrictEqual(read(doc), read(viaPicker.doc), 'the same blank form as picking the MCP server entry');
+  assert.deepStrictEqual(read(doc), [true, true, true, ['', 'none', 'Authorization', '']], 'with URL and sign-in and nothing filled');
+  assert.ok(doc.getElementById('int-pop').hidden, 'the picker stays closed');
+  assert.deepStrictEqual(viaPicker.errors.concat(viaButton.errors), []);
+  viaPicker.w.close();
+  viaButton.w.close();
+  console.log('PASS MCP panel: the Add custom MCP button opens the same blank new-connection form as the picker');
 }
 
 async function comingSoonEntryShowsAndHasNoAddControl() {
@@ -245,10 +272,9 @@ async function theGroupListsTheBlankServerThePresetsAndTheSoonItemsAndTheGridLea
 
   //when
   await openPopup(t);
-  const grids = [...doc.querySelectorAll('#int-pop .int-cat-grp')].filter((g) => !['mcp', 'knowledge'].includes(g.dataset.cat));
+  const grids = [...doc.querySelectorAll('#int-pop .int-cat-grp')].filter((g) => g.dataset.cat !== 'mcp');
   const heading = group(doc).querySelector('.int-cat-h').textContent;
-  const knowHeading = knowGroup(doc).querySelector('.int-cat-h').textContent;
-  const knowNames = [...knowGroup(doc).querySelectorAll('.int-pick')].map((b) => b.querySelector('.int-pick-n').textContent);
+  const badged = mcpPicks(doc).filter((b) => b.querySelector('.int-know-tag')).map((b) => b.querySelector('.int-pick-n').textContent);
   const order = [...doc.querySelectorAll('#int-pop .int-cat-grp')].map((g) => g.dataset.cat);
   const everyPick = [...doc.querySelectorAll('#int-pop .int-pick')].map((b) => b.querySelector('.int-pick-n').textContent);
   const names = mcpPicks(doc).map((b) => b.querySelector('.int-pick-n').textContent);
@@ -261,9 +287,9 @@ async function theGroupListsTheBlankServerThePresetsAndTheSoonItemsAndTheGridLea
 
   //then
   assert.strictEqual(heading, 'MCP servers');
-  assert.deepStrictEqual([knowHeading, order[0]], ['Company knowledge', 'knowledge'], 'the Company knowledge group comes first');
-  assert.deepStrictEqual(knowNames, ['GitHub', 'Google Drive'], 'the presets that are ready knowledge sources sit in the Company knowledge group');
-  assert.deepStrictEqual(names, ['MCP server', 'Atlassian (Jira and Confluence)', 'Notion', 'Microsoft SharePoint and OneDrive'], 'the blank server, then the other presets, then the soon items');
+  assert.ok(!order.includes('knowledge'), 'there is no Company knowledge group');
+  assert.deepStrictEqual(badged, ['GitHub', 'Google Drive'], 'the presets that are ready knowledge sources carry the Knowledge badge in the MCP servers group');
+  assert.deepStrictEqual(names, ['MCP server', 'Atlassian (Jira and Confluence)', 'Notion', 'GitHub', 'Google Drive', 'Microsoft SharePoint and OneDrive'], 'the blank server, then the presets, then the soon items');
   assert.strictEqual(new Set(everyPick).size, everyPick.length, 'no entry appears twice');
   assert.deepStrictEqual(grids.map((g) => [...g.querySelectorAll('.int-pick')].map((b) => b.dataset.id)), [['acme']], 'mcp-tools is left out of the category grid');
   assert.deepStrictEqual([drive.querySelector('.int-mcp-tag').textContent, drive.title], ['Preview', 'Google Drive \u00b7 ' + PRESETS.texts.preview], 'a preview preset carries its tag, and its full name and the preview text as its title');
@@ -1608,6 +1634,7 @@ async function backFromAddInstanceWaitsForAnInFlightWrite() {
   await failedFolderReadsShowTheirText();
   await aReopenWaitsForAnInFlightWrite();
   await aSignInThatCameBackTooLateSaysSo();
+  await theAddCustomMcpButtonOpensTheSameBlankFormAsThePicker();
   await savingANewConnectionReopensItsPanel();
   await anEmptyRefreshSaysTheServerOffersNothing();
   await theCatalogAndTheConnectionHeadDropTheirNoise();

@@ -261,14 +261,28 @@ function intKnowing(p) {
   if (key === 'always') return intUsable(p);
   return !!key && insts.some(function (i) { return !!i && !!i.values && i.values[key] != null && String(i.values[key]).trim() !== ''; });
 }
-function intKnowAlso(p) { return !!p && p.knowledgeAlso === true && !!intKnowKey(p); }
-var INT_KNOW_TIP = 'Also a knowledge source: the investigator searches and cites it';
-function intKnowTag() {
-  var tag = accText('span', 'tag k-info int-know-tag', 'Knowledge');
-  tag.title = INT_KNOW_TIP;
+var INT_KNOW_TIP = 'Knowledge source: the investigator searches and cites it';
+function intKnowErr(p) {
+  var rows = intList(p.health && p.health.instances);
+  return rows.length ? rows.some(function (r) { return !!r && r.state === 'error'; }) : !!p.health && p.health.state === 'error';
+}
+function intKnowState(p) {
+  if (!p) return null;
+  var key = intKnowKey(p), on = {name: 'on', text: 'Knowledge', tip: INT_KNOW_TIP};
+  if (!key && !intKnowing(p)) return null;
+  if (!intUsable(p)) return {name: 'setup', text: 'Knowledge needs setup', tip: 'Knowledge source: the plug-in is not working, so the investigator cannot search it'};
+  if (p.enabled !== true) return {name: 'off', text: 'Knowledge off', tip: 'Knowledge source, off while this plug-in is off'};
+  if (key && !intKnowing(p)) return {name: 'setup', text: 'Knowledge needs setup', tip: tx('Knowledge source: fill the {0} field of an instance so the investigator can search it').replace('{0}', function () { return tx(key.charAt(0).toUpperCase() + key.slice(1)); })};
+  if (intKnowErr(p)) return {name: 'setup', text: 'Knowledge needs setup', tip: 'Knowledge source: fix the problem shown on this tile so the investigator can search it'};
+  return on;
+}
+function intKnowTagOf(st) {
+  if (!st) return null;
+  var tag = accText('span', 'tag int-know-tag k-' + (st.name === 'on' ? 'info' : st.name === 'off' ? 'muted' : 'warn'), st.text);
+  tag.dataset.state = st.name;
+  tag.title = st.tip;
   return tag;
 }
-function intNativeKnow(id) { var p = intFind(id); return !!p && p.id !== INT_MCP && !!intKnowKey(p); }
 function intKnowNote(p) {
   var key = intKnowKey(p);
   return key && key !== 'always' ? 'with its ' + key.charAt(0).toUpperCase() + key.slice(1) + ' field' : '';
@@ -374,8 +388,9 @@ function intTileOpen(id) {
   var t = [].filter.call(document.querySelectorAll('#integrations .int-tile'), function (x) { return x.dataset.id === id; })[0];
   return t && t.querySelector('.int-open');
 }
-function intHay(p) {
-  return foldCase([intName(p), p.id, intCatLabel(intCatOf(p)), typeof p.description === 'string' ? p.description : '', intIsCustom(p) ? 'custom' : '', intKnowAlso(p) ? 'knowledge' : ''].join(' '));
+function intHay(p, ks) {
+  if (ks === undefined) ks = intKnowState(p);
+  return foldCase([intName(p), p.id, intCatLabel(intCatOf(p)), typeof p.description === 'string' ? p.description : '', intIsCustom(p) ? 'custom' : '', ks ? 'knowledge' : ''].join(' '));
 }
 function intMatches(hay, q) {
   return foldCase(String(q || '').trim()).split(/\s+/).filter(Boolean).every(function (w) { return String(hay || '').indexOf(w) >= 0; });
@@ -400,8 +415,9 @@ function intTile(p) {
   t.dataset.state = st;
   t.dataset.cat = intCatOf(p);
   t.dataset.origin = p.origin || 'builtin';
-  t.dataset.knowledge = intKnowing(p) ? '1' : '0';
-  t.dataset.find = intHay(p);
+  var ks = intKnowState(p);
+  t.dataset.knowledge = ks ? '1' : '0';
+  t.dataset.find = intHay(p, ks);
   var tip = intTip(p, h);
   if (tip) t.title = tip;
   var top = accText('div', 'int-tile-top');
@@ -412,7 +428,11 @@ function intTile(p) {
   dot.appendChild(accText('span', 'int-dot ' + (h ? h.state : 'off')));
   dot.appendChild(accText('span', 'sr', need ? 'Needs attention' : st === 'on' ? 'On' : 'Off'));
   row.appendChild(dot);
-  if (intKnowAlso(p) && intKnowing(p)) row.appendChild(intKnowTag());
+  var kt = intKnowTagOf(ks);
+  if (kt) {
+    row.classList.add('know');
+    row.appendChild(kt);
+  }
   open.appendChild(row);
   var custom = intIsCustom(p);
   if (!need || custom) line.appendChild(accText('span', 'int-cat', need ? 'Custom' : intCatLabel(intCatOf(p)) + (custom ? ' \u00b7 Custom' : '')));
@@ -545,7 +565,7 @@ function renderIntegrations(note) {
   var was = document.activeElement, held = !!was && was.id === 'int-find', caret = held ? [was.selectionStart, was.selectionEnd] : null;
   box.textContent = '';
   var shown = intPlugins().filter(intTiled), cats = intCatsOf(shown), need = shown.filter(intAttention).length, live = intPlugins().filter(intConnected).length;
-  var anyCustom = shown.some(intIsCustom), anyKnow = shown.some(intKnowing), anyKnowGroup = shown.some(function (p) { return intKnowing(p) && !intKnowAlso(p); });
+  var anyCustom = shown.some(intIsCustom), anyKnow = shown.some(intKnowState);
   if (INT_CAT && (INT_CAT === INT_CUSTOM ? !anyCustom : INT_CAT === INT_KNOW ? !anyKnow : cats.indexOf(INT_CAT) < 0)) INT_CAT = '';
   var top = accText('div', 'int-top'), head = accText('div', 'int-h');
   head.appendChild(accText('h3', 'int-title', 'Integrations'));
@@ -562,7 +582,17 @@ function renderIntegrations(note) {
   pop.hidden = true;
   picker.appendChild(add);
   picker.appendChild(pop);
-  if (!intRO()) head.appendChild(picker);
+  if (!intRO()) {
+    head.appendChild(picker);
+    var mcpTool = intFind(INT_MCP);
+    if (mcpTool && intUsable(mcpTool)) {
+      var addMcp = accText('button', 'btn small int-add-mcp', '+ Add custom MCP');
+      addMcp.type = 'button';
+      addMcp.id = 'int-add-mcp';
+      addMcp.addEventListener('click', function () { intPopClose(false); intOpen(INT_MCP, null, 'add'); });
+      head.appendChild(addMcp);
+    }
+  }
   top.appendChild(head);
   if (intRO()) top.appendChild(intViewNote('int-ro-list'));
   top.appendChild(accText('p', 'muted int-sub', live + ' connected \u00b7 ' + need + (need === 1 ? ' needs attention' : ' need attention')));
@@ -583,17 +613,15 @@ function renderIntegrations(note) {
   var said = accText('p', 'adm-msg ok int-note', note || '');
   said.setAttribute('role', 'status');
   box.appendChild(said);
-  if (anyCustom || anyKnowGroup) {
-    var know = shown.filter(function (p) { return intKnowing(p) && !intKnowAlso(p); }), rest = shown.filter(function (p) { return know.indexOf(p) < 0; });
-    [['knowledge', 'Company knowledge', know], ['custom', 'Custom plug-ins', rest.filter(intIsCustom)], ['builtin', 'Built-in plug-ins', rest.filter(function (p) { return !intIsCustom(p); })]].forEach(function (g) {
+  if (anyCustom) {
+    [['custom', 'Custom plug-ins', shown.filter(intIsCustom)], ['builtin', 'Built-in plug-ins', shown.filter(function (p) { return !intIsCustom(p); })]].forEach(function (g) {
       if (!g[2].length) return;
-      var sec = accText('section', 'int-group' + (g[0] === 'knowledge' ? ' int-group-know' : '')), h = accText('h4', 'int-group-h', g[1] + ' '), grid = accText('div', 'int-grid');
+      var sec = accText('section', 'int-group'), h = accText('h4', 'int-group-h', g[1] + ' '), grid = accText('div', 'int-grid');
       sec.dataset.group = g[0];
       h.id = 'int-group-' + g[0];
       h.appendChild(accText('span', 'int-group-n', String(g[2].length)));
       sec.setAttribute('aria-labelledby', h.id);
       sec.appendChild(h);
-      if (g[0] === 'knowledge') sec.appendChild(accText('p', 'muted int-group-sub', 'Runbooks, postmortems and design docs the investigator searches and cites'));
       g[2].forEach(function (p) { grid.appendChild(intTile(p)); });
       sec.appendChild(grid);
       box.appendChild(sec);
@@ -654,7 +682,7 @@ function intPick(p, note) {
   if (typeof p.description === 'string' && p.description) words.appendChild(accText('span', 'int-pick-d', p.description));
   if (note) words.appendChild(accText('span', 'int-pick-k', note));
   b.appendChild(words);
-  if (intKnowAlso(p)) b.appendChild(intKnowTag());
+  if (intKnowKey(p)) b.appendChild(intKnowTagOf({name: 'on', text: 'Knowledge', tip: INT_KNOW_TIP}));
   if (intIsCustom(p)) b.appendChild(accText('span', 'muted int-pick-c', 'Custom'));
   if (intOutside(p)) b.appendChild(accText('span', 'int-has idle', 'Set up outside Admin'));
   else if (connected || n) b.appendChild(accText('span', 'int-has' + (connected ? '' : ' idle'), (connected ? '\u2713 ' : '') + (n > 1 ? n + ' added' : 'Added')));
@@ -706,21 +734,12 @@ function intPopOpen() {
   search.setAttribute('autocomplete', 'off');
   search.setAttribute('spellcheck', 'false');
   pop.appendChild(search);
-  var body = accText('div', 'int-pop-body'), knows = list.filter(function (p) { return !!intKnowKey(p) && !intKnowAlso(p); }), rest = list.filter(function (p) { return !intKnowKey(p) || intKnowAlso(p); });
-  if (knows.length || (mcp && mcp.state && mcp.state !== 'broken')) {
-    var kg = accText('section', 'int-cat-grp int-know-grp'), kgrid = accText('div', 'int-pg');
-    kg.dataset.cat = 'knowledge';
-    kg.hidden = !knows.length;
-    kg.appendChild(accText('h4', 'int-cat-h', 'Company knowledge'));
-    knows.forEach(function (p) { kgrid.appendChild(intPick(p, intKnowNote(p))); });
-    kg.appendChild(kgrid);
-    body.appendChild(kg);
-  }
+  var body = accText('div', 'int-pop-body'), rest = list;
   intCatsOf(rest).forEach(function (c) {
     var g = accText('section', 'int-cat-grp'), grid = accText('div', 'int-pg');
     g.dataset.cat = c;
     g.appendChild(accText('h4', 'int-cat-h', intCatLabel(c)));
-    rest.filter(function (p) { return intCatOf(p) === c; }).forEach(function (p) { grid.appendChild(intPick(p)); });
+    rest.filter(function (p) { return intCatOf(p) === c; }).forEach(function (p) { grid.appendChild(intPick(p, intKnowNote(p))); });
     g.appendChild(grid);
     body.appendChild(g);
   });
@@ -1339,8 +1358,7 @@ function intMcpGroup(pop, mcp) {
   if (intUsable(mcp)) intMcpPresets().then(function (r) {
     if (!r || !g.isConnected) return;
     var texts = intMcpTexts(r), search = pop.querySelector('.int-search');
-    var kgrid = pop.querySelector('.int-know-grp .int-pg');
-    intList(r.items).filter(intMcpItem).forEach(function (it) { (it.knowledge === 'ready' && kgrid && !intNativeKnow(it.id) ? kgrid : grid).appendChild(intMcpPick(mcp, it, texts)); });
+    intList(r.items).filter(intMcpItem).forEach(function (it) { grid.appendChild(intMcpPick(mcp, it, texts)); });
     intList(r.soon).filter(intMcpItem).forEach(function (it) { grid.appendChild(intMcpSoon(it, texts)); });
     intPopFind(pop, search ? search.value : '');
   });
@@ -1354,6 +1372,7 @@ function intMcpPick(mcp, preset, texts) {
   b.appendChild(preset ? intIcon({id: preset.id, name: name}) : intIcon(mcp));
   b.appendChild(accText('span', 'int-pick-n', name));
   b.title = name;
+  if (preset && preset.knowledge === 'ready') b.appendChild(intKnowTagOf({name: 'on', text: 'Knowledge', tip: INT_KNOW_TIP}));
   if (preset && preset.preview === true) {
     b.appendChild(accText('span', 'tag k-info int-mcp-tag', 'Preview'));
     b.title = name + (texts.preview ? ' \u00b7 ' + String(texts.preview) : '');
