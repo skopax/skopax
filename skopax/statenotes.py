@@ -75,14 +75,18 @@ def muted_text(who: str, hours: float) -> str:
     return msg('notes.state.muted', hours=f'{hours:g}', who=esc(who))
 
 
+def note_span(hours: int, business: bool) -> str:
+    return window_text(hours, words='notes.window.business_') if business else window_text(hours)
+
+
 def auto_text(hours: int, since: str | None = None, business: bool = False) -> str:
     if since == 'parent':
         return msg('notes.state.auto_parent')
-    return msg({'first': 'notes.state.auto_first', 'info': 'notes.state.auto_info'}.get(since, 'notes.state.auto'), span=window_text(hours, business=business))
+    return msg({'first': 'notes.state.auto_first', 'info': 'notes.state.auto_info'}.get(since, 'notes.state.auto'), span=note_span(hours, business))
 
 
 def auto_event_text(hours: int, business: bool = False) -> str:
-    return msg('notes.state.auto_event', span=window_text(hours, business=business))
+    return msg('notes.state.auto_event', span=note_span(hours, business))
 
 
 def assigned_text(name: str, who: str) -> str:

@@ -826,7 +826,7 @@
   "Every outcome": "Her sonuç",
   "Auto-resolve cleared cards after (hours)": "Temizlenen kartları şu süre sonra otomatik çöz (saat)",
   "Auto-resolve info cards still firing after (days)": "Hâlâ tetiklenen bilgi kartlarını şu süre sonra otomatik çöz (gün)",
-  "Closes a card that stopped firing and that nobody acted on after N hours, one value per severity; 0 turns it off for that severity. With Business days only on, only Monday to Friday counts": "Tetiklenmeyi bırakan ve kimsenin ilgilenmediği bir kartı N saat sonra kapatır; önem derecesi başına bir değer; 0 o önem derecesi için kapatır. Yalnızca iş günleri açıkken yalnızca pazartesiden cumaya kadar olan süre sayılır",
+  "Closes a card that stopped firing and that nobody acted on after N hours, one value per severity; 0 turns it off for that severity. With Business days only on, only Monday to Friday counts": "Tetiklenmeyi bırakan ve kimsenin ilgilenmediği bir kartı N saat sonra kapatır; önem derecesi başına bir değer; 0 o önem derecesi için kapatır. Yalnızca iş günleri açıkken pazartesiden cumaya kadar olan süre sayılır",
   "Business days only": "Yalnızca iş günleri",
   "Count only Monday to Friday (install time zone) for auto-resolve and info close timers": "Otomatik çözme ve bilgi kartı kapatma sürelerinde yalnızca pazartesiden cumaya kadar olan süreyi say (kurulumun saat dilimi)",
   "Auto-resolved": "Otomatik çözüldü",

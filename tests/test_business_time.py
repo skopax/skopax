@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from tests.conftest import AUTH, settings
 from tests.test_engine import seeded, stored
-from skopax import statenotes
+from skopax import locales, messages, statenotes
 from skopax.app import create_app
 from skopax.businesstime import business_elapsed, elapsed
 from skopax.config import load_settings
@@ -123,6 +123,59 @@ def test_a_weekday_daylight_saving_change_counts_the_real_hours_of_that_day():
     assert friday == 23 * H
 
 
+def hour_by_hour(start: float, end: float, zone: ZoneInfo) -> float:
+    counted = 0
+    t = start
+    while t < end:
+        if dt.datetime.fromtimestamp(t, zone).weekday() < 5:
+            counted += H
+        t += H
+    return counted
+
+
+def test_a_weekday_daylight_saving_change_inside_whole_weeks_still_counts():
+    # given
+    cairo = ZoneInfo('Africa/Cairo')
+    start, end = at('2027-04-12 00:00', 'Africa/Cairo'), at('2027-05-24 00:00', 'Africa/Cairo')
+
+    # when
+    weeks = business_elapsed(start, end, cairo)
+
+    # then
+    assert weeks == 6 * 5 * DAY - H
+
+
+def test_a_short_weekday_shift_that_returns_on_a_weekend_counts_its_extra_hour():
+    # given
+    tucuman = ZoneInfo('America/Argentina/Tucuman')
+    start, end = at('2004-05-28 12:00', 'America/Argentina/Tucuman'), at('2004-06-14 12:00', 'America/Argentina/Tucuman')
+
+    # when
+    got = business_elapsed(start, end, tucuman)
+
+    # then
+    assert got == 265 * H
+    assert got == hour_by_hour(start, end, tucuman)
+
+
+@pytest.mark.parametrize(('zone', 'start', 'end'), [
+    ('Africa/Cairo', '2027-01-04 00:00', '2037-01-05 00:00'),
+    ('America/Argentina/Tucuman', '2003-12-31 05:00', '2005-01-03 13:00'),
+    ('Europe/Berlin', '2025-03-01 07:00', '2028-11-02 19:00'),
+    ('America/New_York', '2024-11-01 03:00', '2027-03-20 22:00'),
+])
+def test_long_spans_match_an_hour_by_hour_count(zone, start, end):
+    # given
+    where = ZoneInfo(zone)
+    begin, finish = at(start, zone), at(end, zone)
+
+    # when
+    got = business_elapsed(begin, finish, where)
+
+    # then
+    assert got == hour_by_hour(begin, finish, where)
+
+
 def test_elapsed_is_wall_clock_without_a_zone_and_business_time_with_one():
     # given
     start, end = at('2026-11-20 22:00'), at('2026-11-23 03:00')
@@ -156,14 +209,18 @@ def test_a_cleared_card_from_friday_night_waits_for_monday_hours_when_business_d
 def test_the_severity_windows_and_the_event_extra_hours_count_business_time():
     # given
     cleared = at('2026-11-20 22:00')
-    now = at('2026-11-23 09:00')
-    state = {'anomalies': [cleared_card('log|a|ERROR|crit', cleared, sev='crit'), cleared_card('log|b|ERROR|warn', cleared, sev='warn')]}
+    cause = {'kind': 'event', 'what': 'a push', 'firstSeen': iso(cleared - 2 * H)}
+    cards = lambda: {'anomalies': [cleared_card('log|a|ERROR|crit', cleared, sev='crit'), cleared_card('log|b|ERROR|warn', cleared, sev='warn'),
+                                   cleared_card('log|c|ERROR|event', cleared, sev='warn') | {'cause': cause}]}
 
     # when
-    resolved = auto_resolve(state, now, 6, by_severity={'crit': 12, 'warn': 6}, business=UTC)
+    early = auto_resolve(cards(), at('2026-11-23 09:00'), 6, by_severity={'crit': 12, 'warn': 6}, business=UTC)
+    later = auto_resolve(cards(), at('2026-11-23 11:00'), 6, by_severity={'crit': 12, 'warn': 6}, business=UTC)
 
     # then
-    assert [r['key'] for r in resolved] == ['log|b|ERROR|warn']
+    assert [r['key'] for r in early] == ['log|b|ERROR|warn']
+    assert {r['key']: r['hours'] for r in later} == {'log|a|ERROR|crit': 12, 'log|b|ERROR|warn': 6, 'log|c|ERROR|event': 12}
+    assert [r.get('event') for r in later] == [None, None, True]
 
 
 def test_a_kind_window_counts_business_time_from_when_the_card_first_appeared():
@@ -206,15 +263,16 @@ def test_apply_passes_business_time_to_every_rule(store: Store):
     # given
     cleared = at('2026-11-20 22:00')
     now = at('2026-11-23 03:00')
-    seeded(store, cleared_card('log|a|ERROR|x', cleared), firing_info('edge|a.example.com', at('2026-11-20 12:00'), now))
+    seeded(store, cleared_card('log|a|ERROR|x', cleared), firing_info('edge|a.example.com', at('2026-11-20 12:00'), now), kind_card('vwo|x', at('2026-11-20 20:00')))
+    windows = (({'wingify-verdict'}, 'ab-verdict', 24),)
 
     # when
-    on = apply(store, [], now, severity_hours={'crit': 6, 'warn': 6}, info_close_days=1, business=UTC)
-    off = apply(store, [], now, severity_hours={'crit': 6, 'warn': 6}, info_close_days=1)
+    on = apply(store, [], now, severity_hours={'crit': 6, 'warn': 6}, info_close_days=1, kind_windows=windows, business=UTC)
+    off = apply(store, [], now, severity_hours={'crit': 6, 'warn': 6}, info_close_days=1, kind_windows=windows)
 
     # then
     assert on.resolved == []
-    assert sorted(r['key'] for r in off.resolved) == ['edge|a.example.com', 'log|a|ERROR|x']
+    assert sorted(r['key'] for r in off.resolved) == ['edge|a.example.com', 'log|a|ERROR|x', 'vwo|x']
 
 
 def test_the_window_words_name_business_hours_and_days():
@@ -338,3 +396,24 @@ def test_switching_business_days_off_in_admin_applies_on_the_next_server_pass(st
     # then
     assert before is None
     assert after['triage'] == 'handled' and after['note']['text'].endswith('nobody acted in 6 hours')
+
+
+def test_stored_notes_and_activity_lines_stay_english_while_the_thread_line_follows_the_pack(store: Store):
+    # given
+    pack = next(locale for locale in locales.packs() if locale.lang == 'de')
+    messages.set_catalogs([('de', pack.messages)])
+    seeded(store, cleared_card('log|a|ERROR|x', at('2026-11-20 22:00')))
+
+    # when
+    with messages.speaking('de'):
+        applied = apply(store, [], at('2026-11-23 05:00'), severity_hours={'crit': 6, 'warn': 6}, business=UTC)
+        thread = auto_text(6, business=True)
+    card = {a['key']: a for a in store.load()['anomalies']}['log|a|ERROR|x']
+    lines = [r['text'] for r in store.list_activity(None, 50) if r['kind'] == 'auto']
+
+    # then
+    assert applied.resolved[0]['text'].endswith('nobody acted in 6 business hours')
+    assert card['note']['text'].endswith('nobody acted in 6 business hours')
+    assert len(lines) == 1 and lines[0].endswith('nobody acted in 6 business hours')
+    assert thread == pack.messages['notes.state.auto'].format(span=pack.messages['notes.window.business_hours'].format(n=6))
+    assert 'business' not in thread

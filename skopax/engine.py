@@ -388,7 +388,7 @@ def auto_close_info(state: dict, now: float, days: int = INFO_CLOSE_DAYS, busine
             continue
         if a.get('src') == 'logs' or a.get('sig') in INFO_KEEP_SIGS or not a.get('firstSeen') or elapsed(parse_iso(a['firstSeen']), now, business) <= days * 86400:
             continue
-        why = f"info firing since {clock.date(parse_iso(a['firstSeen']))}, nobody acted in " + (window_text(days * 24, business=True) if business else f'{days} days')
+        why = f"info firing since {clock.date(parse_iso(a['firstSeen']))}, nobody acted in " + (window_text(days * 24, business=True) if business is not None else f'{days} days')
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
             put_note(a, f'Auto-resolved: {why}', t)
@@ -396,8 +396,8 @@ def auto_close_info(state: dict, now: float, days: int = INFO_CLOSE_DAYS, busine
     return out
 
 
-def window_text(hours: int, business: bool = False) -> str:
-    words = 'notes.window.business_' if business else 'engine.window.'
+def window_text(hours: int, business: bool = False, words: str = '') -> str:
+    words = words or ('engine.window.business_' if business else 'engine.window.')
     if hours > 0 and hours % 24 == 0:
         days = hours // 24
         return msg(words + ('day' if days == 1 else 'days'), n=days)
