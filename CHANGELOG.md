@@ -17,7 +17,7 @@ A running investigation you can see at a glance, investigator status in the top 
 - A run banner under the card header while an investigation is queued or running: elapsed time, tool calls, cost so far and the last tool, then the result ("done" or "failed" with the reason). The Investigating tag and board tiles carry a live dot, and the card's cost line includes the running cost.
 - An investigator pill in the top bar on every page: the card or cards being investigated, the queue, and when the investigator is paused, over its daily AI cap, or missing a key or model.
 - Responsible autocomplete: type any part of a name or e-mail to pick from Skopax users, people responsible on other tags, and Slack members.
-- Auto-assign new cards by tag, in turn among the tag's responsibles, with the usual assignment notification and an "Auto-assigned to … (tag …)" line in History.
+- Auto-assign new cards by tag, in turn among the tag's responsibles, with the usual assignment notification and an "Auto-assigned to ... (tag ...)" line in History.
 - One settings design across Admin, Preferences and Integrations: titled section cards, label and help beside each control with Show more for long help, quiet source tags, segmented choices, a single Save per key, a wider add-integration list with whole badges and two-line descriptions, a switch for an instance's On, and 44 px targets on phones.
 
 **Fixed:**
