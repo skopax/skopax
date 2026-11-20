@@ -992,7 +992,7 @@ async function tabsAreLinks() {
   const selected = () => doc.querySelector('a.tab[data-tab][aria-current="page"]').dataset.tab;
 
   //then
-  assert.ok(tabs.length === 13 && tabs.every((t) => t.tagName === 'A'), 'every row is a real link, so copy-link and middle-click work');
+  assert.ok(tabs.length === 14 && tabs.every((t) => t.tagName === 'A'), 'every row is a real link, so copy-link and middle-click work');
   assert.deepStrictEqual(tabs.map((t) => t.getAttribute('href')), tabs.map((t) => '#t=' + t.dataset.tab), 'each one points at its own #t= path');
   assert.ok(tabs.every((t) => !t.hasAttribute('role') && !t.hasAttribute('type')), 'they are plain links: no tab role and no button type');
   assert.strictEqual(w.location.hash, '#t=anoms', 'a load without a hash writes the open tab in the address bar');
