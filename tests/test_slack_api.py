@@ -1,12 +1,13 @@
 import json
 import time
+import urllib.error
 import urllib.request
 
 import pytest
 
 from tests.fake_slack import fake_slack
 from skopax.redact import REDACTED, redact
-from skopax.slack import CARD_ACTION, CREATE_TASK, Slack, SlackError, answer_blocks, api, card_action_label, reason_of
+from skopax.slack import CARD_ACTION, CREATE_TASK, Slack, SlackDown, SlackError, answer_blocks, api, card_action_label, reason_of
 
 
 class Resp:
@@ -228,3 +229,18 @@ def test_a_status_keeps_the_slack_error_code_and_otherwise_only_the_error_type()
     assert reason_of(SlackError('channel_not_found', code='channel_not_found')) == 'channel_not_found'
     assert reason_of(SlackError('Slack did not answer (refused by 10.0.0.7)')) == 'SlackError'
     assert reason_of(RuntimeError('db password hunter2')) == 'RuntimeError'
+
+
+def test_an_http_429_is_a_slack_that_did_not_answer_carrying_how_long_to_wait(monkeypatch):
+    # given
+    def limited(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 429, 'Too Many Requests', {'Retry-After': '7'}, None)
+
+    monkeypatch.setattr(urllib.request, 'urlopen', limited)
+
+    # when
+    with pytest.raises(SlackDown) as caught:
+        api('xoxb-test', 'users.list', {'limit': 200})
+
+    # then
+    assert caught.value.code == 'ratelimited' and caught.value.wait == 7.0

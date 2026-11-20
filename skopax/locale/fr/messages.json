@@ -1,5 +1,6 @@
 {
 "assign.dm.links": "\n<{link}|Ouvrir la carte> · <{chat}|Chat>",
+ "assign.auto": "Attribuée automatiquement à {name} (tag {tag}) · {key}",
 "assign.dm.mine": "Vous vous êtes assigné cette carte {product} : *{title}*",
 "assign.dm.other": "{who} vous a assigné une carte {product} : *{title}*",
 "autosend.base.d1": " (il y a 1 j {d1}",

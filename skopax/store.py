@@ -38,6 +38,11 @@ PROXY_ID = 'proxy-warning'
 SLACK_SCOPES_ID = 'slack-scopes'
 VERSION_CHECK_ID = 'version-check'
 TAG_OWNERS_ID = 'tag-owners'
+TAG_AUTO_ID = 'tag-auto-assign'
+AUTO_TURN = 'auto-assign:'
+AUTO_SINCE_ID = 'auto-assign-since'
+AUTO_SEVS = ('crit', 'warn')
+AUTO_TAKEN = ('progress', 'handled')
 EMAIL_SCOPE_ID = 'tag-report-scope'
 TAG_REPORT_ID = 'tag-report-last'
 SEVERITIES = ('crit', 'warn', 'info')
@@ -490,6 +495,62 @@ class Store:
         change = {'$set': {f'owners.{tag}': emails}} if emails else {'$unset': {f'owners.{tag}': ''}}
         self.db['meta'].update_one({'_id': TAG_OWNERS_ID}, change, upsert=True)
         return emails
+
+    def tag_auto_off(self) -> set[str]:
+        held = (self.db['meta'].find_one({'_id': TAG_AUTO_ID}) or {}).get('off')
+        return {str(tag) for tag, off in held.items() if off is True} if isinstance(held, dict) else set()
+
+    def tag_ready(self) -> dict[str, str | bool]:
+        held = (self.db['meta'].find_one({'_id': TAG_AUTO_ID}) or {}).get('ready')
+        return {str(tag): at for tag, at in held.items() if isinstance(at, (str, bool))} if isinstance(held, dict) else {}
+
+    def set_tag_ready(self, tag: str, at: str | bool) -> None:
+        self.db['meta'].update_one({'_id': TAG_AUTO_ID}, {'$set': {f'ready.{tag}': at}}, upsert=True)
+
+    def set_tag_auto(self, tag: str, on: bool, at: str | None = None) -> None:
+        change = {'$unset': {f'off.{tag}': ''}, '$set': {f'ready.{tag}': at or iso(utc_now())}} if on else {'$set': {f'off.{tag}': True, f'ready.{tag}': False}}
+        self.db['meta'].update_one({'_id': TAG_AUTO_ID}, change, upsert=True)
+
+    def auto_assign_since(self, now: str) -> str:
+        doc = self.db['meta'].find_one_and_update({'_id': AUTO_SINCE_ID}, {'$setOnInsert': {'since': now}}, upsert=True, return_document=ReturnDocument.AFTER)
+        return str(doc.get('since') or now)
+
+    def next_auto_turn(self, tag: str) -> int:
+        return self.counters.find_one_and_update({'_id': AUTO_TURN + tag}, {'$inc': {'n': 1}}, upsert=True, return_document=ReturnDocument.AFTER)['n']
+
+    def peek_auto_turn(self, tag: str) -> int:
+        return int((self.counters.find_one({'_id': AUTO_TURN + tag}) or {}).get('n') or 0)
+
+    def mark_hand_assigned(self, key: str) -> None:
+        with self._locked():
+            self.anomalies.update_one({'_id': key}, {'$set': {'handAssigned': True}})
+
+    def claim_auto_assign(self, key: str, owner: str, assigned: dict, mark: dict) -> int | None:
+        wanted = {'_id': key, 'status': 'open', 'sev': {'$in': list(AUTO_SEVS)}, 'autoAssigned': {'$exists': False}, 'handAssigned': {'$exists': False},
+                  'owner': {'$in': [None, '']}, 'assigned': None, 'ticket': {'$in': [None, '']}, 'triage': {'$nin': list(AUTO_TAKEN)},
+                  'muted': {'$in': [None, '', False]}, '$or': [{'parent': {'$in': [None, '']}}, {'parent': key}]}
+        if self.anomalies.find_one(wanted, {'_id': 1}) is None:
+            return None
+        with self._locked():
+            rev, _ = self._claim(None)
+            done = self.anomalies.update_one(wanted, {'$set': {'owner': owner, 'assigned': assigned, 'autoAssigned': mark}}).modified_count == 1
+        return rev if done else None
+
+    def rename_tag_auto(self, old: str, new: str) -> None:
+        held = self.db['meta'].find_one({'_id': TAG_AUTO_ID}) or {}
+        sets, unsets = {}, {}
+        for part in ('off', 'ready'):
+            values = held.get(part) if isinstance(held.get(part), dict) else {}
+            if old in values:
+                sets[f'{part}.{new}'] = values[old]
+                unsets[f'{part}.{old}'] = ''
+        if sets:
+            self.db['meta'].update_one({'_id': TAG_AUTO_ID}, {'$set': sets, '$unset': unsets})
+        turn = self.counters.find_one({'_id': AUTO_TURN + old})
+        if turn:
+            there = self.counters.find_one({'_id': AUTO_TURN + new}) or {}
+            self.counters.update_one({'_id': AUTO_TURN + new}, {'$set': {'n': max(int(turn.get('n') or 0), int(there.get('n') or 0))}}, upsert=True)
+            self.counters.delete_one({'_id': AUTO_TURN + old})
 
     def note_version_check(self, found: dict) -> None:
         self.db['meta'].replace_one({'_id': VERSION_CHECK_ID}, {'_id': VERSION_CHECK_ID, 'latest': found['latest'], 'url': found['url'], 'securityIn': [str(v) for v in found['securityIn']], 'at': found['at']}, upsert=True)
@@ -1355,6 +1416,8 @@ class Store:
             moved += 1
         owners = self.tag_owners()
         for old, new in renamed.items():
+            if old != new:
+                self.rename_tag_auto(old, new)
             if old in owners and old != new:
                 owners[new] = self.set_tag_owners(new, owners.get(new, []) + owners.pop(old))
                 self.set_tag_owners(old, [])

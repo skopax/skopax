@@ -2,6 +2,7 @@
  "assign.dm.links": "\n<{link}|Abrir tarjeta> · <{chat}|Chat>",
  "assign.dm.mine": "Te asignaste esta tarjeta de {product}: *{title}*",
  "assign.dm.other": "{who} te asignó una tarjeta de {product}: *{title}*",
+ "assign.auto": "Asignada automáticamente a {name} (etiqueta {tag}) · {key}",
  "autosend.base.d1": " (hace 1 d {d1}",
  "autosend.base.d7": " / hace 7 d {d7}",
  "autosend.crit_now.last": "La investigación automática ha comenzado; los hallazgos llegarán a este hilo.",

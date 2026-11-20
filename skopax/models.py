@@ -309,6 +309,11 @@ class PluginSwitchIn(BaseModel):
     enabled: bool = Field(strict=True)
 
 
+class TagAutoIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    on: bool
+
+
 class TagOwnersIn(BaseModel):
     model_config = ConfigDict(extra='forbid')
     emails: list[Annotated[str, StringConstraints(max_length=320)]] = Field(max_length=100)

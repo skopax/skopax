@@ -198,6 +198,7 @@ MESSAGES: dict[str, str] = {
     'assign.dm.mine': 'You assigned this {product} card to yourself: *{title}*',
     'assign.dm.other': '{who} assigned you a {product} card: *{title}*',
     'assign.dm.links': '\n<{link}|Open card> \u00b7 <{chat}|Chat>',
+    'assign.auto': 'Auto-assigned to {name} (tag {tag}) \u00b7 {key}',
     'routes.title': '{product} \u00b7 {label}',
     'routes.title_fixed': '{product} \u00b7 {label} \u00b7 fixed',
     'routes.title_one': '{product} \u00b7 1 card',
