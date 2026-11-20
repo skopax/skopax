@@ -147,8 +147,10 @@ async function theIntegrationsPageListsTheCustomChecksWithTheirStateAsText() {
 async function anAdminFillsInANewCheckPreviewsItAndSavesIt() {
   //given
   const {w, doc, errors, calls} = await boot({items: []});
+  const primaryBefore = !box(doc).querySelector('.pqc-add').classList.contains('sec');
   box(doc).querySelector('.pqc-add').click();
   await wait(20);
+  assert.ok(primaryBefore && box(doc).querySelector('.pqc-add').classList.contains('sec'), 'Add check steps back to secondary while the form with its Save is open');
 
   //when
   type(w, field(doc, 'name'), 'Cache hits');

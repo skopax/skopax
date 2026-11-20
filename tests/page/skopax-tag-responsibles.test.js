@@ -69,10 +69,14 @@ async function anAdminAddsAndRemovesResponsiblesOnTheCardTagsRows() {
   const {w, doc, errors, calls} = await boot();
   const box = (tag) => doc.querySelector('#admin .adm-row[data-key="tags.' + tag + '.rules"] .adm-owners');
   const chips = (tag) => [...box(tag).querySelectorAll('.adm-owner .adm-owner-n')].map((n) => n.textContent);
+  const pick0 = box('developer').querySelector('.adm-owner-pick');
+  pick0.focus();
+  pick0.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'ArrowDown', bubbles: true, cancelable: true}));
   const first = {dev: chips('developer'), data: box('data').querySelector('.adm-owner-none').textContent, label: box('developer').querySelector('.adm-owners-l').textContent,
-    offered: [...box('developer').querySelectorAll('datalist option')].map((o) => o.value), labels: [...box('developer').querySelectorAll('datalist option')].map((o) => o.textContent),
-    kind: box('developer').querySelector('.adm-owner-pick').tagName + '/' + box('developer').querySelector('.adm-owner-pick').getAttribute('aria-label'), linked: box('developer').querySelector('.adm-owner-pick').getAttribute('list') === box('developer').querySelector('datalist').id,
+    offered: [...box('developer').querySelectorAll('.adm-owner-opt')].map((o) => o.dataset.email), labels: [...box('developer').querySelectorAll('.adm-owner-opt .adm-owner-on')].map((o) => o.textContent),
+    kind: pick0.tagName + '/' + pick0.getAttribute('aria-label'), linked: pick0.getAttribute('aria-controls') === box('developer').querySelector('[role="listbox"]').id,
     addOff: box('developer').querySelector('.adm-owner-go').disabled};
+  pick0.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
 
   //when
   const pick = box('developer').querySelector('.adm-owner-pick');
@@ -88,7 +92,7 @@ async function anAdminAddsAndRemovesResponsiblesOnTheCardTagsRows() {
   const histRows = [...doc.querySelectorAll('#changes .adm-hist tbody tr')].map((tr) => [tr.children[2].textContent, !!tr.querySelector('.adm-revert')]);
 
   //then
-  assert.deepStrictEqual(first, {dev: ['Alice Moss'], data: 'No one yet', label: 'Responsibles', offered: [BOB], labels: ['Bob Reed \u00b7 ' + BOB], kind: 'INPUT/Add a responsible', linked: true, addOff: true},
+  assert.deepStrictEqual(first, {dev: ['Alice Moss'], data: 'No one yet', label: 'Responsibles', offered: [BOB], labels: ['Bob Reed'], kind: 'INPUT/Add a responsible', linked: true, addOff: true},
     'the chips show, disabled people and present ones are not suggested');
   assert.strictEqual(addOn, true, 'typing enables Add');
   assert.deepStrictEqual(calls.map((c) => [c[1], c[2].emails]), [['/api/admin/tags/developer/responsibles', [ALICE, BOB]], ['/api/admin/tags/developer/responsibles', [BOB]]]);

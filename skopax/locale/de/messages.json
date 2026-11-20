@@ -2,6 +2,7 @@
  "assign.dm.links": "\n<{link}|Karte öffnen> · <{chat}|Chat>",
  "assign.dm.mine": "Sie haben sich diese {product}-Karte selbst zugewiesen: *{title}*",
  "assign.dm.other": "{who} hat Ihnen eine {product}-Karte zugewiesen: *{title}*",
+ "assign.auto": "Automatisch {name} zugewiesen (Tag {tag}) · {key}",
  "autosend.base.d1": " (vor 1 Tg. {d1}",
  "autosend.base.d7": " / vor 7 Tg. {d7}",
  "autosend.crit_now.last": "Die automatische Untersuchung hat begonnen; die Ergebnisse kommen in diesen Thread.",

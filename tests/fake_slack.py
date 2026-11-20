@@ -15,6 +15,8 @@ class FakeSlackApi:
         self.files = 0
         self.history: list[dict] = []
         self.names: dict[str, str] = {}
+        self.members: list[dict] = []
+        self.page_size = 200
         self.calls: list[tuple[str, dict]] = []
         self.sleeps: list[float] = []
 
@@ -44,6 +46,10 @@ class FakeSlackApi:
             if not found:
                 raise SlackError('users_not_found')
             return {'ok': True, 'user': {'id': found, 'profile': {'real_name': self.names.get(found, '')}}}
+        if method == 'users.list':
+            start = int(payload.get('cursor') or 0)
+            end = start + min(int(payload.get('limit') or self.page_size), self.page_size)
+            return {'ok': True, 'members': self.members[start:end], 'response_metadata': {'next_cursor': str(end) if end < len(self.members) else ''}}
         if method == 'conversations.history':
             return {'ok': True, 'messages': list(self.history)}
         if method == 'conversations.info':

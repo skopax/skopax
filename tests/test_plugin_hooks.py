@@ -385,8 +385,8 @@ def test_card_page_loads_the_locale_packs_of_serving_plugins(store):
         off = pattern.findall(client.get('/c/1').text)
 
     # then
-    assert on == ['/static/actors.js', '/static/i18n.js', *CORE_PACKS, '/plugins/demo/i18n-de.js', '/static/suggest.js', '/static/card.js'], 'packs only, never the panel scripts'
-    assert off == ['/static/actors.js', '/static/i18n.js', *CORE_PACKS, '/static/suggest.js', '/static/card.js']
+    assert on == ['/static/actors.js', '/static/i18n.js', *CORE_PACKS, '/plugins/demo/i18n-de.js', '/static/suggest.js', '/static/runshow.js', '/static/card.js'], 'packs only, never the panel scripts'
+    assert off == ['/static/actors.js', '/static/i18n.js', *CORE_PACKS, '/static/suggest.js', '/static/runshow.js', '/static/card.js']
 
 
 def test_probe_targets_come_from_runnable_instances(store):

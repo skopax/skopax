@@ -9,8 +9,9 @@ const ADMIN_USER = 'nina.white@example.com';
 const SEV = [['crit', 'Critical', 'critical'], ['warn', 'Warning', 'warning']];
 const KEYS = SEV.map(([s]) => 'core.auto-resolve-hours-' + s);
 
+let HELP = null;
 function entry(key, label, extra) {
-  return Object.assign({key, group: 'Cards', label, help: 'Help of ' + label, kind: 'int', live: true, value: '6', base: '6', default: '6', source: 'default', by: null, at: null, low: 0, high: 720}, extra || {});
+  return Object.assign({key, group: 'Cards', label, help: HELP || 'Help of ' + label, kind: 'int', live: true, value: '6', base: '6', default: '6', source: 'default', by: null, at: null, low: 0, high: 720}, extra || {});
 }
 
 async function boot(hash, historyRows, fromOld) {
@@ -190,6 +191,24 @@ async function aValueSeededByTheOldHoursKeyShowsTheOldSettingTagAndResets() {
   console.log('PASS a severity window seeded by the old hours key shows the old setting tag and a working Reset');
 }
 
+async function aLongHelpLeavesNoShowMoreInTheSeverityRow() {
+  //given
+  HELP = 'Closes a card that stopped firing and that nobody acted on after N hours for this one severity; 0 turns it off. With Business days only on, only Monday to Friday counts toward the window.';
+  const {w, doc, errors} = await boot('#t=settings');
+  HELP = null;
+
+  //when
+  const group = doc.querySelector('#admin [role="group"]');
+
+  //then
+  assert.strictEqual(group.querySelectorAll('.adm-row .adm-help').length, 0, 'the severity rows say the help once, in the group head');
+  assert.strictEqual(group.querySelectorAll('.adm-row .adm-more').length, 0, 'and keep no Show more button without a help to open');
+  assert.ok(doc.querySelector('#admin .adm-row[data-key="cards.archive-hours"] .adm-more'), 'an ordinary row with a long help keeps its fold');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS a long help leaves no Show more in the severity rows');
+}
+
 (async () => {
   await theTwoSeverityWindowsShareOneLabelledRowWithAnInputEach();
   await savingOneSeverityWindowSendsOnlyItsKeyAndKeepsTheOtherEdits();
@@ -197,4 +216,5 @@ async function aValueSeededByTheOldHoursKeyShowsTheOldSettingTagAndResets() {
   await findingASeverityWordOrTheGroupLabelShowsTheWholeRow();
   await historyNamesTheSeverityWindowAndTheInfoDays();
   await aValueSeededByTheOldHoursKeyShowsTheOldSettingTagAndResets();
+  await aLongHelpLeavesNoShowMoreInTheSeverityRow();
 })().catch((e) => { console.error('FAIL', e); process.exit(1); });

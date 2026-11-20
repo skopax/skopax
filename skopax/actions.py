@@ -123,6 +123,7 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
         if why:
             store.note(key, note_under(store.anomaly(key).get('note'), why, action.get('requestedBy'), 'Taken'))
         store.triage(key, 'progress', ticket=ticket or None, owner=owner)
+        store.mark_hand_assigned(key)
         owner = owner or held
         return 'In progress' + (f' · {owner}' if owner else '') + (f' · {ticket}' if ticket else '') + (f' · {why[:RESULT_WHY]}' if why else '')
     if kind == 'group':

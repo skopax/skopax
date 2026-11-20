@@ -157,8 +157,10 @@ class Investigator:
         halted = self._halted(clock.day(now))
         leases = self.store.leases_now()
         runs = self.store.running_investigations()
-        progress = self.store.tool_progress([r['id'] for r in runs])
-        runs = [r | {'toolCalls': 0} | progress.get(r['id'], {}) for r in runs]
+        shown = [r for r in runs if r.get('trigger') != 'chat']
+        progress = self.store.tool_progress([r['id'] for r in shown])
+        spend = self.store.run_spend([r['id'] for r in shown], min((str(r.get('startedAt') or '') for r in shown), default=''))
+        runs = [r | {'toolCalls': 0, 'usd': spend.get(r['id'], 0.0)} | progress.get(r['id'], {}) if r.get('trigger') != 'chat' else r | {'toolCalls': 0} for r in runs]
         rooms = [{'id': f'{ROOM}{i}', 'name': f'Room {i + 1}', 'takes': 'questions, Investigate clicks and deploy assessments'} for i in range(self.rooms)]
         rooms.append({'id': LEASE_ID, 'name': 'Cards', 'takes': 'new and escalated cards, and the queue when the rooms are full'})
         placed = set()
@@ -181,11 +183,20 @@ class Investigator:
                             'cards': [] if private else (act.get('cards') or ([act['key']] if act['type'] == 'dive' else []))[:5],
                             'thread': s.get('permalink'), 'why': why} | ({'via': MCP} if via_mcp(act) else {}))
         recent = [r for r in self.store.list_investigations(None, BOARD_RECENT + len(runs), page=True) if r.get('outcome') != 'running'][:BOARD_RECENT]
+        errors = self.store.run_errors([r['id'] for r in recent if r.get('outcome') != 'done'])
+        recent = [r | ({'error': errors[r['id']]} if r['id'] in errors else {}) for r in recent]
         since = epoch_iso(now - LIMIT_WINDOW_S)
         limits = {'slackAsks': self.store.count_actions('ask', since, source='slack'), 'slackAskCap': self.slack_ask_cap, 'gateCalls': self.store.count_gate_calls(since), 'gateCap': GATE_HOURLY_CAP,
                   'spentToday': round(self.store.spent(clock.day(now)), 2), 'cap': self.cap, 'askers': self.store.askers(since)}
-        return {'at': epoch_iso(now), 'mode': self.mode, 'enabled': self.enabled, 'halted': halted, 'rooms': rooms, 'unplaced': [r for r in runs if r['id'] not in placed],
+        return {'at': epoch_iso(now), 'mode': self.mode, 'enabled': self.enabled, 'halted': halted, 'problem': self._problem(halted), 'rooms': rooms, 'unplaced': [r for r in runs if r['id'] not in placed],
                 'waiting': waiting, 'recent': recent, 'limits': limits}
+
+    def _problem(self, halted: str | None) -> str | None:
+        if self.mode == 'off' or halted == 'off':
+            return None
+        if not self.key():
+            return 'key'
+        return None if pricing.known(self.model) else 'model'
 
     def available(self) -> bool:
         return self.enabled and self._halted(clock.day(self.clock())) is None

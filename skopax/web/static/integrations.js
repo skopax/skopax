@@ -670,27 +670,31 @@ async function loadIntegrations(note) {
     return false;
   }
 }
+function intPickBody(b, icon, name, desc, note, tags, status) {
+  var words = accText('span', 'int-pick-t'), top = accText('span', 'int-pick-top');
+  b.appendChild(icon);
+  top.appendChild(accText('span', 'int-pick-n', name));
+  tags.filter(Boolean).forEach(function (t) { top.appendChild(t); });
+  words.appendChild(top);
+  if (desc) words.appendChild(accText('span', 'int-pick-d', desc));
+  if (note) words.appendChild(accText('span', 'int-pick-k', note));
+  b.appendChild(words);
+  if (status) b.appendChild(status);
+}
 function intPick(p, note) {
   var b = accText('button', 'int-pick'), connected = intConnected(p);
   b.type = 'button';
   b.dataset.id = p.id;
   b.dataset.origin = p.origin || 'builtin';
   b.dataset.find = intHay(p);
-  b.appendChild(intIcon(p));
-  var words = accText('span', 'int-pick-t'), n = intList(p.instances).length;
-  words.appendChild(accText('span', 'int-pick-n', intName(p)));
-  if (typeof p.description === 'string' && p.description) words.appendChild(accText('span', 'int-pick-d', p.description));
-  if (note) words.appendChild(accText('span', 'int-pick-k', note));
-  b.appendChild(words);
-  if (intKnowKey(p)) b.appendChild(intKnowTagOf({name: 'on', text: 'Knowledge', tip: INT_KNOW_TIP}));
-  if (intIsCustom(p)) b.appendChild(accText('span', 'muted int-pick-c', 'Custom'));
-  if (intOutside(p)) b.appendChild(accText('span', 'int-has idle', 'Set up outside Admin'));
-  else if (connected || n) b.appendChild(accText('span', 'int-has' + (connected ? '' : ' idle'), (connected ? '\u2713 ' : '') + (n > 1 ? n + ' added' : 'Added')));
+  var n = intList(p.instances).length, tags = [intKnowKey(p) ? intKnowTagOf({name: 'on', text: 'Knowledge', tip: INT_KNOW_TIP}) : null, intIsCustom(p) ? accText('span', 'muted int-pick-c', 'Custom') : null,
+    p.state === 'locked' ? accText('span', 'tag k-act int-ed', String(p.edition || '').charAt(0).toUpperCase() + String(p.edition || '').slice(1)) : null];
+  var status = intOutside(p) ? accText('span', 'int-has idle', 'Set up outside Admin') : connected || n ? accText('span', 'int-has' + (connected ? '' : ' idle'), (connected ? '\u2713 ' : '') + (n > 1 ? n + ' added' : 'Added')) : null;
+  intPickBody(b, intIcon(p), intName(p), typeof p.description === 'string' ? p.description : '', note, tags, status);
   if (connected) {
     b.classList.add('has');
     b.title = 'Connected: opens its setup';
   }
-  if (p.state === 'locked') b.appendChild(accText('span', 'tag k-act int-ed', String(p.edition || '').charAt(0).toUpperCase() + String(p.edition || '').slice(1)));
   if (!intUsable(p)) {
     b.setAttribute('aria-disabled', 'true');
     b.title = String(p.reason || '');
@@ -733,7 +737,14 @@ function intPopOpen() {
   search.setAttribute('aria-label', 'Search integrations');
   search.setAttribute('autocomplete', 'off');
   search.setAttribute('spellcheck', 'false');
-  pop.appendChild(search);
+  var top = accText('div', 'int-pop-top'), shut = accText('button', 'btn sec small int-pop-x', '\u2715');
+  shut.type = 'button';
+  shut.title = 'Close';
+  shut.setAttribute('aria-label', 'Close');
+  shut.addEventListener('click', function () { intPopClose(true); });
+  top.appendChild(search);
+  top.appendChild(shut);
+  pop.appendChild(top);
   var body = accText('div', 'int-pop-body'), rest = list;
   intCatsOf(rest).forEach(function (c) {
     var g = accText('section', 'int-cat-grp'), grid = accText('div', 'int-pg');
@@ -1369,14 +1380,13 @@ function intMcpPick(mcp, preset, texts) {
   b.type = 'button';
   if (preset) b.dataset.preset = preset.id;
   b.dataset.find = foldCase([name, preset ? preset.id : mcp.id].join(' '));
-  b.appendChild(preset ? intIcon({id: preset.id, name: name}) : intIcon(mcp));
-  b.appendChild(accText('span', 'int-pick-n', name));
   b.title = name;
-  if (preset && preset.knowledge === 'ready') b.appendChild(intKnowTagOf({name: 'on', text: 'Knowledge', tip: INT_KNOW_TIP}));
+  var tags = [preset && preset.knowledge === 'ready' ? intKnowTagOf({name: 'on', text: 'Knowledge', tip: INT_KNOW_TIP}) : null];
   if (preset && preset.preview === true) {
-    b.appendChild(accText('span', 'tag k-info int-mcp-tag', 'Preview'));
+    tags.push(accText('span', 'tag k-info int-mcp-tag', 'Preview'));
     b.title = name + (texts.preview ? ' \u00b7 ' + String(texts.preview) : '');
   }
+  intPickBody(b, preset ? intIcon({id: preset.id, name: name}) : intIcon(mcp), name, '', '', tags, null);
   if (!intUsable(mcp)) {
     b.setAttribute('aria-disabled', 'true');
     b.title = String(mcp.reason || '');
@@ -1397,9 +1407,7 @@ function intMcpSoon(it, texts) {
   b.dataset.preset = it.id;
   b.dataset.find = foldCase(name + ' ' + it.id);
   b.setAttribute('aria-disabled', 'true');
-  b.appendChild(intIcon({id: it.id, name: name}));
-  b.appendChild(accText('span', 'int-pick-n', name));
-  b.appendChild(accText('span', 'tag plain int-mcp-tag', String(texts.soon || '')));
+  intPickBody(b, intIcon({id: it.id, name: name}), name, '', '', [accText('span', 'tag plain int-mcp-tag', String(texts.soon || ''))], null);
   return b;
 }
 function intMcpPrefill(preset, texts) {

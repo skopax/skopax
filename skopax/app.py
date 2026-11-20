@@ -12,7 +12,7 @@ import secrets
 import threading
 import time
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Callable, Mapping
@@ -67,7 +67,8 @@ from skopax.chatui import CHAT_ID
 from skopax.chatui.text import set_texts as set_chat_texts
 from skopax.assign import Assigner, Invalid as AssignInvalid, people_of, slug
 from skopax.jiralinks import ticket_projects
-from skopax.models import email_allowed, NoticesReadIn, NameIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, TagOwnersIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, FieldSuggestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn
+from skopax.autoassign import AutoAssign
+from skopax.models import email_allowed, NoticesReadIn, NameIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, TagOwnersIn, TagAutoIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, FieldSuggestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn
 from skopax.selfreview import BY as SELF_REVIEW_BY, SelfReview, self_service, gather as review_facts, review_slot_offset
 from skopax.slackhealth import OFFSET as SLACK_POSTS_OFFSET, PASS as SLACK_POSTS, PERIOD as SLACK_POSTS_PERIOD, slack_posts_pass
 from skopax.jiraaccess import PASS as JIRA_ACCESS, access_pass as jira_access_pass
@@ -307,6 +308,7 @@ def card_view(card: dict, live: bool, merged: list[dict] = (), parent: dict | No
 TICKET_HITS = 8
 EMAIL_MAX = 254
 ROUTES_STOP_S = 5
+AUTO_STOP_S = 3
 MARKS_STOP_S = 10
 TICKET_KEY = re.compile(r'[A-Za-z][A-Za-z0-9]+-\d+')
 TICKET_WORD = re.compile(r'[^\w]+', re.UNICODE)
@@ -672,6 +674,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     notices = Notices(store)
     versions = VersionCheck(store, transport, lambda: features.on('update-check'), clock=clock)
     reminders = Reminders(store, slack, settings.slack_remind_hours, base_url)
+    slack_people = tagreport.SlackPeople(slack)
     slack_ids = tagreport.SlackIds(slack, on_scope=lambda missing: store.note_email_scope(missing, iso(utc_now())), flagged=lambda: store.email_scope() is not None)
 
     def active_people() -> dict[str, str]:
@@ -682,6 +685,24 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     clear_notes = ClearNotes(store, slack, settings.slack_clear_note_minutes, title_prefix=settings.jira_title_prefix)
     jira_links = JiraLinks(store, jira, settings.jira_links, notes, base_url, settings.jira_developer_field)
     assigner = Assigner(store, slack, settings, base_url, notes, notices, posts=card_posts)
+    auto_pool: list[ThreadPoolExecutor] = []
+    auto_guard = threading.Lock()
+
+    def auto_later(job) -> None:
+        with auto_guard:
+            if not auto_pool:
+                auto_pool.append(ThreadPoolExecutor(max_workers=1, thread_name_prefix='skopax-auto-assign'))
+        auto_pool[0].submit(job)
+
+    auto_assign = AutoAssign(store, assigner, active_people, later=auto_later)
+
+    def stop_auto_pool() -> None:
+        last = auto_pool[0].submit(lambda: None)
+        try:
+            last.result(timeout=AUTO_STOP_S)
+        except FutureTimeout:
+            log.info('auto-assign messages were still going out at shutdown; the rest are dropped')
+        auto_pool[0].shutdown(wait=False, cancel_futures=True)
     postdeploy = PostDeploy(store, prom_for, jira, lambda: features.on('postdeploy'), base_url, assess=lambda: investigator.available(), projects=settings.release_projects, serving=prom_watching,
                             primary_name=lambda: getattr(runtime.instances.primary(PROMETHEUS_ID), 'name', None), release_template=lambda: settings.jira_release_name, plugin_reports=lambda rows, started, now: runtime.deploy_reports(rows, started, now))
     settle = Settle(store, settings.release_settle)
@@ -1036,6 +1057,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             notices.auto_resolved([r['key'] for r in applied.resolved])
         if applied:
             notices.fired(applied.events, applied.cards)
+            auto_assign.sweep(applied.cards)
         if applied and applied.push:
             pusher.send(applied.push)
         if applied:
@@ -1431,6 +1453,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             live.tunables.ensure_indexes()
             get_sessions()
             first_run()
+            try:
+                auto_assign.since()
+            except Exception as e:
+                log.warning('the auto-assign start time was not stored: %s', kind(e))
             await asyncio.to_thread(instances.ensure_indexes)
             await asyncio.to_thread(mcptools_auth.ensure_indexes)
             try:
@@ -1509,6 +1535,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                     await asyncio.to_thread(listener.stop)
                 except Exception as e:
                     log.warning('slack listener stop failed: %s', kind(e))
+            if auto_pool:
+                try:
+                    await asyncio.to_thread(stop_auto_pool)
+                except Exception as e:
+                    log.warning('the auto-assign messages did not finish: %s', kind(e))
             if proxy_pool:
                 try:
                     await asyncio.to_thread(proxy_pool[0].shutdown)
@@ -1560,6 +1591,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     app.state.feature_needs = feature_needs
     app.state.auto_send = auto
     app.state.tag_report = tag_report
+    app.state.slack_people = slack_people
+    app.state.auto_assign = auto_assign
     app.state.slack_fallback = fallback
     app.state.scheduler = scheduler
     app.state.sweeper = sweeper
@@ -2525,6 +2558,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise HTTPException(status_code=422, detail=e.text) from e
         out = tagging(body.key, fields, by, f"{'tagged' if body.on else 'untagged'} {tags.label(body.tag)}")
         card_posts.refresh(body.key)
+        if body.on:
+            auto_assign.card(body.key)
         return out
 
     @app.put('/api/business')
@@ -2826,8 +2861,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         everyone = all_people()
         return [{'email': e, 'name': owner_name(e, everyone), 'slack': slack_ids.peek(e)} | ({} if e in named or e not in everyone else {'stale': True}) for e in emails]
 
-    def tag_view(tag: str, label: str, held: dict[str, list[str]], named: dict[str, str]) -> dict:
-        return {'id': tag, 'label': label, 'responsibles': owner_rows(held.get(tag, []), named)}
+    def tag_view(tag: str, label: str, held: dict[str, list[str]], named: dict[str, str], off: set[str] | None = None) -> dict:
+        off = store.tag_auto_off() if off is None else off
+        return {'id': tag, 'label': label, 'responsibles': owner_rows(held.get(tag, []), named), 'autoAssign': tag not in off, 'autoReady': auto_assign.ready(tag, held, named)}
 
     def people_named(names: list[str]) -> str:
         everyone = all_people()
@@ -2838,9 +2874,22 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         listed = users.list()
         named = active_people()
         held = store.tag_owners()
-        return {'tags': [tag_view(tag, label, held, named) for tag, label in tags.all_tags().items()], 'canEdit': True,
+        off = store.tag_auto_off()
+        return {'tags': [tag_view(tag, label, held, named, off) for tag, label in tags.all_tags().items()], 'canEdit': True,
                 'users': [{'email': u['email'], 'name': u.get('name') or u['email'].split('@')[0], 'disabled': bool(u.get('disabled'))} for u in listed if u and u.get('email')],
                 'reportAt': settings.tag_report_at, 'emailScopeMissing': scope_warning() is not None}
+
+    @app.get('/api/admin/people')
+    def get_admin_people(by: Annotated[str, Depends(require_admin)], q: str = '') -> dict:
+        wanted = q.strip()[:tagreport.QUERY_MAX]
+        if len(wanted) < tagreport.QUERY_MIN:
+            return {'people': [], 'slack': 'idle'}
+        everyone, active = all_people(), active_people()
+        rows = [{'email': e, 'name': n or e.split('@')[0], 'source': 'skopax'} for e, n in active.items()]
+        rows += [{'email': e, 'name': owner_name(e, everyone), 'source': 'responsible'} for held in store.tag_owners().values() for e in held if e in active or e not in everyone]
+        found, state = slack_people.lookup()
+        rows += [p | {'source': 'slack'} for p in found if p['email'] in active or p['email'] not in everyone]
+        return {'people': tagreport.find_people(wanted, rows), 'slack': state}
 
     @app.put('/api/admin/tags/{tag}/responsibles')
     def put_tag_owners(tag: str, body: TagOwnersIn, by: Annotated[str, Depends(require_admin)]) -> dict:
@@ -2862,6 +2911,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             store.add_activity(ACCESS_KIND, by, f"Responsibles of {known[tag]}: {people_named(before)} \u2192 {people_named(wanted)}"[:300])
             log.info('responsibles of tag %s changed by %s', tag, by)
         return tag_view(tag, known[tag], store.tag_owners(), named)
+
+    @app.put('/api/admin/tags/{tag}/auto-assign')
+    def put_tag_auto(tag: str, body: TagAutoIn, by: Annotated[str, Depends(require_admin)]) -> dict:
+        known = tags.all_tags()
+        if tag not in known:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, msg('tags.no_tag', tag=tag[:40]))
+        was = tag not in store.tag_auto_off()
+        if body.on != was:
+            store.set_tag_auto(tag, body.on)
+            store.add_activity(ACCESS_KIND, by, f"Auto-assign of {known[tag]}: {'on' if was else 'off'} \u2192 {'on' if body.on else 'off'}"[:300])
+            log.info('auto-assign of tag %s turned %s by %s', tag, 'on' if body.on else 'off', by)
+        return tag_view(tag, known[tag], store.tag_owners(), active_people())
 
     @app.put('/api/admin/settings')
     def put_admin_setting(body: AdminSettingIn, request: Request, by: Annotated[str, Depends(require_admin)], authorization: Annotated[str | None, Header()] = None) -> dict:

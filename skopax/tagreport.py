@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from collections.abc import Callable
 
@@ -6,7 +7,7 @@ from skopax import clock, information, tags
 from skopax.cardlink import card_url
 from skopax.engine import parse_iso
 from skopax.errkind import kind as error_kind
-from skopax.messages import msg
+from skopax.messages import fold, msg
 from skopax.slack import BLOCK_LIMIT, EMOJI, SCOPE_ERRORS, SECTION_LIMIT, SlackDown, SlackError, cut, esc
 from skopax.store import Store
 
@@ -26,6 +27,11 @@ LOOKUP_TTL_S = 86400
 WEEKEND = (5, 6)
 SCOPE = 'users:read.email'
 OWNERS_MAX = 20
+PEOPLE_TTL_S = 6 * 3600
+PEOPLE_MAX = 20
+QUERY_MIN = 2
+QUERY_MAX = 100
+SOURCES = ('skopax', 'responsible', 'slack')
 STOPPED = ('progress', 'handled')
 SEV_ORDER = {'crit': 0, 'warn': 1, 'info': 2}
 QUIET_KEPT = ('crit', 'warn')
@@ -232,6 +238,73 @@ class SlackIds:
             self.on_scope(missing)
         except Exception as e:
             log.warning('the Slack scope flag of the tag report was not stored: %s', error_kind(e))
+
+
+def in_background(job: Callable[[], None]) -> None:
+    threading.Thread(target=job, name='slack-people', daemon=True).start()
+
+
+class SlackPeople:
+    def __init__(self, slack, ttl: float = PEOPLE_TTL_S, clock: Callable[[], float] = time.monotonic, spawn: Callable[[Callable[[], None]], None] = in_background):
+        self.slack = slack
+        self.ttl = ttl
+        self.clock = clock
+        self.spawn = spawn
+        self._guard = threading.Lock()
+        self._people: list[dict] | None = None
+        self._at = 0.0
+        self._for: str | None = None
+        self._busy = False
+        self._down_until = -FAILURE_TTL_S
+
+    def lookup(self) -> tuple[list[dict], str]:
+        token = self.slack.token
+        if not token:
+            return [], 'off'
+        with self._guard:
+            if token != self._for:
+                self._for, self._people, self._down_until = token, None, -FAILURE_TTL_S
+            now = self.clock()
+            start = (self._people is None or now - self._at >= self.ttl) and not self._busy and now >= self._down_until
+            if start:
+                self._busy = True
+        if start:
+            self.spawn(lambda: self._build(token))
+        with self._guard:
+            if self._people is not None:
+                return self._people, 'ok'
+            return [], 'loading' if self._busy else 'unavailable'
+
+    def _build(self, token: str) -> None:
+        try:
+            found = self.slack.members()
+        except Exception as e:
+            log.warning('Slack members were not listed, the responsible picker offers Skopax people only for a while: %s', getattr(e, 'code', None) or error_kind(e))
+            with self._guard:
+                self._busy = False
+                self._down_until = self.clock() + FAILURE_TTL_S
+            return
+        with self._guard:
+            self._busy = False
+            if token == self._for:
+                self._people, self._at = found, self.clock()
+        log.info('%d Slack members kept for the responsible picker', len(found))
+
+
+def find_people(query: str, rows: list[dict], limit: int = PEOPLE_MAX) -> list[dict]:
+    wanted = fold(str(query or '').strip())
+    merged: dict[str, dict] = {}
+    for row in rows:
+        email = str(row.get('email') or '').strip().lower()
+        if not email:
+            continue
+        held = merged.setdefault(email, {'email': email, 'name': row.get('name') or email.split('@')[0], 'source': row['source'], 'text': [email]})
+        held['text'] += [fold(str(row.get(k) or '')) for k in ('name', 'display')]
+    found = [p for p in merged.values() if any(wanted in t for t in p['text'])]
+    def rank(p: dict) -> tuple:
+        words = [w for t in p['text'] for w in t.replace('@', ' ').replace('.', ' ').split()]
+        return (not any(w.startswith(wanted) for w in words), SOURCES.index(p['source']), fold(p['name']))
+    return [{'email': p['email'], 'name': p['name'], 'source': p['source']} for p in sorted(found, key=rank)[:limit]]
 
 
 class TagReport:

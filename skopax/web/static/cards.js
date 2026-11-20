@@ -436,7 +436,7 @@ function cardTags(a) {
     var how = resolutionOf(a);
     t.push({row: 2, html: '<span class="tag ' + TRI.handled[1] + ' res-tag">' + (how ? resolutionHtml(how) : '<span>' + esc('Resolved' + (a.triagedBy === 'pod' ? ' · by investigator' : '')) + '</span>') +
       (a.ticket && !(how && how.ref === a.ticket) ? ' · ' + jiraLinks(a.ticket) : '') + '</span>'});
-  } else if (a.triage && TRI[a.triage]) t.push({row: 2, html: '<span class="tag ' + TRI[a.triage][1] + '">' + esc(TRI[a.triage][0]) + (a.triagedBy === 'pod' ? ' · by investigator' : a.triagedBy === 'auto' ? ' · auto-resolved' : '') + (a.ticket ? ' · ' + jiraLinks(a.ticket) : '') + '</span>'});
+  } else if (a.triage && TRI[a.triage]) t.push({row: 2, html: '<span class="tag ' + TRI[a.triage][1] + (a.triage === 'investigating' ? ' tri-inv">' + runIndHtml(runFor(a.key)) : '">') + esc(TRI[a.triage][0]) + (a.triagedBy === 'pod' ? ' · by investigator' : a.triagedBy === 'auto' ? ' · auto-resolved' : '') + (a.ticket ? ' · ' + jiraLinks(a.ticket) : '') + '</span>'});
   var d = draftTag(a);
   if (d) t.push({row: autoArmed(a) && draftLive(a) ? 1 : 0, html: d});
   if (a.src === 'qan' && a.kind) t.push({row: 0, html: a.kind === 'dwh' ? '<span class="tag plain" title="Not application traffic: a data-platform or reporting query. Info only, never pushed.">DWH / data</span>' : '<span class="tag plain" title="Application query traffic">App query</span>'});
@@ -512,7 +512,7 @@ function anomCard(a, i) {
   var when = cardWhen(a);
   var ctx = [a.ns && a.ns !== '-' ? a.ns : '', a.sub || '', a.src || '', a.cluster ? 'instance ' + a.cluster : ''].filter(Boolean).join(' \u00b7 ');
   var spend = (window.INV_SPEND || {})[a.key];
-  var usd = spend ? '<span class="usd" title="Investigator: ' + spend.n + (spend.n === 1 ? ' run, ' : ' runs, ') + usdText(spend.usd) + '">' + usdText(spend.usd) + '</span>' : '';
+  var usd = spend ? '<span class="usd" title="Investigator: ' + spend.n + (spend.n === 1 ? ' run, ' : ' runs, ') + usdText(spend.usd) + '">' + runSpendText(a.key) + '</span>' : '';
   var line = (a.src === 'airbyte' ? '<span>' + (a.sig === 'airbyte-long-run' ? 'running' : 'took') + ' <b>' + num(a.now, a.unit) + '</b></span><span>usual ' + num(a.d1, a.unit) + '</span>' :
     a.src === 'argo' ? '<span>for <b>' + num(a.now, a.unit) + '</b></span>' :
     '<span>now <b>' + num(a.now, a.unit) + '</b></span><span>1 d ' + num(a.d1, a.unit) + '</span><span>7 d ' + num(a.d7, a.unit) + '</span>') +
@@ -524,7 +524,7 @@ function anomCard(a, i) {
     '<span class="c c-name"><h4><button type="button" class="fold" aria-expanded="false" aria-controls="more-' + i + '" title="' + esc(name) + '"><span class="svc">' + esc(a.svc) + '</span><span class="sep">/</span><span class="sig">' + esc(cardTitle(a) || a.label) + '</span></button></h4>' + pageLink(a) + '</span>' +
     '<span class="c c-status">' + (tags.row || statusTag(a)) + '</span><span class="c c-asg">' + asgTag(a) + '</span><span class="c c-tags">' + bizTags(a) + '</span>' +
     '<span class="c c-chg"><span class="chg">' + esc(change(a)) + '</span></span><span class="c c-age" title="' + esc(when) + '">' + esc(ageShort(a.firstSeen)) + '</span></div>' +
-    '<div class="acts" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div></div>' +
+    runBanner(a.key) + '<div class="acts" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div></div>' +
     '<div class="inc-more" id="more-' + i + '" hidden><div class="line">' + line + '</div>' + causeHtml(a) + seenHtml(a) +
     (tags.rest ? '<div class="inc-tags">' + tags.rest + '</div>' : '') +
     (recShown ? '<p class="rec-line"><span>Next</span>' + esc(a.recommend) + '</p>' : isOpen && a.gone ? '<p class="rec-line"><span>Next</span>' + esc(goneText(a)) + '</p>' : '') +
@@ -564,7 +564,7 @@ function boardColumn(a) {
 }
 function boardState(a) {
   var t = '';
-  if (TRI[a.triage] && (a.triage === 'investigating' || a.triage === 'dived')) t += '<span class="tag ' + TRI[a.triage][1] + '" title="' + esc(a.triage === 'dived' ? 'Investigated; nobody acted on it yet' : 'The investigator is on it') + '">' + esc(TRI[a.triage][0]) + '</span>';
+  if (TRI[a.triage] && (a.triage === 'investigating' || a.triage === 'dived')) t += '<span class="tag ' + TRI[a.triage][1] + (a.triage === 'investigating' ? ' tri-inv' : '') + '" title="' + esc(a.triage === 'dived' ? 'Investigated; nobody acted on it yet' : 'The investigator is on it') + '">' + (a.triage === 'investigating' ? runIndHtml(runFor(a.key)) : '') + esc(TRI[a.triage][0]) + '</span>';
   if (a.status === 'cleared' && stale.indexOf(a) >= 0) t += '<span class="tag k-crit" title="' + esc((eventCause(a) ? 'Stopped after the event ' : 'Stopped firing ') + daytime(a.clearedAt) + ', nobody acted yet: waiting to be addressed') + '">' + esc(clearedWord(a) + ' ' + daytime(a.clearedAt)) + '</span>';
   return t;
 }
@@ -1037,7 +1037,7 @@ function renderAnoms() {
   shownN = groups.reduce(function (n, gr) { return n + gr.list.length; }, 0);
   var found = document.getElementById('card-search-n');
   if (found) found.textContent = searchQ ? (shownN ? shownN + (shownN === 1 ? ' card' : ' cards') + ' found in every list' : 'No card matches') : '';
-  if (CARD_VIEW === 'board') { renderBoard(root, groups); return; }
+  if (CARD_VIEW === 'board') { renderBoard(root, groups); runDots(root); return; }
   groups.forEach(function (gr) {
     var sec = el('section', 'grp ' + gr.k);
     var hd = el('header', 'grp-h', '<h3>' + esc(gr.title) + '</h3><span class="count">' + gr.list.length + '</span>');

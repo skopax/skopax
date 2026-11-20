@@ -143,7 +143,8 @@ async function theHeaderShowsTheIconNameModeAndDescriptionAndTheFooterHoldsTheAc
   assert.deepStrictEqual(order, ['int-test', 'int-cancel', 'int-save', 'int-save-on'], 'Test connection first, then Cancel and the saves');
   assert.ok(last && !heading, 'the footer closes the form and the old in-form heading is gone');
   assert.ok(!editSub, 'an existing instance shows no Add instance');
-  assert.ok(/\.int-foot \{[^}]*position: sticky;[^}]*bottom: -14px;/.test(css) && /\.int-panel \{[^}]*padding: 14px;[^}]*overflow-y: auto;/.test(css), 'the footer sticks flush to the bottom of the drawer, over its padding, while the body scrolls');
+  const footBottom = /\.int-foot \{[^}]*position: sticky;[^}]*bottom: -(\d+)px;[^}]*margin: 0 -(\d+)px;/.exec(css), panelPad = /\.int-panel \{[^}]*padding: (\d+)px (\d+)px;[^}]*overflow-y: auto;/.exec(css);
+  assert.ok(footBottom && panelPad && footBottom[1] === panelPad[1] && footBottom[2] === panelPad[2], 'the footer sticks flush to the bottom of the drawer, over its padding, while the body scrolls');
   t.w.close();
   console.log('PASS Drawer: the header shows icon, name, Add instance and the description; the sticky footer holds Test, Cancel and Save');
 }

@@ -22,7 +22,7 @@ function invHtml(a) {
   var r = INV[a.key];
   if (!r) return '';
   var head = r.mode === 'shadow' ? 'Investigator (shadow)' : 'Investigator';
-  var meta = dayhm(r.startedAt) + ' · ' + (r.toolCalls || 0) + ' tool calls · ' + usdText(r.usd) + (r.outcome && r.outcome !== 'done' ? ' · ' + r.outcome : '');
+  var meta = r.outcome === 'running' ? dayhm(r.startedAt) + ' · running' : dayhm(r.startedAt) + ' · ' + (r.toolCalls || 0) + ' tool calls · ' + usdText(r.usd) + (r.outcome && r.outcome !== 'done' ? ' · ' + r.outcome : '');
   var props = r.mode === 'shadow' ? (r.writes || []).filter(function (w) { return w.key === a.key; }).map(function (w) {
     return '<li>Would have: ' + esc(w.tool) + ' ' + esc(w.summary) + '</li>';
   }).join('') : '';
@@ -127,6 +127,12 @@ function askDialog() {
   wrap.hidden = false;
   text.focus();
 }
+var INV_BTN_ICON = '<svg class="ib-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5Q11 12 18 13Q11 14 10 21Q9 14 2 13Q9 12 10 5Z"></path><path d="M19 2v6"></path><path d="M16 5h6"></path></svg>';
+function invBtnText(btn, text) {
+  var t = btn.querySelector('.ib-t');
+  if (!t) { btn.innerHTML = INV_BTN_ICON + '<span class="ib-t"></span>'; t = btn.querySelector('.ib-t'); }
+  if (t.dataset.said !== text) { t.dataset.said = text; t.textContent = text; }
+}
 function renderInvMenu() {
   var btn = document.getElementById('inv-btn'), pop = document.getElementById('inv-pop'), state = document.getElementById('inv-state'), ask = document.getElementById('inv-ask'), stop = document.getElementById('inv-stop'), chat = document.getElementById('inv-chat');
   if (!btn || !pop) return;
@@ -137,14 +143,14 @@ function renderInvMenu() {
   if (!on) { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); return; }
   ask.hidden = chatOff;
   if (chat) chat.hidden = chatOff;
-  btn.textContent = 'Investigator · ' + usdText(i.spentToday) + ' / ' + usdText(i.cap) + (i.stopped ? ' · stopped' : '');
+  invBtnText(btn, 'Investigator · ' + usdText(i.spentToday) + ' / ' + usdText(i.cap) + (i.stopped ? ' · stopped' : ''));
   btn.title = (i.stopped ? 'Investigator stopped' : 'Investigator') + ' · spent today ' + usdText(i.spentToday) + ' of the ' + usdText(i.cap) + ' daily cap · ask it a question, stop or resume it';
   btn.classList.toggle('stopped', !!i.stopped);
   state.textContent = esc(i.mode) + ' · ' + usdText(i.spentToday) + ' of ' + usdText(i.cap) + ' today' + (i.stopped ? ' · stopped by ' + esc(i.stopped.by) + ' ' + esc(dayhm(i.stopped.at)) : i.lastRun ? ' · last run ' + esc(dayhm(i.lastRun)) : '');
   btn.classList.toggle('off', switched);
   if (switched) {
     btn.classList.remove('stopped');
-    btn.textContent = 'Investigator \u00b7 off';
+    invBtnText(btn, 'Investigator \u00b7 off');
     btn.title = state.textContent = typeof ME_OFF.investigator === 'string' ? ME_OFF.investigator : '';
   }
   if (!stop.dataset.confirm) stop.textContent = i.stopped ? 'Resume' : 'Stop investigator';

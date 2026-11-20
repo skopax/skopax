@@ -514,7 +514,7 @@ async function theTopBarHoldsTheCrumbAndTheLastCheck() {
   assert.ok(top, 'the content column starts with the top bar');
   assert.deepStrictEqual([...top.children].map((c) => c.id || c.className), ['side-open', 'crumb', 'off-tag', 'top-r'], 'hamburger, crumb, stopped tag, then the right cluster');
   assert.strictEqual(doc.getElementById('env-tag'), null, 'the environment label moved into the instance switcher');
-  assert.deepStrictEqual([...doc.querySelector('.top-r').children].map((c) => c.id), ['last-check', 'inv-menu', 'theme-btn'], 'the bell and the Appearance button are retired');
+  assert.deepStrictEqual([...doc.querySelector('.top-r').children].map((c) => c.id), ['run-pill', 'last-check', 'inv-menu', 'theme-btn'], 'the bell and the Appearance button are retired; the run pill leads the right cluster');
   assert.match(doc.getElementById('last-check').textContent, /^Last check(\d\d:\d\d|\u2013)$/);
   assert.strictEqual(doc.querySelector('.top .live'), null, 'the Activity rail keeps the live class to itself');
   assert.ok(doc.getElementById('meta').parentNode.classList.contains('overview'), 'the source pills sit in the overview card');

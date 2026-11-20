@@ -101,11 +101,15 @@ function loadInvestigator() {
   var seq = ++INV_SEQ;
   fetch('/api/investigator/status', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
     if (seq !== INV_SEQ) return;
-    if (!d || !Array.isArray(d.rooms)) { box.innerHTML = '<p class="muted">The investigator status is unavailable right now.</p>'; return; }
+    if (!d || !Array.isArray(d.rooms)) { runTake(null); runShowPaint(); box.innerHTML = '<p class="muted">The investigator status is unavailable right now.</p>'; return; }
+    runTake(d);
+    runShowPaint();
     renderInvestigator(d);
     markInvestigatorTab(d);
   }, function () {
     if (seq !== INV_SEQ) return;
+    runTake(null);
+    runShowPaint();
     box.innerHTML = '<p class="muted">The investigator status is unavailable right now.</p>';
   });
 }

@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import time
+import urllib.error
 import urllib.request
 from typing import Callable
 from urllib.parse import quote, urlencode, urlsplit
@@ -24,7 +25,7 @@ log = logging.getLogger('skopax.slack')
 
 POST_URL = 'https://slack.com/api/chat.postMessage'
 API_URL = 'https://slack.com/api/'
-READ_METHODS = frozenset({'auth.test', 'chat.getPermalink', 'conversations.history', 'conversations.info', 'conversations.replies', 'users.info', 'users.lookupByEmail'})
+READ_METHODS = frozenset({'auth.test', 'chat.getPermalink', 'conversations.history', 'conversations.info', 'conversations.replies', 'users.info', 'users.list', 'users.lookupByEmail'})
 FORM_METHODS = frozenset({'files.getUploadURLExternal', 'files.completeUploadExternal'})
 SCOPES_KEY = '_scopes'
 CALL_TIMEOUT_S = 10
@@ -36,6 +37,12 @@ FILE_HOST = 'files.slack.com'
 IMAGE_BYTES_MAX = 3_750_000
 IMAGE_MIMES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp')
 REPLIES_PAGE = 200
+MEMBERS_PAGE = 200
+MEMBERS_PAGES_MAX = 100
+RATE_LIMITED = 'ratelimited'
+RATE_TRIES = 3
+RATE_WAIT_MAX_S = 30.0
+SLACKBOT = 'USLACKBOT'
 REACTIONS_SCOPE = 'reactions:write'
 CREATE_TASK = 'create_task'
 CARD_ACTION = 'card_action'
@@ -117,11 +124,28 @@ def refusal_of(body: dict) -> str:
     return code
 
 
+class SlackSlowed(SlackDown):
+    def __init__(self, wait: float):
+        super().__init__('Slack asked to slow down', code=RATE_LIMITED)
+        self.wait = wait
+
+
+def slowed(after) -> SlackSlowed:
+    try:
+        return SlackSlowed(min(max(float(after), 1.0), RATE_WAIT_MAX_S))
+    except (TypeError, ValueError):
+        return SlackSlowed(1.0)
+
+
 def _answer(req: urllib.request.Request) -> dict:
     try:
         with urllib.request.urlopen(req, timeout=CALL_TIMEOUT_S) as resp:
             body = json.loads(resp.read())
             scopes = (getattr(resp, 'headers', None) or {}).get('x-oauth-scopes')
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            raise slowed(e.headers.get('Retry-After') if e.headers else None) from None
+        raise SlackDown(f'Slack did not answer ({error_kind(e)})') from e
     except Exception as e:
         raise SlackDown(f'Slack did not answer ({error_kind(e)})') from e
     if not body.get('ok'):
@@ -129,6 +153,18 @@ def _answer(req: urllib.request.Request) -> dict:
     if scopes is not None:
         body[SCOPES_KEY] = scopes
     return body
+
+
+def member(user: dict) -> dict | None:
+    if not isinstance(user, dict) or user.get('deleted') or user.get('is_bot') or user.get('is_app_user') or user.get('is_restricted') or user.get('is_ultra_restricted') or user.get('id') == SLACKBOT:
+        return None
+    profile = user.get('profile') or {}
+    email = str(profile.get('email') or '').strip().lower()
+    if not email:
+        return None
+    display = str(profile.get('display_name') or '').strip()
+    name = str(profile.get('real_name') or user.get('real_name') or display or user.get('name') or '').strip()
+    return {'email': email, 'name': name or email.split('@')[0], 'display': display}
 
 
 def send(token: str, payload: dict) -> dict:
@@ -376,9 +412,29 @@ class Slack:
         profile = user.get('profile') or {}
         return {'id': user['id'], 'name': str(profile.get('real_name') or user.get('real_name') or profile.get('display_name') or user.get('name') or '').strip()}
 
+    def members(self) -> list[dict]:
+        found, cursor = [], None
+        for _ in range(MEMBERS_PAGES_MAX):
+            body = self.page_of_members(cursor)
+            found.extend(p for p in map(member, body.get('members') or []) if p)
+            cursor = str((body.get('response_metadata') or {}).get('next_cursor') or '')
+            if not cursor:
+                break
+        return found
+
+    def page_of_members(self, cursor: str | None) -> dict:
+        for attempt in range(RATE_TRIES):
+            try:
+                return self.call('users.list', {'limit': MEMBERS_PAGE, 'cursor': cursor})
+            except SlackError as e:
+                if e.code != RATE_LIMITED or attempt == RATE_TRIES - 1:
+                    raise
+                self.sleep(min(float(getattr(e, 'wait', 1.0) or 1.0), RATE_WAIT_MAX_S))
+        raise slowed(None)
+
     def user_email(self, user_id: str) -> str | None:
         user = self.call('users.info', {'user': user_id}).get('user') or {}
-        if user.get('is_bot') or user.get('deleted') or user.get('id') == 'USLACKBOT':
+        if user.get('is_bot') or user.get('deleted') or user.get('id') == SLACKBOT:
             return None
         return ((user.get('profile') or {}).get('email') or '').strip() or None
 
