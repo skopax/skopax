@@ -1184,7 +1184,18 @@
   "Responsibles not saved, try again": "Sorumlular kaydedilemedi, tekrar deneyin",
   "Slack app is missing users:read.email; responsibles are named without a ping": "Slack uygulamasında users:read.email eksik; sorumlular bildirim gönderilmeden anılıyor",
   "Needs Slack auto-send on (Admin › Features).": "Slack otomatik gönderiminin açık olması gerekir (Admin › Features).",
-  "No longer an active user": "Artık etkin bir kullanıcı değil"
+  "No longer an active user": "Artık etkin bir kullanıcı değil",
+  "Who may sign in": "Kimler oturum açabilir",
+  "Roles from groups": "Gruplardan roller",
+  "Redirect URI": "Yönlendirme URI'si",
+  "Checks the provider with the values typed here, without saving them.": "Sağlayıcıyı buraya yazılan değerlerle, kaydetmeden denetler.",
+  "Register this address in your identity provider as an allowed redirect (callback) URI.": "Bu adresi kimlik sağlayıcınızda izin verilen yönlendirme (callback) URI'si olarak kaydedin.",
+  "Set up single sign-on in three steps": "Tek oturum açmayı üç adımda kurun",
+  "Copy the redirect URI below and register it in your identity provider.": "Aşağıdaki yönlendirme URI'sini kopyalayıp kimlik sağlayıcınıza kaydedin.",
+  "Enter the issuer URL, client ID and client secret the provider gives you.": "Sağlayıcının verdiği issuer URL'sini, istemci kimliğini ve istemci sırrını girin.",
+  "Test the connection, then save and turn single sign-on on.": "Bağlantıyı test edin, ardından kaydedip tek oturum açmayı açın.",
+  "Unsaved changes": "Kaydedilmemiş değişiklikler",
+  "Claim value": "Claim değeri"
  },
  "rules": [
   [

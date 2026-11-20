@@ -1184,7 +1184,18 @@
   "Responsibles not saved, try again": "Responsables non enregistrés, réessayez",
   "Slack app is missing users:read.email; responsibles are named without a ping": "Il manque users:read.email à l’app Slack ; les responsables sont nommés sans mention",
   "Needs Slack auto-send on (Admin › Features).": "Nécessite l’envoi automatique Slack activé (Admin › Features).",
-  "No longer an active user": "N’est plus un utilisateur actif"
+  "No longer an active user": "N’est plus un utilisateur actif",
+  "Who may sign in": "Qui peut se connecter",
+  "Roles from groups": "Rôles depuis les groupes",
+  "Redirect URI": "URI de redirection",
+  "Checks the provider with the values typed here, without saving them.": "Vérifie le fournisseur avec les valeurs saisies ici, sans les enregistrer.",
+  "Register this address in your identity provider as an allowed redirect (callback) URI.": "Enregistrez cette adresse chez votre fournisseur d’identité comme URI de redirection (callback) autorisée.",
+  "Set up single sign-on in three steps": "Configurer l’authentification unique en trois étapes",
+  "Copy the redirect URI below and register it in your identity provider.": "Copiez l’URI de redirection ci-dessous et enregistrez-la chez votre fournisseur d’identité.",
+  "Enter the issuer URL, client ID and client secret the provider gives you.": "Saisissez l’URL de l’émetteur, l’ID client et le secret client fournis par le fournisseur.",
+  "Test the connection, then save and turn single sign-on on.": "Testez la connexion, puis enregistrez et activez l’authentification unique.",
+  "Unsaved changes": "Modifications non enregistrées",
+  "Claim value": "Valeur du claim"
  },
  "rules": [
   [

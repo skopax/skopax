@@ -157,10 +157,11 @@ async function rendersValuesWithSourceLabels() {
 
   //then
   assert.deepStrictEqual(await pill({enabled: true, active: true}), ['On', 'true', [null, 'Identity provider: no problem seen']]);
-  assert.deepStrictEqual(await pill({enabled: true, active: false, problem: 'Set the issuer URL (sso.issuer).'}), ['Needs setup', 'true', ['Set the issuer URL (sso.issuer).', null]]);
+  assert.deepStrictEqual(await pill({enabled: true, active: false, problem: 'Set the issuer URL (sso.issuer).'}), ['Needs attention', 'true', ['Set the issuer URL (sso.issuer).', null]]);
   assert.deepStrictEqual(await pill({enabled: true, active: true, provider: {ok: false, since: SINCE, error: 'discovery'}}),
-    ['On', 'true', [null, 'Identity provider did not answer with its settings since ' + short(SINCE)]]);
-  return 'the card renders every value with its source label, the pill says On, Off or Needs setup, and the provider status shows';
+    ['Needs attention', 'true', [null, 'Identity provider did not answer with its settings since ' + short(SINCE)]]);
+  assert.deepStrictEqual(await pill({enabled: false, active: false, secret: {set: false, from: null, unreadable: true}}), ['Needs attention', 'false', [null, null]]);
+  return 'the card renders every value with its source label, the pill says On, Off, Not set up or Needs attention, and the provider status shows';
 }
 
 async function aSourceOwnedSecretIsReadOnly() {
@@ -899,10 +900,10 @@ async function nothingConfiguredReadsNotSetUpWithNoProblemLine() {
   //then
   assert.deepStrictEqual(blankOn, ['Not set up', false, null, []], 'with nothing configured the pill is a neutral Not set up and no problem line shows');
   assert.deepStrictEqual(blankOff, ['Not set up', false, null, []], 'with the switch off too');
-  assert.deepStrictEqual(withSecret, ['Needs setup', true, problem, []], 'a secret counts as configured');
-  assert.deepStrictEqual(withClient, ['Needs setup', true, problem, []], 'so does a client ID other than the default');
-  assert.deepStrictEqual(withIssuer, ['Needs setup', true, 'Set the client secret (sso.client-secret).', []], 'and an issuer');
-  return 'with no issuer, no client ID other than the default and no secret the pill reads Not set up with no problem line; anything configured brings back Needs setup and the problem';
+  assert.deepStrictEqual(withSecret, ['Needs attention', true, problem, []], 'a secret counts as configured');
+  assert.deepStrictEqual(withClient, ['Needs attention', true, problem, []], 'so does a client ID other than the default');
+  assert.deepStrictEqual(withIssuer, ['Needs attention', true, 'Set the client secret (sso.client-secret).', []], 'and an issuer');
+  return 'with no issuer, no client ID other than the default and no secret the pill reads Not set up with no problem line; anything configured brings back Needs attention and the problem';
 }
 
 async function theProviderLineSaysWhatWentWrongInPlainWords() {
@@ -1145,6 +1146,128 @@ async function theCardStylesItsOverrideLabelFoldCheckboxAndRows() {
   return 'the override label is styled, Advanced: endpoints has a chevron, the checkbox and role-map rows line up, and the People and API tokens counts stand apart';
 }
 
+function unsetSso(over) {
+  const d = (value) => ({value, source: 'default', from: null});
+  const base = makeSso();
+  return makeSso(Object.assign({values: Object.assign({}, base.values, {issuer: d(''), 'client-id': d(''), 'role-map': d('')})}, over || {}));
+}
+
+async function theStatusHeaderShowsStateHostIconAndSwitch() {
+  //given
+  const on = await boot({sso: makeSso({enabled: true, active: true})});
+  const unset = await boot({sso: unsetSso()});
+
+  //when
+  await openAccess(on);
+  await openAccess(unset);
+
+  //then
+  const head = (doc) => card(doc).querySelector('.sso-top');
+  const sw = head(on.doc).querySelector('.sso-sw');
+  assert.deepStrictEqual([sw.getAttribute('role'), sw.getAttribute('aria-checked'), sw.getAttribute('aria-label')], ['switch', 'true', 'Single sign-on']);
+  assert.strictEqual(head(on.doc).querySelector('.sso-pill').textContent, 'On');
+  assert.ok(head(on.doc).querySelector('.sso-status').textContent.indexOf('idp.example.com') >= 0, 'the provider host shows in the header');
+  const ico = head(on.doc).querySelector('.sso-at-ico');
+  assert.ok(!ico.hidden && ico.style.backgroundImage.indexOf('/icons/sso/key.svg') >= 0, 'the provider icon shows beside the host');
+  assert.strictEqual(card(on.doc).dataset.state, 'k-ok');
+  assert.ok(!card(on.doc).querySelector('.sso-intro'), 'a set-up provider shows no intro');
+  assert.deepStrictEqual([...card(on.doc).querySelectorAll('.sso-grp')].map((g) => g.dataset.grp), ['provider', 'redirect', 'who', 'roles', 'button']);
+  assert.strictEqual(head(unset.doc).querySelector('.sso-pill').textContent, 'Not set up');
+  assert.ok(head(unset.doc).querySelector('.sso-at-ico').hidden, 'no icon while no issuer is set');
+  assert.strictEqual(card(unset.doc).querySelectorAll('.sso-intro li').length, 3, 'not set up shows a three-step intro');
+  assert.deepStrictEqual([...card(unset.doc).querySelectorAll('.sso-grp')].map((g) => [g.dataset.grp, g.querySelector('.sso-num').textContent]),
+    [['redirect', '1'], ['provider', '2'], ['who', '3'], ['roles', '4'], ['button', '5']], 'the redirect URI to copy comes first, then the provider');
+  assert.strictEqual(card(unset.doc).querySelectorAll('.sso-redirect').length, 1, 'the redirect URI shows once');
+  assert.strictEqual(card(on.doc).querySelector('.sso-result').getAttribute('aria-live'), 'polite');
+  assert.strictEqual(card(on.doc).querySelector('.sso-msg').getAttribute('role'), 'status');
+  assert.deepStrictEqual(on.errors.concat(unset.errors), []);
+  on.close();
+  unset.close();
+  return 'the status header shows the state pill, the provider host with its icon and the switch; not set up starts with a three-step intro and the redirect URI';
+}
+
+async function theCopyButtonSelectsTheAddressWhenTheClipboardIsRefused() {
+  //given
+  const t = await boot();
+  await openAccess(t);
+  Object.defineProperty(t.w.navigator, 'clipboard', {configurable: true, value: {writeText: async () => { throw new Error('denied'); }}});
+  const box = card(t.doc).querySelector('.sso-redirect');
+
+  //when
+  box.querySelector('.sso-copy').click();
+  await wait(30);
+
+  //then
+  assert.strictEqual(box.querySelector('.adm-msg').textContent, 'Selected: press Ctrl+C or Cmd+C to copy');
+  assert.strictEqual(String(t.w.getSelection()), 'https://skopax.example.com/authorized');
+  const uri = box.querySelector('code');
+  assert.deepStrictEqual([uri.getAttribute('role'), uri.getAttribute('aria-readonly'), uri.getAttribute('aria-labelledby')], ['textbox', 'true', 'sso-uri-l'], 'the address is a labelled read-only field');
+  assert.strictEqual(t.doc.getElementById('sso-uri-l').textContent, 'Redirect URI to register');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'Copy falls back to selecting the labelled redirect URI when the clipboard is refused';
+}
+
+async function theSaveBarSticksOnlyWhileThereAreUnsavedChanges() {
+  //given
+  const t = await boot();
+  await openAccess(t);
+  const bar = () => card(t.doc).querySelector('.sso-bar');
+  const state = () => [bar().dataset.dirty, bar().querySelector('.sso-dirty-l').hidden];
+  const before = state();
+  const client = field(t.doc, 'client-id').querySelector('.sso-in');
+
+  //when
+  setValue(client, 'skopax-prod');
+  const typed = state();
+  setValue(client, 'skopax');
+  const back = state();
+  button(t.doc, 'sso-map-add').click();
+  const added = state();
+  button(t.doc, 'sso-discard').click();
+  await wait(30);
+  const discarded = state();
+  t.doc.getElementById('sso-chip-in').value = 'example.org';
+  t.doc.getElementById('sso-chip-in').dispatchEvent(new t.w.Event('input', {bubbles: true}));
+  const pending = state();
+
+  //then
+  assert.deepStrictEqual([before, typed, back, added, discarded, pending], [['false', true], ['true', false], ['false', true], ['true', false], ['false', true], ['true', false]]);
+  assert.ok(bar().querySelector('.sso-save') && bar().querySelector('.sso-msg'), 'Save and the message live in the bar');
+  const sticky = [...t.doc.querySelector('style').sheet.cssRules].filter((r) => r.selectorText === '.sso-bar[data-dirty="true"]').map((r) => [r.style.position, r.style.bottom]);
+  assert.deepStrictEqual(sticky, [['sticky', '12px']], 'the bar sticks to the bottom only while there are unsaved changes');
+  assert.ok(bar().parentNode === card(t.doc), 'the bar is a direct child of the section, so no card clips it');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'the save bar marks Unsaved changes and sticks while a field, a role-map row or a typed domain differs, and clears when the edit is undone or discarded';
+}
+
+async function thePhoneLayoutIsOneColumnWithLargeTargets() {
+  //given
+  const t = await boot();
+  await openAccess(t);
+
+  //then
+  const phone = [...t.doc.querySelector('style').sheet.cssRules].filter((r) => r.media && r.media.mediaText === '(max-width: 640px)' && [...r.cssRules].some((x) => /sso-btn-grid/.test(x.selectorText)));
+  assert.strictEqual(phone.length, 1, 'the SSO phone rules sit in their own block');
+  const rule = (sel) => [...phone[0].cssRules].filter((x) => x.selectorText === sel)[0];
+  assert.strictEqual(rule('.sso-btn-grid').style.gridTemplateColumns, 'minmax(0, 1fr)', 'the button card is one column');
+  assert.strictEqual(rule('#acc-sso .btn, #acc-sso .adm-in, #acc-sso select, #acc-sso .sso-map-v').style.minHeight, '44px', 'buttons and fields are 44 px tall');
+  assert.deepStrictEqual([rule('.sso-chip-del').style.width, rule('.sso-chip-del').style.height], ['44px', '44px'], 'a chip remove button is a 44 px target');
+  assert.strictEqual(rule('.sso-uri-row').style.flexDirection, 'column', 'the redirect URI and Copy stack');
+  const sw = rule('#acc-sso .sso-sw::before').style;
+  assert.deepStrictEqual([sw.position, sw.inset], ['absolute', '-14px -8px'], 'the 17 by 30 px switch gets a 45 by 46 px hit area');
+  const box = rule('#acc-sso .sso-f input[type="checkbox"]').style;
+  assert.deepStrictEqual([box.width, box.height, box.padding, box.boxSizing], ['24px', '24px', '10px', 'content-box'], 'the checkbox is a 44 px target');
+  assert.strictEqual(rule('#acc-sso .sso-adv > summary').style.minHeight, '44px', 'the Advanced fold is a 44 px target');
+  const map = field(t.doc, 'role-map');
+  assert.ok(map.querySelectorAll('.sso-map-row').length > 0);
+  map.querySelectorAll('.sso-map-row').forEach((r) => assert.deepStrictEqual([r.querySelector('.sso-map-v').getAttribute('aria-label'), r.querySelector('.sso-map-r').getAttribute('aria-label')], ['Claim value', 'Role'], 'each row stays labelled with the header hidden'));
+  assert.deepStrictEqual([...map.querySelectorAll('.sso-map-t thead th')].map((h) => [h.textContent, h.querySelector('.sr') ? 'sr' : '']), [['Claim value', ''], ['Role', ''], ['Actions', 'sr']], 'the actions column has a visually hidden header');
+  t.close();
+  return 'at phone width the SSO cards are one column with 44 px targets, including the switch, the checkbox and the fold, and role-map rows stay labelled';
+}
+
 async function aMissingRedirectUriSaysWhatSetsIt() {
   //given
   const t = await boot({sso: makeSso({redirectUri: null})});
@@ -1283,4 +1406,8 @@ async function aSelectTheServerSentNoValueForIsNotSavedByItself() {
   console.log('PASS ' + await theMetadataLineUsesTheServerAddress());
   console.log('PASS ' + await theMcpCardSaysWhenItsSettingsDidNotLoad());
   console.log('PASS ' + await theClientSecretFieldIsMaskedOnScreen());
+  console.log('PASS ' + await theStatusHeaderShowsStateHostIconAndSwitch());
+  console.log('PASS ' + await theCopyButtonSelectsTheAddressWhenTheClipboardIsRefused());
+  console.log('PASS ' + await theSaveBarSticksOnlyWhileThereAreUnsavedChanges());
+  console.log('PASS ' + await thePhoneLayoutIsOneColumnWithLargeTargets());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });
