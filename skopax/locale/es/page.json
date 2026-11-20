@@ -811,6 +811,7 @@
   "Shipped, not in this release": "Entregado, no en esta release",
   "Show": "Mostrar",
   "Show more": "Mostrar más",
+  "Show less": "Mostrar menos",
   "Show older": "Mostrar anteriores",
   "Show on Services ›": "Mostrar en Servicios ›",
   "Show or hide the anomaly filters": "Mostrar u ocultar los filtros de anomalías",
@@ -1253,7 +1254,9 @@
   "The investigator is on but has no AI key: set one on Admin": "El investigador está activado pero no tiene clave de IA: configúrela en Administración",
   "The investigator is on but its AI model is not known: pick one on Admin": "El investigador está activado pero su modelo de IA es desconocido: elija uno en Administración",
   "INVESTIGATOR": "INVESTIGADOR",
-  "STOPPED": "DETENIDO"
+  "STOPPED": "DETENIDO",
+  "Paste a new key": "Pega una clave nueva",
+  "Test connection tries the key typed here, or the key in use when the field is empty.": "Probar conexión prueba la clave escrita aquí, o la clave en uso cuando el campo está vacío."
  },
  "rules": [
   [

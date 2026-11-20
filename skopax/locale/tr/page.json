@@ -891,6 +891,7 @@
   "For you": "Size özel",
   "Cards assigned to you and what happens on them. Showing this page marks them read.": "Size atanan kartlar ve onlarda olanlar. Bu sayfa açılınca okundu sayılır.",
   "Show more": "Daha fazla göster",
+  "Show less": "Daha az göster",
   "Admin sections": "Yönetim bölümleri",
   "Admin notices": "Yönetim bildirimleri",
   "Who can sign in and how: people and their roles, single sign-on, API tokens and MCP sign-in. Roles are viewer, operator and admin.": "Kimin nasıl giriş yapabileceği: kişiler ve rolleri, tek oturum açma (SSO), API token'ları ve MCP girişi. Roller viewer, operator ve admin.",
@@ -1253,7 +1254,9 @@
   "The investigator is on but has no AI key: set one on Admin": "Investigator açık ama YZ anahtarı yok: Yönetim’de bir tane girin",
   "The investigator is on but its AI model is not known: pick one on Admin": "Investigator açık ama YZ modeli bilinmiyor: Yönetim’de bir model seçin",
   "INVESTIGATOR": "INVESTIGATOR",
-  "STOPPED": "DURDURULDU"
+  "STOPPED": "DURDURULDU",
+  "Paste a new key": "Yeni anahtarı yapıştırın",
+  "Test connection tries the key typed here, or the key in use when the field is empty.": "Bağlantıyı test et, buraya yazılan anahtarı veya alan boşsa kullanılan anahtarı dener."
  },
  "rules": [
   [

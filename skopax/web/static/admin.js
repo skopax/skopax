@@ -230,7 +230,7 @@ function adminSource(i) {
   if (i.oldSwitch) return '<span class="tag ' + (i.source === 'admin' ? 'k-act' : 'plain') + '" title="' + esc('From the old Critical cards at once switch (' + i.oldSwitch + ')' + (i.source === 'admin' ? ', set by ' + draftBy(i.by) + ' ' + dayhm(i.at) + '; Reset or saving a value here clears it' : ' in the service configuration; a value saved here wins over it')) + '">old switch</span>';
   if (i.source === 'admin') return '<span class="tag k-act" title="' + esc('Set on this page by ' + draftBy(i.by) + ' ' + dayhm(i.at) + (i.base !== i.value ? '\nWithout it: ' + (i.base || 'empty') : '')) + '">Set by ' + esc(draftBy(i.by)) + ' ' + esc(dayhm(i.at)) + '</span>';
   if (i.source === 'config') return '<span class="tag plain" title="From the service configuration; a value saved here wins over it">config</span>';
-  return '<span class="tag plain" title="The built-in default">default</span>';
+  return '<span class="tag plain src-default" title="The built-in default">default</span>';
 }
 var SEV_ROW_KEYS = ['core.auto-resolve-hours-crit', 'core.auto-resolve-hours-warn'];
 var SEV_ROW_NAMES = ['Critical', 'Warning'];
@@ -246,7 +246,7 @@ function adminSevRow(items) {
     row.classList.add('adm-sub');
     row.dataset.find += ' ' + SEV_ROW_LABEL.toLowerCase() + ' ' + SEV_ROW_NAMES[n].toLowerCase();
     name.textContent = SEV_ROW_NAMES[n];
-    row.querySelector('.adm-help').remove();
+    row.querySelectorAll('.adm-l > .adm-help, .adm-l > .adm-more').forEach(function (x) { x.remove(); });
     input.setAttribute('aria-labelledby', 'adm-sev-l ' + name.id);
     box.appendChild(row);
   });
@@ -334,6 +334,8 @@ function adminRow(i, card) {
     off.textContent = i.off;
     row.querySelector('.adm-l').appendChild(off);
   }
+  admUnfold(row);
+  if (!card) admSeg(row, i);
   var save = row.querySelector('.adm-save'), msg = row.querySelector('.adm-msg');
   row.querySelectorAll('input, select, textarea').forEach(function (inp) { ['input', 'change'].forEach(function (ev) { inp.addEventListener(ev, function () { if (save) save.disabled = adminValue(row, i) === adminCurrent(i); msg.textContent = ''; }); }); });
   if (save) save.addEventListener('click', function () { adminSave(i, adminValue(row, i), save, msg); });
@@ -1085,8 +1087,10 @@ function aiKeyCard(kind, s, active) {
   head.appendChild(accText('span', 'tag ' + (s.using ? 'k-ok' : 'k-warn'), s.using === 'admin' ? 'set here' : s.using === 'config' ? 'from the configuration' : 'not set'));
   if (active) head.appendChild(accText('span', 'tag k-act ai-active', 'AI provider in use'));
   card.appendChild(head);
-  card.appendChild(accText('p', 'ai-state', s.using === 'admin' ? 'Using the key set here' : s.using === 'config' ? s.note : 'No key'));
-  if (s.admin && s.updatedBy) card.appendChild(accText('p', 'adm-help ai-by', 'Set by ' + draftBy(s.updatedBy) + (s.updatedAt ? ' ' + dayhm(s.updatedAt) : '')));
+  var line = accText('div', 'ai-line');
+  line.appendChild(accText('p', 'ai-state', s.using === 'admin' ? 'Using the key set here' : s.using === 'config' ? s.note : 'No key'));
+  if (s.admin && s.updatedBy) line.appendChild(accText('p', 'adm-help ai-by', 'Set by ' + draftBy(s.updatedBy) + (s.updatedAt ? ' ' + dayhm(s.updatedAt) : '')));
+  card.appendChild(line);
   var field = accText('div', 'ai-field'), label = accText('label', null, s.using ? 'New key' : 'Key');
   label.setAttribute('for', kind.input);
   var input = document.createElement('input');
@@ -1102,16 +1106,18 @@ function aiKeyCard(kind, s, active) {
   input.setAttribute('data-bwignore', '');
   input.setAttribute('data-form-type', 'other');
   field.appendChild(label);
-  field.appendChild(input);
+  var entry = accText('div', 'ai-entry');
+  entry.appendChild(input);
+  field.appendChild(entry);
   card.appendChild(field);
-  card.appendChild(accText('p', 'adm-help', 'Saved sealed and never shown again. Test connection tries the key typed here, or the key in use when the field is empty.'));
-  var acts = accText('div', 'adm-acts');
+  input.placeholder = 'Paste a new key';
+  var acts = accText('div', 'adm-acts ai-acts');
   var saveB = accText('button', 'btn small ai-save', 'Save'), testB = accText('button', 'btn sec small ai-test', 'Test connection');
   saveB.type = testB.type = 'button';
   saveB.disabled = true;
   testB.disabled = AI_TESTING[kind.id];
-  acts.appendChild(saveB);
-  acts.appendChild(testB);
+  entry.appendChild(saveB);
+  entry.appendChild(testB);
   var remove = null;
   if (s.admin) {
     remove = accText('button', 'btn sec small ai-remove', 'Remove');
@@ -2422,7 +2428,7 @@ function ssoLayer(v) {
 }
 function ssoSource(v) {
   var text = v.source === 'admin' ? 'set here' : v.source === 'config' ? 'from ' + (v.from || 'the configuration') : 'default';
-  return '<span class="tag ' + (v.source === 'admin' ? 'k-act' : 'plain') + ' sso-src">' + esc(text) + '</span>' + (v.source === 'admin' && v.base ? '<span class="muted sso-base">over ' + esc(v.base) + '</span>' : '');
+  return '<span class="tag ' + (v.source === 'admin' ? 'k-act' : 'plain') + ' sso-src' + (v.source === 'admin' || v.source === 'config' ? '' : ' src-default') + '"' + (v.source === 'admin' && v.base ? ' title="' + esc('over ' + v.base) + '"' : '') + '>' + esc(text) + '</span>' + (v.source === 'admin' && v.base ? '<span class="muted sso-base">over ' + esc(v.base) + '</span>' : '');
 }
 function ssoVal(name) {
   var v = SSO && SSO.values[name];
