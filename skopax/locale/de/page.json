@@ -1163,7 +1163,18 @@
   "Reopen: back to Open, like a drag to the Open column": "Wieder öffnen: zurück zu Offen, wie ein Ziehen in die Spalte Offen",
   "Start progress: the card goes In progress with you as owner": "Bearbeitung beginnen: die Karte geht In Bearbeitung, mit Ihnen als zuständiger Person",
   "Mute: for 24 hours, a week or for good": "Stummschalten: für 24 Stunden, eine Woche oder dauerhaft",
-  "More actions: mute for a week, known noise, group": "Weitere Aktionen: eine Woche stumm, bekanntes Rauschen, gruppieren"
+  "More actions: mute for a week, known noise, group": "Weitere Aktionen: eine Woche stumm, bekanntes Rauschen, gruppieren",
+  "Responsibles": "Verantwortliche",
+  "No one yet": "Noch niemand",
+  "Add a person": "Person hinzufügen",
+  "Add a responsible": "Verantwortliche Person hinzufügen",
+  "Added": "Hinzugefügt",
+  "Removed": "Entfernt",
+  "Remove from the responsibles": "Aus den Verantwortlichen entfernen",
+  "Responsibles not saved, try again": "Verantwortliche nicht gespeichert, bitte erneut versuchen",
+  "Slack app is missing users:read.email; responsibles are named without a ping": "Der Slack-App fehlt users:read.email; Verantwortliche werden ohne Erwähnung genannt",
+  "Needs Slack auto-send on (Admin › Features).": "Braucht Slack Auto-Send eingeschaltet (Admin › Features).",
+  "No longer an active user": "Kein aktiver Benutzer mehr"
  },
  "rules": [
   [

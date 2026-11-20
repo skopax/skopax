@@ -253,5 +253,20 @@
  "pagescan.digest.notes_one": "{count} página con una nota",
  "pagescan.digest.notes_many": "{count} páginas con notas",
  "autosend.post_now.warn_last": "El investigador revisará esta tarjeta en su próxima ejecución; los hallazgos llegarán a este hilo.",
- "autosend.post_now.info_last": "Las tarjetas de info no tienen investigación automática; alguien puede abrir la tarjeta para revisarla."
+ "autosend.post_now.info_last": "Las tarjetas de info no tienen investigación automática; alguien puede abrir la tarjeta para revisarla.",
+ "tagreport.head": ":label: *Tarjetas abiertas por etiqueta* · {date}",
+ "tagreport.tag": "{who} · *<{link}|{tag}>* · {counts}",
+ "tagreport.card": "• <{link}|{name}> {emoji} {sev} · {svc} · {age}",
+ "tagreport.more": "<{link}|+{n} más>",
+ "tagreport.more_tags": "+{n} etiquetas más",
+ "tagreport.age.min": "{n} min",
+ "tagreport.age.hours": "{n} h",
+ "tagreport.age.days": "{n} d",
+ "tagreport.split": "{open}: {parts}",
+ "tagreport.open.one": "{n} tarjeta abierta",
+ "tagreport.open.many": "{n} tarjetas abiertas",
+ "tagreport.crit.one": "{n} crítica",
+ "tagreport.crit.many": "{n} críticas",
+ "tagreport.warn.one": "{n} de aviso",
+ "tagreport.warn.many": "{n} de aviso"
 }

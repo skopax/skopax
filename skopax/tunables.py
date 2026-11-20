@@ -101,6 +101,7 @@ OLD_HOURS_KEYS = ('core.auto-resolve-hours', 'core.auto-resolve-days')
 SEV_HOURS_KEYS = {'core.auto-resolve-hours-crit': ('auto_resolve_hours_crit', 'crit'), 'core.auto-resolve-hours-warn': ('auto_resolve_hours_warn', 'warn')}
 INFO_DAYS_KEY = 'core.info-auto-close-days'
 TIMEZONE_KEY = 'general.timezone'
+TAG_REPORT_KEY = 'tags.report-at'
 RELEASE_NAME_KEY = 'jira.release-name'
 LINKS_KEY = 'core.instance-links'
 LINKS_MAX = 10
@@ -266,10 +267,14 @@ STATIC = (
     feature_tunable('core.mcp', 'mcp_on'),
     feature_tunable('core.push', 'push_on'),
     feature_tunable('core.update-check', 'update_check'),
+    feature_tunable('core.tag-report', 'tag_report_on'),
     feature_tunable('core.hide-attribution', 'hide_attribution'),
 ) + tuple(T(key, field, RULES, label, 'Thresholds of the ' + label + ' cards; an empty field uses the default', 'rules', defaults=dict(defaults)) for key, field, label, defaults in RULE_SETS) + (
     T(CERT_SKIP_KEY, 'cert_skip', RULES, 'Certificates not watched', 'Hosts whose certificate expiry raises no card, separated by commas: shop.example.com also covers its subdomains, '
       '*.example.com covers only the subdomains', 'list'),
+) + (
+    T(TAG_REPORT_KEY, 'tag_report_at', TAGS, 'Daily report at', 'Time of day (HH:MM, install time zone) of the Slack report that names the responsibles of each tag with open cards; '
+      'it posts Monday to Friday only, never on Saturday or Sunday. The latest time is 23:55; empty turns it off', 'text'),
 ) + tuple(
     tag_tunable(tag, label) for tag, label in tags.TAGS.items()) + SIGN_IN_ROLES + MCP_ACCESS
 
@@ -383,6 +388,8 @@ def parse(t: Tunable, raw, base: Settings, loading: bool = False):
                 zone_clock.check(text)
             except ValueError:
                 raise Invalid(f'{t.label} must be an IANA timezone name, such as UTC or Europe/Berlin') from None
+        if t.key == TAG_REPORT_KEY and text and not tags.report_at_ok(text):
+            raise Invalid(f'{t.label} must be a time as HH:MM from 00:00 to {tags.REPORT_LAST}, such as 10:00, or empty for off')
         if t.key == LINKS_KEY:
             instance_links(text)
         if t.key == RELEASE_NAME_KEY and (problem := release_problem(text)):

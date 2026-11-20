@@ -253,5 +253,20 @@
  "pagescan.digest.notes_one": "{count} Seite mit einem Hinweis",
  "pagescan.digest.notes_many": "{count} Seiten mit Hinweisen",
  "autosend.post_now.warn_last": "Der Investigator sieht sich diese Karte bei seinem nächsten Lauf an; die Ergebnisse kommen in diesen Thread.",
- "autosend.post_now.info_last": "Für Info-Karten läuft keine automatische Untersuchung; jemand kann die Karte öffnen und nachsehen."
+ "autosend.post_now.info_last": "Für Info-Karten läuft keine automatische Untersuchung; jemand kann die Karte öffnen und nachsehen.",
+ "tagreport.head": ":label: *Offene Karten nach Tag* · {date}",
+ "tagreport.tag": "{who} · *<{link}|{tag}>* · {counts}",
+ "tagreport.card": "• <{link}|{name}> {emoji} {sev} · {svc} · {age}",
+ "tagreport.more": "<{link}|+{n} weitere>",
+ "tagreport.more_tags": "+{n} weitere Tags",
+ "tagreport.age.min": "{n} min",
+ "tagreport.age.hours": "{n} h",
+ "tagreport.age.days": "{n} Tg.",
+ "tagreport.split": "{open}: {parts}",
+ "tagreport.open.one": "{n} offene Karte",
+ "tagreport.open.many": "{n} offene Karten",
+ "tagreport.crit.one": "{n} kritisch",
+ "tagreport.crit.many": "{n} kritisch",
+ "tagreport.warn.one": "{n} Warnung",
+ "tagreport.warn.many": "{n} Warnungen"
 }

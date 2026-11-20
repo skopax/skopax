@@ -157,6 +157,7 @@ class Settings:
     mcp_on: bool = True
     push_on: bool = True
     update_check: bool = True
+    tag_report_on: bool = True
     hide_attribution: bool = False
     jira_project: str = ''
     jira_parent: str = ''
@@ -225,6 +226,7 @@ class Settings:
     self_review_enabled: bool = False
     slack_thread_hours: float = 6
     tag_rules: tuple = ()
+    tag_report_at: str = '10:00'
     mcp_issuer: str = ''
     mcp_client_id: str = MCP_CLIENT_ID
     mcp_audience: str = ''
@@ -544,6 +546,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         mcp_on=get('core.mcp', 'SKOPAX_FEATURE_MCP', 'true').strip().lower() == 'true',
         push_on=get('core.push', 'SKOPAX_FEATURE_PUSH', 'true').strip().lower() == 'true',
         update_check=get('core.update-check', 'SKOPAX_UPDATE_CHECK', 'true').strip().lower() == 'true',
+        tag_report_on=get('core.tag-report', 'SKOPAX_FEATURE_TAG_REPORT', 'true').strip().lower() == 'true',
         hide_attribution=get('core.hide-attribution', 'SKOPAX_FEATURE_HIDE_ATTRIBUTION', 'false').strip().lower() == 'true',
         jira_project=get('jira.project', 'JIRA_PROJECT', '').strip(),
         jira_parent=get('jira.parent', 'JIRA_PARENT', '').strip(),
@@ -613,6 +616,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         slack_great_emoji=get('slack.great-emoji', 'SLACK_GREAT_EMOJI', 'snake').strip(),
         slack_thread_hours=float(get('slack.thread-hours', 'SLACK_THREAD_HOURS', '6').strip() or 6),
         tag_rules=tags_rules_of(config),
+        tag_report_at=get('tags.report-at', 'SKOPAX_TAG_REPORT_AT', '10:00').strip(),
         mcp_issuer=get('mcp.issuer', 'MCP_ISSUER', '').strip().rstrip('/'),
         mcp_client_id=get('mcp.client-id', 'MCP_CLIENT_ID', MCP_CLIENT_ID).strip() or MCP_CLIENT_ID,
         mcp_audience=get('mcp.audience', 'MCP_AUDIENCE', '').strip(),

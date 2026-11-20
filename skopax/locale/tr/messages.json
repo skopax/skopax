@@ -253,5 +253,20 @@
  "pagescan.digest.notes_one": "{count} sayfada not",
  "pagescan.digest.notes_many": "{count} sayfada not",
  "autosend.post_now.warn_last": "Investigator bu kartı bir sonraki çalışmasında inceler; bulgular bu thread'e gelecek.",
- "autosend.post_now.info_last": "Info kartlarında otomatik inceleme çalışmaz; bakmak için biri kartı açabilir."
+ "autosend.post_now.info_last": "Info kartlarında otomatik inceleme çalışmaz; bakmak için biri kartı açabilir.",
+ "tagreport.head": ":label: *Etikete göre açık kartlar* · {date}",
+ "tagreport.tag": "{who} · *<{link}|{tag}>* · {counts}",
+ "tagreport.card": "• <{link}|{name}> {emoji} {sev} · {svc} · {age}",
+ "tagreport.more": "<{link}|+{n} daha>",
+ "tagreport.more_tags": "+{n} etiket daha",
+ "tagreport.age.min": "{n} dk",
+ "tagreport.age.hours": "{n} sa",
+ "tagreport.age.days": "{n} gün",
+ "tagreport.split": "{open}: {parts}",
+ "tagreport.open.one": "{n} açık kart",
+ "tagreport.open.many": "{n} açık kart",
+ "tagreport.crit.one": "{n} kritik",
+ "tagreport.crit.many": "{n} kritik",
+ "tagreport.warn.one": "{n} uyarı",
+ "tagreport.warn.many": "{n} uyarı"
 }

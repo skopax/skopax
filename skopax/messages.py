@@ -13,7 +13,7 @@ log = logging.getLogger('skopax.messages')
 
 ENGLISH = 'en'
 LANG_TAG = re.compile(r'[a-z]{2,3}(-[A-Za-z0-9]{2,8})?')
-OUTBOUND = frozenset({'proposals', 'slack', 'slackevents', 'slackhealth', 'reminder', 'clear', 'autosend', 'notes', 'tickets', 'postdeploy', 'review', 'push', 'gate', 'assign', 'routes', 'pagescan'})
+OUTBOUND = frozenset({'proposals', 'slack', 'slackevents', 'slackhealth', 'reminder', 'clear', 'autosend', 'notes', 'tickets', 'postdeploy', 'review', 'push', 'gate', 'assign', 'routes', 'pagescan', 'tagreport'})
 TEXT_MAX = 4000
 SHOWN_MAX = 80
 
@@ -162,6 +162,25 @@ MESSAGES: dict[str, str] = {
     'clear.took.min': '{n} min',
     'clear.took.hour': '{h} h',
     'clear.took.hourmin': '{h} h {m} min',
+    'tagreport.head': ':label: *Open cards by tag* \u00b7 {date}',
+    'tagreport.tag': '{who} \u00b7 *<{link}|{tag}>* \u00b7 {counts}',
+    'tagreport.split': '{open}: {parts}',
+    'tagreport.open.one': '{n} open card',
+    'tagreport.open.many': '{n} open cards',
+    'tagreport.crit.one': '{n} critical',
+    'tagreport.crit.many': '{n} critical',
+    'tagreport.warn.one': '{n} warning',
+    'tagreport.warn.many': '{n} warnings',
+    'tagreport.card': '\u2022 <{link}|{name}> {emoji} {sev} \u00b7 {svc} \u00b7 {age}',
+    'tagreport.more': '<{link}|+{n} more>',
+    'tagreport.more_tags': '+{n} more tags',
+    'tagreport.age.min': '{n} min',
+    'tagreport.age.hours': '{n} h',
+    'tagreport.age.days': '{n} d',
+    'tags.scope_missing': 'Slack app is missing users:read.email; responsibles are named without a ping',
+    'tags.no_tag': 'No tag named {tag}',
+    'tags.no_user': 'No active {product} user with the e-mail {email}; add or re-enable the person in Admin \u203a Access first',
+    'tags.too_many': 'A tag takes at most {n} responsibles',
     'reminder.card': '\u23f0 Reminder: this card has been waiting {age}, {who} {state} <{link}|Open card>',
     'reminder.nobody': 'nobody has taken it yet.',
     'reminder.owned': '{owner} was assigned but has not started yet.',
@@ -1031,6 +1050,7 @@ MESSAGES: dict[str, str] = {
     'features.needs.chat_ui': 'Needs the chat UI (CHAT_UI) and single sign-on set up and on (Admin \u203a Access & sign-in \u203a Single sign-on).',
     'features.needs.push_users': 'Needs at least one push user (Admin \u203a General \u203a Slack \u203a Push users, or SLACK_PUSH_USER in the environment).',
     'features.needs.prometheus': 'Needs a Prometheus instance that is on and watches errors, latency, restarts and alerts (Connect \u203a Integrations).',
+    'features.needs.slack_autosend': 'Needs Slack auto-send on (Admin \u203a Features).',
     'features.needs.self_project': 'Needs the self project and its log index (SKOPAX_SELF_PROJECT and SKOPAX_SELF_LOG_INDEX in the environment).',
     'sweeps.retired_check': '{what} no longer runs {check}: {count} open card(s) closed',
     'sweeps.outputs_dropped': 'pass {check}: dropped {what}',

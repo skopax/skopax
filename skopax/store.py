@@ -37,6 +37,9 @@ PROBE_ID = 'probe'
 PROXY_ID = 'proxy-warning'
 SLACK_SCOPES_ID = 'slack-scopes'
 VERSION_CHECK_ID = 'version-check'
+TAG_OWNERS_ID = 'tag-owners'
+EMAIL_SCOPE_ID = 'tag-report-scope'
+TAG_REPORT_ID = 'tag-report-last'
 SEVERITIES = ('crit', 'warn', 'info')
 CLAIM_ATTEMPTS = 3
 WRITE_LEASE_S = 30
@@ -457,6 +460,35 @@ class Store:
         doc = self.db['meta'].find_one({'_id': SLACK_SCOPES_ID}) or {}
         missing = doc.get('missing')
         return {'missing': [str(m) for m in missing] if isinstance(missing, list) else [], 'at': doc.get('at') if isinstance(doc.get('at'), str) else None}
+
+    def note_email_scope(self, missing: bool, at: str) -> None:
+        if missing:
+            self.db['meta'].replace_one({'_id': EMAIL_SCOPE_ID}, {'_id': EMAIL_SCOPE_ID, 'missing': True, 'at': at}, upsert=True)
+        else:
+            self.db['meta'].delete_one({'_id': EMAIL_SCOPE_ID})
+
+    def email_scope(self) -> dict | None:
+        doc = self.db['meta'].find_one({'_id': EMAIL_SCOPE_ID})
+        return {'missing': True, 'at': doc.get('at') if isinstance(doc.get('at'), str) else None} if doc and doc.get('missing') else None
+
+    def note_tag_report(self, at: float) -> None:
+        self.db['meta'].replace_one({'_id': TAG_REPORT_ID}, {'_id': TAG_REPORT_ID, 'at': float(at)}, upsert=True)
+
+    def tag_report_at(self) -> float | None:
+        at = (self.db['meta'].find_one({'_id': TAG_REPORT_ID}) or {}).get('at')
+        return float(at) if isinstance(at, (int, float)) and not isinstance(at, bool) else None
+
+    def tag_owners(self) -> dict[str, list[str]]:
+        held = (self.db['meta'].find_one({'_id': TAG_OWNERS_ID}) or {}).get('owners')
+        if not isinstance(held, dict):
+            return {}
+        return {tag: [str(e) for e in emails] for tag, emails in held.items() if isinstance(emails, list) and emails}
+
+    def set_tag_owners(self, tag: str, emails: list[str]) -> list[str]:
+        emails = list(dict.fromkeys(emails))
+        change = {'$set': {f'owners.{tag}': emails}} if emails else {'$unset': {f'owners.{tag}': ''}}
+        self.db['meta'].update_one({'_id': TAG_OWNERS_ID}, change, upsert=True)
+        return emails
 
     def note_version_check(self, found: dict) -> None:
         self.db['meta'].replace_one({'_id': VERSION_CHECK_ID}, {'_id': VERSION_CHECK_ID, 'latest': found['latest'], 'url': found['url'], 'securityIn': [str(v) for v in found['securityIn']], 'at': found['at']}, upsert=True)
@@ -1307,6 +1339,11 @@ class Store:
             off = list(dict.fromkeys(renamed.get(o, o) for o in card.get('tagsOff') or []))
             self.anomalies.update_one({'_id': card['_id']}, {'$set': {'tags': tags, 'tagsOff': off}})
             moved += 1
+        owners = self.tag_owners()
+        for old, new in renamed.items():
+            if old in owners and old != new:
+                owners[new] = self.set_tag_owners(new, owners.get(new, []) + owners.pop(old))
+                self.set_tag_owners(old, [])
         return moved
 
     def clear_small_talk_rules(self) -> None:
@@ -1953,6 +1990,9 @@ class Store:
         except DuplicateKeyError:
             return False
         return True
+
+    def drop_run(self, name: str) -> None:
+        self.runs.delete_one({'_id': name})
 
     def finish_run(self, name: str, boot: str) -> None:
         self.runs.update_one({'_id': name, 'boot': boot}, {'$set': {'done': True}})

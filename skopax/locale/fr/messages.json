@@ -253,5 +253,20 @@
 "pagescan.digest.notes_one": "{count} page avec une note",
 "pagescan.digest.notes_many": "{count} pages avec des notes",
 "autosend.post_now.warn_last": "L'enquêteur examinera cette carte à sa prochaine exécution ; les résultats arriveront dans ce fil.",
-"autosend.post_now.info_last": "Aucune enquête automatique ne porte sur les cartes info ; quelqu'un peut ouvrir la carte pour l'examiner."
+"autosend.post_now.info_last": "Aucune enquête automatique ne porte sur les cartes info ; quelqu'un peut ouvrir la carte pour l'examiner.",
+"tagreport.head": ":label: *Cartes ouvertes par tag* · {date}",
+"tagreport.tag": "{who} · *<{link}|{tag}>* · {counts}",
+"tagreport.card": "• <{link}|{name}> {emoji} {sev} · {svc} · {age}",
+"tagreport.more": "<{link}|+{n} de plus>",
+"tagreport.more_tags": "+{n} tags de plus",
+"tagreport.age.min": "{n} min",
+"tagreport.age.hours": "{n} h",
+"tagreport.age.days": "{n} j",
+"tagreport.split": "{open} : {parts}",
+"tagreport.open.one": "{n} carte ouverte",
+"tagreport.open.many": "{n} cartes ouvertes",
+"tagreport.crit.one": "{n} critique",
+"tagreport.crit.many": "{n} critiques",
+"tagreport.warn.one": "{n} avertissement",
+"tagreport.warn.many": "{n} avertissements"
 }

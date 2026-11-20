@@ -1163,7 +1163,18 @@
   "Reopen: back to Open, like a drag to the Open column": "Yeniden aç: Açık sütununa sürüklemek gibi, kart Açık'a döner",
   "Start progress: the card goes In progress with you as owner": "İşe başla: kart, sahibi siz olarak Üzerinde çalışılıyor'a geçer",
   "Mute: for 24 hours, a week or for good": "Sessize al: 24 saat, bir hafta ya da kalıcı olarak",
-  "More actions: mute for a week, known noise, group": "Diğer işlemler: bir hafta sessize al, bilinen gürültü, grupla"
+  "More actions: mute for a week, known noise, group": "Diğer işlemler: bir hafta sessize al, bilinen gürültü, grupla",
+  "Responsibles": "Sorumlular",
+  "No one yet": "Henüz kimse yok",
+  "Add a person": "Kişi ekle",
+  "Add a responsible": "Sorumlu ekle",
+  "Added": "Eklendi",
+  "Removed": "Kaldırıldı",
+  "Remove from the responsibles": "Sorumlulardan kaldır",
+  "Responsibles not saved, try again": "Sorumlular kaydedilemedi, tekrar deneyin",
+  "Slack app is missing users:read.email; responsibles are named without a ping": "Slack uygulamasında users:read.email eksik; sorumlular bildirim gönderilmeden anılıyor",
+  "Needs Slack auto-send on (Admin › Features).": "Slack otomatik gönderiminin açık olması gerekir (Admin › Features).",
+  "No longer an active user": "Artık etkin bir kullanıcı değil"
  },
  "rules": [
   [
