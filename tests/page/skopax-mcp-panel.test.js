@@ -208,6 +208,34 @@ async function openPopup(t) {
   await wait(80);
 }
 
+async function theAddCustomMcpButtonOpensTheSameBlankFormAsThePicker() {
+  //given
+  const read = (doc) => [!wrap(doc).hidden, !!panel(doc).querySelector('.int-form'), !panel(doc).querySelector('.int-form').dataset.name, ['url', 'auth', 'header-name', 'preset'].map((k) => fieldIn(doc, k).value)];
+  const viaPicker = await boot();
+  await open(viaPicker);
+  await openPopup(viaPicker);
+  mcpPicks(viaPicker.doc)[0].click();
+  await wait(80);
+  const viaButton = await boot();
+  await open(viaButton);
+  const {doc} = viaButton;
+  const btn = doc.getElementById('int-add-mcp');
+
+  //when
+  btn.click();
+  await wait(80);
+
+  //then
+  assert.strictEqual(btn.textContent, '+ Add custom MCP');
+  assert.deepStrictEqual(read(doc), read(viaPicker.doc), 'the same blank form as picking the MCP server entry');
+  assert.deepStrictEqual(read(doc), [true, true, true, ['', 'none', 'Authorization', '']], 'with URL and sign-in and nothing filled');
+  assert.ok(doc.getElementById('int-pop').hidden, 'the picker stays closed');
+  assert.deepStrictEqual(viaPicker.errors.concat(viaButton.errors), []);
+  viaPicker.w.close();
+  viaButton.w.close();
+  console.log('PASS MCP panel: the Add custom MCP button opens the same blank new-connection form as the picker');
+}
+
 async function comingSoonEntryShowsAndHasNoAddControl() {
   //given
   const t = await boot();
@@ -1606,6 +1634,7 @@ async function backFromAddInstanceWaitsForAnInFlightWrite() {
   await failedFolderReadsShowTheirText();
   await aReopenWaitsForAnInFlightWrite();
   await aSignInThatCameBackTooLateSaysSo();
+  await theAddCustomMcpButtonOpensTheSameBlankFormAsThePicker();
   await savingANewConnectionReopensItsPanel();
   await anEmptyRefreshSaysTheServerOffersNothing();
   await theCatalogAndTheConnectionHeadDropTheirNoise();

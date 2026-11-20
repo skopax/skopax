@@ -175,11 +175,11 @@ async function aVisitorWithoutLoginCannotOpenIt() {
 }
 
 
-function knowledgePlugins() {
+function knowledgePlugins(withMcp) {
   const base = (id, name, category, extra) => Object.assign(plugin(), {id, name, category, rules: [], checks: [], setup: null,
     instances: [{name: 'main', primary: true, enabled: true, source: 'admin', problem: null, values: {url: 'https://' + id + '.example.com'}, secrets: {}, offChecks: []}],
     health: {state: 'ok', text: 'Connected', at: iso(1), instances: [{name: 'main', state: 'ok', text: 'Connected', at: iso(1)}]}}, extra);
-  return [plugin(), base('jira', 'Jira', 'tickets', {companyKnowledge: 'always', knowledgeAlso: true}), base('confluence', 'Confluence', 'other', {companyKnowledge: 'always', knowledgeAlso: false})];
+  return [plugin(), base('jira', 'Jira', 'tickets', {companyKnowledge: 'always', knowledgeAlso: true}), base('confluence', 'Confluence', 'other', {companyKnowledge: 'always', knowledgeAlso: false})].concat(withMcp ? [base('mcp-tools', 'MCP server', 'other', {})] : []);
 }
 
 async function everyKnowledgeSourceCarriesABadgeInItsOwnCategoryAndSitsOnceInTheChip() {
@@ -221,6 +221,26 @@ async function everyKnowledgeSourceCarriesABadgeInItsOwnCategoryAndSitsOnceInThe
   return 'Jira and Confluence each sit once in their own category with a Knowledge badge for ' + said.join(' and ') + ', no knowledge group, the Knowledge chip lists them and + Add integration badges them';
 }
 
+async function theAddCustomMcpButtonShowsForAnAdminOnlyWhileTheMcpPluginServes() {
+  //given
+  const admin = await boot('admin', '#t=integrations', knowledgePlugins(true));
+  const viewer = await boot('viewer', '#t=integrations', knowledgePlugins(true));
+  const without = await boot('admin', '#t=integrations', knowledgePlugins());
+  const broken = knowledgePlugins(true);
+  broken.filter((x) => x.id === 'mcp-tools')[0].state = 'broken';
+  const down = await boot('admin', '#t=integrations', broken);
+  await wait(100);
+  const btn = (t) => t.doc.querySelector('#integrations #int-add-mcp');
+
+  //then
+  assert.ok(btn(admin) && btn(admin).textContent === '+ Add custom MCP' && btn(admin).classList.contains('btn') && btn(admin).previousElementSibling.classList.contains('int-picker'), 'an admin sees it next to + Add integration');
+  assert.ok(!btn(viewer) && !viewer.doc.getElementById('int-add-btn'), 'a read-only viewer sees neither');
+  assert.ok(!btn(without), 'hidden when the MCP server plug-in is not listed');
+  assert.ok(!btn(down), 'hidden when the MCP server plug-in is unavailable');
+  [admin, viewer, without, down].forEach((t) => { assert.deepStrictEqual(t.errors, []); t.w.close(); });
+  return 'the Add custom MCP button shows for an admin next to + Add integration, and not for a viewer or without a working MCP server plug-in';
+}
+
 async function aJiraOnlyInstallKeepsThePlainGridAndTheChip() {
   //given
   const plugins = knowledgePlugins().filter((p) => p.id !== 'confluence');
@@ -254,5 +274,5 @@ async function anAdminSeesTheNoticesOnTheIntegrationsPage() {
 
 (async () => {
   for (const t of [theConnectRowShowsForEverySignedInRoleOnly, aViewerOpensTheSamePageReadOnly, theReadOnlyPanelShowsInstancesChecksThresholdsAndSecretsAsSet, anAdminStillGetsTheEditablePage,
-    aVisitorWithoutLoginCannotOpenIt, everyKnowledgeSourceCarriesABadgeInItsOwnCategoryAndSitsOnceInTheChip, aJiraOnlyInstallKeepsThePlainGridAndTheChip, anAdminSeesTheNoticesOnTheIntegrationsPage]) console.log('PASS ' + await t());
+    aVisitorWithoutLoginCannotOpenIt, everyKnowledgeSourceCarriesABadgeInItsOwnCategoryAndSitsOnceInTheChip, aJiraOnlyInstallKeepsThePlainGridAndTheChip, theAddCustomMcpButtonShowsForAnAdminOnlyWhileTheMcpPluginServes, anAdminSeesTheNoticesOnTheIntegrationsPage]) console.log('PASS ' + await t());
 })().catch((e) => { console.log('FAIL ' + e.message); console.error(e); process.exit(1); });

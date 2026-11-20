@@ -68,6 +68,7 @@ async function boot(opts) {
     beforeParse(w) {
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () {};
+      if (opts.pack) { w.SKOPAX_I18N = opts.pack; w.document.cookie = 'skopax_lang=' + Object.keys(opts.pack)[0] + '; path=/'; }
       w.fetch = async (path, o) => {
         const p = String(path), method = (o && o.method) || 'GET', body = o && o.body ? JSON.parse(o.body) : null;
         const ok = (b, status) => ({ok: true, status: status || 200, json: async () => JSON.parse(JSON.stringify(b)), text: async () => JSON.stringify(b)});
@@ -1572,32 +1573,77 @@ async function thereIsNoKnowledgeGroupAndEveryKnowledgeTileSitsOnceInItsCategory
   console.log('PASS Integrations: there is no Company knowledge group, and each knowledge tile sits once in its own category with a Knowledge badge');
 }
 
-async function theKnowledgeBadgeShowsWhenAKnowledgeSourceIsOffOrNeedsSetup() {
-  //given
-  const c = knowCatalog({docs: ''});
-  const by = (id) => c.plugins.filter((x) => x.id === id)[0];
-  by('sharepoint').enabled = false;
-  const t = await boot({catalog: c});
-  await open(t);
-  const warned = knowCatalog();
-  warned.plugins.filter((x) => x.id === 'sharepoint')[0].health = health('warn', 'Slow', iso(2));
-  const w2 = await boot({catalog: warned});
-  await open(w2);
-  const none = await boot({catalog: knowCatalog({mcp: 'false'})});
-  await open(none);
+function badgeRead(doc, id) {
+  const b = badgeOf(doc, id);
+  return b ? [b.textContent, b.dataset.state, b.className.includes('k-muted') ? 'muted' : b.className.includes('k-warn') ? 'warn' : 'info', b.title] : null;
+}
+const FILL_TIP = 'Knowledge source: fill the Docs field of an instance so the investigator can search it';
+const ROW_ERR = [{name: 'docs', state: 'error', text: 'Down'}];
+const ROW_WARN = [{name: 'docs', state: 'warn', text: 'Slow'}];
 
-  //when
-  const read = (id) => [badgeOf(t.doc, id).textContent, badgeOf(t.doc, id).dataset.state, badgeOf(t.doc, id).className.includes('k-muted') ? 'muted' : badgeOf(t.doc, id).className.includes('k-warn') ? 'warn' : 'info', badgeOf(t.doc, id).title];
+async function theKnowledgeBadgeReadsOffForASwitchedOffSourceAndNeedsSetupOnlyForAKnowledgeProblem() {
+  //given
+  const off = knowCatalog();
+  off.plugins.filter((x) => x.id === 'sharepoint')[0].enabled = false;
+  off.plugins.filter((x) => x.id === 'mcp-tools')[0].enabled = false;
+  const empty = knowCatalog({docs: ''});
+  const broken = knowCatalog();
+  broken.plugins.filter((x) => x.id === 'sharepoint')[0].state = 'broken';
+  const errored = knowCatalog();
+  errored.plugins.filter((x) => x.id === 'sharepoint')[0].health = health('error', 'Down', iso(2), ROW_ERR);
+  errored.plugins.filter((x) => x.id === 'mcp-tools')[0].health = health('error', 'Down', iso(2), ROW_ERR);
+  const warned = knowCatalog();
+  warned.plugins.filter((x) => x.id === 'sharepoint')[0].health = health('warn', 'Slow', iso(2), ROW_WARN);
+  warned.plugins.filter((x) => x.id === 'github')[0].health = health('warn', 'Slow', iso(2));
+  const none = knowCatalog({mcp: 'false'});
+  const runs = [];
+  for (const c of [off, empty, broken, errored, warned, none]) {
+    const t = await boot({catalog: c});
+    await open(t);
+    runs.push(t);
+  }
+  const [o, e, b, r, w, n] = runs;
 
   //then
-  assert.deepStrictEqual(read('sharepoint'), ['Knowledge off', 'off', 'muted', 'Knowledge source, off while this plug-in is off'], 'a switched-off source');
-  assert.deepStrictEqual(read('github'), ['Knowledge needs setup', 'setup', 'warn', 'Knowledge source: fill the Docs field of an instance so the investigator can search it'], 'a source whose field is empty');
-  assert.deepStrictEqual([badgeOf(w2.doc, 'sharepoint').textContent, badgeOf(w2.doc, 'sharepoint').dataset.state], ['Knowledge needs setup', 'setup'], 'a source with a problem on its tile');
-  assert.ok(badgeOf(w2.doc, 'sharepoint').title.startsWith('Knowledge source: '), 'the tooltip says what to do');
-  assert.ok(!badgeOf(none.doc, 'mcp-tools'), 'an MCP server with no knowledge connection carries none');
-  assert.deepStrictEqual(badgedIds(t.doc), ['sharepoint', 'github', 'mcp-tools'], 'a source that is off or needs setup is still a knowledge tile');
-  [t, w2, none].forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
-  console.log('PASS Integrations: the Knowledge badge reads Knowledge off for a switched-off source and Knowledge needs setup for an empty field or a problem');
+  assert.deepStrictEqual(badgeRead(o.doc, 'sharepoint').slice(0, 3), ['Knowledge off', 'off', 'muted'], 'a switched-off source');
+  assert.deepStrictEqual(badgeRead(o.doc, 'mcp-tools').slice(0, 3), ['Knowledge off', 'off', 'muted'], 'a switched-off MCP plug-in with knowledge on');
+  assert.strictEqual(badgeRead(o.doc, 'sharepoint')[3], 'Knowledge source, off while this plug-in is off');
+  assert.deepStrictEqual(badgeRead(e.doc, 'github'), ['Knowledge needs setup', 'setup', 'warn', FILL_TIP], 'an empty knowledge field');
+  assert.deepStrictEqual(badgeRead(b.doc, 'sharepoint').slice(0, 3), ['Knowledge needs setup', 'setup', 'warn'], 'a plug-in that is not working');
+  assert.strictEqual(badgeRead(b.doc, 'sharepoint')[3], 'Knowledge source: the plug-in is not working, so the investigator cannot search it');
+  assert.deepStrictEqual(['sharepoint', 'mcp-tools'].map((id) => badgeRead(r.doc, id).slice(0, 3)), [['Knowledge needs setup', 'setup', 'warn'], ['Knowledge needs setup', 'setup', 'warn']], 'an instance in error, MCP too');
+  assert.strictEqual(badgeRead(r.doc, 'sharepoint')[3], 'Knowledge source: fix the problem shown on this tile so the investigator can search it');
+  assert.deepStrictEqual(['sharepoint', 'github'].map((id) => badgeRead(w.doc, id).slice(0, 3)), [['Knowledge', 'on', 'info'], ['Knowledge', 'on', 'info']], 'a warning keeps the plain badge');
+  assert.strictEqual(badgeOf(n.doc, 'mcp-tools'), null, 'an MCP server with no knowledge connection carries none');
+  assert.deepStrictEqual(badgedIds(o.doc), ['sharepoint', 'github', 'mcp-tools'], 'a source that is off or needs setup is still a knowledge tile');
+  runs.forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
+  console.log('PASS Integrations: the Knowledge badge reads off for a switched-off source (MCP too) and needs setup only for an empty field, a broken plug-in or an instance error');
+}
+
+async function theKnowledgeBadgeAndItsTooltipsTranslateWithAPackAndTheFieldNameFillsTheTemplate() {
+  //given
+  const de = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'skopax', 'locale', 'de', 'page.json'), 'utf8'));
+  const pack = {de: Object.assign({}, de.page, {'@rules': de.rules})};
+  const c = knowCatalog({docs: ''});
+  c.plugins.filter((x) => x.id === 'sharepoint')[0].enabled = false;
+  const t = await boot({catalog: c, pack});
+  await open(t);
+
+  //when
+  addBtn(t.doc).click();
+  await wait(60);
+  const sp = badgeRead(t.doc, 'sharepoint'), gh = badgeRead(t.doc, 'github'), mcp = badgeRead(t.doc, 'mcp-tools');
+  const picked = pick(t.doc, 'github').querySelector('.int-know-tag');
+
+  //then
+  assert.deepStrictEqual([sp[0], gh[0], mcp[0]], ['Wissen aus', 'Wissen braucht Einrichtung', 'Wissen']);
+  assert.strictEqual(sp[3], 'Wissensquelle, aus, solange dieses Plug-in ausgeschaltet ist');
+  assert.strictEqual(gh[3], 'Wissensquelle: Das Feld Doku einer Instanz ausf\u00fcllen, damit der Investigator sie durchsuchen kann', 'the field name is filled into the German template, translated too');
+  assert.strictEqual(mcp[3], 'Wissensquelle: Der Investigator durchsucht sie und zitiert daraus');
+  assert.deepStrictEqual([picked.textContent, picked.title], ['Wissen', 'Wissensquelle: Der Investigator durchsucht sie und zitiert daraus'], 'the catalog badge too');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Integrations: in German the Knowledge badge states and tooltips translate, with the field name filled into the template');
 }
 
 async function withoutCustomTilesThereAreNoGroupsAndTheKnowledgeChipListsOnlyBadgedTiles() {
@@ -1707,11 +1753,11 @@ async function aCustomKnowledgePluginCarriesTheBadgeInItsGroupAndABrokenOneHasNo
   //then
   assert.deepStrictEqual(read, [['custom', ['pager', 'cracked', 'evil']], ['builtin', ['acme', 'gold']]], 'a custom knowledge plug-in stays in Custom plug-ins');
   assert.strictEqual(badgeOf(t.doc, 'pager').textContent, 'Knowledge');
-  assert.strictEqual(badgeOf(t.doc, 'cracked').textContent, 'Knowledge off', 'a broken one reads off');
+  assert.strictEqual(badgeOf(t.doc, 'cracked').textContent, 'Knowledge needs setup', 'a broken one needs setup');
   assert.ok(!badgeOf(t.doc, 'evil'));
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Integrations: a custom knowledge plug-in carries the badge in its own group and a broken one reads Knowledge off');
+  console.log('PASS Integrations: a custom knowledge plug-in carries the badge in its own group and a broken one needs setup');
 }
 
 async function aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin() {
@@ -2269,7 +2315,8 @@ async function thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne() 
   await theDrawerListsInstancesAsCardsUnderAHeaderWithTheAddButton();
   await thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne();
   await thereIsNoKnowledgeGroupAndEveryKnowledgeTileSitsOnceInItsCategoryWithABadge();
-  await theKnowledgeBadgeShowsWhenAKnowledgeSourceIsOffOrNeedsSetup();
+  await theKnowledgeBadgeReadsOffForASwitchedOffSourceAndNeedsSetupOnlyForAKnowledgeProblem();
+  await theKnowledgeBadgeAndItsTooltipsTranslateWithAPackAndTheFieldNameFillsTheTemplate();
   await withoutCustomTilesThereAreNoGroupsAndTheKnowledgeChipListsOnlyBadgedTiles();
   await theKnowledgeChipFiltersWithSearchCountsEachTileOnceAndFollowsAll();
   await theCatalogHasNoKnowledgeGroupAndBadgesEveryKnowledgeEntryOnce();

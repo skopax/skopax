@@ -262,16 +262,20 @@ function intKnowing(p) {
   return !!key && insts.some(function (i) { return !!i && !!i.values && i.values[key] != null && String(i.values[key]).trim() !== ''; });
 }
 var INT_KNOW_TIP = 'Knowledge source: the investigator searches and cites it';
+function intKnowErr(p) {
+  var rows = intList(p.health && p.health.instances);
+  return rows.length ? rows.some(function (r) { return !!r && r.state === 'error'; }) : !!p.health && p.health.state === 'error';
+}
 function intKnowState(p) {
   if (!p) return null;
-  var key = intKnowKey(p);
-  if (!key) return intKnowing(p) ? {name: 'on', text: 'Knowledge', tip: INT_KNOW_TIP} : null;
-  if (!intUsable(p) || p.enabled !== true) return {name: 'off', text: 'Knowledge off', tip: 'Knowledge source, off while this plug-in is off'};
-  if (!intKnowing(p)) return {name: 'setup', text: 'Knowledge needs setup', tip: 'Knowledge source: fill the ' + key.charAt(0).toUpperCase() + key.slice(1) + ' field of an instance so the investigator can search it'};
-  if (p.health && (p.health.state === 'error' || p.health.state === 'warn')) return {name: 'setup', text: 'Knowledge needs setup', tip: 'Knowledge source: ' + (intWhy(p) || 'fix the problem shown on this tile') + ' so the investigator can search it'};
-  return {name: 'on', text: 'Knowledge', tip: INT_KNOW_TIP};
+  var key = intKnowKey(p), on = {name: 'on', text: 'Knowledge', tip: INT_KNOW_TIP};
+  if (!key && !intKnowing(p)) return null;
+  if (!intUsable(p)) return {name: 'setup', text: 'Knowledge needs setup', tip: 'Knowledge source: the plug-in is not working, so the investigator cannot search it'};
+  if (p.enabled !== true) return {name: 'off', text: 'Knowledge off', tip: 'Knowledge source, off while this plug-in is off'};
+  if (key && !intKnowing(p)) return {name: 'setup', text: 'Knowledge needs setup', tip: tx('Knowledge source: fill the {0} field of an instance so the investigator can search it').replace('{0}', function () { return tx(key.charAt(0).toUpperCase() + key.slice(1)); })};
+  if (intKnowErr(p)) return {name: 'setup', text: 'Knowledge needs setup', tip: 'Knowledge source: fix the problem shown on this tile so the investigator can search it'};
+  return on;
 }
-function intKnowTag(p) { return intKnowTagOf(intKnowState(p)); }
 function intKnowTagOf(st) {
   if (!st) return null;
   var tag = accText('span', 'tag int-know-tag k-' + (st.name === 'on' ? 'info' : st.name === 'off' ? 'muted' : 'warn'), st.text);
@@ -384,8 +388,9 @@ function intTileOpen(id) {
   var t = [].filter.call(document.querySelectorAll('#integrations .int-tile'), function (x) { return x.dataset.id === id; })[0];
   return t && t.querySelector('.int-open');
 }
-function intHay(p) {
-  return foldCase([intName(p), p.id, intCatLabel(intCatOf(p)), typeof p.description === 'string' ? p.description : '', intIsCustom(p) ? 'custom' : '', intKnowState(p) ? 'knowledge' : ''].join(' '));
+function intHay(p, ks) {
+  if (ks === undefined) ks = intKnowState(p);
+  return foldCase([intName(p), p.id, intCatLabel(intCatOf(p)), typeof p.description === 'string' ? p.description : '', intIsCustom(p) ? 'custom' : '', ks ? 'knowledge' : ''].join(' '));
 }
 function intMatches(hay, q) {
   return foldCase(String(q || '').trim()).split(/\s+/).filter(Boolean).every(function (w) { return String(hay || '').indexOf(w) >= 0; });
@@ -410,8 +415,9 @@ function intTile(p) {
   t.dataset.state = st;
   t.dataset.cat = intCatOf(p);
   t.dataset.origin = p.origin || 'builtin';
-  t.dataset.knowledge = intKnowState(p) ? '1' : '0';
-  t.dataset.find = intHay(p);
+  var ks = intKnowState(p);
+  t.dataset.knowledge = ks ? '1' : '0';
+  t.dataset.find = intHay(p, ks);
   var tip = intTip(p, h);
   if (tip) t.title = tip;
   var top = accText('div', 'int-tile-top');
@@ -422,8 +428,11 @@ function intTile(p) {
   dot.appendChild(accText('span', 'int-dot ' + (h ? h.state : 'off')));
   dot.appendChild(accText('span', 'sr', need ? 'Needs attention' : st === 'on' ? 'On' : 'Off'));
   row.appendChild(dot);
-  var kt = intKnowTag(p);
-  if (kt) row.appendChild(kt);
+  var kt = intKnowTagOf(ks);
+  if (kt) {
+    row.classList.add('know');
+    row.appendChild(kt);
+  }
   open.appendChild(row);
   var custom = intIsCustom(p);
   if (!need || custom) line.appendChild(accText('span', 'int-cat', need ? 'Custom' : intCatLabel(intCatOf(p)) + (custom ? ' \u00b7 Custom' : '')));
@@ -573,7 +582,17 @@ function renderIntegrations(note) {
   pop.hidden = true;
   picker.appendChild(add);
   picker.appendChild(pop);
-  if (!intRO()) head.appendChild(picker);
+  if (!intRO()) {
+    head.appendChild(picker);
+    var mcpTool = intFind(INT_MCP);
+    if (mcpTool && intUsable(mcpTool)) {
+      var addMcp = accText('button', 'btn small int-add-mcp', '+ Add custom MCP');
+      addMcp.type = 'button';
+      addMcp.id = 'int-add-mcp';
+      addMcp.addEventListener('click', function () { intPopClose(false); intOpen(INT_MCP, null, 'add'); });
+      head.appendChild(addMcp);
+    }
+  }
   top.appendChild(head);
   if (intRO()) top.appendChild(intViewNote('int-ro-list'));
   top.appendChild(accText('p', 'muted int-sub', live + ' connected \u00b7 ' + need + (need === 1 ? ' needs attention' : ' need attention')));
