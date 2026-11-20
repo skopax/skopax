@@ -4,9 +4,9 @@ const {JSDOM} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
 const CHECKS = [
-  ['Connect MCP at 1024 px: the info grid sizes to the panel, not to the setup command', '.mcp-info', 'grid-template-columns', 'minmax(0, 1fr)'],
-  ['Connect MCP at 1024 px: so do its numbered steps', '.mcp-info ol', 'grid-template-columns', 'minmax(0, 1fr)'],
-  ['Connect MCP at 1024 px: and its lists', '.mcp-info ul', 'grid-template-columns', 'minmax(0, 1fr)'],
+  ['Connect MCP at 1024 px: the info grid sizes to the panel, not to the setup command', '.mcp-info', 'grid-template-columns', 'minmax(0px, 1fr)'],
+  ['Connect MCP at 1024 px: so do its numbered steps', '.mcp-info ol', 'grid-template-columns', 'minmax(0px, 1fr)'],
+  ['Connect MCP at 1024 px: and its lists', '.mcp-info ul', 'grid-template-columns', 'minmax(0px, 1fr)'],
   ['Connect MCP on a phone: the tools table scrolls inside its own box', '.mcp-tools-box', 'overflow-x', 'auto'],
   ['Connect MCP on a phone: and the box is never wider than the panel', '.mcp-tools-box', 'max-width', '100%'],
   ['a long source pill on a phone: the pill is never wider than its row', '.sg-pill', 'max-width', '100%'],

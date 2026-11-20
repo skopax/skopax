@@ -1087,7 +1087,7 @@ async function tabGroupsCarryTheHealthState() {
   assert.deepStrictEqual([...layout.children].filter((c) => !c.hidden).map((c) => c.tagName + '#' + c.id), ['NAV#tabs', 'MAIN#', 'ASIDE#live'], 'the menu sits left of the main column, the Activity rail right of it');
   assert.ok(['reco', 'queue-strip', 'banner'].concat([...doc.querySelectorAll('#side a.tab[data-tab]')].map((t) => 'panel-' + t.dataset.tab)).every((id) => layout.querySelector('main').contains(doc.getElementById(id))), 'the summary, the queue strip and every panel are in the main column');
   const narrow = rules.filter((r) => r.cssRules && /max-width: 900px/.test(r.conditionText || (r.media && r.media.mediaText) || '')).flatMap((r) => [...r.cssRules]);
-  assert.ok(narrow.some((r) => r.selectorText === '.layout' && r.style.getPropertyValue('grid-template-columns') === 'minmax(0, 1fr)'), 'on a narrow content the main column takes the full width');
+  assert.ok(narrow.some((r) => r.selectorText === '.layout' && r.style.getPropertyValue('grid-template-columns') === 'minmax(0px, 1fr)'), 'on a narrow content the main column takes the full width');
   assert.ok(narrow.some((r) => r.selectorText === '.tabs' && r.style.getPropertyValue('position') === 'fixed') && narrow.some((r) => r.selectorText === 'body.nav-open .tabs'), 'and the menu becomes a drawer');
   assert.deepStrictEqual([...doc.querySelector('section.overview').children].map((c) => c.id), ['reco', 'meta'], 'the overview keeps the Skopax summary and the source pills');
   assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms button')].map((b) => b.dataset.f).slice(0, 5), ['all', 'open', 'crit', 'warn', 'info'], 'All first, then the Open counts right under Open in the Anomalies side sub menu');

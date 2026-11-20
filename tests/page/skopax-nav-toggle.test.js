@@ -105,7 +105,7 @@ async function aNarrowContentStacksTheActivityRailUnderTheMainColumnOnEveryPage(
   const {w, doc, errors} = await boot('#t=slack');
   const rules = allRules(doc);
   const cols = (r) => r.style.getPropertyValue('grid-template-columns').replace(/\s/g, '');
-  const single = 'minmax(0,1fr)';
+  const single = 'minmax(0px,1fr)';
 
   //when
   const variants = rules.filter((r) => r.media === '' && cols(r)).flatMap((r) => r.sel.split(',').map((x) => ({sel: x.trim(), cols: cols(r)}))).filter((r) => /^\.layout(\.[\w-]+)*$/.test(r.sel));

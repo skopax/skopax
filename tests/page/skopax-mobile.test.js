@@ -259,7 +259,7 @@ function onAPhoneTheStylesGiveOneColumnAFullScreenDrawerBigTargetsAnd16pxInputs(
   //then
   assert.ok(phone.length > 10, 'the phone rules are read: ' + phone.length);
   assert.deepStrictEqual(got, {
-    tabsHidden: 'none', tabsShown: 'flex', snap: 'x mandatory', column: '100%', colSnap: 'start', headClip: ['rect(0px)', 'absolute'], viewIcon: '0px', switchHit: '-14px -8px', chips: 'nowrap',
+    tabsHidden: 'none', tabsShown: 'flex', snap: 'x mandatory', column: '100%', colSnap: 'start', headClip: ['rect(0px 0px 0px 0px)', 'absolute'], viewIcon: '0px', switchHit: '-14px -8px', chips: 'nowrap',
     drawer: '100%', drawerEdge: '0px', ibtn: ['44px', '44px'], btn: '44px', tile: ['44px', '44px'],
     input: '16px', inputPriority: 'important', chat: 'calc(100dvh - 150px)', safeTop: 'max(16px, env(safe-area-inset-left))',
   });
