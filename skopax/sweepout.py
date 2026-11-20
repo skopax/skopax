@@ -10,7 +10,7 @@ import bson
 from bson import Binary
 from pymongo.errors import PyMongoError
 
-from skopax import clock
+from skopax import clock, information
 from skopax.cardlink import card_url
 from skopax.actors import SYSTEM
 from skopax.contract import CLEAR_OUTCOMES, Check, Cleared, Digest, InstanceInfo, Plugin, Sweep
@@ -360,7 +360,7 @@ class Outputs:
 
         def open_(key: str) -> bool:
             card = cards.get(key)
-            return card is not None and owns(card) and not quiet(card, state, now) and not posted(card) and not card.get('slackDraft')
+            return card is not None and owns(card) and information.is_card(card) and not quiet(card, state, now) and not posted(card) and not card.get('slackDraft')
 
         for item in posts:
             keys = [k for k in dict.fromkeys(keymap.get(k, k) for k in item['keys']) if open_(k)]

@@ -11,7 +11,7 @@ from skopax import locales, messages, statenotes
 from skopax.app import create_app
 from skopax.businesstime import business_elapsed, elapsed
 from skopax.config import load_settings
-from skopax.engine import apply, auto_close_info, auto_resolve, auto_resolve_kinds, window_text
+from skopax.engine import apply, auto_resolve, auto_resolve_kinds, window_text
 from skopax.settingcards import CARDS
 from skopax.statenotes import auto_event_text, auto_text
 from skopax.store import Store
@@ -21,7 +21,7 @@ H = 3600
 DAY = 86400
 UTC = ZoneInfo('UTC')
 KEY = 'core.business-days'
-HELP = 'Count only Monday to Friday (install time zone) for auto-resolve and info close timers'
+HELP = 'Count only Monday to Friday (install time zone) for the auto-resolve timers'
 
 
 def at(text: str, zone: str = 'UTC') -> float:
@@ -241,24 +241,6 @@ def test_a_kind_window_counts_business_time_from_when_the_card_first_appeared():
     assert on_later[0]['text'].endswith('nobody acted in 1 business day')
 
 
-def test_an_info_card_counts_its_close_days_as_business_days():
-    # given
-    first = at('2026-11-20 12:00')
-    now = at('2026-11-23 06:00')
-
-    # when
-    off = auto_close_info({'anomalies': [firing_info('edge|a.example.com', first, now)]}, now, 1)
-    on = auto_close_info({'anomalies': [firing_info('edge|a.example.com', first, now)]}, now, 1, business=UTC)
-    later = at('2026-11-23 13:00')
-    on_later = auto_close_info({'anomalies': [firing_info('edge|a.example.com', first, later)]}, later, 1, business=UTC)
-
-    # then
-    assert [r['key'] for r in off] == ['edge|a.example.com'] and off[0]['text'].endswith('nobody acted in 1 days')
-    assert on == []
-    assert [r['key'] for r in on_later] == ['edge|a.example.com'] and on_later[0]['businessTime'] is True
-    assert on_later[0]['text'].endswith('nobody acted in 1 business day')
-
-
 def test_apply_passes_business_time_to_every_rule(store: Store):
     # given
     cleared = at('2026-11-20 22:00')
@@ -267,12 +249,12 @@ def test_apply_passes_business_time_to_every_rule(store: Store):
     windows = (({'wingify-verdict'}, 'ab-verdict', 24),)
 
     # when
-    on = apply(store, [], now, severity_hours={'crit': 6, 'warn': 6}, info_close_days=1, kind_windows=windows, business=UTC)
-    off = apply(store, [], now, severity_hours={'crit': 6, 'warn': 6}, info_close_days=1, kind_windows=windows)
+    on = apply(store, [], now, severity_hours={'crit': 6, 'warn': 6}, kind_windows=windows, business=UTC)
+    off = apply(store, [], now, severity_hours={'crit': 6, 'warn': 6}, kind_windows=windows)
 
     # then
     assert on.resolved == []
-    assert sorted(r['key'] for r in off.resolved) == ['edge|a.example.com', 'log|a|ERROR|x', 'vwo|x']
+    assert sorted(r['key'] for r in off.resolved) == ['log|a|ERROR|x', 'vwo|x'], 'information is never auto-closed'
 
 
 def test_the_window_words_name_business_hours_and_days():
@@ -334,7 +316,7 @@ def test_the_admin_hour_and_day_help_texts_say_which_time_counts(store):
     listed = {e['key']: e for e in live.entries()}
 
     # then
-    for key in ('core.auto-resolve-hours-crit', 'core.auto-resolve-hours-warn', 'core.info-auto-close-days'):
+    for key in ('core.auto-resolve-hours-crit', 'core.auto-resolve-hours-warn'):
         assert listed[key]['help'].endswith('With Business days only on, only Monday to Friday counts')
 
 

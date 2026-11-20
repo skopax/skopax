@@ -4,7 +4,7 @@ import time
 from typing import Callable, Collection
 from urllib.parse import quote
 
-from skopax import brand, history
+from skopax import brand, history, information
 from skopax.actions import DEFAULT_MUTE_HOURS
 from skopax.errkind import kind as error_kind
 from skopax.engine import mute_for, window_text
@@ -131,7 +131,7 @@ def posted(card: dict) -> bool:
 
 def merged(card: dict, by_key: dict) -> bool:
     host = by_key.get(card.get('parent'))
-    return bool(host and host is not card and (host.get('status') == 'open' or card.get('status') == 'cleared'))
+    return bool(host and host is not card and information.is_card(host) and (host.get('status') == 'open' or card.get('status') == 'cleared'))
 
 
 class StateNotes:

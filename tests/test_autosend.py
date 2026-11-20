@@ -76,21 +76,21 @@ def test_claudes_crit_draft_arms_at_once_and_the_job_posts_it_on_its_next_run(st
     assert store.anomaly(KEY)['slackPost']['by'] == AUTO_BY
 
 
-def test_a_warn_draft_arms_and_an_info_draft_stays_manual(store: Store):
+def test_a_warn_draft_arms_and_information_takes_no_draft(store: Store):
     # given
     warn = seed(Store(store.db), sev='warn')
 
     # when
     with client_with(warn, FakeSlack()) as client:
         armed = drafted(client)
-    warn.anomalies.update_one({'_id': KEY}, {'$set': {'sev': 'info'}})
+    warn.anomalies.update_one({'_id': KEY}, {'$set': {'sev': 'info'}, '$unset': {'slackDraft': '', 'autoSend': ''}})
     with client_with(warn, FakeSlack()) as client:
-        info = drafted(client, 'For information, no rush.')
+        info = client.put('/api/slack-drafts', json={'key': KEY, 'text': 'For information, no rush.'}, headers=AUTH)
 
     # then
     assert armed['autoSend']['draftAt'] == armed['slackDraft']['at']
-    assert info['autoSend'] is None
-    assert 'autoSend' not in warn.anomaly(KEY)
+    assert info.status_code == 409
+    assert 'autoSend' not in warn.anomaly(KEY) and 'slackDraft' not in warn.anomaly(KEY)
 
 
 def test_an_operators_edit_leaves_the_draft_manual(store: Store):
@@ -652,7 +652,7 @@ def sev_card(key: str, sev: str, **extra) -> dict:
 @pytest.mark.parametrize('floor, expected', [
     ('crit', ['log|a|ERROR|x']),
     ('warn', ['log|a|ERROR|x', 'log|b|WARN|x']),
-    ('info', ['log|a|ERROR|x', 'log|b|WARN|x', 'log|c|INFO|x']),
+    ('info', ['log|a|ERROR|x', 'log|b|WARN|x']),
     ('off', []),
 ])
 def test_cards_at_or_above_the_chosen_severity_post_at_once(store: Store, floor, expected):
@@ -681,21 +681,21 @@ def test_each_post_at_once_ends_with_a_line_that_is_true_for_its_severity(store:
 
     # when
     PostNow(store, lambda key: None, lambda: 'info', lambda: investigating).run(cards, cards, AT_ONCE)
-    text = {k: store.anomaly(k)['slackDraft']['text'] for k in ('log|a|ERROR|x', 'log|b|WARN|x', 'log|c|INFO|x')}
+    text = {k: store.anomaly(k)['slackDraft']['text'] for k in ('log|a|ERROR|x', 'log|b|WARN|x')}
 
     # then
-    lines = {msg('autosend.crit_now.last'), msg('autosend.post_now.warn_last'), msg('autosend.post_now.info_last')}
+    lines = {msg('autosend.crit_now.last'), msg('autosend.post_now.warn_last')}
     for key, line in (('log|a|ERROR|x', crit_line), ('log|b|WARN|x', warn_line)):
         if line:
             assert text[key].endswith('\n' + msg(line))
         else:
             assert not any(x in text[key] for x in lines) and text[key].endswith('.'), 'no investigation is promised while the investigator does not run on cards'
-    assert text['log|c|INFO|x'].endswith(msg('autosend.post_now.info_last'))
+    assert not store.anomaly('log|c|INFO|x').get('slackDraft'), 'information is never posted'
     assert msg('autosend.post_now.warn_last') == 'The investigator looks at this card on its next run; findings will arrive in this thread.'
     assert any(r['text'] == 'Card posted to Slack at once with its numbers \u00b7 log|b|WARN|x' for r in store.list_activity(None, 10))
 
 
-def test_an_info_only_burst_does_not_say_the_investigator_groups_it(store: Store):
+def test_an_info_only_burst_posts_nothing_and_says_nothing(store: Store):
     # given
     keys = [f'log|s{i}|INFO|x' for i in range(4)]
     store.save(state(*[sev_card(k, 'info') for k in keys]), None)
@@ -706,7 +706,7 @@ def test_an_info_only_burst_does_not_say_the_investigator_groups_it(store: Store
 
     # then
     assert burst == []
-    assert [r['text'] for r in store.list_activity(None, 10) if 'opened together' in r['text']] == ['4 cards opened together (4 info); not posted at once']
+    assert [r['text'] for r in store.list_activity(None, 10) if 'opened together' in r['text']] == []
 
 
 def test_the_burst_counts_only_the_cards_due_and_names_their_severities(store: Store):
@@ -751,7 +751,7 @@ def test_a_card_posted_at_once_gets_no_fallback_draft_even_when_the_post_failed(
     assert {store.anomaly(k)['slackDraft']['by'] for k in ('log|a|ERROR|x', 'log|b|WARN|x')} == {'server'}
 
 
-def test_fresh_cards_are_the_pushed_ones_plus_new_info_cards_after_the_first_pass():
+def test_fresh_cards_are_the_pushed_ones_after_the_first_pass_and_never_information():
     # given
     now = parse_iso('2026-11-12T05:17:20Z')
     crit = anomaly('log|a|ERROR|x', sev='crit', svc='a')
@@ -764,36 +764,8 @@ def test_fresh_cards_are_the_pushed_ones_plus_new_info_cards_after_the_first_pas
     first = fresh(Applied(rev=1, events=events, push=[], cards=cards, first=True), now)
 
     # then
-    assert [a['key'] for a in later] == ['log|a|ERROR|x', 'log|c|INFO|x']
+    assert [a['key'] for a in later] == ['log|a|ERROR|x']
     assert first == [], 'the first pass after a fresh start posts nothing'
-
-
-def test_a_new_info_card_keeps_the_same_service_quiet_window():
-    # given
-    now = parse_iso('2026-11-12T05:17:20Z')
-    warned = anomaly('log|shop|WARN|x', sev='warn', svc='shop', pushedAt='2026-11-12T05:00:00Z', pushedSev='warn')
-    posted = anomaly('log|cart|INFO|old', sev='info', svc='cart', slackPost={'at': '2026-11-12T05:10:00Z'})
-    stale = anomaly('log|pay|WARN|x', sev='warn', svc='pay', pushedAt='2026-11-12T04:00:00Z', pushedSev='warn')
-    news = [anomaly(f'log|{svc}|INFO|new', sev='info', svc=svc) for svc in ('shop', 'cart', 'pay')]
-    events = [{'key': a['key'], 'ev': 'new'} for a in news]
-
-    # when
-    got = fresh(Applied(rev=2, events=events, push=[], cards=[warned, posted, stale] + news), now)
-
-    # then
-    assert [a['key'] for a in got] == ['log|pay|INFO|new'], 'a service pushed or posted in the last 30 minutes is not posted again for an info card'
-
-
-def test_two_new_info_cards_of_one_service_in_one_pass_post_once():
-    # given
-    now = parse_iso('2026-11-12T05:17:20Z')
-    news = [anomaly(f'log|shop|INFO|{i}', sev='info', svc='shop') for i in range(2)] + [anomaly('log|cart|INFO|0', sev='info', svc='cart')]
-
-    # when
-    got = fresh(Applied(rev=2, events=[{'key': a['key'], 'ev': 'new'} for a in news], push=[], cards=news), now)
-
-    # then
-    assert [a['key'] for a in got] == ['log|shop|INFO|0', 'log|cart|INFO|0'], 'one info post per service in a pass'
 
 
 @pytest.mark.parametrize('mode, investigated', [('live', True), ('shadow', False)])

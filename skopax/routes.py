@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
-from skopax import tags
+from skopax import information, tags
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
 from skopax.cardlink import card_url, chat_url
 from skopax.contract import ECHO_FIELD
@@ -63,6 +63,10 @@ class Refused(Authored, Exception):
     def __init__(self, status: int, text: str):
         super().__init__(text)
         self.status = status
+
+
+def grouped(card: dict, by_key: dict | None) -> bool:
+    return bool(card.get('parent')) and not information.under_information(card, by_key or {})
 
 
 def said(card: dict) -> str:
@@ -171,21 +175,23 @@ class Route:
         return any(t in mine for t in self.tags) or any(fnmatch.fnmatchcase(key, k) for k in self.keys)
 
     def takes(self, card: dict) -> bool:
+        if card.get('sev') not in information.CARD_SEVS:
+            return False
         if self.business:
             return self.hit(card)
         return SEV_RANK.get(card.get('sev'), 0) >= SEV_RANK.get(self.min_sev, 1) and self.hit(card)
 
-    def due(self, card: dict) -> bool:
-        if card.get('status') != 'open' or card.get('muted') or card.get('triage') == 'handled' or card.get('parent') or card.get('noRoutes') is True:
+    def due(self, card: dict, by_key: dict | None = None) -> bool:
+        if card.get('status') != 'open' or card.get('muted') or card.get('triage') == 'handled' or grouped(card, by_key) or card.get('noRoutes') is True:
             return False
         if (self.business and not said(card)) or not self.takes(card):
             return False
         since = str(card.get('firstSeen') or '')
         return not any(ours(p, {self.instance}, self.plugin) and str(p.get('at') or '') >= since for p in card.get('teamsPosts') or [])
 
-    def fixed_due(self, card: dict, now: float) -> bool:
+    def fixed_due(self, card: dict, now: float, by_key: dict | None = None) -> bool:
         said_it = card.get('business') or {}
-        return (self.business and said_it.get('kind') == tags.INFO and bool(said(card)) and not card.get('muted') and not card.get('parent') and card.get('noRoutes') is not True and self.takes(card)
+        return (self.business and said_it.get('kind') == tags.INFO and bool(said(card)) and not card.get('muted') and not grouped(card, by_key) and card.get('noRoutes') is not True and self.takes(card)
                 and closed(card, now))
 
 
@@ -683,6 +689,7 @@ class Routes:
         now = self.clock() if now is None else now
         records = self._records(now) if records is None else records
         sent: dict[str, list[str]] = {}
+        by_key = {c.get('key'): c for c in cards}
         for group in self.shared(self.routes() if live is None else live):
             plugin = group[0].plugin
             floor = SEV_RANK[self.setting(plugin, 'min-sev')]
@@ -699,10 +706,10 @@ class Routes:
                 return ', '.join(teams_of(a, among)) or label
 
             if self.setting(plugin, 'fixed-posts'):
-                done, cleared, claims = self.together(group, cards, by, now, lambda r, a: loud(a) and r.fixed_due(a, now) and self.closed_after_told(a, r)
+                done, cleared, claims = self.together(group, cards, by, now, lambda r, a: loud(a) and r.fixed_due(a, now, by_key) and self.closed_after_told(a, r)
                                                       and not held(records, r.id + FIXED, r.link, a['key'], now), self.claim_fixed, True)
                 sent.update(self.one_by_one(group, done, cleared, claims, lambda a: self.fixed_message(a, named(a, team_tags)), by, records, now, FIXED))
-            due, taken, claims = self.together(group, cards, by, now, lambda r, a: loud(a) and r.due(a) and not self.recent(group, r, a, now, days)
+            due, taken, claims = self.together(group, cards, by, now, lambda r, a: loud(a) and r.due(a, by_key) and not self.recent(group, r, a, now, days)
                                                and not held(records, r.id, r.link, a['key'], now), self.claim, False)
             plain = {a['key'] for r in group if r.business for a in taken.get(r.id, [])}
             sent.update(self.one_by_one(group, due, taken, claims, lambda a: self.business_message(a, named(a, team_tags), mention, self.kids(a, cards), teams_of(a, team_tags))

@@ -18,11 +18,11 @@ AT = '2026-11-09T16:00:00Z'
 
 def test_every_card_key_gets_one_number_for_good_and_the_next_key_the_next_number(store: Store):
     # given
-    cards = [{'key': 'a'}, {'key': 'b'}, {'key': 'a-again', 'num': 7}]
+    cards = [{'key': 'a', 'sev': 'warn'}, {'key': 'b', 'sev': 'crit'}, {'key': 'a-again', 'sev': 'warn', 'num': 7}]
 
     # when
     number_cards(store, cards)
-    again = [{'key': 'b'}, {'key': 'c'}]
+    again = [{'key': 'b', 'sev': 'crit'}, {'key': 'c', 'sev': 'warn'}]
     number_cards(store, again)
 
     # then

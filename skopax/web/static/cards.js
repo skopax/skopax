@@ -544,7 +544,7 @@ function filterBase(f) {
   function add(list) { list.forEach(function (a) { if (out.indexOf(a) < 0) out.push(a); }); }
   if (f === 'open') { add(open); add(stale); return out; }
   if (f === 'all') { [open, stale, inprog, taken, muted, cleared].forEach(add); return out; }
-  if (f === 'crit' || f === 'warn' || f === 'info') return openBySev(f);
+  if (f === 'crit' || f === 'warn') return openBySev(f);
   if (f === 'investigating' || f === 'dived') return A.filter(function (a) { return a.triage === f; });
   if (f === 'svc') return svcF ? svcCards(svcF).list : [];
   return {stale: stale, progress: inprog, taken: taken, muted: muted, cleared: cleared, recurring: recurringL, slack: slackRec, archived: ARCHIVED, closed: []}[f] || A;
@@ -1021,7 +1021,7 @@ function renderAnoms() {
     if (list.length || (!searchQ && id === 'open') || empty) groups.push({id: id, title: title, hint: hint, k: k, list: list, empty: empty});
   }
   if (filter === 'open' || filter === 'all') g('open', 'Open', 'critical first; a card that stopped firing or was investigated stays here until someone takes, resolves or mutes it, and its tags say which', SEV[worst][1], openAll());
-  if (['crit', 'warn', 'info'].indexOf(filter) >= 0) g('open', SEV[filter][0], 'open: firing, or stopped with nobody acting on it yet', SEV[filter][1], openBySev(filter));
+  if (['crit', 'warn'].indexOf(filter) >= 0) g('open', SEV[filter][0], 'open: firing, or stopped with nobody acting on it yet', SEV[filter][1], openBySev(filter));
   if (filter === 'progress' || filter === 'all') g('progress', TRI.progress[0], 'a ticket or hand-off is underway; pushes again only if it doubles or gets worse. A card with a Jira ticket stays until the ticket closes, one with free text drops off 24 hours after it cleared', TRI.progress[1], inprog);
   if (filter === 'taken' || filter === 'all') g('taken', 'Action taken', 'no action needed; pushes again only if it doubles or gets worse, and comes back under Open when it stops and fires again. Drops off 24 hours after it cleared or was resolved, whichever is later', 'k-good', taken);
   if (filter === 'muted' || filter === 'all') g('muted', 'Muted', 'no pushes while the mute lasts, open or already cleared; unmute to get them again', 'k-muted', muted);

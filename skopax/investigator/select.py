@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Callable, Iterable
 
+from skopax import information
 from skopax.engine import SEV_RANK, parse_iso
 
 log = logging.getLogger('skopax.investigator.select')
@@ -61,7 +62,7 @@ def cooling(a: dict, kind: str | None, runs: list[dict], now: float, cooldown_s:
 
 def merged(a: dict, by_key: dict) -> bool:
     host = by_key.get(a.get('parent'))
-    return bool(host and host is not a and host.get('status') == 'open')
+    return bool(host and host is not a and information.is_card(host) and host.get('status') == 'open')
 
 
 def announced_twin(card: dict, cards: list[dict], now: float) -> dict | None:

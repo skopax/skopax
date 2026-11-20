@@ -23,7 +23,7 @@ var TYPE_NAMES = {'page-typos': 'Typos', 'page-layout': 'Layout', log: 'Log erro
   'umami-redirect': 'Umami events', 'umami-pageviews': 'Umami pageviews', crux: 'Page speed',
   safebrowsing: 'Safe Browsing', 'ga-drop': 'GA4 drops', 'gtm-publish': 'GTM publishes', 'ad-disapproved': 'Disapproved ads', 'browser-down': 'Screenshot browser',
   'store-rating': 'Store ratings', 'play-vitals': 'Play vitals', 'crash-rate': 'Crash rate', 'crash-new': 'New crashes', 'ab-test': 'A/B tests', 'ab-verdict': 'A/B verdicts'};
-var LINK_FILTERS = ['open', 'stale', 'progress', 'taken', 'muted', 'cleared', 'all', 'investigating', 'dived', 'crit', 'warn', 'info', 'slack', 'recurring', 'archived', 'closed'];
+var LINK_FILTERS = ['open', 'stale', 'progress', 'taken', 'muted', 'cleared', 'all', 'investigating', 'dived', 'crit', 'warn', 'slack', 'recurring', 'archived', 'closed'];
 var TYPE_ALIAS = {access: 'no-access', 'umami-access': 'no-access'};
 var CORE_TYPE_NAMES = Object.assign({}, TYPE_NAMES), CORE_TYPE_ALIAS = Object.assign({}, TYPE_ALIAS), TYPE_SIG = /^[a-z0-9-]{1,30}$/;
 function useTypes(tiles) {
@@ -394,7 +394,7 @@ function derive(data) {
   taken = A.filter(function (a) { return a.triage === 'handled'; });
   slackRec = A.filter(function (a) { return draftOf(a) && !draftSent(a) && draftLive(a); });
   recurringL = A.filter(recurs);
-  worst = bySev('crit').length ? 'crit' : bySev('warn').length ? 'warn' : bySev('info').length ? 'info' : 'ok';
+  worst = bySev('crit').length ? 'crit' : bySev('warn').length ? 'warn' : 'ok';
   src = D.sources || {};
   down = SOURCES.filter(function (k) { return srcState(k) === 'error'; });
   var live = Array.isArray(D.anomalies);

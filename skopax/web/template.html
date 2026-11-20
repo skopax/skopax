@@ -1980,6 +1980,12 @@ td.num { font-family: var(--font-data); font-size: 0.86rem; font-variant-numeric
 td.num.hot { color: var(--c); font-weight: 600; }
 .zero-v { color: var(--muted); opacity: 0.5; }
 tr.empty td { text-align: center; color: var(--muted); padding: 30px 16px; }
+.info-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.info-row { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; min-width: 0; overflow-wrap: anywhere; }
+.info-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; min-width: 0; }
+.info-text { margin: 6px 0 0; }
+.info-meta, .info-moved { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.info-empty { padding: 12px; }
 #svcs { min-width: 1180px; } #logs { min-width: 920px; } #routes { min-width: 760px; } #hist { min-width: 640px; }
 .qtext { max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
 .sig-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; max-width: 100%; }
@@ -2243,6 +2249,11 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
         <tbody></tbody>
       </table>
     </div>
+  </section>
+
+  <section class="panel" id="panel-info" hidden>
+    <p class="panel-note">Info findings: worth knowing, nothing to act on. They are not cards, so they never reach the board, Slack or the investigator. Still firing first, newest first; an item that ended stays here for a day.</p>
+    <ul class="info-list" id="info-list"></ul>
   </section>
 
   <section class="panel" id="panel-lat" hidden>
@@ -2520,6 +2531,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
 <script src="/static/cards.js"></script>
 <script src="/static/closed.js"></script>
 <script src="/static/services.js"></script>
+<script src="/static/information.js"></script>
 <script src="/static/releases.js"></script>
 <script src="/static/suggest.js"></script>
 <script src="/static/actions.js"></script>

@@ -52,7 +52,7 @@ def test_only_tags_with_responsibles_and_an_open_card_get_a_line_sorted_by_criti
     lines = [b['text']['text'].split('\n')[0] for b in out['blocks'][1:]]
     assert len(lines) == 2
     assert lines[0] == '<@U0BOB> \u00b7 *<https://skopax.example.com/#t=anoms/open/tag:data|Data>* \u00b7 1 open card: 1 critical'
-    assert lines[1] == '<@U0ALICE> \u00b7 *<https://skopax.example.com/#t=anoms/open/tag:developer|Developer>* \u00b7 3 open cards: 2 warnings'
+    assert lines[1] == '<@U0ALICE> \u00b7 *<https://skopax.example.com/#t=anoms/open/tag:developer|Developer>* \u00b7 2 open cards: 2 warnings'
     assert '<@U0ALICE>' in out['text'] and '<@U0BOB>' in out['text']
 
 
@@ -83,7 +83,7 @@ def test_each_tag_shows_its_three_worst_oldest_cards_and_links_the_rest_as_more(
     assert text[1] == '\u2022 <https://skopax.example.com/c/12|#12> :red_circle: Critical \u00b7 checkout-service \u00b7 30 h'
     assert text[2].endswith('\u00b7 30 min')
     assert text[3].endswith('\u00b7 2 d')
-    assert text[4] == '<https://skopax.example.com/#t=anoms/open/tag:developer|+2 more>'
+    assert text[4] == '<https://skopax.example.com/#t=anoms/open/tag:developer|+1 more>', 'information is never named, only critical and warning cards'
     assert len(text) == 5
 
 

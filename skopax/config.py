@@ -15,9 +15,10 @@ log = logging.getLogger('skopax.config')
 
 INVESTIGATE_MODES = ('off', 'shadow', 'live')
 SLACK_LISTEN_MODES = ('off', 'shadow', 'live')
-SLACK_POST_SEVS = ('crit', 'warn', 'info', 'off')
+SLACK_POST_SEVS = ('crit', 'warn', 'off')
 SLACK_POST_SEV = 'warn'
 CRIT_NOW_TOLD = 'slack.crit-now'
+INFO_DAYS_TOLD = 'core.info-auto-close-days'
 TOLD: set[str] = set()
 
 PLACEHOLDER = re.compile(r'\$\{([^}:]+)(?::([^}]*))?}')
@@ -350,6 +351,19 @@ def tags_rules_of(config: dict[str, str]) -> tuple:
     return rules_of({k: resolve(v, config) for k, v in config.items() if k.startswith('tags.')})
 
 
+def retired_info(key: str, raw: str) -> str:
+    if raw != 'info':
+        return raw
+    if f'{key} info' not in TOLD:
+        TOLD.add(f'{key} info')
+        log.warning('%s info is retired: information is never posted; using warn', key)
+    return 'warn'
+
+
+def retired_post_sev(raw: str) -> str:
+    return retired_info('slack.post-sev', raw)
+
+
 def whole_in(raw: str, low: int, high: int) -> bool:
     try:
         return low <= int(raw) <= high
@@ -451,6 +465,9 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
     info_fallback = 0 if auto_hours == 0 else 3
     info_days = bounded('core.info-auto-close-days', info_raw, 0, 90, info_fallback) if info_raw else info_fallback
     info_set = bool(info_raw) and whole_in(info_raw, 0, 90)
+    if info_raw and INFO_DAYS_TOLD not in TOLD:
+        TOLD.add(INFO_DAYS_TOLD)
+        log.warning('core.info-auto-close-days is deprecated and ignored: information items are never closed, they end when their signal stops')
 
     default_role = get('sso.default-role', 'SSO_DEFAULT_ROLE', 'viewer').strip() or 'viewer'
     if default_role not in DEFAULT_ROLES:
@@ -469,7 +486,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
 
     log_color = logs.NEVER if env.get(logs.NO_COLOR_ENV) else log_setting(LOG_COLOR_KEY, logs.COLOR_ENV, logs.COLORS, logs.ALWAYS)
 
-    post_sev_raw = get('slack.post-sev', 'SLACK_POST_SEV', '').strip().lower()
+    post_sev_raw = retired_post_sev(get('slack.post-sev', 'SLACK_POST_SEV', '').strip().lower())
     crit_now_raw = get('slack.crit-now', 'SLACK_CRIT_NOW', '').strip().lower()
     if crit_now_raw and CRIT_NOW_TOLD not in TOLD:
         TOLD.add(CRIT_NOW_TOLD)

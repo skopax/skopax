@@ -4,6 +4,7 @@ var SIDE_ROWS = {
   chat: ['Chat', 'chat'],
   inv: ['Investigator', 'spark'],
   svcs: ['Services', 'server'],
+  info: ['Information', 'eye'],
   lat: ['Latency', 'timer'],
   rels: ['Releases', 'tag'],
   reps: ['Deploy reports', 'report'],
@@ -20,7 +21,7 @@ var SIDE_ROWS = {
 };
 var SIDE_GROUPS = [
   {id: 'main', label: '', rows: ['anoms', 'reqs', 'chat', 'inv']},
-  {id: 'observe', label: 'Observe', rows: ['svcs', 'lat', 'rels', 'reps']},
+  {id: 'observe', label: 'Observe', rows: ['svcs', 'info', 'lat', 'rels', 'reps']},
   {id: 'activity', label: 'Activity', rows: ['slack', 'hist', 'acts', 'costs']},
   {id: 'connect', label: 'Connect', rows: ['integrations', 'tools', 'mcp']},
   {id: 'more', label: 'More', fold: true, rows: ['review', 'docs']}

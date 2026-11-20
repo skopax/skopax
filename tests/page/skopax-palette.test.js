@@ -166,7 +166,7 @@ async function anEmptyQueryShowsOpenCardsAndPages() {
   //then
   assert.deepStrictEqual(groups(doc), ['Cards', 'Pages']);
   assert.deepStrictEqual(rows(doc, 'Cards'), ['#15 shop ERROR lines', '#14 checkout-service ERROR lines', '#17 auth-service ERROR lines', '#18 search-api ERROR lines'], 'the first four open cards, most severe first');
-  assert.deepStrictEqual(rows(doc, 'Pages'), ['Board', 'Requests', 'Chat', 'Investigator', 'Services', 'Latency'], 'and the first six pages');
+  assert.deepStrictEqual(rows(doc, 'Pages'), ['Board', 'Requests', 'Chat', 'Investigator', 'Services', 'Information'], 'and the first six pages');
   assert.deepStrictEqual([...doc.getElementById('pal-list').children].map((c) => c.getAttribute('role')), ['group', 'group'], 'the listbox holds one group per kind');
   assert.deepStrictEqual(boxes(doc).map((g) => doc.getElementById(g.getAttribute('aria-labelledby')).textContent), ['Cards', 'Pages'], 'each group is named by its header, so it is announced');
   assert.ok(boxes(doc).every((g) => [...g.children].slice(1).every((o) => o.getAttribute('role') === 'option')), 'and holds only options after its header');

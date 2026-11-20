@@ -786,3 +786,22 @@ def test_a_model_call_whose_text_reads_like_instructions_is_held_before_it_is_se
     assert SEEN['raised'][2] == 'held: the text sent to the model reads like instructions to it (ignore previous)'
     assert 'answers' not in SEEN and SEEN['plain'] == ('you are',)
     assert fake.gate_requests == [] and ledger(store) == [] and store.spent(today()) == 0
+
+
+def test_a_plugin_post_leaves_information_out(store: Store, tmp_path):
+    # given
+    slack, post, _ = fake_slack()
+    with running(store, tmp_path, slack=slack) as c:
+        PLAN['scan'] = {'pages': ('chairs', 'tables'), 'shots': []}
+        c.app.state.sweeper.run('pages', 'scan', NOW)
+        store.anomalies.update_one({'_id': key_of('tables')}, {'$set': {'sev': 'info'}})
+        PLAN['digest'] = {'posts': [{'keys': [key_of('chairs'), key_of('tables')], 'title': 'Pages', 'lines': [{'key': key_of(p), 'text': p} for p in ('chairs', 'tables')], 'replies': []}]}
+
+        # when
+        c.app.state.sweeper.run('pages', 'digest', NOW + 3600)
+
+    # then
+    found = cards(store)
+    [top] = post.posted
+    assert top['text'].split('\n')[1:] == [f"\u2022 chairs \u00b7 <{BASE}/c/{found[key_of('chairs')]['num']}|card>"]
+    assert 'slackPost' not in found[key_of('tables')]

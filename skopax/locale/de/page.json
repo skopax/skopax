@@ -102,7 +102,7 @@
   "Auto-resolve info cards still firing after (days)": "Weiterhin auslösende Info-Karten automatisch lösen nach (Tagen)",
   "Closes a card that stopped firing and that nobody acted on after N hours, one value per severity; 0 turns it off for that severity. With Business days only on, only Monday to Friday counts": "Schließt eine Karte, die nicht mehr auslöst und um die sich niemand gekümmert hat, nach N Stunden; ein Wert pro Schweregrad; 0 schaltet es für diesen Schweregrad aus. Ist Nur Arbeitstage an, zählt nur Montag bis Freitag",
   "Business days only": "Nur Arbeitstage",
-  "Count only Monday to Friday (install time zone) for auto-resolve and info close timers": "Für die Fristen von automatischem Lösen und Schließen von Info-Karten nur Montag bis Freitag zählen (Zeitzone der Installation)",
+  "Count only Monday to Friday (install time zone) for the auto-resolve timers": "Für die Fristen des automatischen Lösens nur Montag bis Freitag zählen (Zeitzone der Installation)",
   "Auto-resolved": "Automatisch gelöst",
   "Auto-send": "Automatisch senden",
   "Auto-send failed": "Automatisches Senden fehlgeschlagen",
@@ -1203,7 +1203,17 @@
   "Signs in with SSO only now": "Meldet sich jetzt nur per SSO an",
   "Set a password": "Passwort festlegen",
   "Give this person a password: they become a local account, and their SSO link waits {0} days for the next SSO sign-in": "Gibt dieser Person ein Passwort: Sie wird ein lokales Konto, und ihre SSO-Verknüpfung wartet {0} Tage auf die nächste SSO-Anmeldung",
-  "The last active admin with a password keeps it, so there is a way in when SSO fails: give another admin a password first": "Der letzte aktive Admin mit Passwort behält es, damit es einen Weg hinein gibt, wenn SSO ausfällt: geben Sie zuerst einem anderen Admin ein Passwort"
+  "The last active admin with a password keeps it, so there is a way in when SSO fails: give another admin a password first": "Der letzte aktive Admin mit Passwort behält es, damit es einen Weg hinein gibt, wenn SSO ausfällt: geben Sie zuerst einem anderen Admin ein Passwort",
+  "Information": "Informationen",
+  "Move to Information": "Zu Informationen verschieben",
+  "Still firing": "Löst noch aus",
+  "Back to the board": "Zurück aufs Board",
+  "Clears the hand-set severity: the card goes back to the board with the severity its signal gives": "Entfernt den von Hand gesetzten Schweregrad: Die Karte kommt mit dem Schweregrad ihres Signals zurück aufs Board",
+  "Info findings: worth knowing, nothing to act on. They are not cards, so they never reach the board, Slack or the investigator. Still firing first, newest first; an item that ended stays here for a day.": "Info-Befunde: gut zu wissen, nichts zu tun. Sie sind keine Karten und erreichen daher nie das Board, Slack oder den Investigator. Noch auslösende zuerst, neueste zuerst; ein beendeter Eintrag bleibt einen Tag hier.",
+  "No information right now. Info findings show here while they fire and for a day after they end.": "Gerade keine Informationen. Info-Befunde stehen hier, solange sie auslösen, und einen Tag nach ihrem Ende.",
+  "nothing firing": "nichts löst aus",
+  "{0} item still firing": "{0} Eintrag löst noch aus",
+  "{0} items still firing": "{0} Einträge lösen noch aus"
  },
  "rules": [
   [
@@ -1453,6 +1463,34 @@
   [
    "^Held: the run read text that looks planted \\((.+)\\) in (.+)$",
    "Zurückgehalten: Der Lauf hat Text gelesen, der eingeschleust wirkt ($1) in $2"
+  ],
+  [
+   "^Ended (.+)$",
+   "Beendet $1"
+  ],
+  [
+   "^First seen (.+)$",
+   "Zuerst gesehen $1"
+  ],
+  [
+   "^Last seen (.+)$",
+   "Zuletzt gesehen $1"
+  ],
+  [
+   "^Moved to Information by (.+)$",
+   "Von $1 zu Informationen verschoben"
+  ],
+  [
+   "^Severity now: (\\S+), from the signal\\. A hand-set severity stays through every check until you set it back; Critical pushes, Move to Information takes it off the board onto the Information page$",
+   "Schweregrad jetzt: $1, vom Signal. Ein von Hand gesetzter Schweregrad bleibt bei jeder Prüfung, bis Sie ihn zurücksetzen; Kritisch wird gepusht, Zu Informationen verschieben nimmt die Karte vom Board auf die Seite Informationen"
+  ],
+  [
+   "^Severity now: (\\S+), set by hand by (.+); the signal says (\\S+)\\. A hand-set severity stays through every check until you set it back; Critical pushes, Move to Information takes it off the board onto the Information page$",
+   "Schweregrad jetzt: $1, von Hand gesetzt von $2; das Signal sagt $3. Ein von Hand gesetzter Schweregrad bleibt bei jeder Prüfung, bis Sie ihn zurücksetzen; Kritisch wird gepusht, Zu Informationen verschieben nimmt die Karte vom Board auf die Seite Informationen"
+  ],
+  [
+   "^Moved to Information: (.+)$",
+   "Zu Informationen verschoben: $1"
   ]
  ],
  "months": {

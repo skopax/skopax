@@ -6,7 +6,7 @@ from skopax.plugins.teams import cards
 
 ID = 'teams'
 TIMEOUT_S = 8
-SEVS = ('info', 'warn', 'crit')
+SEVS = ('warn', 'crit')
 TOOK = 'Teams took the test post'
 
 
@@ -57,7 +57,7 @@ PLUGIN = Plugin(
             Field('tags', 'Card tags', 'text', help='Comma list of card tags this route takes, such as seo, developer. A route needs card tags or card keys.'),
             Field('mentions', 'Mentions', 'text', help='Comma list of email addresses mentioned in each post.'),
             Field('keys', 'Card keys', 'text', help='Comma list of card key patterns this route takes, with * and ?, such as log|checkout-*|*.'),
-            Field('min-sev', 'Lowest severity', 'choice', choices=SEVS, choice_labels={'info': 'Info', 'warn': 'Warning', 'crit': 'Critical'}, help='Cards below it are not posted on their own; empty uses the Teams lowest severity setting.')),
+            Field('min-sev', 'Lowest severity', 'choice', choices=SEVS, choice_labels={'warn': 'Warning', 'crit': 'Critical'}, help='Cards below it are not posted on their own; empty uses the Teams lowest severity setting.')),
     settings=(Setting('repeat-days', 'Teams repeat days', 'Days before a card already posted to a channel is posted there again when it fires again or gets another tag; 0 posts every time',
                       'float', '7', low=0, high=365),
               Setting('min-sev', 'Teams lowest severity', 'Cards below this severity are not posted to a Teams channel on their own; it is also the default of a key route with no lowest severity of its own, and a key route\'s own lowest severity replaces it, higher or lower',
