@@ -896,7 +896,7 @@
   "Loading changes…": "Değişiklikler yükleniyor…",
   "API reference": "API referansı",
   "Your own preferences. Instance setup is under Admin.": "Kendi tercihleriniz. Instance kurulumu Yönetim altında.",
-  "Auto follows your browser when a language pack covers it. Packs for tr, de, es and fr are built in, and plug-ins can add more. A pack translates menus, lists, card labels and buttons; English is always one click away here.": "Otomatik, bir dil paketi tarayıcınızın dilini kapsıyorsa onu kullanır. Türkçe, Almanca, İspanyolca ve Fransızca yerleşik gelir; plug-in'ler başka diller ekleyebilir. Paket menüleri, listeleri, kart etiketlerini ve butonları çevirir; İngilizce her zaman buradan tek tıkla seçilebilir.",
+  "Auto follows your browser when a language pack covers it. Every language pack on this page is listed here, and plug-ins can add more. A pack translates menus, lists, card labels and buttons; English is always one click away here.": "Otomatik, bir dil paketi tarayıcınızın dilini kapsıyorsa onu kullanır. Bu sayfadaki her dil paketi burada listelenir; plug-in'ler başka diller ekleyebilir. Paket menüleri, listeleri, kart etiketlerini ve butonları çevirir; İngilizce her zaman buradan tek tıkla seçilebilir.",
   "Change password": "Şifreyi değiştir",
   "Sign out": "Çıkış yap",
   "Search": "Ara",

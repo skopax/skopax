@@ -2,6 +2,10 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## Unreleased
+
+- The Language list in Settings > Appearance offers every loaded language pack, built-in or from a plug-in, each by its own name; past five entries it is a drop-down.
+
 ## 0.3.0 (2026-11-19)
 
 Custom checks that read Elasticsearch with ES|QL and a CSP reports preset, built-in language packs, Slack posts from a severity you choose, a batch jobs example plug-in, and sharper investigator prompts.

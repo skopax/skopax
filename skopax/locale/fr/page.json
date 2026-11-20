@@ -10,7 +10,7 @@
   "30 days": "30 jours",
   "7 days": "7 jours",
   "A deploy occurred in the last {0} h": "Un déploiement a eu lieu dans les dernières {0} h",
-  "Auto follows your browser when a language pack covers it. Packs for tr, de, es and fr are built in, and plug-ins can add more. A pack translates menus, lists, card labels and buttons; English is always one click away here.": "Auto suit votre navigateur lorsqu'un pack de langue couvre sa langue. Le turc, l'allemand, l'espagnol et le français sont intégrés, et les plug-ins peuvent en ajouter d'autres. Un pack traduit les menus, les listes, les libellés des cartes et les boutons ; l'anglais reste toujours à un clic ici.",
+  "Auto follows your browser when a language pack covers it. Every language pack on this page is listed here, and plug-ins can add more. A pack translates menus, lists, card labels and buttons; English is always one click away here.": "Auto suit votre navigateur lorsqu'un pack de langue couvre sa langue. Tous les packs de langue de cette page sont listés ici, et les plug-ins peuvent en ajouter d'autres. Un pack traduit les menus, les listes, les libellés des cartes et les boutons ; l'anglais reste toujours à un clic ici.",
   "API calls": "Appels API",
   "API reference": "Référence de l'API",
   "API tokens": "Jetons API",
