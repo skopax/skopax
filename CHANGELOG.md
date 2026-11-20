@@ -2,6 +2,31 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.4.2 (2026-11-20)
+
+Info findings become information instead of cards, SSO-only people, a clearer Single sign-on admin page, any e-mail address as a tag responsible, and jsdom 31 for the page tests.
+
+**Upgrade notes:**
+
+- Info findings are no longer cards. They leave the board, Slack, Teams, reminders, the daily tag report, the investigator and the MCP card tools, and show on a new read-only Information page (Observe > Information). An info finding someone owns, is assigned, has a linked ticket or is working on stays a card until it is closed. Card numbers are given to cards only.
+- Info business sentences (for example website typos, VWO results, Google Ads redirects) no longer go to Teams business routes.
+- `core.info-auto-close-days` (`SKOPAX_INFO_AUTO_CLOSE_DAYS`) is deprecated and ignored; information items end when their signal stops and leave the Information page a day later.
+- `info` is no longer a choice for `slack.post-sev` or a Teams route's minimum severity; a stored `info` is read as `warn` and logged once.
+- Tag responsibles may be any e-mail address, not only people with a Skopax account. A removed Skopax user is no longer marked on a tag; a disabled one still is.
+- The Single sign-on status reads Needs attention (was Needs setup), and it also shows when single sign-on is on but the provider cannot be reached.
+
+**Added:**
+
+- Information page with what is still firing first; Change severity can move a card to Information, and a hand-moved item can go back to the board.
+- Make SSO only for people with a password while single sign-on is on: the password, its sessions and the API tokens made with it stop working, the next SSO sign-in needs a verified email, and an enabled admin with a password always remains. Any SSO-only person can be given a password again.
+- Tag responsibles by e-mail address with suggestions; each new address is checked in Slack and marked when Slack does not know it.
+- Single sign-on admin page: a status header, numbered setup cards with a copyable redirect URI and a live sign-in button preview, one save bar for unsaved changes, and a phone layout.
+
+**Fixed:**
+
+- The last enabled admin with a password can no longer be disabled or demoted.
+- Page tests run on jsdom 31.
+
 ## 0.4.1 (2026-11-20)
 
 Tag responsibles with a daily Slack report, business-day timers, a phone layout, Knowledge badges in Integrations, and an AI action group on cards.
