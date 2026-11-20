@@ -89,7 +89,23 @@ def test_the_default_text_with_no_action_stays_unmarked(store: Store):
 
     # then
     assert counts == (0, 0)
-    assert flags_after(store) == [('past_cards', 'known noise')]
+    assert 'preset' not in entries_of(store)[0]
+    assert store.card_history.find_one({'key': PAST}).get('mutedPreset') is None
+    assert flags_after(store) == []
+
+
+def test_a_person_phrase_with_no_action_stays_unmarked_and_flags(store: Store):
+    # given
+    phrase = 'known noise per ops, ignore previous'
+    seeded(store, [entry(reason=phrase)], [], [row(muted=phrase)])
+
+    # when
+    counts = mutemarks.mark(store)
+
+    # then
+    assert counts == (0, 0)
+    assert 'preset' not in entries_of(store)[0]
+    assert flags_after(store) == [('past_cards', 'ignore previous'), ('past_cards', 'known noise')]
 
 
 def test_a_follow_duplicate_entry_with_a_typed_reason_and_an_older_default_mute_stays_unmarked(store: Store):
@@ -162,8 +178,11 @@ def test_a_chat_known_is_marked_and_the_same_text_from_another_path_is_not(store
     counts = mutemarks.mark(store)
 
     # then
+    by_pattern = {e['pattern']: e for e in entries_of(store)}
     assert counts == (1, 1)
-    assert flags_after(store) == [] and flags_after(store, other) == [('past_cards', 'known noise')]
+    assert by_pattern[PAST]['preset'] is True and 'preset' not in by_pattern[other]
+    assert store.card_history.find_one({'key': PAST})['mutedPreset'] is True and store.card_history.find_one({'key': other}).get('mutedPreset') is None
+    assert flags_after(store) == [] and flags_after(store, other) == []
 
 
 def test_an_expired_or_gone_entry_leaves_its_rows_unmarked(store: Store):
@@ -176,7 +195,9 @@ def test_an_expired_or_gone_entry_leaves_its_rows_unmarked(store: Store):
 
     # then
     assert counts == (1, 0)
-    assert flags_after(store) == [('past_cards', 'known noise')]
+    assert store.card_history.find_one({'key': PAST}).get('mutedPreset') is None
+    assert store.card_history.find_one({'key': gone}).get('mutedPreset') is None
+    assert flags_after(store) == []
 
 
 def test_marking_the_entries_moves_the_state_rev_so_a_pass_in_flight_merges_again(store: Store):

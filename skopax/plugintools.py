@@ -115,7 +115,9 @@ class PluginTools:
 
     @staticmethod
     def _refuse(text: str, name: object, refused: bool = False) -> ToolError:
-        return (BadInput if refused else ToolError)(test_error(text) if isinstance(name, str) and test_cluster(name) else text)
+        if refused:
+            return BadInput(test_error(text) if isinstance(name, str) and test_cluster(name) else text)
+        return ToolError(test_error(text) if isinstance(name, str) and test_cluster(name) else text)
 
     def refuse_input(self, name: str, args: object, text: str) -> ToolError:
         entry = self._entry(name)
