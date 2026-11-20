@@ -30,7 +30,7 @@ async function boot(card, who) {
 
 const base = {num: 42, key: 'prom|shop/checkout|latency|p95', svc: 'checkout', label: 'p95 latency', sev: 'crit', status: 'open', firstSeen: AT, live: true};
 const groupNames = (doc) => [...doc.querySelectorAll('.acts .act-group')].map((g) => doc.getElementById(g.getAttribute('aria-labelledby')).textContent);
-const pressed = (doc) => [...doc.querySelectorAll('.acts .seg button')].map((b) => [b.id, b.textContent, b.getAttribute('aria-pressed')]);
+const pressed = (doc) => [...doc.querySelectorAll('.acts .act-group:not(.ai) .seg button')].map((b) => [b.id, b.textContent, b.getAttribute('aria-pressed')]);
 
 async function anOperatorSeesTheActionsGroupedInOrder() {
   //given
@@ -39,11 +39,11 @@ async function anOperatorSeesTheActionsGroupedInOrder() {
   //when
   const {w, doc, errors} = await boot(card, OPERATOR);
   const acts = doc.querySelector('.acts.op');
-  const order = [...acts.querySelectorAll('.act-primary > *, .act-group, .act-foot')].map((n) => n.id || n.className);
+  const order = [...acts.querySelectorAll('.act-group.ai .seg > *, .act-group, .act-foot')].map((n) => n.id || n.className);
 
   //then
-  assert.deepStrictEqual(order, ['chat-about', 'act-dive', 'act-group', 'act-group', 'act-group links', 'act-foot']);
-  assert.deepStrictEqual(groupNames(doc), ['Status', 'Owner', 'Links']);
+  assert.deepStrictEqual(order, ['act-group ai', 'chat-about', 'act-dive', 'act-group', 'act-group', 'act-group links', 'act-foot']);
+  assert.deepStrictEqual(groupNames(doc), ['AI', 'Status', 'Owner', 'Links']);
   assert.ok([...acts.querySelectorAll('.act-group')].every((g) => g.getAttribute('role') === 'group'), 'each group is a labelled group');
   assert.strictEqual(doc.getElementById('act-dive').textContent, 'Investigate', 'Investigate shows its name next to the sparkle');
   assert.deepStrictEqual(pressed(doc), [['act-take', 'In progress', 'true'], ['act-resolve', 'Resolve', 'false'], ['act-mute', 'Mute 24 h', 'false']], 'the card is in progress, so the pressed first segment says In progress');
@@ -127,12 +127,37 @@ async function viewersGetLinksAndTheOwnerButNoStatusOrAssign() {
   const {w, doc, errors} = await boot(card, {loginEnabled: true, user: 'x@example.com', operator: false});
 
   //then
-  assert.deepStrictEqual(groupNames(doc), ['Owner', 'Links']);
+  assert.deepStrictEqual(groupNames(doc), ['AI', 'Owner', 'Links']);
   assert.deepStrictEqual([...doc.querySelectorAll('.acts button, .acts a')].map((b) => b.id), ['chat-about', 'copy-link', 'board']);
   assert.strictEqual(doc.querySelector('.owner').textContent, 'Assignee: Carol Diaz');
   assert.deepStrictEqual(errors, []);
   w.close();
   return 'a viewer gets Chat, the owner chip and the links, and still no status or assign controls';
+}
+
+async function chatAndInvestigateAreAnAiSegmentLikeStatus() {
+  //given
+  const card = Object.assign({}, base, {triage: 'progress'});
+
+  //when
+  const op = await boot(card, OPERATOR);
+  const segs = [...op.doc.querySelectorAll('.acts .act-group.ai .seg > .seg-b')].map((b) => [b.id, b.tagName.toLowerCase(), b.getAttribute('aria-label') || b.textContent, !!b.querySelector('svg[aria-hidden="true"]'), b.hasAttribute('aria-pressed')]);
+  const label = op.doc.getElementById(op.doc.querySelector('.acts .act-group.ai').getAttribute('aria-labelledby')).textContent;
+  const chat = op.doc.getElementById('chat-about');
+  const filled = op.doc.querySelectorAll('.acts .act-primary, .acts .btn.big').length;
+  const viewer = await boot(card, {loginEnabled: true, user: 'x@example.com', operator: false});
+  const viewerSegs = [...viewer.doc.querySelectorAll('.acts .act-group.ai .seg > .seg-b')].map((b) => b.id);
+
+  //then
+  assert.strictEqual(label, 'AI', 'the group is labelled AI like Status');
+  assert.deepStrictEqual(segs, [['chat-about', 'a', 'Chat about this card', true, false], ['act-dive', 'button', 'Investigate', true, false]], 'Chat and Investigate are icon and word segments with their names, and no toggle state');
+  assert.strictEqual(chat.getAttribute('href'), '/#t=chat/new/42', 'Chat still opens a new chat with the card');
+  assert.strictEqual(filled, 0, 'no filled primary button is left');
+  assert.deepStrictEqual(viewerSegs, ['chat-about'], 'a viewer gets the AI group with Chat only');
+  assert.deepStrictEqual(op.errors.concat(viewer.errors), []);
+  op.w.close();
+  viewer.w.close();
+  return 'the card page shows Chat and Investigate as an AI segment group like Status, with their ids and names, and no filled button';
 }
 
 function phoneWidthStacksTheGroups() {
@@ -155,5 +180,6 @@ function phoneWidthStacksTheGroups() {
   console.log('PASS ' + await mutedAndHandledCardsShowTheirStateInTheSegment());
   console.log('PASS ' + await copyLinkKeepsItsIconWhileSayingCopied());
   console.log('PASS ' + await viewersGetLinksAndTheOwnerButNoStatusOrAssign());
+  console.log('PASS ' + await chatAndInvestigateAreAnAiSegmentLikeStatus());
   console.log('PASS ' + phoneWidthStacksTheGroups());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

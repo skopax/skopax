@@ -876,11 +876,75 @@ function renderBoard(root, groups) {
   note.id = 'board-note';
   note.setAttribute('aria-live', 'polite');
   root.insertBefore(note, board);
+  boardTabs(root, board, note);
   if (!cards.length && searchQ) root.appendChild(el('p', 'muted', 'No card matches.'));
   TILES = nextTiles;
   if (DRAWER && cards.some(function (a) { return a.key === DRAWER; })) openDrawer(DRAWER, true);
   else { DRAWER = null; var gone = drawerNode(root); if (gone) gone.remove(); }
 }
+var BOARD_AT = 'open', BOARD_Q = '(max-width: 640px), (max-height: 500px) and (pointer: coarse)';
+function boardPhone() { try { return !!(window.matchMedia && window.matchMedia(BOARD_Q).matches); } catch (e) { return false; } }
+function boardMark(board, bar) {
+  var phone = boardPhone();
+  [].forEach.call(board.children, function (c) {
+    if (phone && c.dataset.col !== BOARD_AT) c.setAttribute('inert', ''); else c.removeAttribute('inert');
+    if (phone) { c.setAttribute('aria-labelledby', 'bcol-t-' + c.dataset.col); c.tabIndex = -1; } else { c.removeAttribute('aria-labelledby'); c.removeAttribute('tabindex'); }
+  });
+  [].forEach.call(bar.children, function (b) {
+    if (b.dataset.col !== BOARD_AT) { b.removeAttribute('aria-current'); return; }
+    b.setAttribute('aria-current', 'true');
+    if (phone && bar.firstElementChild) {
+      var left = b.offsetLeft - bar.firstElementChild.offsetLeft, right = left + b.offsetWidth;
+      if (left < bar.scrollLeft) bar.scrollLeft = left;
+      else if (right > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = right - bar.clientWidth;
+    }
+  });
+}
+function boardSync(focus) {
+  var board = document.querySelector('#anoms .board'), bar = document.querySelector('#anoms .board-tabs');
+  if (!board || !bar) return;
+  boardMark(board, bar);
+  var col = board.querySelector('.bcol[data-col="' + BOARD_AT + '"]');
+  if (!col || !boardPhone()) return;
+  board.scrollLeft = col.offsetLeft - board.firstElementChild.offsetLeft;
+  if (focus) col.focus({preventScroll: true});
+}
+function boardTabs(root, board, note) {
+  var bar = el('div', 'board-tabs');
+  bar.setAttribute('role', 'group');
+  bar.setAttribute('aria-label', 'Board columns');
+  [].forEach.call(board.children, function (col) {
+    var h = col.querySelector('.bcol-h h3');
+    h.id = 'bcol-t-' + col.dataset.col;
+    var b = el('button', 'board-tab', esc(h.textContent) + '<span class="count">' + esc(col.querySelector('.bcol-h .count').textContent) + '</span>');
+    b.type = 'button';
+    b.dataset.col = col.dataset.col;
+    b.addEventListener('click', function () { BOARD_AT = col.dataset.col; boardSync(true); });
+    bar.appendChild(b);
+  });
+  board.addEventListener('scroll', function () {
+    if (!boardPhone() || !board.firstElementChild) return;
+    var x = board.scrollLeft + board.firstElementChild.offsetLeft, best = null;
+    [].forEach.call(board.children, function (c) { if (!best || Math.abs(c.offsetLeft - x) < Math.abs(best.offsetLeft - x)) best = c; });
+    if (best && best.dataset.col !== BOARD_AT) { BOARD_AT = best.dataset.col; boardMark(board, bar); }
+  }, {passive: true});
+  root.insertBefore(bar, note);
+  boardSync(false);
+}
+function boardSearchHint() {
+  var f = document.getElementById('card-search');
+  if (f) f.setAttribute('placeholder', boardPhone() ? 'Search cards' : 'Search cards: number, service, text, assignee, ticket');
+}
+(function () {
+  var mq = null;
+  try { mq = window.matchMedia ? window.matchMedia(BOARD_Q) : null; } catch (e) { mq = null; }
+  var change = function () { boardSync(false); boardSearchHint(); };
+  if (mq && mq.addEventListener) mq.addEventListener('change', change);
+  else if (mq && mq.addListener) mq.addListener(change);
+  boardSearchHint();
+  var panel = document.getElementById('panel-anoms');
+  if (panel && window.MutationObserver) new MutationObserver(function () { if (!panel.hidden) boardSync(false); }).observe(panel, {attributes: true, attributeFilter: ['hidden']});
+})();
 function drawerNode(root) { return [].filter.call(root.children, function (c) { return c.classList.contains('card-drawer'); })[0] || null; }
 function openDrawer(key, quiet) {
   var a = CARDS.filter(function (x) { return x.key === key; })[0], root = document.getElementById('anoms');

@@ -54,15 +54,15 @@ async function theDrawerGroupsTheActions() {
 
   //then
   assert.ok(acts.classList.contains('acts-grouped'));
-  assert.deepStrictEqual(parts, ['act-primary', 'Status', 'Owner', 'Links', 'act-foot']);
-  const chat = acts.querySelector('.act-primary .chat-btn');
+  assert.deepStrictEqual(parts, ['AI', 'Status', 'Owner', 'Links', 'act-foot']);
+  const chat = acts.querySelector('.act-group.ai .chat-btn');
   assert.deepStrictEqual([chat.textContent, chat.getAttribute('href')], ['Chat about this card', '/#t=chat/new/12']);
-  const inv = acts.querySelector('.act-primary .inv-btn');
+  const inv = acts.querySelector('.act-group.ai .inv-btn');
   assert.deepStrictEqual([inv.querySelector('.lbl').textContent, inv.getAttribute('aria-label')], ['Investigate', 'Investigate'], 'Investigate shows its word in the drawer');
-  const seg = [...acts.querySelectorAll('.act-group .seg > button')].map((b) => [b.textContent, b.getAttribute('aria-pressed')]);
+  const status = doc.getElementById('ag-status-' + acts.dataset.i).closest('.act-group');
+  const seg = [...status.querySelectorAll('.seg > button')].map((b) => [b.textContent, b.getAttribute('aria-pressed')]);
   assert.deepStrictEqual(seg, [['In progress', 'true'], ['Resolve', 'false'], ['Mute 24 h', 'false']], 'the card is in progress, so the pressed first segment says In progress');
-  assert.deepStrictEqual([acts.querySelector('.seg > button').getAttribute('aria-label'), acts.querySelector('.seg > button').title.startsWith('Start progress')], ['In progress', true], 'its name matches the word and the tip stays');
-  const status = acts.querySelector('.act-group');
+  assert.deepStrictEqual([status.querySelector('.seg > button').getAttribute('aria-label'), status.querySelector('.seg > button').title.startsWith('Start progress')], ['In progress', true], 'its name matches the word and the tip stays');
   assert.ok(status.querySelector('.sev-act') && status.querySelector('.acts-tog'), 'Change severity and the More menu sit with the status');
   assert.deepStrictEqual([...status.querySelectorAll('.acts-more > .btn')].map((b) => b.textContent), ['Mute 1 w', 'Known noise', 'Group'], 'the rarer status moves stay behind More');
   const owner = doc.getElementById('ag-owner-' + acts.dataset.i).closest('.act-group');
@@ -86,7 +86,7 @@ async function theDrawerKeepsTheActionsWorking() {
   const acts = doc.querySelector('.card-drawer .acts');
 
   //when
-  const seg = [...acts.querySelectorAll('.seg > button')];
+  const seg = [...doc.getElementById('ag-status-' + acts.dataset.i).closest('.act-group').querySelectorAll('.seg > button')];
   seg.find((b) => b.textContent === 'Unmute').click();
   await wait(50);
 
