@@ -8,11 +8,12 @@ from tests.conftest import settings
 from skopax import backfill, costs
 from skopax.app import create_app
 from skopax.investigator import pricing
-from skopax.store import Store
+from skopax.store import Store, iso, utc_now
 
 USAGE = {'input_tokens': 1000, 'output_tokens': 200, 'cache_read_input_tokens': 50_000, 'cache_creation_input_tokens': 10_000}
-STARTED = '2026-10-20T21:30:00Z'
-ENDED = '2026-10-20T21:42:10Z'
+RUN_DAY = (utc_now() - dt.timedelta(days=2)).replace(hour=21, minute=30, second=0, microsecond=0)
+STARTED = iso(RUN_DAY)
+ENDED = iso(RUN_DAY + dt.timedelta(minutes=12, seconds=10))
 
 
 def record(run_id: str = 'r1', **over) -> dict:
@@ -34,8 +35,8 @@ def test_a_pre_ledger_run_gets_one_backfill_row_that_sums_to_its_recorded_usd(st
     assert r['_id'] == 'backfill-r1' and r['backfill'] is True and r['calls'] == 7
     assert r['runId'] == 'r1' and r['actionId'] is None and r['keys'] == ['k1', 'k2'] and r['by'] == pricing.POD_BY
     assert r['source'] == 'pod' and r['model'] == 'claude-opus-5-5' and r['effort'] == 'medium' and 'pricedAs' not in r
-    assert r['at'] == ENDED and r['atDt'] == dt.datetime(2026, 10, 20, 21, 42, 10, tzinfo=dt.timezone.utc)
-    assert r['day'] == '2026-10-20'
+    assert r['at'] == ENDED and r['atDt'] == RUN_DAY + dt.timedelta(minutes=12, seconds=10)
+    assert r['day'] == RUN_DAY.date().isoformat()
     assert r['tokens'] == {'cacheRead': 50_000, 'input': 1000, 'cacheWrite5m': 10_000, 'cacheWrite1h': 0, 'output': 200, 'webSearch': 0}
     assert r['usd']['total'] == pytest.approx(1.5)
     assert sum(r['usd'][p] for p in pricing.PARTS) == pytest.approx(1.5)
