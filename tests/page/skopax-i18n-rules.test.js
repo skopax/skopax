@@ -409,12 +409,15 @@ async function theBrowserLanguagesAreWalkedInOrderAsTheChatDoes() {
 
 async function aRegionalTagIsKeptInTheLanguageCookie() {
   //given
-  const regional = await boot([], '', '', {lang: 'pt-BR'});
-  const bad = await boot([], '', '', {lang: 'pt_BR'});
+  const packs = [['pt-BR', {'Open': 'Aberto BR'}], ['pt_BR', {'Open': 'Aberto'}]];
+  const regional = await boot(packs, '', '', {lang: 'pt-BR'});
+  const bad = await boot(packs, '', '', {lang: 'pt_BR'});
 
   //then
   assert.ok(/(?:^|;\s*)skopax_lang=pt-BR(?:;|$)/.test(regional.doc.cookie), 'the language choice keeps a regional tag: ' + regional.doc.cookie);
   assert.ok(!/skopax_lang=/.test(bad.doc.cookie), 'a malformed tag is not stored: ' + bad.doc.cookie);
+  const offered = [...bad.doc.querySelectorAll('#panel-prefs [data-ap="lang"] [data-v], #panel-prefs [data-ap="lang"] option')].map((n) => n.dataset.v || n.value);
+  assert.ok(offered.includes('pt-BR') && !offered.includes('pt_BR'), 'a pack under a malformed tag is not offered: ' + offered.join(','));
   assert.deepStrictEqual(regional.errors.concat(bad.errors), []);
   regional.w.close(); bad.w.close();
   console.log('PASS the language choice stores any tag the one language-tag pattern accepts, regional tags included');
