@@ -24,7 +24,7 @@ from skopax.store import Store, iso, utc_now
 
 DRAFT = 'checkout-service ERROR lines 40, 2 a day ago.\nThe page looks empty, the screenshot is below.'
 THREAD = '1792224000.000100'
-SHOT = {'id': '0a1b2c3d4e5f60718293a4b5c6d7e8f9', 'url': 'https://www.example.com/', 'viewport': 'desktop', 'full': False, 'at': '2026-10-21T08:55:00Z'}
+SHOT = {'id': '0a1b2c3d4e5f60718293a4b5c6d7e8f9', 'url': 'https://www.example.com/', 'viewport': 'desktop', 'full': False, 'at': iso(utc_now() - dt.timedelta(hours=1))}
 BASE = 'https://skopax.example.com'
 ATTACHED = 'attached 1 screenshot to the #ops thread'
 LINE = {'text': 'Shop Ops \u00b7 powered by Skopax', 'href': 'https://skopax.io'}
@@ -44,10 +44,10 @@ def chrome():
 
 
 def shot(store: Store, viewport: str = 'desktop') -> dict:
-    entry = {'id': '1b2c3d4e5f60718293a4b5c6d7e8f90a', 'url': CHAIRS, 'finalUrl': CHAIRS, 'viewport': viewport, 'full': False, 'at': '2026-10-21T08:55:00Z',
+    entry = {'id': '1b2c3d4e5f60718293a4b5c6d7e8f90a', 'url': CHAIRS, 'finalUrl': CHAIRS, 'viewport': viewport, 'full': False, 'at': iso(utc_now() - dt.timedelta(hours=1)),
              'title': 'Garden Chairs | Shop', 'status': 200, 'kb': 0.5, 'link': f'{BASE}/api/screenshots/1b2c3d4e5f60718293a4b5c6d7e8f90a'}
     store.add_screenshot({'_id': entry['id'], 'runId': 'run-1', 'keys': [KEY], **{k: v for k, v in entry.items() if k not in ('id', 'kb', 'link')}, 'size': len(JPEG),
-                          'mime': 'image/jpeg', 'data': Binary(JPEG), 'atDt': dt.datetime(2026, 10, 21, 8, 55, tzinfo=dt.UTC)})
+                          'mime': 'image/jpeg', 'data': Binary(JPEG), 'atDt': utc_now() - dt.timedelta(hours=1)})
     return entry
 
 
