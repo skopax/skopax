@@ -104,9 +104,6 @@
   "Business days only": "Jours ouvrés uniquement",
   "Count only Monday to Friday (install time zone) for the auto-resolve timers": "Ne compter que du lundi au vendredi (fuseau horaire de l'installation) pour les délais de résolution automatique",
   "Auto-resolved": "Résolue automatiquement",
-  "Auto-send": "Envoi automatique",
-  "Auto-send failed": "Échec de l'envoi automatique",
-  "Auto-send now": "Envoi auto maintenant",
   "Autoscalers": "Autoscalers",
   "Avg": "Moy.",
   "Avg / run": "Moy. / exécution",
@@ -218,7 +215,6 @@
   "Copy a link that opens this release": "Copier un lien qui ouvre cette version",
   "Copy link": "Copier le lien",
   "Copy the direct link to card #{0}: it opens this card alone": "Copier le lien direct vers la carte n° {0} : il ouvre cette carte seule",
-  "Copy the draft text, e.g. to send it to one person instead of the channel": "Copier le texte du brouillon, par exemple pour l'envoyer à une seule personne plutôt qu'au canal",
   "Copy the suggested lines; it is untested, verify before you use it": "Copier les lignes suggérées ; elles ne sont pas testées, vérifiez-les avant de les utiliser",
   "Cost": "Coût",
   "Costs": "Coûts",
@@ -262,15 +258,12 @@
   "Disabled": "Désactivé",
   "Discard": "Supprimer",
   "Discard changes": "Abandonner les modifications",
-  "Discarded": "Supprimé",
-  "Discarding…": "Suppression…",
   "Disconnect": "Déconnecter",
   "Docs": "Documentation",
   "Done": "Terminé",
   "Done {0}": "Terminé {0}",
   "Done {0} {M} {1}": "Terminé {0} {M} {1}",
   "Draft": "Brouillon",
-  "Draft (stopped)": "Brouillon (arrêté)",
   "Duplicate": "Doublon",
   "Duplicate of": "Doublon de",
   "Duplicate: the same problem as another card, which carries it on": "Doublon : le même problème qu'une autre carte, qui le suit",
@@ -283,7 +276,6 @@
   "Edit the message Send to Slack posts": "Modifier le message publié par Envoyer vers Slack",
   "Editing": "Modification en cours",
   "Email": "E-mail",
-  "Empty and Save removes the draft": "Vider puis Enregistrer supprime le brouillon",
   "Enable sign-in": "Activer la connexion",
   "Enabled": "Activé",
   "Enter a valid email address": "Saisissez une adresse e-mail valide",
@@ -342,7 +334,6 @@
   "Hide the menu": "Masquer le menu",
   "History": "Historique",
   "Hold": "Retenir",
-  "Holding…": "Mise en attente…",
   "Host and disk": "Hôte et disque",
   "Host disk": "Disque de l'hôte",
   "Hour": "Heure",
@@ -661,7 +652,6 @@
   "Pod restarts": "Redémarrages de pods",
   "Pods waiting": "Pods en attente",
   "Points": "Points",
-  "Post the Slack draft on this card as the message, with the anomaly card attached below it; click twice to confirm": "Publier le brouillon Slack de cette carte comme message, avec la carte d'anomalie jointe en dessous ; cliquez deux fois pour confirmer",
   "Post this anomaly to the Slack channel; click twice to confirm": "Publier cette anomalie dans le canal Slack ; cliquez deux fois pour confirmer",
   "Post this deploy report to the Slack channel: release, services, clean or flagged, the summary, the flagged rows and the shipped tickets; click twice to confirm": "Publier ce rapport de déploiement dans le canal Slack : version, services, propre ou signalé, le résumé, les lignes signalées et les tickets livrés ; cliquez deux fois pour confirmer",
   "Post to thread": "Publier dans le fil",
@@ -763,7 +753,6 @@
   "Runs, usage and actions on History": "Exécutions, consommation et actions dans l'historique",
   "Save": "Enregistrer",
   "Save & turn on": "Enregistrer et activer",
-  "Save or cancel the draft edit first": "Enregistrez ou annulez d'abord la modification du brouillon",
   "Saved and turned on": "Enregistré et activé",
   "Saved in this browser only.": "Enregistré dans ce navigateur uniquement.",
   "Saved sealed and never shown again.": "Enregistré chiffré et jamais réaffiché.",
@@ -787,7 +776,6 @@
   "Security update available": "Mise à jour de sécurité disponible",
   "Self-review": "Auto-évaluation",
   "Send again": "Renvoyer",
-  "Send draft to Slack": "Envoyer le brouillon vers Slack",
   "Send now": "Envoyer maintenant",
   "Send to Slack": "Envoyer vers Slack",
   "Sending…": "Envoi…",
@@ -835,15 +823,10 @@
   "Slack ask": "Question Slack",
   "Slack asks": "Questions Slack",
   "Slack asks {0}": "Questions Slack {0}",
-  "Slack draft": "Brouillon Slack",
-  "Slack draft for this deploy report": "Brouillon Slack pour ce rapport de déploiement",
-  "Slack drafts": "Brouillons Slack",
-  "Slack drafts that have not been posted yet, on anomaly cards and on deploy reports, and what happens to each one next. Armed drafts come first, the soonest first.": "Les brouillons Slack pas encore publiés, sur les cartes d'anomalie et les rapports de déploiement, et ce qui arrive ensuite à chacun. Les brouillons armés viennent en premier, les plus proches d'abord.",
   "Slack failed": "Échec Slack",
   "Slack is not set up": "Slack n'est pas configuré",
   "Slack question": "Question Slack",
   "Slack questions this hour": "Questions Slack cette heure-ci",
-  "Slack recommended": "Slack recommandé",
   "Slack refused it": "Slack l'a refusé",
   "Slack refused it, see History": "Slack l'a refusé, voir l'historique",
   "Slack thread update": "Mise à jour du fil Slack",
@@ -873,7 +856,6 @@
   "Status note {0} ↗": "Note de statut {0} ↗",
   "Steady": "Stable",
   "Stop investigator": "Arrêter l'enquêteur",
-  "Stop the auto-send, which posts the draft within {0} s: the draft then waits for Send draft to Slack like any other": "Arrêter l'envoi automatique, qui publie le brouillon sous {0} s : le brouillon attend alors Envoyer le brouillon vers Slack comme les autres",
   "Stop this token working right away": "Désactiver ce jeton immédiatement",
   "Stopped firing": "Ne se déclenche plus",
   "Stops new runs at once; a running one ends after its current turn": "Arrête immédiatement les nouvelles exécutions ; celle en cours se termine après son tour actuel",
@@ -1083,7 +1065,6 @@
   "queued": "en file",
   "read": "lecture",
   "ready pods": "pods prêts",
-  "removes the draft and": "efface le brouillon et",
   "reopened": "rouverte",
   "report": "rapport",
   "resolved": "résolue",
@@ -1094,7 +1075,6 @@
   "since {0} {M} {1}, {2} h {3} min ago": "depuis le {0} {M} {1}, il y a {2} h {3} min",
   "since {0} {M} {1}, {2} min ago": "depuis le {0} {M} {1}, il y a {2} min",
   "still open": "toujours ouverte",
-  "stops the auto-send that posts it within {0} s,": "arrête l'envoi automatique qui le publie sous {0} s,",
   "target {0}%": "cible {0} %",
   "the fullest broker data volume": "le volume de données de broker le plus plein",
   "the investigator and the server jobs pick these up within about two minutes": "l'enquêteur et les jobs du serveur s'en chargent d'ici environ deux minutes",
@@ -1256,9 +1236,89 @@
   "INVESTIGATOR": "ENQUÊTEUR",
   "STOPPED": "ARRÊTÉ",
   "Paste a new key": "Collez une nouvelle clé",
-  "Test connection tries the key typed here, or the key in use when the field is empty.": "Tester la connexion essaie la clé saisie ici, ou la clé utilisée quand le champ est vide."
+  "Test connection tries the key typed here, or the key in use when the field is empty.": "Tester la connexion essaie la clé saisie ici, ou la clé utilisée quand le champ est vide.",
+  "Business note": "Note métier",
+  "Edit note": "Modifier la note",
+  "Tag a business team to write a note": "Associez une équipe métier pour écrire une note",
+  "Before that:": "Avant :",
+  "View card": "Voir la carte",
+  "Clear filter": "Effacer le filtre",
+  "Dismiss": "Fermer",
+  "Details": "Détails",
+  "Loading the history…": "Chargement de l’historique…",
+  "Actions and activity could not be loaded; showing what the card itself records.": "Les actions et l’activité n’ont pas pu être chargées ; seul ce que la carte enregistre est affiché.",
+  "Nothing recorded yet.": "Rien d’enregistré pour l’instant.",
+  "Started progress": "Pris en charge",
+  "Ticket created": "Ticket créé",
+  "Ticket linked": "Ticket lié",
+  "Marked known noise": "Marqué comme bruit connu",
+  "Investigation queued": "Investigation en file",
+  "Grouped": "Regroupé",
+  "Asked the investigator": "Question à l’investigateur",
+  "Fired": "Déclenchée",
+  "Business note written": "Note métier écrite",
+  "Colour": "Couleur",
+  "Colour saved": "Couleur enregistrée",
+  "Colour not saved, try again": "Couleur non enregistrée, réessayez",
+  "Tag added": "Étiquette ajoutée",
+  "Posted to Teams": "Publié sur Teams",
+  "Investigation run": "Investigation lancée",
+  "Assigned to": "Assignée à",
+  "Not posted: auto-send is off": "Non publié : l’envoi automatique est désactivé",
+  "Not posted: the run read suspicious text": "Non publié : l’exécution a lu un texte suspect",
+  "Slack post failed": "Échec de la publication Slack",
+  "Posting to Slack now": "Publication sur Slack en cours",
+  "Slack post": "Publication Slack",
+  "Not posted to Slack": "Non publié sur Slack",
+  "People and access": "Personnes et accès",
+  "Not posted: the card stopped, was muted, merged or resolved first; Send to Slack still posts it": "Non publié : la carte s’est arrêtée, a été mise en sourdine, fusionnée ou résolue avant ; Envoyer sur Slack la publie quand même",
+  "The investigator posts to Slack itself while Slack auto-send is on. These posts did not go out: the run read suspicious text, or Slack refused the post after its retries. Read the text, then post it with Send now or open its card or report with View.": "L’investigateur publie lui-même sur Slack tant que l’envoi automatique est activé. Ces publications ne sont pas parties : l’exécution a lu un texte suspect, ou Slack a refusé la publication après ses nouvelles tentatives. Lisez le texte, puis publiez-le avec Envoyer maintenant ou ouvrez sa carte ou son rapport avec Voir.",
+  "The investigator wanted to post this to Slack, but Slack auto-send is off in Admin > Features. Send to Slack still posts it by hand.": "L’investigateur voulait publier ceci sur Slack, mais l’envoi automatique est désactivé dans Admin > Fonctions. Envoyer sur Slack le publie quand même à la main.",
+  "Nothing waiting. A post the investigator could not send shows here with Send now.": "Rien en attente. Une publication que l’investigateur n’a pas pu envoyer apparaît ici avec Envoyer maintenant.",
+  "Text": "Texte",
+  "investigator": "investigateur",
+  "The investigator’s text was the message": "Le texte de l’investigateur était le message",
+  "nothing waiting": "rien en attente",
+  "{0} not posted": "{0} non publiés",
+  "Post the text kept on this card as the message, with the anomaly card attached below it; click twice to confirm": "Publier le texte gardé sur cette carte comme message, avec la carte de l’anomalie en dessous ; cliquez deux fois pour confirmer",
+  "Post the text kept on this report as the message, with the report summary, its flagged rows and the shipped tickets under it; click twice to confirm": "Publier le texte gardé sur ce rapport comme message, avec le résumé, ses lignes signalées et les tickets livrés en dessous ; cliquez deux fois pour confirmer",
+  "Copy the text, e.g. to send it to one person instead of the channel": "Copier le texte, par ex. pour l’envoyer à une personne plutôt qu’au canal",
+  "Full text in the expanded card": "Texte complet dans la carte dépliée",
+  "Not posted: the text was more than an hour old when Slack was ready": "Non publié : le texte avait plus d’une heure quand Slack a été prêt"
  },
  "rules": [
+  [
+   "^([\\s\\S]+)\\nFull text in the expanded card$",
+   "$1\nTexte complet dans la carte dépliée"
+  ],
+  [
+   "^Not posted: the run read suspicious text \\((.+)\\); check it and use Send to Slack$",
+   "Non publié : l’exécution a lu un texte suspect ($1) ; vérifiez-le et utilisez Envoyer sur Slack"
+  ],
+  [
+   "^Slack post failed: (.+); use Send to Slack to try again$",
+   "Échec de la publication Slack : $1 ; utilisez Envoyer sur Slack pour réessayer"
+  ],
+  [
+   "^Slack post failed: (.+); trying again at (\\d\\d:\\d\\d)$",
+   "Échec de la publication Slack : $1 ; nouvel essai à $2"
+  ],
+  [
+   "^Slack post failed: (.+)$",
+   "Échec de la publication Slack : $1"
+  ],
+  [
+   "^Slack text \\u00b7 (.+)$",
+   "Texte Slack · $1"
+  ],
+  [
+   "^\\u00b7 (.+) \\u00b7 investigator text$",
+   "· $1 · texte de l’investigateur"
+  ],
+  [
+   "^Post this text to (\\S+) now, as the message for (.+); click twice to confirm$",
+   "Publier ce texte sur $1 maintenant, comme message pour $2 ; cliquez deux fois pour confirmer"
+  ],
   [
    "^Cleared (\\d.*)$",
    "Rétablie $1"
@@ -1480,10 +1540,6 @@
    "Envoyé vers Slack $1"
   ],
   [
-   "^Auto-send (\\d.*)$",
-   "Envoi automatique à $1"
-  ],
-  [
    "^Name of (.+)$",
    "Nom de $1"
   ],
@@ -1534,6 +1590,18 @@
   [
    "^Moved to Information: (.+)$",
    "Déplacé vers Informations : $1"
+  ],
+  [
+   "^Write note for (.+)$",
+   "Écrire une note pour $1"
+  ],
+  [
+   "^Reopened (.+) · fired again$",
+   "Rouverte $1 · déclenchée à nouveau"
+  ],
+  [
+   "^(.+) moved to (.+) · hidden by the current filter$",
+   "$1 déplacée vers $2 · masquée par le filtre actuel"
   ]
  ],
  "months": {

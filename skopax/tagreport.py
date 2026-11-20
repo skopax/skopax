@@ -1,3 +1,4 @@
+import datetime as dt
 import logging
 import threading
 import time
@@ -36,6 +37,7 @@ STOPPED = ('progress', 'handled')
 SEV_ORDER = {'crit': 0, 'warn': 1, 'info': 2}
 QUIET_KEPT = ('crit', 'warn')
 DAY_H = 24
+WINDOW_S = 2 * 3600
 REPEAT_GAP_S = 20 * 3600
 GONE_CHANNEL = ('not_in_channel', 'channel_not_found', 'is_archived', 'invalid_auth', 'account_inactive', 'token_revoked', 'missing_scope', 'not_allowed_token_type')
 
@@ -48,8 +50,26 @@ def business_day(now: float) -> bool:
     return clock.local(now).weekday() not in WEEKEND
 
 
+def slot(at: str, now: float) -> str | None:
+    if not valid_at(at):
+        return None
+    hour, minute = (int(x) for x in at.split(':'))
+    today = clock.local(now).date()
+    for d in (today, today - dt.timedelta(days=1)):
+        start = dt.datetime(d.year, d.month, d.day, hour, minute, tzinfo=clock.zone()).timestamp()
+        if start <= now < start + WINDOW_S and d.weekday() not in WEEKEND:
+            return d.isoformat()
+    return None
+
+
 def due(at: str, now: float) -> bool:
-    return valid_at(at) and business_day(now) and clock.hm(now) >= at
+    return slot(at, now) is not None
+
+
+def missed(at: str, now: float) -> str | None:
+    if not valid_at(at) or not business_day(now) or clock.hm(now) < at or slot(at, now):
+        return None
+    return clock.day(now)
 
 
 def board_open(cards: list[dict]) -> list[dict]:
@@ -101,11 +121,15 @@ def counts(total: int, crit: int, warn: int) -> str:
     return msg('tagreport.split', open=head, parts=', '.join(split)) if split else head
 
 
+def shown_name(name, slack_name, email: str) -> str:
+    return next((n for n in (str(name or '').strip(), str(slack_name or '').strip()) if n and '@' not in n), email.split('@')[0])
+
+
 def person(email: str, names: dict[str, str], mention: Callable[[str], str | None]) -> str:
     found = mention(email)
     if found:
         return found
-    return esc(str(names.get(email) or '').strip() or email.split('@')[0])
+    return esc(shown_name(names.get(email), None, email))
 
 
 def card_line(a: dict, base_url: str, now: float) -> str:
@@ -309,7 +333,8 @@ def find_people(query: str, rows: list[dict], limit: int = PEOPLE_MAX) -> list[d
 
 class TagReport:
     def __init__(self, store: Store, slack, ids: SlackIds, owners: Callable[[], dict[str, list[str]]], names: Callable[[], dict[str, str]], at: Callable[[], str],
-                 on: Callable[[], bool], base_url: str, labels: Callable[[], dict[str, str]] = tags.all_tags, clock: Callable[[], float] = time.time):
+                 on: Callable[[], bool], base_url: str, labels: Callable[[], dict[str, str]] = tags.all_tags, clock: Callable[[], float] = time.time,
+                 left_out: Callable[[], set[str]] = set):
         self.store = store
         self.slack = slack
         self.ids = ids
@@ -320,12 +345,17 @@ class TagReport:
         self.base_url = base_url
         self.labels = labels
         self.clock = clock
+        self.left_out = left_out
+        self.skipped: str | None = None
 
-    def held(self, names: dict[str, str] | None = None) -> dict[str, list[str]]:
-        known = self.labels()
-        active = self.names() if names is None else names
-        out = {tag: [e for e in emails if e in active] for tag, emails in self.owners().items() if tag in known}
+    def held(self) -> dict[str, list[str]]:
+        known, gone = self.labels(), self.left_out()
+        out = {tag: [e for e in emails if isinstance(e, str) and '@' in e and e not in gone] for tag, emails in self.owners().items() if tag in known}
         return {tag: emails for tag, emails in out.items() if emails}
+
+    def named(self, held: dict[str, list[str]]) -> dict[str, str]:
+        names = self.names()
+        return {e: shown_name(names.get(e), self.ids.name(e), e) for emails in held.values() for e in emails}
 
     @property
     def wanted(self) -> bool:
@@ -337,18 +367,22 @@ class TagReport:
 
     def run_once(self, now: float | None = None) -> dict | None:
         now = self.clock() if now is None else now
-        if not self.enabled or not due(self.at(), now):
+        if not self.enabled:
+            return None
+        when = slot(self.at(), now)
+        if when is None:
+            self._skip(now)
             return None
         last = self.store.tag_report_at()
         if last is not None and 0 <= now - last < REPEAT_GAP_S:
             return None
-        day = f'{RUN}:{clock.day(now)}'
+        day = f'{RUN}:{when}'
         if not self.store.claim_run(day):
             return None
         try:
             self.ids.start()
-            names = self.names()
-            message = build(self.store.load().get('anomalies') or [], self.held(names), names, self.ids.mention, self.base_url, now, self.labels())
+            held = self.held()
+            message = build(self.store.load().get('anomalies') or [], held, self.named(held), self.ids.mention, self.base_url, now, self.labels())
         except Exception:
             self.store.drop_run(day)
             raise
@@ -371,3 +405,13 @@ class TagReport:
         self.store.add_activity('slack', 'server', f'Daily tag report posted \u00b7 {shown} tag{"" if shown == 1 else "s"}')
         log.info('daily tag report posted for %d tags', shown)
         return sent | {'tags': shown}
+
+    def _skip(self, now: float) -> None:
+        day = missed(self.at(), now)
+        if day is None or day == self.skipped:
+            return
+        self.skipped = day
+        last = self.store.tag_report_at()
+        if last is not None and clock.day(last) == day or self.store.has_run(f'{RUN}:{day}'):
+            return
+        log.info('daily tag report skipped today: the window %s to 2 h later has passed, it posts again on the next business day', self.at())

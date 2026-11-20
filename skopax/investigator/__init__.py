@@ -641,7 +641,8 @@ class Investigator:
                                                  'costNote': f"investigator assessment, {done['turns']} turns, {len(done['toolCalls'])} tool calls" + ('' if ok else f", {done['outcome']}")})
         text = (report.get('slackDraft') or {}).get('text')
         armed = bool((report.get('autoSend') or {}).get('at'))
-        if not drafted and text and not armed and (report.get('slackDraft') or {}).get('by') == NUMBERS_BY and not (report.get('slackPost') or {}).get('ts'):
+        posting = self.effects.autopost is None or self.effects.autopost()
+        if posting and not drafted and text and not armed and (report.get('slackDraft') or {}).get('by') == NUMBERS_BY and not (report.get('slackPost') or {}).get('ts'):
             self.store.report_slack_draft(report_id, text, 'server')
-        self.store.add_activity('assess', 'investigator', f"deploy report {'assessed' if ok else done['outcome']} · {report.get('summary')} · ${done['usd']:.2f}" + ('' if drafted or (report.get('slackPost') or {}).get('ts') else ' · numbers draft armed'),
+        self.store.add_activity('assess', 'investigator', f"deploy report {'assessed' if ok else done['outcome']} · {report.get('summary')} · ${done['usd']:.2f}" + ('' if drafted or (report.get('slackPost') or {}).get('ts') else ' · numbers post queued'),
                                 runId=run_id, reportId=report_id, outcome=done['outcome'])

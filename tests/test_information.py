@@ -443,7 +443,7 @@ def test_holds_thread_updates_and_asks_refuse_an_information_item(store: Store):
                c.post('/api/actions', json={'type': 'ask', 'key': 'q', 'text': 'why?', 'cards': [INFO]}, headers=AUTH)]
 
     # then
-    assert [r.status_code for r in got] == [409] * 4
+    assert [r.status_code for r in got] == [410, 409, 409, 409], 'holds are gone for every card'
 
 
 def test_an_information_item_with_an_old_number_never_reaches_closed(store: Store):

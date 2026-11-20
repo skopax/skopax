@@ -84,7 +84,8 @@ async function assigneeAndTagChipsFilterTheBoardTogetherAndALinkKeepsThem() {
 
   //when
   const listed = chips();
-  const colors = [chip('tag:data').classList.contains('t-data'), !!doc.querySelector('#anoms .tile .tag.t-data'), !!doc.querySelector('#tab-sub-anoms .tags-g .t-data'), chip('who:me').firstChild.textContent];
+  const tone = 'th-' + w.tagHue('data');
+  const colors = [chip('tag:data').classList.contains(tone), !!doc.querySelector('#anoms .tile .tag.' + tone), !!doc.querySelector('#tab-sub-anoms .tags-g .' + tone), chip('who:me').firstChild.textContent];
   chip('who:u:alice').click();
   const nina = shown();
   chip('tag:data').click();

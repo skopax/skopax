@@ -99,7 +99,7 @@ async function theRowCountsUnreadAndThePanelListsNewestFirst() {
   assert.strictEqual(w.NT_POLL_MS, 30000, 'the count is polled every 30 s');
   const sec = doc.getElementById('nt-sec');
   assert.ok(shown(sec) && sec.querySelector('h3').textContent === 'For you', 'the panel opens on For you');
-  assert.ok(sec.compareDocumentPosition(doc.getElementById('slackq')) & w.Node.DOCUMENT_POSITION_FOLLOWING, 'For you sits above the Slack drafts');
+  assert.ok(sec.compareDocumentPosition(doc.getElementById('slackq')) & w.Node.DOCUMENT_POSITION_FOLLOWING, 'For you sits above the not-posted list');
   assert.strictEqual(items.length, 4);
   assert.deepStrictEqual(items.map((i) => i.classList.contains('unread')), [true, true, false, false], 'unread ones stand out');
   assert.deepStrictEqual(items.map((i) => !!i.querySelector('.sr')), [true, true, false, false]);
@@ -253,7 +253,7 @@ async function guestsSeeNoFeedAndAnotherLanguageKeepsCardTitles() {
   //then
   assert.ok(!shown(guest.doc.getElementById('nt-sec')), 'no For you without a login');
   assert.ok(!shown(badge(guest.doc)), 'and no badge');
-  assert.ok(shown(guest.doc.getElementById('panel-slack')) && guest.doc.querySelector('#slackq'), 'the Slack drafts still show');
+  assert.ok(shown(guest.doc.getElementById('panel-slack')) && guest.doc.querySelector('#slackq'), 'the not-posted list still shows');
   assert.deepStrictEqual(posts(guest.calls), []);
   assert.strictEqual(de.doc.querySelector('#nt-list .nt-what').textContent, '#14 checkout-service / ERROR lines', 'card titles stay as they are');
   assert.deepStrictEqual(guest.errors.concat(de.errors), []);
@@ -284,13 +284,13 @@ async function theDraftsTableIsUnchanged() {
   const panel = doc.getElementById('panel-slack');
 
   //then
-  assert.deepStrictEqual([...panel.querySelectorAll('h3')].map((h) => h.textContent), ['For you', 'Slack drafts', 'Posted to Slack in the last 24 hours']);
-  assert.deepStrictEqual([...doc.querySelectorAll('#slackq thead th')].map((t) => t.textContent), ['What', 'Draft', 'Status', 'Actions']);
+  assert.deepStrictEqual([...panel.querySelectorAll('h3')].map((h) => h.textContent), ['For you', 'Not posted to Slack', 'Posted to Slack in the last 24 hours']);
+  assert.deepStrictEqual([...doc.querySelectorAll('#slackq thead th')].map((t) => t.textContent), ['What', 'Text', 'Status', 'Actions']);
   assert.deepStrictEqual([...doc.querySelectorAll('#slack-sent thead th')].map((t) => t.textContent), ['Posted', 'What', 'By', 'Message']);
-  assert.ok(/^Slack drafts that have not been posted yet/.test(panel.querySelector('#sq-h + .panel-note').textContent), 'the drafts note follows its heading');
+  assert.ok(/^The investigator posts to Slack itself/.test(panel.querySelector('#sq-h + .panel-note').textContent), 'the note follows its heading');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'the Slack drafts table and the posted list keep their columns under their own heading';
+  return 'the not-posted table and the posted list keep their columns under their own heading';
 }
 
 (async () => {

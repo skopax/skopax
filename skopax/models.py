@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StrictInt, StringConstraints, field_validator, model_validator
 
 from skopax.config import SETTING_TEXT_MAX
 from skopax.history import REF_LIMIT, resolve_problem
@@ -307,6 +307,11 @@ class TokenIn(BaseModel):
 class PluginSwitchIn(BaseModel):
     model_config = ConfigDict(extra='forbid')
     enabled: bool = Field(strict=True)
+
+
+class TagColorIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    color: StrictInt | None = Field(ge=0, le=9)
 
 
 class TagAutoIn(BaseModel):

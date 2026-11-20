@@ -51,7 +51,7 @@ from skopax.oidc import OidcError
 from skopax.operators import OperatorUnknown, Operators
 from skopax.postdeploy import JOB_OFFSET as POSTDEPLOY_OFFSET, JOB_PERIOD as POSTDEPLOY_PERIOD, SERVER_BY, PostDeploy
 from skopax.attach import Attacher
-from skopax.autosend import AutoSend, Fallback, PostNow, fresh as fresh_cards, waiting as auto_send_waiting
+from skopax.autosend import AutoSend, Fallback, PostNow, fresh as fresh_cards, kept as kept_text, waiting as auto_send_waiting
 from skopax.config import ConfigurationError, Settings
 from skopax.contract import CodeHost, OrgPack, SourceDown
 from skopax.engine import Applied, PassResult, apply, iso as epoch_iso, new_pushes
@@ -60,7 +60,7 @@ from skopax.investigator import JOB_OFFSET as INVESTIGATE_OFFSET, JOB_PERIOD as 
 from skopax.investigator.gate import Gate, GateDown
 from skopax.investigator.pricing import ANTHROPIC, OPENAI, effective as effective_model, provider_of
 from skopax.investigator.smalltalk import DEFAULTS as SMALL_TALK_DEFAULTS, Reply, SmallTalk, WINDOW_S as SMALL_TALK_WINDOW_S
-from skopax.investigator.tools import CORE_TOOLS, FIX_FIELDS, Effects, Sources, allowed_link_hosts
+from skopax.investigator.tools import CORE_TOOLS, FIX_FIELDS, Effects, Sources, allowed_link_hosts, draft_problem
 from skopax.investigator.toolset import NoProposal, ProposalClosed, ProposalUnavailable, Proposals, ToolSet
 from skopax import chatui
 from skopax.chatui import CHAT_ID
@@ -68,7 +68,7 @@ from skopax.chatui.text import set_texts as set_chat_texts
 from skopax.assign import Assigner, Invalid as AssignInvalid, people_of, slug
 from skopax.jiralinks import ticket_projects
 from skopax.autoassign import AutoAssign
-from skopax.models import email_allowed, NoticesReadIn, NameIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, TagOwnersIn, TagAutoIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, FieldSuggestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn
+from skopax.models import email_allowed, NoticesReadIn, NameIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, TagOwnersIn, TagAutoIn, TagColorIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, FieldSuggestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn
 from skopax.selfreview import BY as SELF_REVIEW_BY, SelfReview, self_service, gather as review_facts, review_slot_offset
 from skopax.slackhealth import OFFSET as SLACK_POSTS_OFFSET, PASS as SLACK_POSTS, PERIOD as SLACK_POSTS_PERIOD, slack_posts_pass
 from skopax.jiraaccess import PASS as JIRA_ACCESS, access_pass as jira_access_pass
@@ -101,7 +101,7 @@ from skopax.errkind import NoAccess, Refusal, kind, text_of
 from skopax.features import BY_ID as FEATURE_BY_ID, FEATURES, Features, Locked, off_text
 from skopax.integrationview import reader_row
 from skopax.instances import InstanceExists, InstanceMissing, Instances, InvalidInstance, PluginState, SourceOwned, Writer, checks_off
-from skopax.registry import Registry, card_types_view, describe, locale_drops
+from skopax.registry import Registry, card_types_view, describe, locale_drops, standing_of
 from skopax.plugai import PluginAi
 from skopax.plugintools import PluginTools
 from skopax.runtime import Runtime, SuggestFailed
@@ -121,7 +121,7 @@ from skopax import ssobutton
 from skopax.ssoicon import ICON_MAX as SSO_ICON_MAX, IconRefused, SsoIcon, check as icon_check
 from skopax.sso import FIELDS as SSO_FIELDS, SECRET_FIELD as SSO_SECRET_FIELD, SECRET_ID as SSO_SECRET_ID, SECRET_MAX as SSO_SECRET_MAX, InvalidSecret, SignOn, SourceOwned as SecretOwned, SsoConfig, SsoHttp, SsoSecret, TestBusy as SsoTestBusy
 from skopax.throttle import Throttle
-from skopax.store import ActionMoved, ChatPrivate, Conflict, NotFound, Store, iso, new_id, utc_now
+from skopax.store import CARD_HISTORY_MAX, TAG_HUE_NAMES, ActionMoved, ChatPrivate, Conflict, NotFound, Store, iso, new_id, utc_now
 
 OPEN_PATHS = ('/actuator/health', '/actuator/health/*', '/static/*', '/icons/*', '/favicon.ico', '/plugins/*', '/manifest.webmanifest', '/setup', '/login', '/login/sso', '/authorized', '/logout', '/mcp',
               '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/*', '/login/sso-icon')
@@ -145,6 +145,10 @@ LOGIN_RESTARTS = {'cancelled': 'login.cancelled', 'state': 'login.mismatch', 'ch
 LOGIN_UNAVAILABLE = ('unreachable', 'hook')
 USER_CACHE_SECONDS = 30
 FAILURE_PAUSE_SECONDS = 5
+ADDRESS = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
+OWNERS_LINE = 'Responsibles of '
+SSO_SETTING_LINE = re.compile(r'\(sso\.[a-z0-9.-]+\): ')
+NO_DRAFTS = 'Slack drafts and holds are gone: the investigator posts to Slack itself when Slack auto-send is on; use Send to Slack on a card or a report to post by hand'
 DROPS_SHOWN = 5
 ORIGIN_VIEW = {'builtin': 'builtin', 'entry-point': 'package', 'env': 'env'}
 DUPLICATE_KEY_CODE = 11000
@@ -680,8 +684,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def active_people() -> dict[str, str]:
         return {u['email']: u.get('name') or '' for u in users.list() if u and u.get('email') and not u.get('disabled')}
 
+    def disabled_people() -> set[str]:
+        return {u['email'] for u in users.list() if u and u.get('email') and u.get('disabled')}
+
     tag_report = tagreport.TagReport(store, slack, slack_ids, store.tag_owners, active_people,
-                                     lambda: settings.tag_report_at, lambda: features.on(tagreport.FEATURE) and features.on('slack-autosend'), base_url)
+                                     lambda: settings.tag_report_at, lambda: features.on(tagreport.FEATURE) and features.on('slack-autosend'), base_url, left_out=disabled_people)
     clear_notes = ClearNotes(store, slack, settings.slack_clear_note_minutes, title_prefix=settings.jira_title_prefix)
     jira_links = JiraLinks(store, jira, settings.jira_links, notes, base_url, settings.jira_developer_field)
     assigner = Assigner(store, slack, settings, base_url, notes, notices, posts=card_posts)
@@ -704,7 +711,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             log.info('auto-assign messages were still going out at shutdown; the rest are dropped')
         auto_pool[0].shutdown(wait=False, cancel_futures=True)
     postdeploy = PostDeploy(store, prom_for, jira, lambda: features.on('postdeploy'), base_url, assess=lambda: investigator.available(), projects=settings.release_projects, serving=prom_watching,
-                            primary_name=lambda: getattr(runtime.instances.primary(PROMETHEUS_ID), 'name', None), release_template=lambda: settings.jira_release_name, plugin_reports=lambda rows, started, now: runtime.deploy_reports(rows, started, now))
+                            primary_name=lambda: getattr(runtime.instances.primary(PROMETHEUS_ID), 'name', None), release_template=lambda: settings.jira_release_name, plugin_reports=lambda rows, started, now: runtime.deploy_reports(rows, started, now),
+                            autopost=lambda: features.on('slack-autosend'))
     settle = Settle(store, settings.release_settle)
     throttle = Throttle(db)
 
@@ -721,11 +729,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except NotFound:
             return None
 
-    def post_anomaly_to_slack(key: str, by: str, base: str = '') -> dict:
+    def post_anomaly_to_slack(key: str, by: str, base: str = '', skip_kept: bool = False) -> dict:
         anomaly = store.anomaly(key)
         link = card_url(base_url or base, key, anomaly.get('num'))
-        draft = (anomaly.get('slackDraft') or {}).get('text') or None
-        shots = (anomaly.get('slackDraft') or {}).get('screenshots') or []
+        kept_out = {} if skip_kept and kept_text(anomaly) else anomaly.get('slackDraft') or {}
+        draft = kept_out.get('text') or None
+        shots = kept_out.get('screenshots') or []
         action = {'type': 'slack', 'key': key, 'target': f'slack:{key}', 'label': f"Send to Slack: {anomaly.get('svc')} {anomaly.get('label')}", 'requestedBy': by, 'draft': bool(draft)}
         thread = card_thread(anomaly)
         buttons = card_posts.new_menu(key, by) if started_at_boot('slack-socket') else None
@@ -741,7 +750,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise
         sent = slack.linked(posted, thread['ts'] if thread else None)
         log.info('slack post for %s by %s, draft=%s, thread of %s', key, by, bool(draft), thread['key'] if thread else None)
-        body = {'text': draft, **{k: v for k, v in (anomaly.get('slackDraft') or {}).items() if k in ('headline', 'by') and v}} if draft else None
+        body = {'text': draft, **{k: v for k, v in kept_out.items() if k in ('headline', 'by') and v}} if draft else None
         drawn = {'sig': drawn_sig(anomaly, mute), 'at': iso(utc_now())}
         post = {**sent, 'at': iso(utc_now()), 'by': by, 'draft': bool(draft), 'head': head, 'drawn': drawn, **({'body': body} if body else {}), **({'menu': buttons['id']} if buttons else {}),
                 **({'screenshots': shots} if shots else {})}
@@ -751,6 +760,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             store.slack_posted(key, post)
         except (PyMongoError, NotFound, Conflict) as e:
             log.warning('slack post for %s went out but was not recorded on the anomaly: %s', key, kind(e))
+            try:
+                store.post_unrecorded(key, f'sent to Slack but not recorded on the card ({kind(e)}); not sent again')
+            except PyMongoError as again:
+                log.warning('the unrecorded Slack post on %s was not marked either: %s', key, kind(again))
         where = f"the thread of {thread['key']} in {slack.channel}" if thread else slack.channel
         pictures = attacher(posted['channel'], message.get('thread_ts') or posted['ts'], [s.get('id') for s in shots if isinstance(s, dict)], key) if shots else None
         done = store.add_action(action | {'slack': sent}, 'done', f"sent to {where}{' with the draft' if draft else ''}" + (f'; {pictures}' if pictures else ''))
@@ -763,10 +776,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     posting: set[str] = set()
 
-    def send_anomaly_to_slack(key: str, by: str, base: str = '') -> dict:
+    def send_anomaly_to_slack(key: str, by: str, base: str = '', skip_kept: bool = False) -> dict:
         posting.add(key)
         try:
-            return post_anomaly_to_slack(key, by, base)
+            return post_anomaly_to_slack(key, by, base, skip_kept)
         finally:
             posting.discard(key)
 
@@ -780,7 +793,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return post
         if not echo_ready(card):
             return None
-        send_anomaly_to_slack(key, SERVER_BY)
+        send_anomaly_to_slack(key, SERVER_BY, skip_kept=True)
         posted = store.anomaly(key).get('slackPost') or None
         if posted is None:
             raise RuntimeError('the Slack post was not recorded on the card')
@@ -847,6 +860,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             store.report_slack_posted(report_id, {**sent, 'at': iso(utc_now()), 'by': by, 'draft': bool(draft)})
         except (PyMongoError, NotFound) as e:
             log.warning('slack post for report %s went out but was not recorded on the report: %s', report_id, kind(e))
+            try:
+                store.post_unrecorded(report_id, f'sent to Slack but not recorded on the report ({kind(e)}); not sent again', 'report')
+            except PyMongoError as again:
+                log.warning('the unrecorded Slack post on report %s was not marked either: %s', report_id, kind(again))
         where = f"today's deploy thread in {slack.channel}" if thread else slack.channel
         return store.add_action(action | {'slack': sent}, 'done', f"sent to {where}{' with the draft' if draft else ''}" + (f'; {pictures}' if pictures else ''))
 
@@ -914,7 +931,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def pod_slack_send(key: str, by: str) -> dict:
         if (store.anomaly(key).get('slackPost') or {}).get('ts'):
             raise ValueError('this anomaly already has a Slack message from this page')
-        return send_anomaly_to_slack(key, by)
+        said = auto.send_soon(key)
+        if said == 'busy':
+            raise ValueError('this card is being posted to Slack already')
+        return {'result': 'posting to Slack now' if said == 'queued' else 'not posted: Slack auto-send is off'}
 
     replier = Replier(store, slack, settings, attach=attacher, base_url=base_url)
 
@@ -943,7 +963,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         store, Sources(gitlab=gitlab, jira=jira, plugin_tools=PluginTools(runtime), selfreview=lambda now: review_facts(store, server_info() | store.server_runs(), runtime.client('elasticsearch') if settings.self_log_index else None, now, own_commits, self_service(settings), settings.self_log_index, PluginTools(runtime)),
                               link_hosts=lambda: allowed_link_hosts(settings, runtime.org()['link_hosts'] + runtime.ui_hosts()), org=runtime.org,
                               bridge=mcptools_bridge),
-        Effects(pod_slack_send, slack_thread_update, replier.reply, state_note, tell=slack_tell, fixes=lambda key: post_fixes(key), slack_file=slack.file), settings, client=anthropic_client, base_url=base_url, talk=talk, key=ai_keys.current)
+        Effects(pod_slack_send, slack_thread_update, replier.reply, state_note, tell=slack_tell, fixes=lambda key: post_fixes(key), slack_file=slack.file, autopost=lambda: auto.on(), wake=lambda: auto.wake()), settings, client=anthropic_client, base_url=base_url, talk=talk, key=ai_keys.current)
 
     if isinstance(investigator, Investigator):
         investigator.notices = notices
@@ -1035,8 +1055,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 return said
         raise HTTPException(status_code=422, detail=msg('page.off_topic', about=prompt.about(settings.org_about), reason=verdict.reason))
 
-    auto = AutoSend(store, lambda key: send_anomaly_to_slack(key, AUTO_BY), lambda report_id: send_report_to_slack(report_id, AUTO_BY), on=lambda: features.on('slack-autosend') and slack.enabled)
-    fallback = Fallback(store, settings.slack_fallback_minutes)
+    auto = AutoSend(store, lambda key: send_anomaly_to_slack(key, AUTO_BY), lambda report_id: send_report_to_slack(report_id, AUTO_BY), on=lambda: features.on('slack-autosend'), ready=lambda: slack.enabled)
+    fallback = Fallback(store, settings.slack_fallback_minutes, auto.wake, on=lambda: features.on('slack-autosend'))
     post_now = PostNow(store, lambda key: send_anomaly_to_slack(key, SERVER_BY), lambda: settings.slack_post_sev if slack.enabled and features.on('slack-autosend') else 'off',
                        lambda: investigator_ready() and settings.investigate_mode == 'live')
 
@@ -2287,7 +2307,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             'task': {'project': settings.jira_project, 'projects': list(dict.fromkeys([*projects_of(settings), *(k for k in plugin_projects() if PROJECT_KEY.fullmatch(k) and k != settings.jira_tech_project)])), 'parent': settings.jira_parent, 'points': settings.jira_points, 'techProject': settings.jira_tech_project, 'techAssignee': bool(settings.jira_tech_assignee), 'titlePrefix': settings.jira_title_prefix},
             'slack': slack.enabled,
             'slackChannel': slack.channel,
-            'tags': tags.info(),
+            'tags': tag_info(),
             'routes': routes.info() if user and user.operator else [],
             'admin': bool(user and user.admin),
             'chat': chat_at_boot,
@@ -2372,6 +2392,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     @app.get('/api/investigations')
     def get_investigations(key: str | None = None, limit: Annotated[int, Query(ge=1, le=200)] = 50, chats: bool = True) -> list[dict]:
         return store.list_investigations(key, limit, page=True, chats=chats)
+
+    @app.get('/api/card-history')
+    def get_card_history(request: Request, key: Annotated[str, Query(min_length=1, max_length=400)], limit: Annotated[int, Query(ge=1, le=CARD_HISTORY_MAX)] = 100,
+                         authorization: Annotated[str | None, Header()] = None) -> dict:
+        try:
+            card = store.anomaly(key)
+        except NotFound:
+            card = store.last_past_card(key)
+        if not card or not information.is_card(card):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f'no card {key[:80]}')
+        hide = () if reads_access(request, authorization) else (ACCESS_KIND,)
+        return {'key': key, 'actions': [a for a in store.card_actions(key, limit) if a.get('source') != 'chat'], 'activity': store.card_activity(key, limit, hide)}
 
     @app.get('/api/card-runs')
     def get_card_runs() -> dict:
@@ -2855,15 +2887,23 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         return {u['email']: u.get('name') or '' for u in users.list() if u and u.get('email')}
 
     def owner_name(email: str, everyone: dict[str, str]) -> str:
-        return everyone.get(email) or slack_ids.name(email) or email.split('@')[0]
+        return next((n for n in (everyone.get(email), slack_ids.name(email)) if n and '@' not in n), email.split('@')[0])
 
     def owner_rows(emails: list[str], named: dict[str, str]) -> list[dict]:
         everyone = all_people()
         return [{'email': e, 'name': owner_name(e, everyone), 'slack': slack_ids.peek(e)} | ({} if e in named or e not in everyone else {'stale': True}) for e in emails]
 
-    def tag_view(tag: str, label: str, held: dict[str, list[str]], named: dict[str, str], off: set[str] | None = None) -> dict:
+    def tag_view(tag: str, label: str, held: dict[str, list[str]], named: dict[str, str], off: set[str] | None = None, colors: dict[str, int] | None = None) -> dict:
         off = store.tag_auto_off() if off is None else off
-        return {'id': tag, 'label': label, 'responsibles': owner_rows(held.get(tag, []), named), 'autoAssign': tag not in off, 'autoReady': auto_assign.ready(tag, held, named)}
+        colors = store.tag_colors() if colors is None else colors
+        return {'id': tag, 'label': label, 'responsibles': owner_rows(held.get(tag, []), named), 'autoAssign': tag not in off, 'autoReady': auto_assign.ready(tag, held, named), 'color': colors.get(tag)}
+
+    def tag_info() -> list[dict]:
+        colors = store.tag_colors()
+        return [t | ({'color': colors[t['id']]} if t['id'] in colors else {}) for t in tags.info()]
+
+    def hue_name(n: int | None) -> str:
+        return 'default' if n is None else TAG_HUE_NAMES[n]
 
     def people_named(names: list[str]) -> str:
         everyone = all_people()
@@ -2874,8 +2914,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         listed = users.list()
         named = active_people()
         held = store.tag_owners()
-        off = store.tag_auto_off()
-        return {'tags': [tag_view(tag, label, held, named, off) for tag, label in tags.all_tags().items()], 'canEdit': True,
+        off, colors = store.tag_auto_off(), store.tag_colors()
+        return {'tags': [tag_view(tag, label, held, named, off, colors) for tag, label in tags.all_tags().items()], 'canEdit': True,
                 'users': [{'email': u['email'], 'name': u.get('name') or u['email'].split('@')[0], 'disabled': bool(u.get('disabled'))} for u in listed if u and u.get('email')],
                 'reportAt': settings.tag_report_at, 'emailScopeMissing': scope_warning() is not None}
 
@@ -2907,7 +2947,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if wanted != before:
             store.set_tag_owners(tag, wanted)
             slack_ids.check_all([e for e in wanted if e not in before])
-            live.tunables.write_change(f'tags.{tag}.responsibles', ', '.join(before) or None, ', '.join(wanted) or None, by, owners=True, tag=tag)
+            everyone = all_people()
+            live.tunables.write_change(f'tags.{tag}.responsibles', ', '.join(owner_name(e, everyone) for e in before) or None, ', '.join(owner_name(e, everyone) for e in wanted) or None, by, owners=True, tag=tag)
             store.add_activity(ACCESS_KIND, by, f"Responsibles of {known[tag]}: {people_named(before)} \u2192 {people_named(wanted)}"[:300])
             log.info('responsibles of tag %s changed by %s', tag, by)
         return tag_view(tag, known[tag], store.tag_owners(), named)
@@ -2922,6 +2963,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             store.set_tag_auto(tag, body.on)
             store.add_activity(ACCESS_KIND, by, f"Auto-assign of {known[tag]}: {'on' if was else 'off'} \u2192 {'on' if body.on else 'off'}"[:300])
             log.info('auto-assign of tag %s turned %s by %s', tag, 'on' if body.on else 'off', by)
+        return tag_view(tag, known[tag], store.tag_owners(), active_people())
+
+    @app.put('/api/admin/tags/{tag}/color')
+    def put_tag_color(tag: str, body: TagColorIn, by: Annotated[str, Depends(require_admin)]) -> dict:
+        known = tags.all_tags()
+        if tag not in known:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, msg('tags.no_tag', tag=tag[:40]))
+        was = store.tag_colors().get(tag)
+        if body.color != was:
+            store.set_tag_color(tag, body.color)
+            store.add_activity(ACCESS_KIND, by, f"Colour of {known[tag]}: {hue_name(was)} \u2192 {hue_name(body.color)}"[:300])
+            log.info('colour of tag %s changed by %s', tag, by)
         return tag_view(tag, known[tag], store.tag_owners(), active_people())
 
     @app.put('/api/admin/settings')
@@ -3170,7 +3223,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/admin/history')
     def get_admin_history(by: Annotated[str, Depends(require_admin)], limit: Annotated[int, Query(ge=1, le=200)] = 50) -> list[dict]:
-        return live.tunables.history(limit)
+        everyone = all_people()
+
+        def named(text: str) -> str:
+            return ADDRESS.sub(lambda m: owner_name(m.group(0).lower(), everyone), text)
+
+        access = [{'id': a['id'], 'key': ACCESS_KIND, 'access': True, 'at': a['t'], 'by': named(str(a.get('who') or '')), 'text': named(a['text'])}
+                  for a in store.list_activity(None, limit, only=(ACCESS_KIND,)) if not a['text'].startswith(OWNERS_LINE) and not SSO_SETTING_LINE.search(a['text'])]
+        settings_rows = [h | {f: named(h[f]) for f in ('old', 'new') if isinstance(h.get(f), str)} if h.get('owners') else h for h in live.tunables.history(limit)]
+        return sorted(settings_rows + access, key=lambda h: str(h.get('at') or ''), reverse=True)[:limit]
 
     def key_routes(path: str, key: AiKey, provider: str) -> None:
         prefix = key.prefix
@@ -3237,11 +3298,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def plugin_row(found, passes: dict) -> dict:
         origin = ORIGIN_VIEW[found.origin]
         if found.plugin is None:
-            return {'id': found.id, 'module': found.module, 'reason': found.reason, 'origin': origin}
+            return {'id': found.id, 'module': found.module, 'reason': found.reason, 'origin': origin, 'standing': standing_of(found, plugin_state.enabled)}
         if found.state == 'broken':
-            return {'id': found.id, 'module': found.module, 'reason': found.reason, 'enabled': plugin_state.enabled(found.id), 'origin': origin}
+            return {'id': found.id, 'module': found.module, 'reason': found.reason, 'enabled': plugin_state.enabled(found.id), 'origin': origin, 'standing': standing_of(found, plugin_state.enabled)}
         listed = instances.all(found.id)
-        return {**describe(found.plugin, registry.icon(found.id) is not None), 'state': found.state, 'reason': found.reason, 'enabled': plugin_state.enabled(found.id),
+        return {**describe(found.plugin, registry.icon(found.id) is not None), 'state': found.state, 'standing': standing_of(found, plugin_state.enabled), 'reason': found.reason, 'enabled': plugin_state.enabled(found.id),
                 'origin': origin, **({} if origin == 'builtin' else {'module': found.module}),
                 'localeDrops': drops_view(found) if found.state == 'ok' else [],
                 'fields': runtime.fields_of(found.id), 'instances': [i.view() for i in listed], 'health': plugin_health(found.plugin, listed, passes)}
@@ -3741,12 +3802,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.post('/api/slack-holds', status_code=status.HTTP_201_CREATED)
     def post_slack_hold(body: SlackHoldIn, by: Annotated[str, Depends(require_operator)]) -> dict:
-        refuse_information(body.key)
-        held = store.hold_anomaly_auto_send(body.key, by)
-        if held is None:
-            raise HTTPException(status.HTTP_409_CONFLICT, 'nothing to hold: the auto-send already went out or was never armed')
-        log.info('auto-send held on %s by %s', body.key, by)
-        return {'autoSend': held}
+        raise HTTPException(status.HTTP_410_GONE, NO_DRAFTS)
 
     @app.post('/api/slack-updates', status_code=status.HTTP_201_CREATED)
     def post_slack_update(body: SlackUpdateIn, by: Annotated[str, Depends(require_operator)]) -> dict:
@@ -3771,12 +3827,20 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except RouteRefused as e:
             raise HTTPException(e.status, e.text) from None
 
+    def refuse_post_text(text: str) -> None:
+        problem = draft_problem(text, allowed_link_hosts(settings, runtime.org()['link_hosts'] + runtime.ui_hosts())) if text else None
+        if problem:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, problem)
+
     @app.put('/api/slack-drafts')
     def put_slack_draft(body: SlackDraftIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        if not is_token(by):
+            raise HTTPException(status.HTTP_410_GONE, NO_DRAFTS)
         refuse_information(body.key)
-        rev, draft, auto = store.slack_draft(body.key, body.text.strip(), by)
-        log.info('slack draft for %s %s by %s', body.key, 'saved' if draft else 'cleared', by)
-        return {'rev': rev, 'slackDraft': draft, 'autoSend': auto}
+        refuse_post_text(body.text.strip())
+        rev, draft, armed = store.slack_draft(body.key, body.text.strip(), by)
+        log.info('slack post for %s %s by %s', body.key, 'queued' if armed else 'saved' if draft else 'cleared', by)
+        return {'rev': rev, 'slackDraft': draft, 'autoSend': armed}
 
     @app.get('/api/deploy-reports')
     def get_deploy_reports(limit: Annotated[int, Query(ge=1, le=200)] = 30) -> list[dict]:
@@ -3796,17 +3860,16 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.put('/api/deploy-reports/{report_id}/slack-draft')
     def put_report_slack_draft(report_id: str, body: ReportSlackDraftIn, by: Annotated[str, Depends(require_operator)]) -> dict:
+        if not is_token(by):
+            raise HTTPException(status.HTTP_410_GONE, NO_DRAFTS)
+        refuse_post_text(body.text.strip())
         saved = store.report_slack_draft(report_id, body.text.strip(), by)
-        log.info('slack draft for report %s %s by %s', report_id, 'saved' if saved['slackDraft'] else 'cleared', by)
+        log.info('slack post for report %s %s by %s', report_id, 'queued' if saved['autoSend'] else 'cleared', by)
         return saved
 
     @app.post('/api/deploy-reports/{report_id}/slack-hold', status_code=status.HTTP_201_CREATED)
     def post_report_slack_hold(report_id: str, by: Annotated[str, Depends(require_operator)]) -> dict:
-        held = store.hold_report_auto_send(report_id, by)
-        if held is None:
-            raise HTTPException(status.HTTP_409_CONFLICT, 'nothing to hold: the auto-send already went out or was never armed')
-        log.info('auto-send held on report %s by %s', report_id, by)
-        return {'autoSend': held}
+        raise HTTPException(status.HTTP_410_GONE, NO_DRAFTS)
 
     @app.post('/api/deploy-reports/{report_id}/slack-posts', status_code=status.HTTP_201_CREATED)
     def post_report_to_slack(report_id: str, request: Request, by: Annotated[str, Depends(require_operator)]) -> dict:
@@ -3895,7 +3958,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     mcp_bridge = mcpserver.Bridge(store=store, settings=settings, chat=lambda by, text, chat_id, cards, role: chat_post(by, text, chat_id, cards, via=mcpserver.MCP, role=role), chat_view=chat_view,
                                   act=post_action, assign=assigner.assign, card_view=card_view, board=investigator_board,
-                                  kick=lambda: investigator.kick(time.time()) if investigator.enabled else None, chat_used=chat_used, base=base_url, feature_on=features.on)
+                                  kick=lambda: investigator.kick(time.time()) if investigator.enabled else None, chat_used=chat_used, base=base_url, feature_on=features.on, registry=registry, plugin_on=plugin_state.enabled)
     mcp_manager = mcpserver.mount(app, mcp_bridge, mcp_auth, on=lambda: features.on('mcp'))
 
     return app

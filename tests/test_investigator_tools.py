@@ -526,9 +526,10 @@ def test_prose_domains_version_numbers_and_group_gitlab_links_are_accepted(store
     assert store.anomaly(KEY)['slackDraft']['text'] == text
 
 
-def test_a_card_with_a_draft_or_a_human_hold_is_not_redrafted(store: Store):
+def test_a_card_with_a_post_on_its_way_or_an_old_hold_is_not_redrafted(store: Store):
     # given
-    store.save_state(state(anomaly(KEY, slackDraft={'text': 'human', 'by': 'token', 'at': '2026-10-21T09:00:00Z'}), anomaly('log|h|ERROR|h', autoSend={'holdBy': 'oscar'})), None)
+    on_its_way = {'at': '2026-10-21T09:00:00Z', 'draftAt': '2026-10-21T09:00:00Z', 'draftHash': 'h'}
+    store.save_state(state(anomaly(KEY, slackDraft={'text': 'human', 'by': 'token', 'at': '2026-10-21T09:00:00Z'}, autoSend=on_its_way), anomaly('log|h|ERROR|h', autoSend={'holdBy': 'oscar'})), None)
     b = box(store, keys=(KEY, 'log|h|ERROR|h'))
 
     # when
@@ -654,7 +655,7 @@ def test_slack_send_is_refused_after_a_human_hold_or_a_changed_draft(store: Stor
         b.call('triage', {'key': k, 'state': 'progress', 'ticket': 'OPS-1'})
 
     # when
-    store.hold_anomaly_auto_send(KEY, 'oscar.green')
+    store.anomalies.update_one({'_id': KEY, 'autoSend.at': {'$exists': True}}, {'$set': {'autoSend.holdBy': 'oscar.green', 'autoSend.holdAt': '2026-10-21T09:00:00Z'}})
     store.slack_draft(other, 'Another text', 'oscar.green')
     held = b.call('slack_send', {'key': KEY})
     edited = b.call('slack_send', {'key': other})
@@ -679,7 +680,7 @@ def test_shadow_proposes_the_send_after_draft_and_triage(store: Store):
     # then
     assert early[1] and 'triage' in early[0]
     assert not after[1], after[0]
-    assert b.writes[-1] == {'tool': 'slack_send', 'key': KEY, 'summary': 'sent the draft now', 'proposed': True}
+    assert b.writes[-1] == {'tool': 'slack_send', 'key': KEY, 'summary': 'posting the text now', 'proposed': True}
     assert sent == [] and store.anomaly(KEY).get('slackDraft') is None
 
 
@@ -1102,7 +1103,7 @@ def test_a_flagged_run_saves_its_slack_draft_without_arming_the_auto_send(store:
     assert card['slackDraft']['notAutoSent'] == 'planted text in the esql answer (ignore previous)'
     assert 'autoSend' not in card
     line = store.list_activity(None, 5)[0]
-    assert line['text'] == f'{KEY}: Slack draft not auto-sent: planted text in the esql answer (ignore previous)' and line['runId'] == 'run-1'
+    assert line['text'] == f'{KEY}: Slack post not sent: planted text in the esql answer (ignore previous)' and line['runId'] == 'run-1'
 
 
 def test_a_clean_run_still_arms_the_auto_send(store: Store):

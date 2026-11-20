@@ -2,6 +2,41 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.4.4 (2026-11-20)
+
+Slack posts that go out directly, a History tab on every card, soft tag colours, a toast when a change hides a card from your filter, and an MCP server that says which version it runs.
+
+**Upgrade notes:**
+
+- Slack posts go out directly. When Slack auto-send is on (Admin > Features), the investigator posts its card and deploy-report messages to Slack at once. There are no drafts, no countdown, no Hold and no Slack recommended tag, filter or chip any more. With auto-send off, nothing posts on its own: the investigator's post is dropped with a note on the card, and the server's own posts and deploy-report texts are not queued; Send to Slack still posts by hand.
+- A run that read planted text does not post; the card shows the text with Send to Slack. Such kept text never holds back the server's own posts for that card or its service.
+- A post that still fails after 3 tries 10 minutes apart says so on the card, and the Slack tab lists it.
+- On the first start after the upgrade, waiting drafts younger than one hour on cards that still qualify are sent once (or noted as skipped when auto-send is off); other waiting, held or person-edited drafts are cleared. Later restarts keep queued posts.
+- The draft-edit and hold API endpoints answer 410 for people; a token's post text is checked like the investigator's and refused with 400. Old #t=anoms/slack links open the default list.
+- The daily tag report posts only in the two hours after Daily report at, on business days; a server started later skips that day instead of posting late.
+- The first start builds two new database indexes (activity by card key and time, actions by target and time); on a large install this can take a moment.
+
+**Added:**
+
+- A History tab on the card (drawer, expanded card and the card page): who changed what and when, newest first, with old -> new values, assignments, tags, severity changes, Slack and Teams posts, investigation runs and tickets.
+- A toast when a change you make hides a card from the current filter, with View card and Clear filter.
+- Soft tag colours on cards, board tiles, filters and Admin, with an optional colour per tag in Admin > General.
+- The MCP server says what it is: its instructions open with "<Name>, powered by Skopax <version>, extended by <package>" (only the name when the attribution is hidden), and a new read-only about tool lists the version, edition, extending packages and every plug-in with its state (admins also see why one is not on).
+- Admin > Changes lists people and access changes by name.
+
+**Changed:**
+
+- The business note has its own row under Tags: "Write note for <team>" or "Edit note"; without a business tag a short hint shows instead.
+- Code rows show the file name on top (shortened, full name on hover) and the explanation under it.
+- A re-fired card reads "Reopened HH:MM - fired again", then "Before that: ...", without repeating the same event.
+- Responsibles without a Skopax account now get their line in the tag report; only disabled users are left out. Changes show responsibles by name, also for older rows.
+- The Docker Hub page now shows the overview of the current release; it is updated with every release.
+- Uploading a company icon for single sign-on switches the button icon to Company.
+
+**Fixed:**
+
+- Long Slack texts, links and investigation text wrap inside the card instead of sliding under the side column.
+
 ## 0.4.3 (2026-11-20)
 
 A running investigation you can see at a glance, investigator status in the top bar, responsible autocomplete with auto-assign by tag, and a calmer, consistent settings design.

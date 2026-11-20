@@ -32,8 +32,6 @@
   "Cleared": "Normale döndü",
   "All": "Tümü",
   "Lists": "Listeler",
-  "Slack drafts": "Slack taslakları",
-  "Slack recommended": "Slack önerilen",
   "Recurring": "Tekrarlayan",
   "Investigated": "İncelendi",
   "Investigating": "İnceleniyor",
@@ -100,7 +98,6 @@
   "Open in": "Şurada aç",
   "Recommendation": "Öneri",
   "Runs on this card": "Bu karttaki run'lar",
-  "Slack draft": "Slack taslağı",
   "Suggested fix (untested)": "Önerilen düzeltme (test edilmedi)",
   "Suspects": "Olası nedenler",
   "Next": "Sıradaki",
@@ -209,9 +206,6 @@
   "Assigned to me": "Bana atanan",
   "Assignee removed": "Atanan kaldırıldı",
   "Assignee:": "Atanan:",
-  "Auto-send": "Otomatik gönderim",
-  "Auto-send failed": "Otomatik gönderim başarısız",
-  "Auto-send now": "Otomatik gönderim şimdi",
   "Autoscalers": "Autoscaler'lar",
   "Avg": "Ort",
   "Avg / run": "Ort / run",
@@ -266,7 +260,6 @@
   "Copy a link that opens this deploy report": "Bu deploy raporunu açan linki kopyala",
   "Copy a link that opens this release": "Bu release'i açan linki kopyala",
   "Copy the direct link to card #{0}: it opens this card alone": "Kart #{0} için doğrudan linki kopyalayın: bu kartı tek başına açar",
-  "Copy the draft text, e.g. to send it to one person instead of the channel": "Taslak metnini kopyalayın, örn. kanal yerine tek bir kişiye göndermek için",
   "Copy the suggested lines; it is untested, verify before you use it": "Önerilen satırları kopyalayın; test edilmedi, kullanmadan önce doğrulayın",
   "Cost": "Maliyet",
   "Costs are not available right now.": "Maliyet verisi şu an alınamıyor.",
@@ -285,18 +278,14 @@
   "Deployed ({0} h)": "Deploy edildi ({0} sa)",
   "Deploys of the last {0} days.": "Son {0} günün deploy'ları.",
   "Description": "Açıklama",
-  "Discarded": "Silindi",
-  "Discarding…": "Siliniyor…",
   "Done": "Tamamlandı",
   "Done {0}": "Tamamlandı {0}",
   "Done {0} {M} {1}": "Tamamlandı {0} {M} {1}",
   "Draft": "Taslak",
-  "Draft (stopped)": "Taslak (durdu)",
   "Duration": "Süre",
   "Earlier occurrences of this card, from the card history (kept for a year); the investigator reads them with past_cards before a deep dive": "Bu kartın önceki tekrarları, kart geçmişinden (bir yıl saklanır); Investigator derin incelemeden önce bunları past_cards ile okur",
   "Edge traffic and {0}xx, per zone": "Zone bazında edge trafiği ve {0}xx",
   "Edit the message Send to Slack posts": "Slack'e gönder'in göndereceği mesajı düzenle",
-  "Empty and Save removes the draft": "Boş bırakıp Kaydet'e basarsanız taslak silinir",
   "Error rate": "Hata oranı",
   "Errors": "Hatalar",
   "Event": "Olay",
@@ -321,7 +310,6 @@
   "Grouped {0} {M} {1}": "Gruplandı {0} {M} {1}",
   "Growing": "Büyüyor",
   "Held": "Bekletildi",
-  "Holding…": "Bekletiliyor…",
   "Host and disk": "Host ve disk",
   "Host disk": "Host diski",
   "Hour": "Saat",
@@ -499,7 +487,6 @@
   "Pod restarts": "Pod restart'ları",
   "Pods waiting": "Bekleyen pod'lar",
   "Points": "Story point",
-  "Post the Slack draft on this card as the message, with the anomaly card attached below it; click twice to confirm": "Bu karttaki Slack taslağını mesaj olarak gönderin, anomali kartı altına eklenir; onaylamak için iki kez tıklayın",
   "Post this anomaly to the Slack channel; click twice to confirm": "Bu anomaliyi Slack kanalına gönderin; onaylamak için iki kez tıklayın",
   "Post this deploy report to the Slack channel: release, services, clean or flagged, the summary, the flagged rows and the shipped tickets; click twice to confirm": "Bu deploy raporunu Slack kanalına gönderin: release, servisler, sorunsuz ya da işaretli, özet, işaretli satırlar ve çıkan ticket'lar; onaylamak için iki kez tıklayın",
   "Post-deploy check": "Deploy sonrası kontrol",
@@ -558,13 +545,11 @@
   "Runs": "Run'lar",
   "Runs unavailable.": "Run'lar kullanılamıyor.",
   "Runs, usage and actions on History": "Run'lar, kullanım ve aksiyonlar Geçmiş'te",
-  "Save or cancel the draft edit first": "Önce taslak düzenlemesini kaydedin ya da iptal edin",
   "Saved, used after the next restart": "Kaydedildi, sonraki restart'tan sonra kullanılır",
   "Saving…": "Kaydediliyor…",
   "Screenshot": "Ekran görüntüsü",
   "Self-review": "Öz değerlendirme",
   "Send again": "Tekrar gönder",
-  "Send draft to Slack": "Taslağı Slack'e gönder",
   "Send to Slack": "Slack'e gönder",
   "Sending…": "Gönderiliyor…",
   "Sent": "Gönderildi",
@@ -588,8 +573,6 @@
   "Slack ask": "Slack sorusu",
   "Slack asks": "Slack soruları",
   "Slack asks {0}": "Slack soruları {0}",
-  "Slack draft for this deploy report": "Bu deploy raporunun Slack taslağı",
-  "Slack drafts that have not been posted yet, on anomaly cards and on deploy reports, and what happens to each one next. Armed drafts come first, the soonest first.": "Anomali kartlarında ve deploy raporlarında henüz gönderilmemiş Slack taslakları ve her birine bundan sonra ne olacağı. Otomatik gönderimi kurulu taslaklar önce gelir, en yakını en başta.",
   "Slack failed": "Slack başarısız",
   "Slack is not set up": "Slack kurulu değil",
   "Slack question": "Slack sorusu",
@@ -610,7 +593,6 @@
   "Status note {0} {M} {1} ↗": "Durum notu {0} {M} {1} ↗",
   "Status note {0} ↗": "Durum notu {0} ↗",
   "Steady": "Sabit",
-  "Stop the auto-send, which posts the draft within {0} s: the draft then waits for Send draft to Slack like any other": "Taslağı {0} sn içinde gönderecek otomatik gönderimi durdurun: taslak sonra diğerleri gibi Taslağı Slack'e gönder'i bekler",
   "Stops new runs at once; a running one ends after its current turn": "Yeni run'ları hemen durdurur; çalışan run mevcut turundan sonra biter",
   "Succeeded": "Başarılı",
   "Summary": "Özet",
@@ -739,10 +721,8 @@
   "queued": "sırada",
   "read": "okuma",
   "ready pods": "hazır pod'lar",
-  "removes the draft and": "taslağı siler ve",
   "reopened": "yeniden açıldı",
   "report": "rapora git",
-  "stops the auto-send that posts it within {0} s,": "{0} sn içinde gönderecek otomatik gönderimi durdurur,",
   "target {0}%": "hedef %{0}",
   "the fullest broker data volume": "en dolu broker veri volume'u",
   "the signal went back to normal and nothing needs doing (info or muted); drops off {0} hours after it cleared": "sinyal normale döndü ve yapılacak bir şey yok (bilgi ya da sessizde); normale döndükten {0} saat sonra listeden düşer",
@@ -1256,9 +1236,89 @@
   "INVESTIGATOR": "INVESTIGATOR",
   "STOPPED": "DURDURULDU",
   "Paste a new key": "Yeni anahtarı yapıştırın",
-  "Test connection tries the key typed here, or the key in use when the field is empty.": "Bağlantıyı test et, buraya yazılan anahtarı veya alan boşsa kullanılan anahtarı dener."
+  "Test connection tries the key typed here, or the key in use when the field is empty.": "Bağlantıyı test et, buraya yazılan anahtarı veya alan boşsa kullanılan anahtarı dener.",
+  "Business note": "İş notu",
+  "Edit note": "Notu düzenle",
+  "Tag a business team to write a note": "Not yazmak için bir iş ekibini etiketleyin",
+  "Before that:": "Öncesinde:",
+  "View card": "Kartı gör",
+  "Clear filter": "Filtreyi temizle",
+  "Dismiss": "Kapat",
+  "Details": "Ayrıntılar",
+  "Loading the history…": "Geçmiş yükleniyor…",
+  "Actions and activity could not be loaded; showing what the card itself records.": "Eylemler ve etkinlik yüklenemedi; kartın kendi kayıtları gösteriliyor.",
+  "Nothing recorded yet.": "Henüz kayıt yok.",
+  "Started progress": "İşleme alındı",
+  "Ticket created": "Ticket oluşturuldu",
+  "Ticket linked": "Ticket bağlandı",
+  "Marked known noise": "Bilinen gürültü olarak işaretlendi",
+  "Investigation queued": "İnceleme sıraya alındı",
+  "Grouped": "Gruplandı",
+  "Asked the investigator": "İnceleyiciye soruldu",
+  "Fired": "Tetiklendi",
+  "Business note written": "İş notu yazıldı",
+  "Colour": "Renk",
+  "Colour saved": "Renk kaydedildi",
+  "Colour not saved, try again": "Renk kaydedilmedi, tekrar deneyin",
+  "Tag added": "Etiket eklendi",
+  "Posted to Teams": "Teams’e gönderildi",
+  "Investigation run": "İnceleme çalışması",
+  "Assigned to": "Atanan",
+  "Not posted: auto-send is off": "Gönderilmedi: otomatik gönderim kapalı",
+  "Not posted: the run read suspicious text": "Gönderilmedi: çalışma şüpheli metin okudu",
+  "Slack post failed": "Slack gönderisi başarısız",
+  "Posting to Slack now": "Şimdi Slack’e gönderiliyor",
+  "Slack post": "Slack gönderisi",
+  "Not posted to Slack": "Slack’e gönderilmedi",
+  "People and access": "Kişiler ve erişim",
+  "Not posted: the card stopped, was muted, merged or resolved first; Send to Slack still posts it": "Gönderilmedi: kart önce durdu, sessize alındı, birleştirildi veya çözüldü; Slack’e gönder yine de gönderir",
+  "The investigator posts to Slack itself while Slack auto-send is on. These posts did not go out: the run read suspicious text, or Slack refused the post after its retries. Read the text, then post it with Send now or open its card or report with View.": "Otomatik gönderim açıkken araştırıcı Slack’e kendisi gönderir. Bu gönderiler çıkmadı: çalışma şüpheli metin okudu ya da Slack gönderiyi yeniden denemelerden sonra reddetti. Metni okuyun, sonra Şimdi gönder ile gönderin veya Görüntüle ile kartını ya da raporunu açın.",
+  "The investigator wanted to post this to Slack, but Slack auto-send is off in Admin > Features. Send to Slack still posts it by hand.": "Araştırıcı bunu Slack’e göndermek istedi ama otomatik gönderim Yönetim > Özellikler altında kapalı. Slack’e gönder yine de elle gönderir.",
+  "Nothing waiting. A post the investigator could not send shows here with Send now.": "Bekleyen yok. Araştırıcının gönderemediği bir gönderi burada Şimdi gönder ile görünür.",
+  "Text": "Metin",
+  "investigator": "araştırıcı",
+  "The investigator’s text was the message": "Mesaj araştırıcının metniydi",
+  "nothing waiting": "bekleyen yok",
+  "{0} not posted": "{0} gönderilmedi",
+  "Post the text kept on this card as the message, with the anomaly card attached below it; click twice to confirm": "Bu kartta tutulan metni mesaj olarak, altında anomali kartı ile gönder; onaylamak için iki kez tıklayın",
+  "Post the text kept on this report as the message, with the report summary, its flagged rows and the shipped tickets under it; click twice to confirm": "Bu raporda tutulan metni mesaj olarak, altında rapor özeti, işaretli satırları ve yayınlanan biletlerle gönder; onaylamak için iki kez tıklayın",
+  "Copy the text, e.g. to send it to one person instead of the channel": "Metni kopyala, örneğin kanal yerine tek kişiye göndermek için",
+  "Full text in the expanded card": "Metnin tamamı açık kartta",
+  "Not posted: the text was more than an hour old when Slack was ready": "Gönderilmedi: Slack hazır olduğunda metin bir saatten eskiydi"
  },
  "rules": [
+  [
+   "^([\\s\\S]+)\\nFull text in the expanded card$",
+   "$1\nMetnin tamamı açık kartta"
+  ],
+  [
+   "^Not posted: the run read suspicious text \\((.+)\\); check it and use Send to Slack$",
+   "Gönderilmedi: çalışma şüpheli metin okudu ($1); kontrol edip Slack’e gönder’i kullanın"
+  ],
+  [
+   "^Slack post failed: (.+); use Send to Slack to try again$",
+   "Slack gönderisi başarısız: $1; yeniden denemek için Slack’e gönder’i kullanın"
+  ],
+  [
+   "^Slack post failed: (.+); trying again at (\\d\\d:\\d\\d)$",
+   "Slack gönderisi başarısız: $1; $2 saatinde yeniden denenecek"
+  ],
+  [
+   "^Slack post failed: (.+)$",
+   "Slack gönderisi başarısız: $1"
+  ],
+  [
+   "^Slack text \\u00b7 (.+)$",
+   "Slack metni · $1"
+  ],
+  [
+   "^\\u00b7 (.+) \\u00b7 investigator text$",
+   "· $1 · araştırıcı metni"
+  ],
+  [
+   "^Post this text to (\\S+) now, as the message for (.+); click twice to confirm$",
+   "Bu metni şimdi $1 kanalına, $2 için mesaj olarak gönder; onaylamak için iki kez tıklayın"
+  ],
   [
    "^Cleared (\\d.*)$",
    "Normale döndü $1"
@@ -1480,10 +1540,6 @@
    "Slack'e gönderildi $1"
   ],
   [
-   "^Auto-send (\\d.*)$",
-   "Otomatik gönderim $1"
-  ],
-  [
    "^Name of (.+)$",
    "$1 adı"
   ],
@@ -1534,6 +1590,18 @@
   [
    "^Moved to Information: (.+)$",
    "Bilgilere taşındı: $1"
+  ],
+  [
+   "^Write note for (.+)$",
+   "$1 için not yaz"
+  ],
+  [
+   "^Reopened (.+) · fired again$",
+   "Yeniden açıldı $1 · yeniden tetiklendi"
+  ],
+  [
+   "^(.+) moved to (.+) · hidden by the current filter$",
+   "$1, $2 sütununa taşındı · mevcut filtre gizliyor"
   ]
  ],
  "months": {

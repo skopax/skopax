@@ -32,7 +32,7 @@ from skopax.models import email_allowed
 from skopax.ownwords import REASONS as SKOPAX_REASONS
 from skopax.postdeploy import NUMBERS_BY, SERVER_BY
 from skopax.redact import redact, redact_text
-from skopax.store import NotFound, auto_sender, draft_hash, glob_match, new_id
+from skopax.store import NotFound, auto_sender, draft_hash, glob_match, iso, new_id, utc_now
 
 log = logging.getLogger('skopax.investigator.tools')
 
@@ -157,6 +157,8 @@ class Effects:
     tell: Callable[..., dict] | None = None
     fixes: Callable[[str], int] | None = None
     slack_file: Callable[[str], tuple[bytes, str]] | None = None
+    autopost: Callable[[], bool] | None = None
+    wake: Callable[[], None] | None = None
 
 
 def schema(props: dict, required: list[str]) -> dict:
@@ -176,7 +178,7 @@ READ_TOOLS = [
                                           f'and the last {JIRA_COMMENTS} comments, newest first (author display name, created in UTC, text cut at {JIRA_COMMENT_LIMIT} characters), with the issue\'s comment count. '
                                           'Emails, phone numbers, IBANs, card and identity numbers and tokens in the text are masked. A ticket key must be looked up here before triage progress can use it.',
      'input_schema': schema({'key': STR}, ['key'])},
-    {'name': 'card', 'description': 'Read any {product} card by key (state, numbers, triage, note, links, its Slack draft and post with their screenshots).',
+    {'name': 'card', 'description': 'Read any {product} card by key (state, numbers, triage, note, links, its Slack post text and post with their screenshots).',
      'input_schema': schema({'key': STR}, ['key'])},
     {'name': 'open_cards', 'description': 'List the open, unmuted {product} cards (key, severity, service, triage, parent), for grouping same-cause cards.',
      'input_schema': schema({}, [])},
@@ -246,11 +248,11 @@ WRITE_TOOLS = [
      'input_schema': schema({'parent': STR, 'children': {'type': 'array', 'items': STR, 'minItems': 1},
                              'absorb': {'type': 'array', 'items': {'type': 'string', 'maxLength': ABSORB_LIMIT}, 'maxItems': ABSORB_MAX},
                              'cause': {'type': 'string', 'maxLength': CAUSE_LIMIT}}, ['parent', 'children'])},
-    {'name': 'slack_draft', 'description': f'Save a main-channel draft on a card of this run (in English unless a Language line says otherwise, 2-4 short lines, at most {DRAFT_LIMIT:,} characters; no card link, the title of the post links the card; '
+    {'name': 'slack_draft', 'description': f'Post to the main channel about a card of this run (in English unless a Language line says otherwise, 2-4 short lines, at most {DRAFT_LIMIT:,} characters; no card link, the title of the post links the card; '
                                            'no Slack mentions, no code blocks; links only to the {product} page, Prometheus and the other hosts this service is configured to allow). '
-                                           'It posts itself within 30 s unless someone holds it first. On a card the server already posted with its numbers (a critical card is posted at once; others after the numbers fallback) the text goes in as a reply in that post\'s thread. '
-                                           'Refused on a card merged into an open parent (draft on the parent), on a card already posted by someone else, drafted or held, '
-                                           'and when an open card of the same service was posted or drafted in the last 6 h at the same or a higher severity (reply there with slack_update instead, or leave a waiting draft as it is). '
+                                           'It goes out at once while Slack auto-send is on (the answer says when it was not posted: auto-send off, or this run read planted text and the card keeps it for a person). On a card the server already posted with its numbers (a critical card is posted at once; others after the numbers fallback) the text goes in as a reply in that post\'s thread. '
+                                           'Refused on a card merged into an open parent (post on the parent), on a card already posted or with a post waiting, '
+                                           'and when an open card of the same service was posted in the last 6 h at the same or a higher severity (reply there with slack_update instead). '
                                            "screenshots: ids from this run's `screenshot` calls; the post links them and puts the images in its thread, so the text needs no screenshot link. "
                                            f'headline: a short title, in English unless a Language line says otherwise, of at most {POST_HEADLINE_LIMIT} characters that says what kind of event this is, so a reader knows at a glance '
                                            '("After the release: checkout-service does not start", "Payment provider slow: payments delayed", "Config missing: app.checkout-timeout"); it leads the post above the card name, or opens the thread reply in bold.',
@@ -259,11 +261,11 @@ WRITE_TOOLS = [
                                             "screenshots: ids from this run's `screenshot` calls, shown under the summary on the Deploy reports tab.",
      'input_schema': schema({'level': {'type': 'string', 'enum': ['ok', 'warn', 'crit']}, 'headline': STR, 'points': {'type': 'array', 'items': STR, 'maxItems': 5}, 'screenshots': SHOTS},
                             ['level', 'headline', 'points'])},
-    {'name': 'report_slack_draft', 'description': 'Save the deploy report\'s main-channel draft (assessment runs only; in English unless a Language line says otherwise, 2-4 short lines, no link: the post carries an Open report button). It posts itself within 30 s unless someone holds it first. '
+    {'name': 'report_slack_draft', 'description': 'Post the deploy report to the main channel (assessment runs only; in English unless a Language line says otherwise, 2-4 short lines, no link: the post carries an Open report button). It goes out at once while Slack auto-send is on. '
                                                   "screenshots: ids from this run's `screenshot` calls; the post links them and puts the images in its thread, so the text needs no screenshot link.",
      'input_schema': schema({'text': STR, 'screenshots': SHOTS}, ['text'])},
-    {'name': 'slack_send', 'description': 'Send the draft saved in this run now, after triage moved the card to progress or handled in this run (the auto-send skips those cards). '
-                                          'When the draft already went out by itself, it answers with the post time and sends nothing. Refused before that triage, after a human hold, or when the draft on the card changed.',
+    {'name': 'slack_send', 'description': 'Send the slack_draft text of this run now, after triage moved the card to progress or handled in this run (the automatic post skips those cards). '
+                                          'When the post already went out, it answers with the post time and sends nothing. Refused before that triage, or when the text on the card changed.',
      'input_schema': schema({'key': STR}, ['key'])},
     {'name': 'slack_update', 'description': f'Reply in the main-channel thread of a posted card (1-3 lines, at most {DRAFT_LIMIT:,} characters; links and mentions as in slack_draft). '
                                             "Takes a card of this run or the posted open card of the same service. screenshots: ids from this run's `screenshot` calls, linked in the reply and put as images in the card's thread. "
@@ -1689,7 +1691,7 @@ class Toolbox:
 
     def _t_slack_draft(self, a: dict):
         if self.ask:
-            raise ToolError("no slack_draft from a page ask; a main-channel post about this card comes from the pod's own run, the Send to Slack button, or a person's draft")
+            raise ToolError("no slack_draft from a page ask; a main-channel post about this card comes from the pod's own run or the Send to Slack button")
         key = req(a, 'key')
         card = self._own(key)
         parent = card.get('parent')
@@ -1699,15 +1701,16 @@ class Toolbox:
             except NotFound:
                 host = {}
             if host.get('status') == 'open':
-                raise ToolError(f'{key} is merged into {parent}; draft on the parent card')
+                raise ToolError(f'{key} is merged into {parent}; post on the parent card')
         headline = post_headline(a.get('headline'))
         post, numbers = card.get('slackPost') or {}, card.get('slackFallback') or {}
         if post.get('at') and post.get('ts') and numbers.get('at') and str(post['at']) >= str(numbers['at']):
             return self._t_slack_update(a | ({'text': f"*{headline}*\n{str(a.get('text') or '').strip()}"} if headline else {}))
         if post.get('at'):
             raise ToolError('this card was already posted to the main channel; use slack_update for a thread reply')
-        if card.get('slackDraft') or (card.get('autoSend') or {}).get('holdBy'):
-            raise ToolError('this card already has a draft or a human hold; use slack_update after it is posted, or leave it alone')
+        auto = card.get('autoSend') or {}
+        if card.get('slackDraft') and auto.get('at') and not (auto.get('failedAt') and auto.get('claimedAt')) or auto.get('holdBy'):
+            raise ToolError('this card already has a post on its way; use slack_update after it is posted, or leave it alone')
         twin = self._announced(card)
         if twin:
             raise ToolError(f'{announced_text(twin)} \u2014 {announced_hint(twin)}')
@@ -1717,12 +1720,32 @@ class Toolbox:
             raise ToolError(problem)
         picked = self._picked(a)
         hold = self._flag_hold()
-        result = self._write('slack_draft', key, text, lambda: self.store.pod_slack_draft(key, text, POD_BY, picked, hold=hold, headline=headline))
+        said: list[str] = []
+        result = self._write('slack_draft', key, text, lambda: said.append(self._posted('card', key, hold, lambda: self.store.pod_slack_draft(key, text, POD_BY, picked, hold=hold, headline=headline))))
         if hold:
-            self.store.add_activity('tool', 'investigator', f'{key}: Slack draft not auto-sent: {hold}', runId=self.run_id, tool='slack_draft')
+            self.store.add_activity('tool', 'investigator', f'{key}: Slack post not sent: {hold}', runId=self.run_id, tool='slack_draft')
             self._log_hold(key)
         self.drafted[key] = draft_hash(text)
-        return result
+        return result + ''.join(f'; {x}' for x in said)
+
+    def _posted(self, kind: str, doc_id: str, hold: str | None, save: Callable[[], object]) -> str:
+        save()
+        if hold:
+            return 'not posted: this run read planted text, so the card shows the text with a Send to Slack button for a person'
+        if self._off():
+            return self._skip_post(kind, doc_id)
+        if self.effects.wake:
+            self.effects.wake()
+        return 'posting to the main channel now'
+
+    def _off(self) -> bool:
+        return self.effects.autopost is not None and not self.effects.autopost()
+
+    def _skip_post(self, kind: str, doc_id: str) -> str:
+        if self.store.skip_auto_send(kind, doc_id, iso(utc_now())):
+            where = f'report {doc_id}' if kind == 'report' else doc_id
+            self.store.add_activity('slack', 'auto', f'Slack post skipped: auto-send is off \u00b7 {where}', **({'reportId': doc_id} if kind == 'report' else {'key': doc_id}))
+        return 'not posted: Slack auto-send is off (Admin > Features); a person can still use Send to Slack'
 
     def _report(self) -> str:
         if not self.report_id:
@@ -1760,7 +1783,7 @@ class Toolbox:
         if (report.get('slackPost') or {}).get('ts') or (report.get('autoSend') or {}).get('holdBy'):
             return
         self.store.report_slack_draft(rid, draft['text'], SERVER_BY if draft['by'] == NUMBERS_BY else draft['by'], None, hold)
-        self.store.add_activity('tool', 'investigator', f'report {rid}: Slack draft not auto-sent: {hold}', runId=self.run_id, tool='report_brief')
+        self.store.add_activity('tool', 'investigator', f'report {rid}: Slack post not sent: {hold}', runId=self.run_id, tool='report_brief')
         self._log_hold(f'report {rid}')
 
     def _t_report_slack_draft(self, a: dict):
@@ -1769,21 +1792,22 @@ class Toolbox:
         if (report.get('slackPost') or {}).get('ts'):
             raise ToolError('this report is already in the main channel; a re-assessment only updates the summary on the page')
         if (report.get('autoSend') or {}).get('holdBy'):
-            raise ToolError('this report draft is held by an operator; leave it, it goes out only with the button')
+            raise ToolError('this report post is held by an operator; leave it, it goes out only with the button')
         draft_by = (report.get('slackDraft') or {}).get('by')
         if draft_by and not auto_sender(draft_by) and draft_by != NUMBERS_BY:
-            raise ToolError('this report draft was edited by an operator; leave it, it goes out only with the button')
+            raise ToolError('this report text was set by an operator; leave it, it goes out only with the button')
         text = self.report_link.sub('', str(a.get('text') or '').strip()).strip()
         problem = draft_problem(text, self.link_hosts, self.code_rule())
         if problem:
             raise ToolError(problem)
         picked = self._picked(a)
         hold = self._flag_hold()
-        result = self._write('report_slack_draft', f'report:{rid}', text, lambda: self.store.report_slack_draft(rid, text, POD_BY, picked, hold))
+        said: list[str] = []
+        result = self._write('report_slack_draft', f'report:{rid}', text, lambda: said.append(self._posted('report', rid, hold, lambda: self.store.report_slack_draft(rid, text, POD_BY, picked, hold))))
         if hold:
-            self.store.add_activity('tool', 'investigator', f'report {rid}: Slack draft not auto-sent: {hold}', runId=self.run_id, tool='report_slack_draft')
+            self.store.add_activity('tool', 'investigator', f'report {rid}: Slack post not sent: {hold}', runId=self.run_id, tool='report_slack_draft')
             self._log_hold(f'report {rid}')
-        return result
+        return result + ''.join(f'; {x}' for x in said)
 
     def _log_hold(self, where: str) -> None:
         if self.mode != 'live' or not self.flags:
@@ -1791,7 +1815,7 @@ class Toolbox:
         tools = ', '.join(sorted({quiet_name(str(f.get('tool'))) for f in self.flags}))
         ids = ', '.join(sorted({PHRASE_IDS.get(f.get('phrase'), UNKNOWN_PHRASE) for f in self.flags}, key=lambda p: (len(p), p)))
         n = len(self.flags)
-        log.info('Slack draft on %s waits for a person: the run read planted text in the %s answer (%d flag%s: %s)', quiet_name(where), tools, n, '' if n == 1 else 's', ids)
+        log.info('Slack post on %s not sent, kept for a person: the run read planted text in the %s answer (%d flag%s: %s)', quiet_name(where), tools, n, '' if n == 1 else 's', ids)
 
     def _flag_hold(self) -> str | None:
         if not self.flags:
@@ -1803,26 +1827,30 @@ class Toolbox:
     def _refuse_flagged_post(self) -> None:
         hold = self._flag_hold()
         if hold:
-            raise Held(f'this run read {hold}, so it does not post to the main channel itself; save a draft (it waits for a person) and say why in the note', 'post', self.flags)
+            raise Held(f'this run read {hold}, so it does not post to the main channel itself; call slack_draft (the card keeps the text for a person) and say why in the note', 'post', self.flags)
 
     def _t_slack_send(self, a: dict):
         if self.ask:
-            raise ToolError('no slack_send from an ask; a draft you save goes out by itself within 30 s unless someone holds it')
+            raise ToolError('no slack_send from an ask')
         self._refuse_flagged_post()
         key = req(a, 'key')
         card = self._own(key)
         if key not in self.drafted:
-            raise ToolError('slack_send only sends a draft saved with slack_draft in this run')
+            raise ToolError('slack_send only sends a text saved with slack_draft in this run')
         post, draft = card.get('slackPost') or {}, card.get('slackDraft') or {}
         if post.get('ts') and post.get('draft') and str(post.get('at') or '') >= str(draft.get('at') or '') and draft_hash(draft.get('text') or '') == self.drafted[key]:
-            return f"the draft already went out to the main channel at {post.get('at')} (UTC); nothing left to send"
+            return f"the post already went out to the main channel at {post.get('at')} (UTC); nothing left to send"
         if not any(w['tool'] == 'triage' and w['key'] == key for w in self.writes):
-            raise ToolError('triage the card to progress or handled in this run before slack_send; a card you leave investigated posts its draft by itself within 30 s')
+            raise ToolError('triage the card to progress or handled in this run before slack_send; a card you leave investigated is posted at once by slack_draft')
         if (card.get('autoSend') or {}).get('holdBy'):
-            raise ToolError('someone put this draft on hold; leave it to them')
+            raise ToolError('someone put this post on hold; leave it to them')
         if self.mode == 'live' and draft_hash((card.get('slackDraft') or {}).get('text') or '') != self.drafted[key]:
-            raise ToolError('the draft on the card changed since your slack_draft; leave it to the person who edited it')
-        return self._write('slack_send', key, 'sent the draft now', lambda: self.effects.send_slack(key, POD_BY))
+            raise ToolError('the text on the card changed since your slack_draft; leave it')
+        if self._off():
+            said: list[str] = []
+            result = self._write('slack_send', key, 'not posted: auto-send is off', lambda: said.append(self._skip_post('card', key)))
+            return result + ''.join(f'; {x}' for x in said)
+        return self._write('slack_send', key, 'posting the text now', lambda: self.effects.send_slack(key, POD_BY))
 
     def _t_slack_tell(self, a: dict):
         if not self.ask or self.read_only or not self.asker or not self.effects.tell:

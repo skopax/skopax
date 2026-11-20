@@ -39,6 +39,9 @@ SLACK_SCOPES_ID = 'slack-scopes'
 VERSION_CHECK_ID = 'version-check'
 TAG_OWNERS_ID = 'tag-owners'
 TAG_AUTO_ID = 'tag-auto-assign'
+TAG_HUE_NAMES = ('Slate', 'Teal', 'Green', 'Olive', 'Sand', 'Plum', 'Violet', 'Dusk', 'Cyan', 'Clay')
+TAG_HUES = len(TAG_HUE_NAMES)
+CARD_HISTORY_MAX = 200
 AUTO_TURN = 'auto-assign:'
 AUTO_SINCE_ID = 'auto-assign-since'
 AUTO_SEVS = ('crit', 'warn')
@@ -58,6 +61,7 @@ AUTO_SEND_SEVERITIES = ('crit', 'warn')
 AUTO_PENDING = {'autoSend.claimedAt': {'$exists': False}, 'autoSend.holdBy': {'$exists': False}}
 AUTO_RETRIES = 3
 AUTO_RETRY_S = 600
+STALE_CLAIM_ERROR = 'not sent: it was claimed long ago and never went out, and it is too old to post now'
 UNLINKED_POST = {'slackPost.ts': {'$exists': True}, 'slackPost.permalink': {'$exists': False}}
 ERROR_LIMIT = 300
 RUN_KEEP_DAYS = 7
@@ -258,8 +262,8 @@ def draft_update(draft: dict | None, auto: dict | None) -> dict:
     if not draft:
         return {'$unset': {'slackDraft': '', 'autoSend': ''}}
     if auto:
-        return {'$set': {'slackDraft': draft, 'autoSend': auto}}
-    return {'$set': {'slackDraft': draft}, '$unset': {'autoSend': ''}}
+        return {'$set': {'slackDraft': draft, 'autoSend': auto}, '$unset': {'slackSkipped': ''}}
+    return {'$set': {'slackDraft': draft}, '$unset': {'autoSend': '', 'slackSkipped': ''}}
 
 
 def ttl_index(coll, field: str, seconds: int) -> None:
@@ -394,6 +398,8 @@ class Store:
         self.check_runs.create_index('at', expireAfterSeconds=CHECK_RUN_KEEP_DAYS * 86400)
         self.activity.create_index('at', expireAfterSeconds=ACTIVITY_KEEP_DAYS * 86400)
         self.activity.create_index([('t', DESCENDING), ('_id', DESCENDING)])
+        self.activity.create_index([('key', ASCENDING), ('t', DESCENDING)], sparse=True)
+        self.actions.create_index([('target', ASCENDING), ('requestedAt', DESCENDING)])
         self.anomalies.create_index([('pos', ASCENDING)])
         self.card_ids.create_index('n', unique=True)
         self.actions.create_index([('status', ASCENDING), ('requestedAt', ASCENDING)])
@@ -499,6 +505,19 @@ class Store:
     def tag_auto_off(self) -> set[str]:
         held = (self.db['meta'].find_one({'_id': TAG_AUTO_ID}) or {}).get('off')
         return {str(tag) for tag, off in held.items() if off is True} if isinstance(held, dict) else set()
+
+    def tag_colors(self) -> dict[str, int]:
+        try:
+            return {str(d['_id']): d['color'] for d in self.db['tag_colors'].find({}) if type(d.get('color')) is int and 0 <= d['color'] < TAG_HUES}
+        except PyMongoError as e:
+            log.warning('tag colours not read, the tags show their default colours: %s', type(e).__name__)
+            return {}
+
+    def set_tag_color(self, tag: str, color: int | None) -> None:
+        if color is None:
+            self.db['tag_colors'].delete_one({'_id': tag})
+        else:
+            self.db['tag_colors'].replace_one({'_id': tag}, {'_id': tag, 'color': color}, upsert=True)
 
     def tag_ready(self) -> dict[str, str | bool]:
         held = (self.db['meta'].find_one({'_id': TAG_AUTO_ID}) or {}).get('ready')
@@ -1372,9 +1391,17 @@ class Store:
         query = {'user': user, 'read': False} | ({'_id': {'$in': list(ids)}} if ids is not None else {})
         return self.notices.update_many(query, {'$set': {'read': True, 'readAt': iso(utc_now())}}).modified_count
 
-    def list_activity(self, since: str | None, limit: int, hide: tuple[str, ...] = ()) -> list[dict]:
-        query = ({'t': {'$gte': since}} if since else {}) | ({'kind': {'$nin': list(hide)}} if hide else {})
+    def list_activity(self, since: str | None, limit: int, hide: tuple[str, ...] = (), only: tuple[str, ...] = ()) -> list[dict]:
+        query = ({'t': {'$gte': since}} if since else {}) | ({'kind': {'$nin': list(hide)}} if hide else {}) | ({'kind': {'$in': list(only)}} if only else {})
         return [{k: v for k, v in _with_id(d).items() if k != 'at'} for d in self.activity.find(query, sort=[('t', DESCENDING), ('_id', DESCENDING)], limit=limit)]
+
+    def card_activity(self, key: str, limit: int, hide: tuple[str, ...] = ()) -> list[dict]:
+        query = {'key': key} | ({'kind': {'$nin': list(hide)}} if hide else {})
+        return [{k: v for k, v in _with_id(d).items() if k != 'at'} for d in self.activity.find(query, sort=[('t', DESCENDING), ('_id', DESCENDING)], limit=min(limit, CARD_HISTORY_MAX))]
+
+    def card_actions(self, key: str, limit: int) -> list[dict]:
+        query = {'target': {'$in': [key, f'slack:{key}', f'slack-update:{key}']}}
+        return [_with_id(a) for a in self.actions.find(query, sort=[('requestedAt', DESCENDING), ('_id', DESCENDING)], limit=min(limit, CARD_HISTORY_MAX))]
 
     def set_investigator_stop(self, stopped: bool, by: str) -> dict | None:
         if not stopped:
@@ -1501,7 +1528,9 @@ class Store:
         draft = {'text': text, 'by': by, 'at': iso(now)}
         auto = auto_send(draft, now)
         fallback = {'at': draft['at'], 'firedAt': fired_at}
-        query = {'_id': key, 'slackDraft': None, 'slackPost.at': {'$exists': False}, 'autoSend.holdBy': {'$exists': False}, 'slackFallback.firedAt': {'$ne': fired_at},
+        replaceable = [{'slackDraft': None}, {'slackDraft.notAutoSent': {'$exists': True}}, {'autoSend': None},
+                       {'autoSend.failedAt': {'$exists': True}, 'autoSend.claimedAt': {'$exists': True}}]
+        query = {'_id': key, '$or': replaceable, 'slackPost.at': {'$exists': False}, 'autoSend.holdBy': {'$exists': False}, 'slackFallback.firedAt': {'$ne': fired_at},
                  'triage': {'$nin': list(skip_triage)}}
         with self._locked():
             self._claim(None)
@@ -1735,11 +1764,6 @@ class Store:
         query = {'_id': doc_id, 'slackDraft.at': draft['at'], 'slackDraft.text': draft['text'], 'autoSend.draftAt': draft['at'], 'autoSend.at': {'$lte': now}, **AUTO_PENDING}
         return coll.find_one_and_update(query, {'$set': {'autoSend.claimedAt': now}}, return_document=ReturnDocument.AFTER)
 
-    def _auto_hold(self, coll, doc_id: str, by: str) -> dict | None:
-        query = {'_id': doc_id, 'autoSend.at': {'$exists': True}, **AUTO_PENDING}
-        doc = coll.find_one_and_update(query, {'$set': {'autoSend.holdBy': by, 'autoSend.holdAt': iso(utc_now())}}, return_document=ReturnDocument.AFTER)
-        return doc['autoSend'] if doc else None
-
     def _auto_failed(self, coll, doc_id: str, error: str) -> None:
         now = utc_now()
         doc = coll.find_one({'_id': doc_id}, {'autoSend.retries': 1}) or {}
@@ -1751,6 +1775,91 @@ class Store:
             return
         coll.update_one({'_id': doc_id}, {'$set': fields})
 
+    def _auto_skip(self, coll, doc_id: str, now: str, why: str | None = None) -> bool:
+        query = {'_id': doc_id, 'slackDraft': {'$exists': True}, **AUTO_PENDING}
+        return bool(coll.update_one(query, {'$set': {'slackSkipped': {'at': now, **({'why': why} if why else {})}}, '$unset': {'slackDraft': '', 'autoSend': ''}}).modified_count)
+
+    def _auto_rearm(self, coll, doc_id: str, draft_at: str, now: str) -> bool:
+        query = {'_id': doc_id, 'slackDraft.at': draft_at, 'autoSend.draftAt': draft_at, **AUTO_PENDING}
+        return bool(coll.update_one(query, {'$set': {'autoSend.at': now}}).modified_count)
+
+    def _draft_drop(self, coll, doc_id: str, draft_at: str) -> bool:
+        query = {'_id': doc_id, 'slackDraft.at': draft_at, 'autoSend.claimedAt': {'$exists': False}}
+        return bool(coll.update_one(query, {'$unset': {'slackDraft': '', 'autoSend': ''}}).modified_count)
+
+    def waiting_slack_drafts(self, kind: str) -> list[dict]:
+        if kind == 'report':
+            return [_with_id(r) for r in self.deploy_reports.find({'slackDraft': {'$exists': True}})]
+        return [_without_ids(a) for a in self.anomalies.find({'slackDraft': {'$exists': True}})]
+
+    def skip_auto_send(self, kind: str, doc_id: str, now: str, why: str | None = None) -> bool:
+        if kind == 'report':
+            return self._auto_skip(self.deploy_reports, doc_id, now, why)
+        with self._locked():
+            done = self._auto_skip(self.anomalies, doc_id, now, why)
+            if done:
+                self._bump()
+            return done
+
+    def rearm_auto_send(self, kind: str, doc_id: str, draft_at: str, now: str) -> bool:
+        if kind == 'report':
+            return self._auto_rearm(self.deploy_reports, doc_id, draft_at, now)
+        with self._locked():
+            done = self._auto_rearm(self.anomalies, doc_id, draft_at, now)
+            if done:
+                self._bump()
+            return done
+
+    def drop_slack_draft(self, kind: str, doc_id: str, draft_at: str) -> bool:
+        if kind == 'report':
+            return self._draft_drop(self.deploy_reports, doc_id, draft_at)
+        with self._locked():
+            done = self._draft_drop(self.anomalies, doc_id, draft_at)
+            if done:
+                self._bump()
+            return done
+
+    def requeue_anomaly_post(self, key: str, now: str) -> bool:
+        draft = (self.anomalies.find_one({'_id': key}, {'slackDraft': 1}) or {}).get('slackDraft') or {}
+        if not draft.get('at') or not draft.get('text'):
+            return False
+        query = {'_id': key, 'slackDraft.at': draft['at'], 'slackPost.ts': {'$exists': False}, 'autoSend.claimedAt': {'$exists': False}}
+        auto = {'at': now, 'draftAt': draft['at'], 'draftHash': draft_hash(draft['text']), 'force': True}
+        with self._locked():
+            done = bool(self.anomalies.update_one(query, {'$set': {'autoSend': auto}}).modified_count)
+            if done:
+                self._bump()
+            return done
+
+    def release_stale_post_claims(self, before: str, now: str, young: str) -> int:
+        released = 0
+        for coll in (self.anomalies, self.deploy_reports):
+            for doc in coll.find({'autoSend.claimedAt': {'$lt': before}, 'autoSend.failedAt': {'$exists': False}}, {'autoSend': 1, 'slackDraft.at': 1, 'slackPost.at': 1}):
+                post_at, draft_at = (doc.get('slackPost') or {}).get('at') or '', (doc.get('slackDraft') or {}).get('at') or ''
+                if post_at and draft_at and post_at >= draft_at:
+                    continue
+                claimed = doc['autoSend']['claimedAt']
+                if draft_at and draft_at < young:
+                    coll.update_one({'_id': doc['_id'], 'autoSend.claimedAt': claimed}, {'$set': {'autoSend.failedAt': now, 'autoSend.error': STALE_CLAIM_ERROR}})
+                    continue
+                released += coll.update_one({'_id': doc['_id'], 'autoSend.claimedAt': claimed}, {'$set': {'autoSend.at': now}, '$unset': {'autoSend.claimedAt': ''}}).modified_count
+        if released:
+            self._bump()
+        return released
+
+    def begin_once(self, name: str, stale_before: str) -> bool:
+        now = iso(utc_now())
+        if self.counters.update_one({'_id': name}, {'$setOnInsert': {'startedAt': now, 'done': False}}, upsert=True).upserted_id is not None:
+            return True
+        return bool(self.counters.update_one({'_id': name, 'done': False, 'startedAt': {'$lt': stale_before}}, {'$set': {'startedAt': now}}).modified_count)
+
+    def finish_once(self, name: str) -> None:
+        self.counters.update_one({'_id': name}, {'$set': {'done': True, 'doneAt': iso(utc_now())}})
+
+    def post_unrecorded(self, key: str, error: str, kind: str = 'card') -> None:
+        coll = self.deploy_reports if kind == 'report' else self.anomalies
+        coll.update_one({'_id': key, 'autoSend.claimedAt': {'$exists': True}}, {'$set': {'autoSend.failedAt': iso(utc_now()), 'autoSend.error': error[:ERROR_LIMIT]}})
+
     def due_anomaly_auto_sends(self, now: str) -> list[dict]:
         return [_without_ids(a) for a in self._auto_due(self.anomalies, now)]
 
@@ -1761,14 +1870,6 @@ class Store:
                 return None
             self._bump()
             return _without_ids(doc)
-
-    def hold_anomaly_auto_send(self, key: str, by: str) -> dict | None:
-        self._anomaly(key)
-        with self._locked():
-            held = self._auto_hold(self.anomalies, key, by)
-            if held:
-                self._bump()
-            return held
 
     def stop_anomaly_auto_send(self, key: str) -> None:
         with self._locked():
@@ -2078,6 +2179,9 @@ class Store:
             return False
         return True
 
+    def has_run(self, name: str) -> bool:
+        return self.runs.find_one({'_id': name}, {'_id': 1}) is not None
+
     def drop_run(self, name: str) -> None:
         self.runs.delete_one({'_id': name})
 
@@ -2134,11 +2238,6 @@ class Store:
     def claim_report_auto_send(self, report_id: str, draft: dict, now: str) -> dict | None:
         doc = self._auto_claim(self.deploy_reports, report_id, draft, now)
         return _with_id(doc) if doc else None
-
-    def hold_report_auto_send(self, report_id: str, by: str) -> dict | None:
-        if self.deploy_reports.find_one({'_id': report_id}, {'_id': 1}) is None:
-            raise NotFound(f'no deploy report with id {report_id}')
-        return self._auto_hold(self.deploy_reports, report_id, by)
 
     def stop_report_auto_send(self, report_id: str) -> None:
         self.deploy_reports.update_one({'_id': report_id}, {'$unset': {'autoSend': ''}})

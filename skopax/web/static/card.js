@@ -106,8 +106,9 @@
     if (!l) return '';
     var by = String(l.requestedBy || ''), who = isTokenActor(by) ? tokenActorLabel(by, 'Investigator') : by === 'Claude' ? 'Investigator' : by.split('@')[0];
     var back = Date.parse(c.firstSeen || ''), did = Date.parse(l.doneAt || l.requestedAt || ''), old = l.status === 'done' && !isNaN(back) && !isNaN(did) && did < back;
-    var head = (old ? 'Last action (before the card fired again ' + when(c.firstSeen) + '): ' : 'Last action: ') + (ACT_NAMES[l.type] || l.type) + ' \u00b7 ' + (ACT_STATES[l.status] || l.status) + (l.requestedAt ? ' \u00b7 ' + when(l.requestedAt) : '');
-    return '<span class="act-last' + (l.status === 'failed' ? ' bad' : old ? ' old' : '') + '">' + ICONS.history + line([head, who ? {data: who} : '', l.result && l.status !== 'done' ? {data: l.result} : '']) + '</span>';
+    var head = (old ? 'Before that: ' : 'Last action: ') + (ACT_NAMES[l.type] || l.type) + ' \u00b7 ' + (ACT_STATES[l.status] || l.status) + (l.requestedAt ? ' \u00b7 ' + when(l.requestedAt) : '');
+    var lead = old ? '<span class="act-again"><span>Reopened ' + esc(when(c.firstSeen)) + ' \u00b7 fired again</span></span>' : '';
+    return '<span class="act-last' + (l.status === 'failed' ? ' bad' : old ? ' old' : '') + '">' + ICONS.history + lead + line([head, who ? {data: who} : '', l.result && l.status !== 'done' ? {data: l.result} : '']) + '</span>';
   }
   function assignButton(c) {
     return '<button type="button" class="btn lnk" id="act-assign" title="Pick the card owner; its status does not change">' + (c.owner ? 'Change assignee' : 'Assign') + '</button>';
@@ -351,6 +352,7 @@
       var r = await fetch('/api/me', {headers: {'Accept': 'application/json'}, credentials: 'same-origin'});
       if (r.ok) me = Object.assign(me, await r.json());
       (me.tags || []).forEach(function (t) { if (t && typeof t.id === 'string' && typeof t.label === 'string' && t.label) TAGS[t.id] = t.label; });
+      if (typeof useTagTones === 'function') useTagTones(me.tags);
     } catch (e) {}
   }
   function merged(list) {
@@ -367,7 +369,7 @@
     document.title = '#' + c.num + ' \u00b7 ' + title(c) + ' \u00b7 ' + brandName();
     document.getElementById('num').textContent = '#' + c.num;
     if (c.key) document.getElementById('full').href = '/#a=' + encodeURIComponent(c.key);
-    var tags = (c.tags || []).map(function (t) { return '<span class="pill tag">' + esc(TAGS[t.id] || t.id) + '</span>'; }).join('');
+    var tags = (c.tags || []).map(function (t) { return '<span class="pill tag ' + (typeof tagClass === 'function' ? tagClass(t.id) : '') + '">' + esc(TAGS[t.id] || t.id) + '</span>'; }).join('');
     var shots = (c.screenshots || []).map(function (s) {
       var id = typeof s === 'string' ? s : s && s.id;
       if (!id) return '';
@@ -382,12 +384,54 @@
       runBanner(c.key) +
       (b.text ? '<section class="todo"><h2>' + (b.kind === 'info' ? 'Info' : 'Recommended') + '</h2>' + (b.why ? '<p class="why"><b>Why:</b> <span data-no-tx>' + esc(b.why) + '</span></p>' : '') + '<p class="rec" data-no-tx>' + esc(b.text) + '</p></section>' : '') +
       actions(c) +
+      '<div class="cd-tabs" role="tablist" aria-label="Card #' + esc(c.num) + '"><button type="button" class="cd-tab" role="tab" id="cdt-d" aria-controls="cd-details" data-tab="details" aria-selected="' + !histOn + '" tabindex="' + (histOn ? -1 : 0) + '">Details</button>' +
+      '<button type="button" class="cd-tab" role="tab" id="cdt-h" aria-controls="cd-hist" data-tab="history" aria-selected="' + histOn + '" tabindex="' + (histOn ? 0 : -1) + '">History</button></div>' +
+      '<div id="cd-details" role="tabpanel" aria-labelledby="cdt-d" class="cd-details"' + (histOn ? ' hidden' : '') + '>' +
       (shots ? '<div class="shots">' + shots + '</div>' : '') +
       merged(c.merged || []) +
-      '<details class="tech"' + (open ? ' open' : '') + '><summary>Technical details</summary><div class="tech-body">' + tech(c) + '</div></details>';
+      '<details class="tech"' + (open ? ' open' : '') + '><summary>Technical details</summary><div class="tech-body">' + tech(c) + '</div></details></div>' +
+      '<div id="cd-hist" role="tabpanel" aria-labelledby="cdt-h" class="cd-hist" tabindex="0"' + (histOn ? '' : ' hidden') + '>' + (histOn ? histBody(c) : '') + '</div>';
     box.querySelector('details.tech').addEventListener('toggle', function (e) { techOpen = e.target.open; });
+    wireTabs(c);
     wireActions(c);
     document.getElementById('upd').textContent = 'Updated ' + when(new Date().toISOString());
+  }
+  var histOn = false, hist = null;
+  function histBody(c) {
+    if (!hist || (hist.loading && !hist.data)) return cardHistoryHtml([], when, 'loading');
+    return cardHistoryHtml(cardHistoryRows(c, hist.data || {}, hist.runs || [], TAGS), when, hist.failed ? 'failed' : '');
+  }
+  function getJson(path) { return fetch(path, {headers: {'Accept': 'application/json'}, credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); }); }
+  function loadHist(c) {
+    if (hist && (hist.loading || Date.now() - hist.at < 30000)) return;
+    hist = Object.assign({}, hist || {}, {loading: true});
+    var paint = function () { var p = document.getElementById('cd-hist'); if (p && !p.hidden && current) p.innerHTML = histBody(current); };
+    Promise.all([getJson('/api/card-history?key=' + encodeURIComponent(c.key) + '&limit=100').then(function (d) { return {d: d}; }, function () { return {failed: true}; }),
+      getJson('/api/investigations?key=' + encodeURIComponent(c.key) + '&limit=20').catch(function () { return []; })]).then(function (got) {
+      hist = {data: got[0].d || {}, failed: !!got[0].failed, runs: (Array.isArray(got[1]) ? got[1] : []).filter(function (r) { return (r.keys || []).indexOf(c.key) >= 0; }), at: Date.now()};
+      paint();
+    });
+  }
+  function pickTab(which, focus) {
+    histOn = which === 'history';
+    box.querySelectorAll('.cd-tab').forEach(function (t) { var on = t.dataset.tab === which; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; if (on && focus) t.focus(); });
+    document.getElementById('cd-details').hidden = histOn;
+    var p = document.getElementById('cd-hist');
+    p.hidden = !histOn;
+    if (histOn && current) { p.innerHTML = histBody(current); loadHist(current); }
+  }
+  function wireTabs(c) {
+    var list = [].slice.call(box.querySelectorAll('.cd-tab'));
+    list.forEach(function (t, n) {
+      t.addEventListener('click', function () { pickTab(t.dataset.tab, false); });
+      t.addEventListener('keydown', function (e) {
+        var to = e.key === 'ArrowRight' ? (n + 1) % list.length : e.key === 'ArrowLeft' ? (n - 1 + list.length) % list.length : e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1 : -1;
+        if (to < 0) return;
+        e.preventDefault();
+        pickTab(list[to].dataset.tab, true);
+      });
+    });
+    if (histOn && c.key) loadHist(c);
   }
   function missing(text) {
     box.innerHTML = '<p class="empty">' + esc(text) + '</p>';

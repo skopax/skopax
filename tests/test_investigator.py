@@ -306,7 +306,7 @@ def test_a_configured_investigator_gets_its_job(store: Store):
 
 def test_the_pods_slack_send_does_not_post_a_card_twice(store: Store):
     # given
-    seed(store, anomaly(KEY, sev='crit'))
+    seed(store, anomaly(KEY, sev='crit', triage='handled'))
     posts = []
 
     def transport(token, payload):
@@ -315,13 +315,16 @@ def test_the_pods_slack_send_does_not_post_a_card_twice(store: Store):
 
     # when
     with TestClient(create_app(settings(), store, slack=Slack('xoxb-test', '#ops', transport, FakeSlackApi()))) as c:
+        store.anomalies.update_one({'_id': KEY}, {'$set': {'slackDraft': {'text': 'Checkout errors since 14:05.', 'by': 'Claude (pod)', 'at': iso(NOW - 60)}}})
         send = c.app.state.investigator.effects.send_slack
-        send(KEY, 'pod')
+        first = send(KEY, 'pod')
+        c.app.state.auto_send.run_once()
         with pytest.raises(ValueError):
             send(KEY, 'pod')
 
     # then
-    assert len(posts) == 1
+    assert first == {'result': 'posting to Slack now'}
+    assert len(posts) == 1, 'the worker posts the handled card once; a second send is refused'
 
 
 def test_a_pass_reaps_what_a_dead_pod_left_and_investigates_the_card_again(store: Store):
@@ -536,7 +539,7 @@ def test_an_assessment_run_writes_the_report_summary_and_draft_and_records_its_c
     assert after['investigationId'] == record['id'] and after['usd'] > 0 and after['costNote'].startswith('investigator assessment, 4 turns, 3 tool calls')
     assert [w['tool'] for w in record['writes']] == ['report_brief', 'report_slack_draft'] and store.anomaly(KEY).get('note') is None, 'card tools stay refused in an assessment'
     assert (done['id'], done['status'], done['result']) == (act['id'], 'done', 'checkout-service errors up 8x after the deploy; OPS-121 owner pinged.')
-    assert kinds[0][0] == 'assess' and kinds[0][1].startswith('deploy report assessed · 2 deploys since 05:26 UTC: 1 clean, 1 flagged · $') and not kinds[0][1].endswith('numbers draft armed')
+    assert kinds[0][0] == 'assess' and kinds[0][1].startswith('deploy report assessed · 2 deploys since 05:26 UTC: 1 clean, 1 flagged · $') and not kinds[0][1].endswith('numbers post queued')
     assert kinds[-1] == ('run', 'assessing deploy report · 2 deploys since 05:26 UTC: 1 clean, 1 flagged')
 
 
@@ -555,7 +558,7 @@ def test_a_shadow_assessment_leaves_the_numbers_draft_to_go_out_and_still_record
     assert record['outcome'] == 'done' and record['writes'][0]['proposed'] is True
     assert after['slackDraft']['text'] == '22.10 deploy check: 2 services, 1 clean, 1 flagged.' and after['slackDraft']['by'] == 'server' and after['autoSend']['at'], 'the numbers draft is armed since the run saved none'
     assert after['investigationId'] == record['id'] and after['usd'] > 0
-    assert store.list_activity(None, 5)[0]['text'].endswith('numbers draft armed')
+    assert store.list_activity(None, 5)[0]['text'].endswith('numbers post queued')
 
 
 def test_a_report_brief_with_points_as_a_string_is_refused_and_the_array_sent_again_is_saved(store: Store):
@@ -662,7 +665,7 @@ def test_a_reassessment_never_overrides_a_hold_on_an_unposted_report(store: Stor
     # given
     seed(store, anomaly(KEY), history=[])
     report = seeded_report(store, armed=True)
-    store.hold_report_auto_send(report['id'], 'op@example.com')
+    store.deploy_reports.update_one({'_id': report['id']}, {'$set': {'autoSend.holdBy': 'op@example.com', 'autoSend.holdAt': iso(NOW)}})
     before = store.deploy_report(report['id'])
     assess_action(store, report['id'])
     inv = investigator(store, [reply(tool('report_slack_draft', {'text': 'New draft.'})), reply(text('Nothing.'), stop='end_turn')])
@@ -692,7 +695,7 @@ def test_a_reassessment_does_not_rearm_or_replace_a_draft_an_operator_edited(sto
     refused = json.dumps(inv.client.requests[1]['messages'][-1]['content'])
 
     # then
-    assert 'edited by an operator' in refused
+    assert 'set by an operator' in refused
     assert after['slackDraft'] == before['slackDraft'] and not (after.get('autoSend') or {}).get('at')
 
     # given
@@ -770,9 +773,9 @@ def first_brief(inv) -> str:
     ({'slackPost': {'ts': '1.2', 'at': iso(NOW - 1800), 'channel': 'C1', 'by': 'auto'}},
      '  Slack: checkout-service was already announced in the main channel on `log|b|ERROR|y` (posted); no second post for the same service within 6 h unless the new card is more severe, '
      'so slack_draft on this card is refused: reply there with slack_update on that card instead'),
-    ({'slackDraft': {'text': 'Errors went up.', 'by': 'Claude (pod)', 'at': iso(NOW - 600)}},
-     '  Slack: checkout-service was already announced in the main channel on `log|b|ERROR|y` (draft waiting to post); no second post for the same service within 6 h unless the new card is more severe, '
-     'so slack_draft on this card is refused: leave it, the waiting draft covers it'),
+    ({'slackDraft': {'text': 'Errors went up.', 'by': 'Claude (pod)', 'at': iso(NOW - 600)}, 'autoSend': {'at': iso(NOW - 600), 'draftAt': iso(NOW - 600), 'draftHash': 'h'}},
+     '  Slack: checkout-service was already announced in the main channel on `log|b|ERROR|y` (post on its way); no second post for the same service within 6 h unless the new card is more severe, '
+     'so slack_draft on this card is refused: leave it, the post on its way covers it'),
 ])
 def test_a_card_run_brief_says_when_the_service_was_already_announced(store: Store, twin, line):
     # given

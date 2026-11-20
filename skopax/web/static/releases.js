@@ -174,19 +174,18 @@ function initReports() {
       shotsHtml({screenshots: repShots(r), startedAt: (r.brief || {}).at || r.createdAt}));
   }
   function slackTag(r) {
-    var d = draftOf(r), p = r.slackPost, s = autoArmed(r), t;
-    if (d && !draftSent(r)) {
-      t = el('span', 'tag k-act slack-rec' + (s ? ' armed' : ''), ICON_SEND + esc(s ? autoLabel(s) : 'Slack recommended'));
-      t.title = d.text + '\n\n' + draftBy(d.by) + ' \u00b7 ' + dayhm(d.at) + (s ? ' \u00b7 posts itself to Slack within 30 s of ' + hm(s.at) + ' unless someone presses Hold' :' \u00b7 Copy and Edit next to Send draft to Slack') + statusTip(r, false);
+    var d = draftOf(r), p = r.slackPost, t, why = notPosted(r, false);
+    if (d && !draftSent(r) && why) {
+      t = el('span', 'tag k-warn slack-rec not-posted', ICON_SEND + esc(why));
+      t.title = d.text + '\n\n' + draftBy(d.by) + ' \u00b7 ' + dayhm(d.at) + statusTip(r, false);
+    } else if (r.slackSkipped && !p) {
+      t = el('span', 'tag k-muted slack-rec not-posted', ICON_SEND + esc(skippedText(r)));
+      t.title = skippedTip(r);
     } else if (p) {
       t = el('span', 'tag k-good slack-rec sent', ICON_SEND + slackLink(p.permalink, 'Sent to Slack ' + dayhm(p.at)));
       t.title = 'Posted to Slack ' + dayhm(p.at) + ' by ' + draftBy(p.by) + (p.draft && d ? '\n\n' + d.text : '');
     }
     return t || null;
-  }
-  function draftForm(r) {
-    return el('div', 'reason draft-form', '<textarea data-id="' + esc(r.id) + '" maxlength="1500" rows="4" aria-label="Slack draft for this deploy report" placeholder="Empty and Save removes the draft">' + esc(draftOf(r).text) + '</textarea>' +
-      '<button type="button" class="btn small op-btn draft-save">Save</button><button type="button" class="btn sec small draft-cancel">Cancel</button>');
   }
   function committers(x) {
     var d = depBy[x.svc + '|' + x.toImage], by = d && d.imageBy;
@@ -215,11 +214,6 @@ function initReports() {
     var acts = el('div', 'rep-acts');
     acts.__rep = r;
     body.appendChild(acts);
-    if (draftOf(r)) {
-      var form = draftForm(r);
-      form.hidden = true;
-      body.appendChild(form);
-    }
     if (rows.length) {
       var tb = rows.map(function (x) {
         var dep = depBy[x.svc + '|' + x.toImage];
@@ -442,18 +436,6 @@ function initReports() {
     renderSlackQ();
     if (repActs) repActs(repBox);
   }
-  function keepForms() {
-    return [].map.call(repBox.querySelectorAll('.draft-form:not([hidden]) textarea'), function (t) { return [t.dataset.id, t.value, t === document.activeElement]; });
-  }
-  function restoreForms(kept) {
-    kept.forEach(function (k) {
-      var t = [].filter.call(repBox.querySelectorAll('.draft-form textarea'), function (x) { return x.dataset.id === k[0]; })[0];
-      if (!t) return;
-      t.closest('.draft-form').hidden = false;
-      t.value = k[1];
-      if (k[2]) t.focus({preventScroll: true});
-    });
-  }
   var bodies = [null, null], last = null, lastAt = 0;
   function urls() { return ['/api/deploys?days=' + days, '/api/deploy-reports?limit=' + repLimit]; }
   async function fetchBody(u, i) {
@@ -476,9 +458,7 @@ function initReports() {
     var key = days + '\n' + repLimit + '\n' + ME_GITLAB + '\n' + bodies.join('\n');
     if ((key !== last || (flipAt && Date.now() >= flipAt)) && !repBox.querySelector('[data-confirm]')) {
       last = key;
-      var kept = keepForms();
       render(bodies[0] == null ? null : JSON.parse(bodies[0]), bodies[1] == null ? null : JSON.parse(bodies[1]), fresh[0]);
-      restoreForms(kept);
     }
     loaded = true;
     if (want && n > want.seq) land();

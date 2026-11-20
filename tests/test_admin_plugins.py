@@ -99,7 +99,7 @@ def test_catalog_lists_every_plugin_with_state_and_reason(store):
     assert rows['demo']['category'] == 'other' and rows['demo']['edition'] == 'community' and rows['demo']['setup'] is None
     assert rows['enterprise-demo']['state'] == 'locked' and rows['enterprise-demo']['reason'] == msg('plugins.needs_edition', name='Enterprise demo', edition='Enterprise')
     broken = rows['tests.plugins.broken_plugin']
-    assert 'ImportError' in broken['reason'] and set(broken) == {'id', 'module', 'reason', 'origin'} and broken['origin'] == 'env'
+    assert 'ImportError' in broken['reason'] and set(broken) == {'id', 'module', 'reason', 'origin', 'standing'} and broken['origin'] == 'env' and broken['standing'] == 'failed'
 
 
 def test_each_plugin_row_says_where_it_came_from_and_only_custom_ones_name_the_module(store):
@@ -945,8 +945,8 @@ def test_a_plugin_broken_after_it_loaded_still_says_whether_it_is_switched_on(st
         off = c.put('/api/admin/plugins/demo', json={'enabled': False}, headers=AUTH)
 
     # then
-    assert set(row) == {'id', 'module', 'reason', 'enabled', 'origin'} and row['enabled'] is True
-    assert off.status_code == 200 and set(off.json()) == {'id', 'module', 'reason', 'enabled', 'origin'} and off.json()['enabled'] is False
+    assert set(row) == {'id', 'module', 'reason', 'enabled', 'origin', 'standing'} and row['enabled'] is True and row['standing'] == 'failed'
+    assert off.status_code == 200 and set(off.json()) == {'id', 'module', 'reason', 'enabled', 'origin', 'standing'} and off.json()['enabled'] is False and off.json()['standing'] == 'failed'
 
 
 def test_an_instance_made_again_under_the_same_name_runs_every_check_it_watches_at_once(store):

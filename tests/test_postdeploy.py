@@ -95,7 +95,7 @@ def test_a_settled_release_becomes_a_report_with_flags_released_issues_and_an_ar
     assert (done['id'], done['status'], done['result'], done['reportId']) == (act['id'], 'done', report['summary'], report['id'])
     assert report['actionId'] == act['id'] and report['requestedBy'] == 'auto · release settled'
     assert (report['usd'], report['costNote']) == (0.0, 'Prometheus and Jira queries only, no model'), 'the report says what it cost: nothing'
-    assert lines == [f"post-deploy check · {report['summary']} · Slack draft armed"]
+    assert lines == [f"post-deploy check · {report['summary']} · Slack post queued"]
 
 
 def test_a_click_without_a_release_checks_the_last_six_hours_and_an_empty_window_just_closes_the_action(store: Store):
@@ -183,4 +183,20 @@ def test_with_the_investigator_available_the_numbers_draft_waits_and_an_assessme
     assert report['slackDraft']['by'] == 'server · numbers' and 'autoSend' not in report, 'the numbers draft is saved but not armed'
     assert [(a['type'], a['status']) for a in actions] == [('assess', 'requested'), ('postdeploy', 'done')]
     assert actions[0]['reportId'] == saved['id'] and actions[0]['label'].startswith('Assess deploy report: 1 deploys since')
-    assert store.list_activity(None, 5)[0]['text'].endswith('assessment queued for the investigator, its draft waits')
+    assert store.list_activity(None, 5)[0]['text'].endswith('assessment queued for the investigator, its post waits')
+
+
+def test_with_slack_auto_send_off_the_report_queues_no_slack_text(store: Store):
+    # given
+    store.add_deploys([{'ns': NS, 'svc': 'checkout-service', 'fromImage': 'aaaaaaaa', 'toImage': 'bbbbbbbb', 'at': at(3600)}])
+    settled_action(store, 3600, 1800)
+    values = {('checkout-service', 'req', 0): 900, ('checkout-service', 'req', 1): 850, ('checkout-service', 'req', 7): 800}
+    pd = PostDeploy(store, only(prom(values)), FakeJira([]), base_url='https://skopax.example.com', clock=lambda: NOW, autopost=lambda: False)
+
+    # when
+    saved = pd.run_once(NOW)
+    report = store.deploy_report(saved['id'])
+
+    # then
+    assert 'slackDraft' not in report and 'autoSend' not in report and 'slackSkipped' not in report
+    assert store.list_activity(None, 5)[0]['text'].endswith('Slack auto-send is off, not posted')

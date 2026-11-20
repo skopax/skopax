@@ -31,7 +31,7 @@ async function boot(num, answer, who, brand, blob) {
         if (opts && opts.method === 'POST') { posts.push([String(p), JSON.parse(opts.body)]); return {ok: true, status: 201, json: async () => ({})}; }
         if (String(p).startsWith('/api/jira/search')) { hits.push(String(p)); return {ok: true, status: 200, json: async () => [{key: 'OPS-144', summary: 'SEO metadata fetch cache', status: 'In UAT', developer: 'Bob Stone'}]}; }
         hits.push(String(p));
-        const body = answer();
+        const body = answer(String(p));
         if (body === 404) return {ok: false, status: 404, json: async () => ({detail: 'no card'})};
         return {ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body))};
       };
@@ -114,7 +114,7 @@ async function aTechnicalCardOpensItsDetailsAndAMissingOneSaysSo() {
   assert.strictEqual(statusOf(fixing.doc), 'In progress \u00b7 OPS-12 \u00b7 stopped ' + short(AT), 'a stopped card in progress stays in progress');
   assert.strictEqual(statusOf(dived.doc), 'Open \u00b7 first seen ' + short(AT) + ' \u00b7 investigated \u00b7 waiting to be addressed', 'the investigation is a property of an open card');
   assert.ok(dived.doc.getElementById('state').classList.contains('crit'));
-  assert.strictEqual(refired.doc.querySelector('.act-last').textContent, 'Last action (before the card fired again ' + short('2026-11-12T04:24:00Z') + '): Resolve \u00b7 done \u00b7 ' + short(AT) + ' \u00b7 bob', 'a resolve from before the card fired again says so');
+  assert.strictEqual(refired.doc.querySelector('.act-last').textContent, 'Reopened ' + short('2026-11-12T04:24:00Z') + ' \u00b7 fired againBefore that: Resolve \u00b7 done \u00b7 ' + short(AT) + ' \u00b7 bob', 'a re-fired card leads with Reopened, then the resolve before it');
   assert.ok(statusOf(refired.doc).startsWith('Open \u00b7 first seen ' + short('2026-11-12T04:24:00Z')));
   [tech, gone, none, calm, fixing, dived, refired].forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
   console.log('PASS a technical card opens its details, an in-progress one names its ticket, a closed one says when it was last seen, and an unknown number says so');
@@ -191,6 +191,27 @@ async function theCardPageShowsTimesInTheViewersOwnZone() {
   console.log('PASS the card page shows times in the viewer own zone, ' + zone + ' for a card first seen at 10:00 UTC');
 }
 
+async function theCardPageHasAHistoryTabWithTheTimeline() {
+  //given
+  const key = 'log|checkout-service|ERROR|x';
+  const hist = {actions: [{id: 'a1', type: 'take', target: key, status: 'done', requestedBy: 'alice@example.com', requestedAt: '2026-07-01T11:00:00Z', doneAt: '2026-07-01T11:00:00Z'}],
+    activity: [{id: 'v1', kind: 'tags', who: 'alice@example.com', t: '2026-07-01T12:00:00Z', key, text: 'tagged SEO \u00b7 ' + key}]};
+  const {w, doc, errors, hits} = await boot(21, (p) => (p.startsWith('/api/card-history') ? hist : p.startsWith('/api/investigations') ? [] :
+    {num: 21, key, svc: 'checkout-service', label: 'ERROR lines', sev: 'warn', status: 'open', firstSeen: '2026-07-01T10:00:00Z', live: true}));
+  const tabs = () => [...doc.querySelectorAll('[role="tablist"] [role="tab"]')];
+  //when
+  tabs()[0].dispatchEvent(new w.KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+  await wait(60);
+  //then
+  assert.deepStrictEqual(tabs().map((t) => [t.textContent, t.getAttribute('aria-selected')]), [['Details', 'false'], ['History', 'true']]);
+  assert.strictEqual(doc.getElementById('cd-details').hidden, true);
+  assert.deepStrictEqual([...doc.querySelectorAll('#cd-hist li .h-what')].map((x) => x.textContent), ['Tagged SEO', 'Started progress', 'Fired']);
+  assert.ok(hits.some((h) => h === '/api/card-history?key=' + encodeURIComponent(key) + '&limit=100'));
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS the card page has Details and History tabs and History lists the card timeline newest first');
+}
+
 async function theCardTagsUseTheServerLabelsAndAnUnknownIdStaysText() {
   //given
   const odd = '<i>odd</i>';
@@ -231,7 +252,7 @@ async function theCardPageFollowsTheAttributionRule() {
   assert.strictEqual(slot.getAttribute('href'), null);
   slotted.w.close();
   assert.deepStrictEqual(missing.errors, []);
-  assert.strictEqual(missing.doc.getElementById('attribution').textContent, 'Skopax 0.4.3 \u00b7 skopax.io');
+  assert.strictEqual(missing.doc.getElementById('attribution').textContent, 'Skopax 0.4.4 \u00b7 skopax.io');
   assert.strictEqual(missing.doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
   hidden.w.close();
   missing.w.close();
@@ -318,6 +339,7 @@ async function aClearedNoteFromAPluginShowsAsTextOnTheCard() {
 
 (async () => {
   await theCardPageShowsTimesInTheViewersOwnZone();
+  await theCardPageHasAHistoryTabWithTheTimeline();
   await aClearedNoteFromAPluginShowsAsTextOnTheCard();
   await operatorsGetTheCardActionsAndOthersAReadOnlyCard();
   await aBusinessCardLeadsWithTheActionAndFoldsTheTechnicalPart();

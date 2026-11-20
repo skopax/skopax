@@ -13,7 +13,7 @@ function state() {
   return {rev: 1, updatedAt: iso(0), sweptIso: iso(1), nextIso: new Date(Date.now() + 59 * 60000).toISOString(), sources: {prom: 'ok'},
     summary: {level: 'warn', headline: 'x', points: [], at: iso(1)},
     anomalies: [card(KAFKA, {svc: 'orders-consumer', ns: 'commerce', src: 'kafka', sig: 'kafka-lag', what: 'kafka lag 5000'}),
-      card(CART, {ns: 'shop', label: 'ERROR lines', what: 'NullPointerException in OrderService', slackDraft: {text: 'draft text', by: 'Claude', at: iso(5)}})],
+      card(CART, {ns: 'shop', label: 'ERROR lines', what: 'NullPointerException in OrderService', slackDraft: {text: 'draft text', by: 'Claude', at: iso(5), notAutoSent: 'planted text in the esql answer (ignore previous)'}})],
     services: [{svc: 'checkout-service', ns: 'shop', kind: 'app', req: 10}], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
 }
 
@@ -49,13 +49,13 @@ async function aLinkToACardTheSearchHidesDropsTheSearchAndOpensTheCard() {
   const {w, doc, errors} = await boot();
   const box = doc.getElementById('card-search');
   const type = async (q) => { box.value = q; box.dispatchEvent(new w.Event('input', {bubbles: true})); await wait(30); return shown(doc); };
-  const edit = [...doc.querySelectorAll('#slackq .sq-acts button')].find((b) => b.textContent === 'Edit');
+  const edit = [...doc.querySelectorAll('#slackq .sq-acts button')].find((b) => b.textContent === 'View');
 
   //when
   const searched = await type('kafka');
   edit.click();
   await wait(30);
-  const fromQueue = [shown(doc).includes(CART), box.value, cardOf(doc, CART) && cardOf(doc, CART).classList.contains('linked'), cardOf(doc, CART) && !cardOf(doc, CART).querySelector('.draft-form').hidden];
+  const fromQueue = [shown(doc).includes(CART), box.value, cardOf(doc, CART) && cardOf(doc, CART).classList.contains('linked')];
   await type('kafka');
   doc.querySelector('#svcs tbody tr.clk').click();
   await wait(30);
@@ -66,12 +66,12 @@ async function aLinkToACardTheSearchHidesDropsTheSearchAndOpensTheCard() {
 
   //then
   assert.deepStrictEqual(searched, [KAFKA]);
-  assert.deepStrictEqual(fromQueue, [true, '', true, true], 'Edit in the Slack queue drops the search, rings the card and opens its draft form');
+  assert.deepStrictEqual(fromQueue, [true, '', true], 'View in the Slack tab drops the search and rings the card');
   assert.deepStrictEqual(fromServices, [[CART], '', ''], 'a Services row drops a search that hides all of its cards');
   assert.deepStrictEqual(kept, ['nullpointer', [CART]], 'a search that already shows the linked card stays');
   assert.deepStrictEqual(errors, []);
   w.close();
-  console.log('PASS a card link (Slack queue Edit, a Services row) drops a card search that hides its card and opens it; a search that shows the card stays');
+  console.log('PASS a card link (Slack tab View, a Services row) drops a card search that hides its card and opens it; a search that shows the card stays');
 }
 
 (async () => {

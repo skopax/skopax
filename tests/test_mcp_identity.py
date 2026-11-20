@@ -37,7 +37,7 @@ PAUL = 'paul.stone@example.com'
 SITE = 'https://skopax.example.com'
 SETTINGS = '/api/admin/settings'
 ROLE_MAP = json.dumps([{'value': 'ops-admins', 'role': 'admin'}, {'value': 'ops-operators', 'role': 'operator'}, {'value': 'ops-viewers', 'role': 'viewer'}])
-VIEWER_TOOLS = ['list_cards', 'get_card', 'get_investigation', 'investigator_status', 'list_deploy_reports', 'list_my_asks', 'get_ask', 'list_notifications']
+VIEWER_TOOLS = ['list_cards', 'get_card', 'get_investigation', 'investigator_status', 'list_deploy_reports', 'list_my_asks', 'get_ask', 'list_notifications', 'about']
 OPERATOR_TOOLS = ['investigate_card', 'ask', 'take_card', 'resolve_card', 'mute_card', 'reopen_card', 'assign_card', 'link_ticket']
 MCP_KEYS = ('mcp.client-id', 'mcp.audience', 'mcp.required-role', 'mcp.issuer', 'mcp.scope', 'mcp.resource-url', 'mcp.allowed-clients')
 

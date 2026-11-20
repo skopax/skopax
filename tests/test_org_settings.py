@@ -167,8 +167,8 @@ def test_the_token_request_carries_the_configured_headers(monkeypatch):
 
 def test_the_mcp_instructions_name_the_board_and_its_address():
     # then
-    assert instructions('https://w.example.com').startswith('Skopax is a production health board (https://w.example.com).')
-    assert instructions('').startswith('Skopax is a production health board. ')
+    assert 'Skopax is a production health board (https://w.example.com).' in instructions('https://w.example.com')
+    assert 'Skopax is a production health board. ' in instructions('')
 
 
 def test_the_time_helpers_follow_the_local_clock():

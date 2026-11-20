@@ -91,23 +91,30 @@ function autoArmed(x) {
   var s = x.autoSend, d = draftOf(x);
   return s && s.at && !s.holdBy && !s.claimedAt && d && s.draftAt === d.at && !draftSent(x) ? s : null;
 }
-function autoLabel(s) { return Date.parse(s.at) <= Date.now() ? 'Auto-send now' : 'Auto-send ' + hm(s.at); }
+var OLD_TEXT = 'Not posted: the text was more than an hour old when Slack was ready';
+function skippedText(x) { return (x.slackSkipped || {}).why === 'old' ? OLD_TEXT : SKIPPED_TEXT; }
+function skippedTip(x) { return (x.slackSkipped || {}).why === 'old' ? OLD_TEXT : SKIPPED_TIP; }
+var SKIPPED_TEXT = 'Not posted: auto-send is off', SKIPPED_TIP = 'The investigator wanted to post this to Slack, but Slack auto-send is off in Admin > Features. Send to Slack still posts it by hand.';
+function postFailed(x) { var s = x.autoSend || {}; return s.failedAt && s.claimedAt ? s : null; }
+function notPosted(x, card) {
+  var d = draftOf(x);
+  if (!d || draftSent(x)) return '';
+  var failed = postFailed(x);
+  if (failed) return 'Slack post failed' + (failed.error ? ': ' + failed.error : '');
+  if (d.notAutoSent) return 'Not posted: the run read suspicious text';
+  return '';
+}
 function draftStatus(x, card) {
   var d = draftOf(x);
   if (!d || draftSent(x)) return '';
-  var s = x.autoSend || {}, off = ME_FEATURES['slack-autosend'] === false;
-  if (s.claimedAt) return 'Sending now';
-  if (card !== false && x.key && (done(x) || !draftLive(x))) {
-    if (x.triage === 'progress') return 'Not sent: the card went In progress, so it waits for a person';
-    if (!s.holdBy && !s.failedAt) return autoArmed(x) ? 'Not sent: the card stopped, was muted, merged or resolved before the timer' : 'Not sent: the card stopped, was muted, merged or resolved, so it waits for a person';
-  }
-  if (s.holdBy) return 'Held by ' + draftBy(s.holdBy) + ' at ' + hm(s.holdAt);
-  if (s.failedAt) return 'Slack refused the post' + (s.error ? ': ' + s.error : '');
-  if (d.notAutoSent) return 'Waiting for a person: the run read ' + d.notAutoSent;
-  if (off) return 'Auto-send is off in Admin';
-  var armed = autoArmed(x);
-  if (armed) return 'Sends by itself at ' + hm(armed.at) + ' unless someone holds it';
-  return 'Waiting for a person: send it with the button';
+  var s = x.autoSend || {}, why = notPosted(x, card);
+  if (why) return why + (d.notAutoSent && !postFailed(x) ? ' (' + d.notAutoSent + '); check it and use Send to Slack' : '; use Send to Slack to try again');
+  var stopped = 'Not posted: the card stopped, was muted, merged or resolved first; Send to Slack still posts it';
+  if (card !== false && x.key && !s.claimedAt && (done(x) || !draftLive(x))) return stopped;
+  if (s.failedAt && !s.claimedAt && s.at) return 'Slack post failed' + (s.error ? ': ' + s.error : '') + '; trying again at ' + hm(s.at);
+  if (autoArmed(x) && ME_FEATURES['slack-autosend'] === false) return SKIPPED_TEXT;
+  if (s.claimedAt || autoArmed(x)) return 'Posting to Slack now';
+  return stopped;
 }
 function linkify(t) {
   return String(t).split(/(https:\/\/[^\s<>"']+)/).map(function (p, j) {
@@ -119,8 +126,7 @@ function linkify(t) {
 }
 var ICON_SEND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
 function statusTip(x, card) { var t = x ? draftStatus(x, card) : ''; return t ? '\n' + t : ''; }
-function draftTip(d, x) { return d.text + '\n\n' + draftBy(d.by) + ' \u00b7 ' + dayhm(d.at) + ' \u00b7 full text and Edit in the expanded card' + statusTip(x); }
-function armedTip(d, s, x) { return d.text + '\n\n' + draftBy(d.by) + ' \u00b7 ' + dayhm(d.at) + ' \u00b7 posts itself to Slack within 30 s of ' + hm(s.at) + ' unless someone presses Hold; full text and Edit in the expanded card' + statusTip(x); }
+function draftTip(d, x) { return d.text + '\n\n' + draftBy(d.by) + ' \u00b7 ' + dayhm(d.at) + statusTip(x) + '\nFull text in the expanded card'; }
 var ICON_LINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
 function copyUrl(url, b) {
   var word = b.querySelector('.lbl') ? 'lbl' : 'sr';
@@ -141,22 +147,18 @@ function teamsTag(posts) {
 function goneText(a) { return 'The page answers HTTP ' + a.gone.status + ' since ' + dayhm(a.gone.since) + ': if it was taken down on purpose, Resolve this card.'; }
 function draftTag(a) {
   var d = draftOf(a), p = a.slackPost;
-  if (!d) return '';
+  if (!d) return a.slackSkipped && !p ? '<span class="tag k-muted slack-rec not-posted" title="' + esc(skippedTip(a)) + '">' + ICON_SEND + esc(skippedText(a)) + '</span>' : '';
   if (draftSent(a)) return '<span class="tag k-good slack-rec sent" title="' + esc('Posted to Slack ' + dayhm(p.at) + ' by ' + draftBy(p.by, d.by) + '\n\n' + d.text) + '">' + ICON_SEND + slackLink(p.permalink, 'Sent to Slack ' + dayhm(p.at)) + '</span>';
-  if (!draftLive(a)) return '<span class="tag k-muted slack-rec stopped" title="' + esc((a.triage === 'progress' ? 'This card is in progress, so the draft is probably out of date;' : 'This card is handled, muted or cleared, so the draft is probably out of date;') + ' it is not counted under Slack drafts, and the auto-send is off. Send to Slack would still post it.' + statusTip(a) + '\n\n' + d.text) + '">' + ICON_SEND + 'Draft (stopped)</span>';
-  var armed = autoArmed(a);
-  if (armed) return '<span class="tag k-act slack-rec armed" title="' + esc(armedTip(d, armed, a)) + '">' + ICON_SEND + esc(autoLabel(armed)) + '</span>';
-  return '<span class="tag k-act slack-rec" title="' + esc(draftTip(d, a)) + '">' + ICON_SEND + 'Slack recommended</span>';
+  var why = notPosted(a);
+  if (why) return '<span class="tag k-warn slack-rec not-posted" title="' + esc(draftTip(d, a)) + '">' + ICON_SEND + esc(why) + '</span>';
+  return '';
 }
 function draftHtml(a, i) {
   var d = draftOf(a);
   if (!d) return '';
-  return '<section class="sdraft"><div class="sdraft-h"><h5>Slack draft<span class="h5n sdraft-by">' + esc(draftBy(d.by)) + ' · ' + esc(dayhm(d.at)) + '</span></h5>' +
-    '<button type="button" class="btn sec small draft-copy" title="Copy the draft text, e.g. to send it to one person instead of the channel">Copy</button>' +
-    '<button type="button" class="btn sec small op-btn draft-edit" data-tip="Edit the message Send to Slack posts" title="Edit the message Send to Slack posts">Edit</button></div>' +
-    '<p class="sdraft-t">' + linkify(d.text) + '</p>' + (draftStatus(a) ? '<p class="sdraft-status muted">' + esc(draftStatus(a)) + '</p>' : '') + shotsHtml({screenshots: d.screenshots, startedAt: d.at}) +
-    '<div class="reason draft-form" hidden><textarea id="draft-' + i + '" maxlength="1500" rows="4" aria-label="Slack draft for ' + esc(a.svc + ' ' + a.label) + '" placeholder="Empty and Save removes the draft">' + esc(d.text) + '</textarea>' +
-    '<button type="button" class="btn small op-btn draft-save">Save</button><button type="button" class="btn sec small draft-cancel">Cancel</button></div></section>';
+  return '<section class="sdraft"><div class="sdraft-h"><h5>Slack post<span class="h5n sdraft-by">' + esc(draftBy(d.by)) + ' · ' + esc(dayhm(d.at)) + '</span></h5>' +
+    '<button type="button" class="btn sec small draft-copy" title="Copy the text, e.g. to send it to one person instead of the channel">Copy</button></div>' +
+    '<p class="sdraft-t">' + linkify(d.text) + '</p>' + (draftStatus(a) ? '<p class="sdraft-status muted">' + esc(draftStatus(a)) + '</p>' : '') + shotsHtml({screenshots: d.screenshots, startedAt: d.at}) + '</section>';
 }
 function numLink(a) {
   if (!a.num) return '';
@@ -174,7 +176,7 @@ function bizLead(b) { return b && b.kind === 'info' ? 'Info' : 'Recommended'; }
 function bizTags(a) {
   return (a.tags || []).map(function (t) {
     var tip = tagName(t.id) + ' · tagged by ' + tagBy(t) + ' ' + dayhm(t.at) + (TECH_TAGS[t.id] ? '\n\nTo fix this card, ' + TECH_TAGS[t.id] : a.business && a.business.text ? '\n\n' + (a.business.why ? 'Why: ' + a.business.why + '\n' : '') + bizLead(a.business) + ': ' + a.business.text : '\n\nNo action written yet, so nothing goes to Teams');
-    return '<span class="tag biz-tag tcol t-' + esc(t.id) + (TECH_TAGS[t.id] ? ' tech-tag' : '') + '" title="' + esc(tip) + '">' + esc(tagName(t.id)) + '</span>';
+    return '<span class="tag biz-tag ' + tagClass(t.id) + (TECH_TAGS[t.id] ? ' tech-tag' : '') + '" title="' + esc(tip) + '">' + esc(tagName(t.id)) + '</span>';
   }).join('');
 }
 function bizHtml(a, i) {
@@ -184,17 +186,38 @@ function bizHtml(a, i) {
     var tip = t ? tagName(id) + ': tagged by ' + tagBy(t) + ' ' + dayhm(t.at) + '. Click to remove; the rules and the investigator then leave it off'
       : (TECH_TAGS[id] ? 'Tag as ' + tagName(id) + ': ' + TECH_TAGS[id] + '. The card goes in full, once, to a Teams channel whose route takes tag:' + id + '; it needs no sentence'
         : 'Tag for ' + tagName(id) + ': the card goes to its Teams channel once, when it has a business sentence') + (off.indexOf(id) >= 0 ? ' (someone removed this tag earlier)' : '');
-    return '<button type="button" class="btn sec small op-btn biz-tb" data-tag="' + esc(id) + '" aria-pressed="' + (t ? 'true' : 'false') + '" data-tip="' + esc(tip) + '" title="' + esc(tip) + '">' + esc(tagName(id)) + '</button>';
+    return '<button type="button" class="btn sec small op-btn biz-tb ' + tagClass(id) + '" data-tag="' + esc(id) + '" aria-pressed="' + (t ? 'true' : 'false') + '" data-tip="' + esc(tip) + '" title="' + esc(tip) + '">' + esc(tagName(id)) + '</button>';
   }).join('');
   var editTip = 'Write why it matters (Why, shown first), then what you recommend the business team does (Recommended) or what they only need to know (Info): plain language, no technical detail';
-  return '<section class="biz"><div class="biz-h"><h5>Tags' + (b.text ? '<span class="h5n biz-by">' + esc(tagBy(b)) + ' · ' + esc(dayhm(b.at)) + '</span>' : '') + '</h5>' +
-    '<span class="biz-tbs">' + btns + '</span><button type="button" class="btn sec small op-btn biz-edit" data-tip="' + esc(editTip) + '" title="' + esc(editTip) + '">' + (b.text ? 'Edit' : 'Write') + '</button></div>' +
+  var n = bizNote(a);
+  return '<section class="biz"><div class="biz-h"><h5>Tags</h5><span class="biz-tbs">' + btns + '</span></div>' +
+    '<div class="biz-note"><div class="biz-nh"><h5>Business note' + (b.text ? '<span class="h5n biz-by">' + esc(tagBy(b)) + ' \u00b7 ' + esc(dayhm(b.at)) + '</span>' : '') + '</h5>' +
+    '<button type="button" class="btn sec small op-btn biz-edit" data-tip="' + esc(editTip) + '" title="' + esc(editTip) + '"' + (n.button ? '' : ' hidden') + '>' + esc(n.button) + '</button></div>' +
     '<p class="biz-why"' + (b.text && b.why ? '' : ' hidden') + '><b>Why:</b> ' + esc(b.why || '') + '</p>' +
-    '<p class="biz-txt' + (b.text ? '' : ' muted') + '">' + (b.text ? '<b>' + bizLead(b) + ':</b> ' + esc(b.text) : on.length ? 'No action written yet: nothing goes to Teams until one is written.' : 'Not tagged for a business team.') + '</p>' +
+    '<p class="biz-txt' + (b.text ? '' : ' muted') + (n.hint ? ' biz-hint' : '') + '">' + (b.text ? '<b>' + bizLead(b) + ':</b> ' + esc(b.text) : esc(n.empty)) + '</p>' +
     '<div class="reason biz-form" hidden><textarea id="biz-' + i + '" maxlength="500" rows="2" aria-label="What we recommend the business team does, for ' + esc(a.svc + ' ' + a.label) + '" placeholder="Recommended: a recommendation, e.g. we recommend changing the product page title back to Garden Chairs. Empty and Save removes it.">' + esc(b.text || '') + '</textarea>' +
     '<input type="text" class="biz-why-in" maxlength="300" aria-label="Why, in business terms" placeholder="Why, shown first: what users see or lose" value="' + esc(b.why || '') + '">' +
     '<select class="biz-kind" aria-label="Action or information" title="Recommended: we recommend the team changes something itself. Info: the team only needs to know, engineering fixes it."><option value="action"' + (b.kind === 'info' ? '' : ' selected') + '>Recommended: they act</option><option value="info"' + (b.kind === 'info' ? ' selected' : '') + '>Info: they only need to know</option></select>' +
-    '<button type="button" class="btn small op-btn biz-save">Save</button><button type="button" class="btn sec small biz-cancel">Cancel</button></div></section>';
+    '<button type="button" class="btn small op-btn biz-save">Save</button><button type="button" class="btn sec small biz-cancel">Cancel</button></div></div></section>';
+}
+var BIZ_HINT = 'Tag a business team to write a note';
+var BIZ_EMPTY = 'No action written yet: nothing goes to Teams until one is written.';
+function bizTeams(a) { return tagIds(a).filter(function (id) { return !TECH_TAGS[id]; }); }
+function bizNote(a) {
+  var teams = bizTeams(a), text = a.business && a.business.text;
+  if (!teams.length) return {button: '', hint: true, empty: BIZ_HINT};
+  return {button: text ? 'Edit note' : 'Write note for ' + teams.map(tagName).join(', '), hint: false, empty: BIZ_EMPTY};
+}
+function bizNoteSync(a, box) {
+  var n = bizNote(a), b = a.business, edit = box.querySelector('.biz-edit'), p = box.querySelector('.biz-txt'), w = box.querySelector('.biz-why');
+  edit.textContent = n.button;
+  edit.hidden = !n.button;
+  if (!n.button) box.querySelector('.biz-form').hidden = true;
+  if (b && b.text) p.innerHTML = '<b>' + bizLead(b) + ':</b> ' + esc(b.text); else p.textContent = n.empty;
+  p.classList.toggle('muted', !(b && b.text));
+  p.classList.toggle('biz-hint', n.hint);
+  w.innerHTML = '<b>Why:</b> ' + esc((b && b.why) || '');
+  w.hidden = !(b && b.text && b.why);
 }
 function seenHtml(a) {
   var s = a.seenBefore;
@@ -387,6 +410,7 @@ function paintRuns(key) {
     box.querySelector('.h5n').textContent = runsCount(key);
     box.querySelector('.runs-body').innerHTML = runsBody(key);
   });
+  if (CARD_TAB[key] === 'history') paintHist(key);
 }
 function loadRuns(key, force) {
   var c = CARD_RUNS[key];
@@ -403,7 +427,7 @@ function body(a, recShown, i) {
   var rec = a.recommend && !recShown ? '<section class="rec"><h5>Recommendation</h5><p>' + esc(a.recommend) + '</p></section>' : '';
   var code = codeOf(a).filter(function (c) { return !isFix(c); });
   var codeHtml = fixesOf(a).map(fixHtml).join('') + (code.length ? '<section><h5>Code</h5><ul class="code-refs">' + code.map(function (c) {
-    return '<li><a href="' + esc(c.url) + '" target="_blank" rel="noopener" title="' + esc(c.repo + ' @ ' + (c.sha || 'master')) + '">' + esc(c.label) + ' ↗</a><span><span class="cn">' + esc(c.note) + '</span> <span class="repo">' + esc(c.repo) + '</span></span></li>';
+    return '<li><a class="code-file" href="' + esc(c.url) + '" target="_blank" rel="noopener" title="' + esc(c.label + '\n' + c.repo + ' @ ' + (c.sha || 'master')) + '">' + esc(c.label) + ' \u2197</a><span class="code-why"><span class="cn">' + esc(c.note) + '</span> <span class="repo">' + esc(c.repo) + '</span></span></li>';
   }).join('') + '</ul></section>' : '');
   var ppl = people(a);
   var pplHtml = ppl.length ? '<details class="resp"><summary class="chev"><h5>' + (a.owner ? 'Responsible<span class="h5n">' + esc(ownerName(a.owner)) + ' is the assignee' + (ppl.length > 1 ? ' · ' + (ppl.length - 1) + ' more from git, a lead not a verdict' : '') : 'Potential responsible<span class="h5n">' + ppl.length + (ppl.length === 1 ? ' person' : ' people') + ' · from git, a lead not a verdict') + '</span></h5></summary><ul class="people">' + ppl.map(function (p) {
@@ -438,7 +462,7 @@ function cardTags(a) {
       (a.ticket && !(how && how.ref === a.ticket) ? ' · ' + jiraLinks(a.ticket) : '') + '</span>'});
   } else if (a.triage && TRI[a.triage]) t.push({row: 2, html: '<span class="tag ' + TRI[a.triage][1] + (a.triage === 'investigating' ? ' tri-inv">' + runIndHtml(runFor(a.key)) : '">') + esc(TRI[a.triage][0]) + (a.triagedBy === 'pod' ? ' · by investigator' : a.triagedBy === 'auto' ? ' · auto-resolved' : '') + (a.ticket ? ' · ' + jiraLinks(a.ticket) : '') + '</span>'});
   var d = draftTag(a);
-  if (d) t.push({row: autoArmed(a) && draftLive(a) ? 1 : 0, html: d});
+  if (d) t.push({row: notPosted(a) && draftLive(a) ? 1 : 0, html: d});
   if (a.src === 'qan' && a.kind) t.push({row: 0, html: a.kind === 'dwh' ? '<span class="tag plain" title="Not application traffic: a data-platform or reporting query. Info only, never pushed.">DWH / data</span>' : '<span class="tag plain" title="Application query traffic">App query</span>'});
   if (a.gone && a.status === 'open') t.push({row: 1, html: '<span class="tag k-warn page-gone" title="' + esc(goneText(a)) + '">Page gone · ' + esc(a.gone.status) + '</span>'});
   if ((a.teamsPosts || []).length) t.push({row: 0, html: teamsTag(a.teamsPosts)});
@@ -501,6 +525,7 @@ function cardOpen(card, on) {
   p.hidden = !on;
   if (on) OPENK[card.dataset.key] = 1; else delete OPENK[card.dataset.key];
   if (on) loadRuns(card.dataset.key);
+  if (on && CARD_TAB[card.dataset.key] === 'history') loadHist(card.dataset.key);
 }
 
 function anomCard(a, i) {
@@ -525,10 +550,10 @@ function anomCard(a, i) {
     '<span class="c c-status">' + (tags.row || statusTag(a)) + '</span><span class="c c-asg">' + asgTag(a) + '</span><span class="c c-tags">' + bizTags(a) + '</span>' +
     '<span class="c c-chg"><span class="chg">' + esc(change(a)) + '</span></span><span class="c c-age" title="' + esc(when) + '">' + esc(ageShort(a.firstSeen)) + '</span></div>' +
     runBanner(a.key) + '<div class="acts" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div></div>' +
-    '<div class="inc-more" id="more-' + i + '" hidden><div class="line">' + line + '</div>' + causeHtml(a) + seenHtml(a) +
+    '<div class="inc-more" id="more-' + i + '" hidden>' + tabsHtml(a, i) + '<div class="cd-details" role="tabpanel" id="cdp-d-' + i + '" aria-labelledby="cdt-d-' + i + '"' + (CARD_TAB[a.key] === 'history' ? ' hidden' : '') + '><div class="line">' + line + '</div>' + causeHtml(a) + seenHtml(a) +
     (tags.rest ? '<div class="inc-tags">' + tags.rest + '</div>' : '') +
     (recShown ? '<p class="rec-line"><span>Next</span>' + esc(a.recommend) + '</p>' : isOpen && a.gone ? '<p class="rec-line"><span>Next</span>' + esc(goneText(a)) + '</p>' : '') +
-    body(a, recShown, i) + '<div class="notif" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div></div>';
+    body(a, recShown, i) + '<div class="notif" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div></div>' + histPane(a, i) + '</div>';
   card.querySelector('.inc-title').addEventListener('click', function (e) {
     if (e.target.closest('a, input, select, textarea, label, button:not(.fold)')) return;
     var s = window.getSelection && window.getSelection();
@@ -538,6 +563,66 @@ function anomCard(a, i) {
   if (OPENK[a.key]) cardOpen(card, true);
   return card;
 }
+var CARD_TAB = {}, CARD_HIST = {}, HIST_TTL = 30000;
+function tabsHtml(a, i) {
+  var h = CARD_TAB[a.key] === 'history';
+  var tab = function (id, label, on) { return '<button type="button" class="cd-tab" role="tab" id="cdt-' + id + '-' + i + '" aria-controls="cdp-' + id + '-' + i + '" aria-selected="' + on + '" tabindex="' + (on ? 0 : -1) + '" data-tab="' + (id === 'h' ? 'history' : 'details') + '">' + label + '</button>'; };
+  return '<div class="cd-tabs" role="tablist" aria-label="' + esc('Card ' + (a.num ? '#' + a.num : a.svc)) + '">' + tab('d', 'Details', !h) + tab('h', 'History', h) + '</div>';
+}
+function histPane(a, i) {
+  var h = CARD_TAB[a.key] === 'history';
+  return '<div class="cd-hist" role="tabpanel" id="cdp-h-' + i + '" aria-labelledby="cdt-h-' + i + '" tabindex="0"' + (h ? '' : ' hidden') + '>' + (h ? histBody(a) : '') + '</div>';
+}
+function histBody(a) {
+  var c = CARD_HIST[a.key], runs = (CARD_RUNS[a.key] || {}).rows || [];
+  if (!c || (c.loading && !c.data)) return cardHistoryHtml([], dayhm, 'loading');
+  return cardHistoryHtml(cardHistoryRows(a, c.data || {}, runs, TAG_NAMES), daytime, c.failed ? 'failed' : '');
+}
+function paintHist(key) {
+  var a = CARDS.filter(function (x) { return x.key === key; })[0];
+  if (!a) return;
+  document.querySelectorAll('#anoms article.inc').forEach(function (card) {
+    if (card.dataset.key !== key) return;
+    var p = card.querySelector('.cd-hist');
+    if (p && !p.hidden) p.innerHTML = histBody(a);
+  });
+}
+function loadHist(key) {
+  var c = CARD_HIST[key];
+  if (c && (c.loading || (c.at && Date.now() - c.at < HIST_TTL))) return;
+  CARD_HIST[key] = Object.assign({}, c || {}, {loading: true});
+  function done(data, failed) { CARD_HIST[key] = {data: data, failed: failed, at: Date.now()}; paintHist(key); }
+  fetch('/api/card-history?key=' + encodeURIComponent(key) + '&limit=100', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function (d) { done(d && typeof d === 'object' ? d : {}, false); }, function () { done({}, true); });
+  loadRuns(key);
+}
+function cardTab(card, which, focus) {
+  var key = card.dataset.key, h = which === 'history';
+  if (h) CARD_TAB[key] = 'history'; else delete CARD_TAB[key];
+  card.querySelectorAll('.cd-tabs .cd-tab').forEach(function (t) {
+    var on = t.dataset.tab === which;
+    t.setAttribute('aria-selected', String(on));
+    t.tabIndex = on ? 0 : -1;
+    if (on && focus) t.focus();
+  });
+  card.querySelector('.cd-details').hidden = h;
+  var p = card.querySelector('.cd-hist');
+  p.hidden = !h;
+  if (h) { p.innerHTML = histBody(CARDS.filter(function (x) { return x.key === key; })[0] || {key: key}); loadHist(key); }
+}
+document.addEventListener('click', function (e) {
+  var t = e.target.closest && e.target.closest('#anoms .cd-tab');
+  if (t) cardTab(t.closest('article.inc'), t.dataset.tab, false);
+});
+document.addEventListener('keydown', function (e) {
+  var t = e.target.closest && e.target.closest('#anoms .cd-tab');
+  if (!t) return;
+  var list = [].slice.call(t.parentNode.querySelectorAll('.cd-tab')), n = list.indexOf(t);
+  var to = e.key === 'ArrowRight' ? (n + 1) % list.length : e.key === 'ArrowLeft' ? (n - 1 + list.length) % list.length : e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1 : -1;
+  if (to < 0) return;
+  e.preventDefault();
+  cardTab(t.closest('article.inc'), list[to].dataset.tab, true);
+});
 
 function filterBase(f) {
   var out = [];
@@ -547,7 +632,7 @@ function filterBase(f) {
   if (f === 'crit' || f === 'warn') return openBySev(f);
   if (f === 'investigating' || f === 'dived') return A.filter(function (a) { return a.triage === f; });
   if (f === 'svc') return svcF ? svcCards(svcF).list : [];
-  return {stale: stale, progress: inprog, taken: taken, muted: muted, cleared: cleared, recurring: recurringL, slack: slackRec, archived: ARCHIVED, closed: []}[f] || A;
+  return {stale: stale, progress: inprog, taken: taken, muted: muted, cleared: cleared, recurring: recurringL, archived: ARCHIVED, closed: []}[f] || A;
 }
 var VIEW_KEY = 'skopax-card-view';
 var CARD_VIEW = load(VIEW_KEY) === 'list' ? 'list' : 'board';
@@ -839,7 +924,7 @@ function renderQuick() {
   var n = {};
   base.forEach(function (a) { tagIds(a).forEach(function (t) { n[t] = (n[t] || 0) + 1; }); });
   Object.keys(TAG_NAMES).filter(function (id) { return n[id] || hasF('tag:' + id); }).forEach(function (id) {
-    tg.appendChild(chip('tag:' + id, esc(tagName(id)), n[id] || 0, 'cards tagged ' + tagName(id), 'tcol t-' + id));
+    tg.appendChild(chip('tag:' + id, esc(tagName(id)), n[id] || 0, 'cards tagged ' + tagName(id), tagClass(id)));
   });
   if (tg.children.length > 1) box.append(tg);
   box.append(who);
@@ -995,7 +1080,70 @@ function closeDrawer() {
   if (root) root.querySelectorAll('.tile.on').forEach(function (x) { x.classList.remove('on'); });
   if (t) (t.querySelector('.tile-open') || t).focus();
 }
+var SHOWN_KEYS = null, HIDE_WATCH = {}, TOAST_MS = 8000, TOAST_MAX = 3, HIDE_WATCH_MS = 15000;
+function watchHide(key) { if (SHOWN_KEYS && SHOWN_KEYS[key]) HIDE_WATCH[key] = Date.now(); }
+function hideCheck() {
+  var now = Date.now();
+  Object.keys(HIDE_WATCH).forEach(function (k) {
+    if (now - HIDE_WATCH[k] > HIDE_WATCH_MS) { delete HIDE_WATCH[k]; return; }
+    if (!SHOWN_KEYS || SHOWN_KEYS[k]) return;
+    delete HIDE_WATCH[k];
+    hiddenToast(k);
+  });
+}
+function toastBox() {
+  var box = document.getElementById('toasts');
+  if (box) return box;
+  box = el('div', 'toasts');
+  box.id = 'toasts';
+  box.setAttribute('role', 'status');
+  box.setAttribute('aria-live', 'polite');
+  document.body.appendChild(box);
+  return box;
+}
+function hiddenToast(key) {
+  var a = CARDS.filter(function (x) { return x.key === key; })[0], box = toastBox();
+  var col = a && BOARD_COLS.filter(function (c) { return c[0] === boardColumn(a); })[0];
+  var name = a && a.num ? '#' + a.num : a ? a.svc + ' / ' + a.label : key;
+  var t = el('div', 'toast', '<span class="toast-t">' + esc(name + ' moved to ' + (col ? col[1] : 'Closed') + ' \u00b7 hidden by the current filter') + '</span>' +
+    '<span class="toast-acts"><button type="button" class="btn sec small toast-view">View card</button><button type="button" class="btn sec small toast-clear">Clear filter</button>' +
+    '<button type="button" class="toast-x" aria-label="Dismiss" title="Dismiss">\u00d7</button></span>');
+  var left = TOAST_MS, started = Date.now(), timer = null, held = 0;
+  function gone() { clearTimeout(timer); t.remove(); }
+  function run() { started = Date.now(); clearTimeout(timer); timer = setTimeout(gone, left); }
+  function hold() { if (held++) return; clearTimeout(timer); left = Math.max(0, left - (Date.now() - started)); }
+  function free() { if (held && --held === 0) run(); }
+  t.addEventListener('mouseenter', hold);
+  t.addEventListener('mouseleave', free);
+  t.addEventListener('focusin', hold);
+  t.addEventListener('focusout', function (e) { if (!t.contains(e.relatedTarget)) free(); });
+  t.querySelector('.toast-x').addEventListener('click', gone);
+  t.querySelector('.toast-view').addEventListener('click', function () {
+    gone();
+    if (CARD_VIEW === 'board' && a) openDrawer(key);
+    else if (a && a.num) window.open('/c/' + a.num, '_blank', 'noopener');
+    else if (a) { clearCardFilters(); setFilter('all'); OPENK[key] = 1; renderAnoms(); }
+  });
+  t.querySelector('.toast-clear').addEventListener('click', function () { gone(); clearCardFilters(); setFilter(a ? 'all' : 'closed'); });
+  box.appendChild(t);
+  while (box.children.length > TOAST_MAX) box.firstChild.remove();
+  run();
+  return t;
+}
+function clearCardFilters() {
+  typeF = '';
+  svcF = null;
+  searchQ = '';
+  searchBack = '';
+  var box = document.getElementById('card-search');
+  if (box) box.value = '';
+}
 function renderAnoms() {
+  SHOWN_KEYS = null;
+  paintAnoms();
+  hideCheck();
+}
+function paintAnoms() {
   var root = document.getElementById('anoms'), panel = document.getElementById('panel-anoms');
   var keep = DRAWER && CARD_VIEW === 'board' && filter !== 'closed' ? drawerNode(root) : null;
   [].slice.call(root.children).forEach(function (c) { if (c !== keep) c.remove(); });
@@ -1028,13 +1176,14 @@ function renderAnoms() {
   if (filter === 'cleared' || filter === 'all') g('cleared', 'Cleared · no action needed', 'the signal went back to normal and nothing needs doing (info or muted); drops off 24 hours after it cleared', 'k-cleared', filter === 'all' ? cleared.filter(function (a) { return muted.indexOf(a) < 0; }) : cleared);
   if (filter === 'archived') g('archived', 'Archived', 'cards that are not firing (or are muted) and had no change for ' + archiveHours() + ' hours (Admin \u203a General, Archive after); they show nowhere else', 'k-cleared', ARCHIVED, 'Nothing archived.');
   if (filter === 'recurring') g('recurring', 'Recurring', 'cards that keep coming back with no Jira ticket on them, whatever their status: open a ticket with Create task, or Take one that exists', 'k-warn', recurringL, 'No recurring cards.');
-  if (filter === 'slack') g('slack', 'Slack recommended', 'a Slack draft is waiting on each of these, whatever their status: read it (tag tooltip or the expanded card) and use Send draft to Slack', 'k-act', slackRec, 'No Slack drafts waiting.');
   if (TRI[filter] && (filter === 'investigating' || filter === 'dived')) g(filter, TRI[filter][0], 'open, muted and cleared', TRI[filter][1], A.filter(function (a) { return a.triage === filter; }));
   if (filter === 'svc' && svcF) {
     var sc = svcCards(svcF);
     g('svc', svcF.svc + ' \u00b7 ' + sc.tier, 'the cards behind this service\u2019s status on Services: the open ones, or when none is open, the ones already stopped, action taken or muted', sc.k, sc.list, 'Nothing on ' + svcF.svc + ' any more: its cards cleared and dropped off.');
   }
   shownN = groups.reduce(function (n, gr) { return n + gr.list.length; }, 0);
+  SHOWN_KEYS = {};
+  groups.forEach(function (gr) { gr.list.forEach(function (x) { SHOWN_KEYS[x.key] = 1; }); });
   var found = document.getElementById('card-search-n');
   if (found) found.textContent = searchQ ? (shownN ? shownN + (shownN === 1 ? ' card' : ' cards') + ' found in every list' : 'No card matches') : '';
   if (CARD_VIEW === 'board') { renderBoard(root, groups); runDots(root); return; }

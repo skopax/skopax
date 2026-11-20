@@ -1,6 +1,7 @@
 import asyncio
 import datetime as dt
 import logging
+import threading
 from typing import Callable
 
 from pymongo.errors import PyMongoError
@@ -10,7 +11,7 @@ from skopax.engine import SEV_RANK, Applied, fmt, iso as epoch_iso, parse_iso
 from skopax.errkind import Authored, kind as error_kind
 from skopax.investigator.select import EVENT_WINDOW_S, announced_twin, merged, own_findings, stamps
 from skopax.messages import msg
-from skopax.postdeploy import SERVER_BY
+from skopax.postdeploy import NUMBERS_BY, SERVER_BY
 from skopax.slack import SlackError, cut
 from skopax.store import NotFound, Store, draft_hash, iso, utc_now
 
@@ -27,6 +28,11 @@ FALLBACK_COVERED = ('done', 'running')
 POST_NOW_BURST = 3
 SEV_WORDS = {'crit': 'critical', 'warn': 'warning'}
 SUB_LIMIT = 80
+SWEEP_AGE = dt.timedelta(hours=1)
+STALE_CLAIM = dt.timedelta(minutes=15)
+SWEEP_STALE = dt.timedelta(minutes=10)
+OLD = 'old'
+SWEEP_MARK = 'slack-direct-sweep'
 
 
 def failure_of(e: BaseException) -> str:
@@ -46,19 +52,47 @@ def armed_for(x: dict) -> dict | None:
     return draft if same else None
 
 
-def waiting(x: dict) -> bool:
+def final_failure(x: dict) -> bool:
     auto = x.get('autoSend') or {}
-    return bool((x.get('slackDraft') or {}).get('text')) and not sent(x) or bool(auto.get('holdBy')) or bool(auto.get('claimedAt'))
+    return bool(auto.get('failedAt') and auto.get('claimedAt'))
+
+
+def on_its_way(x: dict) -> bool:
+    auto = x.get('autoSend') or {}
+    if bool(auto.get('claimedAt')) and not auto.get('failedAt') and not sent(x):
+        return True
+    return bool((x.get('slackDraft') or {}).get('text')) and not sent(x) and bool(auto.get('at')) and not auto.get('holdBy') and not final_failure(x)
+
+
+def too_old(x: dict) -> bool:
+    auto = x.get('autoSend') or {}
+    if auto.get('force') or auto.get('retries'):
+        return False
+    return str((x.get('slackDraft') or {}).get('at') or '') < iso(utc_now() - SWEEP_AGE)
+
+
+def kept(x: dict) -> bool:
+    return bool((x.get('slackDraft') or {}).get('text')) and not sent(x) and not on_its_way(x)
+
+
+def waiting(x: dict) -> bool:
+    return on_its_way(x)
 
 
 class AutoSend:
-    def __init__(self, store: Store, send_anomaly: Callable[[str], dict], send_report: Callable[[str], dict], interval: float = INTERVAL_SECONDS, on: Callable[[], bool] = lambda: True):
+    def __init__(self, store: Store, send_anomaly: Callable[[str], dict], send_report: Callable[[str], dict], interval: float = INTERVAL_SECONDS, on: Callable[[], bool] = lambda: True,
+                 ready: Callable[[], bool] = lambda: True):
         self.store = store
         self.send_anomaly = send_anomaly
         self.send_report = send_report
         self.interval = interval
         self.on = on
+        self.ready = ready
         self.told_off = False
+        self.woken = threading.Event()
+
+    def wake(self) -> None:
+        self.woken.set()
 
     def merged(self, a: dict) -> bool:
         parent = a.get('parent')
@@ -70,15 +104,18 @@ class AutoSend:
             return False
         return information.is_card(host) and (host.get('status') == 'open' or a.get('status') == 'cleared')
 
-    def live(self, a: dict) -> bool:
-        if not information.is_card(a) or a.get('muted') or a.get('triage') in STOPPED_TRIAGE or self.merged(a):
+    def live(self, a: dict, force: bool = False) -> bool:
+        if not information.is_card(a) or a.get('muted') or (a.get('triage') in STOPPED_TRIAGE and not force) or self.merged(a):
             return False
         return a.get('status') == 'open' or (a.get('status') == 'cleared' and a.get('sev') in LIVE_WHEN_CLEARED)
 
     def _anomaly(self, a: dict, now: str) -> int:
         key, draft = a.get('key'), armed_for(a)
-        if not draft or not self.live(a):
-            log.info('auto-send dropped on %s: the card or its draft moved on', key)
+        if draft and too_old(a):
+            self.drop_old('card', key, now)
+            return 0
+        if not draft or not self.live(a, bool((a.get('autoSend') or {}).get('force'))):
+            log.info('Slack post dropped on %s: the card or its text moved on', key)
             self.store.stop_anomaly_auto_send(key)
             return 0
         if self.store.claim_anomaly_auto_send(key, draft, now) is None:
@@ -86,17 +123,20 @@ class AutoSend:
         try:
             self.send_anomaly(key)
         except SEND_ERRORS as e:
-            log.warning('auto-send of the Slack draft on %s failed: %s', key, error_kind(e))
+            log.warning('Slack post on %s failed: %s', key, error_kind(e))
             self.store.anomaly_auto_send_failed(key, failure_of(e))
             return 0
-        log.info('auto-sent the Slack draft on %s', key)
-        self.store.add_activity('slack', 'auto', f'Slack draft posted · {key}', key=key)
+        log.info('Slack post sent on %s', key)
+        self.store.add_activity('slack', 'auto', f'Slack post sent \u00b7 {key}', key=key)
         return 1
 
     def _report(self, r: dict, now: str) -> int:
         report_id, draft = r.get('id'), armed_for(r)
+        if draft and too_old(r):
+            self.drop_old('report', report_id, now)
+            return 0
         if not draft:
-            log.info('auto-send dropped on report %s: its draft moved on', report_id)
+            log.info('Slack post dropped on report %s: its text moved on', report_id)
             self.store.stop_report_auto_send(report_id)
             return 0
         if self.store.claim_report_auto_send(report_id, draft, now) is None:
@@ -104,27 +144,97 @@ class AutoSend:
         try:
             self.send_report(report_id)
         except SEND_ERRORS as e:
-            log.warning('auto-send of the Slack draft on report %s failed: %s', report_id, error_kind(e))
+            log.warning('Slack post on report %s failed: %s', report_id, error_kind(e))
             self.store.report_auto_send_failed(report_id, failure_of(e))
             return 0
-        log.info('auto-sent the Slack draft on report %s', report_id)
-        self.store.add_activity('slack', 'auto', f'Slack draft posted · report {report_id}', reportId=report_id)
+        log.info('Slack post sent on report %s', report_id)
+        self.store.add_activity('slack', 'auto', f'Slack post sent \u00b7 report {report_id}', reportId=report_id)
         return 1
 
+    def skip(self, kind: str, doc_id: str, now: str) -> bool:
+        if not self.store.skip_auto_send(kind, doc_id, now):
+            return False
+        where = f'report {doc_id}' if kind == 'report' else doc_id
+        log.info('Slack post skipped on %s: auto-send is off', where)
+        self.store.add_activity('slack', 'auto', f'Slack post skipped: auto-send is off \u00b7 {where}', **({'reportId': doc_id} if kind == 'report' else {'key': doc_id}))
+        return True
+
+    def drop_old(self, kind: str, doc_id: str, now: str) -> None:
+        if not self.store.skip_auto_send(kind, doc_id, now, OLD):
+            return
+        where = f'report {doc_id}' if kind == 'report' else doc_id
+        log.info('Slack post dropped on %s: its text is over an hour old and was never sent', where)
+        self.store.add_activity('slack', 'auto', f'Slack post skipped: the text was over an hour old \u00b7 {where}', **({'reportId': doc_id} if kind == 'report' else {'key': doc_id}))
+
+    def send_soon(self, key: str) -> str:
+        now = iso(utc_now())
+        if not self.on():
+            return 'skipped' if self.skip('card', key, now) else 'nothing to post'
+        if not self.store.requeue_anomaly_post(key, now):
+            return 'busy'
+        self.wake()
+        return 'queued'
+
     def run_once(self) -> int:
+        now = iso(utc_now())
         if not self.on():
             if not self.told_off:
                 self.told_off = True
-                log.info('Slack drafts wait for a person: auto-send is off')
+                log.info('Slack posts are skipped: auto-send is off')
+            for a in self.store.due_anomaly_auto_sends(now):
+                self.skip('card', a['key'], now)
+            for r in self.store.due_report_auto_sends(now):
+                self.skip('report', r['id'], now)
+            return 0
+        if not self.ready():
             return 0
         self.told_off = False
-        now = iso(utc_now())
+        if self.store.release_stale_post_claims(iso(utc_now() - STALE_CLAIM), now, iso(utc_now() - SWEEP_AGE)):
+            log.warning('Slack posts claimed more than %d min ago were not sent; they go back to the queue', STALE_CLAIM.seconds // 60)
         count = sum(self._anomaly(a, now) for a in self.store.due_anomaly_auto_sends(now))
         return count + sum(self._report(r, now) for r in self.store.due_report_auto_sends(now))
 
+    def sweep(self) -> int:
+        if not self.store.begin_once(SWEEP_MARK, iso(utc_now() - SWEEP_STALE)):
+            return 0
+        sent_now = self._sweep()
+        self.store.finish_once(SWEEP_MARK)
+        return sent_now
+
+    def _sweep(self) -> int:
+        now = utc_now()
+        young, on, sent_now = iso(now - SWEEP_AGE), self.on(), 0
+        for kind, docs in (('card', self.store.waiting_slack_drafts('card')), ('report', self.store.waiting_slack_drafts('report'))):
+            for x in docs:
+                draft, auto = x.get('slackDraft') or {}, x.get('autoSend') or {}
+                doc_id = x['id'] if kind == 'report' else x['key']
+                if sent(x) or auto.get('claimedAt') or draft.get('notAutoSent') or (kind == 'report' and draft.get('by') == NUMBERS_BY and str(draft.get('at') or '') >= young):
+                    continue
+                fresh = armed_for(x) and not auto.get('holdBy') and str(draft.get('at') or '') >= young and (kind == 'report' or self.live(x))
+                if fresh and not on:
+                    self.skip(kind, doc_id, iso(now))
+                    continue
+                if fresh and self.store.rearm_auto_send(kind, doc_id, draft['at'], iso(now)):
+                    sent_now += 1
+                    continue
+                if not fresh:
+                    self.store.drop_slack_draft(kind, doc_id, str(draft.get('at') or ''))
+        if sent_now:
+            log.info('%d waiting Slack post%s from before the upgrade go%s out now', sent_now, '' if sent_now == 1 else 's', 'es' if sent_now == 1 else '')
+        return sent_now
+
     async def loop(self) -> None:
+        try:
+            await asyncio.to_thread(self.sweep)
+        except Exception as e:
+            log.warning('Slack draft sweep at start failed: %s', error_kind(e))
         while True:
-            await asyncio.sleep(self.interval)
+            try:
+                await asyncio.to_thread(self.woken.wait, self.interval)
+            except asyncio.CancelledError:
+                self.woken.set()
+                raise
+            self.woken.clear()
             try:
                 await asyncio.to_thread(self.run_once)
             except Exception as e:
@@ -158,9 +268,11 @@ def investigated(runs: list[dict], key: str, fired_at: str) -> bool:
 
 
 class Fallback:
-    def __init__(self, store: Store, minutes: int):
+    def __init__(self, store: Store, minutes: int, wake: Callable[[], None] = lambda: None, on: Callable[[], bool] = lambda: True):
         self.store = store
         self.minutes = minutes
+        self.wake = wake
+        self.on = on
 
     @property
     def enabled(self) -> bool:
@@ -174,7 +286,7 @@ class Fallback:
             a = by_key.get(key)
             if not a or a.get('status') != 'open' or a.get('muted') or a.get('sev') != FALLBACK_SEV or merged(a, by_key) or a.get('src') in own:
                 continue
-            if a.get('slackDraft') or (a.get('slackPost') or {}).get('at') or (a.get('autoSend') or {}).get('holdBy') or a.get('triage') in FALLBACK_SKIP_TRIAGE:
+            if on_its_way(a) or (a.get('slackPost') or {}).get('at') or (a.get('autoSend') or {}).get('holdBy') or a.get('triage') in FALLBACK_SKIP_TRIAGE:
                 continue
             age = now - parse_iso(fired_at)
             if age < self.minutes * 60 or age > EVENT_WINDOW_S or (a.get('slackFallback') or {}).get('firedAt') == fired_at or investigated(runs, key, fired_at):
@@ -184,7 +296,7 @@ class Fallback:
         return picked
 
     def run_once(self, now: float) -> int:
-        if not self.enabled:
+        if not self.enabled or not self.on():
             return 0
         state = self.store.load()
         cards = state.get('anomalies') or []
@@ -198,9 +310,11 @@ class Fallback:
                 continue
             a.update(saved)
             minutes = int((now - parse_iso(fired_at)) // 60)
-            log.info('fallback Slack draft armed on %s: no finished investigation %d min after it fired', a['key'], minutes)
-            self.store.add_activity('slack', SERVER_BY, f"Slack fallback draft armed · {a['key']} · no finished investigation {minutes} min after it fired", key=a['key'])
+            log.info('fallback Slack post queued on %s: no finished investigation %d min after it fired', a['key'], minutes)
+            self.store.add_activity('slack', SERVER_BY, f"Slack fallback post queued · {a['key']} · no finished investigation {minutes} min after it fired", key=a['key'])
             count += 1
+        if count:
+            self.wake()
         return count
 
 
@@ -238,7 +352,7 @@ class PostNow:
             a = by_key.get(p['key'], p)
             if a.get('sev') not in information.CARD_SEVS or SEV_RANK.get(a.get('sev'), -1) < SEV_RANK[floor] or a.get('status') != 'open' or a.get('muted') or merged(a, by_key) or a.get('src') in own:
                 continue
-            if a.get('slackDraft') or (a.get('slackPost') or {}).get('at') or (a.get('autoSend') or {}).get('holdBy') or a.get('triage') in STOPPED_TRIAGE:
+            if on_its_way(a) or (a.get('slackPost') or {}).get('at') or (a.get('autoSend') or {}).get('holdBy') or a.get('triage') in STOPPED_TRIAGE:
                 continue
             if announced_twin(a, cards, now):
                 continue
@@ -263,12 +377,13 @@ class PostNow:
             fired_at = a.get('pushedAt') or a.get('firstSeen') or epoch_iso(now)
             last = self.last_line(a, investigating)
             saved = self.store.fallback_slack_draft(a['key'], fallback_text(a, fired_at, last), SERVER_BY, fired_at, dt.datetime.fromtimestamp(now, dt.timezone.utc), STOPPED_TRIAGE)
-            if saved is None:
+            if saved is None or self.store.claim_anomaly_auto_send(a['key'], saved['slackDraft'], iso(utc_now())) is None:
                 continue
             try:
                 self.send(a['key'])
             except SEND_ERRORS as e:
                 log.warning('card %s not posted to Slack at once, its auto-send retries: %s', a['key'], error_kind(e))
+                self.store.anomaly_auto_send_failed(a['key'], failure_of(e))
                 continue
             posted.append(a['key'])
             self.store.add_activity('slack', SERVER_BY, f"Card posted to Slack at once with its numbers \u00b7 {a['key']}", key=a['key'])

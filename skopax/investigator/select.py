@@ -65,13 +65,18 @@ def merged(a: dict, by_key: dict) -> bool:
     return bool(host and host is not a and information.is_card(host) and host.get('status') == 'open')
 
 
+def underway(x: dict) -> bool:
+    auto, draft = x.get('autoSend') or {}, x.get('slackDraft') or {}
+    return bool(draft.get('text')) and not draft.get('notAutoSent') and bool(auto.get('at') or auto.get('claimedAt')) and not (auto.get('failedAt') and auto.get('claimedAt'))
+
+
 def announced_twin(card: dict, cards: list[dict], now: float) -> dict | None:
     if card.get('svc') in NO_SERVICE:
         return None
     for x in cards:
         if x['key'] == card['key'] or x.get('status') != 'open' or x.get('svc') != card.get('svc'):
             continue
-        at = (x.get('slackPost') or {}).get('at') or (x.get('slackDraft') or {}).get('at')
+        at = (x.get('slackPost') or {}).get('at') or (x.get('slackDraft') or {}).get('at') if (x.get('slackPost') or {}).get('at') or underway(x) else None
         if at and now - parse_iso(at) < ANNOUNCE_WINDOW_S and SEV_RANK.get(x.get('sev'), 0) >= SEV_RANK.get(card.get('sev'), 0):
             return x
     return None

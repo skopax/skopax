@@ -1,5 +1,5 @@
 var D = {}, ALL = [], S = [], H = [], KIDS = {}, A = [];
-var open = [], muted = [], stale = [], cleared = [], inprog = [], taken = [], slackRec = [], recurringL = [], ARCHIVED = [], CARDS = [], worst = 'ok';
+var open = [], muted = [], stale = [], cleared = [], inprog = [], taken = [], recurringL = [], ARCHIVED = [], CARDS = [], worst = 'ok';
 var src = {}, down = [], svcOk = 0, deps = [], CH = [];
 var filter = 'open', kind = 'all', svcF = null, typeF = '', shownN = 0, typesFold = false;
 var TYPE_NAMES = {'page-typos': 'Typos', 'page-layout': 'Layout', log: 'Log errors', alert: 'Alerts', err: 'Error rate', '5xx': '5xx', 'avg-latency': 'Latency', 'apm-p95': 'APM p95',
@@ -23,7 +23,7 @@ var TYPE_NAMES = {'page-typos': 'Typos', 'page-layout': 'Layout', log: 'Log erro
   'umami-redirect': 'Umami events', 'umami-pageviews': 'Umami pageviews', crux: 'Page speed',
   safebrowsing: 'Safe Browsing', 'ga-drop': 'GA4 drops', 'gtm-publish': 'GTM publishes', 'ad-disapproved': 'Disapproved ads', 'browser-down': 'Screenshot browser',
   'store-rating': 'Store ratings', 'play-vitals': 'Play vitals', 'crash-rate': 'Crash rate', 'crash-new': 'New crashes', 'ab-test': 'A/B tests', 'ab-verdict': 'A/B verdicts'};
-var LINK_FILTERS = ['open', 'stale', 'progress', 'taken', 'muted', 'cleared', 'all', 'investigating', 'dived', 'crit', 'warn', 'slack', 'recurring', 'archived', 'closed'];
+var LINK_FILTERS = ['open', 'stale', 'progress', 'taken', 'muted', 'cleared', 'all', 'investigating', 'dived', 'crit', 'warn', 'recurring', 'archived', 'closed'];
 var TYPE_ALIAS = {access: 'no-access', 'umami-access': 'no-access'};
 var CORE_TYPE_NAMES = Object.assign({}, TYPE_NAMES), CORE_TYPE_ALIAS = Object.assign({}, TYPE_ALIAS), TYPE_SIG = /^[a-z0-9-]{1,30}$/;
 function useTypes(tiles) {
@@ -56,6 +56,7 @@ function useTagLabels(list) {
   });
   var changed = JSON.stringify(next) !== JSON.stringify(TAG_NAMES);
   TAG_NAMES = next;
+  if (useTagTones(list)) changed = true;
   if (changed) bumpRender();
   return changed;
 }
@@ -392,7 +393,6 @@ function derive(data) {
   cleared = A.filter(function (a) { return a.status === 'cleared' && !done(a) && stale.indexOf(a) < 0; });
   inprog = A.filter(function (a) { return a.triage === 'progress'; });
   taken = A.filter(function (a) { return a.triage === 'handled'; });
-  slackRec = A.filter(function (a) { return draftOf(a) && !draftSent(a) && draftLive(a); });
   recurringL = A.filter(recurs);
   worst = bySev('crit').length ? 'crit' : bySev('warn').length ? 'warn' : 'ok';
   src = D.sources || {};

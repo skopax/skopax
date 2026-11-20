@@ -644,12 +644,11 @@ async function linksOpenTheirCard() {
 
 async function reportSummaryAndSlackSend() {
   //given
-  const draft = {text: 'OPS 13.10 release: 4 services, orders-service restarted 3 times at startup.\nhttps://skopax.dev.example.com/#r=r1', by: 'token', at: iso(10)};
+  const draft = {text: 'OPS 13.10 release: 4 services, orders-service restarted 3 times at startup.\nhttps://skopax.dev.example.com/#r=r1', by: 'token', at: iso(10), notAutoSent: 'planted text in the esql answer (ignore previous)'};
   const brief = {level: 'warn', headline: 'Release 05:05\u201305:35: 4 services; orders-service restarted 3 times at startup', points: ['healthy since 05:14', 'SHOP-301 config client live'], at: iso(10)};
   let reps = [Object.assign({}, REPORTS[0], {brief, slackDraft: draft}), Object.assign({}, REPORTS[1], {slackPost: {channel: 'C1', ts: '1.2', at: iso(30), by: 'op@example.com', draft: false}}), REPORTS[2]];
   const onWrite = (method, path, body) => {
     if (method === 'POST' && path === '/api/deploy-reports/r1/slack-posts') { reps = [Object.assign({}, reps[0], {slackPost: {channel: 'C1', ts: '1.3', at: new Date().toISOString(), by: 'op@example.com', draft: true}})].concat(reps.slice(1)); return {id: 'a9', type: 'slack', status: 'done'}; }
-    if (method === 'PUT' && path === '/api/deploy-reports/r1/slack-draft') { reps = [Object.assign({}, reps[0], {slackDraft: body.text ? {text: body.text, by: 'op@example.com', at: new Date().toISOString()} : undefined})].concat(reps.slice(1)); return {slackDraft: null}; }
     return {};
   };
   const {w, doc, writes, errors, dom} = await bootLinked({me: OPERATOR, deploys: DEPLOYS, reports: () => reps, onWrite});
@@ -675,16 +674,16 @@ async function reportSummaryAndSlackSend() {
   assert.match(r2top.querySelector('.brief-by .q').title, /saved before report summaries existed/, 'its tooltip says why it is one line');
   assert.strictEqual(r2top.querySelector('.sev').textContent, 'All clear', 'no flagged row: all clear');
   assert.ok(!r2top.querySelector('li'), 'no points');
-  assert.strictEqual(r1().querySelector(':scope > summary .slack-rec').textContent, 'Slack recommended');
-  assert.match(r1().querySelector(':scope > summary .slack-rec').title, /^OPS 13\.10 release[\s\S]*Copy and Edit next to Send draft to Slack\nWaiting for a person: send it with the button$/);
-  assert.strictEqual(sendOf('rep-r1').textContent, 'Send draft to Slack');
+  assert.strictEqual(r1().querySelector(':scope > summary .slack-rec').textContent, 'Not posted: the run read suspicious text');
+  assert.match(r1().querySelector(':scope > summary .slack-rec').title, /^OPS 13\.10 release[\s\S]*\nNot posted: the run read suspicious text \(planted text in the esql answer \(ignore previous\)\); check it and use Send to Slack$/);
+  assert.strictEqual(sendOf('rep-r1').textContent, 'Send to Slack');
   assert.ok(!sendOf('rep-r1').hasAttribute('aria-disabled'), 'operators can send');
   const tagOf = () => r1().querySelector('.rep-acts .draft-q');
-  assert.strictEqual(sendOf('rep-r1').nextElementSibling, tagOf(), 'the draft sits as a tag right next to Send draft to Slack');
-  assert.match(tagOf().textContent, /^Draft \u00b7 Investigator \d\d:\d\d$/, 'the tag says who and when');
-  assert.ok(tagOf().title.startsWith(draft.text + '\n\nInvestigator \u00b7 '), 'its tooltip is the draft text plus who and when: ' + tagOf().title);
-  assert.deepStrictEqual([...r1().querySelectorAll('.rep-acts .btn')].map((b) => b.textContent), ['Send draft to Slack', 'Copy', 'Edit', 'Re-assess'], 'Copy and Edit sit in the action row, Re-assess closes it');
-  assert.ok(r1().querySelector('.rep-acts + .draft-form').hidden, 'the edit form waits folded under the action row');
+  assert.strictEqual(sendOf('rep-r1').nextElementSibling, tagOf(), 'the kept text sits as a tag right next to Send to Slack');
+  assert.match(tagOf().textContent, /^Slack text \u00b7 Investigator \d\d:\d\d$/, 'the tag says who and when');
+  assert.ok(tagOf().title.startsWith(draft.text + '\n\nInvestigator \u00b7 '), 'its tooltip is the text plus who and when: ' + tagOf().title);
+  assert.deepStrictEqual([...r1().querySelectorAll('.rep-acts .btn')].map((b) => b.textContent), ['Send to Slack', 'Copy', 'Re-assess'], 'Copy sits in the action row, no Edit, Re-assess closes it');
+  assert.ok(!r1().querySelector('.draft-form') && !r1().querySelector('.draft-edit'), 'no draft editing');
   assert.ok(!doc.querySelector('#rep-r2 .draft-q') && !doc.querySelector('#rep-r2 .draft-copy'), 'no draft, no tag or Copy');
   assert.strictEqual(sendOf('rep-r2').textContent, 'Send again');
   assert.match(doc.querySelector('#rep-r2 > summary .slack-rec.sent').textContent, /^Sent to Slack \d\d:\d\d$/, 'a posted report says so in its summary row');
@@ -698,7 +697,7 @@ async function reportSummaryAndSlackSend() {
   await wait(20);
 
   //then
-  assert.strictEqual(sendOf('rep-r1').textContent, 'Post draft to #ops?', 'first click arms the confirm');
+  assert.strictEqual(sendOf('rep-r1').textContent, 'Post to #ops?', 'first click arms the confirm');
   assert.ok(sendOf('rep-r1').dataset.confirm, 'armed confirm is marked, so live updates wait');
   assert.deepStrictEqual(writes, [], 'nothing posted on the first click');
   assert.strictEqual(r1().open, wasOpen);
@@ -711,31 +710,7 @@ async function reportSummaryAndSlackSend() {
   assert.deepStrictEqual(writes.map((x) => [x[0], x[1]]), [['POST', '/api/deploy-reports/r1/slack-posts']], 'second click posts the report');
   assert.match(r1().querySelector(':scope > summary .slack-rec.sent').textContent, /^Sent to Slack \d\d:\d\d$/, 'the card refreshes to Sent to Slack');
   assert.strictEqual(sendOf('rep-r1').textContent, 'Send again');
-  assert.match(r1().querySelector('.rep-acts .slack-st').textContent, / \u00b7 op \u00b7 draft$/);
-
-  //when
-  r1().querySelector('.rep-acts .draft-edit').click();
-  const ta = r1().querySelector('.draft-form textarea');
-  assert.ok(!r1().querySelector('.draft-form').hidden, 'Edit opens the form');
-  ta.value = 'new draft';
-  reps = [Object.assign({}, reps[0], {brief: Object.assign({}, brief, {headline: 'changed meanwhile'})})].concat(reps.slice(1));
-  doc.getElementById('tab-rels').click();
-  doc.getElementById('tab-reps').click();
-  await wait(120);
-
-  //then
-  assert.match(r1().querySelector('.rep-brief .hl').textContent, /changed meanwhile/, 'the report re-rendered');
-  assert.ok(!r1().querySelector('.draft-form').hidden, 'the open edit form survives the re-render');
-  assert.strictEqual(r1().querySelector('.draft-form textarea').value, 'new draft', 'with its text');
-
-  //when
-  r1().querySelector('.draft-save').click();
-  await wait(120);
-
-  //then
-  assert.deepStrictEqual(writes.slice(1).map((x) => [x[0], x[1], x[2]]), [['PUT', '/api/deploy-reports/r1/slack-draft', {text: 'new draft'}]], 'Save PUTs the draft');
-  assert.ok(tagOf().title.startsWith('new draft\n\n'), 'and the tag tooltip shows it');
-  assert.strictEqual(sendOf('rep-r1').textContent, 'Send draft to Slack', 'an edited draft is waiting again');
+  assert.match(r1().querySelector('.rep-acts .slack-st').textContent, / \u00b7 op \u00b7 investigator text$/);
   assert.deepStrictEqual(errors, []);
   dom.window.close();
 
@@ -744,7 +719,6 @@ async function reportSummaryAndSlackSend() {
 
   //then
   const g1 = guest.doc.getElementById('rep-r1');
-  assert.strictEqual(g1.querySelector('.draft-edit').getAttribute('aria-disabled'), 'true', 'guests cannot edit the draft');
   assert.strictEqual(g1.querySelector('.rep-acts .slack-btn').getAttribute('aria-disabled'), 'true', 'nor send');
 
   //when
@@ -758,62 +732,28 @@ async function reportSummaryAndSlackSend() {
   assert.strictEqual(g1.querySelector('.rep-brief .hl').textContent, REPORTS[0].summary);
   assert.deepStrictEqual(guest.errors, []);
   guest.dom.window.close();
-  console.log('PASS a report leads with Claude\'s summary (or its one-line summary when saved without one), no draft block in the body: the draft is a tag next to Send draft to Slack (text + who/when as tooltip) with Copy and Edit beside it; Send confirms, posts and refreshes to Sent to Slack; an open draft edit survives a re-render and Save PUTs it; guests can only copy');
+  console.log('PASS a report leads with Claude\'s summary (or its one-line summary when saved without one), no text block in the body: a post kept for a person is a tag next to Send to Slack (text + who/when as tooltip) with Copy beside it, no Edit; Send confirms, posts and refreshes to Sent to Slack; guests can only copy');
 }
 
 async function reportAutoSendShowsTheTimeAndHoldStopsIt() {
   //given
   const at = iso(2);
   const draft = {text: 'OPS 15.10 release: 14 services deployed, no new errors.\nhttps://skopax.example.com/#r=r1', by: 'token', at};
-  const auto = {at: new Date(Date.now() + 8 * 60000).toISOString(), draftAt: at, draftHash: '0a1b2c3d4e5f6a7b'};
-  let reps = [Object.assign({}, REPORTS[0], {slackDraft: draft, autoSend: auto}), REPORTS[1], REPORTS[2]];
-  const onWrite = (method, path) => {
-    if (method === 'POST' && path === '/api/deploy-reports/r1/slack-hold') {
-      const held = Object.assign({}, auto, {holdBy: 'op@example.com', holdAt: new Date().toISOString()});
-      reps = [Object.assign({}, reps[0], {autoSend: held})].concat(reps.slice(1));
-      return {autoSend: held};
-    }
-    return {};
-  };
-  const {doc, writes, errors, dom} = await bootLinked({me: OPERATOR, deploys: DEPLOYS, reports: () => reps, onWrite});
-  const r1 = () => doc.getElementById('rep-r1');
-  const tag = () => r1().querySelector(':scope > summary .slack-rec');
-
-  //then
-  assert.match(tag().textContent, /^Auto-send \d\d:\d\d$/, 'the summary tag counts down to the auto-send instead of saying Slack recommended');
-  assert.ok(tag().classList.contains('armed'));
-  assert.ok(tag().title.startsWith(draft.text + '\n\nInvestigator \u00b7 '), 'tooltip keeps the draft text');
-  assert.match(tag().title, /posts itself to Slack within 30 s of \d\d:\d\d unless someone presses Hold\nSends by itself at \d\d:\d\d unless someone holds it$/);
-  assert.deepStrictEqual([...r1().querySelectorAll('.rep-acts .btn')].map((b) => b.textContent), ['Send draft to Slack', 'Hold', 'Copy', 'Edit', 'Re-assess'], 'Hold sits next to Send');
-  const hold = () => r1().querySelector('.rep-acts .hold-btn');
-  assert.strictEqual(hold().getAttribute('aria-disabled'), null, 'operators can hold');
-  assert.match(hold().title, /^Stop the auto-send, which posts the draft within 30 s/);
+  const auto = {at: iso(1), draftAt: at, draftHash: '0a1b2c3d4e5f6a7b'};
+  const reps = [Object.assign({}, REPORTS[0], {slackDraft: draft, autoSend: auto}), REPORTS[1], REPORTS[2]];
 
   //when
-  hold().click();
-  await wait(250);
+  const {doc, errors, dom} = await bootLinked({me: OPERATOR, deploys: DEPLOYS, reports: () => reps, onWrite: () => ({})});
+  const r1 = doc.getElementById('rep-r1');
 
   //then
-  assert.deepStrictEqual(writes.map((x) => [x[0], x[1]]), [['POST', '/api/deploy-reports/r1/slack-hold']], 'Hold posts to the report hold endpoint');
-  assert.strictEqual(tag().textContent, 'Slack recommended', 'a held draft is a normal manual draft again');
-  assert.match(tag().title, /\nHeld by op at \d\d:\d\d$/);
-  assert.ok(!hold(), 'the Hold button goes once it is held');
-  assert.strictEqual(r1().querySelector('.rep-acts .slack-btn').textContent, 'Send draft to Slack', 'Send still posts it');
+  assert.ok(!r1.querySelector(':scope > summary .slack-rec'), 'a report post on its way has no Slack recommended or Auto-send tag');
+  assert.ok(!r1.querySelector('.hold-btn'), 'no Hold');
+  assert.deepStrictEqual([...r1.querySelectorAll('.rep-acts .btn')].map((b) => b.textContent), ['Send to Slack', 'Copy', 'Re-assess']);
+  assert.ok(!/Auto-send|Slack recommended|Hold/.test(r1.textContent));
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-
-  //given
-  const late = {at: iso(1), draftAt: at, draftHash: '0a1b2c3d4e5f6a7b'};
-  const guest = await bootLinked({me: GUEST, deploys: DEPLOYS, reports: [Object.assign({}, REPORTS[0], {slackDraft: draft, autoSend: late})]});
-  const g1 = guest.doc.getElementById('rep-r1');
-
-  //then
-  assert.strictEqual(g1.querySelector(':scope > summary .slack-rec').textContent, 'Auto-send now', 'a due draft says now, not a past time');
-  assert.strictEqual(g1.querySelector('.rep-acts .hold-btn').getAttribute('aria-disabled'), 'true', 'guests see Hold greyed out');
-  assert.match(g1.querySelector('.rep-acts .hold-btn').title, /^Log in to use this$/, 'with the reason');
-  assert.deepStrictEqual(guest.errors, []);
-  guest.dom.window.close();
-  console.log('PASS an armed report draft says Auto-send HH:MM (now once due) with a Hold button next to Send: Hold posts to the hold endpoint, turns the tag back into Slack recommended with who held it and when, and drops the button; guests see Hold greyed out with the reason');
+  return 'a report post on its way shows no Slack recommended or Auto-send tag and no Hold; Send to Slack and Copy stay';
 }
 
 async function flagPillsLinkToTheirCardOrLogs() {

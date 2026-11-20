@@ -120,7 +120,9 @@ def test_the_auto_send_and_the_pods_send_store_the_permalink(store: Store):
 
         # when
         sent = job(client).run_once()
+        store.anomalies.update_one({'_id': OTHER}, {'$set': {'slackDraft': {'text': 'Other card text.', 'by': 'Claude (pod)', 'at': '2026-10-21T09:00:00Z'}}})
         client.app.state.investigator.effects.send_slack(OTHER, 'Claude (pod)')
+        job(client).run_once()
         auto, pod = post_of(client), post_of(client, OTHER)
         rep = client.get('/api/deploy-reports').json()[0]['slackPost']
 

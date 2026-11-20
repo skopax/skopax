@@ -241,6 +241,9 @@ jobs:
       HUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
       DIGEST: ${{ needs.build.outputs.digest }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
         with:
           version: v0.38.1
@@ -276,3 +279,8 @@ jobs:
             args+=(--tag "docker.io/skopax/skopax:$tag")
           done
           docker buildx imagetools create "${args[@]}" "$IMAGE@$DIGEST"
+      - name: Update the Docker Hub overview
+        if: needs.version.outputs.rc == 'false' && env.HUB_USER != ''
+        env:
+          HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: python3 -m tools.dockerhub_overview "$VERSION"

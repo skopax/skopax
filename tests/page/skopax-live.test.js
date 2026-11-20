@@ -121,7 +121,7 @@ async function liveUpdateKeepsTheView() {
   assert.ok(!doc.getElementById('tiles') && !doc.querySelector('.pill'), 'no count pills');
   assert.strictEqual(doc.getElementById('tab-anoms').title, '1 critical \u00b7 1 warning', 'the Anomalies tab tooltip counts the new card and never information');
   assert.ok(doc.getElementById('tab-anoms').classList.contains('k-crit') && doc.getElementById('tab-anoms').classList.contains('hot'), 'and takes the worst open severity');
-  assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms button')].filter((b) => ['crit', 'warn', 'info', 'slack'].includes(b.dataset.f)).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['Critical 1', 'Warning 1', 'Slack drafts 0'], 'the severity filters in the side menu follow the live update');
+  assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms button')].filter((b) => ['crit', 'warn', 'info', 'slack'].includes(b.dataset.f)).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['Critical 1', 'Warning 1'], 'the severity filters in the side menu follow the live update');
   await wait(4100);
   assert.ok(!card(doc, 'restart|payments-api|restarts').classList.contains('linked'), 'highlight is brief');
   dom.window.close();
@@ -295,7 +295,7 @@ const inCard = (c, el) => { if (!el) return false; for (let n = el; n && n !== c
 
 function rowState(rev, ordersNow) {
   const st = stateAt(rev, {headline: 'rows', ordersNow});
-  const draft = (x, min) => { x.slackDraft = {text: 'draft ' + x.svc, by: 'Claude', at: iso(5)}; x.autoSend = {at: new Date(Date.now() + min * 60000).toISOString(), draftAt: x.slackDraft.at, draftHash: '0a1b2c3d4e5f6a7b'}; };
+  const draft = (x, min) => { x.slackDraft = {text: 'draft ' + x.svc, by: 'Claude', at: iso(5)}; x.autoSend = {at: iso(min), draftAt: x.slackDraft.at, draftHash: '0a1b2c3d4e5f6a7b', claimedAt: iso(min), failedAt: iso(1), retries: 3, error: 'channel_not_found'}; };
   const [orders, cart] = st.anomalies;
   Object.assign(orders, {triage: 'investigating', ticket: 'OPS-7', src: 'qan', kind: 'app'});
   draft(orders, 8);
@@ -338,11 +338,11 @@ async function cardsCollapseToOneRow() {
     for (const sel of ['.line', '.inc-body', '.notif']) assert.ok(x.querySelector(sel) && !inCard(x, x.querySelector(sel)), key + ' ' + sel + ' hidden while collapsed');
     assert.ok(![...x.querySelectorAll('summary')].some((s) => /^Analysis/.test(s.textContent)), 'no nested Analysis fold');
   }
-  assert.match(rowTags(ORDERS)[0], /^Auto-send \d\d:\d\d$/, 'an armed auto-send wins the row slot over triage');
+  assert.strictEqual(rowTags(ORDERS)[0], 'Slack post failed: channel_not_found', 'a post that did not go out wins the row slot over triage');
   assert.match(restTags(ORDERS)[0], /^Investigating \u00b7 OPS-7/, 'triage moves into the panel');
   assert.deepStrictEqual(restTags(ORDERS).slice(1), ['App query', '+1 merged'], 'the other tags move into the panel');
-  assert.match(rowTags(CART)[0], /^Auto-send \d\d:\d\d$/, 'an armed auto-send takes the row slot without triage');
-  assert.ok(c(CART).querySelector('.inc-title .slack-rec.armed'));
+  assert.strictEqual(rowTags(CART)[0], 'Slack post failed: channel_not_found', 'a post that did not go out takes the row slot without triage');
+  assert.ok(c(CART).querySelector('.inc-title .slack-rec.not-posted'));
   assert.deepStrictEqual(restTags(CART), [], 'nothing else to show for cart');
   assert.strictEqual(rowTags(MUTED)[0], 'Muted', 'Muted before Cleared');
   assert.deepStrictEqual(restTags(MUTED).map((t) => t.replace(/\d{1,2} [A-Z][a-z]{2} \d\d:\d\d/, 'D Mon HH:MM')), ['Cleared D Mon HH:MM']);
@@ -356,7 +356,7 @@ async function cardsCollapseToOneRow() {
   //then
   assert.ok(isOpen(ORDERS), 'a click on the title area expands the card');
   for (const sel of ['.line', '.inc-tags', '.rec-line', '.inc-body', '.notif']) assert.ok(inCard(c(ORDERS), c(ORDERS).querySelector(sel)), sel + ' shown once expanded');
-  const order = ['.line', '.inc-tags', '.rec-line', '.inc-body', '.notif'].map((s) => [...panel(ORDERS).children].indexOf(panel(ORDERS).querySelector(':scope > ' + s)));
+  const order = ['.line', '.inc-tags', '.rec-line', '.inc-body', '.notif'].map((s) => [...panel(ORDERS).querySelector('.cd-details').children].indexOf(panel(ORDERS).querySelector('.cd-details > ' + s)));
   assert.deepStrictEqual(order, [0, 1, 2, 3, 4], 'panel order: numbers, tags, Next, analysis, Notify');
   assert.match(panel(ORDERS).querySelector('.inc-body').textContent, /first suspect/, 'the analysis shows directly');
   assert.ok(!isOpen(CART), 'other cards stay collapsed');
@@ -438,10 +438,10 @@ async function anomalyFiltersInTheSideMenu() {
   assert.ok(!sub.hidden && foldBtn.getAttribute('aria-expanded') === 'true' && foldBtn.getAttribute('aria-controls') === 'tab-sub-anoms', 'the sub menu opens by itself while Anomalies is the open tab');
   assert.deepStrictEqual([...doc.querySelectorAll('#snav .s-grp[data-grp="main"] a.tab')].map((a) => a.id), ['tab-anoms', 'tab-reqs', 'tab-chat', 'tab-inv'], 'Board, Requests, Chat and Investigator lead the sidebar');
   assert.ok(sub.closest('#tabs') && sub.previousElementSibling.contains(foldBtn) && sub.previousElementSibling.querySelector('.filters-l').textContent === 'Anomaly filters', 'the filters lead the side menu under their own heading, the arrow beside it');
-  assert.deepStrictEqual(items().map((b) => b.dataset.f), ['all', 'open', 'crit', 'warn', 'progress', 'taken', 'muted', 'cleared', 'slack', 'archived', 'closed'], 'All first, then status, with Open split by severity right under it; Lists; Triage only when above 0');
+  assert.deepStrictEqual(items().map((b) => b.dataset.f), ['all', 'open', 'crit', 'warn', 'progress', 'taken', 'muted', 'cleared', 'archived', 'closed'], 'All first, then status, with Open split by severity right under it; Lists; Triage only when above 0');
   assert.deepStrictEqual([...sub.querySelectorAll('.tab-sub-g')].map((g) => (g.querySelector('.tab-sub-l') || {textContent: ''}).textContent.replace(/\s*\d+$/, '')), ['', 'Lists', 'Assignee', 'Tags', 'Types'], 'four groups: status (severity nested under Open), Lists, the business tags and the card types (with their count)');
-  assert.deepStrictEqual(items().map((b) => b.querySelector('.lbl').textContent), ['All', 'Open', 'Critical', 'Warning', 'In progress', 'Action taken', 'Muted', 'Cleared', 'Slack drafts', 'Archived', 'Closed'], 'short labels');
-  assert.deepStrictEqual(['taken', 'muted', 'cleared', 'all', 'crit', 'warn', 'slack'].map((f) => kOf(item(f))), ['k-good', 'k-muted', 'k-cleared', 'k-act', 'k-crit', 'k-warn', 'k-act'], 'with their colours');
+  assert.deepStrictEqual(items().map((b) => b.querySelector('.lbl').textContent), ['All', 'Open', 'Critical', 'Warning', 'In progress', 'Action taken', 'Muted', 'Cleared', 'Archived', 'Closed'], 'short labels');
+  assert.deepStrictEqual(['taken', 'muted', 'cleared', 'all', 'crit', 'warn'].map((f) => kOf(item(f))), ['k-good', 'k-muted', 'k-cleared', 'k-act', 'k-crit', 'k-warn'], 'with their colours');
   assert.deepStrictEqual(['open', 'progress', 'taken', 'muted', 'cleared', 'all'].map((f) => item(f).querySelector('.count').textContent), ['3', '1', '1', '0', '1', '6'], 'Open counts the stopped card nobody acted on too, as the board does');
   assert.ok(item('crit').classList.contains('zero') && item('muted').classList.contains('zero') && !item('warn').classList.contains('zero'), 'a zero count is faded');
   assert.deepStrictEqual(pressed(), ['open'], 'the active filter is marked, Open by default');

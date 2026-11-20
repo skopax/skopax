@@ -240,8 +240,8 @@ async function severityChipsFilterTheOpenCards() {
 
   //then
   assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child')].map(txt), ['Critical 1', 'Warning 2'], 'open counts in the side menu; muted and cleared cards left out, and no Info filter');
-  assert.deepStrictEqual([...listGroup.querySelectorAll('button.tab-sub-i')].map(txt), ['Slack drafts 0', 'Archived 0', 'Closed '], 'Lists holds Slack drafts, Archived and Closed; Closed has no count until its list is loaded');
-  assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child.zero')].map((b) => b.dataset.f).concat([...listGroup.querySelectorAll('button.zero')].map((b) => b.dataset.f)), ['slack', 'archived', 'closed'], 'zero items are faded');
+  assert.deepStrictEqual([...listGroup.querySelectorAll('button.tab-sub-i')].map(txt), ['Archived 0', 'Closed '], 'Lists holds Archived and Closed; Closed has no count until its list is loaded');
+  assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child.zero')].map((b) => b.dataset.f).concat([...listGroup.querySelectorAll('button.zero')].map((b) => b.dataset.f)), ['archived', 'closed'], 'zero items are faded');
   assert.ok(sevItem('open').nextElementSibling === sevItem('crit') && !groups[0].querySelector('.tab-sub-l') && groups.indexOf(listGroup) === 1, 'the severities sit right under Open, in the unlabelled status group');
   assert.ok(groups.every((g) => !/Triage/.test(g.textContent)), 'no Triage group while nothing is investigating or investigated');
   assert.ok(!doc.getElementById('sev-chips') && !doc.getElementById('anom-chips') && !doc.getElementById('filters'), 'the chips row is gone from the Anomalies tab');
@@ -268,7 +268,7 @@ async function severityChipsFilterTheOpenCards() {
   assert.strictEqual(doc.getElementById('clear-f'), null, 'Open is the default filter, so the line offers no way back');
   assert.ok(!navigated(errors) && !errors.length, 'no errors: ' + errors.join(' | '));
   dom.window.close();
-  return 'Critical / Warning / Info / Slack drafts in the side menu sub menu (group Open, counts, zero-faded) filter the open cards and toggle back; no chips row on the tab; the Anomalies tab takes the worst severity with an N critical · N warning tooltip; the filter line tooltip keeps the counts';
+  return 'Critical / Warning / Info in the side menu sub menu (group Open, counts, zero-faded) filter the open cards and toggle back; no chips row on the tab; the Anomalies tab takes the worst severity with an N critical · N warning tooltip; the filter line tooltip keeps the counts';
 }
 
 async function inProgressSplitsFromActionTaken() {

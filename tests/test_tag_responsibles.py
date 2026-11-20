@@ -96,8 +96,9 @@ def test_an_admin_sets_and_clears_responsibles_and_each_change_is_a_history_row_
     assert saved.json()['responsibles'] == [{'email': NINA, 'name': 'Nina White', 'slack': 'unchecked'}, {'email': ADMIN_EMAIL, 'name': 'Admin', 'slack': 'unchecked'}]
     assert same.status_code == 200 and cleared.json()['responsibles'] == [{'email': ADMIN_EMAIL, 'name': 'Admin', 'slack': 'unchecked'}]
     rows = [(h['key'], h['old'], h['new'], h['owners'], h['tag'], h['by']) for h in history]
-    assert rows == [('tags.developer.responsibles', f'{NINA}, {ADMIN_EMAIL}', ADMIN_EMAIL, True, 'developer', OSCAR),
-                    ('tags.developer.responsibles', None, f'{NINA}, {ADMIN_EMAIL}', True, 'developer', OSCAR)]
+    assert rows == [('tags.developer.responsibles', 'Nina White, Admin', 'Admin', True, 'developer', OSCAR),
+                    ('tags.developer.responsibles', None, 'Nina White, Admin', True, 'developer', OSCAR)]
+    assert store.tag_owners() == {'developer': [ADMIN_EMAIL]}
     dev = next(t for t in listed['tags'] if t['id'] == 'developer')
     assert dev['label'] == 'Developer' and dev['responsibles'] == [{'email': ADMIN_EMAIL, 'name': 'Admin', 'slack': 'unchecked'}]
     assert listed['canEdit'] is True
@@ -200,8 +201,11 @@ def test_the_app_registers_the_report_job_gated_by_its_switch_and_slack_auto_sen
         c.put('/api/admin/features/tag-report', json={'on': False}, headers=AUTH)
         switch_off = [j.name for j in c.app.state.scheduler.jobs]
         names = c.app.state.tag_report.names()
+        store.set_tag_owners('developer', [NINA, OSCAR, 'dana.gray@example.com'])
+        held = c.app.state.tag_report.held()
 
     # then
+    assert held == {'developer': [NINA, 'dana.gray@example.com']}
     assert 'tag-report' in on and 'tag-report' not in autosend_off and 'tag-report' not in switch_off
     assert needs == ['Needs Slack auto-send on (Admin \u203a Features).']
     assert NINA in names and OSCAR not in names
@@ -240,6 +244,10 @@ def test_an_address_without_a_skopax_account_is_saved_and_named_by_its_local_par
     assert put.status_code == 200
     assert put.json()['responsibles'] == [{'email': 'ghost.person@example.com', 'name': 'ghost.person', 'slack': 'unchecked'}]
     assert store.tag_owners() == {'developer': ['ghost.person@example.com']}
+    history = client.get('/api/admin/history', headers=AUTH).json()
+    row = next(h for h in history if h['key'] == 'tags.developer.responsibles')
+    assert (row['old'], row['new']) == (None, 'ghost.person')
+    assert '@' not in str(row['new'])
 
 
 def test_an_invalid_address_is_refused_with_its_own_message_and_nothing_is_saved(store: Store, client):
@@ -343,3 +351,37 @@ def test_the_activity_line_for_an_outside_address_names_it_by_the_local_part_onl
     # then
     lines = [a['text'] for a in store.list_activity(None, 50) if a['text'].startswith('Responsibles of')]
     assert lines == ['Responsibles of Developer: \u2013 \u2192 ghost.person']
+
+
+def test_adding_a_person_shows_in_changes_by_name_with_no_address_and_no_revert(store: Store):
+    # given
+    store.save(state(), None)
+    admin = signed_in(store)
+
+    # when
+    made = admin.post('/api/admin/users', json={'email': 'dana.gray@example.com', 'name': 'Dana Gray', 'role': 'viewer', 'password': 'a-long-enough-password-1'})
+    admin.put('/api/admin/tags/developer/responsibles', json={'emails': ['dana.gray@example.com']})
+    history = admin.get('/api/admin/history').json()
+
+    # then
+    assert made.status_code == 201, made.text
+    access = [h for h in history if h.get('access')]
+    assert len(access) == 1 and 'Dana Gray' in access[0]['text'] and access[0]['by']
+    assert all('@' not in str(v) for h in history for v in (h.get('text'), h.get('old'), h.get('new')))
+    assert '@' not in access[0]['by']
+    assert [h['key'] for h in history][0] == 'tags.developer.responsibles'
+
+
+def test_a_responsibles_row_saved_with_addresses_reads_back_by_name(store: Store):
+    # given
+    from skopax.tunables import TunableStore
+    store.save(state(), None)
+    people(store)
+    TunableStore(store.db).write_change('tags.developer.responsibles', f'{NINA}, dana.gray@example.com', None, ADMIN_EMAIL, owners=True, tag='developer')
+    admin = signed_in(store)
+
+    # when
+    row = next(h for h in admin.get('/api/admin/history').json() if h['key'] == 'tags.developer.responsibles')
+
+    # then
+    assert (row['old'], row['new']) == ('Nina White, dana.gray', None)

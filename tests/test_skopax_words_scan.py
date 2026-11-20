@@ -184,7 +184,7 @@ def test_a_held_draft_writes_one_info_line_naming_the_tool_and_phrases(store: St
 
     # then
     lines = [r.getMessage() for r in caplog.records if r.name == 'skopax.investigator.tools' and r.levelno == logging.INFO]
-    assert lines == [f'Slack draft on {KEY} waits for a person: the run read planted text in the promql answer (1 flag: p3)']
+    assert lines == [f'Slack post on {KEY} not sent, kept for a person: the run read planted text in the promql answer (1 flag: p3)']
 
 
 def test_an_armed_draft_writes_no_wait_line(store: Store, caplog):
@@ -196,10 +196,10 @@ def test_an_armed_draft_writes_no_wait_line(store: Store, caplog):
         drafted(box(store))
 
     # then
-    assert not [r for r in caplog.records if 'waits for a person' in r.getMessage()]
+    assert not [r for r in caplog.records if 'kept for a person' in r.getMessage()]
 
 
-def test_with_auto_send_off_one_line_says_drafts_wait_for_a_person(store: Store, caplog):
+def test_with_auto_send_off_one_line_says_posts_are_skipped(store: Store, caplog):
     # given
     sender = AutoSend(store, lambda key: {}, lambda rid: {}, on=lambda: False)
 
@@ -211,7 +211,7 @@ def test_with_auto_send_off_one_line_says_drafts_wait_for_a_person(store: Store,
 
     # then
     lines = [r.getMessage() for r in caplog.records if r.name == 'skopax.autosend']
-    assert lines == ['Slack drafts wait for a person: auto-send is off']
+    assert lines == ['Slack posts are skipped: auto-send is off']
 
 
 def test_auto_send_switched_on_again_and_off_says_it_once_more(store: Store, caplog):
@@ -228,7 +228,7 @@ def test_auto_send_switched_on_again_and_off_says_it_once_more(store: Store, cap
         sender.run_once()
 
     # then
-    assert [r.getMessage() for r in caplog.records if r.name == 'skopax.autosend'] == ['Slack drafts wait for a person: auto-send is off'] * 2
+    assert [r.getMessage() for r in caplog.records if r.name == 'skopax.autosend'] == ['Slack posts are skipped: auto-send is off'] * 2
 
 
 def test_a_slack_known_click_marks_its_reason_as_skopax_wording_and_take_carries_none(store: Store):
@@ -321,7 +321,7 @@ def hold_line(store: Store, caplog, label: str) -> str:
     caplog.clear()
     with caplog.at_level(logging.INFO, logger='skopax.investigator.tools'):
         drafted(b)
-    [line] = [r.getMessage() for r in caplog.records if 'waits for a person' in r.getMessage()]
+    [line] = [r.getMessage() for r in caplog.records if 'kept for a person' in r.getMessage()]
     return line
 
 
@@ -333,7 +333,7 @@ def test_the_hold_line_trips_no_phrase_and_still_names_the_card_and_the_tool(sto
     for line in lines:
         assert scan('esql', line) == [], line
         assert KEY in line and 'esql' in line and 'promql' in line
-    assert lines[2] == f'Slack draft on {KEY} waits for a person: the run read planted text in the esql, promql answer (2 flags: p2)'
+    assert lines[2] == f'Slack post on {KEY} not sent, kept for a person: the run read planted text in the esql, promql answer (2 flags: p2)'
 
 
 def test_a_store_error_while_reading_the_marks_scans_the_rows_whole(store: Store, monkeypatch, caplog):

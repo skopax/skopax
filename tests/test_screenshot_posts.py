@@ -405,7 +405,7 @@ def test_the_card_tool_shows_the_screenshots_of_the_draft_and_of_the_sent_post_a
     assert draft_card['slackDraft']['screenshots'] == shown and 'slackPost' not in draft_card
     assert 'slackDraft' not in sent_card and sent_card['slackPost']['screenshots'] == shown
     assert sent_card['slackPost']['by'] == 'token:bootstrap'
-    assert 'its Slack draft and post with their screenshots' in next(d['description'] for d in box(store).definitions() if d['name'] == 'card')
+    assert 'its Slack post text and post with their screenshots' in next(d['description'] for d in box(store).definitions() if d['name'] == 'card')
 
 
 def test_the_card_tool_lists_no_screenshots_when_the_post_carried_none(store: Store):

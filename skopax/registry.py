@@ -6,7 +6,7 @@ import re
 import string
 import sys
 import threading
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -133,6 +133,7 @@ CORE_TABS = ('anoms', 'reqs', 'chat', 'inv', 'svcs', 'info', 'lat', 'rels', 'rep
 NAV_GROUPS = ('main', 'observe', 'activity', 'connect', 'more')
 RESERVED_TABS = ('sub-anoms', 'fold-anoms')
 PAGE_LABEL_MAX = 24
+STANDING = {'broken': 'failed'}
 ORIGIN_WORDS = {'builtin': 'plugins.why.origin_builtin', 'entry-point': 'plugins.why.origin_package', 'env': 'plugins.why.origin_env'}
 PROCESS_MAX = 200_000
 PACK_TEXT_MAX = 40_000
@@ -180,6 +181,7 @@ class Loaded:
     directory: Path | None
     drops: tuple[Drop, ...] = ()
     dropped: tuple[tuple[str, int], ...] = ()
+    dist: tuple[str, str] | None = None
 
 
 class _Reject(Authored, Exception):
@@ -1033,14 +1035,16 @@ class Registry:
         seen: set[str] = set()
         seen_points: set[str] = set()
 
-        def add(label: str, origin: str, load) -> None:
+        def add(label: str, origin: str, load, dist: tuple[str, str] | None = None) -> None:
             try:
                 plugin, module = load()
             except (Exception, SystemExit) as exc:
                 reason = exc.text if isinstance(exc, _Reject) else msg('plugins.why.import', error=exc_kind(exc))
-                found.append(Loaded(label, label, origin, None, 'broken', _broken_text(label, reason), None))
+                found.append(Loaded(label, label, origin, None, 'broken', _broken_text(label, reason), None, dist=dist))
                 return
-            found.append(_loaded(plugin, label, origin, module))
+            item = _loaded(plugin, label, origin, module)
+            item.dist = dist or (_dist_of(item.module) if origin != 'builtin' else None)
+            found.append(item)
 
         def from_module(path: str):
             def run():
@@ -1060,7 +1064,7 @@ class Registry:
             for point in sorted(importlib.metadata.entry_points(group=GROUP), key=lambda p: p.name):
                 if point.value not in seen_points:
                     seen_points.add(point.value)
-                    add(point.name, 'entry-point', lambda point=point: (point.load(), sys.modules.get(point.module)))
+                    add(point.name, 'entry-point', lambda point=point: (point.load(), sys.modules.get(point.module)), _dist_name(point))
         for path in [p.strip() for p in (env.get(ENV) or '').split(',') if p.strip()]:
             if path not in seen:
                 seen.add(path)
@@ -1121,6 +1125,22 @@ class Registry:
         with self._lock:
             return self._edition
 
+    def extensions(self) -> list[dict]:
+        groups: dict[tuple[str, str], list[str]] = {}
+        for x in self.loaded():
+            if x.origin == 'builtin' or x.module.split('.')[0] == 'skopax' or (x.dist is not None and x.dist[0].lower().replace('_', '-') == 'skopax'):
+                continue
+            version = x.plugin.version if x.plugin is not None else ''
+            name, shown = x.dist or (x.id, version if isinstance(version, str) else '')
+            groups.setdefault((name, shown, x.dist is not None), []).append(x.id)
+        return [{'name': name, 'version': version, 'package': package, 'plugins': sorted(ids)} for (name, version, package), ids in sorted(groups.items())]
+
+    def standing(self, enabled: Callable[[str], bool]) -> list[dict]:
+        rows = []
+        for x in self.loaded():
+            rows.append({'id': x.id, 'version': x.plugin.version if x.plugin is not None else '', 'state': standing_of(x, enabled), 'reason': x.reason or ''})
+        return sorted(rows, key=lambda r: (r['state'] == 'ok', str(r['id'])))
+
     def reserved_names(self) -> frozenset[str]:
         with self._lock:
             return self._reserved
@@ -1167,6 +1187,34 @@ class Registry:
                 raise KeyError(id)
             self._forced[id] = reason
         self.refresh()
+
+
+def standing_of(found: Loaded, enabled: Callable[[str], bool]) -> str:
+    state = STANDING.get(found.state, found.state)
+    return 'off' if state == 'ok' and not enabled(found.id) else state
+
+
+def _dist_name(point) -> tuple[str, str] | None:
+    try:
+        dist = point.dist
+        name, version = str(dist.metadata['Name'] or '').strip(), str(dist.version or '').strip()
+    except Exception:
+        return None
+    return (name, version) if name else None
+
+
+def _dist_of(module: str) -> tuple[str, str] | None:
+    try:
+        top = str(module).split('.')[0]
+        owners = importlib.metadata.packages_distributions().get(top) or []
+        path = Path(sys.modules[module].__file__).resolve()
+        for owner in owners:
+            dist = importlib.metadata.distribution(owner)
+            if any(Path(dist.locate_file(f)).resolve() == path for f in dist.files or ()):
+                return dist.metadata['Name'], dist.version
+    except Exception:
+        return None
+    return None
 
 
 def _loaded(plugin: object, label: str, origin: str, module=None, directory: Path | None = None, modname: str | None = None) -> Loaded:

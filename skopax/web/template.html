@@ -36,7 +36,6 @@ try {
   --by: #646b78;
   --s-pod: #2a78d6; --s-page: #eb6834; --s-slack: #17a070; --s-assess: #c28400; --s-gate: #e87ba4; --s-smalltalk: #7d5bc6; --s-pagescan: #5f7387; --s-selfreview: #4d8a9c; --s-chat: #6b8e23; --s-mcp: #a0522d;
   --p-cacheRead: #86b6ef; --p-input: #5598e7; --p-cacheWrite5m: #2a78d6; --p-cacheWrite1h: #1c5cab; --p-output: #104281; --p-webSearch: #b7791f;
-  --t-bizdev: #0b5f58; --t-marketing: #0f766e; --t-seo: #148f84; --t-product: #2a8f86; --t-developer: #334155; --t-data: #475569; --t-infra: #5b6b80; --t-analyst: #6b7a90;
   --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-data: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -51,7 +50,6 @@ try {
     --good: #5cbf80; --good-bg: #16291e; --clear: #9aa5b5; --clear-bg: #222731; --mute: #959ca8; --mute-bg: #21242a; --act: #a9b1be; --act-bg: #232831; --by: #8b929f;
     --s-pod: #3987e5; --s-page: #d95926; --s-slack: #199e70; --s-assess: #c98500; --s-gate: #d55181; --s-smalltalk: #9a7ce3; --s-pagescan: #8094a8; --s-selfreview: #6aa9bb; --s-chat: #9bbf4f; --s-mcp: #c97a4e;
     --p-cacheRead: #184f95; --p-input: #256abf; --p-cacheWrite5m: #3987e5; --p-cacheWrite1h: #6da7ec; --p-output: #9ec5f4; --p-webSearch: #e0a845;
-    --t-bizdev: #8be3d6; --t-marketing: #5fd3c3; --t-seo: #3fbfae; --t-product: #2aa697; --t-developer: #d3dbe6; --t-data: #b4c0cf; --t-infra: #96a3b6; --t-analyst: #7d8a9e;
     color-scheme: dark;
   }
 }
@@ -65,7 +63,6 @@ try {
   --good: #5cbf80; --good-bg: #16291e; --clear: #9aa5b5; --clear-bg: #222731; --mute: #959ca8; --mute-bg: #21242a; --act: #a9b1be; --act-bg: #232831; --by: #8b929f;
   --s-pod: #3987e5; --s-page: #d95926; --s-slack: #199e70; --s-assess: #c98500; --s-gate: #d55181; --s-smalltalk: #9a7ce3; --s-pagescan: #8094a8; --s-selfreview: #6aa9bb; --s-chat: #9bbf4f; --s-mcp: #c97a4e;
   --p-cacheRead: #184f95; --p-input: #256abf; --p-cacheWrite5m: #3987e5; --p-cacheWrite1h: #6da7ec; --p-output: #9ec5f4; --p-webSearch: #e0a845;
-  --t-bizdev: #8be3d6; --t-marketing: #5fd3c3; --t-seo: #3fbfae; --t-product: #2aa697; --t-developer: #d3dbe6; --t-data: #b4c0cf; --t-infra: #96a3b6; --t-analyst: #7d8a9e;
   color-scheme: dark;
 }
 html { font-size: 16px; }
@@ -845,8 +842,8 @@ details.grp.wait > summary.grp-h .count { color: var(--crit); font-weight: 700; 
 .inc .fold .sep { color: var(--line-2); font-weight: 400; margin-inline: 6px; }
 .inc .fold .sig { font-weight: 500; color: var(--fg-2); }
 .inc-title .chg { font-family: var(--font-data); font-size: 0.82rem; font-weight: 500; color: var(--fg-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.inc-more { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
-.inc-more > .line, .inc-tags { padding-inline: 18px; }
+.inc-more { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); min-width: 0; overflow-wrap: anywhere; }
+.inc-more > .line, .cd-details > .line, .inc-tags { padding-inline: 18px; }
 .inc-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .line { font-family: var(--font-data); font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap; row-gap: 2px; }
 .line > span + span::before { content: "\00b7"; margin-inline: 8px; color: var(--line-2); }
@@ -892,39 +889,70 @@ td .tag.plain { border-color: transparent; padding-inline: 0; }
 .biz-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .inc .biz-h h5 { margin: 0 6px 0 0; }
 .biz-tbs { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-.biz-tb[aria-pressed="true"] { color: var(--fg); font-weight: 600; background: color-mix(in srgb, var(--link) 12%, transparent); box-shadow: inset 0 0 0 1px var(--link); }
-.biz-h .biz-edit { margin-left: auto; }
+.biz-tb[aria-pressed="true"] { color: var(--tf, var(--fg)); font-weight: 600; background: var(--tb, transparent); box-shadow: inset 0 0 0 1px var(--tl, var(--link)); }
+.biz-note { display: grid; gap: 6px; padding-top: 8px; border-top: 1px dashed var(--line); min-width: 0; }
+.biz-nh { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.inc .biz-nh h5 { margin: 0; }
+.biz-nh .biz-edit { margin-left: auto; }
 .analysis .biz-txt { margin: 0; overflow-wrap: anywhere; }
 .analysis .biz-why { margin: 0; overflow-wrap: anywhere; }
 .biz-form .biz-why-in { flex: 1 1 100%; }
 .biz-form .biz-kind { flex: 0 1 auto; }
 .tag.biz-tag { --c: var(--link); --cb: color-mix(in srgb, var(--link) 10%, transparent); }
 .tag.biz-tag.tech-tag { --c: var(--muted); --cb: var(--sunken); }
-.t-bizdev { --tc: var(--t-bizdev); } .t-marketing { --tc: var(--t-marketing); } .t-seo { --tc: var(--t-seo); } .t-product { --tc: var(--t-product); }
-.t-developer { --tc: var(--t-developer); } .t-data { --tc: var(--t-data); } .t-infra { --tc: var(--t-infra); } .t-analyst { --tc: var(--t-analyst); }
-.tag.tcol { --c: var(--tc); background: color-mix(in srgb, var(--tc) 10%, transparent); }
-.tab-sub-i.tcol { --c: var(--tc); }
-.qf-c.tcol { color: var(--tc); border-color: color-mix(in srgb, var(--tc) 45%, transparent); background: color-mix(in srgb, var(--tc) 8%, var(--surface)); }
-.qf-c.tcol:hover { border-color: var(--tc); color: var(--tc); }
-.qf-c.tcol[aria-pressed="true"] { background: var(--tc); border-color: var(--tc); color: var(--bg); }
+.tag.tcol { --c: var(--tf); color: var(--tf); background: var(--tb); border-color: var(--tl); }
+.tab-sub-i.tcol .lbl { color: var(--tf); background: var(--tb); border: 1px solid var(--tl); border-radius: 3px; padding: 0 6px; }
+.cd-tabs { display: flex; gap: 2px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+.cd-tab { font: inherit; font-size: 0.86rem; font-weight: 500; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 6px 10px; cursor: pointer; }
+.cd-tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--link); }
+.cd-tab:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; border-radius: 4px; }
+.cd-details { display: contents; }
+.cd-details[hidden] { display: none !important; }
+.cd-hist { padding: 4px 18px 16px; min-width: 0; overflow-wrap: anywhere; }
+.h-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.h-rows li { display: grid; grid-template-columns: minmax(84px, max-content) minmax(0, 1fr); gap: 2px 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 0.88rem; }
+.h-rows time { font-family: var(--font-data); font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.h-body { min-width: 0; }
+.h-who { color: var(--muted); font-size: 0.82rem; }
+.h-chg { font-family: var(--font-data); font-size: 0.82rem; }
+.h-old { text-decoration: line-through; color: var(--muted); }
+.h-note { margin: 8px 0; font-size: 0.88rem; }
+@media (max-width: 560px) { .h-rows li { grid-template-columns: minmax(0, 1fr); } }
+.toasts { position: fixed; z-index: 80; right: 16px; bottom: 16px; display: grid; gap: 8px; width: min(420px, calc(100vw - 32px)); pointer-events: none; }
+.toast { pointer-events: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; background: var(--surface); color: var(--fg); border: 1px solid var(--line-2); border-left: 4px solid var(--link); border-radius: 6px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); font-size: 0.88rem; overflow-wrap: anywhere; }
+.toast-t { flex: 1 1 200px; min-width: 0; }
+.toast-acts { display: flex; align-items: center; gap: 6px; }
+.toast-x { font: inherit; font-size: 1.1rem; line-height: 1; color: var(--muted); background: transparent; border: 0; padding: 2px 6px; cursor: pointer; border-radius: 4px; }
+.toast-x:hover { color: var(--fg); }
+.adm-n b.adm-tagname.tcol { color: var(--tf); background: var(--tb); border: 1px solid var(--tl); border-radius: 3px; padding: 0 6px; }
+.adm-tone { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.adm-tone-s { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid var(--tl); background: var(--tb); color: var(--tf); font: 600 0.7rem var(--font-ui); cursor: pointer; }
+.adm-tone-s[aria-checked="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--tf); }
+.adm-tone-s:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.qf-c.tcol { color: var(--tf); border-color: var(--tl); background: var(--tb); }
+.qf-c.tcol:hover { border-color: var(--tf); color: var(--tf); }
+.qf-c.tcol[aria-pressed="true"] { background: var(--tf); border-color: var(--tf); color: var(--bg); }
 .tag.num-link { --c: var(--muted); --cb: var(--sunken); font-family: var(--font-data); text-decoration: none; }
 .tag.num-link:hover { --c: var(--link); text-decoration: underline; }
 .kids .kid-what, .kids .kid-todo { display: block; font-size: 0.82rem; overflow-wrap: anywhere; margin-top: 2px; }
 .kids .kid-what { color: var(--fg-2); }
-.reason.draft-form { justify-content: flex-start; }
 .reason textarea { font: inherit; font-size: 0.88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 10px; flex: 1 1 100%; min-width: 0; box-sizing: border-box; resize: vertical; }
 .what { margin: 0; color: var(--fg-2); font-size: 0.9rem; max-width: 120ch; }
 .inc-body { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); border-top: 1px solid var(--line); }
 .inc-body > * { padding: 14px 18px 16px; min-width: 0; }
 .evidence { border-left: 1px solid var(--line); background: var(--raised); border-radius: 0 0 6px 0; display: grid; gap: 12px; align-content: start; }
-.analysis { display: grid; gap: 12px; align-content: start; }
+.analysis { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; overflow-wrap: anywhere; }
+.analysis > * { min-width: 0; max-width: 100%; }
+.sdraft-h .btn { flex: 0 0 auto; }
 .inc h5 { margin: 0 0 4px; font-size: 0.78rem; font-weight: 600; color: var(--muted); }
 .analysis ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 0.9rem; }
 .analysis ol li::marker { color: var(--muted); font-family: var(--font-data); font-size: 0.85em; }
 .analysis p { margin: 0; font-size: 0.9rem; }
 .rec p { font-weight: 600; }
 .code-refs { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
-.code-refs li { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 2px 12px; align-items: baseline; font-size: 0.88rem; }
+.code-refs li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; justify-items: start; font-size: 0.88rem; min-width: 0; }
+.code-refs .code-why { min-width: 0; max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+.code-refs a.code-file { display: inline-block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .code-refs a { font-family: var(--font-data); font-size: 0.8rem; font-weight: 500; text-decoration: none; padding: 2px 8px; border-radius: 4px; background: var(--sunken); border: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .code-refs a:hover { border-color: var(--link); text-decoration: underline; }
 .code-refs .repo { color: var(--muted); font-size: 0.78rem; font-family: var(--font-data); }
@@ -2149,6 +2177,7 @@ a.btn.chat-link svg { width: 17px; height: 17px; flex: none; }
 .acts .stat .st { cursor: help; }
 .last-act { margin: 0; font-size: 0.85rem; color: var(--fg-2); overflow-wrap: anywhere; }
 .last-act .la-h { font-weight: 600; color: var(--fg); margin-right: 4px; }
+.last-act .la-before { display: block; color: var(--muted); }
 .acts .stat:empty, .acts .asg-msg:empty { display: none; }
 .acts.acts-grouped { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; max-width: none; margin-top: 4px; padding: 12px 0 2px; border-top: 1px solid var(--line); container-type: inline-size; }
 #anoms .inc.open .inc-head .acts.acts-grouped { padding-left: 0; }
@@ -2263,7 +2292,6 @@ button.st.flag-link::after { content: " \203A"; }
 .rep-acts .slack-st:empty { display: none; }
 .rep-acts .draft-q { cursor: help; }
 .rep-acts .draft-q svg { width: 11px; height: 11px; }
-.drep-body .draft-form { justify-content: flex-start; }
 .rel-deps { min-width: 860px; }
 .rel-keys { display: grid; gap: 4px; font-size: 0.82rem; }
 .rel-more { display: flex; align-items: center; gap: 10px; margin: 2px 0 0; font-size: 0.84rem; }
@@ -2357,7 +2385,7 @@ details.foot > summary { display: inline-flex; align-items: center; gap: 4px; fo
   .inc-title { flex-wrap: wrap; row-gap: 4px; }
   .inc-title > h4 { flex: 1 1 55%; }
   .rec-line { margin-inline: 14px; max-width: calc(100% - 28px); }
-  .inc-body > *, .inc-more > .line, .inc-tags { padding-inline: 14px; }
+  .inc-body > *, .inc-more > .line, .cd-details > .line, .inc-tags, .cd-tabs, .cd-hist { padding-inline: 14px; }
   .seen-line { margin-inline: 14px; }
   .card-runs li { display: flex; flex-wrap: wrap; }
   .card-runs .rl { flex-basis: 100%; }
@@ -2607,11 +2635,11 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <ul class="nt-list" id="nt-list"></ul>
       <button type="button" class="btn sec small nt-more" id="nt-more" hidden>Show more</button>
     </section>
-    <h3 class="sub-h first" id="sq-h">Slack drafts</h3>
-    <p class="panel-note"><span>Slack drafts that have not been posted yet, on anomaly cards and on deploy reports, and what happens to each one next. Armed drafts come first, the soonest first. <b>Send now</b> posts it to the channel, <b>Hold</b> stops the auto-send that posts it within 30 s, <b>Discard</b> removes the draft and <b>Edit</b> opens its form on the card or the report.</span> <span class="q" tabindex="0" role="img" aria-label="About the Slack queue" title="The investigator writes the drafts; the service posts them, either on a click or on the auto-send timer, within 30 s of the draft. A draft on a crit or warn card and every deploy report draft arms that timer. An info card, a draft an operator edited and a held draft wait for Send now. A card that is in progress or marked as no action needed never auto-sends either: the job skips it and disarms the timer, so its draft waits here until someone sends it. Sending the draft of a card that is handled, muted or cleared still works, but the text is probably out of date.">?</span></p>
+    <h3 class="sub-h first" id="sq-h">Not posted to Slack</h3>
+    <p class="panel-note"><span>The investigator posts to Slack itself while Slack auto-send is on. These posts did not go out: the run read suspicious text, or Slack refused the post after its retries. Read the text, then post it with Send now or open its card or report with View.</span></p>
     <div class="box">
       <table id="slackq">
-        <thead><tr><th>What</th><th>Draft</th><th>Status</th><th class="sq-c">Actions</th></tr></thead>
+        <thead><tr><th>What</th><th>Text</th><th>Status</th><th class="sq-c">Actions</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -2831,6 +2859,8 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
 </div>
 
 <script src="/static/actors.js"></script>
+<script src="/static/tagtones.js"></script>
+<script src="/static/cardlog.js"></script>
 <script src="/static/icons.js"></script>
 <script src="/static/i18n.js"></script>
 <script type="text/plain" id="plugin-scripts"></script>

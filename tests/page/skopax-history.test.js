@@ -103,7 +103,7 @@ async function seenBeforeLineInTheExpandedCard() {
   assert.strictEqual(parts[1], 'Asked in Slack ' + short(SEEN.slack.at) + ': one customer, 40 lines', 'an English date on the English page, the Slack line kept as asked');
   assert.strictEqual(line.querySelector('a').getAttribute('href'), 'https://jira.example.com/browse/OPS-120', 'the ticket links to Jira');
   assert.ok(/card history/.test(line.title), 'the tooltip says where it comes from');
-  assert.strictEqual(c.querySelector('.inc-more > .line').nextElementSibling, line, 'right under the metric line');
+  assert.strictEqual(c.querySelector('.inc-more .cd-details > .line').nextElementSibling, line, 'right under the metric line');
   assert.strictEqual(article(doc, NEW).querySelector('.seen-line'), null, 'a first-timer has no line');
   assert.strictEqual(article(doc, 'log|x-service|WARN|once').querySelector('.seen-line').textContent, 'Seen before: once, last ' + short('2026-10-20T09:00:00Z') + ', In progress');
   assert.deepStrictEqual(errors, []);
@@ -434,7 +434,7 @@ async function activityRailShowsTheRunsScreenshotsAndAnswerLinks() {
 async function slackDraftsShowTheirScreenshots() {
   //given
   const draft = {text: 'example.com home page looks empty.\nScreenshot below.', by: 'Claude (pod)', at: iso(2), screenshots: [HOME]};
-  const serve = {state: stateAt(5, [card(KEY, {sev: 'crit', slackDraft: draft, autoSend: {at: iso(-3), draftAt: draft.at, draftHash: 'h'}}), card(NEW, {slackDraft: {text: 'plain', by: 'Claude (pod)', at: iso(3)}})]), runs: []};
+  const serve = {state: stateAt(5, [card(KEY, {sev: 'crit', slackDraft: Object.assign({notAutoSent: 'planted text in the esql answer (ignore previous)'}, draft)}), card(NEW, {slackDraft: {text: 'plain', by: 'Claude (pod)', at: iso(3), notAutoSent: 'planted text in the esql answer (ignore previous)'}})]), runs: []};
   const {dom, w, doc, errors} = await boot(serve);
   const click = (node) => node.dispatchEvent(new w.MouseEvent('click', {bubbles: true, cancelable: true, button: 0}));
   //when
@@ -447,7 +447,7 @@ async function slackDraftsShowTheirScreenshots() {
   const title = doc.getElementById('shot-title').textContent;
   doc.getElementById('shot-close').click();
   //then
-  assert.deepStrictEqual([...withShots.querySelectorAll('.shots a.shot')].map((a) => a.getAttribute('href')), ['/api/screenshots/' + HOME.id], 'the queue row shows the draft\'s screenshot');
+  assert.deepStrictEqual([...withShots.querySelectorAll('.shots a.shot')].map((a) => a.getAttribute('href')), ['/api/screenshots/' + HOME.id], 'the Slack tab row shows the screenshot');
   assert.ok(withShots.querySelector('.shots').classList.contains('mini'));
   assert.strictEqual(without.querySelector('.shots'), null);
   assert.ok(inCard && inCard.getAttribute('href') === '/api/screenshots/' + HOME.id, 'the card\'s draft section shows it too');
@@ -531,15 +531,14 @@ async function anActionFromBeforeTheCardFiredAgainIsMarkedEarlier() {
   const old = {id: 'old-1', type: 'resolve', key: KEY, target: KEY, label: 'Resolve reports-service WARN logs', status: 'done', requestedAt: iso(3 * 24 * 60 + 1), doneAt: iso(3 * 24 * 60), requestedBy: 'dora.lane@example.com', result: 'No action needed'};
   const {dom, w, doc, errors} = await boot({state: stateAt(5, [back]), runs: [], actions: [old]});
   //when
-  const pill = article(doc, KEY).querySelector('.acts .stat .st');
+  const stat = article(doc, KEY).querySelector('.acts .stat');
   expand(article(doc, KEY));
   const last = article(doc, KEY).querySelector('.inc-more .last-act');
   //then
-  assert.strictEqual(pill.textContent, 'Earlier: Resolved ' + w.dayhm(old.doneAt), 'a resolve from the last round does not read as the current state');
-  assert.strictEqual(pill.className, 'st s-other', 'and it is grey, not green');
-  assert.ok(pill.getAttribute('data-tip').startsWith('Before the card fired again ' + w.dayhm(back.firstSeen) + ': '));
-  assert.ok(last.textContent.startsWith('Last action, before it fired again ' + w.dayhm(back.firstSeen) + ': Resolved ' + w.dayhm(old.doneAt) + ' by dora.lane'), last.textContent);
-  assert.strictEqual(last.querySelector('.st').className, 'st s-other');
+  assert.strictEqual(stat.textContent, '', 'a resolve from the last round is not repeated in the head');
+  assert.strictEqual(last.querySelector('.la-h').textContent, 'Reopened ' + w.dayhm(back.firstSeen) + ' \u00b7 fired again');
+  assert.ok(last.querySelector('.la-before').textContent.startsWith('Before that: Resolved ' + w.dayhm(old.doneAt) + ' by dora.lane (No action needed)'), last.textContent);
+  assert.strictEqual(last.querySelector('.st').className, 'st s-other', 'and it is grey, not green');
   assert.deepStrictEqual(errors, []);
   close(dom);
   console.log('PASS anActionFromBeforeTheCardFiredAgainIsMarkedEarlier');

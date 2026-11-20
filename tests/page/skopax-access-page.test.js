@@ -705,10 +705,45 @@ async function theCompanyIconUploadsAndRemoves() {
   assert.strictEqual(asked, 'Remove the company icon?');
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'DELETE').map((c) => c[1]), ['/api/admin/sso/icon']);
   assert.strictEqual(card(t.doc).querySelector('.sso-icon-state').textContent, 'None uploaded');
-  assert.strictEqual(field(t.doc, 'button-icon').querySelector('.sso-in').value, 'company', 'the unsaved mode survives the upload and removal');
+  assert.strictEqual(field(t.doc, 'button-icon').querySelector('.sso-in').value, 'auto', 'Remove sets a Company icon back to Auto');
   assert.deepStrictEqual(t.errors, []);
   t.close();
   return 'the company icon refuses a big or wrong file before sending, uploads the raw file, shows in the preview, and Remove asks first';
+}
+
+async function anUploadedIconPicksCompanyAndRemoveGoesBackToAuto() {
+  //given
+  const t = await boot({tab: 'sso'});
+  const mode = () => field(t.doc, 'button-icon').querySelector('.sso-in');
+  const pick = () => {
+    const input = card(t.doc).querySelector('.sso-icon-file');
+    Object.defineProperty(input, 'files', {configurable: true, value: [new t.w.File([new Uint8Array(120)], 'logo.png', {type: 'image/png'})]});
+    change(input);
+  };
+  const before = [mode().value, card(t.doc).querySelector('.sso-bar').dataset.dirty];
+
+  //when
+  pick();
+  await wait(100);
+  const up = {mode: mode().value, preview: preview(t.doc), dirty: card(t.doc).querySelector('.sso-bar').dataset.dirty};
+  card(t.doc).querySelector('.sso-icon-del').click();
+  await wait(20);
+  t.doc.getElementById('cf-yes').click();
+  await wait(100);
+  const down = mode().value;
+  mode().value = 'none';
+  change(mode());
+  pick();
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual(before, ['auto', 'false']);
+  assert.deepStrictEqual(up, {mode: 'company', preview: ['sso-pv sso-btn-company', 'url("/login/sso-icon?v=abc123")', 'Sign in with SSO'], dirty: 'true'}, 'the upload picks Company, the preview shows the image and the bar marks it unsaved');
+  assert.strictEqual(down, 'auto', 'Remove sets Company back to Auto');
+  assert.strictEqual(mode().value, 'none', 'None stays None after an upload');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'an uploaded company icon sets Button icon to Company unless it was None, and Remove sets Company back to Auto';
 }
 
 const shownPanels = (doc) => [...doc.querySelectorAll('#access .acc-part')].filter((p) => !p.hidden).map((p) => p.id);
@@ -1020,7 +1055,7 @@ async function aHostileNameIsShownAsText() {
 (async () => {
   const cases = [theSectionsComeInOrderWithANavThatCountsAndFlags, peopleShowAvatarMethodsAndLastSignIn, searchAndRoleFilterNarrowThePeople, theLastAdminKeepsRoleAndSignInWithTheReason,
     theRowMenuWorksByKeyboard, focusStaysOnTheControlAfterASaveRedraws, tokensShowExpiryChipsAndCreateWithAnExpiry, revokeAsksFirst, eachSectionLoadsAndFailsOnItsOwn, chipsEditTheAllowedDomains, aDomainTypedButNotAddedIsSavedAndSurvivesARepaint, theMcpAndLastKnownRoleFieldsSaveWithTheirCard, aRefusedRoleFieldOnTheSsoCardKeepsItsReason,
-    theCardGroupsItsFieldsAndShowsItsStatus, thePreviewFollowsUnsavedEdits, unsavedButtonEditsSurviveASaveOfAnotherField, theCompanyIconUploadsAndRemoves,
+    theCardGroupsItsFieldsAndShowsItsStatus, thePreviewFollowsUnsavedEdits, unsavedButtonEditsSurviveASaveOfAnotherField, theCompanyIconUploadsAndRemoves, anUploadedIconPicksCompanyAndRemoveGoesBackToAuto,
     theSectionsAreTabsThatShowOnePanelAtATime, theTabsMoveWithTheArrowKeys, aLinkOpensTheNamedTab, theTabsStayOnNarrowScreens, anAdminRenamesAPersonFromTheRow, renamingYourselfAsAdminUpdatesTheSidebar, aPersonRenamesThemselvesFromTheUserMenu, aSecondSaveWaitsForTheFirst, aHostileNameIsShownAsText];
   for (const c of cases) console.log('PASS ' + await c());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

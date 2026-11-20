@@ -77,7 +77,7 @@ def test_send_posts_the_anomaly_and_records_who_sent_it(seeded: Store):
     assert res.json()['draft'] is False
 
 
-DRAFT = 'BFF 116 WARN for the BRAND logo since 12:22 UTC <asset-service> & catalog-service\nOperations should upload the logo.\nhttps://skopax.dev.example.com/#a=log%7Cweb-bff%7CWARN%7CDefine%20logo%20for%20BRAND'
+DRAFT = 'BFF 116 WARN for the BRAND logo since 12:22 UTC <asset-service> & catalog-service\nOperations should upload the logo.\nhttps://skopax.example.com/#a=log%7Cweb-bff%7CWARN%7CDefine%20logo%20for%20BRAND'
 
 
 def test_send_uses_the_draft_as_the_message_and_keeps_the_card(seeded: Store):

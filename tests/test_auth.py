@@ -253,7 +253,7 @@ def test_tampered_session_cookie_is_ignored(store: Store, endpoint: TokenEndpoin
     assert res.status_code == 401
 
 
-def test_slack_draft_edit_is_saved_under_whoever_is_logged_in(store: Store, endpoint: TokenEndpoint):
+def test_a_logged_in_person_can_no_longer_edit_a_slack_draft(store: Store, endpoint: TokenEndpoint):
     # given
     store.save(state({'key': 'k', 'sev': 'warn', 'status': 'open', 'svc': 'checkout-service', 'label': 'ERROR pattern', 'slackDraft': {'text': 'old', 'by': 'Claude', 'at': '2026-10-13T16:00:00Z'}}), None)
     operator = app_client(store, endpoint)
@@ -266,11 +266,8 @@ def test_slack_draft_edit_is_saved_under_whoever_is_logged_in(store: Store, endp
     saved = operator.put('/api/slack-drafts', json={'key': 'k', 'text': 'new draft'})
 
     # then
-    assert first.status_code == 200, 'a login without any role edits too'
-    assert saved.status_code == 200
-    draft = store.anomaly('k')['slackDraft']
-    assert draft['text'] == 'new draft'
-    assert draft['by'] == 'oscar.green@example.com'
+    assert (first.status_code, saved.status_code) == (410, 410)
+    assert store.anomaly('k')['slackDraft']['text'] == 'old'
 
 
 def test_operator_session_cannot_write_state_reserved_for_the_hourly_check(store: Store, endpoint: TokenEndpoint):

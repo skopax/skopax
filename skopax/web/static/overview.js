@@ -273,7 +273,7 @@ function tagsRow(label) {
   Object.keys(TAG_NAMES).forEach(function (id) {
     var t = 'tag:' + id, c = n[id] || 0;
     if (folded && !hasF(t)) return;
-    var b = el('button', 'tab-sub-i k-act tcol t-' + id + (c ? '' : ' zero'), '<span class="lbl">' + esc(tagName(id)) + '</span><span class="count">' + esc(c) + '</span>');
+    var b = el('button', 'tab-sub-i k-act ' + tagClass(id) + (c ? '' : ' zero'), '<span class="lbl">' + esc(tagName(id)) + '</span><span class="count">' + esc(c) + '</span>');
     b.type = 'button'; b.dataset.type = t;
     b.setAttribute('aria-pressed', hasF(t) ? 'true' : 'false');
     b.title = c + ' ' + (c === 1 ? 'card' : 'cards') + ' tagged ' + tagName(id) + ' under ' + label + (TECH_TAGS[id] ? ': ' + TECH_TAGS[id] + ' to fix them · ' : ': they go to its Teams channel once they have a business sentence · ') + (hasF(t) ? 'click again to drop this filter' : 'shows only them');
@@ -412,7 +412,6 @@ function renderTabs() {
   var openNow = openAll(), openTop = ['crit', 'warn'].filter(function (s) { return openNow.some(function (a) { return healthCard(a) && a.sev === s; }); })[0];
   var anomTip = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; });
   if (!openAll().length) anomTip.push('nothing open');
-  if (slackRec.length) anomTip.push(plural(slackRec.length, 'Slack draft', 'Slack drafts'));
   var T = {
     anoms: [String(openNow.length), openTop ? SEV[openTop][1] : SEV[worst][1], !!openNow.length, anomTip.join(' · ')],
     svcs: [S.length ? svcOk + '/' + S.length : '–', svcK, !!bad.length, !S.length ? 'no services yet' : bad.length ? bad.length + ' of ' + S.length + ' not healthy: ' + badTip : 'all ' + S.length + ' healthy'],
@@ -501,7 +500,6 @@ function renderFilters() {
     {id: 'dived', label: 'Investigated', k: 'k-cleared', n: triCount('dived'), seg: 'tri-chips'},
     {id: 'crit', label: 'Critical', k: 'k-crit', n: openBySev('crit').length, seg: 'sev-chips', tip: 'open critical items (pushed)'},
     {id: 'warn', label: 'Warning', k: 'k-warn', n: openBySev('warn').length, seg: 'sev-chips', tip: 'open warning items (pushed)'},
-    {id: 'slack', label: 'Slack recommended', chip: 'Slack drafts', k: 'k-act', n: slackRec.length, seg: 'list-chips', tip: 'cards with a Slack draft waiting to be sent, whatever their status'},
     {id: 'recurring', label: 'Recurring', k: 'k-warn', n: recurringL.length, seg: 'list-chips', whenAny: true, tip: 'cards that keep coming back with no Jira ticket on them, whatever their status'},
     {id: 'archived', label: 'Archived', k: 'k-cleared', n: ARCHIVED.length, seg: 'list-chips', tip: 'cards not firing (or muted) with no change for ' + archiveHours() + ' hours; hidden everywhere else'},
     {id: 'closed', label: 'Closed', k: 'k-cleared', n: CLOSED.data ? CLOSED.data.total : '', seg: 'list-chips', tip: 'cards that already left the page, kept for a year; the count is for the time range picked in the list'}
@@ -519,7 +517,7 @@ function renderFilterNote(c) {
   var note = document.getElementById('filter-note');
   var f = c ? c.id : 'open', refocus = document.activeElement && document.activeElement.id === 'filter-menu';
   note.className = 'filter-note ' + (c ? c.k : SEV[worst][1]) + (f !== 'open' || typeF ? ' on' : '');
-  note.title = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning'], [inprog.length, 'in progress'], [taken.length, 'action taken'], [muted.length, 'muted'], [cleared.length, 'cleared'], [slackRec.length, 'Slack drafts'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
+  note.title = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning'], [inprog.length, 'in progress'], [taken.length, 'action taken'], [muted.length, 'muted'], [cleared.length, 'cleared'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
   note.innerHTML = '<span class="fn-cur">Showing <b>' + esc(c ? c.label : 'Open') + '</b>' + (typeF ? ' · <b>' + esc(typeName(typeF)) + '</b>' : '') +
     '<span class="count">' + esc(typeF ? shownN : c ? c.n : openAll().length) + '</span></span>' +
     (f === 'svc' ? '<button class="xlink" type="button" id="back-svcs">← Back to Services</button>' : '') +
