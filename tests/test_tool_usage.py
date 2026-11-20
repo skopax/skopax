@@ -64,7 +64,7 @@ def test_every_defined_tool_is_listed_and_unused_ones_come_last_with_empty_numbe
     edge = next(t for t in out['tools'] if t['name'] == 'jira_search')
     assert edge == {'name': 'jira_search', 'kind': 'read', 'calls': 0, 'runs': 0, 'errors': 0, 'errorRate': None, 'truncated': 0,
                     'p50Ms': None, 'p95Ms': None, 'maxMs': None, 'lastAt': None, 'byTrigger': {}, 'recentErrors': [],
-                    'description': toolusage.descriptions()['jira_search']}
+                    'held': 0, 'recentHeld': [], 'refused': 0, 'recentRefused': [], 'description': toolusage.descriptions()['jira_search']}
     unused = [t['name'] for t in out['tools'] if t['calls'] == 0]
     assert unused == sorted(unused) and names[-len(unused):] == unused
     assert {t['kind'] for t in out['tools']} == {'read', 'write', 'propose'}

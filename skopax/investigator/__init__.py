@@ -18,7 +18,7 @@ from skopax.engine import iso as epoch_iso
 from skopax.errkind import Refusal, kind as error_kind, text_of
 from skopax.features import off_text
 from skopax.investigator import pricing, prompt, select
-from skopax.investigator.flags import scan
+from skopax.investigator.flags import SOFT, scan
 from skopax.investigator.runner import Result, RunConfig, Runner
 from skopax.investigator.tools import Effects, Sources, Toolbox
 from skopax.investigator.web import web_from
@@ -58,6 +58,23 @@ def via_mcp(action: dict | None) -> bool:
 def without_outcome(card: dict) -> dict:
     seen = card.get('seenBefore')
     return card | {'seenBefore': {k: v for k, v in seen.items() if k not in ('outcome', 'resolution')}} if isinstance(seen, dict) else card
+
+
+def scan_parts(cards: list[dict], base: str) -> tuple[str, str]:
+    strict, soft = [], []
+    for c in cards:
+        c = without_outcome(c)
+        seen = c.get('seenBefore')
+        line = (seen.get('slack') or {}).get('line') if isinstance(seen, dict) else None
+        pod = c.get('noteBy') == 'pod' and bool(c.get('note'))
+        if isinstance(seen, dict) and 'slack' in seen:
+            c = c | {'seenBefore': {k: v for k, v in seen.items() if k != 'slack'}}
+        if pod:
+            soft.append(str((c['note'].get('text') if isinstance(c['note'], dict) else c['note']) or ''))
+            c = {k: v for k, v in c.items() if k != 'note'}
+        soft.append(str(line or ''))
+        strict.append(c)
+    return prompt.cards_text(strict, base), '\n'.join(t for t in soft if t)
 
 
 def clip(text: str, limit: int) -> str:
@@ -442,7 +459,11 @@ class Investigator:
                 else:
                     config = RunConfig(self.model, self.effort, self.assess_max_tool_calls if report else self.max_tool_calls)
                     brief = prompt.brief(cards, {**action, 'report': report} if report else action, self.base_url, config.max_tool_calls, None if ask or report else self._announced(cards, now)) + ('' if ask else prompt.language_note(self.language))
-                toolbox.flags += scan('brief', brief if report else prompt.cards_text([without_outcome(c) for c in cards], self.base_url))
+                if report:
+                    toolbox.flags += scan('brief', brief)
+                else:
+                    strict, soft = scan_parts(cards, self.base_url)
+                    toolbox.flags += scan('brief', strict) + scan('brief', soft, skip=SOFT)
                 tag = {'source': MCP if mcp else SOURCE_OF[record['trigger']], 'runId': run_id, 'actionId': action['id'] if action else None,
                        'keys': [] if mcp and chat_ask else keys, 'by': (action or {}).get('requestedBy') or pricing.POD_BY}
                 client, result = self._built()

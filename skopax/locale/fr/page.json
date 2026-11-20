@@ -10,7 +10,7 @@
   "30 days": "30 jours",
   "7 days": "7 jours",
   "A deploy occurred in the last {0} h": "Un déploiement a eu lieu dans les dernières {0} h",
-  "Auto follows your browser when a language pack covers it. Packs for tr, de, es and fr are built in, and plug-ins can add more. A pack translates menus, lists, card labels and buttons; English is always one click away here.": "Auto suit votre navigateur lorsqu'un pack de langue couvre sa langue. Le turc, l'allemand, l'espagnol et le français sont intégrés, et les plug-ins peuvent en ajouter d'autres. Un pack traduit les menus, les listes, les libellés des cartes et les boutons ; l'anglais reste toujours à un clic ici.",
+  "Auto follows your browser when a language pack covers it. Every language pack on this page is listed here, and plug-ins can add more. A pack translates menus, lists, card labels and buttons; English is always one click away here.": "Auto suit votre navigateur lorsqu'un pack de langue couvre sa langue. Tous les packs de langue de cette page sont listés ici, et les plug-ins peuvent en ajouter d'autres. Un pack traduit les menus, les listes, les libellés des cartes et les boutons ; l'anglais reste toujours à un clic ici.",
   "API calls": "Appels API",
   "API reference": "Référence de l'API",
   "API tokens": "Jetons API",
@@ -1138,7 +1138,19 @@
   "Change…": "Modifier…",
   "Investigator": "Enquêteur",
   "Takes questions, Investigate clicks and deploy assessments.": "Prend en charge les questions, les clics sur Enquêter et les évaluations de déploiement.",
-  "Takes new and escalated cards, and the queue when the rooms are full.": "Prend en charge les cartes nouvelles et escaladées, et la file d'attente quand les salles sont pleines."
+  "Takes new and escalated cards, and the queue when the rooms are full.": "Prend en charge les cartes nouvelles et escaladées, et la file d'attente quand les salles sont pleines.",
+  "Refused input": "Entrée refusée",
+  "by the planted-text guard": "par la protection contre le texte planté",
+  "before any source was called": "avant tout appel à une source",
+  "Held by the planted-text guard ({0} of {1})": "Retenues par la protection contre le texte planté ({0} sur {1})",
+  "Refused input ({0} of {1})": "Entrée refusée ({0} sur {1})",
+  "The run read text that looks planted, so the guard left one action out and told the investigator what to do instead. This is not a failure of the tool.": "L'exécution a lu un texte qui semble planté ; la protection a laissé de côté une action et a dit à l'investigateur quoi faire à la place. Ce n'est pas une panne de l'outil.",
+  "The investigator sent an argument the tool does not accept, and it was refused before any source was called.": "L'investigateur a envoyé un argument que l'outil n'accepte pas, et il a été refusé avant tout appel à une source.",
+  "the cause was left out and the note names the trigger": "la cause a été laissée de côté et la note nomme le déclencheur",
+  "the business-team tag was left out and the note names the team": "l'étiquette d'équipe métier a été laissée de côté et la note nomme l'équipe",
+  "the absorb pattern was left out and the cards are grouped without it": "le motif d'absorption a été laissé de côté et les cartes sont groupées sans lui",
+  "it did not post to the main channel itself and saved a draft that waits for a person": "il n'a pas publié lui-même dans le canal principal et a enregistré un brouillon qui attend une personne",
+  "nothing was sent to Slack and the asker is told what to send instead": "rien n'a été envoyé à Slack et la personne qui a demandé est informée de ce qu'elle doit envoyer à la place"
  },
  "rules": [
   [
@@ -1384,6 +1396,10 @@
   [
    "^Takes (.+)\\.$",
    "Prend en charge $1."
+  ],
+  [
+   "^Held: the run read text that looks planted \\((.+)\\) in (.+)$",
+   "Retenu : l'exécution a lu un texte qui semble planté ($1) dans $2"
   ]
  ],
  "months": {

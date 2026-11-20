@@ -554,17 +554,68 @@ function setFilter(f) {
 function initAppearance() {
   var KEY = 'skopax-appearance';
   var DEFAULTS = {size: 'md', mode: 'system', density: 'comfortable', lang: 'auto'};
-  var LANG_COOKIE = 'skopax_lang', langNow = null;
+  var LANG_COOKIE = 'skopax_lang', langNow = null, LANG_SEGS = 5;
   var root = document.documentElement;
   var panel = document.getElementById('panel-prefs');
   var ap = Object.assign({}, DEFAULTS);
   try { Object.assign(ap, JSON.parse(load(KEY) || '{}')); } catch (e) {}
+  function langPacks() {
+    var all = window.SKOPAX_I18N, tag = new RegExp('^(?:' + SKOPAX_LANG_TAG + ')$');
+    if (!all || typeof all !== 'object') return [];
+    return Object.keys(all).filter(function (k) { return tag.test(k) && k.toLowerCase() !== 'en' && all[k] && typeof all[k] === 'object'; }).sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : 0; });
+  }
+  function langName(tag) {
+    var name = '';
+    try { name = new Intl.DisplayNames([tag], {type: 'language'}).of(tag) || ''; } catch (e) {}
+    if (!name || name === tag) return tag;
+    return name.charAt(0).toLocaleUpperCase(tag) + name.slice(1);
+  }
+  function langChoice() {
+    var packs = langPacks();
+    return {packs: packs, value: ap.lang === 'auto' || ap.lang === 'en' || packs.indexOf(ap.lang) >= 0 ? ap.lang : 'auto'};
+  }
+  function langRow() {
+    var group = panel.querySelector('[data-ap="lang"]'), packs = langPacks(), sig = packs.join('|');
+    if (!group || group.dataset.packs === sig) return;
+    group.dataset.packs = sig;
+    var entries = [['auto', 'Auto'], ['en', 'English']].concat(packs.map(function (t) { return [t, langName(t)]; }));
+    group.textContent = '';
+    if (entries.length <= LANG_SEGS) {
+      entries.forEach(function (en) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.dataset.v = en[0];
+        b.textContent = en[1];
+        if (en[0] === 'auto') b.title = 'Follows your browser';
+        else b.setAttribute('data-no-tx', '');
+        group.appendChild(b);
+      });
+      return;
+    }
+    var sel = document.createElement('select');
+    sel.className = 'ap-lang-select';
+    entries.forEach(function (en) {
+      var o = document.createElement('option');
+      o.value = en[0];
+      o.textContent = en[1];
+      if (en[0] !== 'auto') o.setAttribute('data-no-tx', '');
+      sel.appendChild(o);
+    });
+    group.appendChild(sel);
+  }
   function apply() {
+    langRow();
+    var choice = langChoice();
     root.dataset.size = ap.size;
     if (ap.mode === 'system') delete root.dataset.theme; else root.dataset.theme = ap.mode;
     if (ap.density === 'compact') root.dataset.density = 'compact'; else delete root.dataset.density;
-    panel.querySelectorAll('[data-ap] button').forEach(function (b) { b.setAttribute('aria-pressed', String(ap[b.parentNode.dataset.ap] === b.dataset.v)); });
-    var lang = new RegExp('^(?:' + SKOPAX_LANG_TAG + ')$').test(ap.lang || '') ? ap.lang : '';
+    panel.querySelectorAll('[data-ap] button').forEach(function (b) {
+      var key = b.parentNode.dataset.ap;
+      b.setAttribute('aria-pressed', String((key === 'lang' ? choice.value : ap[key]) === b.dataset.v));
+    });
+    var pick = panel.querySelector('[data-ap="lang"] select');
+    if (pick) pick.value = choice.value;
+    var lang = choice.value === 'auto' ? '' : choice.value;
     document.cookie = LANG_COOKIE + '=' + lang + '; path=/; max-age=' + (lang ? 31536000 : 0) + '; samesite=lax';
     var changed = langNow !== null && langNow !== lang;
     langNow = lang;
@@ -576,6 +627,14 @@ function initAppearance() {
     if (!b) return;
     try { Object.assign(ap, JSON.parse(load(KEY) || '{}')); } catch (err) {}
     ap[b.parentNode.dataset.ap] = b.dataset.v;
+    save(KEY, JSON.stringify(ap));
+    apply();
+  });
+  panel.addEventListener('change', function (e) {
+    var sel = e.target.closest('[data-ap] select');
+    if (!sel) return;
+    try { Object.assign(ap, JSON.parse(load(KEY) || '{}')); } catch (err) {}
+    ap.lang = sel.value;
     save(KEY, JSON.stringify(ap));
     apply();
   });

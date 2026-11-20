@@ -450,6 +450,8 @@ li.hrow .hmeta { font-size: 0.8rem; color: var(--muted); }
 li.hrow .shots { padding: 2px 0 0; }
 .ap-sec { display: grid; gap: 8px; justify-items: start; }
 .ap-note { margin: 0; font-size: 0.8rem; }
+.seg select { font: inherit; font-size: 0.86rem; color: var(--fg); background: var(--surface); border: 0; border-radius: 4px; padding: 5px 8px; cursor: pointer; }
+.seg select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .pf-sec { display: grid; gap: 14px; justify-items: start; max-width: 46rem; margin-top: 12px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .pf-sec h3 { margin: 0; font-size: 0.98rem; font-weight: 600; }
 .pf-who { margin: 0; font-size: 0.88rem; color: var(--fg-2); overflow-wrap: anywhere; }
@@ -2225,7 +2227,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <div class="ap-sec"><span class="seg-l">Text size</span><div class="seg" role="group" aria-label="Text size" data-ap="size"><button type="button" data-v="sm">S</button><button type="button" data-v="md">M</button><button type="button" data-v="lg">L</button></div></div>
       <div class="ap-sec"><span class="seg-l">Mode</span><div class="seg" role="group" aria-label="Mode" data-ap="mode"><button type="button" data-v="light">Light</button><button type="button" data-v="dark">Dark</button><button type="button" data-v="system">System</button></div></div>
       <div class="ap-sec"><span class="seg-l">Density</span><div class="seg" role="group" aria-label="Density" data-ap="density"><button type="button" data-v="comfortable">Comfortable</button><button type="button" data-v="compact">Compact</button></div></div>
-      <div class="ap-sec"><span class="seg-l">Language</span><div class="seg" role="group" aria-label="Language" data-ap="lang"><button type="button" data-v="auto" title="Follows your browser">Auto</button><button type="button" data-v="en">English</button></div><p class="muted ap-note">Auto follows your browser when a language pack covers it. Packs for tr, de, es and fr are built in, and plug-ins can add more. A pack translates menus, lists, card labels and buttons; English is always one click away here.</p></div>
+      <div class="ap-sec"><span class="seg-l">Language</span><div class="seg" role="group" aria-label="Language" data-ap="lang"><button type="button" data-v="auto" title="Follows your browser">Auto</button><button type="button" data-v="en">English</button></div><p class="muted ap-note">Auto follows your browser when a language pack covers it. Every language pack on this page is listed here, and plug-ins can add more. A pack translates menus, lists, card labels and buttons; English is always one click away here.</p></div>
       <div class="ap-sec"><button type="button" class="btn sec" id="ap-reset">Reset to defaults</button><p class="muted ap-note">Saved in this browser only.</p></div>
     </section>
     <section class="pf-sec" id="pf-acct" aria-labelledby="pf-acct-h" hidden>

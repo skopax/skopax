@@ -31,7 +31,7 @@ def percentile(values: list[int], share: float) -> int | None:
 
 
 def blank() -> dict:
-    return {'calls': 0, 'runs': 0, 'errors': 0, 'truncated': 0, 'ms': [], 'lastAt': None, 'byTrigger': {}, 'recentErrors': [], 'unknown': 0}
+    return {'calls': 0, 'runs': 0, 'errors': 0, 'truncated': 0, 'ms': [], 'lastAt': None, 'byTrigger': {}, 'recentErrors': [], 'held': 0, 'recentHeld': [], 'refused': 0, 'recentRefused': [], 'unknown': 0}
 
 
 def kind_of(name: str, row: dict, kinds: dict[str, str]) -> str:
@@ -89,8 +89,16 @@ def summary(runs: list[dict], days: int, since: str, checks: list[dict] | None =
                 fallback = (plugin_tools.default_instance(name) if plugin_tools is not None else None) or PRIMARY
                 where = row.setdefault('byCluster', {}).setdefault(c.get('cluster') or fallback, {'calls': 0, 'errors': 0})
                 where['calls'] += 1
-                where['errors'] += 1 if c.get('error') else 0
-            if c.get('error'):
+                where['errors'] += 1 if c.get('error') and not c.get('held') and not c.get('refused') else 0
+            if c.get('error') and c.get('held'):
+                row['held'] += 1
+                if len(row['recentHeld']) < RECENT_ERRORS:
+                    row['recentHeld'].append({'at': at, 'runId': r.get('_id'), 'trigger': trigger, 'held': c['held']})
+            elif c.get('error') and c.get('refused'):
+                row['refused'] += 1
+                if len(row['recentRefused']) < RECENT_ERRORS:
+                    row['recentRefused'].append({'at': at, 'runId': r.get('_id'), 'trigger': trigger, 'error': str(c['error'])[:ERROR_LIMIT]})
+            elif c.get('error'):
                 row['errors'] += 1
                 row['unknown'] += 1 if c['error'] == NO_TOOL.format(name=name)[:TOOL_ERROR_LIMIT] else 0
                 if len(row['recentErrors']) < RECENT_ERRORS:
@@ -104,12 +112,14 @@ def summary(runs: list[dict], days: int, since: str, checks: list[dict] | None =
         row = rows.get(name)
         if row is None:
             tools.append({'name': name, 'kind': kinds[name], 'calls': 0, 'runs': 0, 'errors': 0, 'errorRate': None, 'truncated': 0,
-                          'p50Ms': None, 'p95Ms': None, 'maxMs': None, 'lastAt': None, 'byTrigger': {}, 'recentErrors': []})
+                          'p50Ms': None, 'p95Ms': None, 'maxMs': None, 'lastAt': None, 'byTrigger': {}, 'recentErrors': [],
+                          'held': 0, 'recentHeld': [], 'refused': 0, 'recentRefused': []})
             continue
         tools.append({'name': name, 'kind': kind_of(name, row, kinds), 'calls': row['calls'], 'runs': row['runs'], 'errors': row['errors'],
                       'errorRate': round(row['errors'] / row['calls'], 4), 'truncated': row['truncated'],
                       'p50Ms': percentile(row['ms'], 0.5), 'p95Ms': percentile(row['ms'], 0.95), 'maxMs': max(row['ms']) if row['ms'] else None,
                       'lastAt': row['lastAt'], 'byTrigger': row['byTrigger'], 'recentErrors': row['recentErrors'],
+                      'held': row['held'], 'recentHeld': row['recentHeld'], 'refused': row['refused'], 'recentRefused': row['recentRefused'],
                       **({'byCluster': row['byCluster']} if row.get('byCluster') else {}), **({'byCheck': row['byCheck']} if row.get('byCheck') else {})})
     for t in tools:
         if t['name'] in said:
@@ -117,9 +127,10 @@ def summary(runs: list[dict], days: int, since: str, checks: list[dict] | None =
     tools.sort(key=lambda t: (t['calls'] == 0, -t['calls'], t['name']))
     used = [t for t in tools if t['calls']]
     for t in tools:
-        t['recentErrors'] = sorted(t['recentErrors'], key=lambda e: str(e.get('at') or ''), reverse=True)[:RECENT_ERRORS]
+        for field in ('recentErrors', 'recentHeld', 'recentRefused'):
+            t[field] = sorted(t[field], key=lambda e: str(e.get('at') or ''), reverse=True)[:RECENT_ERRORS]
     return {'days': days, 'since': since, 'runs': len(runs), 'runsWithTools': with_tools, 'checkRuns': check_runs, 'calls': sum(t['calls'] for t in used),
-            'errors': sum(t['errors'] for t in used), 'toolsUsed': len(used), 'toolsDefined': len(kinds) + sum(1 for t in tools if t['kind'] == OUTSIDE), 'tools': tools}
+            'errors': sum(t['errors'] for t in used), 'held': sum(t['held'] for t in used), 'refused': sum(t['refused'] for t in used), 'toolsUsed': len(used), 'toolsDefined': len(kinds) + sum(1 for t in tools if t['kind'] == OUTSIDE), 'tools': tools}
 
 
 def with_status(usage: dict, toolset, probe: dict | None) -> dict:

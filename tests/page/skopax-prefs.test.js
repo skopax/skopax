@@ -24,6 +24,7 @@ async function boot(opts) {
   const dom = new JSDOM(pageHtml(TEMPLATE, opts.brand ? {brand: opts.brand} : undefined).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state())), {
     url: 'https://skopax.example.com' + (opts.path || '/') + (opts.hash || '#t=prefs'), runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
+      if (opts.packs) w.SKOPAX_I18N = opts.packs;
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () {};
       Object.keys(opts.stored || {}).forEach((k) => w.localStorage.setItem(k, opts.stored[k]));
@@ -267,9 +268,96 @@ async function everyCoreGroupFitsAn800PxScreenAndTheFootStaysOnShorterOnes() {
   return 'with the switcher, the search and the account shown and More folded, the sidebar adds up to ' + heights[0] + ' px of an 800 px screen (' + (800 - heights[0]) + ' px spare), whatever the display name; on a shorter screen only the groups scroll';
 }
 
+const langRow = (doc) => doc.querySelector('#panel-prefs [data-ap="lang"]');
+const langButtons = (doc) => [...langRow(doc).querySelectorAll('button')].map((b) => b.dataset.v + '=' + b.textContent + (b.getAttribute('aria-pressed') === 'true' ? '*' : ''));
+const langOptions = (doc) => [...langRow(doc).querySelectorAll('select option')].map((o) => o.value + '=' + o.textContent);
+const reloaded = (errors) => errors.some((e) => /navigation/i.test(e));
+
+async function theLanguageRowListsTheLoadedPacksAndChoosingOneSetsTheCookieAndReloads() {
+  //given
+  const {dom, w, doc, errors} = await boot({packs: {tr: {}, de: {}}});
+
+  //then
+  assert.deepStrictEqual(langButtons(doc), ['auto=Auto*', 'en=English', 'de=Deutsch', 'tr=T\u00fcrk\u00e7e'], 'Auto, English, then each loaded pack under its own name, in tag order');
+  assert.strictEqual(langRow(doc).querySelector('select'), null, 'up to five entries stay buttons');
+
+  //when
+  pick(doc, 'lang', 'de');
+  await wait(50);
+
+  //then
+  assert.strictEqual(JSON.parse(stored(w)).lang, 'de');
+  assert.ok(/skopax_lang=de/.test(doc.cookie), 'the pick goes to the cookie the server and the chat read: ' + doc.cookie);
+  assert.ok(reloaded(errors), 'and the page reloads in German: ' + errors.join(' | '));
+  assert.ok(langButtons(doc).includes('de=Deutsch*'), 'the pick is pressed');
+  dom.window.close();
+  return 'the Language row lists Auto, English and each loaded pack by its own name, and choosing German sets the cookie and reloads';
+}
+
+async function aSavedLanguageWhosePackHasGoneFallsBackToAuto() {
+  //given
+  const {dom, w, doc, errors} = await boot({packs: {tr: {}}, stored: {[KEY]: '{"size":"md","mode":"system","density":"comfortable","lang":"de"}'}});
+
+  //then
+  assert.deepStrictEqual(langButtons(doc), ['auto=Auto*', 'en=English', 'tr=T\u00fcrk\u00e7e'], 'a pack that is not on the page cannot stay pressed, Auto is');
+  assert.ok(!/skopax_lang=de/.test(doc.cookie), 'and the cookie does not carry it: ' + doc.cookie);
+  assert.ok(!reloaded(errors), 'nothing reloads at boot');
+  dom.window.close();
+  return 'an unknown saved language shows as Auto and sends no cookie';
+}
+
+async function pastFiveEntriesTheRowIsASelectThatPicksAndResets() {
+  //given
+  const core = {tr: {}, de: {}, es: {}, fr: {}};
+  const {dom, w, doc, errors} = await boot({packs: core});
+  const sel = langRow(doc).querySelector('select');
+
+  //then
+  assert.ok(sel && langRow(doc).querySelectorAll('button').length === 0, 'six entries use a select');
+  assert.deepStrictEqual(langOptions(doc), ['auto=Auto', 'en=English', 'de=Deutsch', 'es=Espa\u00f1ol', 'fr=Fran\u00e7ais', 'tr=T\u00fcrk\u00e7e'], 'every pack under its own name');
+  assert.strictEqual(sel.value, 'auto');
+
+  //when
+  sel.value = 'es';
+  sel.dispatchEvent(new w.Event('change', {bubbles: true}));
+  await wait(50);
+
+  //then
+  assert.strictEqual(JSON.parse(stored(w)).lang, 'es');
+  assert.ok(/skopax_lang=es/.test(doc.cookie), doc.cookie);
+  assert.ok(reloaded(errors), 'the page reloads: ' + errors.join(' | '));
+  assert.strictEqual(langRow(doc).querySelector('select').value, 'es');
+
+  //when
+  doc.getElementById('ap-reset').click();
+
+  //then
+  assert.strictEqual(langRow(doc).querySelector('select').value, 'auto', 'Reset goes back to Auto');
+  assert.ok(!/skopax_lang=es/.test(doc.cookie), 'and clears the cookie: ' + doc.cookie);
+  dom.window.close();
+  return 'with more than five entries the Language row is a select that picks, reloads and resets';
+}
+
+async function packKeysThatAreNotLanguageTagsAreNeverListedOrInjected() {
+  //given
+  const {dom, doc, errors} = await boot({packs: {de: {}, '<img src=x onerror=alert(1)>': {}, 'x"y': {}, '': {}}});
+
+  //then
+  assert.deepStrictEqual(langButtons(doc), ['auto=Auto*', 'en=English', 'de=Deutsch'], 'only the real tag is listed');
+  assert.strictEqual(langRow(doc).querySelector('img'), null, 'no markup lands in the row');
+  assert.ok(!/onerror|x"y/.test(langRow(doc).outerHTML), 'and no hostile key shows in the row: ' + langRow(doc).outerHTML);
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'a pack key that is not a language tag is neither listed nor injected into the row';
+}
+
 (async () => {
   console.log('PASS ' + await eachControlWritesTheAppearanceAsTheOldPanelDid());
   console.log('PASS ' + await resetClearsTheStoredAppearance());
+  console.log('PASS ' + await theLanguageRowListsTheLoadedPacksAndChoosingOneSetsTheCookieAndReloads());
+  console.log('PASS ' + await aSavedLanguageWhosePackHasGoneFallsBackToAuto());
+  console.log('PASS ' + await pastFiveEntriesTheRowIsASelectThatPicksAndResets());
+  console.log('PASS ' + await packKeysThatAreNotLanguageTagsAreNeverListedOrInjected());
   console.log('PASS ' + await theAccountSectionOffersPasswordToLocalUsersOnly());
   console.log('PASS ' + await everyCoreGroupFitsAn800PxScreenAndTheFootStaysOnShorterOnes());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });
