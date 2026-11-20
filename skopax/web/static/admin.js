@@ -227,10 +227,40 @@ async function loadChanges() {
   }
 }
 function adminSource(i) {
+  if (i.oldSwitch && i.oldSwitch.indexOf('core.auto-resolve-') === 0 && i.source !== 'admin') return '<span class="tag plain" title="' + esc('Off because the old Auto-resolve cleared cards after setting (' + i.oldSwitch + ') is 0; a value saved here wins over it') + '">old setting</span>';
+  if (i.oldSwitch && i.oldSwitch.indexOf('core.auto-resolve-') === 0) return '<span class="tag k-act" title="' + esc('From the old Auto-resolve cleared cards after setting (' + i.oldSwitch + '), set by ' + draftBy(i.by) + ' ' + dayhm(i.at) + '; Reset or saving a value here clears it') + '">old setting</span>';
   if (i.oldSwitch) return '<span class="tag ' + (i.source === 'admin' ? 'k-act' : 'plain') + '" title="' + esc('From the old Critical cards at once switch (' + i.oldSwitch + ')' + (i.source === 'admin' ? ', set by ' + draftBy(i.by) + ' ' + dayhm(i.at) + '; Reset or saving a value here clears it' : ' in the service configuration; a value saved here wins over it')) + '">old switch</span>';
   if (i.source === 'admin') return '<span class="tag k-act" title="' + esc('Set on this page by ' + draftBy(i.by) + ' ' + dayhm(i.at) + (i.base !== i.value ? '\nWithout it: ' + (i.base || 'empty') : '')) + '">Set by ' + esc(draftBy(i.by)) + ' ' + esc(dayhm(i.at)) + '</span>';
   if (i.source === 'config') return '<span class="tag plain" title="From the service configuration; a value saved here wins over it">config</span>';
   return '<span class="tag plain" title="The built-in default">default</span>';
+}
+var SEV_ROW_KEYS = ['core.auto-resolve-hours-crit', 'core.auto-resolve-hours-warn'];
+var SEV_ROW_NAMES = ['Critical', 'Warning'];
+var SEV_ROW_LABEL = 'Auto-resolve cleared cards after (hours)';
+var SEV_ROW_HELP = 'Closes a card that stopped firing and that nobody acted on after N hours, one value per severity; 0 turns it off for that severity';
+function adminSevRow(items) {
+  var box = el('div', 'adm-multi');
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-labelledby', 'adm-sev-l');
+  box.appendChild(el('div', 'adm-multi-h', '<b id="adm-sev-l">' + esc(SEV_ROW_LABEL) + '</b><p class="adm-help">' + esc(SEV_ROW_HELP) + '</p>'));
+  items.forEach(function (i, n) {
+    var row = adminRow(i), name = row.querySelector('.adm-n b'), input = row.querySelector('.adm-in');
+    row.classList.add('adm-sub');
+    row.dataset.find += ' ' + SEV_ROW_LABEL.toLowerCase() + ' ' + SEV_ROW_NAMES[n].toLowerCase();
+    name.textContent = SEV_ROW_NAMES[n];
+    row.querySelector('.adm-help').remove();
+    input.setAttribute('aria-labelledby', 'adm-sev-l ' + name.id);
+    box.appendChild(row);
+  });
+  return box;
+}
+function adminRows(d, items) {
+  var found = SEV_ROW_KEYS.map(function (k) { return items.filter(function (i) { return i.key === k; })[0]; });
+  var grouped = found.every(Boolean), placed = false;
+  items.forEach(function (i) {
+    if (!grouped || found.indexOf(i) < 0) { d.appendChild(adminRow(i)); return; }
+    if (!placed) { d.appendChild(adminSevRow(found)); placed = true; }
+  });
 }
 function adminId(key) { return 'adm-' + key.replace(/[^a-z0-9]/gi, '-'); }
 function adminControl(i) {
@@ -436,6 +466,7 @@ function adminFilter() {
   document.querySelectorAll('#admin .adm-grp').forEach(function (d) {
     var n = 0;
     d.querySelectorAll('.adm-row').forEach(function (r) { var on = !ADMIN_FIND || r.dataset.find.indexOf(ADMIN_FIND) >= 0; r.hidden = !on; if (on) n++; });
+    d.querySelectorAll('.adm-multi').forEach(function (m) { m.hidden = !m.querySelector('.adm-row:not([hidden])'); });
     d.hidden = !n;
     if (ADMIN_FIND && n) d.open = true;
     else if (!ADMIN_FIND && d.dataset.group) d.open = ADMIN_FOLD[d.dataset.group] === 1;
@@ -541,7 +572,7 @@ function renderAdmin(saved) {
       d.dataset.group = g;
       var set = by[g].filter(function (i) { return i.source === 'admin'; }).length;
       d.appendChild(el('summary', 'chev', '<h3>' + esc(g) + '</h3><span class="count">' + by[g].length + '</span>' + (set ? '<span class="tag k-act">' + set + ' set here</span>' : '')));
-      by[g].forEach(function (i) { d.appendChild(adminRow(i)); });
+      adminRows(d, by[g]);
       d.open = ADMIN_FIND ? true : ADMIN_FOLD[g] === 1;
       d.addEventListener('toggle', function () {
         if (ADMIN_FIND) return;

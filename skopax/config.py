@@ -202,6 +202,11 @@ class Settings:
     auto_resolve_hours: int = 6
     auto_resolve_days: int | None = None
     auto_resolve_hours_set: bool = False
+    auto_resolve_hours_crit: int = 6
+    auto_resolve_hours_warn: int = 6
+    auto_resolve_sev_set: tuple[str, ...] = ()
+    info_auto_close_days: int = 3
+    info_auto_close_days_set: bool = False
     archive_hours: int = 48
     history_keep_days: int = 365
     recurring_count: int = 3
@@ -342,6 +347,13 @@ def tags_rules_of(config: dict[str, str]) -> tuple:
     return rules_of({k: resolve(v, config) for k, v in config.items() if k.startswith('tags.')})
 
 
+def whole_in(raw: str, low: int, high: int) -> bool:
+    try:
+        return low <= int(raw) <= high
+    except ValueError:
+        return False
+
+
 def bounded(key: str, raw: str, low: int, high: int, default: int) -> int:
     try:
         value = int(raw)
@@ -426,6 +438,16 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         auto_hours = bounded('core.auto-resolve-hours', auto_hours_raw, 0, 720, 6)
     else:
         auto_hours = min(max(auto_days, 0), 30) * 24 if auto_days is not None else 6
+    sev_hours, sev_set = {}, []
+    for sev in ('crit', 'warn'):
+        sev_raw = get(f'core.auto-resolve-hours-{sev}', f'SKOPAX_AUTO_RESOLVE_HOURS_{sev.upper()}', '').strip()
+        sev_hours[sev] = bounded(f'core.auto-resolve-hours-{sev}', sev_raw, 0, 720, auto_hours) if sev_raw else auto_hours
+        if sev_raw and whole_in(sev_raw, 0, 720):
+            sev_set.append(sev)
+    info_raw = get('core.info-auto-close-days', 'SKOPAX_INFO_AUTO_CLOSE_DAYS', '').strip()
+    info_fallback = 0 if auto_hours == 0 else 3
+    info_days = bounded('core.info-auto-close-days', info_raw, 0, 90, info_fallback) if info_raw else info_fallback
+    info_set = bool(info_raw) and whole_in(info_raw, 0, 90)
 
     default_role = get('sso.default-role', 'SSO_DEFAULT_ROLE', 'viewer').strip() or 'viewer'
     if default_role not in DEFAULT_ROLES:
@@ -566,6 +588,11 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         auto_resolve_hours=auto_hours,
         auto_resolve_days=auto_days,
         auto_resolve_hours_set=bool(auto_hours_raw),
+        auto_resolve_hours_crit=sev_hours['crit'],
+        auto_resolve_hours_warn=sev_hours['warn'],
+        auto_resolve_sev_set=tuple(sev_set),
+        info_auto_close_days=info_days,
+        info_auto_close_days_set=info_set,
         archive_hours=int(get('cards.archive-hours', 'CARDS_ARCHIVE_HOURS', '48').strip() or 48),
         history_keep_days=int(get('history.keep-days', 'HISTORY_KEEP_DAYS', '365').strip() or 365),
         recurring_count=int(get('recurring.count', 'RECURRING_COUNT', '3').strip() or 3),

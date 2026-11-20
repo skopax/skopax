@@ -22,7 +22,7 @@ ENV = ('MONGO_URI', 'MONGO_DB', 'SKOPAX_TOKEN', 'TICK_RETENTION_DAYS', 'VAULT_ON
        'ANTHROPIC_API_KEY', 'INVESTIGATE_MODE', 'INVESTIGATE_MODEL', 'INVESTIGATE_EFFORT', 'INVESTIGATE_DAILY_USD', 'INVESTIGATE_MAX_CARDS',
        'INVESTIGATE_MAX_TOOL_CALLS', 'SLACK_APP_TOKEN', 'SLACK_LISTEN', 'SLACK_ASK_CAP', 'SLACK_OPERATOR_CACHE_SECONDS',
        'ROLES_URL', 'ROLES_CLIENT_ID', 'ROLES_CLIENT_SECRET', 'ROLES_CHANNEL', 'ROLES_SCOPE', 'INVESTIGATE_GATE_MODEL',
-       'INVESTIGATE_SLACK_MODEL', 'INVESTIGATE_SLACK_EFFORT', 'INVESTIGATE_SLACK_MAX_TOOL_CALLS', 'SKOPAX_AUTO_RESOLVE_DAYS', 'SKOPAX_AUTO_RESOLVE_HOURS',
+       'INVESTIGATE_SLACK_MODEL', 'INVESTIGATE_SLACK_EFFORT', 'INVESTIGATE_SLACK_MAX_TOOL_CALLS', 'SKOPAX_AUTO_RESOLVE_DAYS', 'SKOPAX_AUTO_RESOLVE_HOURS', 'SKOPAX_AUTO_RESOLVE_HOURS_CRIT', 'SKOPAX_AUTO_RESOLVE_HOURS_WARN', 'SKOPAX_INFO_AUTO_CLOSE_DAYS',
        'INVESTIGATE_STRICT_TOOLS', 'SSO_SESSION_IDLE_HOURS', 'SSO_SESSION_MAX_DAYS', 'JIRA_TITLE_PREFIX', 'SKOPAX_ENV_LABEL', 'SLACK_POST_SEV', 'SLACK_CRIT_NOW')
 
 
@@ -274,23 +274,25 @@ def test_an_admin_days_value_becomes_hours_unless_hours_are_set_by_config_or_by_
     assert (days_only.auto_resolve_hours, hours_by_admin.auto_resolve_hours, hours_by_config.auto_resolve_hours, days_off.auto_resolve_hours) == (48, 9, 4, 0)
 
 
-def test_admin_lists_the_hours_setting_in_the_cards_group_and_hides_the_deprecated_days(store):
+def test_admin_lists_the_hours_setting_in_the_cards_group_and_hides_the_deprecated_keys(store):
     # given
     from skopax.tunables import Live, TunableStore
 
     # when
     live = Live(load_settings(lambda: {}), TunableStore(store.db))
     listed = {e['key']: e for e in live.entries()}
-    live.set('core.auto-resolve-hours', '10', 'alice@example.com')
+    live.set('core.auto-resolve-hours-warn', '10', 'alice@example.com')
 
     # then
-    hours = listed['core.auto-resolve-hours']
-    assert (hours['group'], hours['label'], hours['kind'], hours['low'], hours['high'], hours['default']) == ('Cards', 'Auto-resolve cleared cards after (hours)', 'int', 0, 720, '6')
-    assert 'Closes a card that stopped firing and that nobody acted on after N hours' in hours['help']
-    assert 'core.auto-resolve-days' not in listed
-    assert live.current().auto_resolve_hours == 10
+    hours = listed['core.auto-resolve-hours-warn']
+    assert (hours['group'], hours['label'], hours['kind'], hours['low'], hours['high'], hours['default']) == ('Cards', 'Auto-resolve cleared warning cards after (hours)', 'int', 0, 720, '6')
+    assert 'Closes a warning card that stopped firing and that nobody acted on after N hours' in hours['help']
+    assert 'core.auto-resolve-days' not in listed and 'core.auto-resolve-hours' not in listed
+    assert live.current().auto_resolve_hours_warn == 10
     with pytest.raises(KeyError):
         live.set('core.auto-resolve-days', '2', 'alice@example.com')
+    with pytest.raises(KeyError):
+        live.set('core.auto-resolve-hours', '2', 'alice@example.com')
 
 
 def test_post_at_once_from_defaults_to_warning_and_takes_each_severity_or_off(monkeypatch, caplog):

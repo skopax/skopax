@@ -719,7 +719,7 @@ def test_the_server_passes_auto_resolve_with_the_configured_hours(store: Store):
     seeded(store, waiting(CART))
 
     # when
-    with TestClient(create_app(dataclasses.replace(settings(), auto_resolve_hours=0), store)) as c:
+    with TestClient(create_app(dataclasses.replace(settings(), auto_resolve_hours_crit=0, auto_resolve_hours_warn=0), store)) as c:
         c.app.state.server_apply([], NOW, None)
     off = store.anomaly(CART).get('triage')
     with TestClient(create_app(settings(), store)) as c:

@@ -97,6 +97,9 @@ POST_SEV_KEY = 'slack.post-sev'
 CRIT_NOW_KEY = 'slack.crit-now'
 POST_SEV_LABELS = {'crit': 'Critical', 'warn': 'Warning', 'info': 'Info', 'off': 'Off'}
 RENAMED = {CRIT_NOW_KEY: POST_SEV_KEY}
+OLD_HOURS_KEYS = ('core.auto-resolve-hours', 'core.auto-resolve-days')
+SEV_HOURS_KEYS = {'core.auto-resolve-hours-crit': ('auto_resolve_hours_crit', 'crit'), 'core.auto-resolve-hours-warn': ('auto_resolve_hours_warn', 'warn')}
+INFO_DAYS_KEY = 'core.info-auto-close-days'
 TIMEZONE_KEY = 'general.timezone'
 RELEASE_NAME_KEY = 'jira.release-name'
 LINKS_KEY = 'core.instance-links'
@@ -232,7 +235,10 @@ STATIC = (
     T('self-review.dm', 'selfreview_dm', REVIEW, 'Send to', 'Emails that get the self-review as a Slack DM, separated by commas; empty uses the push users', 'text'),
     T('self-review.hour', 'selfreview_hour', REVIEW, 'Hour (local time)', 'Hour of the daily self-review; -1 turns it off', 'int', -1, 23, live=False),
     T('cards.archive-hours', 'archive_hours', CARDS, 'Archive after (hours)', 'A card that is not firing (or is muted) and had no change for N hours moves to Archived: hidden on the board, the lists and the counts, still under the Archived list. Waiting cards nobody acted on stay', 'int', 1, 720),
-    T('core.auto-resolve-hours', 'auto_resolve_hours', CARDS, 'Auto-resolve cleared cards after (hours)', 'Closes a card that stopped firing and that nobody acted on after N hours; 0 turns it off', 'int', 0, 720),
+    T('core.auto-resolve-hours', 'auto_resolve_hours', CARDS, 'Auto-resolve cleared cards after (hours)', 'Deprecated: use the critical and warning settings. Seeds the severities that have no setting of their own', 'int', 0, 720, hidden=True),
+    T('core.auto-resolve-hours-crit', 'auto_resolve_hours_crit', CARDS, 'Auto-resolve cleared critical cards after (hours)', 'Closes a critical card that stopped firing and that nobody acted on after N hours; 0 turns it off for critical cards', 'int', 0, 720),
+    T('core.auto-resolve-hours-warn', 'auto_resolve_hours_warn', CARDS, 'Auto-resolve cleared warning cards after (hours)', 'Closes a warning card that stopped firing and that nobody acted on after N hours; 0 turns it off for warning cards', 'int', 0, 720),
+    T('core.info-auto-close-days', 'info_auto_close_days', CARDS, 'Auto-resolve info cards still firing after (days)', 'Closes an info card that is still firing and that nobody acted on after N days; 0 turns it off. Log cards and info cards from warning or error signals are kept', 'int', 0, 90),
     T('core.auto-resolve-days', 'auto_resolve_days', CARDS, 'Auto-resolve after (days)', 'Deprecated: use the hours setting. Closes waiting cards nobody acted on after N days; 0 turns it off', 'int', 0, 30, hidden=True),
     T('recurring.count', 'recurring_count', CARDS, 'Recurring after (times)', 'A card that fired N times in the window with no ticket is marked recurring', 'int', 2, 20),
     T('recurring.days', 'recurring_days', CARDS, 'Recurring window (days)', 'Window of the recurring count', 'int', 1, 60),
@@ -531,6 +537,12 @@ def apply(base: Settings, overrides: dict[str, str], extra: tuple[Tunable, ...] 
             changes[t.field] = value
     if 'auto_resolve_days' in changes and 'auto_resolve_hours' not in changes and not base.auto_resolve_hours_set:
         changes['auto_resolve_hours'] = changes['auto_resolve_days'] * 24
+    if 'auto_resolve_hours' in changes:
+        for sev in ('crit', 'warn'):
+            if f'auto_resolve_hours_{sev}' not in changes and sev not in base.auto_resolve_sev_set:
+                changes[f'auto_resolve_hours_{sev}'] = changes['auto_resolve_hours']
+        if 'info_auto_close_days' not in changes and not base.info_auto_close_days_set:
+            changes['info_auto_close_days'] = 0 if changes['auto_resolve_hours'] == 0 else defaults()['info_auto_close_days']
     if 'slack_crit_now' in changes and 'slack_post_sev' not in changes and not base.slack_post_sev_set:
         changes['slack_post_sev'] = SLACK_POST_SEV if changes['slack_crit_now'] else 'off'
     if tag_parts:
@@ -732,6 +744,11 @@ class Live:
         self.provider_view(t, out)
         if t.key == POST_SEV_KEY and not given and not self.base.slack_post_sev_set:
             self.mark_old_switch(out)
+        if t.key in SEV_HOURS_KEYS and not given and SEV_HOURS_KEYS[t.key][1] not in self.base.auto_resolve_sev_set:
+            self.mark_old_hours(out)
+        if t.key == INFO_DAYS_KEY and not given and not self.base.info_auto_close_days_set and self.current().auto_resolve_hours == 0:
+            held = self.stored_old_hours()
+            out['oldSwitch'] = held[0][0] if held else next((k for k in OLD_HOURS_KEYS if k in self.values), OLD_HOURS_KEYS[0])
         if t.key == 'core.log-color' and logs.PLAIN[0]:
             out['value'] = NO_COLOR_SHOWN
             out['choices'] = list(dict.fromkeys(out['choices'] + [NO_COLOR_SHOWN]))
@@ -788,6 +805,36 @@ class Live:
             return cleared
         return self.tunables.write(POST_SEV_KEY, value, by, old)
 
+    def stored_old_hours(self, every: bool = False) -> list[tuple[str, dict]]:
+        held = [(k, self.overrides[k]) for k in OLD_HOURS_KEYS if k in self.overrides]
+        if not every and (self.base.auto_resolve_hours_set or OLD_HOURS_KEYS[0] in self.overrides):
+            held = [h for h in held if h[0] == OLD_HOURS_KEYS[0]]
+        return held
+
+    def mark_old_hours(self, out: dict) -> None:
+        held = self.stored_old_hours()
+        if held:
+            key, row = held[0]
+            out.update(source='admin', by=row.get('by'), at=row.get('at'), oldSwitch=key)
+
+    def set_severity(self, key: str, value: str | None, by: str, old: str | None) -> dict:
+        held = self.stored_old_hours(True)
+        field, sev = SEV_HOURS_KEYS[key]
+        if not held or key in self.overrides or sev in self.base.auto_resolve_sev_set:
+            return self.tunables.write(key, value, by, old)
+        now = self.current()
+        if value is not None and old is None:
+            old = stored(getattr(now, field))
+        for other, (other_field, other_sev) in SEV_HOURS_KEYS.items():
+            if other != key and other not in self.overrides and other_sev not in self.base.auto_resolve_sev_set:
+                self.tunables.write(other, stored(getattr(now, other_field)), by, None, legacy=True)
+        if INFO_DAYS_KEY not in self.overrides and not self.base.info_auto_close_days_set and now.info_auto_close_days != self.base.info_auto_close_days:
+            self.tunables.write(INFO_DAYS_KEY, stored(now.info_auto_close_days), by, None, legacy=True)
+        cleared = [self.tunables.write(k, None, by, row.get('value'), legacy=True) for k, row in held]
+        if value is None:
+            return cleared[0]
+        return self.tunables.write(key, value, by, old)
+
     def mark_old_switch(self, out: dict) -> None:
         stored_old = self.overrides.get(CRIT_NOW_KEY)
         if stored_old:
@@ -797,6 +844,8 @@ class Live:
 
     def label_of(self, t: Tunable) -> str:
         key = CONFIG_KEY.get(t.key, t.key)
+        if (key in SEV_HOURS_KEYS or key == INFO_DAYS_KEY) and key not in self.values:
+            key = next((k for k in OLD_HOURS_KEYS if k in self.values), key)
         raw = self.values.get(key)
         if t.key in TEXT_LIMITS and raw is not None:
             try:
@@ -846,6 +895,8 @@ class Live:
         self.refuse_other_provider(t, value)
         if key == POST_SEV_KEY:
             change = self.set_post_sev(value, by, old)
+        elif key in SEV_HOURS_KEYS:
+            change = self.set_severity(key, value, by, old)
         else:
             change = self.tunables.write(key, value, by, old)
         self.refresh(force=True)
