@@ -260,7 +260,8 @@ async function theLastAdminKeepsRoleAndSignInWithTheReason() {
   assert.deepStrictEqual([sel.disabled, sel.title, off.disabled, off.title], [true, LAST_ADMIN, true, LAST_ADMIN]);
   assert.deepStrictEqual([alice.querySelector('.acc-last-admin').textContent, alice.querySelector('.acc-last-admin').title], ['Last admin', LAST_ADMIN]);
   const items = [...alice.querySelectorAll('.acc-menu [role=menuitem]')].map((m) => [m.textContent, m.disabled, m.title]);
-  assert.deepStrictEqual(items, [['Edit name', false, ''], ['Change role', true, LAST_ADMIN], ['Reset password', false, ''], ['Disable sign-in', true, LAST_ADMIN]]);
+  assert.deepStrictEqual(items, [['Edit name', false, ''], ['Change role', true, LAST_ADMIN], ['Reset password', false, ''],
+    ['Make SSO only', true, 'The last active admin with a password keeps it, so there is a way in when SSO fails: give another admin a password first'], ['Disable sign-in', true, LAST_ADMIN]]);
   assert.ok(!frank.querySelector('select.acc-role').disabled && !frank.querySelector('.acc-last-admin'), 'a disabled admin does not count and is not the last admin');
 
   //when
@@ -300,8 +301,8 @@ async function theRowMenuWorksByKeyboard() {
   assert.strictEqual(second, 'Change role');
   assert.deepStrictEqual(closed, [true, true], 'Escape closes the menu and gives focus back');
   assert.ok(!chloe.querySelector('.acc-pw-form').hidden && t.doc.activeElement === pw, 'Reset password opens the password field');
-  assert.deepStrictEqual([...rowOf(t.doc, 'dana@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Change role', 'Turn into local account', 'Disable sign-in']);
-  assert.deepStrictEqual([...rowOf(t.doc, 'erin@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Change role', 'Reset password', 'Enable sign-in']);
+  assert.deepStrictEqual([...rowOf(t.doc, 'dana@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Change role', 'Set a password', 'Disable sign-in']);
+  assert.deepStrictEqual([...rowOf(t.doc, 'erin@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Change role', 'Reset password', 'Make SSO only', 'Enable sign-in']);
   assert.deepStrictEqual([rowOf(t.doc, 'chloe@example.com').querySelector('.acc-mi-off').classList.contains('acc-mi-danger'), rowOf(t.doc, 'erin@example.com').querySelector('.acc-mi-off').classList.contains('acc-mi-danger')],
     [true, false], 'Disable is a danger action, Enable is not');
 

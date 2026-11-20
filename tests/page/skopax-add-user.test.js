@@ -30,6 +30,7 @@ function makeUsers() {
     {email: 'dana@example.com', name: 'dana', role: 'operator', source: 'sso', roleFrom: 'admin', disabled: false, createdAt: iso(30), lastLogin: null, opened: false, ssoLink: null},
     {email: 'old@example.com', name: 'old', role: 'viewer', source: 'sso', roleFrom: 'admin', disabled: false, createdAt: iso(900), lastLogin: null, ssoLink: null},
     {email: 'mo@example.com', name: 'mo', role: 'viewer', source: 'sso', roleFrom: 'default', disabled: false, createdAt: iso(20), lastLogin: null, ssoLink: null},
+    {email: 'carl@example.com', name: 'Carl', role: 'admin', source: 'local', disabled: false, createdAt: iso(60), lastLogin: iso(10), ssoLink: {state: 'bound', boundAt: iso(30), allowedAt: null, expiresAt: null}},
   ];
 }
 
@@ -72,7 +73,8 @@ async function boot(opts) {
           }
           if (p.startsWith('/api/admin/users/') && method === 'PATCH') {
             const email = decodeURIComponent(p.split('/').pop());
-            users = users.map((u) => u.email === email ? Object.assign({}, u, {source: 'local', ssoLink: {state: 'pending', boundAt: null, allowedAt: iso(0), expiresAt: iso(-7 * 1440)}}) : u);
+            const change = body.ssoOnly ? {source: 'sso', ssoLink: null, roleFrom: 'admin'} : {source: 'local', ssoLink: {state: 'pending', boundAt: null, allowedAt: iso(0), expiresAt: iso(-7 * 1440)}};
+            users = users.map((u) => u.email === email ? Object.assign({}, u, change) : u);
             return ok(users.find((u) => u.email === email));
           }
           if (p === '/api/admin/tokens') return ok([]);
@@ -272,11 +274,11 @@ async function theListShowsSsoOnlyAccountsAndCancelGivesFocusBack() {
   //given
   const t = await boot({sso: true});
   const dana = rowOf(t, 'dana@example.com'), bob = rowOf(t, 'bob@example.com');
-  const unopened = ['old@example.com', 'mo@example.com'].map((e) => rowOf(t, e)).map((r) => [!!r.querySelector('.acc-not-yet'), !!r.querySelector('.acc-setpw'), !!r.querySelector('.acc-reset')]);
+  const opened = ['bob@example.com', 'old@example.com', 'mo@example.com'].map((e) => rowOf(t, e)).map((r) => [!!r.querySelector('.acc-not-yet'), !!r.querySelector('.acc-setpw'), !!r.querySelector('.acc-reset')]);
 
   //when
   const rows = [dana.querySelector('.acc-sso-only').textContent, dana.querySelector('.acc-not-yet').textContent, !!dana.querySelector('.acc-setpw'),
-    bob.querySelector('.acc-sso-only').textContent, !!bob.querySelector('.acc-not-yet'), !!bob.querySelector('.acc-setpw'), !!rowOf(t, 'alice@example.com').querySelector('.acc-sso-only')];
+    bob.querySelector('.acc-sso-only').textContent, !!bob.querySelector('.acc-not-yet'), dana.querySelector('.acc-setpw').textContent, !!rowOf(t, 'alice@example.com').querySelector('.acc-sso-only')];
   dana.querySelector('.acc-setpw').click();
   type(dana.querySelector('input.acc-pw'), 'a-long-enough-password');
   dana.querySelector('.acc-pw-save').click();
@@ -285,15 +287,15 @@ async function theListShowsSsoOnlyAccountsAndCancelGivesFocusBack() {
   form(t).querySelector('.acc-add-cancel').click();
 
   //then
-  assert.deepStrictEqual(rows, ['SSO only', 'Not signed in yet', true, 'SSO only', false, false, false]);
-  assert.deepStrictEqual(unopened, [[false, false, false], [false, false, false]], 'Set password follows opened, not lastLogin: an account without the field counts as opened');
+  assert.deepStrictEqual(rows, ['SSO only', 'Not signed in yet', true, 'SSO only', false, 'Set a password', false]);
+  assert.deepStrictEqual(opened, [[false, true, false], [false, true, false], [false, true, false]], 'every SSO-only person can be given a password again');
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PATCH')[0], ['PATCH', '/api/admin/users/dana%40example.com', {password: 'a-long-enough-password'}]);
   assert.ok(!form(t), 'Cancel closes the form');
   assert.strictEqual(t.doc.activeElement, t.doc.querySelector('#access .acc-add-open'), 'focus goes back to Add user');
   assert.strictEqual(t.doc.querySelector('#access .acc-add-open').getAttribute('aria-expanded'), 'false');
   assert.deepStrictEqual(t.errors, []);
   t.close();
-  console.log('PASS the list marks SSO-only accounts, offers Set password before their first sign-in, and Cancel gives focus back');
+  console.log('PASS the list marks SSO-only accounts, offers Set a password to every one of them, and Cancel gives focus back');
 }
 
 async function theOpenCardFollowsSsoStateThatArrivesLater() {
@@ -328,7 +330,59 @@ async function theOpenCardFollowsSsoStateThatArrivesLater() {
   console.log('PASS an open add-user card repaints the SSO switch and the password help when SSO state arrives, keeps what was typed, and the opener names it');
 }
 
+async function makeSsoOnlyShowsOnlyForPasswordPeopleWhileSsoIsOn() {
+  //given
+  const on = await boot({sso: true});
+  const off = await boot({sso: false});
+
+  //when
+  const has = (t, e) => !!rowOf(t, e).querySelector('.acc-mi-ssoonly');
+  const seen = [has(on, 'carl@example.com'), has(on, 'alice@example.com'), has(on, 'bob@example.com'), has(on, 'dana@example.com'), has(off, 'carl@example.com'), has(off, 'alice@example.com')];
+  const item = rowOf(on, 'carl@example.com').querySelector('.acc-mi-ssoonly');
+
+  //then
+  assert.deepStrictEqual(seen, [true, true, false, false, false, false]);
+  assert.deepStrictEqual([item.textContent, item.title], ['Make SSO only', 'Removes the password; this person signs in with SSO only']);
+  assert.deepStrictEqual(on.errors.concat(off.errors), []);
+  on.close();
+  off.close();
+  console.log('PASS Make SSO only shows only for password people and only while SSO is on');
+}
+
+async function makeSsoOnlyConfirmsInTheRowAndWarnsOnYourOwnRow() {
+  //given
+  const t = await boot({sso: true});
+  const patches = () => t.calls.filter((c) => c[0] === 'PATCH');
+  const carl = rowOf(t, 'carl@example.com'), alice = rowOf(t, 'alice@example.com');
+
+  //when
+  carl.querySelector('.acc-mi-ssoonly').click();
+  const ask = carl.querySelector('.acc-ssoonly-form');
+  const asked = [!ask.hidden, ask.querySelector('.acc-ssoonly-q').textContent, !!ask.querySelector('.acc-ssoonly-self'), patches().length, t.doc.activeElement === ask.querySelector('.acc-ssoonly-go')];
+  alice.querySelector('.acc-mi-ssoonly').click();
+  const own = alice.querySelector('.acc-ssoonly-form');
+  const warned = [!own.hidden, own.querySelector('.acc-ssoonly-self').textContent];
+  own.querySelector('.acc-ssoonly-cancel').click();
+  const cancelled = [own.hidden, patches().length];
+  ask.querySelector('.acc-ssoonly-go').click();
+  await until(() => patches().length === 1 && rowOf(t, 'carl@example.com').querySelector('.acc-sso-only'), 'the SSO-only patch');
+  const after = rowOf(t, 'carl@example.com');
+
+  //then
+  assert.deepStrictEqual(asked, [true, 'Remove the password? This person then signs in with SSO only.', false, 0, true]);
+  assert.deepStrictEqual(warned, [true, 'You will be signed out if you signed in with your password']);
+  assert.deepStrictEqual(cancelled, [true, 0]);
+  assert.deepStrictEqual(patches()[0], ['PATCH', '/api/admin/users/carl%40example.com', {ssoOnly: true}]);
+  assert.ok(!after.querySelector('.acc-mi-ssoonly') && after.querySelector('.acc-setpw'), 'the row now offers Set a password instead');
+  assert.strictEqual(after.querySelector('.adm-msg').textContent, 'Signs in with SSO only now');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  console.log('PASS Make SSO only asks in the row, warns on your own row, and Cancel sends nothing');
+}
+
 (async () => {
+  await makeSsoOnlyShowsOnlyForPasswordPeopleWhileSsoIsOn();
+  await makeSsoOnlyConfirmsInTheRowAndWarnsOnYourOwnRow();
   await theOpenCardFollowsSsoStateThatArrivesLater();
   await theSwitchShowsAndStartsOnOnlyWithSsoOn();
   await thePasswordIsOptionalOnlyWithTheSwitchOn();
