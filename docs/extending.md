@@ -202,9 +202,9 @@ A plug-in whose setup breaks these rules does not load, with a reason that says 
 - `'always'` is always one. The plug-in decides when it has anything to offer: Confluence, for one, offers its tool only once its Spaces field is set.
 - The key of one of the plug-in's own fields makes it a knowledge source for each instance where that field is set, such as `company_knowledge='docs'` for a plug-in with a `docs` field.
 
-Any other value breaks the plug-in, with a reason that says so. Connect > Integrations shows a tile of a knowledge source in the Company knowledge group, with a Knowledge chip, and lists the plug-in first in "+ Add integration". The admin listing serves it as `companyKnowledge`.
+Any other value breaks the plug-in, with a reason that says so. Connect > Integrations shows a tile of a knowledge source in its own category with a Knowledge badge (Knowledge, Knowledge off or Knowledge needs setup, with a tooltip saying why), and the Knowledge chip lists exactly those tiles; "+ Add integration" marks the entry with the badge too. The admin listing serves it as `companyKnowledge`.
 
-`knowledge_also=True` says knowledge is a second role of a plug-in whose main job is something else, such as Jira (tickets) or GitHub (code). It needs `company_knowledge` set; any other value, or `True` without `company_knowledge`, breaks the plug-in. Such a tile stays in its home group with a small Knowledge tag ("Also a knowledge source: the investigator searches and cites it"), the Knowledge chip lists it too, and "+ Add integration" lists it in its home group with the tag. Pure sources such as Confluence leave it `False`. The listings serve it as `knowledgeAlso`.
+`knowledge_also=True` says knowledge is a second role of a plug-in whose main job is something else, such as Jira (tickets) or GitHub (code). It needs `company_knowledge` set; any other value, or `True` without `company_knowledge`, breaks the plug-in. Every knowledge source shows the same badge and sits in the Knowledge chip; the flag only records the plug-in's main role. Pure sources such as Confluence leave it `False`. The listings serve it as `knowledgeAlso`.
 
 ### Peers, clients and state
 

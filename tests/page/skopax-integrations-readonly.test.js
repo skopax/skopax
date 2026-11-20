@@ -182,42 +182,44 @@ function knowledgePlugins() {
   return [plugin(), base('jira', 'Jira', 'tickets', {companyKnowledge: 'always', knowledgeAlso: true}), base('confluence', 'Confluence', 'other', {companyKnowledge: 'always', knowledgeAlso: false})];
 }
 
-async function aSecondaryKnowledgeSourceStaysHomeWithAKnowledgeTag() {
+async function everyKnowledgeSourceCarriesABadgeInItsOwnCategoryAndSitsOnceInTheChip() {
   const said = [];
   for (const role of ['admin', 'viewer']) {
     //given
     const {w, doc, errors} = await boot(role, '#t=integrations', knowledgePlugins());
     await wait(100);
-    const groupOf = (id) => doc.querySelector('#integrations .int-tile[data-id="' + id + '"]').closest('.int-group').dataset.group;
+    const tilesOf = (id) => doc.querySelectorAll('#integrations .int-tile[data-id="' + id + '"]');
     const tag = (id) => doc.querySelector('#integrations .int-tile[data-id="' + id + '"] .int-know-tag');
+    const ids = [...doc.querySelectorAll('#integrations [id]')].map((x) => x.id);
 
     //then
-    assert.deepStrictEqual([groupOf('jira'), groupOf('confluence'), groupOf('prometheus')], ['builtin', 'knowledge', 'builtin'], role + ': Jira stays in its home group, Confluence moves to Company knowledge');
-    assert.ok(tag('jira') && tag('jira').textContent === 'Knowledge' && tag('jira').title.startsWith('Also a knowledge source'), role + ': Jira carries the Knowledge tag');
-    assert.ok(!tag('confluence') && !tag('prometheus'), 'a pure source and a plain plug-in carry none');
+    assert.ok(!doc.querySelector('#integrations [data-group="knowledge"]'), role + ': no Company knowledge group');
+    assert.deepStrictEqual(['jira', 'confluence', 'prometheus'].map((id) => tilesOf(id).length), [1, 1, 1], role + ': each plug-in is one tile');
+    assert.deepStrictEqual(['jira', 'confluence'].map((id) => [tag(id).textContent, tag(id).title]), [['Knowledge', 'Knowledge source: the investigator searches and cites it'], ['Knowledge', 'Knowledge source: the investigator searches and cites it']], role + ': Jira and Confluence carry the badge');
+    assert.ok(!tag('prometheus'), 'a plain plug-in carries none');
+    assert.strictEqual(new Set(ids).size, ids.length, 'no duplicate DOM id');
 
     //when
     [...doc.querySelectorAll('#integrations .int-chip')].filter((c) => c.textContent === 'Knowledge')[0].click();
 
     //then
-    assert.deepStrictEqual([...doc.querySelectorAll('#integrations .int-tile')].filter((t) => !t.hidden).map((t) => t.dataset.id).sort(), ['confluence', 'jira'], 'the Knowledge chip lists both');
+    assert.deepStrictEqual([...doc.querySelectorAll('#integrations .int-tile')].filter((t) => !t.hidden).map((t) => t.dataset.id).sort(), ['confluence', 'jira'], 'the Knowledge chip lists both once');
     if (role === 'admin') {
       //when
       doc.getElementById('int-add-btn').click();
       const pick = (id) => doc.querySelector('#int-pop .int-pick[data-id="' + id + '"]');
 
       //then
-      assert.strictEqual(pick('jira').closest('.int-cat-grp').dataset.cat, 'tickets', '+ Add integration lists Jira in its home group');
-      assert.ok(pick('jira').querySelector('.int-know-tag'), 'with the tag');
-      assert.strictEqual(pick('confluence').closest('.int-cat-grp').dataset.cat, 'knowledge');
+      assert.strictEqual(pick('jira').closest('.int-cat-grp').dataset.cat, 'tickets', '+ Add integration lists Jira in its category');
+      assert.ok(pick('jira').querySelector('.int-know-tag') && pick('confluence').querySelector('.int-know-tag'), 'both with the badge');
+      assert.ok(!doc.querySelector('#int-pop [data-cat="knowledge"]'), 'and no knowledge group');
     }
     assert.deepStrictEqual(errors, []);
     w.close();
     said.push(role);
   }
-  return 'a secondary knowledge source (Jira) stays in its home group with a Knowledge tag for ' + said.join(' and ') + ', the Knowledge chip lists it, and + Add integration lists it at home';
+  return 'Jira and Confluence each sit once in their own category with a Knowledge badge for ' + said.join(' and ') + ', no knowledge group, the Knowledge chip lists them and + Add integration badges them';
 }
-
 
 async function aJiraOnlyInstallKeepsThePlainGridAndTheChip() {
   //given
@@ -231,7 +233,7 @@ async function aJiraOnlyInstallKeepsThePlainGridAndTheChip() {
   assert.ok(doc.querySelector('#integrations .int-tile[data-id="jira"] .int-know-tag'));
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'with Jira as the only knowledge source the tiles stay one plain grid, with the Knowledge chip and tag';
+  return 'with Jira as the only knowledge source the tiles stay one plain grid, with the Knowledge chip and badge';
 }
 
 async function anAdminSeesTheNoticesOnTheIntegrationsPage() {
@@ -252,5 +254,5 @@ async function anAdminSeesTheNoticesOnTheIntegrationsPage() {
 
 (async () => {
   for (const t of [theConnectRowShowsForEverySignedInRoleOnly, aViewerOpensTheSamePageReadOnly, theReadOnlyPanelShowsInstancesChecksThresholdsAndSecretsAsSet, anAdminStillGetsTheEditablePage,
-    aVisitorWithoutLoginCannotOpenIt, aSecondaryKnowledgeSourceStaysHomeWithAKnowledgeTag, aJiraOnlyInstallKeepsThePlainGridAndTheChip, anAdminSeesTheNoticesOnTheIntegrationsPage]) console.log('PASS ' + await t());
+    aVisitorWithoutLoginCannotOpenIt, everyKnowledgeSourceCarriesABadgeInItsOwnCategoryAndSitsOnceInTheChip, aJiraOnlyInstallKeepsThePlainGridAndTheChip, anAdminSeesTheNoticesOnTheIntegrationsPage]) console.log('PASS ' + await t());
 })().catch((e) => { console.log('FAIL ' + e.message); console.error(e); process.exit(1); });
