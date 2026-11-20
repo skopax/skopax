@@ -132,7 +132,7 @@ const rowOf = (doc, email) => [...doc.querySelectorAll('#access .acc-user')].fil
   assert.strictEqual(bob.querySelector('select.acc-role').value, 'viewer');
   assert.ok(/sso/i.test(bob.querySelector('.acc-src').textContent) && /password/i.test(rowOf(t.doc, 'alice@example.com').querySelector('.acc-src').textContent), 'sign-in method badges');
   assert.strictEqual(rowOf(t.doc, 'carol@example.com').querySelector('input.acc-off').checked, true);
-  assert.ok(!bob.querySelector('.acc-reset') && !bob.querySelector('.acc-pw-form'), 'an SSO user has no Reset password');
+  assert.ok(!bob.querySelector('.acc-reset') && bob.querySelector('.acc-setpw'), 'an SSO user has no Reset password, only Set a password');
   assert.ok(rowOf(t.doc, 'alice@example.com').querySelector('.acc-reset') && rowOf(t.doc, 'carol@example.com').querySelector('.acc-reset'), 'local users have Reset password');
   assert.ok(t.calls.some((c) => c[0] === 'GET' && c[1] === '/api/admin/users') && t.calls.some((c) => c[0] === 'GET' && c[1] === '/api/admin/tokens'));
   console.log('PASS the Access tab lists users with role select, source badge, disabled switch and Reset password');

@@ -1195,7 +1195,15 @@
   "Enter the issuer URL, client ID and client secret the provider gives you.": "Sağlayıcının verdiği issuer URL'sini, istemci kimliğini ve istemci sırrını girin.",
   "Test the connection, then save and turn single sign-on on.": "Bağlantıyı test edin, ardından kaydedip tek oturum açmayı açın.",
   "Unsaved changes": "Kaydedilmemiş değişiklikler",
-  "Claim value": "Claim değeri"
+  "Claim value": "Claim değeri",
+  "Make SSO only": "Yalnızca SSO yap",
+  "Removes the password; this person signs in with SSO only": "Şifreyi kaldırır; bu kişi yalnızca SSO ile giriş yapar",
+  "Remove the password? This person then signs in with SSO only.": "Şifre kaldırılsın mı? Bu kişi bundan sonra yalnızca SSO ile giriş yapar.",
+  "You will be signed out if you signed in with your password": "Şifrenizle giriş yaptıysanız oturumunuz kapanır",
+  "Signs in with SSO only now": "Artık yalnızca SSO ile giriş yapıyor",
+  "Set a password": "Şifre belirle",
+  "Give this person a password: they become a local account, and their SSO link waits {0} days for the next SSO sign-in": "Bu kişiye bir şifre verir: yerel hesap olur ve SSO bağlantısı bir sonraki SSO girişi için {0} gün bekler",
+  "The last active admin with a password keeps it, so there is a way in when SSO fails: give another admin a password first": "Şifresi olan son aktif admin şifresini korur, böylece SSO çalışmazsa da giriş yolu kalır: önce başka bir admine şifre verin"
  },
  "rules": [
   [

@@ -1000,6 +1000,7 @@ var ACCESS_TAB = 'people', ACCESS_TAB_KEYS = {ArrowRight: 1, ArrowLeft: -1, Home
 var ACCESS_USER_HEADS = ['Person', 'Role', 'Sign-in', 'Last sign-in', 'Disabled', 'SSO link', ''], ACCESS_TOKEN_HEADS = ['Name', 'Role', 'Token', 'Created by', 'Created', 'Last used', 'Expires', ''];
 var ACCESS_EXPIRY = [['', 'Never'], ['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['365', '1 year']];
 var ACCESS_LAST_ADMIN = 'The last admin keeps the admin role and stays enabled: make someone else an admin first';
+var ACCESS_LAST_PW_ADMIN = 'The last active admin with a password keeps it, so there is a way in when SSO fails: give another admin a password first';
 var ACCESS_ADD_ID = 'acc-add-user', ACCESS_ADD_FIELDS = ['email', 'name', 'role', 'sso', 'password'], ACCESS_NEED_PW = 'Enter a password of ' + ACCESS_PW_MIN + '-' + ACCESS_PW_MAX + ' characters';
 function accText(tag, cls, text) {
   var e = document.createElement(tag);
@@ -1213,6 +1214,8 @@ function accFailed(text) {
 function accFold(text) { return String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 function accAdmins() { return ACCESS.users.filter(function (u) { return u.role === 'admin' && !u.disabled; }).length; }
 function accLastAdmin(u) { return u.role === 'admin' && !u.disabled && accAdmins() <= 1; }
+function accPwAdmin(u) { return u.role === 'admin' && !u.disabled && u.source === 'local'; }
+function accLastPwAdmin(u) { return accPwAdmin(u) && ACCESS.users.filter(accPwAdmin).length <= 1; }
 function accInitial(u) { var s = Array.from(String(u.name || u.email || '?').trim()); return (s[0] || '?').toUpperCase(); }
 function accRel(iso) {
   var t = Date.parse(iso || '');
@@ -1534,7 +1537,7 @@ function accUserRow(u) {
   else linkCell.appendChild(accText('span', 'muted acc-link-none', '\u2013'));
   sel.addEventListener('change', function () { accPatch(u, {role: sel.value}, msg, function () { sel.value = u.role; off.checked = !!u.disabled; }, 'Role set to ' + sel.value); });
   off.addEventListener('change', function () { accPatch(u, {disabled: off.checked}, msg, function () { sel.value = u.role; off.checked = !!u.disabled; }, off.checked ? 'Disabled' : 'Enabled'); });
-  var canPw = u.source !== 'sso' || fresh, form = accText('span', 'acc-pw-form');
+  var form = accText('span', 'acc-pw-form');
   form.hidden = true;
   var pw = accInput('password', 'password', 256, 'New password for ' + u.email);
   pw.className = 'acc-pw';
@@ -1546,23 +1549,41 @@ function accUserRow(u) {
   form.appendChild(pw);
   form.appendChild(save);
   form.appendChild(cancel);
-  var naming = null;
-  var showPw = function () { naming.hidden = true; form.hidden = !form.hidden; if (!form.hidden) pw.focus(); };
-  var items = [{cls: 'acc-mi-name', text: 'Edit name', run: function () { form.hidden = true; naming.open(); }},
+  var naming = null, ask = accSsoOnlyForm(u, msg);
+  var showPw = function () { naming.hidden = true; ask.hidden = true; form.hidden = !form.hidden; if (!form.hidden) pw.focus(); };
+  var items = [{cls: 'acc-mi-name', text: 'Edit name', run: function () { form.hidden = true; ask.hidden = true; naming.open(); }},
     {cls: 'acc-mi-role', text: 'Change role', off: sel.disabled, title: sel.disabled ? sel.title : '', run: function () { sel.focus(); }}];
   if (u.source !== 'sso') items.push({cls: 'acc-reset', text: 'Reset password', run: showPw});
-  if (fresh) items.push({cls: 'acc-setpw', text: 'Turn into local account', title: 'Give this account a password: it becomes a local account, and its SSO link waits 7 days for the first sign-in', run: showPw});
+  if (u.source === 'sso') items.push({cls: 'acc-setpw', text: 'Set a password', title: 'Give this person a password: they become a local account, and their SSO link waits 7 days for the next SSO sign-in', run: showPw});
+  var lastPw = accLastPwAdmin(u);
+  if (u.source === 'local' && accSsoOn()) items.push({cls: 'acc-mi-ssoonly', text: 'Make SSO only', off: lastPw, title: lastPw ? ACCESS_LAST_PW_ADMIN : 'Removes the password; this person signs in with SSO only', run: function () { naming.hidden = true; form.hidden = true; ask.open(); }});
   items.push({cls: 'acc-mi-off' + (u.disabled ? '' : ' acc-mi-danger'), text: u.disabled ? 'Enable sign-in' : 'Disable sign-in', off: last, title: last ? ACCESS_LAST_ADMIN : u.disabled ? '' : 'Stops sign-in for this person; their sessions and API tokens stop within 30 seconds',
     run: function () { off.checked = !off.checked; off.dispatchEvent(new Event('change', {bubbles: true})); }});
   var menu = accMenu(u, items);
   naming = accNameForm(u, msg, menu);
   ctl.appendChild(menu);
   ctl.appendChild(naming);
-  if (canPw) ctl.appendChild(form);
+  ctl.appendChild(form);
+  ask.menu = menu;
+  ctl.appendChild(ask);
   ctl.appendChild(msg);
   cancel.addEventListener('click', function () { form.hidden = true; pw.value = ''; accMsg(msg, ''); });
-  save.addEventListener('click', function () { accPatch(u, {password: pw.value}, msg, null, fresh ? 'Password set' : 'Password reset'); });
+  save.addEventListener('click', function () { accPatch(u, {password: pw.value}, msg, null, u.source === 'sso' ? 'Password set' : 'Password reset'); });
   return tr;
+}
+function accSsoOnlyForm(u, msg) {
+  var box = accText('span', 'acc-ssoonly-form'), go = accText('button', 'btn small acc-ssoonly-go', 'Make SSO only'), no = accText('button', 'btn sec small acc-ssoonly-cancel', 'Cancel');
+  box.hidden = true;
+  go.type = 'button';
+  no.type = 'button';
+  box.appendChild(accText('span', 'acc-ssoonly-q', 'Remove the password? This person then signs in with SSO only.'));
+  if (u.email === ME_USER) box.appendChild(accText('span', 'acc-ssoonly-self', 'You will be signed out if you signed in with your password'));
+  box.appendChild(go);
+  box.appendChild(no);
+  box.open = function () { box.hidden = false; go.focus(); };
+  no.addEventListener('click', function () { box.hidden = true; accMsg(msg, ''); var b = box.menu && box.menu.querySelector('.acc-menu-b'); if (b) b.focus(); });
+  go.addEventListener('click', function () { go.disabled = true; accPatch(u, {ssoOnly: true}, msg, function () { go.disabled = false; }, 'Signs in with SSO only now'); });
+  return box;
 }
 function accLink(u) {
   var l = u.ssoLink;

@@ -24,6 +24,8 @@ ROLE_FIELDS = ('role', 'roleFrom', 'adminRole')
 NAME_SOURCES = ('default', 'idp', 'admin', 'self')
 IDP_NAMES = ('default', 'idp')
 RESOLVED_AT = 'resolvedAtTs'
+LOCAL_AFTER = 'localAfterTs'
+SSO_AFTER = 'ssoAfterTs'
 
 SCRYPT_N = 2 ** 14
 SCRYPT_R = 8
@@ -50,6 +52,18 @@ class LastAdmin(Exception):
 
 
 class IdpManaged(Exception):
+    pass
+
+
+class NoPasswordAdmin(Exception):
+    pass
+
+
+class ChangeReverted(Exception):
+    pass
+
+
+class ChangeUnsure(Exception):
     pass
 
 
@@ -192,6 +206,25 @@ def admin_row(doc: dict | None, now: float) -> dict | None:
     return {k: v for k, v in doc.items() if k not in ('pw', 'ssoLink')} | {'ssoLink': shown, 'nameFrom': name_from(doc)}
 
 
+def password_admin(doc: dict | None) -> bool:
+    doc = doc or {}
+    return doc.get('role') == 'admin' and not doc.get('disabled') and doc.get('source') != 'sso' and bool(doc.get('pw'))
+
+
+def number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def cut_admits(doc: dict, src, login) -> bool:
+    if src != 'sso' and doc.get('source') == 'sso':
+        return False
+    if src == 'sso':
+        cut = doc.get(SSO_AFTER)
+        return not number(cut) or (number(login) and login >= cut)
+    cut = doc.get(LOCAL_AFTER)
+    return not number(cut) or (number(login) and login > cut)
+
+
 def link_admits(doc: dict, login) -> bool:
     held = doc.get('ssoLink')
     if not isinstance(held, dict) or held.get('state') != 'bound':
@@ -245,9 +278,65 @@ class Users:
 
     def make_local(self, email: str, password: str, by: str, fields: dict | None = None, link: bool = True) -> dict | None:
         key = str(email or '').strip().lower()
-        change = {'source': 'local', 'pw': hash_password(clean_password(password))} | ({'ssoLink': self.pending_link(by)} if link else {}) | (fields or {})
-        before = self.guarded_update(key, change, ('opened',), only={'source': 'sso', 'opened': False})
+        held = self.col.find_one({'_id': key, 'source': 'sso'}, dict.fromkeys(ROLE_FIELDS, 1))
+        if held is None:
+            return None
+        owned = {'roleFrom': 'admin', 'adminRole': held['role']} if held.get('roleFrom') in IDP_SOURCES and held.get('role') in ROLES else {}
+        change = {'source': 'local', 'pw': hash_password(clean_password(password))} | owned | ({'ssoLink': self.pending_link(by)} if link else {}) | (fields or {})
+        unchanged = {'source': 'sso'} | {name: held[name] if name in held else {'$exists': False} for name in ROLE_FIELDS}
+        before = self.guarded_update(key, change, ('opened',), only=unchanged)
         return self.get(key) if before is not None else None
+
+    def make_sso_only(self, email: str) -> dict | None:
+        key = str(email or '').strip().lower()
+        held = self.col.find_one({'_id': key, 'source': 'local'})
+        if held is None:
+            return None
+        if password_admin(held) and not self.other_password_admin(key):
+            raise NoPasswordAdmin(key)
+        now = self.now()
+        link = held.get('ssoLink')
+        bound = isinstance(link, dict) and link.get('state') == 'bound' and number(link.get('boundAtTs'))
+        fields = {'source': 'sso', 'opened': False, LOCAL_AFTER: now, SSO_AFTER: link['boundAtTs'] if bound else now}
+        if held.get('role') in ROLES:
+            fields |= {'roleFrom': 'admin', 'adminRole': held['role']}
+        unset = ('pw', 'ssoLink')
+        same = {name: held[name] if name in held else {'$exists': False} for name in ('ssoLink', 'role', 'disabled')}
+        before = self.col.find_one_and_update({'_id': key, 'source': 'local', **same}, {'$set': fields, '$unset': {name: '' for name in unset}})
+        if before is None:
+            return None
+        touched = set(fields) | set(unset)
+        try:
+            lost = password_admin(before) and not self.has_password_admin()
+            made = None if lost else self.get(key)
+        except Exception as e:
+            self.put_back(key, before, touched, now)
+            raise ChangeReverted(key) from e
+        if lost:
+            self.put_back(key, before, touched, now)
+            raise NoPasswordAdmin(key)
+        return made
+
+    def is_last_password_admin(self, email: str) -> bool:
+        key = str(email or '').strip().lower()
+        return password_admin(self.col.find_one({'_id': key})) and self.active_admins() > 1 and not self.other_password_admin(key)
+
+    def other_password_admin(self, email: str) -> bool:
+        return self.col.find_one({'_id': {'$ne': email}, 'role': 'admin', 'disabled': False, 'source': {'$ne': 'sso'}, 'pw': {'$exists': True, '$nin': [None, '']}}, {'_id': 1}) is not None
+
+    def put_back(self, key: str, before: dict, touched: set, now: float) -> None:
+        try:
+            self.restore(key, before, touched, now)
+        except Exception as e:
+            log.error('%s may now sign in with SSO only: the change could not be put back after a failed check: %s', key, error_kind(e))
+            raise ChangeUnsure(key) from e
+
+    def restore(self, key: str, before: dict, touched: set, now: float) -> None:
+        back = {name: before[name] for name in touched if name in before}
+        gone = {name: '' for name in touched if name not in before}
+        res = self.col.update_one({'_id': key, 'source': 'sso', LOCAL_AFTER: now}, ({'$set': back} if back else {}) | ({'$unset': gone} if gone else {}))
+        if not res.matched_count:
+            raise ChangeUnsure(key)
 
     def insert(self, doc: dict) -> dict:
         key = doc['_id']
@@ -276,7 +365,8 @@ class Users:
         before = self.col.find_one_and_update({'_id': key, **(only or {})}, change)
         if before is None or not leaves_admin(fields) or before.get('role') != 'admin' or before.get('disabled'):
             return before
-        if self.active_admins() == 0:
+        empty = self.active_admins() == 0
+        if empty or (password_admin(before) and not self.has_password_admin()):
             touched = set(fields) | set(unset)
             back = {name: before[name] for name in touched if name in before}
             gone = {name: '' for name in touched if name not in before}
@@ -285,7 +375,7 @@ class Users:
                 self.col.update_one({'_id': key, **written}, ({'$set': back} if back else {}) | ({'$unset': gone} if gone else {}))
             except PyMongoError as e:
                 log.error('the last-admin check failed and the change to %s could not be restored, so no active admin may remain: %s', key, error_kind(e))
-            raise LastAdmin(key)
+            raise LastAdmin(key) if empty else NoPasswordAdmin(key)
         return before
 
     def prepare_change(self, role: str | None, disabled: bool | None, password: str | None, stored: dict) -> tuple[dict, tuple[str, ...]]:

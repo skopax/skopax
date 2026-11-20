@@ -152,7 +152,7 @@ def test_an_account_the_mcp_sign_in_makes_is_open_from_the_start(store: Store):
     assert made.email == ERIN and 'opened' not in raw(store, ERIN)
 
 
-def test_set_password_is_offered_only_while_the_account_is_not_opened(store: Store):
+def test_set_password_works_whether_or_not_the_account_was_opened(store: Store):
     # given
     client = sso_client(store)
     admin = admin_of(client)
@@ -161,7 +161,6 @@ def test_set_password_is_offered_only_while_the_account_is_not_opened(store: Sto
     signin_of(store).mcp(claims(ERIN), ISSUER)
     store.db['users'].insert_one({'_id': BOSS, 'email': BOSS, 'name': 'Boss', 'role': 'viewer', 'roleFrom': 'admin', 'source': 'sso', 'disabled': False, 'createdAt': 'x', 'lastLogin': None})
     listed = {u['email']: u for u in admin.get(USERS).json()}
-    before_erin, before_boss = raw(store, ERIN), raw(store, BOSS)
 
     # when
     dana = admin.patch(f'{USERS}/{DANA}', json={'password': PASSWORD})
@@ -170,13 +169,11 @@ def test_set_password_is_offered_only_while_the_account_is_not_opened(store: Sto
 
     # then
     assert (listed[DANA]['opened'], 'opened' in listed[ERIN], 'opened' in listed[BOSS]) == (False, False, False)
-    assert dana.status_code == 200 and raw(store, DANA)['source'] == 'local' and 'opened' not in raw(store, DANA)
-    for res in (erin, boss):
-        assert (res.status_code, res.json()['detail']) == (422, msg('access.sso_password'))
-    assert raw(store, ERIN) == before_erin and raw(store, BOSS) == before_boss, 'a record without the field counts as opened'
+    for email, res in ((DANA, dana), (ERIN, erin), (BOSS, boss)):
+        assert res.status_code == 200 and raw(store, email)['source'] == 'local' and 'opened' not in raw(store, email)
 
 
-def test_an_account_opened_while_a_password_is_being_set_stays_sso(store: Store):
+def test_an_opened_account_is_made_local_too(store: Store):
     # given
     users = Users(store.db)
     users.add_sso(DANA, 'Dana', 'viewer')
@@ -186,7 +183,7 @@ def test_an_account_opened_while_a_password_is_being_set_stays_sso(store: Store)
     made = users.make_local(DANA, PASSWORD, 'admin@example.com')
 
     # then
-    assert made is None and raw(store, DANA)['source'] == 'sso' and 'pw' not in raw(store, DANA)
+    assert made is not None and raw(store, DANA)['source'] == 'local' and users.authenticate(DANA, PASSWORD) is not None
 
 
 def test_a_pre_added_account_that_appears_during_a_page_sign_in_is_not_opened_without_a_verified_email(store: Store, monkeypatch):

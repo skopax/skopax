@@ -75,7 +75,7 @@ from skopax.slacklink import SlackLink
 from skopax.kit.promql import Prometheus, client_for
 from skopax.kit.promql import CHECK as PROMETHEUS_CHECK, ID as PROMETHEUS_ID
 from skopax.tickets import PROJECT_KEY, projects_of
-from skopax.users import EMAIL, IDP_SOURCES, NAME_MAX, PASSWORD_MAX, PASSWORD_MIN, ROLES, IdpManaged, InvalidUser, LastAdmin, LINK_PENDING_S, UserExists, Users, admin_row, clean_email, clean_name, clean_password, clean_role, leaves_admin, link_admits
+from skopax.users import EMAIL, IDP_SOURCES, LOCAL_AFTER, NAME_MAX, PASSWORD_MAX, PASSWORD_MIN, ROLES, IdpManaged, InvalidUser, ChangeReverted, ChangeUnsure, LastAdmin, LINK_PENDING_S, NoPasswordAdmin, UserExists, Users, admin_row, clean_email, clean_name, clean_password, clean_role, cut_admits, leaves_admin, link_admits
 from skopax.settingsources import Follower, SourceSet, boot, labelled, merged
 from skopax.settingsources import core_knowledge_ids, core_setting_ids
 from skopax.tunables import SESSIONS_AFTER_KEY, SLACK_CHANNEL_KEY, SSO_SWITCH_KEY, Invalid as TunableInvalid, Live, TunableStore, View, apply as apply_tunables, parse as parse_tunable, plugin_tunables, stored as stored_text
@@ -1647,6 +1647,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return None
         if payload.get('src') == 'sso' and doc.get('source') != 'sso' and not link_admits(doc, payload.get('login')):
             return None
+        if not cut_admits(doc, payload.get('src'), payload.get('login')):
+            return None
         return User(name=name, role=doc['role'], source=doc.get('source', 'local'))
 
     def current_user(request: Request) -> User | None:
@@ -1782,6 +1784,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         after = stop_time()
         return after is not None and made < after
 
+    def password_made_before_cut(doc: dict, owner: dict) -> bool:
+        cut = owner.get(LOCAL_AFTER)
+        if doc.get('via') == 'sso' or not isinstance(cut, (int, float)) or isinstance(cut, bool):
+            return False
+        made = clocks.parse_stamp(doc.get('createdAt'))
+        return made is None or made <= cut
+
     def bearer_actor(authorization: str) -> Actor:
         given = bearer_token(authorization) or ''
         if settings.token and hmac.compare_digest(given.encode(), settings.token.encode()):
@@ -1793,6 +1802,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if doc['createdBy'] != BOOTSTRAP:
             owner = users.get(doc['createdBy'])
             if owner is None or owner.get('disabled'):
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, msg('access.token_invalid'))
+            if password_made_before_cut(doc, owner):
                 raise HTTPException(status.HTTP_401_UNAUTHORIZED, msg('access.token_invalid'))
             role = ROLES[min(ROLES.index(role), ROLES.index(owner['role']))] if owner.get('role') in ROLES else ROLES[0]
         return Actor(f"token:{doc['name']}", role, doc['createdBy'], doc.get('via'))
@@ -2602,8 +2613,6 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     def checked_patch(key: str, body: UserPatch, current: dict) -> None:
         to_local = body.password is not None and current.get('source') == 'sso'
-        if to_local and current.get('opened') is not False:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_password'))
         if body.ssoLink is not None and current.get('source') != 'local' and not to_local:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_link_local_only'))
         try:
@@ -2621,7 +2630,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if leaves_admin(fields) and users.is_last_admin(key):
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_admin'))
 
-    def sso_to_local(key: str, body: UserPatch, fields: dict, by: str) -> dict:
+    def sso_to_local(key: str, body: UserPatch, fields: dict, by: str, current_from: str | None = None) -> dict:
         link = sso_domain_allowed(key)
         try:
             made = users.make_local(key, body.password, by, fields, link)
@@ -2631,11 +2640,46 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             user_cache.pop(key, None)
             mcp_auth.forget(key)
         if made is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_password'))
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.changed_meanwhile'))
         store.add_activity(ACCESS_KIND, by, msg('access.user_password', email=key))
+        if current_from in IDP_SOURCES and made.get('roleFrom') == 'admin':
+            store.add_activity(ACCESS_KIND, by, msg('access.user_role_admin_set', email=key, role=made.get('role')))
         if link:
             store.add_activity(ACCESS_KIND, by, msg('access.sso_linked', email=key, days=LINK_PENDING_S // 86400))
         return made
+
+    def unsure_sso_only(key: str, by: str) -> None:
+        log.error('the change of %s to SSO only failed half way and could not be put back, so the person may now sign in with SSO only', key)
+        try:
+            store.add_activity(ACCESS_KIND, by, msg('access.user_sso_only', email=key))
+        except PyMongoError as e:
+            log.error('the SSO-only activity line for %s was not saved: %s', key, kind(e))
+
+    def make_sso_only(key: str, body: UserPatch, current: dict, by: str) -> dict:
+        if body.ssoOnly is not True or body.model_dump(exclude={'ssoOnly'}, exclude_none=True):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.user_fields'))
+        if current.get('source') != 'local':
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.sso_only_local'))
+        if not signon.active():
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.sso_only_off'))
+        if not sso_domain_allowed(key):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_only_domain'))
+        try:
+            made = users.make_sso_only(key)
+        except NoPasswordAdmin:
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.sso_only_last_password_admin')) from None
+        except ChangeReverted:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, msg('access.not_changed')) from None
+        except ChangeUnsure:
+            unsure_sso_only(key, by)
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, msg('access.sso_only_unsure')) from None
+        finally:
+            user_cache.pop(key, None)
+            mcp_auth.forget(key)
+        if made is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.sso_only_local'))
+        store.add_activity(ACCESS_KIND, by, msg('access.user_sso_only', email=key))
+        return admin_row(made, clock())
 
     @app.patch('/api/admin/users/{email}')
     def patch_admin_user(email: str, body: UserPatch, by: Annotated[str, Depends(require_admin)]) -> dict:
@@ -2643,6 +2687,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         current = users.get(key)
         if current is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, msg('access.unknown_user'))
+        if body.ssoOnly is not None:
+            return make_sso_only(key, body, current, by)
         checked_patch(key, body, current)
         try:
             fields, unset = users.prepare_change(body.role, body.disabled, body.password, current)
@@ -2658,7 +2704,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 fields |= {'name': name, 'nameFrom': 'admin'}
         if body.password is not None and current.get('source') == 'sso':
             fields.pop('pw', None)
-            current = sso_to_local(key, body, fields, by)
+            current = sso_to_local(key, body, fields, by, current.get('roleFrom'))
             log_change(key, body.model_copy(update={'password': None}), by)
             fields = {}
         if fields:
@@ -2681,6 +2727,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def change_user(key: str, fields: dict, unset: tuple[str, ...], body: UserPatch, by: str) -> None:
         if leaves_admin(fields) and users.is_last_admin(key):
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_admin'))
+        if leaves_admin(fields) and users.is_last_password_admin(key):
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_password_admin'))
         only = {'roleFrom': {'$nin': list(IDP_SOURCES)}} if 'role' in fields else None
         try:
             if users.guarded_update(key, fields, unset, only=only) is None:
@@ -2689,6 +2737,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 raise HTTPException(status.HTTP_404_NOT_FOUND, msg('access.unknown_user'))
         except LastAdmin:
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_admin')) from None
+        except NoPasswordAdmin:
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('access.last_password_admin')) from None
         finally:
             user_cache.pop(key, None)
             mcp_auth.forget(key)

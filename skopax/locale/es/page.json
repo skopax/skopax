@@ -1195,7 +1195,15 @@
   "Enter the issuer URL, client ID and client secret the provider gives you.": "Introduzca la URL del emisor, el ID de cliente y el secreto de cliente que le da el proveedor.",
   "Test the connection, then save and turn single sign-on on.": "Pruebe la conexión y luego guarde y active el inicio de sesión único.",
   "Unsaved changes": "Cambios sin guardar",
-  "Claim value": "Valor del claim"
+  "Claim value": "Valor del claim",
+  "Make SSO only": "Pasar a solo SSO",
+  "Removes the password; this person signs in with SSO only": "Quita la contraseña; esta persona inicia sesión solo con SSO",
+  "Remove the password? This person then signs in with SSO only.": "¿Quitar la contraseña? Esta persona iniciará sesión solo con SSO.",
+  "You will be signed out if you signed in with your password": "Se cerrará tu sesión si iniciaste sesión con tu contraseña",
+  "Signs in with SSO only now": "Ahora inicia sesión solo con SSO",
+  "Set a password": "Definir una contraseña",
+  "Give this person a password: they become a local account, and their SSO link waits {0} days for the next SSO sign-in": "Da una contraseña a esta persona: pasa a ser una cuenta local, y su enlace SSO espera {0} días al siguiente inicio de sesión con SSO",
+  "The last active admin with a password keeps it, so there is a way in when SSO fails: give another admin a password first": "El último admin activo con contraseña la conserva, para que haya una forma de entrar si falla el SSO: da antes una contraseña a otro admin"
  },
  "rules": [
   [

@@ -294,6 +294,7 @@ class UserPatch(BaseModel):
     password: str | None = Field(default=None, max_length=1000)
     ssoLink: bool | None = Field(default=None, strict=True)
     name: str | None = Field(default=None, max_length=400)
+    ssoOnly: bool | None = Field(default=None, strict=True)
 
 
 class TokenIn(BaseModel):
