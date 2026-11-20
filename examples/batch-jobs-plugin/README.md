@@ -55,7 +55,7 @@ The page has its own suite, `tests/page/skopax-batch-jobs-panel.test.js`, which 
 As for Hello, the layer image installs the plug-in in a Python build stage and copies it into the Skopax image's `site-packages`:
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.4.0 -t skopax-batch-jobs examples/batch-jobs-plugin
+docker build --build-arg SKOPAX_VERSION=0.4.1 -t skopax-batch-jobs examples/batch-jobs-plugin
 ```
 
 Pin `SKOPAX_VERSION` to the Skopax release you run. Batch jobs is then listed in Connect > Integrations; add a Prometheus instance first, then one Batch jobs instance per set of jobs.
