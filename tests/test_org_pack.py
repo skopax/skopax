@@ -331,7 +331,7 @@ def test_about_your_company_is_a_live_setting(store: Store):
     assert saved.status_code == 200 and (saved.json()['item']['live'], saved.json()['item']['value']) == (True, 'Shop team')
     assert (long.status_code, long.json()['detail']) == (422, 'About your company is longer than 300 characters')
     assert fits == 'x' * 300 and tunables.TEXT_LIMITS['core.org-about'] == prompt.ORG_LIMIT
-    assert {k: entry[k] for k in ('group', 'label', 'kind', 'limit', 'value')} == {'group': 'Investigator', 'label': 'About your company', 'kind': 'text', 'limit': 300, 'value': 'Shop team'}
+    assert {k: entry[k] for k in ('group', 'label', 'kind', 'limit', 'lines', 'value')} == {'group': 'Investigator', 'label': 'About your company', 'kind': 'text', 'limit': 300, 'lines': 4, 'value': 'Shop team'}
     assert entry['help'] == 'One or two sentences on what Skopax watches, used by the gate that screens Slack messages'
     assert (boxes['general.timezone'], boxes['jira.projects'], boxes['core.org-about']) == (1000, 1000, 300)
     assert {k: limit for k, limit in boxes.items() if limit not in (300, 1000)} == {'website.scan-prompt': SETTING_TEXT_MAX, 'sso.button-text': 40} and any(k.startswith('tags.') for k in boxes)

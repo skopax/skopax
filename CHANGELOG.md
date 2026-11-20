@@ -31,6 +31,7 @@ Slack posts that go out directly, a History tab on every card, soft tag colours,
 - A re-fired card reads "Reopened HH:MM - fired again", then "Before that: ...", without repeating the same event.
 - Responsibles without a Skopax account now get their line in the tag report; only disabled users are left out. Changes show responsibles by name, also for older rows.
 - The Docker Hub page now shows the overview of the current release; it is updated with every release.
+- About your company (Admin > Investigator) is a four-line text box instead of a single line.
 - Uploading a company icon for single sign-on switches the button icon to Company.
 
 **Fixed:**

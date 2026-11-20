@@ -39,6 +39,7 @@ REFRESH_S = 15
 TEXT_LIMIT = 1000
 TEXT_LIMITS = {'core.org-about': ORG_ABOUT_MAX}
 TEXT_LIMITS['sso.button-text'] = SSO_BUTTON_TEXT_MAX
+TEXT_LINES = {'core.org-about': 4}
 INPUT_LIMIT = 4000
 TEXT_BOXES = ('text', 'list', 'tagrules')
 TERM_LIMIT = 200
@@ -771,6 +772,8 @@ class Live:
             out['pluginTerms'] = list(tags.plugin_rules().get(t.part, ()))
         if t.kind in TEXT_BOXES:
             out['limit'] = text_limit(t)
+            if t.key in TEXT_LINES:
+                out['lines'] = TEXT_LINES[t.key]
         if t.kind == 'rules':
             help_of = t.rule_help if t.plugin is not None else RULE_HELP.get(t.key, {})
             out.update(defaults=t.defaults, rules=effective_rules(t, out['value']), baseRules=effective_rules(t, base_text), ruleHelp=dict(help_of or {}))

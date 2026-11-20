@@ -274,7 +274,7 @@ function adminControl(i) {
         '<td class="muted">' + (v !== d ? 'default ' + esc(d) : '') + '</td></tr>';
     }).join('') + '</tbody></table>';
   }
-  if (i.kind === 'text' && i.limit > ADMIN_LINE_MAX) return '<textarea id="' + esc(id) + '" class="adm-in adm-long"' + named + ' rows="8" spellcheck="false" maxlength="' + esc(i.limit) + '" placeholder="' + esc(i.default != null ? 'default: ' + (i.default || 'empty') : '') + '">' + esc(i.value) + '</textarea>';
+  if (i.kind === 'text' && (i.limit > ADMIN_LINE_MAX || i.lines)) return '<textarea id="' + esc(id) + '" class="adm-in adm-long"' + named + ' rows="' + esc(i.lines || 8) + '" spellcheck="' + (i.lines ? 'true' : 'false') + '" maxlength="' + esc(i.limit) + '" placeholder="' + esc(i.default != null ? 'default: ' + (i.default || 'empty') : '') + '">' + esc(i.value) + '</textarea>';
   return '<input id="' + esc(id) + '" class="adm-in"' + named + ' type="text"' + (i.limit ? ' maxlength="' + esc(i.limit) + '"' : '') + ' value="' + esc(i.value) + '" placeholder="' + esc(i.default != null ? 'default: ' + (i.default || 'empty') : '') + '">';
 }
 function rowId(row) { return row.dataset.key || row.dataset.secret || row.dataset.route || row.dataset.source || row.dataset.talk || (row.classList.contains('route-add') ? '+route' : ''); }

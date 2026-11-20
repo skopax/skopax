@@ -360,6 +360,27 @@ async function accessIsCountedBeforeItsTabIsOpened() {
   return 'the Access & sign-in count is known on the first Admin section opened, with no dash, and the users are fetched once for it';
 }
 
+async function aShortTextWithLinesIsAMultiLineBoxAndAPlainOneStaysOneLine() {
+  //given
+  const items = settings().concat([setting('slack.about', 'Slack', 'About', {kind: 'text', value: 'Shop team', base: '', default: '', limit: 300, lines: 4})]);
+  const {dom, doc, errors} = await boot({hash: '#t=settings', items});
+
+  //when
+  const about = doc.querySelector('#admin .adm-row[data-key="slack.about"] textarea');
+  const channel = doc.querySelector('#admin .adm-row[data-key="slack.channel"]');
+
+  //then
+  assert.ok(about, 'a text setting with lines is a text box');
+  assert.strictEqual(about.getAttribute('rows'), '4');
+  assert.strictEqual(about.getAttribute('maxlength'), '300');
+  assert.strictEqual(about.value, 'Shop team');
+  assert.ok(about.classList.contains('adm-long'), 'it takes the full width');
+  assert.ok(!channel.querySelector('textarea') && channel.querySelector('input'), 'a plain short text stays one line');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'a short text setting that asks for lines gets a 4-row full-width box, other short texts stay one line';
+}
+
 (async () => {
   console.log('PASS ' + await theSubNavListsTheSixSectionsWithTheirIconsAndCounts());
   console.log('PASS ' + await aLinkToAccessShowsItWithTheAdminRowCurrentAndOtherTabsHideTheShell());
@@ -372,4 +393,5 @@ async function accessIsCountedBeforeItsTabIsOpened() {
   console.log('PASS ' + await theSubNavIsAColumnOnWideContentAndAChipRowOnNarrow());
   console.log('PASS ' + await generalCountsRightOnEverySectionAndListsAreFetchedOnce());
   console.log('PASS ' + await accessIsCountedBeforeItsTabIsOpened());
+  console.log('PASS ' + await aShortTextWithLinesIsAMultiLineBoxAndAPlainOneStaysOneLine());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });
