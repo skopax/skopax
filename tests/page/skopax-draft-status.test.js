@@ -47,7 +47,7 @@ const hm = (iso) => new Date(iso).toLocaleTimeString([], {hour: '2-digit', minut
 
 (async () => {
   for (const view of ['list', 'board']) await check(view);
-  console.log('PASS the expanded card (list and drawer), the tag tooltip and the Slack queue say plainly why a draft was or was not sent, for twelve states');
+  console.log('PASS the expanded card (list and drawer), the tag tooltip and the Slack tab say plainly whether a post went out, is on its way, is retried, failed or was kept for a person');
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });
 
 async function check(view) {
@@ -60,37 +60,30 @@ async function check(view) {
   const r = {
     armed: await show(armed, null, view),
     planted: await show({slackDraft: draft({notAutoSent: 'planted text in the kube answer (ignore previous)'})}, null, view),
-    held: await show({slackDraft: draft(), autoSend: {at: AT, holdBy: 'pat@example.com', holdAt: HOLD}}, null, view),
     dropped: await show({slackDraft: stopped, autoSend: {at: AT, draftAt: stopped.at}, triage: 'handled', status: 'cleared', clearedAt: iso(20)}, null, view),
-    stoppedFailed: await show({slackDraft: stopped, autoSend: {at: AT, draftAt: stopped.at, failedAt: HOLD, error: 'channel_not_found'}, triage: 'handled', status: 'cleared', clearedAt: iso(20)}, null, view),
-    stoppedHeld: await show({slackDraft: stopped, autoSend: {at: AT, draftAt: stopped.at, holdBy: 'pat@example.com', holdAt: HOLD}, triage: 'handled', status: 'cleared', clearedAt: iso(20)}, null, view),
-    stoppedEdited: await show({slackDraft: stopped, autoSend: {at: AT, draftAt: '2026-11-18T14:00:00Z'}, triage: 'handled', status: 'cleared', clearedAt: iso(20)}, null, view),
     progress: await show({slackDraft: draft(), triage: 'progress'}, null, view),
     claimed: await show({slackDraft: draft(), autoSend: {at: AT, claimedAt: AT, draftAt: null}}, null, view),
-    hostile: await show({slackDraft: draft(), autoSend: {at: AT, failedAt: HOLD, error: '<img src=x onerror=1>'}}, null, view),
-    failed: await show({slackDraft: draft(), autoSend: {at: AT, failedAt: HOLD, error: 'channel_not_found'}}, null, view),
-    off: await show(armed, {'slack-autosend': false}, view),
+    retrying: await show({slackDraft: draft(), autoSend: {at: AT, failedAt: HOLD, retries: 1, error: 'channel_not_found'}}, null, view),
+    hostile: await show({slackDraft: draft(), autoSend: {at: AT, claimedAt: HOLD, failedAt: HOLD, error: '<img src=x onerror=1>'}}, null, view),
+    failed: await show({slackDraft: draft(), autoSend: {at: AT, claimedAt: HOLD, failedAt: HOLD, error: 'channel_not_found'}}, null, view),
   };
 
   //then
   const want = {
-    armed: 'Sends by itself at ' + hm(AT) + ' unless someone holds it',
-    planted: 'Waiting for a person: the run read planted text in the kube answer (ignore previous)',
-    held: 'Held by pat at ' + hm(HOLD),
-    dropped: 'Not sent: the card stopped, was muted, merged or resolved before the timer',
-    stoppedFailed: 'Slack refused the post: channel_not_found',
-    stoppedHeld: 'Held by pat at ' + hm(HOLD),
-    stoppedEdited: 'Not sent: the card stopped, was muted, merged or resolved, so it waits for a person',
-    progress: 'Not sent: the card went In progress, so it waits for a person',
-    claimed: 'Sending now',
-    hostile: 'Slack refused the post: <img src=x onerror=1>',
-    failed: 'Slack refused the post: channel_not_found',
-    off: 'Auto-send is off in Admin',
+    armed: ['Posting to Slack now', false],
+    planted: ['Not posted: the run read suspicious text (planted text in the kube answer (ignore previous)); check it and use Send to Slack', true],
+    dropped: ['Not posted: the card stopped, was muted, merged or resolved first; Send to Slack still posts it', false],
+    progress: ['Not posted: the card stopped, was muted, merged or resolved first; Send to Slack still posts it', false],
+    claimed: ['Posting to Slack now', false],
+    retrying: ['Slack post failed: channel_not_found; trying again at ' + hm(AT), false],
+    hostile: ['Slack post failed: <img src=x onerror=1>; use Send to Slack to try again', true],
+    failed: ['Slack post failed: channel_not_found; use Send to Slack to try again', true],
   };
   Object.keys(want).forEach((k) => {
-    assert.strictEqual(r[k].line, want[k], k + ': the line under the draft');
-    assert.ok(r[k].tip.includes(want[k]), k + ': the tag tooltip says the same: ' + r[k].tip);
-    assert.strictEqual(r[k].queue, want[k], k + ': the Slack queue says the same: ' + r[k].queue);
+    const [line, kept] = want[k];
+    assert.strictEqual(r[k].line, line, k + ': the line under the text');
+    assert.strictEqual(r[k].tip.includes(line), kept, k + ': only a post that did not go out has a tag, and its tooltip says the same: ' + r[k].tip);
+    assert.strictEqual(r[k].queue, kept ? line : null, k + ': only a post that did not go out is in the Slack tab: ' + r[k].queue);
     assert.deepStrictEqual(r[k].errors, []);
   });
   assert.strictEqual(r.hostile.imgs, 0, view + ': hostile text from Slack stays text');

@@ -191,6 +191,27 @@ async function generalLeavesOutTheFeaturesTheirKeysAndTheInvestigatorGroup() {
   return 'General has no Features-group row, no row the Features tab owns (public read) and no Investigator row, and no Changes fold';
 }
 
+async function accessRowsInChangesAreNamedAndHaveNoRevert() {
+  //given
+  const history = [
+    {id: 'a1', key: 'access', access: true, at: iso(3), by: 'Alice Moss', text: 'User Dana Gray created with the viewer role'},
+    {id: 'h1', seq: 1, key: 'slack.channel', old: null, new: 'C0123', by: 'alice@example.com', at: iso(20)},
+  ];
+
+  //when
+  const {dom, doc, errors} = await boot({hash: '#t=changes', history});
+  const rows = [...doc.querySelectorAll('#changes .adm-hist tbody tr')];
+
+  //then
+  assert.deepStrictEqual([...rows[0].children].slice(1, 4).map((c) => c.textContent), ['Alice Moss', 'People and access', 'User Dana Gray created with the viewer role']);
+  assert.ok(!rows[0].querySelector('.adm-revert'), 'an access row has no Revert');
+  assert.ok(!rows[0].textContent.includes('@'));
+  assert.ok(rows[1].querySelector('.adm-revert'), 'a setting row keeps its Revert');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'an access row in Changes shows who, People and access and the change by name, with no Revert';
+}
+
 async function changesListsTheHistoryAndASecretRowHasNoRevert() {
   //given
   const history = [
@@ -339,15 +360,38 @@ async function accessIsCountedBeforeItsTabIsOpened() {
   return 'the Access & sign-in count is known on the first Admin section opened, with no dash, and the users are fetched once for it';
 }
 
+async function aShortTextWithLinesIsAMultiLineBoxAndAPlainOneStaysOneLine() {
+  //given
+  const items = settings().concat([setting('slack.about', 'Slack', 'About', {kind: 'text', value: 'Shop team', base: '', default: '', limit: 300, lines: 4})]);
+  const {dom, doc, errors} = await boot({hash: '#t=settings', items});
+
+  //when
+  const about = doc.querySelector('#admin .adm-row[data-key="slack.about"] textarea');
+  const channel = doc.querySelector('#admin .adm-row[data-key="slack.channel"]');
+
+  //then
+  assert.ok(about, 'a text setting with lines is a text box');
+  assert.strictEqual(about.getAttribute('rows'), '4');
+  assert.strictEqual(about.getAttribute('maxlength'), '300');
+  assert.strictEqual(about.value, 'Shop team');
+  assert.ok(about.classList.contains('adm-long'), 'it takes the full width');
+  assert.ok(!channel.querySelector('textarea') && channel.querySelector('input'), 'a plain short text stays one line');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'a short text setting that asks for lines gets a 4-row full-width box, other short texts stay one line';
+}
+
 (async () => {
   console.log('PASS ' + await theSubNavListsTheSixSectionsWithTheirIconsAndCounts());
   console.log('PASS ' + await aLinkToAccessShowsItWithTheAdminRowCurrentAndOtherTabsHideTheShell());
   console.log('PASS ' + await everyAdminSectionHasItsOwnLinkAndTheAdminRowOpensTheLastOne());
   console.log('PASS ' + await generalLeavesOutTheFeaturesTheirKeysAndTheInvestigatorGroup());
   console.log('PASS ' + await changesListsTheHistoryAndASecretRowHasNoRevert());
+  console.log('PASS ' + await accessRowsInChangesAreNamedAndHaveNoRevert());
   console.log('PASS ' + await noticesAreTextAndOnlyAWarningPutsADotOnTheAdminRow());
   console.log('PASS ' + await aViewerHasNoAdminRowAndAdminLinksFallBack());
   console.log('PASS ' + await theSubNavIsAColumnOnWideContentAndAChipRowOnNarrow());
   console.log('PASS ' + await generalCountsRightOnEverySectionAndListsAreFetchedOnce());
   console.log('PASS ' + await accessIsCountedBeforeItsTabIsOpened());
+  console.log('PASS ' + await aShortTextWithLinesIsAMultiLineBoxAndAPlainOneStaysOneLine());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

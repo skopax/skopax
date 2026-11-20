@@ -1,4 +1,5 @@
 import dataclasses
+import datetime as dt
 import logging
 import threading
 import time
@@ -18,7 +19,7 @@ from skopax.plugins import teams
 from skopax.registry import Registry
 from skopax.routes import Echo, Route
 from skopax.slack import Slack
-from skopax.store import Store
+from skopax.store import Store, iso, utc_now
 from tests.conftest import AUTH, settings, state
 from tests.fake_slack import FakeSlackApi
 from tests.plugins.base import minimal
@@ -788,21 +789,38 @@ def test_in_the_app_the_default_changes_nothing(store: Store, tmp_path):
     assert slack_t.calls == [] and [u for u, _ in teams_t.calls] == [SEO]
 
 
-def test_echo_does_not_publish_a_held_draft_and_tells_the_thread_once_slack_posts(store: Store, tmp_path):
+def test_echo_posts_a_card_with_kept_planted_text_plainly_and_tells_the_thread(store: Store, tmp_path):
     # given
-    store.save({**state(seo_info(**armed(holdBy='bob', holdAt=AT))), 'initialized': True}, None)
+    store.save({**state(seo_info(slackDraft={**DRAFT, 'notAutoSent': 'planted text in the esql answer (ignore previous)'})), 'initialized': True}, None)
     slack_t, teams_t = SlackT(), Transport()
 
     # when
     with app_with(store, tmp_path, slack_t, teams_t, routes_slack_echo=True) as c:
         add_route(c, 'seo-team', SEO, tags='seo')
         send_by_hand(c)
-        c.post('/api/slack-posts', json={'key': KEY}, headers=AUTH)
-        send_by_hand(c)
+        settle(c)
 
     # then
     assert [p.get('thread_ts') for p in slack_t.calls] == [None, '1791900000.000001']
-    assert DRAFT['text'] in str(slack_t.calls[0]) and slack_t.calls[1]['text'] == LINE
+    assert DRAFT['text'] not in str(slack_t.calls[0]), 'the kept text never goes out with the echo'
+    assert slack_t.calls[1]['text'] == LINE
+
+
+def test_echo_waits_while_a_post_is_on_its_way(store: Store, tmp_path):
+    # given
+    at = iso(utc_now())
+    draft = {**DRAFT, 'at': at}
+    store.save({**state(seo_info(slackDraft=draft, autoSend={'at': iso(utc_now() + dt.timedelta(minutes=30)), 'draftAt': at, 'draftHash': draft_hash(DRAFT['text'])})), 'initialized': True}, None)
+    slack_t, teams_t = SlackT(), Transport()
+
+    # when
+    with app_with(store, tmp_path, slack_t, teams_t, routes_slack_echo=True) as c:
+        add_route(c, 'seo-team', SEO, tags='seo')
+        send_by_hand(c)
+
+    # then
+    assert slack_t.calls == []
+    assert [p['id'] for p in store.anomaly(KEY)['routeEcho']['pending']] == ['teams/seo-team']
 
 
 def test_echo_skips_a_card_whose_auto_send_is_claimed(store: Store, tmp_path):
@@ -817,21 +835,6 @@ def test_echo_skips_a_card_whose_auto_send_is_claimed(store: Store, tmp_path):
 
     # then
     assert slack_t.calls == [] and [u for u, _ in teams_t.calls] == [SEO]
-
-
-def test_echo_goes_through_the_worker_for_a_card_with_an_armed_draft_that_is_due_later(store: Store, tmp_path):
-    # given
-    store.save({**state(seo_info(**armed())), 'initialized': True}, None)
-    slack_t, teams_t = SlackT(), Transport()
-
-    # when
-    with app_with(store, tmp_path, slack_t, teams_t, routes_slack_echo=True) as c:
-        add_route(c, 'seo-team', SEO, tags='seo')
-        send_by_hand(c)
-
-    # then
-    assert slack_t.calls == []
-    assert [p['id'] for p in store.anomaly(KEY)['routeEcho']['pending']] == ['teams/seo-team']
 
 
 def test_manual_send_of_a_muted_card_is_not_echoed_as_a_new_slack_post(store: Store, tmp_path):
@@ -909,26 +912,6 @@ def test_the_instances_api_saves_on_and_refuses_anything_else(store: Store, tmp_
 
 def settle(c) -> None:
     assert c.app.state.routes.drain(10)
-
-
-@pytest.mark.parametrize('extra', [
-    {'slackDraft': {**DRAFT, 'notAutoSent': 'a rule the run read'}},
-    {'slackDraft': DRAFT},
-    {'slackDraft': DRAFT, 'autoSend': {'draftAt': AT, 'draftHash': 'an-older-text'}},
-], ids=['investigator-hold', 'a-persons-draft', 'a-stopped-auto-send'])
-def test_any_unsent_draft_with_text_keeps_the_echo_waiting(store: Store, tmp_path, extra):
-    # given
-    store.save({**state(seo_info(**extra)), 'initialized': True}, None)
-    slack_t, teams_t = SlackT(), Transport()
-
-    # when
-    with app_with(store, tmp_path, slack_t, teams_t, routes_slack_echo=True) as c:
-        add_route(c, 'seo-team', SEO, tags='seo')
-        send_by_hand(c)
-        settle(c)
-
-    # then
-    assert slack_t.calls == [] and [p['id'] for p in store.anomaly(KEY)['routeEcho']['pending']] == ['teams/seo-team']
 
 
 @pytest.mark.parametrize('kind', ['handled', 'merged'])

@@ -41,6 +41,10 @@ POLL_S = 2.0
 HOUR_S = 3600
 LIST_MAX = 50
 LIST_DEFAULT = 20
+ABOUT_LAYERS = 5
+ABOUT_PLUGINS = 40
+ABOUT_REASON = 160
+STATES = ('ok', 'off', 'incompatible', 'locked', 'failed')
 NOTICE_LIST_DEFAULT = 20
 ASK_CARDS = 3
 TEXT_CLIP = 220
@@ -56,10 +60,27 @@ CARD_TOOL = {'investigate': 'investigate_card', 'resolve': 'resolve_card', 'take
 HALTED = {'stopped': 'the investigator is stopped (Stop switch on the page)', 'capped': 'the investigator is over its daily limit until local midnight', 'off': off_text('investigator')}
 VERB = {'take': 'take', 'resolve': 'resolve', 'mute': 'mute', 'known': 'known noise', 'reopen': 'reopen', 'link': 'link ticket'}
 
-def instructions(base_url: str, name: str | None = None) -> str:
+def layers_text(layers: list[dict]) -> str:
+    shown = [f"{x['name']} {x['version']}".strip() for x in layers[:ABOUT_LAYERS]]
+    more = len(layers) - len(shown)
+    return ', '.join(shown) + (f' and {more} more' if more > 0 else '')
+
+
+def identity(name: str, layers: list[dict] | None = None) -> str:
+    if not brand.shown():
+        lead = name
+    elif name == brand.DEFAULT_NAME:
+        lead = f'{brand.DEFAULT_NAME} {brand.display_version()}'
+    else:
+        lead = f'{name}, powered by {brand.DEFAULT_NAME} {brand.display_version()}'
+    return lead + (f', extended by {layers_text(layers)}' if layers else '') + '.'
+
+
+def instructions(base_url: str, name: str | None = None, layers: list[dict] | None = None) -> str:
     where = f' ({base_url})' if base_url else ''
     name = name if name is not None else brand.product()
     return (
+        f'{identity(name, layers)} The about tool says which version, edition and plug-ins this server runs. '
         f'{name} is a production health board{where}. Every anomaly is a card with a number (#14) and a key. '
         'Start with list_cards (open cards by default), then get_card for one card with its latest investigation. '
         f'ask sends a private question to the {name} investigator (an AI that reads prod Prometheus, Kubernetes and more); '
@@ -118,8 +139,11 @@ TOOLS = (
                            'finished investigations, Slack posts and reminders on them, and chat answers. Reading them here does not mark them read.',
                inputSchema=schema({'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50, 'description': 'Notifications to return, default 20'},
                                    'unread_only': {'type': 'boolean', 'description': 'Only the unread ones'}})),
+    types.Tool(name='about', title='About', annotations=hints(True, False, True, False),
+               description='Which {product} this is: the version it runs, the edition, who extended it with their own plug-ins, and which plug-ins are loaded and in what state. Takes no arguments.',
+               inputSchema=schema({})),
     types.Tool(name='investigate_card', title='Investigate card', annotations=hints(False, False, False, True),
-               description='Queue a full investigation of one card, like the Investigate button: the investigator reads prod sources and writes its finding on the card (and may leave a Slack draft). '
+               description='Queue a full investigation of one card, like the Investigate button: the investigator reads prod sources and writes its finding on the card (and may post it to Slack). '
                            'One open investigation per card; a few per person per hour. Returns the queued request; with wait_seconds it waits for the run and returns its recap, '
                            'otherwise follow it with get_card or investigator_status.',
                inputSchema=schema({'card': CARD, 'wait_seconds': WAIT}, ('card',))),
@@ -158,6 +182,7 @@ TOOL_ROLES: dict[str, str] = {
     'list_my_asks': 'viewer',
     'get_ask': 'viewer',
     'list_notifications': 'viewer',
+    'about': 'viewer',
     'investigate_card': 'operator',
     'ask': 'operator',
     'take_card': 'operator',
@@ -191,6 +216,8 @@ class Bridge:
     chat_used: Callable[[str], int]
     base: str = ''
     feature_on: Callable[[str], bool] = lambda _: True
+    registry: Any = None
+    plugin_on: Callable[[str], bool] = lambda _: True
 
 
 def clip(text: Any, n: int = TEXT_CLIP) -> str:
@@ -245,7 +272,7 @@ class Tools:
         self.poll_s = poll_s
         self.clock = clock
         self.calls = {'list_cards': self.list_cards, 'get_card': self.get_card, 'get_investigation': self.get_investigation, 'investigator_status': self.investigator_status,
-                      'list_deploy_reports': self.list_deploy_reports, 'list_my_asks': self.list_my_asks, 'get_ask': self.get_ask, 'list_notifications': self.list_notifications, 'take_card': self.take_card,
+                      'list_deploy_reports': self.list_deploy_reports, 'list_my_asks': self.list_my_asks, 'get_ask': self.get_ask, 'list_notifications': self.list_notifications, 'about': self.about, 'take_card': self.take_card,
                       'resolve_card': self.resolve_card, 'mute_card': self.mute_card, 'reopen_card': self.reopen_card,
                       'assign_card': self.assign_card, 'link_ticket': self.link_ticket}
         self.waits = {'investigate_card': (self.start_dive, self.dive_result), 'ask': (self.start_ask, self.ask_result)}
@@ -492,6 +519,29 @@ class Tools:
             lines.append(f"recent: {r.get('id')} · {r.get('trigger')} · {r.get('outcome')} · {', '.join(r.get('keys') or []) or '-'} · {r.get('startedAt')}")
         return '\n'.join(lines)
 
+    def layers(self) -> list[dict]:
+        return self.b.registry.extensions() if self.b.registry is not None else []
+
+    def about(self, user: McpUser, args: dict) -> str:
+        name = brand.product()
+        lines = [identity(name), f"edition: {self.b.registry.edition() if self.b.registry is not None else 'community'}"] + ([f'site: {brand.SITE}'] if brand.shown() else [])
+        if self.site():
+            lines.append(f'server: {self.site()}')
+        layers = self.layers()
+        if layers:
+            lines.append('Extended by:')
+            for x in layers:
+                lines.append(f"- {x['name']} {x['version']}".rstrip() + (f" \u00b7 plug-ins: {', '.join(x['plugins'])}" if x['package'] else ''))
+        rows = self.b.registry.standing(self.b.plugin_on) if self.b.registry is not None else []
+        counts = {s: sum(1 for r in rows if r['state'] == s) for s in (*STATES, *sorted({r['state'] for r in rows} - set(STATES)))}
+        lines.append(f'Plug-ins: {len(rows)} \u00b7 ' + ' \u00b7 '.join(f'{s} {n}' for s, n in counts.items() if n or s == 'ok'))
+        admin = role_at_least(user.role, 'admin')
+        for r in rows[:ABOUT_PLUGINS]:
+            lines.append(f"- {r['id']} {r['version']}".rstrip() + f" \u00b7 {r['state']}" + (f" \u00b7 {clip(r['reason'], ABOUT_REASON)}" if admin and r['state'] != 'ok' and r['reason'] else ''))
+        if len(rows) > ABOUT_PLUGINS:
+            lines.append(f'and {len(rows) - ABOUT_PLUGINS} more')
+        return '\n'.join(lines)
+
     def list_deploy_reports(self, user: McpUser, args: dict) -> str:
         reports = self.store.list_deploy_reports(int(args.get('limit') or 5))
         if not reports:
@@ -675,8 +725,19 @@ def shown_tool(tool: types.Tool) -> types.Tool:
     return tool.model_copy(update={'description': brand.fill(tool.description or '')})
 
 
+class Fresh(Server):
+    def __init__(self, tools: Tools, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.tools = tools
+
+    def create_initialization_options(self, *args, **kwargs):
+        self.instructions = instructions(self.tools.site(), layers=self.tools.layers())
+        self.website_url = brand.SITE if brand.shown() else None
+        return super().create_initialization_options(*args, **kwargs)
+
+
 def build_server(tools: Tools) -> Server:
-    server = Server(brand.mcp_slug(brand.product()), version=__version__, instructions=instructions(tools.site()), website_url=brand.SITE)
+    server = Fresh(tools, brand.mcp_slug(brand.product()), version=__version__)
 
     @server.list_tools()
     async def list_tools(asked: types.ListToolsRequest) -> types.ListToolsResult:

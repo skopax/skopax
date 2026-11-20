@@ -108,31 +108,6 @@ def test_an_operators_edit_leaves_the_draft_manual(store: Store):
     assert 'autoSend' not in store.anomaly(KEY)
 
 
-def test_hold_stops_the_timer_and_leaves_a_normal_manual_draft(store: Store):
-    # given
-    seed(store)
-    transport = FakeSlack()
-
-    # when
-    with client_with(store, transport) as client:
-        drafted(client)
-        held = client.post('/api/slack-holds', json={'key': KEY}, headers=AUTH)
-        twice = client.post('/api/slack-holds', json={'key': KEY}, headers=AUTH)
-        missing = client.post('/api/slack-holds', json={'key': 'no|such|card'}, headers=AUTH)
-        guest = client.post('/api/slack-holds', json={'key': KEY})
-        due_now(store)
-        sent = job(client).run_once()
-
-    # then
-    assert held.status_code == 201
-    assert held.json()['autoSend']['holdBy'] == 'token:bootstrap'
-    assert held.json()['autoSend']['holdAt']
-    assert (twice.status_code, missing.status_code, guest.status_code) == (409, 404, 401)
-    assert sent == 0
-    assert transport.calls == []
-    assert store.anomaly(KEY)['slackDraft']['text'] == DRAFT
-
-
 def test_a_stopped_card_is_skipped_and_disarmed(store: Store):
     # given
     seed(store)
@@ -344,30 +319,6 @@ def test_a_report_draft_posts_with_the_footer_of_who_drafted_it(store: Store, by
     assert transport.calls[0][1]['attachments'][0]['blocks'][-2]['elements'][0]['text'].endswith(f'Sent from Skopax by {footer}')
 
 
-def test_a_report_hold_stops_its_auto_send(store: Store):
-    # given
-    transport = FakeSlack()
-
-    # when
-    with client_with(store, transport) as client:
-        saved = client.post('/api/deploy-reports', json=report(), headers=AUTH).json()
-        client.put(f"/api/deploy-reports/{saved['id']}/slack-draft", json={'text': REPORT_DRAFT}, headers=AUTH)
-        held = client.post(f"/api/deploy-reports/{saved['id']}/slack-hold", headers=AUTH)
-        missing = client.post('/api/deploy-reports/nope/slack-hold', headers=AUTH)
-        guest = client.post(f"/api/deploy-reports/{saved['id']}/slack-hold")
-        due_report(store, saved['id'])
-        sent = job(client).run_once()
-        listed = client.get('/api/deploy-reports').json()
-
-    # then
-    assert held.status_code == 201
-    assert held.json()['autoSend']['holdBy'] == 'token:bootstrap'
-    assert (missing.status_code, guest.status_code) == (404, 401)
-    assert sent == 0
-    assert transport.calls == []
-    assert listed[0]['slackDraft']['text'] == REPORT_DRAFT
-
-
 def test_an_operators_report_edit_leaves_it_manual(store: Store):
     # given
     with client_with(store, FakeSlack()) as client:
@@ -411,6 +362,8 @@ def test_a_critical_card_no_investigation_finished_on_gets_one_server_draft_that
         first = client.app.state.slack_fallback.run_once(FB_NOW)
         again = client.app.state.slack_fallback.run_once(FB_NOW)
         armed = store.anomaly(FB_KEY)
+        now = iso(utc_now())
+        store.anomalies.update_one({'_id': FB_KEY}, {'$set': {'slackDraft.at': now, 'autoSend.draftAt': now, 'autoSend.at': now}})
         sent = job(client).run_once()
 
     # then
@@ -422,7 +375,7 @@ def test_a_critical_card_no_investigation_finished_on_gets_one_server_draft_that
     assert [b for b in transport.calls[0][1]['blocks'] if b['type'] == 'context'][-1]['elements'][0]['text'].endswith(' · Skopax · auto-sent')
     assert store.anomaly(FB_KEY)['slackPost']['by'] == AUTO_BY
     lines = [a['text'] for a in store.list_activity(None, 20) if a['who'] == 'server']
-    assert lines == [f'Slack fallback draft armed · {FB_KEY} · no finished investigation 16 min after it fired']
+    assert lines == [f'Slack fallback post queued · {FB_KEY} · no finished investigation 16 min after it fired']
 
 
 def test_the_fallback_waits_its_minutes_and_zero_turns_it_off(store: Store):
@@ -470,7 +423,7 @@ def test_only_a_finished_or_running_live_card_investigation_since_the_card_fired
     ({'sev': 'warn'}, 0),
     ({'status': 'cleared'}, 0),
     ({'muted': '24 h'}, 0),
-    ({'slackDraft': {'text': 'Operator draft.', 'by': 'op@example.com', 'at': FIRED}}, 0),
+    ({'slackDraft': {'text': 'Operator draft.', 'by': 'op@example.com', 'at': FIRED}}, 1),
     ({'slackPost': {'at': FIRED, 'ts': '1.2', 'channel': 'C1', 'by': 'token'}}, 0),
     ({'autoSend': {'holdBy': 'op@example.com', 'holdAt': FIRED}}, 0),
     ({'triage': 'investigating'}, 0),
@@ -520,7 +473,7 @@ def test_a_merged_child_gets_no_fallback_and_its_open_parent_does(store: Store):
 
 @pytest.mark.parametrize('twin, drafted', [
     ({'slackPost': {'at': '2026-10-26T03:00:00Z', 'ts': '1.2', 'channel': 'C1', 'by': AUTO_BY}}, 0),
-    ({'slackDraft': {'text': 'Pod draft.', 'by': 'Claude (pod)', 'at': '2026-10-26T05:00:00Z'}}, 0),
+    ({'slackDraft': {'text': 'Pod post.', 'by': 'Claude (pod)', 'at': '2026-10-26T05:00:00Z'}, 'autoSend': {'at': '2026-10-26T05:00:00Z', 'draftAt': '2026-10-26T05:00:00Z', 'draftHash': 'h'}}, 0),
     ({'slackPost': {'at': '2026-10-25T23:00:00Z', 'ts': '1.2', 'channel': 'C1', 'by': AUTO_BY}}, 1),
     ({'sev': 'warn', 'slackPost': {'at': '2026-10-26T05:00:00Z', 'ts': '1.2', 'channel': 'C1', 'by': AUTO_BY}}, 1),
     ({'status': 'cleared', 'slackPost': {'at': '2026-10-26T05:00:00Z', 'ts': '1.2', 'channel': 'C1', 'by': AUTO_BY}}, 1),
@@ -535,6 +488,19 @@ def test_one_post_per_service_in_6_h_holds_back_the_fallback_unless_the_twin_is_
     # then
     assert count == drafted
     assert [k for k in drafted_keys(store) if store.anomaly(k)['slackDraft']['by'] == 'server'] == [FB_KEY] * drafted
+
+
+def test_a_twin_with_text_kept_for_planted_text_never_holds_back_the_service(store: Store):
+    # given
+    kept = {'text': 'Kept for a person.', 'by': 'Claude (pod)', 'at': '2026-10-26T05:00:00Z', 'notAutoSent': 'planted text in the esql answer (ignore previous)'}
+    fired(store, crit(), crit(TWIN_KEY, firstSeen='2026-10-26T02:50:00Z', slackDraft=kept))
+
+    # when
+    count = Fallback(store, 15).run_once(FB_NOW)
+
+    # then
+    assert count == 1
+    assert [k for k in drafted_keys(store) if store.anomaly(k)['slackDraft']['by'] == 'server'] == [TWIN_KEY], 'the older card gets the numbers post in place of the kept text'
 
 
 def test_two_fresh_critical_cards_of_one_service_get_one_fallback_on_the_older_card(store: Store):

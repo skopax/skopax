@@ -107,7 +107,7 @@ async function anOperatorTagsAndWritesTheSentenceAndOnlyTaggedCardsOfferTheBusin
   assert.strictEqual(cardOf(doc, TYPO).querySelector('.biz-txt').textContent, 'Recommended: ' + SENTENCE);
   assert.ok(cardOf(doc, TYPO).querySelector('.biz-by').textContent.startsWith('rule'));
   assert.strictEqual(cardOf(doc, LOG).querySelector('.biz-txt').textContent, 'No action written yet: nothing goes to Teams until one is written.');
-  assert.strictEqual(cardOf(doc, PLAIN).querySelector('.biz-txt').textContent, 'Not tagged for a business team.');
+  assert.strictEqual(cardOf(doc, PLAIN).querySelector('.biz-txt').textContent, 'Tag a business team to write a note');
 
   //when
   cardOf(doc, PLAIN).querySelector('.biz-tb[data-tag="product"]').click();
@@ -150,7 +150,7 @@ async function theDeveloperTagShowsOnTheCardNeedsNoSentenceAndItsRouteShowsOnlyO
   //then
   assert.strictEqual(pill.textContent, 'Developer');
   assert.ok(pill.classList.contains('tech-tag') && pill.title.includes('engineering has to change the code or config of a service') && !pill.title.includes('No action written yet'), pill.title);
-  assert.strictEqual(cardOf(doc, FIX).querySelector('.biz-txt').textContent, 'Not tagged for a business team.', 'the Developer tag asks for no sentence');
+  assert.strictEqual(cardOf(doc, FIX).querySelector('.biz-txt').textContent, 'Tag a business team to write a note', 'the Developer tag asks for no sentence');
   assert.deepStrictEqual(teams(FIX), ['Microsoft Teams \u00b7 eng', 'Microsoft Teams \u00b7 tech']);
   assert.deepStrictEqual(teams(PLAIN), ['Microsoft Teams \u00b7 tech'], 'the Developer channel shows only on cards with the tag');
   assert.strictEqual(doc.querySelector('#tab-sub-anoms .tags-g [data-type="tag:developer"] .count').textContent, '1');

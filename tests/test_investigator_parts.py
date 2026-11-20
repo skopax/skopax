@@ -604,7 +604,7 @@ def test_the_brief_asks_for_findings_in_the_thread_of_a_numbers_only_post():
 
     # then
     assert 'by the server with its numbers only; put your findings in its thread' in text
-    assert 'slack draft already on the card' not in text and 'reply with slack_update only for a real change' not in text
+    assert 'Slack post waiting or kept for a person' not in text and 'reply with slack_update only for a real change' not in text
 
 
 def test_the_card_language_is_english_unless_a_language_line_says_otherwise():

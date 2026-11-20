@@ -334,13 +334,13 @@ def shown_key(key: str) -> str:
 
 
 def announced_text(twin: dict) -> str:
-    head = f"{flat(twin.get('svc'))} was already announced in the main channel on {shown_key(twin['key'])} ({'posted' if twin.get('posted') else 'draft waiting to post'})"
+    head = f"{flat(twin.get('svc'))} was already announced in the main channel on {shown_key(twin['key'])} ({'posted' if twin.get('posted') else 'post on its way'})"
     rule = f'no second post for the same service within {ANNOUNCE_WINDOW_S // 3600} h unless the new card is more severe'
     return f'{head}; {rule}'
 
 
 def announced_hint(twin: dict) -> str:
-    return 'reply there with slack_update on that card instead' if twin.get('posted') else 'leave it, the waiting draft covers it'
+    return 'reply there with slack_update on that card instead' if twin.get('posted') else 'leave it, the post on its way covers it'
 
 
 def card_brief(x: dict, base: str, twin: dict | None = None) -> str:
@@ -376,7 +376,7 @@ def card_brief(x: dict, base: str, twin: dict | None = None) -> str:
     if (x.get('business') or {}).get('text'):
         lines.append(f"  business sentence ({flat(x['business'].get('by'))}): {x['business']['text']!r}")
     if (x.get('slackDraft') or {}).get('text') and not str((x.get('slackPost') or {}).get('at') or '') >= str(x['slackDraft'].get('at') or '~'):
-        lines.append(f"  slack draft already on the card ({flat(x['slackDraft'].get('by'))}): {x['slackDraft']['text']!r}")
+        lines.append(f"  Slack post waiting or kept for a person on the card ({flat(x['slackDraft'].get('by'))}): {x['slackDraft']['text']!r}")
     if (x.get('slackPost') or {}).get('at'):
         numbers = (x.get('slackFallback') or {}).get('at')
         if numbers and str(x['slackPost']['at']) >= str(numbers):

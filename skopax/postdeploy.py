@@ -81,8 +81,9 @@ class PostDeploy:
     def __init__(self, store: Store, prom_for: Callable[[str | None], Prometheus | None], jira: object, flag: bool | Callable[[], bool] = True, base_url: str = '', clock=time.time,
                  assess: Callable[[], bool] | None = None, projects: tuple[str, ...] = (), serving: Callable[[], bool] | None = None,
                  primary_name: Callable[[], str | None] = lambda: None, release_template: Callable[[], str] = lambda: RELEASE_NAME,
-                 plugin_reports: Callable[[list[dict], float, float], list[dict]] | None = None):
+                 plugin_reports: Callable[[list[dict], float, float], list[dict]] | None = None, autopost: Callable[[], bool] = lambda: True):
         self.plugin_reports = plugin_reports
+        self.autopost = autopost
         self.projects = projects
         self.release_template = release_template
         self.primary_name = primary_name
@@ -215,12 +216,13 @@ class PostDeploy:
                   'actionId': act['id'], 'usd': 0.0, 'costNote': COST_NOTE} | ({'issuesNote': refused} if refused else {})
         report = self.with_plugins(report, answers or [])
         saved = self.store.add_deploy_report(report)
-        draft = slack_text(out, frm, now, report.get('flags'))
-        self.store.report_slack_draft(saved['id'], draft, NUMBERS_BY if assessed else SERVER_BY)
+        posting = self.autopost()
+        if posting:
+            self.store.report_slack_draft(saved['id'], slack_text(out, frm, now, report.get('flags')), NUMBERS_BY if assessed else SERVER_BY)
         self.store.update_action(act['id'], 'done', summary[:RESULT_LIMIT], 'processing')
         if assessed:
             self.queue_assessment(saved)
-        line = f'post-deploy check · {summary} · ' + ('assessment queued for the investigator, its draft waits' if assessed else 'Slack draft armed')
+        line = f'post-deploy check · {summary} · ' + ('Slack auto-send is off, not posted' if not posting else 'assessment queued for the investigator, its post waits' if assessed else 'Slack post queued')
         self.store.add_activity('postdeploy', SERVER_BY, line, reportId=saved['id'])
         log.info('post-deploy report %s for action %s: %s', saved['id'], act['id'], summary)
         return saved

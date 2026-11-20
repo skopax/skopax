@@ -109,9 +109,10 @@ def autosend_scene(store: Store, **over) -> Scene:
     c = TestClient(create_app(dataclasses.replace(settings(), **over), store, slack=Slack('xoxb-test', '#ops', transport, FakeSlackApi())))
 
     def probe(n: int):
+        store.slack_draft(KEY, f'{DRAFT} {n}', 'token')
         return c.app.state.auto_send.run_once(), len(transport.calls), bool(store.anomaly(KEY).get('slackPost'))
 
-    return Scene(c, probe, (0, 0, False), (1, 1, True), ready=lambda: c.put('/api/slack-drafts', json={'key': KEY, 'text': DRAFT}, headers=AUTH))
+    return Scene(c, probe, (0, 0, False), (1, 1, True), ready=lambda: None)
 
 
 def listener_scene(store: Store, **over) -> Scene:

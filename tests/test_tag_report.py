@@ -17,6 +17,10 @@ SAT_1100 = dt.datetime(2026, 11, 21, 11, 0, tzinfo=dt.timezone.utc).timestamp()
 SUN_1100 = dt.datetime(2026, 11, 22, 11, 0, tzinfo=dt.timezone.utc).timestamp()
 MON_1000 = dt.datetime(2026, 11, 23, 10, 0, tzinfo=dt.timezone.utc).timestamp()
 FRI_2330 = dt.datetime(2026, 11, 20, 23, 30, tzinfo=dt.timezone.utc).timestamp()
+FRI_1130 = dt.datetime(2026, 11, 20, 11, 30, tzinfo=dt.timezone.utc).timestamp()
+FRI_1159 = dt.datetime(2026, 11, 20, 11, 59, tzinfo=dt.timezone.utc).timestamp()
+FRI_1200 = dt.datetime(2026, 11, 20, 12, 0, tzinfo=dt.timezone.utc).timestamp()
+FRI_2132 = dt.datetime(2026, 11, 20, 21, 32, tzinfo=dt.timezone.utc).timestamp()
 ALICE, BOB, CARL = 'alice@example.com', 'bob@example.com', 'carl@example.com'
 NAMES = {ALICE: 'Alice Moss', BOB: 'Bob Reed', CARL: 'Carl <Admin> & Co'}
 LABELS = {'developer': 'Developer', 'data': 'Data', 'infra': 'Infra', 'seo': 'SEO'}
@@ -150,9 +154,10 @@ def test_the_report_time_must_be_hh_mm():
 
 
 @pytest.mark.parametrize('now, zone, expected', [
-    (FRI_0930, 'UTC', False), (FRI_1000, 'UTC', True), (FRI_1405, 'UTC', True), (SAT_1100, 'UTC', False), (SUN_1100, 'UTC', False), (MON_1000, 'UTC', True),
-    (FRI_2330, 'UTC', True), (FRI_2330, 'Europe/Berlin', False), (FRI_2330, 'America/New_York', True)])
-def test_the_report_is_due_at_or_after_the_time_on_business_days_in_the_install_zone(now, zone, expected):
+    (FRI_0930, 'UTC', False), (FRI_1000, 'UTC', True), (FRI_1130, 'UTC', True), (FRI_1159, 'UTC', True), (FRI_1200, 'UTC', False), (FRI_1405, 'UTC', False),
+    (SAT_1100, 'UTC', False), (SUN_1100, 'UTC', False), (MON_1000, 'UTC', True),
+    (FRI_2132, 'UTC', False), (FRI_2330, 'UTC', False), (FRI_0930, 'Europe/Berlin', True), (FRI_2330, 'Europe/Berlin', False), (FRI_1405 + 3600, 'America/New_York', True)])
+def test_the_report_is_due_only_in_the_two_hours_after_the_time_on_business_days_in_the_install_zone(now, zone, expected):
     # given
     clock.set_zone(zone)
 
@@ -161,7 +166,7 @@ def test_the_report_is_due_at_or_after_the_time_on_business_days_in_the_install_
 
 
 class Reporter:
-    def __init__(self, store: Store, owners=None, at='10:00', on=True, autosend=True, emails=None, slack=None, names=None):
+    def __init__(self, store: Store, owners=None, at='10:00', on=True, autosend=True, emails=None, slack=None, names=None, left_out=None):
         self.slack, self.post, self.api = slack or fake_slack(emails=emails or {'U0ALICE': ALICE})
         self.flags = []
 
@@ -173,7 +178,9 @@ class Reporter:
         self.at, self.on, self.autosend = at, on, autosend
         self.owners = {'developer': [ALICE]} if owners is None else owners
         self.names = dict(NAMES) if names is None else names
-        self.report = tagreport.TagReport(store, self.slack, self.ids, lambda: self.owners, lambda: self.names, lambda: self.at, lambda: self.on and self.autosend, BASE, labels=lambda: LABELS)
+        self.left_out = set(left_out or ())
+        self.report = tagreport.TagReport(store, self.slack, self.ids, lambda: self.owners, lambda: self.names, lambda: self.at, lambda: self.on and self.autosend, BASE, labels=lambda: LABELS,
+                                          left_out=lambda: self.left_out)
 
 
 def open_cards(store: Store, *cards: dict) -> None:
@@ -188,7 +195,7 @@ def test_the_report_posts_once_a_day_at_or_after_the_time_and_not_before(store: 
     # when
     early = r.report.run_once(FRI_0930)
     first = r.report.run_once(FRI_1000)
-    again = r.report.run_once(FRI_1405)
+    again = r.report.run_once(FRI_1130)
 
     # then
     assert (early, again) == (None, None)
@@ -204,9 +211,9 @@ def test_a_restart_or_a_second_replica_does_not_post_the_same_day_twice(store: S
 
     # when
     one.report.run_once(FRI_1000)
-    two.report.run_once(FRI_1405)
+    two.report.run_once(FRI_1130)
     restarted = Reporter(store)
-    restarted.report.run_once(FRI_1405)
+    restarted.report.run_once(FRI_1130)
 
     # then
     assert len(one.post.posted) == 1 and two.post.posted == [] and restarted.post.posted == []
@@ -248,7 +255,7 @@ def test_a_day_with_no_qualifying_tag_posts_nothing_and_counts_as_reported(store
     # when
     first = r.report.run_once(FRI_1000)
     open_cards(store, card('a', num=1))
-    later = r.report.run_once(FRI_1405)
+    later = r.report.run_once(FRI_1130)
 
     # then
     assert (first, later) == (None, None) and r.post.posted == []
@@ -264,7 +271,7 @@ def test_a_post_refused_before_it_went_out_leaves_the_day_open_for_the_next_pass
     with pytest.raises(SlackError):
         r.report.run_once(FRI_1000)
     r.post.fail = False
-    again = r.report.run_once(FRI_1405)
+    again = r.report.run_once(FRI_1130)
 
     # then
     assert again is not None and len(r.post.posted) == 1
@@ -457,10 +464,10 @@ def test_a_cache_hit_alone_keeps_no_stale_flag_once_the_report_looked_again(stor
     assert store.email_scope() is None
 
 
-def test_disabled_or_deleted_responsibles_are_left_out_and_a_tag_with_none_left_does_not_qualify(store: Store):
+def test_disabled_responsibles_are_left_out_and_a_tag_with_none_left_does_not_qualify(store: Store):
     # given
     open_cards(store, card('a', num=1), card('b', 'warn', ('data',), num=2))
-    r = Reporter(store, owners={'developer': [ALICE, 'gone@example.com'], 'data': [BOB]}, names={ALICE: 'Alice Moss'})
+    r = Reporter(store, owners={'developer': [ALICE, BOB], 'data': [BOB]}, names={ALICE: 'Alice Moss'}, left_out={BOB})
 
     # when
     r.report.run_once(FRI_1000)
@@ -468,6 +475,35 @@ def test_disabled_or_deleted_responsibles_are_left_out_and_a_tag_with_none_left_
     # then
     blocks = r.post.posted[0]['blocks']
     assert len(blocks) == 2 and blocks[1]['text']['text'].split(' \u00b7 ')[0] == '<@U0ALICE>'
+
+
+def test_a_tag_whose_only_responsible_has_no_skopax_account_keeps_its_line_named_by_the_local_part(store: Store):
+    # given
+    outside = 'dana.gray@example.com'
+    open_cards(store, card('a', num=1))
+    r = Reporter(store, owners={'developer': [outside]}, names={})
+
+    # when
+    wanted = r.report.wanted
+    r.report.run_once(FRI_1000)
+
+    # then
+    assert wanted is True
+    assert r.post.posted[0]['blocks'][1]['text']['text'].split(' \u00b7 ')[0] == 'dana.gray'
+
+
+def test_an_outside_responsible_known_to_slack_without_a_ping_is_named_by_the_slack_name(store: Store):
+    # given
+    outside = 'dana.gray@example.com'
+    open_cards(store, card('a', num=1))
+    r = Reporter(store, owners={'developer': [outside]}, names={})
+    r.ids._held[outside] = (r.ids.clock(), None, 'Dana Gray')
+
+    # when
+    r.report.run_once(FRI_1000)
+
+    # then
+    assert r.post.posted[0]['blocks'][1]['text']['text'].split(' \u00b7 ')[0] == 'Dana Gray'
 
 
 def test_a_post_slack_did_not_answer_may_have_gone_out_so_the_day_is_not_tried_again(store: Store, caplog):
@@ -479,7 +515,7 @@ def test_a_post_slack_did_not_answer_may_have_gone_out_so_the_day_is_not_tried_a
     # when
     first = r.report.run_once(FRI_1000)
     r.post.fail = False
-    again = r.report.run_once(FRI_1405)
+    again = r.report.run_once(FRI_1130)
 
     # then
     assert (first, again) == (None, None) and r.post.posted == [] and len(r.post.calls) == 1
@@ -494,7 +530,7 @@ def test_a_permanent_refusal_marks_the_day_done_with_one_log_line(store: Store, 
     caplog.set_level(logging.WARNING, 'skopax.tagreport')
 
     # when
-    outs = [r.report.run_once(FRI_1000), r.report.run_once(FRI_1405)]
+    outs = [r.report.run_once(FRI_1000), r.report.run_once(FRI_1130)]
 
     # then
     assert outs == [None, None] and len(r.post.calls) == 1
@@ -512,7 +548,7 @@ def test_a_time_zone_change_during_the_day_does_not_post_a_second_report(store: 
     clock.set_zone('Asia/Tokyo')
     r.at = '01:00'
     tokyo_friday = r.report.run_once(thu_1000 + 6 * 3600)
-    next_day = r.report.run_once(thu_1000 + 21 * 3600)
+    next_day = r.report.run_once(thu_1000 + 3 * 86400 + 6.5 * 3600)
 
     # then
     assert tokyo_friday is None, 'a new local day six hours after the last report posts nothing'
@@ -527,7 +563,85 @@ def test_the_last_allowed_time_fires_on_the_last_pass_of_the_day():
     assert tagreport.due('23:55', last_pass) is True
 
 
+def test_a_late_time_keeps_its_window_past_midnight_on_the_day_it_started():
+    # given
+    fri_0100 = dt.datetime(2026, 11, 21, 1, 0, tzinfo=dt.timezone.utc).timestamp()
+    sat_0130 = dt.datetime(2026, 11, 22, 1, 30, tzinfo=dt.timezone.utc).timestamp()
+    thu_2330 = FRI_2330 - 86400
+
+    # then
+    assert [tagreport.due('23:30', t) for t in (thu_2330, fri_0100, sat_0130)] == [True, True, False]
+
+
+def test_a_start_after_the_window_skips_the_day_with_one_log_line_and_never_catches_up(store: Store, caplog):
+    # given
+    open_cards(store, card('a', num=1))
+    r = Reporter(store)
+    caplog.set_level(logging.INFO, 'skopax.tagreport')
+
+    # when
+    late = [r.report.run_once(FRI_2132), r.report.run_once(FRI_2132 + 300), r.report.run_once(FRI_2330)]
+    claimed = [d['_id'] for d in store.runs.find({'_id': {'$regex': '^tag-report:'}})]
+
+    # then
+    assert late == [None, None, None] and r.post.posted == [] and claimed == []
+    assert len([m for m in caplog.messages if 'skipped today' in m]) == 1
+
+
+def test_a_start_inside_the_window_posts_the_report(store: Store):
+    # given
+    open_cards(store, card('a', num=1))
+    r = Reporter(store)
+
+    # when
+    out = r.report.run_once(FRI_1130)
+
+    # then
+    assert out is not None and len(r.post.posted) == 1
+
+
+def test_a_weekend_never_posts_inside_or_after_the_window(store: Store):
+    # given
+    open_cards(store, card('a', num=1, now=SAT_1100))
+    r = Reporter(store)
+    sat_1000, sun_2132 = SAT_1100 - 3600, SUN_1100 + 10.5 * 3600
+
+    # when
+    outs = [r.report.run_once(t) for t in (sat_1000, SAT_1100, sun_2132)]
+
+    # then
+    assert outs == [None, None, None] and r.post.posted == []
+
+
 def test_the_counts_line_leaves_out_zero_parts_and_says_one_card():
     # then
     assert [tagreport.counts(*c) for c in ((1, 1, 0), (3, 0, 2), (2, 0, 0), (5, 2, 1))] == [
         '1 open card: 1 critical', '3 open cards: 2 warnings', '2 open cards', '5 open cards: 2 critical, 1 warning']
+
+
+@pytest.mark.parametrize('open_card', [True, False])
+def test_a_day_already_claimed_logs_no_skip_line_later(store: Store, caplog, open_card: bool):
+    # given
+    open_cards(store, card('a', num=1, muted=None if open_card else True))
+    r = Reporter(store)
+    caplog.set_level(logging.INFO, 'skopax.tagreport')
+    r.report.run_once(FRI_1000)
+
+    # when
+    r.report.run_once(FRI_2132)
+
+    # then
+    assert not [m for m in caplog.messages if 'skipped today' in m]
+
+
+def test_a_name_that_holds_an_address_is_never_shown(store: Store):
+    # given
+    outside = 'dana.gray@example.com'
+    open_cards(store, card('a', num=1))
+    r = Reporter(store, owners={'developer': [outside]}, names={outside: outside})
+
+    # when
+    r.report.run_once(FRI_1000)
+
+    # then
+    assert r.post.posted[0]['blocks'][1]['text']['text'].split(' · ')[0] == 'dana.gray'

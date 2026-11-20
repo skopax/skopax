@@ -20,7 +20,7 @@ from skopax.store import Store, iso
 
 BRIEF = {'level': 'warn', 'headline': 'Release 05:06–05:28: 2 services; orders-service restarted 3 times at startup', 'points': ['orders-service healthy since 05:14', 'checkout-service clean']}
 OLD_RELEASE = '{project} {dd}.{mm}.{yyyy} Release'
-DRAFT = 'OPS 13.10 release: 2 services deployed, orders-service restarted 3 times at startup, healthy since 05:14.\nhttps://skopax.dev.example.com/#r=x'
+DRAFT = 'OPS 13.10 release: 2 services deployed, orders-service restarted 3 times at startup, healthy since 05:14.\nhttps://skopax.example.com/#r=x'
 
 
 def plain(text: str) -> str:
@@ -115,13 +115,13 @@ def test_draft_is_the_message_and_the_report_goes_under_it(saved: dict, store: S
 
     # when
     with client_with(store, transport) as client:
-        put = client.put(f"/api/deploy-reports/{saved['id']}/slack-draft", json={'text': f'  {DRAFT} <b> <@U0FAKE00001>  '}, headers=AUTH)
+        put = client.put(f"/api/deploy-reports/{saved['id']}/slack-draft", json={'text': f'  {DRAFT} <b>  '}, headers=AUTH)
         res = client.post(f"/api/deploy-reports/{saved['id']}/slack-posts", headers=AUTH)
         listed = client.get('/api/deploy-reports').json()
 
     # then
     assert put.status_code == 200
-    assert put.json()['slackDraft']['text'] == f'{DRAFT} <b> <@U0FAKE00001>'
+    assert put.json()['slackDraft']['text'] == f'{DRAFT} <b>'
     assert put.json()['slackDraft']['by'] == 'token:bootstrap'
     assert put.json()['slackDraft']['at']
     assert listed[0]['slackDraft'] == put.json()['slackDraft']
@@ -129,7 +129,7 @@ def test_draft_is_the_message_and_the_report_goes_under_it(saved: dict, store: S
     assert res.json()['result'] == 'sent to #ops with the draft'
     assert listed[0]['slackPost']['draft'] is True
     _, payload = transport.calls[0]
-    assert payload['text'] == DRAFT + ' &lt;b&gt; <@U0FAKE00001>'
+    assert payload['text'] == DRAFT + ' &lt;b&gt;'
     assert payload['attachments'][0]['blocks'][3]['elements'][0]['text']['text'] == 'Open report'
 
 

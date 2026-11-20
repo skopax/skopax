@@ -38,13 +38,11 @@ async function initActions() {
     var did = Date.parse(when(x) || ''), back = Date.parse((card && card.firstSeen) || '');
     return x.status === 'done' && !isNaN(did) && !isNaN(back) && did < back;
   }
-  function pastPill(x, card) {
-    var t = 'Before the card fired again ' + dayhm(card.firstSeen) + ': ' + label(x) + (x.result ? '\n' + x.result : '');
-    return badge(x, 'Earlier: ' + named(x) + ' ' + dayhm(when(x)), t, 's-other');
-  }
   function lastLine(a, card) {
-    var at = dayhm(when(a)), old = card && earlier(a, card);
-    return '<span class="la-h">' + (old ? 'Last action, before it fired again ' + esc(dayhm(card.firstSeen)) + ':' : 'Last action:') + '</span> ' + badge(a, named(a) + (at ? ' ' + at : ''), label(a), old ? 's-other' : '') + ' by ' + esc(draftBy(a.requestedBy)) + (a.result ? ' · ' + linkify(a.result) : '');
+    var at = dayhm(when(a));
+    if (card && earlier(a, card)) return '<span class="la-h">Reopened ' + esc(dayhm(card.firstSeen)) + ' \u00b7 fired again</span> <span class="la-before"><span>Before that:</span> ' + badge(a, named(a) + (at ? ' ' + at : ''), label(a), 's-other') +
+      ' by ' + esc(draftBy(a.requestedBy)) + (a.result ? ' (' + linkify(a.result) + ')' : '') + '</span>';
+    return '<span class="la-h">Last action:</span> ' + badge(a, named(a) + (at ? ' ' + at : ''), label(a), '') + ' by ' + esc(draftBy(a.requestedBy)) + (a.result ? ' \u00b7 ' + linkify(a.result) : '');
   }
   function btn(text, cls) { var b = el('button', 'btn ' + (cls || '')); b.type = 'button'; b.textContent = text; return b; }
   function lockReason() {
@@ -248,6 +246,7 @@ async function initActions() {
   });
   async function api(method, path, body) {
     var headers = {'Accept': 'application/json'};
+    if (method !== 'GET' && body && typeof watchHide === 'function') watchHide(body.key || body.target);
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     var r = await fetch(path, {method: method, headers: headers, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body)});
     if (r.status === 401) { me.user = null; me.operator = false; account(); gate(); throw {code: 401}; }
@@ -564,7 +563,6 @@ async function initActions() {
   var ICON_BELL_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><path d="M18.63 13A17.89 17.89 0 0 1 18 8"></path><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"></path><path d="M18 8a6 6 0 0 0-9.33-5"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
   var ICON_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
   var ICON_DONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>';
-  var ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
   var ICON_REPLY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>';
   var ICON_TAKE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><polyline points="16 11 18 13 22 9"></polyline></svg>';
   var ICON_GROUP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>';
@@ -644,10 +642,10 @@ async function initActions() {
   }
   function copyLink(a, b) { copyUrl(a.num ? location.origin + '/c/' + a.num : location.origin + location.pathname + '#a=' + linkKey(a.key), b); }
   function waiting(a) { return !!draftOf(a) && !draftSent(a); }
-  function slackLabel(a) { return waiting(a) ? 'Send draft to Slack' : a.slackPost ? 'Send again' : 'Send to Slack'; }
+  function slackLabel(a) { return a.slackPost ? 'Send again' : 'Send to Slack'; }
   function slackTip(a) {
-    if (waiting(a)) return 'Post the Slack draft on this card as the message, with the anomaly card attached below it; click twice to confirm';
-    if (a.slackPost) return 'Already posted ' + dayhm(a.slackPost.at) + ' by ' + draftBy(a.slackPost.by, (a.slackDraft || {}).by) + '; this posts it to the channel again' + (draftOf(a) ? ', with the draft' : '') + '; click twice to confirm';
+    if (waiting(a)) return 'Post the text kept on this card as the message, with the anomaly card attached below it; click twice to confirm';
+    if (a.slackPost) return 'Already posted ' + dayhm(a.slackPost.at) + ' by ' + draftBy(a.slackPost.by, (a.slackDraft || {}).by) + '; this posts it to the channel again' + (draftOf(a) ? ', with its text' : '') + '; click twice to confirm';
     return 'Post this anomaly to the Slack channel; click twice to confirm';
   }
   function slackButton(a, b) {
@@ -656,11 +654,9 @@ async function initActions() {
     if (!b.dataset.locked) b.title = b.dataset.tip;
   }
   function slackClick(a, b) {
-    var editing = b.closest('article.inc').querySelector('.draft-form:not([hidden])');
-    if (editing) { relabel(b, ICON_SEND, 'Save or cancel the draft edit first'); setTimeout(function () { slackButton(a, b); }, 3000); return; }
     if (b.dataset.confirm) { delete b.dataset.confirm; clearTimeout(+b.dataset.timer); sendSlack(a, b); return; }
     b.dataset.confirm = '1';
-    relabel(b, ICON_SEND, 'Post ' + (waiting(a) ? 'draft ' : a.slackPost ? 'again ' : '') + 'to ' + (me.slackChannel || 'Slack') + '?');
+    relabel(b, ICON_SEND, 'Post ' + (a.slackPost ? 'again ' : '') + 'to ' + (me.slackChannel || 'Slack') + '?');
     b.dataset.timer = setTimeout(function () { delete b.dataset.confirm; slackButton(a, b); }, 5000);
   }
   async function sendSlack(a, b) {
@@ -805,6 +801,7 @@ async function initActions() {
       var r = await api('POST', '/api/tags', {key: a.key, tag: b.dataset.tag, on: on});
       a.tags = r.tags; a.tagsOff = r.tagsOff; a.business = r.business;
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      bizNoteSync(a, b.closest('.biz'));
       if (window.__skopaxPoll) window.__skopaxPoll();
     } catch (e) {
       b.textContent = 'Not saved';
@@ -821,33 +818,13 @@ async function initActions() {
       a.business = r.business;
       ta.blur();
       bbox.querySelector('.biz-form').hidden = true;
-      var p = bbox.querySelector('.biz-txt'), w = bbox.querySelector('.biz-why');
-      if (r.business) p.innerHTML = '<b>' + bizLead(r.business) + ':</b> ' + esc(r.business.text);
-      else p.textContent = tagIds(a).length ? 'No action written yet: nothing goes to Teams until one is written.' : 'Not tagged for a business team.';
-      p.classList.toggle('muted', !r.business);
-      w.innerHTML = '<b>Why:</b> ' + esc((r.business && r.business.why) || '');
-      w.hidden = !(r.business && r.business.why);
-      bbox.querySelector('.biz-edit').textContent = r.business ? 'Edit' : 'Write';
+      bizNoteSync(a, bbox);
       b.textContent = 'Save';
       if (window.__skopaxPoll) window.__skopaxPoll();
     } catch (e) {
       b.textContent = e && e.code === 422 ? 'Too long, max 500' : 'Not saved, try again';
     }
     b.disabled = false;
-  }
-  var HOLD_TIP = 'Stop the auto-send, which posts the draft within 30 s: the draft then waits for Send draft to Slack like any other';
-  function holdBtn(small) { var b = btn('Hold', 'sec free op-btn hold-btn' + (small ? ' small' : '')); b.dataset.tip = b.title = HOLD_TIP; return b; }
-  async function holdAuto(path, body, b, after) {
-    b.disabled = true;
-    b.textContent = 'Holding…';
-    try {
-      await api('POST', path, body);
-      b.textContent = 'Held';
-      await after();
-    } catch (e) {
-      b.textContent = e && e.code === 409 ? 'Already sent' : 'Not held, try again';
-      b.disabled = false;
-    }
   }
   async function postUpdate(a, ta, b, form) {
     b.disabled = true;
@@ -864,11 +841,7 @@ async function initActions() {
     }
     b.disabled = false;
   }
-  function wireDraft(a, dbox, slack) {
-    var form = dbox.querySelector('.draft-form'), ta = form.querySelector('textarea'), save = dbox.querySelector('.draft-save');
-    dbox.querySelector('.draft-edit').addEventListener('click', function () { form.hidden = !form.hidden; if (!form.hidden) ta.focus(); });
-    dbox.querySelector('.draft-cancel').addEventListener('click', function () { ta.blur(); form.hidden = true; ta.value = (draftOf(a) || {}).text || ''; });
-    save.addEventListener('click', function () { saveDraft(a, dbox, save, slack); });
+  function wireDraft(a, dbox) {
     var copy = dbox.querySelector('.draft-copy');
     copy.addEventListener('click', function () {
       function shown(t) { copy.textContent = t; setTimeout(function () { copy.textContent = 'Copy'; }, 2000); }
@@ -877,33 +850,8 @@ async function initActions() {
       navigator.clipboard.writeText(d.text).then(function () { shown('Copied'); }, function () { shown('Select the text to copy'); });
     });
   }
-  async function saveDraft(a, dbox, b, slack) {
-    var ta = dbox.querySelector('textarea'), tag = dbox.closest('article.inc').querySelector('.slack-rec');
-    b.disabled = true;
-    b.textContent = 'Saving\u2026';
-    try {
-      var r = await api('PUT', '/api/slack-drafts', {key: a.key, text: ta.value});
-      a.slackDraft = r.slackDraft;
-      ta.blur();
-      dbox.querySelector('.draft-form').hidden = true;
-      if (r.slackDraft) {
-        dbox.querySelector('.sdraft-t').innerHTML = linkify(r.slackDraft.text);
-        dbox.querySelector('.sdraft-by').textContent = draftBy(r.slackDraft.by) + ' · ' + dayhm(r.slackDraft.at);
-        if (tag) tag.title = draftTip(r.slackDraft);
-      } else {
-        dbox.hidden = true;
-        if (tag) tag.remove();
-      }
-      slackButton(a, slack);
-      b.textContent = 'Save';
-      if (window.__skopaxPoll) window.__skopaxPoll();
-    } catch (e) {
-      b.textContent = e && e.code === 422 ? 'Too long, max 1500' : 'Not saved, try again';
-    }
-    b.disabled = false;
-  }
   function repSlackTip(r) {
-    if (waiting(r)) return 'Post the Slack draft as the message, with the report summary, its flagged rows and the shipped tickets under it; click twice to confirm';
+    if (waiting(r)) return 'Post the text kept on this report as the message, with the report summary, its flagged rows and the shipped tickets under it; click twice to confirm';
     if (r.slackPost) return 'Already posted ' + dayhm(r.slackPost.at) + ' by ' + draftBy(r.slackPost.by, (r.slackDraft || {}).by) + '; this posts it to the channel again' + (draftOf(r) ? ', with the draft' : '') + '; click twice to confirm';
     return 'Post this deploy report to the Slack channel: release, services, clean or flagged, the summary, the flagged rows and the shipped tickets; click twice to confirm';
   }
@@ -938,25 +886,18 @@ async function initActions() {
       b.dataset.tip = b.title = repSlackTip(r);
       b.addEventListener('click', function () { repSlackClick(r, b); });
       var st = el('span', 'slack-st');
-      if (r.slackPost) st.innerHTML = slackLink(r.slackPost.permalink, 'Sent to Slack ' + dayhm(r.slackPost.at)) + esc(' · ' + draftBy(r.slackPost.by, (r.slackDraft || {}).by) + (r.slackPost.draft ? ' · draft' : ''));
+      if (r.slackPost) st.innerHTML = slackLink(r.slackPost.permalink, 'Sent to Slack ' + dayhm(r.slackPost.at)) + esc(' · ' + draftBy(r.slackPost.by, (r.slackDraft || {}).by) + (r.slackPost.draft ? ' · investigator text' : ''));
       box.append(b);
-      if (autoArmed(r)) {
-        var hold = holdBtn(true);
-        hold.addEventListener('click', function () { holdAuto('/api/deploy-reports/' + encodeURIComponent(r.id) + '/slack-hold', undefined, hold, function () { return reports.refresh(); }); });
-        box.append(hold);
-      }
-      var d = draftOf(r), form = box.parentNode.querySelector('.draft-form');
-      if (d && form) {
-        var tag = el('span', 'tag k-act draft-q', ICON_SEND + esc('Draft · ' + draftBy(d.by) + ' ' + dayhm(d.at)));
+      var d = draftOf(r);
+      if (d && !draftSent(r)) {
+        var tag = el('span', 'tag k-act draft-q', ICON_SEND + esc('Slack text · ' + draftBy(d.by) + ' ' + dayhm(d.at)));
         tag.tabIndex = 0;
-        tag.title = d.text + '\n\n' + draftBy(d.by) + ' · ' + dayhm(d.at) + ' · Send draft to Slack posts this text';
-        tag.setAttribute('aria-label', 'Slack draft: ' + d.text);
+        tag.title = d.text + '\n\n' + draftBy(d.by) + ' · ' + dayhm(d.at) + ' · Send to Slack posts this text';
+        tag.setAttribute('aria-label', 'Slack text: ' + d.text);
         var copy = btn('Copy', 'sec small free draft-copy');
-        copy.title = 'Copy the draft text, e.g. to send it to one person instead of the channel';
-        var edit = btn('Edit', 'sec small op-btn draft-edit');
-        edit.dataset.tip = edit.title = 'Edit the message Send to Slack posts';
-        box.append(tag, copy, edit);
-        wireRepDraft(r, box, form);
+        copy.title = 'Copy the text, e.g. to send it to one person instead of the channel';
+        box.append(tag, copy);
+        wireRepDraft(r, box);
       }
       box.append(st);
       var again = btn('Re-assess', 'sec small op-btn reassess-btn');
@@ -968,10 +909,9 @@ async function initActions() {
     gate();
   }
   function repSlackClick(r, b) {
-    if (b.closest('details.drep').querySelector('.draft-form:not([hidden])')) { relabel(b, ICON_SEND, 'Save or cancel the draft edit first'); setTimeout(function () { relabel(b, ICON_SEND, slackLabel(r)); }, 3000); return; }
     if (b.dataset.confirm) { delete b.dataset.confirm; clearTimeout(+b.dataset.timer); sendRep(r, b); return; }
     b.dataset.confirm = '1';
-    relabel(b, ICON_SEND, 'Post ' + (waiting(r) ? 'draft ' : r.slackPost ? 'again ' : '') + 'to ' + (me.slackChannel || 'Slack') + '?');
+    relabel(b, ICON_SEND, 'Post ' + (r.slackPost ? 'again ' : '') + 'to ' + (me.slackChannel || 'Slack') + '?');
     b.dataset.timer = setTimeout(function () { delete b.dataset.confirm; relabel(b, ICON_SEND, slackLabel(r)); }, 5000);
   }
   async function sendRep(r, b) {
@@ -988,35 +928,16 @@ async function initActions() {
     }
     setTimeout(function () { b.disabled = false; relabel(b, ICON_SEND, slackLabel(r)); }, 3000);
   }
-  function wireRepDraft(r, box, form) {
-    var ta = form.querySelector('textarea'), save = form.querySelector('.draft-save'), copy = box.querySelector('.draft-copy');
-    box.querySelector('.draft-edit').addEventListener('click', function () { form.hidden = !form.hidden; if (!form.hidden) ta.focus(); });
-    form.querySelector('.draft-cancel').addEventListener('click', function () { ta.blur(); form.hidden = true; ta.value = (draftOf(r) || {}).text || ''; });
+  function wireRepDraft(r, box) {
+    var copy = box.querySelector('.draft-copy');
     copy.addEventListener('click', function () {
       function shown(t) { copy.textContent = t; setTimeout(function () { copy.textContent = 'Copy'; }, 2000); }
       if (!navigator.clipboard) { shown('Select the text to copy'); return; }
       navigator.clipboard.writeText(draftOf(r).text).then(function () { shown('Copied'); }, function () { shown('Select the text to copy'); });
     });
-    save.addEventListener('click', async function () {
-      save.disabled = true;
-      save.textContent = 'Saving\u2026';
-      try {
-        await api('PUT', '/api/deploy-reports/' + encodeURIComponent(r.id) + '/slack-draft', {text: ta.value});
-        ta.blur();
-        form.hidden = true;
-        save.textContent = 'Save';
-        await reports.refresh();
-      } catch (e) {
-        save.textContent = e && e.code === 422 ? 'Too long, max 1500' : 'Not saved, try again';
-      }
-      save.disabled = false;
-    });
   }
-  function sqPath(row, what) {
-    var rep = row.kind === 'report', id = encodeURIComponent(row.x.id || '');
-    if (what === 'post') return rep ? '/api/deploy-reports/' + id + '/slack-posts' : '/api/slack-posts';
-    if (what === 'hold') return rep ? '/api/deploy-reports/' + id + '/slack-hold' : '/api/slack-holds';
-    return rep ? '/api/deploy-reports/' + id + '/slack-draft' : '/api/slack-drafts';
+  function sqPath(row) {
+    return row.kind === 'report' ? '/api/deploy-reports/' + encodeURIComponent(row.x.id || '') + '/slack-posts' : '/api/slack-posts';
   }
   async function sqRefresh() {
     await refresh();
@@ -1035,7 +956,7 @@ async function initActions() {
     b.disabled = true;
     relabel(b, ICON_SEND, 'Sending…');
     try {
-      await api('POST', sqPath(row, 'post'), row.kind === 'report' ? undefined : {key: row.x.key});
+      await api('POST', sqPath(row), row.kind === 'report' ? undefined : {key: row.x.key});
       relabel(b, ICON_SEND, 'Sent');
       await sqRefresh();
     } catch (e) {
@@ -1043,28 +964,9 @@ async function initActions() {
       b.disabled = false;
     }
   }
-  async function sqDiscard(row, b) {
-    b.disabled = true;
-    b.textContent = 'Discarding…';
-    try {
-      await api('PUT', sqPath(row, 'draft'), row.kind === 'report' ? {text: ''} : {key: row.x.key, text: ''});
-      b.textContent = 'Discarded';
-      await sqRefresh();
-    } catch (e) {
-      b.textContent = 'Not discarded, try again';
-      b.disabled = false;
-    }
-  }
-  function sqJump(row, edit) {
+  function sqJump(row) {
     if (row.kind === 'report') reports.show(row.x.id);
     else showLinked(encodeURIComponent(row.x.key));
-    if (!edit) return;
-    var host = row.kind === 'report' ? document.getElementById('rep-' + row.x.id) : [].filter.call(document.querySelectorAll('#anoms article.inc'), function (c) { return c.dataset.key === row.x.key; })[0];
-    var form = host && host.querySelector('.draft-form');
-    if (!form) return;
-    form.hidden = false;
-    var ta = form.querySelector('textarea');
-    if (ta) ta.focus();
   }
   function wireSlackQ(root) {
     if (!root) return;
@@ -1073,24 +975,13 @@ async function initActions() {
       box.dataset.wired = '1';
       var row = box.__row, name = row.kind === 'report' ? 'this deploy report' : row.x.svc + ' ' + row.x.label;
       var send = iconBtn(ICON_SEND, 'Send now', 'sec small op-btn slack-btn');
-      send.dataset.tip = send.title = 'Post this draft to ' + (me.slackChannel || 'the Slack channel') + ' now, as the message for ' + name + '; click twice to confirm';
+      send.dataset.tip = send.title = 'Post this text to ' + (me.slackChannel || 'the Slack channel') + ' now, as the message for ' + name + '; click twice to confirm';
       send.addEventListener('click', function () { sqArm(send, ICON_SEND + esc('Post to ' + (me.slackChannel || 'Slack') + '?'), function () { sqPost(row, send); }); });
       box.append(send);
-      if (row.st.armed) {
-        var hold = holdBtn(true);
-        hold.addEventListener('click', function () { holdAuto(sqPath(row, 'hold'), row.kind === 'report' ? undefined : {key: row.x.key}, hold, sqRefresh); });
-        box.append(hold);
-      }
-      var drop = btn('Discard', 'sec small op-btn');
-      drop.dataset.tip = drop.title = 'Remove this draft, so nothing is posted for ' + name + '; click twice to confirm';
-      drop.addEventListener('click', function () { sqArm(drop, esc('Discard it?'), function () { sqDiscard(row, drop); }); });
-      var edit = btn('Edit', 'sec small op-btn');
-      edit.dataset.tip = edit.title = 'Open the draft’s edit form on its ' + (row.kind === 'report' ? 'report' : 'card');
-      edit.addEventListener('click', function () { sqJump(row, true); });
       var go = btn('View', 'sec small free');
       go.title = row.kind === 'report' ? 'Open this deploy report' : 'Open this anomaly card';
-      go.addEventListener('click', function () { sqJump(row, false); });
-      box.append(drop, edit, go);
+      go.addEventListener('click', function () { sqJump(row); });
+      box.append(go);
     });
     gate();
   }
@@ -1272,11 +1163,6 @@ async function initActions() {
       slack.addEventListener('click', function () { slackClick(a, slack); });
       nbox.append(slack);
       teamsButtons(a).forEach(function (tb) { nbox.append(tb); });
-      if (autoArmed(a)) {
-        var hold = asIcon(holdBtn(false), ICON_PAUSE, HOLD_TIP);
-        hold.addEventListener('click', function () { holdAuto('/api/slack-holds', {key: a.key}, hold, async function () { if (window.__skopaxPoll) await window.__skopaxPoll(); }); });
-        nbox.append(hold);
-      }
       if (a.slackPost && a.slackPost.ts) {
         var upd = asIcon(btn('Post update', 'sec slack-btn slack-upd'), ICON_REPLY, 'Reply in the Slack thread of the message posted ' + dayhm(a.slackPost.at) + ', e.g. that it is fixed or has a ticket');
         var uform = el('div', 'reason');
@@ -1293,7 +1179,7 @@ async function initActions() {
       nbox.append(el('span', 'slack-st'));
       nbox.hidden = false;
       var dbox = box.closest('article.inc').querySelector('.sdraft');
-      if (dbox) wireDraft(a, dbox, slack);
+      if (dbox) wireDraft(a, dbox);
       var bbox = box.closest('article.inc').querySelector('.biz');
       if (bbox) wireBiz(a, bbox);
       box.hidden = false;
@@ -1323,7 +1209,7 @@ async function initActions() {
       box.querySelectorAll('button.btn:not(.free):not(.slack-btn)').forEach(function (b) { b.disabled = !!(x && (x.status === 'requested' || x.status === 'processing')); });
       var st = box.querySelector('.stat'), la = box.closest('article.inc').querySelector('.last-act');
       if (st) {
-        st.innerHTML = x ? (earlier(x, a) ? pastPill(x, a) : pill(x, true)) : '';
+        st.innerHTML = x && !earlier(x, a) ? pill(x, true) : '';
         if (x && x.status === 'requested' && me.operator) st.appendChild(cancelBtn(x));
       }
       if (la) {

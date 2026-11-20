@@ -150,10 +150,10 @@ async function pageLevelInputsReachTilesAndTheOpenDrawer() {
   await wait(300);
 
   //then
-  assert.deepStrictEqual(before, ['pay', 'Sends by itself at ' + hm('2026-11-18T14:35:00Z') + ' unless someone holds it'], 'before /api/me the page knows no labels and no switch');
+  assert.deepStrictEqual(before, ['pay', 'Posting to Slack now'], 'before /api/me the page knows no labels and no switch');
   assert.strictEqual(tile(doc, B).querySelector('.biz-tag').textContent, 'Payments team', 'the tile follows the tag labels from /api/me');
   assert.strictEqual(doc.querySelector('.card-drawer'), drawer, 'the same drawer');
-  assert.strictEqual(drawer.querySelector('.sdraft-status').textContent, 'Auto-send is off in Admin', 'the open drawer follows the feature switch');
+  assert.strictEqual(drawer.querySelector('.sdraft-status').textContent, 'Not posted: auto-send is off', 'the open drawer follows the feature switch');
   w.close();
   console.log('PASS tag labels and the auto-send switch reach unchanged tiles and the open drawer');
 }

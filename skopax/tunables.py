@@ -39,6 +39,7 @@ REFRESH_S = 15
 TEXT_LIMIT = 1000
 TEXT_LIMITS = {'core.org-about': ORG_ABOUT_MAX}
 TEXT_LIMITS['sso.button-text'] = SSO_BUTTON_TEXT_MAX
+TEXT_LINES = {'core.org-about': 4}
 INPUT_LIMIT = 4000
 TEXT_BOXES = ('text', 'list', 'tagrules')
 TERM_LIMIT = 200
@@ -188,7 +189,7 @@ STATIC = (
     T('investigate.model', 'investigate_model', INV, 'Card model', 'Model for card runs, Investigate clicks, page asks and deploy-report assessments', 'choice', choices=MODELS),
     T('investigate.effort', 'investigate_effort', INV, 'Card effort', 'Thinking effort of the card model', 'choice', choices=EFFORTS),
     T('investigate.slack-model', 'investigate_slack_model', INV, 'Slack model', 'Model for questions asked in Slack', 'choice', choices=MODELS),
-    T('investigate.language', 'investigate_language', INV, 'Card language', 'Language of what the investigator writes on cards, in its Slack drafts and on deploy reports: en (English), or a language a locale pack adds. Answers follow the language of the question', 'choice', choices=card_languages),
+    T('investigate.language', 'investigate_language', INV, 'Card language', 'Language of what the investigator writes on cards, in its Slack posts and on deploy reports: en (English), or a language a locale pack adds. Answers follow the language of the question', 'choice', choices=card_languages),
     T('chat.model', 'chat_model', INV, 'Chat model', 'Model for messages on the Chat page', 'choice', choices=MODELS),
     T('page.ask-cap', 'page_ask_cap', INV, 'Page asks per hour', 'Ask the investigator questions from the page per hour, everyone together; re-assessing a deploy report has its own count with the same limit; 0 turns both off', 'int', 0, 100),
     T('chat.max-chars', 'chat_max_chars', INV, 'Chat message length (characters)', 'The longest message one person can send: the Chat page, Slack direct messages and Ask the investigator on the page. Longer messages make bigger prompts, so each costs a little more', 'int', 100, 8000),
@@ -225,7 +226,7 @@ STATIC = (
     T('slack.clear-note-minutes', 'slack_clear_note_minutes', SLACK, 'Cleared note after (min)', 'Says in the thread that a posted card cleared after N minutes', 'float', 0, 240, live=False),
     T('routes.slack-echo', 'routes_slack_echo', SLACK, 'Echo route posts to Slack', 'Also posts a card a route (such as a Teams channel) takes to the Slack channel when Slack has not posted it yet, and says in its thread which route got it; a route can override this with its own Also post to Slack field', 'bool'),
     T(POST_SEV_KEY, 'slack_post_sev', SLACK, 'Post at once from', 'Posts a card of this severity or higher to the main channel with its numbers when it is pushed (new, escalated or reopened; information is never posted); the investigator\'s findings follow as a reply in its thread. '
-      'Many cards opening together are not posted at once, and the investigator, when it runs, groups them. Off leaves every card to the investigator\'s drafts and to people', 'choice', choices=SLACK_POST_SEVS, choice_labels=POST_SEV_LABELS),
+      'Many cards opening together are not posted at once, and the investigator, when it runs, groups them. Off leaves every card to the investigator\'s posts and to people', 'choice', choices=SLACK_POST_SEVS, choice_labels=POST_SEV_LABELS),
     T(CRIT_NOW_KEY, 'slack_crit_now', SLACK, 'Critical cards at once', 'Deprecated: use Post at once from. false turns posting at once off while Post at once from is not set', 'bool', live=False, hidden=True),
     T('slack.fallback-minutes', 'slack_fallback_minutes', SLACK, 'Numbers fallback after (min)', 'Posts the numbers of a critical card when no investigation finished in N minutes; 0 turns it off', 'int', 0, 240, live=False),
     T('slack.state-notes', 'slack_state_notes', SLACK, 'Status notes in threads', 'Posts a short line in the thread when a posted card is taken, resolved or muted', 'bool', live=False),
@@ -771,6 +772,8 @@ class Live:
             out['pluginTerms'] = list(tags.plugin_rules().get(t.part, ()))
         if t.kind in TEXT_BOXES:
             out['limit'] = text_limit(t)
+            if t.key in TEXT_LINES:
+                out['lines'] = TEXT_LINES[t.key]
         if t.kind == 'rules':
             help_of = t.rule_help if t.plugin is not None else RULE_HELP.get(t.key, {})
             out.update(defaults=t.defaults, rules=effective_rules(t, out['value']), baseRules=effective_rules(t, base_text), ruleHelp=dict(help_of or {}))

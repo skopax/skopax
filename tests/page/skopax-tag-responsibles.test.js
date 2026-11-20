@@ -25,6 +25,7 @@ async function boot(opts) {
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
   const html = pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(board(opts.cards)));
+  const colors = {};
   const owners = {developer: [{email: ALICE, name: 'Alice Moss'}], data: [], seo: [{email: 'gone@example.com', name: 'gone', stale: true}]};
   const hist = [];
   const dom = new JSDOM(html, {
@@ -45,7 +46,14 @@ async function boot(opts) {
           owners[m[1]] = body.emails.map((e) => Object.assign({email: e, name: named[e] || e.split('@')[0]}, named[e] ? {} : {slack: 'unknown'}));
           return ok({id: m[1], label: TAGS.filter((t) => t.id === m[1])[0].label, responsibles: owners[m[1]]});
         }
-        if (p === '/api/admin/tags') return ok({tags: TAGS.map((t) => Object.assign({}, t, {responsibles: owners[t.id]})), canEdit: opts.canEdit !== false,
+        const c = /^\/api\/admin\/tags\/([a-z-]+)\/color$/.exec(p);
+        if (c && method === 'PUT') {
+          const body = JSON.parse(o.body);
+          calls.push([method, p, body]);
+          colors[c[1]] = body.color;
+          return ok({id: c[1], label: TAGS.filter((t) => t.id === c[1])[0].label, responsibles: owners[c[1]], color: body.color});
+        }
+        if (p === '/api/admin/tags') return ok({tags: TAGS.map((t) => Object.assign({}, t, {responsibles: owners[t.id], color: colors[t.id] == null ? null : colors[t.id]})), canEdit: opts.canEdit !== false,
           users: opts.canEdit === false ? [] : [{email: ALICE, name: 'Alice Moss', disabled: false}, {email: BOB, name: 'Bob Reed', disabled: false}, {email: 'gone@example.com', name: 'Gone', disabled: true}],
           reportAt: '10:00', emailScopeMissing: !!opts.scope});
         if (p.startsWith('/api/admin/history')) return ok(hist);
@@ -182,8 +190,37 @@ async function aSlackLinkOpensTheBoardOnOpenFilteredToTheTagWithARemovableChip()
   return 'a fresh load of #t=anoms/open/tag:developer, the link the Slack tag report uses, opens Open filtered to Developer with a pressed chip, and Every type or the chip removes it';
 }
 
+async function anAdminPicksATagColourFromTheSwatchesAndDefaultGoesBackToTheHash() {
+  //given
+  const {w, doc, errors, calls} = await boot();
+  const box = () => doc.querySelector('#admin .adm-row[data-key="tags.seo.rules"] .adm-owners');
+  const group = () => box().querySelector('.adm-tone[role="radiogroup"]');
+  const checked = () => [...group().querySelectorAll('[role="radio"]')].filter((r) => r.getAttribute('aria-checked') === 'true').map((r) => r.getAttribute('aria-label'));
+  const name = () => doc.querySelector('#admin .adm-row[data-key="tags.seo.rules"] .adm-n b');
+  const tintBefore = name().classList.contains('th-' + w.tagHue('seo'));
+  const first = {n: group().querySelectorAll('[role="radio"]').length, label: group().getAttribute('aria-label'), on: checked(), tab: [...group().querySelectorAll('[role="radio"]')].filter((r) => r.tabIndex === 0).length};
+
+  //when
+  group().querySelector('[data-tone="3"]').click();
+  await wait(80);
+  const picked = {on: checked(), tone: w.tagTone('seo'), said: box().querySelector('.adm-owner-msg').textContent, tint: name().classList.contains('th-3') && name().classList.contains('tcol')};
+  group().querySelector('[data-tone=""]').click();
+  await wait(80);
+
+  //then
+  assert.deepStrictEqual(first, {n: 11, label: 'Colour of SEO', on: ['Default (' + w.TAG_PALETTE[w.tagHue('seo')].name + ')'], tab: 1});
+  assert.strictEqual(tintBefore, true, 'the tag name carries its hash colour');
+  assert.deepStrictEqual(picked, {on: [w.TAG_PALETTE[3].name], tone: 3, said: 'Colour saved', tint: true}, 'the name takes the picked colour at once');
+  assert.deepStrictEqual(calls.map((x) => [x[1], x[2].color]), [['/api/admin/tags/seo/color', 3], ['/api/admin/tags/seo/color', null]]);
+  assert.strictEqual(w.tagTone('seo'), w.tagHue('seo'), 'Default goes back to the hash colour');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  return 'Admin \u00b7 Card tags: each tag row has a swatch radio group, a pick saves that hue for every viewer and Default goes back to the hash colour';
+}
+
 (async () => {
   console.log('PASS ' + await anAdminAddsAndRemovesResponsiblesOnTheCardTagsRows());
+  console.log('PASS ' + await anAdminPicksATagColourFromTheSwatchesAndDefaultGoesBackToTheHash());
   console.log('PASS ' + await anyAddressTypedAndEnteredIsAddedAndAnUnknownOneShowsTheSlackWarning());
   console.log('PASS ' + await aReadOnlyListShowsChipsWithoutControlsAndTheScopeWarningShows());
   console.log('PASS ' + await aSlackLinkOpensTheBoardOnOpenFilteredToTheTagWithARemovableChip());

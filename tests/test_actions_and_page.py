@@ -122,9 +122,9 @@ def test_page_loads_every_script_file_with_its_content_hash(client: TestClient):
     linked = re.findall(r'<script src="/static/([\w.-]+)\?v=(\w+)"></script>', res.text)
     names = [name for name, _ in linked if name not in core]
     assert core and set(core) <= {name for name, _ in linked}
-    assert names[:4] == ['actors.js', 'icons.js', 'i18n.js', 'core.js'] and names[-1] == 'main.js'
+    assert names[:6] == ['actors.js', 'tagtones.js', 'cardlog.js', 'icons.js', 'i18n.js', 'core.js'] and names[-1] == 'main.js'
     card = re.findall(r'<script src="/static/([\w.-]+)\?v=(\w+)"></script>', client.get('/c/1').text)
-    assert [name for name, _ in card if name not in core] == ['actors.js', 'i18n.js', 'suggest.js', 'runshow.js', 'card.js']
+    assert [name for name, _ in card if name not in core] == ['actors.js', 'tagtones.js', 'cardlog.js', 'i18n.js', 'suggest.js', 'runshow.js', 'card.js']
     assert sorted(set(names) | {'card.js'}) == sorted(f.name for f in (WEB / 'static').glob('*.js'))
     assert '<script src="/static/' not in re.sub(r'<script src="/static/[\w.-]+\?v=\w+"></script>', '', res.text)
     for name, digest in linked:

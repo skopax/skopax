@@ -274,7 +274,7 @@ function adminControl(i) {
         '<td class="muted">' + (v !== d ? 'default ' + esc(d) : '') + '</td></tr>';
     }).join('') + '</tbody></table>';
   }
-  if (i.kind === 'text' && i.limit > ADMIN_LINE_MAX) return '<textarea id="' + esc(id) + '" class="adm-in adm-long"' + named + ' rows="8" spellcheck="false" maxlength="' + esc(i.limit) + '" placeholder="' + esc(i.default != null ? 'default: ' + (i.default || 'empty') : '') + '">' + esc(i.value) + '</textarea>';
+  if (i.kind === 'text' && (i.limit > ADMIN_LINE_MAX || i.lines)) return '<textarea id="' + esc(id) + '" class="adm-in adm-long"' + named + ' rows="' + esc(i.lines || 8) + '" spellcheck="' + (i.lines ? 'true' : 'false') + '" maxlength="' + esc(i.limit) + '" placeholder="' + esc(i.default != null ? 'default: ' + (i.default || 'empty') : '') + '">' + esc(i.value) + '</textarea>';
   return '<input id="' + esc(id) + '" class="adm-in"' + named + ' type="text"' + (i.limit ? ' maxlength="' + esc(i.limit) + '"' : '') + ' value="' + esc(i.value) + '" placeholder="' + esc(i.default != null ? 'default: ' + (i.default || 'empty') : '') + '">';
 }
 function rowId(row) { return row.dataset.key || row.dataset.secret || row.dataset.route || row.dataset.source || row.dataset.talk || (row.classList.contains('route-add') ? '+route' : ''); }
@@ -343,6 +343,7 @@ function adminRow(i, card) {
   if (reset) reset.addEventListener('click', function () { adminReset(i, reset, msg); });
   var owners = i.kind === 'tagrules' ? tagOwnersBox(i) : null;
   if (owners) {
+    tagNameTint(row, owners.dataset.tag);
     row.querySelector('.adm-c').appendChild(owners);
     row.dataset.find += ' responsibles ' + tagOwnersOf(owners.dataset.tag).responsibles.map(function (p) { return p.name + ' ' + p.email; }).join(' ').toLowerCase();
   }
@@ -389,6 +390,7 @@ function tagOwnersBox(i) {
   box.appendChild(list);
   if (edit) box.appendChild(tagOwnerPicker(i, t, have, box));
   if (edit) box.appendChild(tagAutoSwitch(i, t, box));
+  if (edit) box.appendChild(tagToneBox(i, t, box));
   if (t.autoAssign !== false && t.responsibles.length && t.autoReady === false) box.appendChild(accText('p', 'adm-help adm-owner-auto-note', 'Auto-assign needs a responsible with a Skopax account'));
   var said = accText('span', 'adm-msg adm-owner-msg');
   said.setAttribute('role', 'status');
@@ -585,6 +587,69 @@ function tagAutoSwitch(i, t, box) {
   sw.addEventListener('change', function () { tagAutoSave(i, t, sw.checked, box); });
   return wrap;
 }
+function tagNameTint(row, id) {
+  var b = row && row.querySelector('.adm-n b');
+  if (!b) return;
+  b.className = b.className.split(/\s+/).filter(function (c) { return c && c !== 'tcol' && c.indexOf('th-') !== 0; }).join(' ');
+  b.classList.add('adm-tagname');
+  tagClass(id).split(' ').forEach(function (c) { b.classList.add(c); });
+}
+function tagToneBox(i, t, box) {
+  var g = el('div', 'adm-tone'), cur = typeof t.color === 'number' ? t.color : null, opts = [null].concat(TAG_PALETTE.map(function (p, n) { return n; }));
+  g.setAttribute('role', 'radiogroup');
+  g.setAttribute('aria-label', 'Colour of ' + (t.label || t.id));
+  g.appendChild(accText('span', 'adm-owners-l', 'Colour'));
+  var radios = opts.map(function (n) {
+    var hue = n === null ? tagHue(t.id) : n, r = el('button', 'adm-tone-s th-' + hue + (n === null ? ' adm-tone-def' : ''));
+    r.type = 'button';
+    r.setAttribute('role', 'radio');
+    r.dataset.tone = n === null ? '' : String(n);
+    var name = n === null ? 'Default (' + TAG_PALETTE[hue].name + ')' : TAG_PALETTE[n].name;
+    r.setAttribute('aria-label', name);
+    r.title = n === null ? name + ': picked from the tag id, the same everywhere' : name;
+    r.setAttribute('aria-checked', String(n === cur));
+    r.tabIndex = n === cur ? 0 : -1;
+    if (n === null) r.textContent = 'A';
+    r.addEventListener('click', function () { if (n !== cur) tagToneSave(i, t, n, box); });
+    r.addEventListener('keydown', function (e) {
+      var d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+      if (!d) return;
+      e.preventDefault();
+      var next = radios[(radios.indexOf(r) + d + radios.length) % radios.length];
+      next.focus();
+      next.click();
+    });
+    g.appendChild(r);
+    return r;
+  });
+  return g;
+}
+async function tagToneSave(i, t, color, box) {
+  var said = box.querySelector('.adm-owner-msg');
+  box.querySelectorAll('button, select, input').forEach(function (c) { c.disabled = true; });
+  said.textContent = 'Saving\u2026';
+  said.className = 'adm-msg adm-owner-msg';
+  try {
+    var r = await adminApi('PUT', '/api/admin/tags/' + encodeURIComponent(t.id) + '/color', {color: color});
+    ADMIN_TAGS.tags = ADMIN_TAGS.tags.map(function (x) { return x.id === r.id ? r : x; });
+    if (typeof r.color === 'number') TAG_TONE_SET[r.id] = r.color; else delete TAG_TONE_SET[r.id];
+    bumpRender();
+    if (typeof renderAnoms === 'function') renderAnoms();
+    tagNameTint(box.closest('.adm-row'), r.id);
+    var fresh = tagOwnersBox(i);
+    if (!fresh) return;
+    box.replaceWith(fresh);
+    var note = fresh.querySelector('.adm-owner-msg');
+    note.textContent = 'Colour saved';
+    note.className = 'adm-msg adm-owner-msg ok';
+    var back = fresh.querySelector('.adm-tone [aria-checked="true"]');
+    if (back) back.focus();
+  } catch (e) {
+    box.querySelectorAll('button, select, input').forEach(function (c) { c.disabled = c.classList.contains('adm-owner-go') && !((box.querySelector('.adm-owner-pick') || {}).value || '').trim(); });
+    said.textContent = e && e.detail ? e.detail : 'Colour not saved, try again';
+    said.className = 'adm-msg adm-owner-msg bad';
+  }
+}
 async function tagAutoSave(i, t, on, box) {
   var said = box.querySelector('.adm-owner-msg');
   box.querySelectorAll('button, select, input').forEach(function (c) { c.disabled = true; });
@@ -683,11 +748,11 @@ function adminHistory() {
   };
   var rest = ADMIN_HIST.length - ADMIN_HIST_SHOW;
   return '<table class="adm-hist"><thead><tr><th>When</th><th>Who</th><th>Setting</th><th>Change</th><th></th></tr></thead><tbody>' + ADMIN_HIST.slice(0, ADMIN_HIST_SHOW).map(function (h) {
-    var name = h.route ? 'Teams route ' + h.key.slice(6) : h.source ? 'Agent ' + h.key.slice(7) : h.secret ? 'Secret ' + h.key : h.talk ? TALK_NAMES[h.key] || 'Small talk' : h.owners ? 'Responsibles of ' + tagLabelOf(h.tag) : label[h.key] || h.key;
+    var name = h.access ? 'People and access' : h.route ? 'Teams route ' + h.key.slice(6) : h.source ? 'Agent ' + h.key.slice(7) : h.secret ? 'Secret ' + h.key : h.talk ? TALK_NAMES[h.key] || 'Small talk' : h.owners ? 'Responsibles of ' + tagLabelOf(h.tag) : label[h.key] || h.key;
     var shownR = function (v) { return v == null ? '<span class="muted">' + (h.route || h.owners ? 'none' : h.source || h.secret ? 'not set' : 'config / default') + '</span>' : shown(v); };
-    var change = h.seen ? '<span class="muted">workflow link shown</span>' : shownR(h.old) + ' → ' + shownR(h.new);
+    var change = h.access ? esc(h.text) : h.seen ? '<span class="muted">workflow link shown</span>' : shownR(h.old) + ' → ' + shownR(h.new);
     return '<tr><td>' + esc(dayhm(h.at)) + '</td><td>' + esc(draftBy(h.by)) + '</td><td title="' + esc(h.key) + '">' + esc(name) + '</td><td class="adm-ch">' + change + '</td>' +
-      '<td>' + (h.route || h.source || h.secret || h.talk || h.owners || h.legacy ? '' : '<button type="button" class="btn sec small adm-revert" data-id="' + esc(h.id) + '" title="Put back the value before this change">Revert</button>') + '</td></tr>';
+      '<td>' + (h.access || h.route || h.source || h.secret || h.talk || h.owners || h.legacy ? '' : '<button type="button" class="btn sec small adm-revert" data-id="' + esc(h.id) + '" title="Put back the value before this change">Revert</button>') + '</td></tr>';
   }).join('') + '</tbody></table>' + (rest > 0 ? '<p class="adm-hist-more"><button type="button" class="btn sec small adm-more">Show ' + Math.min(rest, ADMIN_HIST_STEP) + ' more</button><span class="muted">' + Math.min(ADMIN_HIST_SHOW, ADMIN_HIST.length) + ' of ' + ADMIN_HIST.length + '</span></p>' : ADMIN_HIST.length >= ADMIN_HIST_MAX ? '<p class="muted adm-hist-more">The latest ' + ADMIN_HIST_MAX + ' changes; older ones stay stored.</p>' : '');
 }
 async function adminRevert(h, b) {
@@ -2380,6 +2445,7 @@ async function ssoIconPut(file) {
   var draft = ssoDraft();
   SSO = ssoView(r);
   ssoRepaint('', draft, []);
+  ssoIconMode('company');
   var after = ssoCard();
   ssoNote(after && after.querySelector('.sso-icon-msg'), 'Icon uploaded');
 }
@@ -2399,8 +2465,16 @@ async function ssoIconRemove(b) {
   var draft = ssoDraft();
   SSO = ssoView(r);
   ssoRepaint('', draft, []);
+  ssoIconMode('auto');
   var after = ssoCard();
   ssoNote(after && after.querySelector('.sso-icon-msg'), 'Icon removed');
+}
+function ssoIconMode(to) {
+  var sel = document.getElementById('sso-in-button-icon');
+  if (!sel || sel.value === 'none' || (to === 'auto' && sel.value !== 'company') || sel.value === to) return;
+  sel.value = to;
+  ssoPreview();
+  ssoBarPaint();
 }
 function ssoFocusKey() {
   var a = document.activeElement, box = document.getElementById('acc-sso');

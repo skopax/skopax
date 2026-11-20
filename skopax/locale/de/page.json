@@ -104,9 +104,6 @@
   "Business days only": "Nur Arbeitstage",
   "Count only Monday to Friday (install time zone) for the auto-resolve timers": "Für die Fristen des automatischen Lösens nur Montag bis Freitag zählen (Zeitzone der Installation)",
   "Auto-resolved": "Automatisch gelöst",
-  "Auto-send": "Automatisch senden",
-  "Auto-send failed": "Automatisches Senden fehlgeschlagen",
-  "Auto-send now": "Jetzt automatisch senden",
   "Autoscalers": "Autoscaler",
   "Avg": "Ø",
   "Avg / run": "Ø / Lauf",
@@ -218,7 +215,6 @@
   "Copy a link that opens this release": "Einen Link kopieren, der dieses Release öffnet",
   "Copy link": "Link kopieren",
   "Copy the direct link to card #{0}: it opens this card alone": "Den direkten Link zu Karte #{0} kopieren: er öffnet nur diese Karte",
-  "Copy the draft text, e.g. to send it to one person instead of the channel": "Den Entwurfstext kopieren, z. B. um ihn einer Person statt dem Channel zu senden",
   "Copy the suggested lines; it is untested, verify before you use it": "Die vorgeschlagenen Zeilen kopieren; sie sind ungetestet, prüfen Sie sie vor der Verwendung",
   "Cost": "Kosten",
   "Costs": "Kosten",
@@ -262,15 +258,12 @@
   "Disabled": "Deaktiviert",
   "Discard": "Verwerfen",
   "Discard changes": "Änderungen verwerfen",
-  "Discarded": "Verworfen",
-  "Discarding…": "Wird verworfen…",
   "Disconnect": "Trennen",
   "Docs": "Doku",
   "Done": "Erledigt",
   "Done {0}": "Erledigt {0}",
   "Done {0} {M} {1}": "Erledigt {0}. {M} {1}",
   "Draft": "Entwurf",
-  "Draft (stopped)": "Entwurf (gestoppt)",
   "Duplicate": "Duplikat",
   "Duplicate of": "Duplikat von",
   "Duplicate: the same problem as another card, which carries it on": "Duplikat: dasselbe Problem wie eine andere Karte, die es weiterführt",
@@ -283,7 +276,6 @@
   "Edit the message Send to Slack posts": "Die Nachricht bearbeiten, die „An Slack senden“ postet",
   "Editing": "Bearbeitung",
   "Email": "E-Mail",
-  "Empty and Save removes the draft": "Leeren und Speichern entfernt den Entwurf",
   "Enable sign-in": "Anmeldung freigeben",
   "Enabled": "Aktiviert",
   "Enter a valid email address": "Geben Sie eine gültige E-Mail-Adresse ein",
@@ -342,7 +334,6 @@
   "Hide the menu": "Das Menü ausblenden",
   "History": "Verlauf",
   "Hold": "Zurückhalten",
-  "Holding…": "Wird zurückgehalten…",
   "Host and disk": "Host und Festplatte",
   "Host disk": "Host-Festplatte",
   "Hour": "Stunde",
@@ -661,7 +652,6 @@
   "Pod restarts": "Pod-Neustarts",
   "Pods waiting": "Wartende Pods",
   "Points": "Punkte",
-  "Post the Slack draft on this card as the message, with the anomaly card attached below it; click twice to confirm": "Den Slack-Entwurf dieser Karte als Nachricht posten, mit der Anomalie-Karte darunter; zum Bestätigen zweimal klicken",
   "Post this anomaly to the Slack channel; click twice to confirm": "Diese Anomalie im Slack-Channel posten; zum Bestätigen zweimal klicken",
   "Post this deploy report to the Slack channel: release, services, clean or flagged, the summary, the flagged rows and the shipped tickets; click twice to confirm": "Diesen Deploy-Bericht im Slack-Channel posten: Release, Services, sauber oder markiert, die Zusammenfassung, die markierten Zeilen und die ausgelieferten Tickets; zum Bestätigen zweimal klicken",
   "Post to thread": "Im Thread posten",
@@ -763,7 +753,6 @@
   "Runs, usage and actions on History": "Läufe, Nutzung und Aktionen im Verlauf",
   "Save": "Speichern",
   "Save & turn on": "Speichern & einschalten",
-  "Save or cancel the draft edit first": "Speichern oder verwerfen Sie zuerst die Bearbeitung des Entwurfs",
   "Saved and turned on": "Gespeichert und eingeschaltet",
   "Saved in this browser only.": "Nur in diesem Browser gespeichert.",
   "Saved sealed and never shown again.": "Verschlüsselt gespeichert und nie wieder angezeigt.",
@@ -787,7 +776,6 @@
   "Security update available": "Sicherheitsupdate verfügbar",
   "Self-review": "Selbstauswertung",
   "Send again": "Erneut senden",
-  "Send draft to Slack": "Entwurf an Slack senden",
   "Send now": "Jetzt senden",
   "Send to Slack": "An Slack senden",
   "Sending…": "Wird gesendet…",
@@ -835,15 +823,10 @@
   "Slack ask": "Slack-Frage",
   "Slack asks": "Slack-Fragen",
   "Slack asks {0}": "Slack-Fragen {0}",
-  "Slack draft": "Slack-Entwurf",
-  "Slack draft for this deploy report": "Slack-Entwurf für diesen Deploy-Bericht",
-  "Slack drafts": "Slack-Entwürfe",
-  "Slack drafts that have not been posted yet, on anomaly cards and on deploy reports, and what happens to each one next. Armed drafts come first, the soonest first.": "Slack-Entwürfe, die noch nicht gepostet wurden, auf Anomalie-Karten und Deploy-Berichten, und was als Nächstes mit jedem geschieht. Scharfgeschaltete Entwürfe stehen zuerst, die nächsten zuerst.",
   "Slack failed": "Slack fehlgeschlagen",
   "Slack is not set up": "Slack ist nicht eingerichtet",
   "Slack question": "Slack-Frage",
   "Slack questions this hour": "Slack-Fragen in dieser Stunde",
-  "Slack recommended": "Für Slack empfohlen",
   "Slack refused it": "Slack hat es abgelehnt",
   "Slack refused it, see History": "Slack hat es abgelehnt, siehe Verlauf",
   "Slack thread update": "Update im Slack-Thread",
@@ -873,7 +856,6 @@
   "Status note {0} ↗": "Statusnotiz {0} ↗",
   "Steady": "Stabil",
   "Stop investigator": "Investigator stoppen",
-  "Stop the auto-send, which posts the draft within {0} s: the draft then waits for Send draft to Slack like any other": "Das automatische Senden stoppen, das den Entwurf innerhalb von {0} s postet: der Entwurf wartet dann wie jeder andere auf „Entwurf an Slack senden“",
   "Stop this token working right away": "Dieses Token sofort ungültig machen",
   "Stopped firing": "Nicht mehr ausgelöst",
   "Stops new runs at once; a running one ends after its current turn": "Stoppt neue Läufe sofort; ein laufender endet nach seinem aktuellen Schritt",
@@ -1083,7 +1065,6 @@
   "queued": "in der Warteschlange",
   "read": "lesen",
   "ready pods": "bereite Pods",
-  "removes the draft and": "entfernt den Entwurf und",
   "reopened": "wieder geöffnet",
   "report": "Bericht",
   "resolved": "gelöst",
@@ -1094,7 +1075,6 @@
   "since {0} {M} {1}, {2} h {3} min ago": "seit {0}. {M} {1}, vor {2} h {3} min",
   "since {0} {M} {1}, {2} min ago": "seit {0}. {M} {1}, vor {2} min",
   "still open": "noch offen",
-  "stops the auto-send that posts it within {0} s,": "stoppt das automatische Senden, das ihn innerhalb von {0} s postet,",
   "target {0}%": "Ziel {0} %",
   "the fullest broker data volume": "das vollste Daten-Volume eines Brokers",
   "the investigator and the server jobs pick these up within about two minutes": "der Investigator und die Server-Jobs übernehmen diese in etwa zwei Minuten",
@@ -1256,9 +1236,89 @@
   "INVESTIGATOR": "INVESTIGATOR",
   "STOPPED": "GESTOPPT",
   "Paste a new key": "Neuen Key einfügen",
-  "Test connection tries the key typed here, or the key in use when the field is empty.": "Verbindung testen prüft den hier eingegebenen Key oder, wenn das Feld leer ist, den verwendeten Key."
+  "Test connection tries the key typed here, or the key in use when the field is empty.": "Verbindung testen prüft den hier eingegebenen Key oder, wenn das Feld leer ist, den verwendeten Key.",
+  "Business note": "Fachnotiz",
+  "Edit note": "Notiz bearbeiten",
+  "Tag a business team to write a note": "Ein Fachteam taggen, um eine Notiz zu schreiben",
+  "Before that:": "Davor:",
+  "View card": "Karte ansehen",
+  "Clear filter": "Filter löschen",
+  "Dismiss": "Schließen",
+  "Details": "Details",
+  "Loading the history…": "Verlauf wird geladen…",
+  "Actions and activity could not be loaded; showing what the card itself records.": "Maßnahmen und Aktivität konnten nicht geladen werden; gezeigt wird, was die Karte selbst speichert.",
+  "Nothing recorded yet.": "Noch nichts aufgezeichnet.",
+  "Started progress": "In Arbeit genommen",
+  "Ticket created": "Ticket erstellt",
+  "Ticket linked": "Ticket verknüpft",
+  "Marked known noise": "Als bekanntes Rauschen markiert",
+  "Investigation queued": "Untersuchung eingereiht",
+  "Grouped": "Gruppiert",
+  "Asked the investigator": "Investigator gefragt",
+  "Fired": "Ausgelöst",
+  "Business note written": "Fachnotiz geschrieben",
+  "Colour": "Farbe",
+  "Colour saved": "Farbe gespeichert",
+  "Colour not saved, try again": "Farbe nicht gespeichert, erneut versuchen",
+  "Tag added": "Tag hinzugefügt",
+  "Posted to Teams": "In Teams gepostet",
+  "Investigation run": "Untersuchungslauf",
+  "Assigned to": "Zugewiesen an",
+  "Not posted: auto-send is off": "Nicht gepostet: automatisches Senden ist aus",
+  "Not posted: the run read suspicious text": "Nicht gepostet: Der Lauf hat verdächtigen Text gelesen",
+  "Slack post failed": "Slack-Post fehlgeschlagen",
+  "Posting to Slack now": "Wird jetzt in Slack gepostet",
+  "Slack post": "Slack-Post",
+  "Not posted to Slack": "Nicht in Slack gepostet",
+  "People and access": "Personen und Zugriff",
+  "Not posted: the card stopped, was muted, merged or resolved first; Send to Slack still posts it": "Nicht gepostet: Die Karte hat vorher aufgehört, wurde stummgeschaltet, zusammengeführt oder gelöst; An Slack senden postet sie trotzdem",
+  "The investigator posts to Slack itself while Slack auto-send is on. These posts did not go out: the run read suspicious text, or Slack refused the post after its retries. Read the text, then post it with Send now or open its card or report with View.": "Der Investigator postet selbst in Slack, solange das automatische Senden an ist. Diese Posts sind nicht rausgegangen: Der Lauf hat verdächtigen Text gelesen, oder Slack hat den Post nach den Wiederholungen abgelehnt. Text lesen, dann mit Jetzt senden posten oder mit Ansehen die Karte oder den Bericht öffnen.",
+  "The investigator wanted to post this to Slack, but Slack auto-send is off in Admin > Features. Send to Slack still posts it by hand.": "Der Investigator wollte dies in Slack posten, aber das automatische Senden ist unter Admin > Funktionen aus. An Slack senden postet es trotzdem von Hand.",
+  "Nothing waiting. A post the investigator could not send shows here with Send now.": "Nichts wartet. Ein Post, den der Investigator nicht senden konnte, erscheint hier mit Jetzt senden.",
+  "Text": "Text",
+  "investigator": "Investigator",
+  "The investigator’s text was the message": "Der Text des Investigators war die Nachricht",
+  "nothing waiting": "nichts wartet",
+  "{0} not posted": "{0} nicht gepostet",
+  "Post the text kept on this card as the message, with the anomaly card attached below it; click twice to confirm": "Den auf dieser Karte gehaltenen Text als Nachricht posten, mit der Anomaliekarte darunter; zum Bestätigen zweimal klicken",
+  "Post the text kept on this report as the message, with the report summary, its flagged rows and the shipped tickets under it; click twice to confirm": "Den bei diesem Bericht gehaltenen Text als Nachricht posten, mit der Berichtszusammenfassung, den markierten Zeilen und den ausgelieferten Tickets darunter; zum Bestätigen zweimal klicken",
+  "Copy the text, e.g. to send it to one person instead of the channel": "Den Text kopieren, z. B. um ihn einer Person statt dem Kanal zu schicken",
+  "Full text in the expanded card": "Vollständiger Text in der aufgeklappten Karte",
+  "Not posted: the text was more than an hour old when Slack was ready": "Nicht gepostet: Der Text war älter als eine Stunde, als Slack bereit war"
  },
  "rules": [
+  [
+   "^([\\s\\S]+)\\nFull text in the expanded card$",
+   "$1\nVollständiger Text in der aufgeklappten Karte"
+  ],
+  [
+   "^Not posted: the run read suspicious text \\((.+)\\); check it and use Send to Slack$",
+   "Nicht gepostet: Der Lauf hat verdächtigen Text gelesen ($1); prüfen und An Slack senden nutzen"
+  ],
+  [
+   "^Slack post failed: (.+); use Send to Slack to try again$",
+   "Slack-Post fehlgeschlagen: $1; mit An Slack senden erneut versuchen"
+  ],
+  [
+   "^Slack post failed: (.+); trying again at (\\d\\d:\\d\\d)$",
+   "Slack-Post fehlgeschlagen: $1; neuer Versuch um $2"
+  ],
+  [
+   "^Slack post failed: (.+)$",
+   "Slack-Post fehlgeschlagen: $1"
+  ],
+  [
+   "^Slack text \\u00b7 (.+)$",
+   "Slack-Text · $1"
+  ],
+  [
+   "^\\u00b7 (.+) \\u00b7 investigator text$",
+   "· $1 · Text des Investigators"
+  ],
+  [
+   "^Post this text to (\\S+) now, as the message for (.+); click twice to confirm$",
+   "Diesen Text jetzt in $1 posten, als Nachricht für $2; zum Bestätigen zweimal klicken"
+  ],
   [
    "^Cleared (\\d.*)$",
    "Abgeklungen $1"
@@ -1480,10 +1540,6 @@
    "An Slack gesendet $1"
   ],
   [
-   "^Auto-send (\\d.*)$",
-   "Automatisch senden um $1"
-  ],
-  [
    "^Name of (.+)$",
    "Name von $1"
   ],
@@ -1534,6 +1590,18 @@
   [
    "^Moved to Information: (.+)$",
    "Zu Informationen verschoben: $1"
+  ],
+  [
+   "^Write note for (.+)$",
+   "Notiz für $1 schreiben"
+  ],
+  [
+   "^Reopened (.+) · fired again$",
+   "Wieder geöffnet $1 · erneut ausgelöst"
+  ],
+  [
+   "^(.+) moved to (.+) · hidden by the current filter$",
+   "$1 nach $2 verschoben · vom aktuellen Filter ausgeblendet"
   ]
  ],
  "months": {
