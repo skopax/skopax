@@ -95,7 +95,7 @@ def echoing(store: Store, fake: Fake, *specs, core: bool = False, transport: Tra
 
 
 def seo_info(key: str = KEY, **extra) -> dict:
-    return open_card(key, 'info', **({'tags': tag('seo')} | extra), business=INFO)
+    return open_card(key, 'warn', **({'tags': tag('seo')} | extra), business=INFO)
 
 
 def with_echo(spec: tuple[str, dict], mode: str) -> tuple[str, dict]:
@@ -1004,7 +1004,8 @@ def test_a_slack_post_in_flight_keeps_the_echo_from_posting_a_second_time(store:
 
 def test_a_cleared_info_card_is_not_posted_to_slack_by_the_echo(store: Store, tmp_path):
     # given
-    store.save({**state(seo_info(status='cleared', clearedAt='2026-11-09T11:00:00Z')), 'initialized': True}, None)
+    held = open_card(KEY, 'info', tags=tag('seo'), business=INFO, status='cleared', clearedAt='2026-11-09T11:00:00Z', owner='alice@example.com')
+    store.save({**state(held), 'initialized': True}, None)
     slack_t, teams_t = SlackT(), Transport()
 
     # when

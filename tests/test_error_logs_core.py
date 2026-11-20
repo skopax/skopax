@@ -74,7 +74,7 @@ def test_the_card_number_log_carries_the_type_only(store, caplog, monkeypatch):
 
     # when
     with caplog.at_level(logging.WARNING):
-        engine.number_cards(store, [{'key': 'k1'}])
+        engine.number_cards(store, [{'key': 'k1', 'sev': 'warn'}])
 
     # then
     clean(caplog, 'OperationFailure code 13')

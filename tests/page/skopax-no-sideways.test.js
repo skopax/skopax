@@ -16,7 +16,7 @@ const CHECKS = [
   ['a long source pill on a phone: with an ellipsis', '.sg-bad', 'text-overflow', 'ellipsis'],
   ['the card drawer on a phone: its width holds the border and the padding', '.cd-panel', 'box-sizing', 'border-box'],
   ['the card drawer on a phone: 94 % of the screen at most, and 760 px of content on a wide one', '.cd-panel', 'width', 'min(793px, 94vw)'],
-  ['the Information page on a phone: one column that sizes to the panel', '.info-list', 'grid-template-columns', 'minmax(0, 1fr)'],
+  ['the Information page on a phone: one column that sizes to the panel', '.info-list', 'grid-template-columns', 'minmax(0px, 1fr)'],
   ['the Information page on a phone: a row may shrink', '.info-row', 'min-width', '0px'],
   ['the Information page on a phone: long words wrap inside the row', '.info-row', 'overflow-wrap', 'anywhere'],
   ['the Information page on a phone: its head wraps', '.info-head', 'flex-wrap', 'wrap'],

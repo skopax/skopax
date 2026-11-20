@@ -305,9 +305,9 @@ def test_flag_links_pick_a_card_from_around_the_deploy_else_the_logs():
         {'svc': 'old-service', 'ns': 'shop', 'at': '2026-10-15T05:12:00Z', 'flags': ['5xx up']},
     ]
     anomalies = [
-        {'key': 'log|orders-service|ERROR|Could not bind encryption', 'firstSeen': '2026-10-15T05:14:00Z', 'lastSeen': '2026-10-15T05:20:00Z', 'status': 'cleared'},
-        {'key': 'unavailable|payments/orders-service', 'firstSeen': '2026-10-15T05:13:00Z', 'lastSeen': '2026-10-15T05:30:00Z'},
-        {'key': '5xx|shop/old-service', 'firstSeen': '2026-10-12T05:00:00Z', 'lastSeen': '2026-10-12T06:00:00Z'},
+        {'key': 'log|orders-service|ERROR|Could not bind encryption', 'sev': 'warn', 'firstSeen': '2026-10-15T05:14:00Z', 'lastSeen': '2026-10-15T05:20:00Z', 'status': 'cleared'},
+        {'key': 'unavailable|payments/orders-service', 'sev': 'warn', 'firstSeen': '2026-10-15T05:13:00Z', 'lastSeen': '2026-10-15T05:30:00Z'},
+        {'key': '5xx|shop/old-service', 'sev': 'warn', 'firstSeen': '2026-10-12T05:00:00Z', 'lastSeen': '2026-10-12T06:00:00Z'},
     ]
     r = {'summary': 's', 'rows': rows, 'windowFrom': '2026-10-15T05:06:00Z', 'windowTo': '2026-10-15T05:40:00Z'}
 
