@@ -71,7 +71,7 @@ const chip = (doc, f) => doc.querySelector('#tab-sub-anoms button[data-f="' + f 
   assert.deepStrictEqual(pressed(all.doc), ['all'], 'an old All link still opens All');
   assert.deepStrictEqual(shown(all.doc), [LIVE, MUTED].sort(), 'with every card');
   assert.strictEqual(all.w.location.hash, '#t=anoms/all', 'and the address says so');
-  assert.strictEqual(all.doc.getElementById('clear-f').textContent, 'Back to Open ›', 'the way back leads to Open');
+  assert.strictEqual(all.doc.getElementById('clear-f').textContent, 'Back to Open \u203a', 'the way back leads to Open');
   const copy = all.doc.getElementById('copy-f');
   assert.ok(copy, 'All offers Copy link');
 
@@ -104,7 +104,7 @@ const chip = (doc, f) => doc.querySelector('#tab-sub-anoms button[data-f="' + f 
 
   //then
   assert.deepStrictEqual(shown(open.doc), [LIVE, MUTED].sort(), 'the All chip still shows every card');
-  assert.strictEqual(open.doc.getElementById('clear-f').textContent, 'Back to Open ›');
+  assert.strictEqual(open.doc.getElementById('clear-f').textContent, 'Back to Open \u203a');
 
   //when
   const box = open.doc.getElementById('card-search');
