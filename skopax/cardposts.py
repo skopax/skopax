@@ -14,7 +14,7 @@ from skopax.cardlink import card_url, chat_url
 from skopax.engine import mute_for, parse_iso, window_text
 from skopax.errkind import kind as error_kind
 from skopax.messages import language
-from skopax.slack import CALL_TIMEOUT_S, POST_ACTIONS, Slack, SlackDown, SlackError, SlackSlowed, anomaly_message, menu_kinds, status_of
+from skopax.slack import CALL_TIMEOUT_S, POST_ACTIONS, Slack, SlackDown, SlackError, SlackSlowed, anomaly_message, menu_kinds, status_of, stopped_ending, stopped_who
 from skopax.store import NotFound, Store, glob_match, iso, utc_now
 
 log = logging.getLogger('skopax.cardposts')
@@ -33,7 +33,7 @@ GONE_RETRY_S = 86400
 WORKER = 'slack-card-posts'
 MENU_LABEL = 'Take, Resolve and Known noise on the Slack post'
 REDRAW_MARK = 'slack-redraw-0-4-6'
-DRAW_VERSION = 2
+DRAW_VERSION = 3
 REDRAW_CAP = 500
 REDRAW_GAP_S = 1.2
 REDRAW_TRIES = 3
@@ -61,8 +61,8 @@ def mute_kind(mute: dict | None) -> str | None:
     return 'known' if mute.get('kind') == 'known' else 'mute'
 
 
-def drawn_sig(card: dict, mute: str | None) -> str:
-    shown = [status_of(card, mute), card.get('sev'), card.get('owner') or '', sorted(t for t in tags.ids(card) if t in tags.all_tags()), card.get('firstSeen') or '', DRAW_VERSION, language()]
+def drawn_sig(card: dict, mute: str | None, who: str = '') -> str:
+    shown = [status_of(card, mute), card.get('sev'), card.get('owner') or '', sorted(t for t in tags.ids(card) if t in tags.all_tags()), card.get('firstSeen') or '', DRAW_VERSION, language(), stopped_ending(card), who]
     return hashlib.sha1(json.dumps(shown, default=str).encode()).hexdigest()[:16]
 
 
@@ -71,9 +71,24 @@ def card_closed(card: dict, mute: str | None) -> bool:
 
 
 def plain_head(card: dict, mute: str | None, post: dict) -> dict:
-    kind = ('known' if mute == 'known' else 'muted' if mute else 'resolved' if card.get('triage') == 'handled' else 'cleared' if card.get('status') == 'cleared'
+    kind = ('known' if mute == 'known' else 'resolved' if card_closed(card, mute) else 'muted' if mute else 'cleared' if card.get('status') == 'cleared'
             else 'took' if card.get('triage') == 'progress' else 'reopened' if (post.get('head') or {}).get('kind') in CLOSED_KINDS else 'opened')
-    return {'kind': kind, 'by': SYSTEM, 'at': post.get('at') or iso(utc_now())}
+    return {'kind': kind, 'by': owner_by(card, kind), 'at': post.get('at') or iso(utc_now())}
+
+
+def owner_by(card: dict, kind: str | None) -> str:
+    return (card.get('owner') if kind == 'took' else None) or SYSTEM
+
+
+def fit_head(card: dict, mute: str | None, post: dict, head: dict | None) -> dict | None:
+    if not head:
+        return plain_head(card, mute, post)
+    kind = head.get('kind')
+    closed = card_closed(card, mute)
+    stopped = card.get('status') == 'cleared' and not closed and not mute
+    stale = (closed != (kind in CLOSED_KINDS) or (kind == 'took' and card.get('triage') != 'progress') or (kind == 'muted' and not mute)
+             or (kind == 'cleared' and card.get('status') != 'cleared') or (stopped and kind != 'cleared'))
+    return plain_head(card, mute, post) if stale else None
 
 
 def last_drawn(post: dict) -> float:
@@ -112,7 +127,7 @@ class Job:
 class CardPosts:
     def __init__(self, store: Store, slack: Slack, base: str, menu_on: Callable[[], bool] = lambda: False, clock: Callable[[], float] = time.time,
                  timer: Callable[[], float] = time.monotonic, autostart: bool = True, deadline_s: float = BATCH_DEADLINE_S, retry_after_s: float = RETRY_AFTER_S,
-                 pause: Callable[[float], None] = time.sleep):
+                 pause: Callable[[float], None] = time.sleep, name_of: Callable[[str], str] = lambda email: ''):
         self.store = store
         self.slack = slack
         self.base = base
@@ -132,6 +147,7 @@ class CardPosts:
         self._dropped = False
         self._tl = threading.local()
         self.pause = pause
+        self.name_of = name_of
 
     def after(self, action: dict) -> None:
         kind, pattern = action.get('type'), str(action.get('key') or '')
@@ -146,7 +162,7 @@ class CardPosts:
     def triaged(self, key: str, before: dict) -> None:
         def head(card: dict) -> dict | None:
             now = card.get('triage')
-            return {'kind': TRIAGE_HEADS[now], 'by': SYSTEM} if now in TRIAGE_HEADS and now != (before or {}).get('triage') else None
+            return {'kind': TRIAGE_HEADS[now], 'by': owner_by(card, TRIAGE_HEADS[now])} if now in TRIAGE_HEADS and now != (before or {}).get('triage') else None
         self._add(Job(lambda card, keys, mute: card['key'] == key, head))
 
     def assigned(self, key: str, name: str | None, by: str) -> None:
@@ -164,7 +180,7 @@ class CardPosts:
     def jira(self, rows) -> None:
         cards = {r['card'] for r in rows or [] if isinstance(r, dict) and r.get('card')}
         if cards:
-            self._add(Job(lambda card, keys, mute: card['key'] in cards, lambda card: {'kind': TRIAGE_HEADS.get(card.get('triage'), 'reopened'), 'by': SYSTEM}))
+            self._add(Job(lambda card, keys, mute: card['key'] in cards, lambda card: {'kind': TRIAGE_HEADS.get(card.get('triage'), 'reopened'), 'by': owner_by(card, TRIAGE_HEADS.get(card.get('triage')))}))
 
     def refresh(self, key: str) -> None:
         self._add(Job(lambda card, keys, mute: card['key'] == key, lambda card: None))
@@ -183,7 +199,7 @@ class CardPosts:
         def stale(card: dict, keys: frozenset, mute: str | None) -> bool:
             post = card['slackPost']
             drawn = post.get('drawn') or {}
-            return drawn.get('sig') != drawn_sig(card, mute) or bool(drawn.get('gone')) or (not ask_of(post) and bool(menu_kinds(card, mute)) and self.menu_on())
+            return drawn.get('sig') != drawn_sig(card, mute, stopped_who(card, mute, self.name_of)) or fit_head(card, mute, post, post.get('head')) is not None or bool(drawn.get('gone')) or (not ask_of(post) and bool(menu_kinds(card, mute)) and self.menu_on())
         self._add(Job(stale, lambda card: None))
 
     def mute_of(self, key: str) -> str | None:
@@ -328,6 +344,9 @@ class CardPosts:
 
     def _rewrite(self, card: dict, post: dict, head: dict | None, mute: str | None) -> int | None:
         key = card['key']
+        if head is None or fit_head(card, mute, post, head) is not None:
+            head = fit_head(card, mute, post, post.get('head'))
+        who = stopped_who(card, mute, self.name_of)
         if head is not None:
             head = head if head.get('at') else head | {'at': iso(utc_now())}
             try:
@@ -345,7 +364,7 @@ class CardPosts:
             menu, kinds = self._menu(card, ask_of(post), mute)
             message = anomaly_message(shown, card_url(self.base, key, card.get('num')), post.get('by') or SYSTEM, draft, menu, chat_url(self.base, key, card.get('num')),
                                       head=head or post['head'], attribution=None if threaded else self.slack.signature(), mute=mute, kinds=kinds, shots=post.get('screenshots'), base=self.base,
-                                      parent=self._parent(card))
+                                      parent=self._parent(card), who=who)
             self.slack.update(post['channel'], ts, message['text'], message['blocks'])
         except SlackDown as e:
             self._tl.slow = e.wait if isinstance(e, SlackSlowed) else 0.0
@@ -357,7 +376,7 @@ class CardPosts:
                 return 0
             log.info('the Slack post of %s can no longer be rewritten (%s), it is left as it is', key, e.code)
             try:
-                self.store.slack_post_drawn(key, post['ts'], {'sig': drawn_sig(card, mute), 'at': iso(utc_now()), 'gone': e.code})
+                self.store.slack_post_drawn(key, post['ts'], {'sig': drawn_sig(card, mute, who), 'at': iso(utc_now()), 'gone': e.code})
             except Exception as e2:
                 log.warning('the Slack post of %s was not marked as gone: %s', key, error_kind(e2))
             return 0
@@ -365,7 +384,7 @@ class CardPosts:
             log.warning('the Slack post of %s was not rewritten: %s', key, error_kind(e))
             return 0
         try:
-            self.store.slack_post_drawn(key, post['ts'], {'sig': drawn_sig(card, mute), 'at': iso(utc_now()), **({'menu': menu} if menu else {})})
+            self.store.slack_post_drawn(key, post['ts'], {'sig': drawn_sig(card, mute, who), 'at': iso(utc_now()), **({'menu': menu} if menu else {})})
         except Exception as e:
             log.warning('the Slack post of %s was rewritten but not recorded: %s', key, error_kind(e))
         log.info('Slack post of %s rewritten in place: %s', key, (head or post['head']).get('kind'))
@@ -442,8 +461,8 @@ class CardPosts:
         if post.get('ts') != ts or not post.get('channel') or gone_for_good(post.get('drawn') or {}, now):
             return 0
         mute = mute_kind(mute_for(state, key, now))
-        head = self._redraw_head(card, post, mute)
-        if stale_only and head is None and (post.get('drawn') or {}).get('sig') == drawn_sig(card, mute):
+        head = fit_head(card, mute, post, post.get('head'))
+        if stale_only and head is None and (post.get('drawn') or {}).get('sig') == drawn_sig(card, mute, stopped_who(card, mute, self.name_of)):
             return 0
         for attempt in range(REDRAW_TRIES):
             self._tl.slow = 0.0
@@ -452,15 +471,6 @@ class CardPosts:
                 return got
             if attempt + 1 < REDRAW_TRIES:
                 self.pause(getattr(self._tl, 'slow', 0.0) or self.retry_after_s)
-        return None
-
-    def _redraw_head(self, card: dict, post: dict, mute: str | None) -> dict | None:
-        head = post.get('head')
-        closed = card_closed(card, mute)
-        if not head:
-            return plain_head(card, mute, post)
-        if closed != (head.get('kind') in CLOSED_KINDS):
-            return plain_head(card, mute, post)
         return None
 
     def _redraw_end(self, holder: str, redrawn: int, skipped: int, why: str) -> dict:

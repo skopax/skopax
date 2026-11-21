@@ -177,7 +177,7 @@
   "Choose…": "Elegir…",
   "Clear": "Limpiar",
   "Cleared": "Recuperada",
-  "Stopped firing · awaiting review {0} {M} {1}": "Dejó de dispararse · pendiente de revisión {0} {M} {1}",
+  "Stopped firing · unassigned {0} {M} {1}": "Dejó de dispararse · sin asignar {0} {M} {1}",
   "Stopped firing {0} {M} {1}": "Dejó de dispararse {0} {M} {1}",
   "Stopped firing · no action needed": "Dejó de dispararse · no requiere acción",
   "Cleared, nobody acted": "Recuperada, nadie actuó",
@@ -859,7 +859,8 @@
   "Stop investigator": "Detener el investigador",
   "Stop this token working right away": "Hacer que este token deje de funcionar ya",
   "Stopped firing": "Dejó de dispararse",
-  "Stopped firing · awaiting review": "Dejó de dispararse · pendiente de revisión",
+  "Stopped firing · unassigned": "Dejó de dispararse · sin asignar",
+  "Stopped firing · awaiting action · assigned to": "Dejó de dispararse · pendiente de acción · asignada a",
   "stopped firing": "dejó de dispararse",
   "Stops new runs at once; a running one ends after its current turn": "Detiene las nuevas ejecuciones de inmediato; una en curso termina tras su turno actual",
   "Stops sign-in for this person; their sessions and API tokens stop within {0} seconds": "Bloquea el inicio de sesión de esta persona; sus sesiones y tokens de API dejan de funcionar en {0} segundos",
@@ -1419,8 +1420,36 @@
    "Dejó de dispararse $1"
   ],
   [
-   "^Stopped firing · awaiting review (\\d.*)$",
-   "Dejó de dispararse · pendiente de revisión $1"
+   "^Stopped firing · unassigned (\\d.*)$",
+   "Dejó de dispararse · sin asignar $1"
+  ],
+  [
+   "^Stopped firing · awaiting action · assigned to (.+) (\\d{1,2}) (\\S+) (\\d{1,2}:\\d{2})$",
+   "Dejó de dispararse · pendiente de acción · asignada a $1 $2 $3 $4"
+  ],
+  [
+   "^Stopped firing · someone is on it (\\d.*)$",
+   "Dejó de dispararse · alguien se encarga $1"
+  ],
+  [
+   "^Stopped firing · (.+) is on it (\\d{1,2}) (\\S+) (\\d{1,2}:\\d{2})$",
+   "Dejó de dispararse · $1 se encarga $2 $3 $4"
+  ],
+  [
+   "^Stopped after the event · unassigned (\\d.*)$",
+   "Detenida tras el evento · sin asignar $1"
+  ],
+  [
+   "^Stopped after the event · awaiting action · assigned to (.+) (\\d{1,2}) (\\S+) (\\d{1,2}:\\d{2})$",
+   "Detenida tras el evento · pendiente de acción · asignada a $1 $2 $3 $4"
+  ],
+  [
+   "^Stopped after the event · someone is on it (\\d.*)$",
+   "Detenida tras el evento · alguien se encarga $1"
+  ],
+  [
+   "^Stopped after the event · (.+) is on it (\\d{1,2}) (\\S+) (\\d{1,2}:\\d{2})$",
+   "Detenida tras el evento · $1 se encarga $2 $3 $4"
   ],
   [
    "^Earlier: (.+)$",

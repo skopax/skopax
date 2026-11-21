@@ -1,17 +1,19 @@
 import datetime as dt
+import logging
 import re
 
 from skopax import history, information, tickets
 from skopax import clock
 from skopax.contract import Refused as ClientRefused
 from skopax.enrich import SourceDown
-from skopax.errkind import Authored, text_of
+from skopax.errkind import Authored, kind as error_kind, text_of
 from skopax.jiralinks import ticket_pattern
 from skopax.messages import msg
 from skopax.ownwords import KNOWN_REASON, KNOWN_REASONS, REASONS
 from skopax.actors import is_token, token_label
 from skopax.store import NotFound, Store, iso, utc_now
 
+log = logging.getLogger('skopax.actions')
 ANY_RECORD = frozenset({'severity', 'assess', 'postdeploy'})
 INSTANT = frozenset({'mute', 'unmute', 'reopen', 'link', 'severity', 'known', 'resolve', 'take', 'group', 'ticket'})
 DEFAULT_MUTE_HOURS = 24
@@ -85,7 +87,18 @@ def information_item(store: Store, key: str) -> bool:
         return False
 
 
-def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = '', notify=None, extra_projects=()) -> str:
+def display_name(owner: str | None, name_of) -> str | None:
+    if not owner or '@' not in owner or name_of is None:
+        return None
+    try:
+        name = str(name_of(owner) or '').strip()
+    except Exception as e:
+        log.warning('the display name of whoever took a card was not read: %s', error_kind(e))
+        return None
+    return name if name and '@' not in name else None
+
+
+def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = '', notify=None, extra_projects=(), name_of=None) -> str:
     kind, key = action['type'], action['key']
     if kind not in ANY_RECORD and information_item(store, key):
         raise Refused(msg('cards.information_item', key=key))
@@ -94,7 +107,7 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
             raise Refused('Jira is not set up on this service')
         by = (action.get('requestedBy') or '').strip()
         try:
-            new_key, warning = tickets.create_task(store, jira, settings, key, action.get('title'), by, (action.get('reason') or '').strip(), base_url or settings.base_url, action.get('description'), action.get('points'), action.get('project'), action.get('epic'), tuple(extra_projects))
+            new_key, warning = tickets.create_task(store, jira, settings, key, action.get('title'), by, (action.get('reason') or '').strip(), base_url or settings.base_url, action.get('description'), action.get('points'), action.get('project'), action.get('epic'), tuple(extra_projects), display_name(by, name_of))
         except (ClientRefused, SourceDown) as e:
             raise Refused(e.text) from None
         told = notify(key, new_key, by) if notify else []
@@ -148,7 +161,7 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
         owner = (action.get('owner') or '').strip() or (None if held else (action.get('requestedBy') or '').strip() or None)
         if why:
             store.note(key, note_under(store.anomaly(key).get('note'), why, action.get('requestedBy'), 'Taken'))
-        store.triage(key, 'progress', ticket=ticket or None, owner=owner)
+        store.triage(key, 'progress', ticket=ticket or None, owner=owner, owner_name=display_name(owner, name_of))
         store.mark_hand_assigned(key)
         owner = owner or held
         return 'In progress' + (f' · {owner}' if owner else '') + (f' · {ticket}' if ticket else '') + (f' · {why[:RESULT_WHY]}' if why else '')

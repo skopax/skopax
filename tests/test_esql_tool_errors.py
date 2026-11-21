@@ -93,14 +93,14 @@ def test_a_time_range_the_index_cannot_serve_retries_once_on_the_last_day_and_sa
                                      HttpError(400, QUERY, '{"error": {"type": "illegal_argument_exception", "reason": "time range is outside the retention of the index"}}')])
 def test_a_parse_or_unknown_column_error_is_never_read_as_a_range_error(failure):
     # given
-    http = scripted(failure)
+    http = scripted(failure, {'columns': [], 'values': []})
 
     # when
     with pytest.raises(ReadError):
         run_esql(ctx(http), {'query': THREE})
 
     # then
-    assert len(sent(http)) == 1
+    assert sent(http).count(THREE) == 1 and all('NOW() - 1 day' not in q for q in sent(http))
 
 
 def test_a_range_error_on_a_one_day_range_is_not_retried():

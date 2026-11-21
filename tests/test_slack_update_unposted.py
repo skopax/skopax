@@ -58,7 +58,7 @@ def test_a_page_ask_update_on_an_unposted_card_says_there_is_nothing_to_update(s
 
 def test_the_tool_descriptions_say_a_card_without_a_post_has_no_thread(store: Store):
     # given
-    b = toolbox(seeded(store))
+    b = toolbox(seeded(store, slackPost={'ts': '1.2', 'at': '2026-10-10T08:00:00Z', 'channel': 'C1', 'by': 'auto'}))
 
     # when
     described = {d['name']: d['description'] for d in b.definitions()}

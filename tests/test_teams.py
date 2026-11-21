@@ -319,8 +319,8 @@ def test_an_info_card_that_closes_gets_one_fixed_post_and_an_action_card_gets_no
     # then
     assert soon == {}, 'a cleared card waits ten minutes, and a click on Resolve while the problem still fires says nothing'
     assert later == {'teams/bizdev:fixed': ['log|a|ERROR|cart']} and again == {}
-    assert [texts(b)[0] for _, b in t.calls] == ['Skopax \u00b7 Business Development'] * 3 + ['Skopax \u00b7 Business Development \u00b7 stopped firing, awaiting review']
-    assert texts(t.calls[3][1])[1:] == ['\U0001F7E1 **Stopped firing, awaiting review:** Orders cannot be finished right now; engineering is fixing it.',
+    assert [texts(b)[0] for _, b in t.calls] == ['Skopax \u00b7 Business Development'] * 3 + ['Skopax \u00b7 Business Development \u00b7 stopped firing']
+    assert texts(t.calls[3][1])[1:] == ['\U0001F7E1 **Stopped firing:** Orders cannot be finished right now; engineering is fixing it.',
                                         '[Open in Skopax](https://skopax.example.com/#a=log%7Ca%7CERROR%7Ccart)']
     assert 'entities' not in t.calls[3][1]['attachments'][0]['content'].get('msteams', {}), 'the all-clear pings nobody'
     assert [p.get('fixed') for p in store.anomaly('log|a|ERROR|cart')['teamsPosts']] == [None, True] and len(store.anomaly('log|a|ERROR|act')['teamsPosts']) == 1
@@ -410,7 +410,7 @@ def test_two_routes_that_share_one_webhook_post_a_card_tagged_for_both_once(stor
                                                        ['Skopax \u00b7 Marketing', 'cc <at>Alice Archer</at>, <at>Bob Stone</at>', '**Recommended:** Test the tag manager tag.'],
                                                        ['Skopax \u00b7 SEO', 'cc <at>Alice Archer</at>, <at>Bob Stone</at>', '**Info:** Add a redirect.']]
     assert [p['route'] for p in store.anomaly('log|a|ERROR|both')['teamsPosts']] == ['marketing', 'seo'], 'both routes count the card as posted'
-    assert cleared == {'teams/seo:fixed': ['log|a|ERROR|seo']} and texts(t.calls[4][1])[:2] == ['Skopax \u00b7 SEO \u00b7 stopped firing, awaiting review', '\U0001F7E1 **Stopped firing, awaiting review:** Add a redirect.']
+    assert cleared == {'teams/seo:fixed': ['log|a|ERROR|seo']} and texts(t.calls[4][1])[:2] == ['Skopax \u00b7 SEO \u00b7 stopped firing', '\U0001F7E1 **Stopped firing:** Add a redirect.']
 
 
 def test_a_failed_post_to_a_shared_link_takes_back_every_claim_so_the_next_pass_tries_again(store: Store):

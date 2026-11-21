@@ -91,7 +91,7 @@ def request(cl: Crashlytics, a: dict, now: float) -> dict:
     if cl.problem(app):
         raise ReadError(400, cl.problem(app))
     if app not in cl.apps:
-        raise ReadError(400, f'the {app} Firebase app id is not set')
+        raise ReadError(400, f"app must be one of {', '.join(cl.apps)}: the {app} Firebase app id is not set" if cl.apps else f'the {app} Firebase app id is not set')
     name = a.get('report') or 'issues'
     if name not in REPORTS:
         raise ReadError(400, f"report must be one of {', '.join(REPORTS)}")

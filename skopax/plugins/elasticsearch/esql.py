@@ -1,9 +1,10 @@
 import datetime as dt
+import difflib
 import re
 from collections.abc import Mapping
 
 from skopax.contract import Context, Field, ReadError, send
-from skopax.kit.elastic import CLUSTERS, FALLBACK, REJECTED, Elastic, ElasticError, client_for, closest_patterns, index_of, log_fields, refused_text, sources_of
+from skopax.kit.elastic import CLUSTERS, DATED, FALLBACK, REJECTED, Elastic, ElasticError, client_for, closest_patterns, index_of, log_fields, refused_text, sources_of
 
 FROM = re.compile(r'^\s*FROM\s+([^|]+)', re.I)
 TIME_BOUND = re.compile(r'@timestamp`?\s*(>=|>|<=|<)', re.I)
@@ -13,6 +14,11 @@ UNIT_HOURS = {'minute': 1 / 60, 'hour': 1, 'day': 24, 'week': 168}
 LAST_DAY = 'NOW() - 1 day'
 NARROW_HINT = 'narrow the time range or the index'
 MAX_INDICES = 3
+COLUMNS_SHOWN = 5
+COLUMNS_CLOSE = 0.5
+MISSING_NAME = re.compile(r'(?:no such index|Unknown index) \[([^\]]+)\]')
+COLUMNS_S = 15
+DAY_STAMP = re.compile(r'(\d{4})([.\-])(\d{2})\2(\d{2})')
 ANSWER_MAX = 300
 HINT_ROOM = 1600
 ROWS = 1000
@@ -122,7 +128,12 @@ def run_esql(ctx: Context, args: dict) -> object:
         first = answer(e.text, e.status, config)
         status = e.status if 400 <= e.status <= 599 else 502
         if e.missing:
+            earlier = yesterday(query, ctx.now, missing_names(e.detail), es) if DAY_STAMP.search(query) else None
+            if earlier is not None:
+                return day_before(es, query, earlier, status, first, config)
             raise ReadError(status, first + missing_hint(es, query), HINT_ROOM) from None
+        if e.unknown:
+            raise ReadError(status, first + column_hint(es, query, e.unknown), HINT_ROOM) from None
         slow = e.status == 504 or e.timed_out
         unserved = not slow and unserved_range(e)
         narrowed = last_day(query) if slow or unserved else None
@@ -133,6 +144,61 @@ def run_esql(ctx: Context, args: dict) -> object:
     except ElasticError as again:
         raise ReadError(status, f'{first} - the retry on the last day failed too: {answer(again.text, again.status, config)}') from None
     return {'note': RANGE_NOTE if unserved else LAST_DAY_NOTE, 'rows': rows}
+
+
+def missing_names(detail: str) -> set[str]:
+    return {x.strip() for x in MISSING_NAME.findall(detail or '')}
+
+
+def yesterday(query: str, now: float, missing: set[str], es: Elastic) -> str | None:
+    m = FROM.match(query)
+    if not m:
+        return None
+    today = dt.datetime.fromtimestamp(now, dt.timezone.utc).date()
+    stamped = [x for x in sources_of(query) if x in missing and any(found_day(d) == today for d in DAY_STAMP.finditer(x))]
+    if not stamped or len(stamped) != len(missing) or any(re.sub(r'\*{2,}', '*', DATED.sub('*', x)) not in es.index_patterns() for x in stamped):
+        return None
+
+    def back(found: re.Match) -> str:
+        day = found_day(found)
+        if day != today:
+            return found.group(0)
+        sep = found.group(2)
+        return (day - dt.timedelta(days=1)).strftime(f'%Y{sep}%m{sep}%d')
+
+    sources = m.group(1)
+    for x in stamped:
+        sources = sources.replace(x, DAY_STAMP.sub(back, x))
+    return query[:m.start(1)] + sources + query[m.end(1):]
+
+
+def found_day(found: re.Match) -> dt.date | None:
+    try:
+        return dt.date(int(found.group(1)), int(found.group(3)), int(found.group(4)))
+    except ValueError:
+        return None
+
+
+def day_before(es: Elastic, query: str, earlier: str, status: int, first: str, config: Mapping[str, str]) -> object:
+    try:
+        rows = es.query(earlier, timeout=QUERY_S)
+    except ElasticError as again:
+        raise ReadError(status, f'{first} - the retry on the day before failed too: {answer(again.text, again.status, config)}{missing_hint(es, query)}', HINT_ROOM) from None
+    named, used = ', '.join(sources_of(query)), ', '.join(sources_of(earlier))
+    return {'note': f"{named} does not exist yet (today's daily index is made with its first log line), so this answer reads the day before: {used}", 'rows': rows}
+
+
+def column_hint(es: Elastic, query: str, unknown: tuple[str, ...]) -> str:
+    sources = sources_of(query)
+    if not sources:
+        return ''
+    try:
+        names, _ = es.answer(f"FROM {', '.join(sources)} | LIMIT 0", timeout=COLUMNS_S)
+    except ElasticError:
+        return ''
+    scored = sorted(((max(difflib.SequenceMatcher(None, u, n).ratio() for u in unknown), n) for n in names if n not in unknown), key=lambda x: (-x[0], x[1]))
+    close = [n for ratio, n in scored if ratio >= COLUMNS_CLOSE][:COLUMNS_SHOWN]
+    return f" - closest columns of {', '.join(sources)}: {', '.join(close)}" if close else ''
 
 
 def unserved_range(e: ElasticError) -> bool:

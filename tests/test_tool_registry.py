@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pymongo.errors import ServerSelectionTimeoutError
 
-from tests.conftest import AUTH, anomaly, settings
+from tests.conftest import AUTH, anomaly, settings, state
 from tests.fake_anthropic import FakeAnthropic, reply, text, tool
 from tests.fake_slack import fake_slack
 from tests.plugin_kit import KIT_KEY, add_instance, jira_runtime, prom_runtime
@@ -121,6 +121,9 @@ def proposal_app(store: Store, plugin) -> TestClient:
 
 
 def test_core_tools_are_offered_exactly_as_before(store: Store):
+    # given
+    store.save_state(state(anomaly(KEY, slackPost={'ts': '1.2', 'at': '2026-10-10T08:00:00Z', 'channel': 'C1', 'by': 'auto'})), None)
+
     # when
     offered = {run: names(b) for run, b in runs(store).items()}
 

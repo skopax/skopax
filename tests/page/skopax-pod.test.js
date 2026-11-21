@@ -471,7 +471,7 @@ async function aStoppedCardNobodyActedOnIsJustOpen() {
   //then
   assert.deepStrictEqual(groups, ['SECTION Open'], 'one Open group, no separate Waiting group');
   assert.ok(card, 'the stopped card nobody acted on sits in Open');
-  assert.ok(/Stopped firing \u00b7 awaiting review /.test(card.querySelector('.c-status').textContent), 'its row says it stopped');
+  assert.ok(/Stopped firing \u00b7 unassigned /.test(card.querySelector('.c-status').textContent), 'its row says it stopped');
   assert.strictEqual(doc.getElementById('count-anoms').textContent, '2', 'the Anomalies tab shows one Open count');
   assert.ok(!/waiting to be addressed/.test(doc.getElementById('tab-anoms').title), 'the tab tooltip has no separate waiting count');
   assert.strictEqual(doc.querySelector('#tab-sub-anoms button[data-f="stale"]'), null, 'no Waiting item in the side menu');

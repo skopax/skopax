@@ -935,6 +935,7 @@ def test_each_run_type_is_offered_only_the_write_tools_that_work_in_it(store: St
     # given
     effects = Effects(lambda key, by: {}, lambda key, text, by, *_, notice=None: {})
     reads = [t['name'] for t in READ_TOOLS if CORE[t['name']].needs in (None, 'jira') and t['name'] != KNOWLEDGE]
+    store.save_state(state(anomaly(KEY, slackPost={'ts': '1.2', 'at': '2026-10-10T08:00:00Z', 'channel': 'C1', 'by': 'auto'})), None)
 
     # when
     card_run = offered(box(store))

@@ -31,6 +31,7 @@ def seed(store: Store) -> None:
     store.save(state(anomaly(KEYS[0], num=40), anomaly(KEYS[1], num=41, status='cleared')), None)
     for key, ts in zip(KEYS, TS):
         posted(store, key, ts)
+    store.slack_post_head(KEYS[1], TS[1], {'kind': 'cleared', 'by': 'server', 'at': '2026-11-11T07:00:00Z'})
 
 
 def new_posts(api, post) -> list:

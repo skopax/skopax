@@ -619,11 +619,46 @@ def card_ref(a: dict) -> str:
     return f"#{a['num']}" if a.get('num') else f"{a.get('svc') or '-'} / {a.get('label') or '?'}"
 
 
-def head_text(a: dict, head: dict, mute: str | None = None) -> str:
+def stopped_ending(a: dict) -> str:
+    if a.get('triage') == 'progress':
+        return '_taken'
+    return '_assigned' if str(a.get('owner') or '').strip() else ''
+
+
+def owner_who(a: dict, name_of: Callable[[str], str] | None = None) -> str:
+    owner = str(a.get('owner') or '').strip()
+    if not owner:
+        return msg('slack.someone')
+    kept = next((str(n).strip() for n in (a.get('ownerName'), (a.get('assigned') or {}).get('name')) if isinstance(n, str) and n.strip() and '@' not in n), '')
+    if kept:
+        return kept
+    if '@' not in owner:
+        return actor(owner)
+    name = ''
+    try:
+        name = str((name_of(owner) if name_of is not None else '') or '').strip()
+    except Exception as e:
+        log.warning('the assignee name of a Slack post was not read: %s', error_kind(e))
+    return name if name and '@' not in name else owner.split('@')[0]
+
+
+def stopped_who(a: dict, mute: str | None, name_of: Callable[[str], str] | None = None) -> str:
+    return owner_who(a, name_of) if status_of(a, mute) == 'cleared' and stopped_ending(a) else ''
+
+
+def stopped_status(a: dict, parent: dict | None = None, who: str = '') -> str:
+    base = 'slack.status.event' if causes.event(a, parents(parent)) else 'slack.status.cleared'
+    ending = stopped_ending(a)
+    return msg(base + ending, who=esc(who or msg('slack.someone'))) if ending else msg(base)
+
+
+def head_text(a: dict, head: dict, mute: str | None = None, stopped: str = '') -> str:
     sev = a.get('sev', 'info')
     kind = head.get('kind')
     who, ref, level = esc(actor(head.get('by'))), esc(card_ref(a)), sev_label(sev, esc(sev))
-    if kind == 'shared':
+    if kind == 'cleared' and not mute and stopped_ending(a):
+        text = msg(f'slack.head.cleared{stopped_ending(a)}', card=ref, who=esc(stopped or msg('slack.someone')))
+    elif kind == 'shared':
         text = msg('slack.head.shared', who=who, sev=level)
     elif kind == 'assigned':
         text = msg('slack.head.assigned', who=who, card=ref, name=esc(actor(head.get('name'))))
@@ -671,11 +706,12 @@ def parents(parent: dict | None) -> dict:
     return {parent['key']: parent} if isinstance(parent, dict) and parent.get('key') else {}
 
 
-def facts_line(a: dict, mute: str | None, drafted_by: str = '', parent: dict | None = None) -> str:
+def facts_line(a: dict, mute: str | None, drafted_by: str = '', parent: dict | None = None, who: str = '') -> str:
     sev = a.get('sev', 'info')
     status = status_of(a, mute)
-    parts = [msg('slack.status.event' if status == 'cleared' and causes.event(a, parents(parent)) else f'slack.status.{status}'), sev_label(sev, esc(sev))]
-    if a.get('owner'):
+    stopped = status == 'cleared'
+    parts = [stopped_status(a, parent, who) if stopped else msg(f'slack.status.{status}'), sev_label(sev, esc(sev))]
+    if a.get('owner') and not (stopped and stopped_ending(a)):
         parts.append(msg('slack.bar.assignee', name=esc(actor(a['owner']))))
     named = [tags.label(t) for t in tags.ids(a) if t in tags.all_tags()]
     if named:
@@ -730,10 +766,12 @@ def attribution_mark(line: dict) -> str:
 
 def anomaly_message(a: dict, link: str, by: str, draft: str | None = None, buttons: str | None = None, chat: str | None = None, *, head: dict | None = None,
                     attribution: dict | None = None, mute: str | None = None, kinds: tuple[str, ...] = POST_ACTIONS, shots: list | None = None, base: str = '',
-                    parent: dict | None = None) -> dict:
+                    parent: dict | None = None, name_of: Callable[[str], str] | None = None, who: str | None = None) -> dict:
     sev = a.get('sev', 'info')
     cleared = a.get('status') == 'cleared'
-    top = {'type': 'section', 'text': {'type': 'mrkdwn', 'text': head_text(a, head or opening(by), mute)}}
+    status = status_of(a, mute)
+    who = stopped_who(a, mute, name_of) if who is None else who
+    top = {'type': 'section', 'text': {'type': 'mrkdwn', 'text': head_text(a, head or opening(by), mute, who)}}
     menu = card_menu(buttons, kinds, chat)
     if menu:
         top['accessory'] = menu
@@ -745,9 +783,9 @@ def anomaly_message(a: dict, link: str, by: str, draft: str | None = None, butto
     if a.get('msg'):
         blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': f"`{esc(cut(a['msg'], SHORT_LIMIT).replace('`', "'"))}`"}]})
     drafted_by = sender(by, (a.get('slackDraft') or {}).get('by')) if draft and by == AUTO_BY else ''
-    bar = [facts_line(a, mute, drafted_by, parent), numbers_line(a), links_line(a.get('links')), shot_links(shots, base) if base else ''] + ([attribution_mark(attribution)] if attribution else [])
+    bar = [facts_line(a, mute, drafted_by, parent, who), numbers_line(a), links_line(a.get('links')), shot_links(shots, base) if base else ''] + ([attribution_mark(attribution)] if attribution else [])
     blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': t} for t in bar if t]})
-    fallback = f"{(msg('slack.status.event') if causes.event(a, parents(parent)) else msg('slack.cleared')) if cleared else sev_label(sev, sev)} \u00b7 {esc(a.get('svc', '?'))} / {esc(a.get('label', '?'))}" + (f" \u00b7 {esc(a['sub'])}" if a.get('sub') else '')
+    fallback = f"{(stopped_status(a, parent, who) if status == 'cleared' else msg(f'slack.status.{status}')) if cleared else sev_label(sev, sev)} \u00b7 {esc(a.get('svc', '?'))} / {esc(a.get('label', '?'))}" + (f" \u00b7 {esc(a['sub'])}" if a.get('sub') else '')
     return {'text': (f'{esc(summary)}\n' if summary else '') + esc_keep_mentions(draft) if draft else fallback, 'blocks': blocks}
 
 

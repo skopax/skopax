@@ -245,7 +245,7 @@
   "Chat message": "Sohbet mesajı",
   "Checks every image change of the last {0} h": "Son {0} sa içindeki her image değişikliğini kontrol eder",
   "Choose…": "Seç…",
-  "Stopped firing · awaiting review {0} {M} {1}": "Sinyal durdu · inceleme bekleniyor {0} {M} {1}",
+  "Stopped firing · unassigned {0} {M} {1}": "Sinyal durdu · atama bekleniyor {0} {M} {1}",
   "Stopped firing {0} {M} {1}": "Sinyal durdu {0} {M} {1}",
   "Click again to confirm": "Onaylamak için tekrar tıklayın",
   "Clients": "Client'lar",
@@ -860,7 +860,8 @@
   "Fired again": "Yeniden tetiklendi",
   "Got worse": "Kötüleşti",
   "Stopped firing": "Sinyal durdu",
-  "Stopped firing · awaiting review": "Sinyal durdu · inceleme bekleniyor",
+  "Stopped firing · unassigned": "Sinyal durdu · atama bekleniyor",
+  "Stopped firing · awaiting action · assigned to": "Sinyal durdu · aksiyon bekleniyor · atanan:",
   "stopped firing": "sinyal durdu",
   "Investigation finished": "İnceleme bitti",
   "Slack thread update": "Slack thread güncellemesi",
@@ -1419,8 +1420,36 @@
    "Sinyal durdu $1"
   ],
   [
-   "^Stopped firing · awaiting review (\\d.*)$",
-   "Sinyal durdu · inceleme bekleniyor $1"
+   "^Stopped firing · unassigned (\\d.*)$",
+   "Sinyal durdu · atama bekleniyor $1"
+  ],
+  [
+   "^Stopped firing · awaiting action · assigned to (.+) (\\d{1,2}) (\\S+) (\\d{1,2}:\\d{2})$",
+   "Sinyal durdu · aksiyon bekleniyor · atanan: $1 $2 $3 $4"
+  ],
+  [
+   "^Stopped firing · someone is on it (\\d.*)$",
+   "Sinyal durdu · biri ilgileniyor $1"
+  ],
+  [
+   "^Stopped firing · (.+) is on it (\\d{1,2}) (\\S+) (\\d{1,2}:\\d{2})$",
+   "Sinyal durdu · $1 ilgileniyor $2 $3 $4"
+  ],
+  [
+   "^Stopped after the event · unassigned (\\d.*)$",
+   "Olaydan sonra sinyal durdu · atama bekleniyor $1"
+  ],
+  [
+   "^Stopped after the event · awaiting action · assigned to (.+) (\\d{1,2}) (\\S+) (\\d{1,2}:\\d{2})$",
+   "Olaydan sonra sinyal durdu · aksiyon bekleniyor · atanan: $1 $2 $3 $4"
+  ],
+  [
+   "^Stopped after the event · someone is on it (\\d.*)$",
+   "Olaydan sonra sinyal durdu · biri ilgileniyor $1"
+  ],
+  [
+   "^Stopped after the event · (.+) is on it (\\d{1,2}) (\\S+) (\\d{1,2}:\\d{2})$",
+   "Olaydan sonra sinyal durdu · $1 ilgileniyor $2 $3 $4"
   ],
   [
    "^Earlier: (.+)$",

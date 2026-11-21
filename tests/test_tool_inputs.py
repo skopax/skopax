@@ -208,7 +208,7 @@ def optional_count(s: dict) -> int:
 
 def test_with_strict_only_the_write_tools_are_strict_and_their_schemas_fit_the_strict_limits(store: Store):
     # given
-    seeded(store)
+    seeded(store, slackPost={'ts': '1.2', 'at': '2026-10-10T08:00:00Z', 'channel': 'C1', 'by': 'auto'})
     boxes = {'pod': strict_box(store), 'page ask': strict_box(store, ask=True), 'slack ask': strict_box(store, ask=True, read_only=True), 'report': report_box(store, strict=True)[0]}
     reads = {t['name'] for t in READ_TOOLS}
 

@@ -136,7 +136,7 @@ def test_without_a_valid_app_id_the_tool_and_the_pass_say_how_to_set_one(store: 
     swept = crashlytics.run(Ctx({'credentials': KEY}, google()))
 
     # then
-    assert answer == ('the android Firebase app id is not set', True)
+    assert answer == ('app must be one of ios: the android Firebase app id is not set', True)
     assert (swept.result.ok, swept.result.status) == (False, f'error: {NO_APPS}')
 
 
@@ -239,7 +239,7 @@ def test_a_missing_app_id_refusals_and_the_run_cap(store: Store):
     seen = json.dumps([failed, broken.calls, list(store.activity.find({}, {'_id': 0}))], default=str)
 
     # then
-    assert call(android_only, app='ios') == ('the ios Firebase app id is not set', True)
+    assert call(android_only, app='ios') == ('app must be one of android: the ios Firebase app id is not set', True)
     assert call(denied, app='android') == (f'{NO_ACCESS} (HTTP 403)', True)
     assert failed == ('Crashlytics HTTP 500: boom ***', True)
     assert ACCESS not in seen and 'PRIVATE KEY' not in seen

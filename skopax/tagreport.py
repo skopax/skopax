@@ -225,6 +225,22 @@ class SlackIds:
         self._scope(False)
         return found
 
+    def name_now(self, email: str) -> str:
+        email = str(email or '').strip().lower()
+        if not email:
+            return ''
+        held = self._held.get(email)
+        if held is not None and self.clock() - held[0] < self.ttl:
+            return held[2]
+        try:
+            user = self.slack.user_by_email(email)
+        except SlackDown:
+            return held[2] if held else ''
+        except SlackError:
+            return held[2] if held else ''
+        self._held[email] = (self.clock(), f"<@{user['id']}>" if user else None, str((user or {}).get('name') or '').strip())
+        return self._held[email][2]
+
     def peek(self, email: str) -> str:
         held = self._held.get(str(email or '').strip().lower())
         if held is None:

@@ -554,7 +554,7 @@ async function datesReadAsDayAndEnglishMonth() {
   const shown = doc.getElementById('anoms').textContent + doc.getElementById('hist').textContent;
 
   //then
-  assert.match(tag, /^Stopped firing \u00b7 awaiting review 23 Oct \d{2}:\d{2}$/, 'a card cleared on another day reads day + English month: ' + tag);
+  assert.match(tag, /^Stopped firing \u00b7 unassigned 23 Oct \d{2}:\d{2}$/, 'a card cleared on another day reads day + English month: ' + tag);
   assert.match(event, /^23 Oct \d{2}:\d{2}$/, 'so does the Events tab: ' + event);
   assert.ok(/\d (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/.test(shown), 'English short months on the cards or events');
   assert.ok(!/\d{1,2}\.\d{2}\b/.test(event), 'never "23.10"');

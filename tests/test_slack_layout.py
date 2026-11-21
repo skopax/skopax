@@ -122,7 +122,7 @@ def test_taken_resolved_and_cleared_cards_change_the_headline_and_the_bar():
 
     # then
     assert [head_of(m) for m in (taken, resolved, cleared, reopened, assigned, known)] == [
-        ':large_orange_circle: alice took #14', ':white_check_mark: ci-bot resolved #14', ':large_yellow_circle: #14 stopped firing \u00b7 awaiting review', ':large_orange_circle: #14 reopened',
+        ':large_orange_circle: alice took #14', ':white_check_mark: ci-bot resolved #14', ':large_yellow_circle: #14 stopped firing \u00b7 unassigned', ':large_orange_circle: #14 reopened',
         ':large_orange_circle: alice assigned #14 to Bob Smith', ':white_check_mark: alice marked #14 as known noise']
     assert bar_of(taken)[0] == f'In progress \u00b7 Warning \u00b7 Assignee bob \u00b7 Tags: Developer \u00b7 {SINCE}'
     assert [bar_of(m)[0].split(' \u00b7 ')[0] for m in (resolved, cleared, reopened, known)] == ['Resolved', 'Stopped firing', 'Open', 'Known noise']
@@ -296,7 +296,7 @@ def test_a_sweep_that_clears_reopens_escalates_or_auto_resolves_a_card_rewrites_
     posts.run_batch()
 
     # then
-    assert [(u['ts'], head_of(u)) for u in rewrites(api)] == [(CARD_TS, ':large_yellow_circle: #14 stopped firing \u00b7 awaiting review'), ('1792224000.000201', ':large_orange_circle: #15 reopened'),
+    assert [(u['ts'], head_of(u)) for u in rewrites(api)] == [(CARD_TS, ':large_yellow_circle: #14 stopped firing \u00b7 unassigned'), ('1792224000.000201', ':large_orange_circle: #15 reopened'),
                                                              ('1792224000.000202', ':red_circle: Skopax opened a card \u00b7 Critical'),
                                                              ('1792224000.000203', ':white_check_mark: Skopax resolved #17')]
     assert bar_of(rewrites(api)[2])[0].startswith('Open \u00b7 Critical'), 'an escalation redraws the bar and keeps the headline'
@@ -400,7 +400,7 @@ def test_slack_down_stops_a_batch_of_rewrites_after_the_first_card(store: Store)
 
 def test_a_card_posted_in_another_cards_thread_is_rewritten_through_its_own_reply(store: Store):
     # given
-    store.save(state(anomaly(KEY, num=14)), None)
+    store.save(state(anomaly(KEY, num=14, triage='progress', owner='alice@example.com')), None)
     store.slack_posted(KEY, {'channel': 'C1', 'ts': CARD_TS, 'replyTs': '1792224000.000900', 'threadOf': 'log|host|ERROR|y', 'at': '2026-11-11T07:00:00Z', 'by': 'server',
                              'head': {'kind': 'opened', 'by': 'server', 'at': '2026-11-11T07:00:00Z'}})
     slack, post, api = fake_slack()
@@ -467,7 +467,7 @@ def test_the_push_goes_out_before_any_rewrite_and_the_sweep_never_waits_for_one(
     # then
     assert 'U0AAA1111' in pushed, 'the critical push went out inside the sweep'
     assert order == ['returned', 'rewrite'], 'the sweep returned before the rewrite of the cleared card ran'
-    assert head_of(rewrites(api)[0]) == ':large_yellow_circle: #14 stopped firing \u00b7 awaiting review'
+    assert head_of(rewrites(api)[0]) == ':large_yellow_circle: #14 stopped firing \u00b7 unassigned'
 
 
 def test_a_page_glob_known_noise_answers_without_waiting_on_slack(store: Store):
@@ -553,14 +553,16 @@ def test_a_card_key_with_a_star_marks_only_that_card_and_a_glob_unmute_rewrites_
     posts = posts_of(store, slack)
 
     # when
+    store.mute(star, 'marked as known noise on the page', None, 'known')
     posts.after({'type': 'known', 'key': star, 'requestedBy': 'alice@example.com'})
     posts.run_batch()
     known = [head_of(u) for u in rewrites(api)]
+    store.unmute(star)
     posts.after({'type': 'unmute', 'key': 'log|checkout-service|*', 'requestedBy': 'alice@example.com'})
     posts.run_batch()
 
     # then
-    assert known == [':large_orange_circle: alice marked #14 as known noise']
+    assert known == [':white_check_mark: alice marked #14 as known noise']
     assert store.anomaly(other)['slackPost']['head']['kind'] == 'reopened' and len(rewrites(api)) == 3
 
 

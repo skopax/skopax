@@ -952,6 +952,7 @@ class Toolbox:
         self.toolset = ToolSet(getattr(sources.plugin_tools, 'runtime', None))
         self._code_rule: list[Callable[[str], str | None] | None] = []
         self.run_states: dict[str, RunState] = {}
+        self._has_posts: bool | None = None
 
     def code_rule(self) -> Callable[[str], str | None] | None:
         if not self._code_rule:
@@ -973,7 +974,17 @@ class Toolbox:
         return self.bridged
 
     def offered(self) -> list[str]:
-        return [name for name in self.toolset.offered(self.run_kind()) if (name != 'slack_tell' or self.effects.tell is not None) and (name != KNOWLEDGE or self.knowledge)]
+        return [name for name in self.toolset.offered(self.run_kind()) if (name != 'slack_tell' or self.effects.tell is not None) and (name != KNOWLEDGE or self.knowledge)
+                and (name != 'slack_update' or self._has_post())]
+
+    def _has_post(self) -> bool:
+        if self._has_posts is None:
+            mine = [self._card(k) for k in self.keys]
+            parents = [p for p in (self._card(c['parent']) for c in mine if c.get('parent')) if p.get('status') == 'open']
+            services = {c.get('svc') for c in mine} - set(NO_SERVICE) - {None}
+            twins = [c for c in self.store.load().get('anomalies') or [] if c.get('svc') in services and (c.get('status') == 'open' or self._recently_posted(c))] if services else []
+            self._has_posts = any((c.get('slackPost') or {}).get('ts') for c in mine + parents + twins)
+        return self._has_posts
 
     def _core_definition(self, name: str) -> dict:
         if name == TAG:
@@ -998,7 +1009,7 @@ class Toolbox:
             tools = [t if t['name'] in READ_NAMES else {**t, 'strict': True, 'input_schema': strict_schema(t['input_schema'])} for t in tools]
         if self.sources.plugin_tools is not None:
             kinds = self.sources.plugin_tools.catalog()
-            mine = [d for d in self.sources.plugin_tools.definitions() if d['name'] in offered]
+            mine = [d for d in self.sources.plugin_tools.definitions(among=set(offered)) if d['name'] in offered]
             tools += [d if not self.strict or kinds.get(d['name']) == 'read' else {**d, 'strict': True, 'input_schema': strict_schema(closed(d['input_schema']))} for d in mine]
         tools += self.start_bridge().definitions()
         if self.web is not None:
@@ -1099,7 +1110,7 @@ class Toolbox:
                 check_input(name, {} if args is None else args, self._schema(name))
             except ToolError as e:
                 if plugin:
-                    refusal = self.sources.plugin_tools.refuse_input(name, args, e.args[0])
+                    refusal = self.sources.plugin_tools.refuse_input(name, args, e.args[0], among=set(self.offered()))
                     refusal.refused = isinstance(e, BadInput)
                     raise refusal from None
                 raise
@@ -1116,7 +1127,7 @@ class Toolbox:
             elif plugin and kind == 'propose':
                 text, rows, cut = self._propose(name, args or {}), None, False
             elif plugin:
-                got = self.sources.plugin_tools.call(name, args or {}, self.now, rendered=True, states=self.run_states)
+                got = self.sources.plugin_tools.call(name, args or {}, self.now, rendered=True, states=self.run_states, among=set(self.offered()))
                 if isinstance(got, dict):
                     (text, content), rows, cut = self._picture(name, got), None, False
                 else:
@@ -1295,7 +1306,13 @@ class Toolbox:
                       'commentCount': page.get('total', len(comments))}
 
     def _t_card(self, a: dict):
-        card = self.store.anomaly(req(a, 'key'))
+        asked = str(req(a, 'key')).strip()
+        number = history.CARD_NUMBER.match(asked)
+        key = (self.store.key_of_number(int(number.group(1))) if number else asked) or asked
+        try:
+            card = self.store.anomaly(key)
+        except NotFound:
+            return self._closed_card(key, asked)
         out = {f: card.get(f) for f in CARD_FIELDS if card.get(f) is not None and f != 'cause'}
         if causes.own(card):
             out['cause'] = causes.own(card)
@@ -1304,6 +1321,23 @@ class Toolbox:
         if card.get('slackDraft'):
             out['slackDraft'] = with_shots({k: card['slackDraft'].get(k) for k in ('text', 'by', 'at')}, card['slackDraft'])
         return out
+
+    def _closed_card(self, key: str, asked: str) -> dict:
+        past = self.store.last_past_card(key)
+        if past is None:
+            raise ToolError(f'no card {asked if history.CARD_NUMBER.match(asked) else shown_key(asked)}: no open card and no closed one has that key or number')
+        out = {'key': key, 'num': past.get('num') or self.store.card_numbers([key]).get(key), 'closed': True,
+               'closedAt': past.get('clearedAt'), 'outcome': past.get('outcome'),
+               'outcomeText': history.outcome_text(past.get('outcome'), past.get('resolution'))}
+        parent = past.get('parent')
+        if parent and parent != key:
+            try:
+                host = self.store.anomaly(parent)
+            except NotFound:
+                host = None
+            if host is not None:
+                out['mergedInto'] = {'key': parent, 'num': host.get('num') or self.store.card_numbers([parent]).get(parent)}
+        return {k: v for k, v in out.items() if v is not None}
 
     def _t_propose_ticket(self, a: dict):
         if self.proposal is not None:
@@ -1412,7 +1446,7 @@ class Toolbox:
         try:
             host = self.store.anomaly(key)
         except NotFound:
-            raise ToolError(f'no card {shown_key(str(key))}') from None
+            raise self._roomy(f'no card {shown_key(str(key))}{self._run_parents()}') from None
         cards = [self.store.anomaly(k) for k in self.keys]
         spaces = {c.get('ns') for c in cards if c.get('svc') in NO_SERVICE} - set(NO_SERVICE)
         related = (host.get('svc') in {c.get('svc') for c in cards} - set(NO_SERVICE) or host.get('ns') in spaces
@@ -1422,8 +1456,19 @@ class Toolbox:
             return host
         if cause and host.get('status') == 'open' and investigated:
             return host
-        raise ToolError('not one of the cards this run investigates: a parent outside it must be open and already investigated, or posted in the last 6 h and not handled, '
-                        f'and of the same service (no service: same namespace; or a numbered sibling), or of another service with cause naming the shared cause ({shown_key(str(key))})')
+        raise self._roomy('not one of the cards this run investigates: a parent outside it must be open and already investigated, or posted in the last 6 h and not handled, '
+                          f'and of the same service (no service: same namespace; or a numbered sibling), or of another service with cause naming the shared cause ({shown_key(str(key))})'
+                          + self._run_parents())
+
+    @staticmethod
+    def _roomy(text: str) -> ToolError:
+        refused = ToolError(text)
+        refused.room = ABSORB_ERROR_ROOM
+        return refused
+
+    def _run_parents(self) -> str:
+        open_keys = [k for k in sorted(self.keys) if self._card(k).get('status') == 'open']
+        return f'. parents this run can use: {group_keys(open_keys)}' if open_keys else '. this run has no open card to be a parent'
 
     def _card_key(self, key):
         if not isinstance(key, str) or len(key) < KEY_PREFIX_MIN or key in self.keys:
@@ -1642,7 +1687,10 @@ class Toolbox:
         children = [str(c) for c in (a.get('children') or []) if str(c) != parent]
         if not children:
             raise ToolError('name at least one child card')
-        kids = [self.store.anomaly(c) for c in children]
+        kids = [self._card(c) for c in children]
+        unknown = [c for c, kid in zip(children, kids) if not kid]
+        if unknown:
+            raise ToolError(f"no card {', '.join(shown_key(c) for c in unknown)}: name children by the key of an open card")
         for c, kid in zip(children, kids):
             if kid.get('status') != 'open':
                 raise ToolError(f'{c} is not open')
