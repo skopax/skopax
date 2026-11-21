@@ -364,10 +364,10 @@ def test_a_critical_card_no_investigation_finished_on_gets_one_server_draft_that
         armed = store.anomaly(FB_KEY)
         now = iso(utc_now())
         store.anomalies.update_one({'_id': FB_KEY}, {'$set': {'slackDraft.at': now, 'autoSend.draftAt': now, 'autoSend.at': now}})
-        sent = job(client).run_once()
+        job(client).run_once()
 
     # then
-    assert (first, again, sent) == (1, 0, 1)
+    assert (first, again, len(transport.calls)) == (1, 0, 1)
     assert armed['slackDraft']['text'] == FB_TEXT and armed['slackDraft']['by'] == 'server'
     assert gap(armed['autoSend'], armed['slackDraft']) == dt.timedelta(0)
     assert armed['slackFallback']['firedAt'] == FIRED
