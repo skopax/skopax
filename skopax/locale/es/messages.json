@@ -92,8 +92,6 @@
  "routes.fixed": "Dejó de dispararse",
  "routes.gave_up": "{plugin} dejó de publicar {count} tarjeta(s) en la ruta {route} tras {tries} intentos fallidos ({reason}). Corrige la ruta y luego ejecuta su Probar conexión para publicarlas de nuevo.",
  "routes.info": "Info",
- "routes.state": "Estado",
- "routes.taken": "{who} se encarga",
  "routes.more": "y {count} tarjetas más",
  "routes.open": "Abrir en {product}",
  "routes.open_card": "Abrir tarjeta",

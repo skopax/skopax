@@ -92,8 +92,6 @@
 "routes.fixed": "N’émet plus",
 "routes.gave_up": "{plugin} a cessé de publier {count} carte(s) vers la route {route} après {tries} tentatives échouées ({reason}). Corrigez la route, puis lancez son Tester la connexion pour les publier à nouveau.",
 "routes.info": "Info",
-"routes.state": "Statut",
-"routes.taken": "{who} s’en occupe",
 "routes.more": "et {count} cartes de plus",
 "routes.open": "Ouvrir dans {product}",
 "routes.open_card": "Ouvrir la carte",

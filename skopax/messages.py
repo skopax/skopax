@@ -226,8 +226,6 @@ MESSAGES: dict[str, str] = {
     'routes.why': 'Why',
     'routes.recommended': 'Recommended',
     'routes.info': 'Info',
-    'routes.state': 'Status',
-    'routes.taken': '{who} is on it',
     'routes.fixed': 'Stopped firing',
     'routes.urgent': '\U0001f534 Urgent',
     'routes.sev.crit': '\U0001f534 Critical',

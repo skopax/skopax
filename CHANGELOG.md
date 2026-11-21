@@ -17,7 +17,7 @@ Slack card posts always match the card, a stopped card says who has it, and clea
 - A Slack post no longer keeps a head that no longer fits the card, such as "Skopax resolved #146" on a card that was reopened and is in progress. Every rewrite checks the head; a fresh head that does not fit falls back to the stored one when that still fits (so "alice resolved" stays), else to the head for the card's state.
 - A take written by the system names the owner instead of the product.
 - A failed Slack name lookup while drawing posts no longer stops later lookups.
-- Business route posts (Teams or Slack routes for a team) no longer say or imply that someone is looking into or fixing the problem: the investigator's text says what is happening for users and, when confirmed, whether the cause is ours, an outside provider's or not known yet. When someone took the card, the post adds "Status: Alice is on it" from the card itself.
+- Business route posts no longer say or imply that someone is looking into or fixing the problem: the investigator's text says what is happening for users and, when confirmed, whether the cause is ours, an outside provider's or not known yet. When the confirmed cause is at an outside provider and nothing of ours needs a change, the owning business team gets an action to contact the provider, with what to ask about.
 
 **Changed (investigator tools):**
 
