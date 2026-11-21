@@ -2,6 +2,7 @@ import datetime as dt
 import hashlib
 import json
 import logging
+import re
 import threading
 import time
 import uuid
@@ -9,12 +10,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from skopax import tags
-from skopax.actors import SYSTEM
+from skopax.actors import POD_BY, SYSTEM
 from skopax.cardlink import card_url, chat_url
 from skopax.engine import mute_for, parse_iso, window_text
 from skopax.errkind import kind as error_kind
-from skopax.messages import language
-from skopax.slack import CALL_TIMEOUT_S, POST_ACTIONS, Slack, SlackDown, SlackError, SlackSlowed, anomaly_message, menu_kinds, status_of, stopped_ending, stopped_who
+from skopax.investigator.tools import DRAFT_LIMIT, POST_HEADLINE_LIMIT, draft_problem, post_headline
+from skopax.messages import language, msg
+from skopax.postdeploy import NUMBERS_BY, SERVER_BY
+from skopax.slack import CALL_TIMEOUT_S, POST_ACTIONS, Slack, SlackDown, SlackError, SlackSlowed, anomaly_message, cut_words, menu_kinds, status_of, stopped_ending, stopped_who
 from skopax.store import NotFound, Store, glob_match, iso, utc_now
 
 log = logging.getLogger('skopax.cardposts')
@@ -39,6 +42,13 @@ REDRAW_GAP_S = 1.2
 REDRAW_TRIES = 3
 REDRAW_STALE_S = 300
 CLOSED_KINDS = ('resolved', 'known', 'auto', 'auto_first')
+SERVER_BODIES = (SERVER_BY, NUMBERS_BY)
+SUMMARY_SENTENCES = 2
+SUMMARY_LINE_LIMIT = 300
+SENTENCE_GAP = re.compile(r'(?<=[.!?])\s+')
+NOT_AN_END = re.compile(r'(?:\b(?:e\.g|i\.e|etc|vs|incl|approx)|(?:^|\s)\d{1,2})\.$', re.IGNORECASE)
+NO_THREAD = [None, '', False]
+STAMP_SETTLED_S = 600
 
 
 def auto_head(row: dict):
@@ -118,6 +128,96 @@ def gone_for_good(drawn: dict, now: float) -> bool:
         return True
 
 
+def tame(text) -> str:
+    return ' '.join(str(text or '').replace('<', '\u2039').replace('>', '\u203a').split())
+
+
+def sentences(text: str) -> list[str]:
+    out: list[str] = []
+    for piece in SENTENCE_GAP.split(text):
+        if out and (NOT_AN_END.search(out[-1]) or not piece[:1].isupper()):
+            out[-1] += ' ' + piece
+        elif piece:
+            out.append(piece)
+    return out
+
+
+def passes(text: str, check: Callable[[str], str | None]) -> bool:
+    try:
+        return not check(text)
+    except Exception:
+        return False
+
+
+def recommended_line(card: dict, check: Callable[[str], str | None]) -> str:
+    if card.get('recommendBy') != 'pod' or card.get('recommendFlagged'):
+        return ''
+    first = next((line.strip() for line in str(card.get('recommend') or '').splitlines() if line.strip()), '')
+    return msg('slack.summary.recommended', text=cut_words(tame(first), SUMMARY_LINE_LIMIT)) if first and passes(first, check) else ''
+
+
+def stamp_delivered(p: dict, now: float) -> bool:
+    if 'ok' in p:
+        return bool(p['ok'])
+    try:
+        return parse_iso(str(p.get('at') or '')) <= now - STAMP_SETTLED_S
+    except (TypeError, ValueError):
+        return False
+
+
+def notified_line(card: dict, plugin_name: Callable[[str], str], now: float) -> str:
+    groups: dict[str, list[str]] = {}
+    for p in card.get('teamsPosts') or []:
+        name = tame(p.get('route') if isinstance(p, dict) else '')
+        if name and not p.get('fixed') and stamp_delivered(p, now):
+            routes = groups.setdefault(str(p.get('plugin') or ''), [])
+            if name not in routes:
+                routes.append(name)
+    parts = [', '.join(routes) + (f' ({tame(plugin_name(plugin))})' if plugin else '') for plugin, routes in groups.items()]
+    return msg('slack.summary.notified', routes=cut_words('; '.join(parts), SUMMARY_LINE_LIMIT)) if parts else ''
+
+
+def note_parts(card: dict, check: Callable[[str], str | None]) -> tuple[str, str]:
+    if card.get('noteBy') != 'pod' or card.get('noteFlagged'):
+        return '', ''
+    found = sentences(' '.join(str((card.get('note') or {}).get('text') or '').split()))
+    picked = found[:1 + SUMMARY_SENTENCES] if len(found) > 1 else found
+    if not picked or not passes(' '.join(picked), check):
+        return '', ''
+    if len(picked) == 1:
+        return '', tame(picked[0])
+    return post_headline(cut_words(picked[0], POST_HEADLINE_LIMIT)), tame(' '.join(picked[1:]))
+
+
+def summary_body(card: dict, check: Callable[[str], str | None]) -> dict | None:
+    draft = card.get('slackDraft') or {}
+    if draft.get('notAutoSent') or (card.get('autoSend') or {}).get('holdBy'):
+        return None
+    if draft.get('by') == POD_BY and str(draft.get('text') or '').strip():
+        headline, text = post_headline(draft.get('headline')), str(draft['text']).strip()
+    else:
+        headline, text = note_parts(card, check)
+    if not text:
+        return None
+    line = recommended_line(card, check)
+    room = DRAFT_LIMIT - (len(line) + 1 if line else 0) - SUMMARY_LINE_LIMIT - 40
+    return {'text': '\n'.join([cut_words(text, room)] + ([line] if line else [])), **({'headline': headline} if headline else {}), 'by': POD_BY, 'filled': True}
+
+
+def has_text(body) -> bool:
+    return isinstance(body, dict) and bool(str(body.get('text') or '').strip())
+
+
+def fillable(post: dict) -> bool:
+    if post.get('threadOf') or (post.get('drawn') or {}).get('filled'):
+        return False
+    body = post.get('body') if isinstance(post.get('body'), dict) else {}
+    return not has_text(body) or body.get('by') in SERVER_BODIES
+
+
+def filled_body(post: dict) -> bool:
+    return not post.get('threadOf') and isinstance(post.get('body'), dict) and bool(post['body'].get('filled'))
+
 @dataclass
 class Job:
     match: Callable[[dict, frozenset, str | None], bool]
@@ -129,8 +229,11 @@ class Job:
 class CardPosts:
     def __init__(self, store: Store, slack: Slack, base: str, menu_on: Callable[[], bool] = lambda: False, clock: Callable[[], float] = time.time,
                  timer: Callable[[], float] = time.monotonic, autostart: bool = True, deadline_s: float = BATCH_DEADLINE_S, retry_after_s: float = RETRY_AFTER_S,
-                 pause: Callable[[float], None] = time.sleep, name_of: Callable[[str], str] = lambda email: ''):
+                 pause: Callable[[float], None] = time.sleep, name_of: Callable[[str], str] = lambda email: '', plugin_name: Callable[[str], str] = lambda plugin: plugin,
+                 check: Callable[[], Callable[[str], str | None]] = lambda: draft_problem,
+                 hosts: Callable[[], tuple[str, ...]] = lambda: ()):
         self.store = store
+        self.hosts = hosts
         self.slack = slack
         self.base = base
         self.menu_on = menu_on
@@ -150,6 +253,8 @@ class CardPosts:
         self._tl = threading.local()
         self.pause = pause
         self.name_of = name_of
+        self.plugin_name = plugin_name
+        self.check = check
 
     def after(self, action: dict) -> None:
         kind, pattern = action.get('type'), str(action.get('key') or '')
@@ -201,7 +306,7 @@ class CardPosts:
         def stale(card: dict, keys: frozenset, mute: str | None) -> bool:
             post = card['slackPost']
             drawn = post.get('drawn') or {}
-            return drawn.get('sig') != drawn_sig(card, mute, stopped_who(card, mute, self.name_of)) or fit_head(card, mute, post, post.get('head')) is not None or bool(drawn.get('gone')) or (not ask_of(post) and bool(menu_kinds(card, mute)) and self.menu_on())
+            return drawn.get('sig') != drawn_sig(card, mute, stopped_who(card, mute, self.name_of)) or fit_head(card, mute, post, post.get('head')) is not None or bool(drawn.get('gone')) or (not ask_of(post) and bool(menu_kinds(card, mute)) and self.menu_on()) or self._fill(card, post) is not None or self._renotify(card, post)
         self._add(Job(stale, lambda card: None))
 
     def mute_of(self, key: str) -> str | None:
@@ -234,6 +339,7 @@ class CardPosts:
         except Exception as e:
             log.warning('card posts not rewritten, the cards could not be read: %s', error_kind(e))
             return 0
+        self._checker()
         plan = self._plan(state, jobs)
         started, done = self.timer(), 0
         for index, (card, head, tries, mute) in enumerate(plan):
@@ -359,14 +465,17 @@ class CardPosts:
         ts = post.get('replyTs') if threaded else post['ts']
         if not ts:
             return 0
-        body = post.get('body') if isinstance(post.get('body'), dict) else {}
-        draft = str(body.get('text') or '') or None
+        fill = self._fill(card, post)
+        body = fill or (post.get('body') if isinstance(post.get('body'), dict) else {})
+        filled = bool(fill) or filled_body(post)
+        notified = notified_line(card, self.plugin_name, self.clock()) if filled else ''
+        draft = '\n'.join(t for t in (str(body.get('text') or '').strip() if filled else str(body.get('text') or ''), notified) if t) or None
         shown = card | {'slackDraft': {k: v for k, v in body.items() if k in ('text', 'headline', 'by')}} if draft else card
         try:
             menu, kinds = self._menu(card, ask_of(post), mute)
             message = anomaly_message(shown, card_url(self.base, key, card.get('num')), post.get('by') or SYSTEM, draft, menu, chat_url(self.base, key, card.get('num')),
                                       head=head or post['head'], attribution=None if threaded else self.slack.signature(), mute=mute, kinds=kinds, shots=post.get('screenshots'), base=self.base,
-                                      parent=self._parent(card), who=who)
+                                      parent=self._parent(card), who=who, hosts=self.hosts())
             self.slack.update(post['channel'], ts, message['text'], message['blocks'])
         except SlackDown as e:
             self._tl.slow = e.wait if isinstance(e, SlackSlowed) else 0.0
@@ -385,12 +494,35 @@ class CardPosts:
         except Exception as e:
             log.warning('the Slack post of %s was not rewritten: %s', key, error_kind(e))
             return 0
+        stored = False
+        if fill:
+            try:
+                stored = self.store.slack_post_body(key, post['ts'], fill, SERVER_BODIES, NO_THREAD)
+            except Exception as e:
+                log.warning('the summary on the Slack post of %s was not stored: %s', key, error_kind(e))
         try:
-            self.store.slack_post_drawn(key, post['ts'], {'sig': drawn_sig(card, mute, who), 'at': iso(utc_now()), **({'menu': menu} if menu else {})})
+            marks = ({'filled': True} if stored or (post.get('drawn') or {}).get('filled') else {}) | ({'notified': notified} if filled else {})
+            self.store.slack_post_drawn(key, post['ts'], {'sig': drawn_sig(card, mute, who), 'at': iso(utc_now()), **({'menu': menu} if menu else {}), **marks})
         except Exception as e:
             log.warning('the Slack post of %s was rewritten but not recorded: %s', key, error_kind(e))
         log.info('Slack post of %s rewritten in place: %s', key, (head or post['head']).get('kind'))
         return 1
+
+    def _checker(self) -> Callable[[str], str | None]:
+        try:
+            self._tl.check = self.check()
+        except Exception as e:
+            log.warning('the link rules for Slack post summaries could not be read: %s', error_kind(e))
+            self._tl.check = lambda text: 'the link rules could not be read'
+        return self._tl.check
+
+    def _fill(self, card: dict, post: dict) -> dict | None:
+        if not fillable(post):
+            return None
+        return summary_body(card, getattr(self._tl, 'check', None) or self._checker())
+
+    def _renotify(self, card: dict, post: dict) -> bool:
+        return filled_body(post) and notified_line(card, self.plugin_name, self.clock()) != (post.get('drawn') or {}).get('notified', '')
 
 
     def redraw_status(self) -> dict:
@@ -425,6 +557,7 @@ class CardPosts:
         try:
             if not self.slack.enabled:
                 return self._redraw_end(holder, 0, 0, 'off')
+            self._checker()
             state = self.store.load()
             now = self.clock()
             rows = []
@@ -464,7 +597,7 @@ class CardPosts:
             return 0
         mute = mute_kind(mute_for(state, key, now))
         head = fit_head(card, mute, post, post.get('head'))
-        if stale_only and head is None and (post.get('drawn') or {}).get('sig') == drawn_sig(card, mute, stopped_who(card, mute, self.name_of)):
+        if stale_only and head is None and (post.get('drawn') or {}).get('sig') == drawn_sig(card, mute, stopped_who(card, mute, self.name_of)) and self._fill(card, post) is None and not self._renotify(card, post):
             return 0
         for attempt in range(REDRAW_TRIES):
             self._tl.slow = 0.0

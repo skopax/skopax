@@ -1,7 +1,7 @@
 var OPENK = {};
 var SEEN_END = {handled: 'resolved', fixed: 'resolved', duplicate: 'resolved', 'auto-resolved': 'auto-resolved', progress: 'In progress', muted: 'muted', known: 'marked known noise', cleared: 'cleared, nobody acted', open: 'still open'};
 var CARD_RUNS = {}, RUNS_TTL = 60000, RUNS_LIMIT = 10, SHOT_KEEP_DAYS = 30, SHOT_SEEN = {};
-var RUN_TRIGGER = {cards: 'Investigate (auto)', action: 'Investigate', slack: 'Slack ask', ask: 'Page ask', assess: 'Report assessment'};
+var RUN_TRIGGER = {cards: 'Investigate (auto)', action: 'Investigate', slack: 'Slack request', ask: 'Page request', assess: 'Report assessment'};
 var CARD_ASK = {}, ASK_TEXT = {}, ASK_POLL_MS = 15000, ASK_WAIT_MS = 600000;
 var ASK_IN_TIP = 'One question about this card: it opens a private chat with the card attached and this question as the first message, answered from the connected integrations, such as prod logs, metrics, code and tickets.';
 var ASK_GO_TIP = 'Opens a private chat about this card with this question; it counts toward your chat messages per day';
@@ -195,7 +195,7 @@ function bizHtml(a, i) {
     '<button type="button" class="btn sec small op-btn biz-edit" data-tip="' + esc(editTip) + '" title="' + esc(editTip) + '"' + (n.button ? '' : ' hidden') + '>' + esc(n.button) + '</button></div>' +
     '<p class="biz-why"' + (b.text && b.why ? '' : ' hidden') + '><b>Why:</b> ' + esc(b.why || '') + '</p>' +
     '<p class="biz-txt' + (b.text ? '' : ' muted') + (n.hint ? ' biz-hint' : '') + '">' + (b.text ? '<b>' + bizLead(b) + ':</b> ' + esc(b.text) : esc(n.empty)) + '</p>' +
-    '<div class="reason biz-form" hidden><textarea id="biz-' + i + '" maxlength="500" rows="2" aria-label="What we recommend the business team does, for ' + esc(a.svc + ' ' + a.label) + '" placeholder="Recommended: a recommendation, e.g. we recommend changing the product page title back to Garden Chairs. Empty and Save removes it.">' + esc(b.text || '') + '</textarea>' +
+    '<div class="reason biz-form" hidden><textarea id="biz-' + i + '" maxlength="500" rows="2" aria-label="What we recommend the business team does, for ' + esc(svcName(a) + ' ' + a.label) + '" placeholder="Recommended: a recommendation, e.g. we recommend changing the product page title back to Garden Chairs. Empty and Save removes it.">' + esc(b.text || '') + '</textarea>' +
     '<input type="text" class="biz-why-in" maxlength="300" aria-label="Why, in business terms" placeholder="Why, shown first: what users see or lose" value="' + esc(b.why || '') + '">' +
     '<select class="biz-kind" aria-label="Action or information" title="Recommended: we recommend the team changes something itself. Info: the team only needs to know, engineering fixes it."><option value="action"' + (b.kind === 'info' ? '' : ' selected') + '>Recommended: they act</option><option value="info"' + (b.kind === 'info' ? ' selected' : '') + '>Info: they only need to know</option></select>' +
     '<button type="button" class="btn small op-btn biz-save">Save</button><button type="button" class="btn sec small biz-cancel">Cancel</button></div></div></section>';
@@ -243,13 +243,13 @@ function askWaitHtml(key) {
   var p = CARD_ASK[key], i = window.INV_INFO || {};
   if (!p || askRun(key)) return '';
   var st = p.ended ? p.ended.status : p.expired ? 'expired' : 'waiting';
-  var note = st === 'done' ? p.ended.result : st === 'failed' ? 'The ask failed: ' + (p.ended.result || 'see History') : st === 'cancelled' ? 'Cancelled before the investigator took it.'
+  var note = st === 'done' ? p.ended.result : st === 'failed' ? 'The request failed: ' + (p.ended.result || 'see History') : st === 'cancelled' ? 'Cancelled before the investigator took it.'
     : st === 'expired' ? 'No answer after 10 minutes. The investigator may be stopped or busy; open the card again later to look.'
     : i.stopped ? 'Asked by you · the investigator is stopped and picks it up once resumed'
     : i.cap && i.spentToday >= i.cap ? 'Asked by you · the investigator reached today’s ' + usdText(i.cap) + ' cap and picks it up after midnight (' + (SERVER_TZ || 'server time') + ')'
     : 'Asked by you · the investigator picks it up within about 2 minutes';
   var tag = {done: ['k-info', 'small talk'], failed: ['k-crit', 'failed'], cancelled: ['k-muted', 'cancelled'], expired: ['k-muted', 'no answer yet'], waiting: ['k-info', 'waiting']}[st];
-  return '<li class="ask-wait' + (st === 'done' ? ' talk' : '') + '"><span class="rt">' + esc(dayhm(p.at)) + '</span><b>Page ask</b><span class="tag ' + tag[0] + '">' + tag[1] + '</span>' +
+  return '<li class="ask-wait' + (st === 'done' ? ' talk' : '') + '"><span class="rt">' + esc(dayhm(p.at)) + '</span><b>Page request</b><span class="tag ' + tag[0] + '">' + tag[1] + '</span>' +
     '<span class="rl">' + esc(p.text) + '</span><span class="ra">' + esc(note) + '</span></li>';
 }
 function askStatus(list) {
@@ -318,7 +318,7 @@ function askBoxHtml(a, i) {
   var info = window.INV_INFO;
   if (!info || !info.mode || info.mode === 'off') return '';
   var s = ASK_TEXT[a.key] || {};
-  return '<div class="reason card-ask"><input type="text" id="cask-' + i + '" class="op-in" maxlength="' + ASK_MAX + '" placeholder="Ask about this card" aria-label="' + esc('Ask the investigator about ' + a.svc + ' ' + a.label) + '" data-tip="' + esc(ASK_IN_TIP) + '" title="' + esc(ASK_IN_TIP) + '" value="' + esc(s.text || '') + '">' +
+  return '<div class="reason card-ask"><input type="text" id="cask-' + i + '" class="op-in" maxlength="' + ASK_MAX + '" placeholder="Ask about this card" aria-label="' + esc('Ask the investigator about ' + svcName(a) + ' ' + a.label) + '" data-tip="' + esc(ASK_IN_TIP) + '" title="' + esc(ASK_IN_TIP) + '" value="' + esc(s.text || '') + '">' +
     '<button type="button" class="btn small op-btn ask-go" data-tip="' + esc(ASK_GO_TIP) + '" title="' + esc(ASK_GO_TIP) + '"' + (s.sending ? ' disabled' : '') + '>' + (s.sending ? 'Sending…' : 'Ask') + '</button>' +
     '<p class="cask-err" role="alert"' + (s.err ? '' : ' hidden') + '>' + esc(s.err || '') + '</p></div>';
 }
@@ -444,7 +444,7 @@ function body(a, recShown, i) {
   var kids = (KIDS[a.key] || []).map(function (c) {
     var ck = (SEV[c.sev] || SEV.info)[1];
     var said = c.business && c.business.text ? '<span class="kid-todo"><b>' + bizLead(c.business) + ':</b> ' + esc(c.business.text) + '</span>' : '';
-    return '<li class="' + ck + '"><div class="k1">' + sev(c.sev) + '<b>' + esc(c.svc) + '</b><span>' + esc(c.label) + (c.sub ? ' \u00b7 ' + esc(c.sub) : '') + '</span>' + numLink(c) + pageLink(c) + (c.status === 'cleared' ? '<span class="tag plain">' + (eventCause(c) ? 'stopped after the event' : 'stopped firing') + '</span>' : '') + '</div>' +
+    return '<li class="' + ck + '"><div class="k1">' + sev(c.sev) + '<b>' + esc(svcName(c)) + '</b><span>' + esc(c.label) + (c.sub ? ' \u00b7 ' + esc(c.sub) : '') + '</span>' + numLink(c) + pageLink(c) + (c.status === 'cleared' ? '<span class="tag plain">' + (eventCause(c) ? 'stopped after the event' : 'stopped firing') + '</span>' : '') + '</div>' +
       (c.what ? '<span class="kid-what">' + linkify(c.what) + '</span>' : '') + said +
       '<span class="kv">now <b>' + num(c.now, c.unit) + '</b> · 1 d ' + num(c.d1, c.unit) + ' · 7 d ' + num(c.d7, c.unit) + '</span>' + linksHtml(c.links, 2) + '<span class="keyline">' + esc(c.key) + '</span></li>';
   }).join('');
@@ -551,10 +551,10 @@ function anomCard(a, i) {
     '<span>now <b>' + num(a.now, a.unit) + '</b></span><span>1 d ' + num(a.d1, a.unit) + '</span><span>7 d ' + num(a.d7, a.unit) + '</span>') +
     '<span class="ch">' + esc(change(a)) + '</span><span class="when">' + esc(when) + '</span>' + (ctx ? '<span>' + esc(ctx) + '</span>' : '') + usd;
   var recShown = isOpen && !!a.recommend;
-  var name = a.svc + ' / ' + a.label;
+  var name = svcName(a) + ' / ' + a.label;
   card.innerHTML = '<div class="inc-head"><div class="inc-title">' +
     '<span class="c c-num">' + numLink(a) + '</span><span class="c c-sev">' + sev(a.sev) + '</span>' +
-    '<span class="c c-name"><h4><button type="button" class="fold" aria-expanded="false" aria-controls="more-' + i + '" title="' + esc(name) + '"><span class="svc">' + esc(a.svc) + '</span><span class="sep">/</span><span class="sig">' + esc(cardTitle(a) || a.label) + '</span></button></h4>' + pageLink(a) + '</span>' +
+    '<span class="c c-name"><h4><button type="button" class="fold" aria-expanded="false" aria-controls="more-' + i + '" title="' + esc(name) + '"><span class="svc">' + esc(svcName(a)) + '</span><span class="sep">/</span><span class="sig">' + esc(cardTitle(a) || a.label) + '</span></button></h4>' + pageLink(a) + '</span>' +
     '<span class="c c-status">' + (tags.row || statusTag(a)) + '</span><span class="c c-asg">' + asgTag(a) + '</span><span class="c c-tags">' + bizTags(a) + '</span>' +
     '<span class="c c-chg"><span class="chg">' + esc(change(a)) + '</span></span><span class="c c-age" title="' + esc(when) + '">' + esc(ageShort(a.firstSeen)) + '</span></div>' +
     runBanner(a.key) + '<div class="acts" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div></div>' +
@@ -575,7 +575,7 @@ var CARD_TAB = {}, CARD_HIST = {}, HIST_TTL = 30000;
 function tabsHtml(a, i) {
   var h = CARD_TAB[a.key] === 'history';
   var tab = function (id, label, on) { return '<button type="button" class="cd-tab" role="tab" id="cdt-' + id + '-' + i + '" aria-controls="cdp-' + id + '-' + i + '" aria-selected="' + on + '" tabindex="' + (on ? 0 : -1) + '" data-tab="' + (id === 'h' ? 'history' : 'details') + '">' + label + '</button>'; };
-  return '<div class="cd-tabs" role="tablist" aria-label="' + esc('Card ' + (a.num ? '#' + a.num : a.svc)) + '">' + tab('d', 'Details', !h) + tab('h', 'History', h) + '</div>';
+  return '<div class="cd-tabs" role="tablist" aria-label="' + esc('Card ' + (a.num ? '#' + a.num : svcName(a))) + '">' + tab('d', 'Details', !h) + tab('h', 'History', h) + '</div>';
 }
 function histPane(a, i) {
   var h = CARD_TAB[a.key] === 'history';
@@ -658,7 +658,7 @@ function boardColumn(a) {
 function boardState(a) {
   var t = '';
   if (TRI[a.triage] && (a.triage === 'investigating' || a.triage === 'dived')) t += '<span class="tag ' + TRI[a.triage][1] + (a.triage === 'investigating' ? ' tri-inv' : '') + '" title="' + esc(a.triage === 'dived' ? 'Investigated; nobody acted on it yet' : 'The investigator is on it') + '">' + (a.triage === 'investigating' ? runIndHtml(runFor(a.key)) : '') + esc(TRI[a.triage][0]) + '</span>';
-  if (a.status === 'cleared' && stale.indexOf(a) >= 0) t += '<span class="tag k-crit" title="' + esc((eventCause(a) ? 'Stopped after the event ' : 'Stopped firing ') + daytime(a.clearedAt) + ', nobody acted yet: waiting to be addressed') + '">' + esc(clearedWord(a) + ' ' + daytime(a.clearedAt)) + '</span>';
+  if (a.status === 'cleared' && stale.indexOf(a) >= 0) t += '<span class="tag k-cleared" title="' + esc(clearedWord(a) + ' ' + daytime(a.clearedAt)) + '">' + esc(clearedWord(a, true) + ' ' + daytime(a.clearedAt)) + '</span>';
   return t;
 }
 function setCardView(v) {
@@ -692,6 +692,7 @@ function businessTitle(a) {
   if (a.svc && first.startsWith(a.svc)) first = first.slice(a.svc.length).replace(/^\s*(?::|-)\s*/i, '');
   return cut((a.business.kind === 'info' ? '' : 'Recommended: ') + first, TITLE_MAX);
 }
+function svcLabel(a) { var s = svcName(a), l = svcReal(a.label); return l && l !== s ? s + ' \u00b7 ' + l : s; }
 function cardTitle(a) { return businessTitle(a) || patternTitle(a) || ''; }
 function tileSvg(body) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + body + '</svg>'; }
 var TILE_MOVES = [
@@ -748,12 +749,12 @@ function tile(a) {
   b.dataset.key = a.key;
   var lock = window.__boardLock ? window.__boardLock() : 'Log in to move cards';
   b.draggable = !lock && !tileBusy(a.key);
-  var where = a.cluster ? ' \u00b7 instance ' + a.cluster : '';
-  b.title = a.svc + ' / ' + a.label + where + (a.num ? ' \u00b7 #' + a.num : '') + ' \u00b7 opens the card' + (lock ? '' : '; drag it to another column to change its status');
+  var where = a.cluster && !svcFromCluster(a) ? ' \u00b7 instance ' + a.cluster : '';
+  b.title = svcName(a) + ' / ' + a.label + where + (a.num ? ' \u00b7 #' + a.num : '') + ' \u00b7 opens the card' + (lock ? '' : '; drag it to another column to change its status');
   var who = a.owner ? '<span class="tile-asg" role="img" aria-label="' + esc('Assignee: ' + ownerName(a.owner)) + '" title="' + esc('Assigned to ' + a.owner) + '">' + esc(ownerName(a.owner).split(/[._-]/).map(function (p) { return p.charAt(0); }).join('').slice(0, 2).toUpperCase()) + '</span>' : '';
   b.innerHTML = '<span class="tile-top">' + sev(a.sev) + (a.num ? '<span class="tile-num">#' + esc(a.num) + '</span>' : '') + '<span class="tile-age">' + esc(ageShort(a.firstSeen)) + '</span></span>' +
-    '<button type="button" class="tile-open" aria-haspopup="dialog"><span class="sr"><span>' + esc((SEV[a.sev] || [a.sev])[0]) + '</span>, ' + (a.num ? '<span>#' + esc(a.num) + '</span>, ' : '') + '<span class="tile-age-sr">' + esc(ageShort(a.firstSeen)) + '</span>, </span>' + (cardTitle(a) ? '<span class="tile-svc tile-title">' + esc(cardTitle(a)) + '</span><span class="tile-sig">' + esc(a.svc + ' \u00b7 ' + a.label + where) + '</span>'
-      : '<span class="tile-svc">' + esc(a.svc) + '</span><span class="tile-sig">' + esc(a.label + where) + '</span>') + '</button>' +
+    '<button type="button" class="tile-open" aria-haspopup="dialog"><span class="sr"><span>' + esc((SEV[a.sev] || [a.sev])[0]) + '</span>, ' + (a.num ? '<span>#' + esc(a.num) + '</span>, ' : '') + '<span class="tile-age-sr">' + esc(ageShort(a.firstSeen)) + '</span>, </span>' + (cardTitle(a) ? '<span class="tile-svc tile-title">' + esc(cardTitle(a)) + '</span><span class="tile-sig">' + esc(svcLabel(a) + where) + '</span>'
+      : '<span class="tile-svc">' + esc(svcName(a)) + '</span>' + (svcReal(a.label) && svcReal(a.label) !== svcName(a) ? '<span class="tile-sig">' + esc(a.label + where) + '</span>' : where ? '<span class="tile-sig">' + esc(where.slice(3)) + '</span>' : '')) + '</button>' +
     '<span class="tile-foot">' + (boardColumn(a) === 'open' ? boardState(a) : '') + bizTags(a) + (draftOf(a) && !draftSent(a) ? '<span class="tag k-act">Slack draft</span>' : '') + (recurs(a) ? '<span class="tag k-warn">Recurring</span>' : '') + '</span>' + tileActs(a, lock, who);
   var row = b.querySelector('.tile-acts');
   row.addEventListener('click', function (e) {
@@ -795,7 +796,7 @@ function landsIn(a) {
   return a.status === 'open' || (a.status === 'cleared' && (a.sev === 'warn' || a.sev === 'crit')) ? 'open' : null;
 }
 function moveSteps(a, to) {
-  var from = boardColumn(a), name = a.svc + ' ' + a.label, base = {target: a.key, key: a.key};
+  var from = boardColumn(a), name = svcName(a) + ' ' + a.label, base = {target: a.key, key: a.key};
   if (!a || from === to) return null;
   var un = a.muted ? [Object.assign({type: 'unmute', label: 'Unmute ' + name}, base)] : [];
   if (to === 'open') return (a.muted || a.triage) && landsIn(a) === to ? [Object.assign({type: 'reopen', label: 'Reopen ' + name}, base)] : null;
@@ -811,12 +812,12 @@ function boardNote(text, bad) {
   n.className = 'board-note' + (bad ? ' bad' : '');
 }
 async function dropOn(a, to) {
-  var steps = moveSteps(a, to), name = (a.num ? '#' + a.num + ' ' : '') + a.svc + ' ' + a.label;
+  var steps = moveSteps(a, to), name = (a.num ? '#' + a.num + ' ' : '') + svcName(a) + ' ' + a.label;
   if (!steps) return;
   if (steps === 'ask') {
     var got = to === 'done' ? await resolveDialog(a) : await muteDialog(a);
     if (!got) return;
-    steps = (to === 'done' && a.muted ? [{type: 'unmute', label: 'Unmute ' + a.svc + ' ' + a.label, target: a.key, key: a.key}] : []).concat([Object.assign({target: a.key, key: a.key}, got)]);
+    steps = (to === 'done' && a.muted ? [{type: 'unmute', label: 'Unmute ' + svcName(a) + ' ' + a.label, target: a.key, key: a.key}] : []).concat([Object.assign({target: a.key, key: a.key}, got)]);
   }
   if (!window.__boardMove) return;
   boardNote('Moving ' + name + '…');
@@ -830,7 +831,7 @@ async function dropOn(a, to) {
 }
 function muteDialog(a) {
   return new Promise(function (resolve) {
-    var name = a.svc + ' / ' + a.label;
+    var name = svcName(a) + ' / ' + a.label;
     var wrap = el('div', 'modal-wrap mute-pick');
     wrap.innerHTML = '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mp-title"><h2 id="mp-title">Mute ' + esc(name) + '</h2>' +
       '<p>For how long? A mute stops pushes; the card stays on the page.</p><div class="mp-opts" role="radiogroup" aria-label="Mute for">' +
@@ -848,8 +849,8 @@ function muteDialog(a) {
     wrap.addEventListener('click', function (e) { if (e.target === wrap) close(null); });
     wrap.querySelector('.mp-yes').addEventListener('click', function () {
       var v = pick();
-      close(v === 'known' ? {type: 'known', reason: why.value.trim() || 'marked as known noise on the board', label: 'Known noise: ' + a.svc + ' ' + a.label}
-        : {type: 'mute', hours: +v, label: 'Mute ' + a.svc + ' ' + a.label + (v === '24' ? ' for 24 h' : ' for 1 week')});
+      close(v === 'known' ? {type: 'known', reason: why.value.trim() || 'marked as known noise on the board', label: 'Known noise: ' + svcName(a) + ' ' + a.label}
+        : {type: 'mute', hours: +v, label: 'Mute ' + svcName(a) + ' ' + a.label + (v === '24' ? ' for 24 h' : ' for 1 week')});
     });
     document.addEventListener('keydown', onKey);
     wrap.querySelector('input[name="mp"]:checked').focus();
@@ -857,7 +858,7 @@ function muteDialog(a) {
 }
 function resolveDialog(a) {
   return new Promise(function (resolve) {
-    var name = a.svc + ' / ' + a.label, picked = 'fixed';
+    var name = svcName(a) + ' / ' + a.label, picked = 'fixed';
     var wrap = el('div', 'modal-wrap resolve-pick');
     wrap.innerHTML = '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="rp-title"><h2 id="rp-title">Resolve ' + esc(name) + '</h2>' +
       '<p>How was it resolved?</p><div class="rp-opts"></div>' +
@@ -880,7 +881,7 @@ function resolveDialog(a) {
     wrap.querySelector('.rp-yes').addEventListener('click', function () {
       var ref = dup.value.trim();
       if (picked === 'duplicate' && !ref) { dup.setAttribute('aria-invalid', 'true'); dup.focus(); return; }
-      close(resolveBody(picked, why.value.trim(), ref, a.svc + ' ' + a.label));
+      close(resolveBody(picked, why.value.trim(), ref, svcName(a) + ' ' + a.label));
     });
     document.addEventListener('keydown', onKey);
     wrap.querySelector('.res-kind[aria-pressed="true"]').focus();
@@ -1051,7 +1052,7 @@ function openDrawer(key, quiet) {
   wrap.dataset.sig = cardSig(a);
   wrap.setAttribute('role', 'dialog');
   wrap.setAttribute('aria-modal', 'true');
-  wrap.setAttribute('aria-label', a.svc + ' / ' + a.label);
+  wrap.setAttribute('aria-label', svcName(a) + ' / ' + a.label);
   wrap.innerHTML = '<div class="cd-backdrop"></div><div class="cd-panel"><div class="cd-bar"><span class="cd-t">' + (a.num ? 'Card #' + esc(a.num) : 'Card') + '</span>' +
     (a.num ? '<a class="cd-link" href="/c/' + esc(a.num) + '" target="_blank" rel="noopener">Open alone ↗</a>' : '') + '<button type="button" class="btn sec small cd-close">Close</button></div></div>';
   var card = anomCard(a, CARDS.indexOf(a));
@@ -1074,7 +1075,7 @@ function refreshDrawer(wrap, a, root) {
   if (held) panel.replaceChild(card, held); else panel.appendChild(card);
   cardOpen(card, true);
   wrap.dataset.sig = sig;
-  wrap.setAttribute('aria-label', a.svc + ' / ' + a.label);
+  wrap.setAttribute('aria-label', svcName(a) + ' / ' + a.label);
   panel.scrollTop = at;
   if (window.__skopaxRender) window.__skopaxRender();
 }
@@ -1112,7 +1113,7 @@ function toastBox() {
 function hiddenToast(key) {
   var a = CARDS.filter(function (x) { return x.key === key; })[0], box = toastBox();
   var col = a && BOARD_COLS.filter(function (c) { return c[0] === boardColumn(a); })[0];
-  var name = a && a.num ? '#' + a.num : a ? a.svc + ' / ' + a.label : key;
+  var name = a && a.num ? '#' + a.num : a ? svcName(a) + ' / ' + a.label : key;
   var t = el('div', 'toast', '<span class="toast-t">' + esc(name + ' moved to ' + (col ? col[1] : 'Closed') + ' \u00b7 hidden by the current filter') + '</span>' +
     '<span class="toast-acts"><button type="button" class="btn sec small toast-view">View card</button><button type="button" class="btn sec small toast-clear">Clear filter</button>' +
     '<button type="button" class="toast-x" aria-label="Dismiss" title="Dismiss">\u00d7</button></span>');

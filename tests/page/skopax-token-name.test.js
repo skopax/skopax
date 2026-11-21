@@ -73,7 +73,7 @@ async function actionsMadeWithTheApiTokenReadAsInvestigatorOnTheInvestigatorTabA
   const person = await bootCard('alice@example.com');
 
   //when
-  const waits = [...page.doc.querySelectorAll('#inv .inv-wait .inv-meta')].map((m) => m.textContent.split(' · ')[1]);
+  const waits = [...page.doc.querySelectorAll('#inv .inv-wait .inv-meta')].map((m) => m.textContent.split(' \u00b7 ')[1]);
   const asked = page.doc.querySelector('#inv .inv-room .inv-meta').textContent;
 
   //then

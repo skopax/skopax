@@ -67,10 +67,10 @@ async function theAssignNoteStaysAfterARepaintAndTheNotifyRowKeepsTheSlackLine()
 
   //then
   assert.deepStrictEqual(calls, [{key: KEY, name: 'Zoe Lane', email: null}]);
-  assert.strictEqual(said, 'Assigned to Zoe Lane · no Slack account found for them, not messaged');
+  assert.strictEqual(said, 'Assigned to Zoe Lane \u00b7 no Slack account found for them, not messaged');
   assert.strictEqual(card().querySelector('.asg-msg').textContent, said, 'the note on the Assign row survives the next render');
   assert.ok(!card().querySelector('.asg-msg').classList.contains('slack-st'), 'the note is not a Slack status line');
-  assert.strictEqual(before, 'Sent to Slack ' + w.dayhm(POSTED) + ' ↗ · nina.white');
+  assert.strictEqual(before, 'Sent to Slack ' + w.dayhm(POSTED) + ' \u2197 \u00b7 nina.white');
   assert.strictEqual(notify().textContent, before, 'the Slack line stays in the Notify row');
   assert.strictEqual(notify().querySelector('a').getAttribute('href'), SLACK);
   assert.deepStrictEqual(errors, []);

@@ -280,7 +280,11 @@ async function takeReticketsAnInProgressCardAndResolveMarksItDone() {
   assert.deepStrictEqual(takeBody, {type: 'take', target: K, key: K, ticket: 'WEB-95', reason: 'nonce fix shipped in WEB-95', label: 'Take web-bff integrity off with WEB-95'});
   assert.deepStrictEqual(bodies[bodies.length - 1], {type: 'resolve', target: K, key: K, kind: 'fixed', reason: 'done', label: 'Resolve web-bff integrity off (fixed)'}, 'Resolve sends Fixed unless another kind is picked');
   assert.ok(!icon(handled, 'Resolve') && !icon(handled, 'Start progress'), 'an Action-taken card has neither Take nor Resolve');
-  assert.ok(icon(progress, 'Group') && progress.querySelector('select[id^="parent-"] option[value="' + KEY + '"]'), 'Group offers the other open cards as parent');
+  const combo = progress.querySelector('input[id^="parent-"]');
+  icon(progress, 'Group').click();
+  combo.dispatchEvent(new dom.window.Event('focus'));
+  const offered = [...dom.window.document.getElementById(combo.getAttribute('aria-controls')).querySelectorAll('[role="option"]')].map((r) => r.dataset.key);
+  assert.ok(icon(progress, 'Group') && offered.includes(KEY), 'Group offers the other open cards as parent');
   assert.ok(progress.querySelector('.notif .slack-btn') && !progress.querySelector('.acts .slack-btn') && progress.querySelector('.notif .nl').textContent === 'Notify', 'Send to Slack sits in the Notify strip, not in the action row');
   dom.window.close();
   console.log('PASS Take re-tickets an In-progress card with the ticket prefilled, Resolve marks it No action needed, Group lists the other open cards, and the Slack buttons live in the Notify strip');
@@ -426,7 +430,7 @@ async function aSlackAskRowShowsTheAskerAndTheThreadLink() {
   const good = rows.find((li) => li.textContent.includes('Why did it go up?'));
   const bad = rows.find((li) => li.textContent.includes('Bad link'));
   //then
-  assert.ok(good && good.textContent.includes('Slack ask by adam.baker: Why did it go up?'), good && good.textContent);
+  assert.ok(good && good.textContent.includes('Slack request by adam.baker: Why did it go up?'), good && good.textContent);
   assert.strictEqual(good.querySelector('a').getAttribute('href'), 'https://example.slack.com/archives/C1/p1792224000000200');
   assert.ok(bad && !bad.querySelector('summary a'), 'only https Slack links are rendered');
   RUNS.splice(RUNS.length - 2, 2);

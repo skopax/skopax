@@ -46,7 +46,7 @@ async function onlyConfiguredProjectKeysBecomeLinks() {
   const without = bare.w.jiraLinks(text);
 
   //then
-  assert.strictEqual(withProjects, 'CVE-2024-1234 and SHA-256 and <a href="https://jira.example.com/browse/OPS-12" target="_blank" rel="noopener">OPS-12 ↗</a>');
+  assert.strictEqual(withProjects, 'CVE-2024-1234 and SHA-256 and <a href="https://jira.example.com/browse/OPS-12" target="_blank" rel="noopener">OPS-12 \u2197</a>');
   assert.strictEqual(without, text);
   assert.deepStrictEqual(configured.errors.concat(bare.errors), []);
   configured.w.close();

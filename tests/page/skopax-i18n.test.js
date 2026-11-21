@@ -47,7 +47,7 @@ async function boot(lang, pack, navLang) {
 }
 
 const cardOf = (doc, k) => doc.querySelector('#anoms article.inc[data-key="' + k + '"]');
-const tabText = (doc, id) => doc.getElementById('tab-' + id).textContent.replace(/[\d+–\s]+$/, '').trim();
+const tabText = (doc, id) => doc.getElementById('tab-' + id).textContent.replace(/[\d+\u2013\s]+$/, '').trim();
 
 async function englishAndAutoOnAnEnglishBrowserChangeNothing() {
   //given

@@ -121,7 +121,7 @@ function closedRow(r) {
   var row = el('div', 'cl-row ' + k);
   row.dataset.key = r.key || '';
   var num = r.num ? '<a href="/c/' + encodeURIComponent(r.num) + '" title="Opens the card page">#' + esc(r.num) + '</a>' : '<span class="muted">–</span>';
-  var main = '<span class="cl-svc">' + esc(r.svc || '?') + '</span><span class="cl-lbl">' + esc(r.label || r.key || '') + (r.sub ? ' · ' + esc(r.sub) : '') + '</span>' +
+  var main = '<span class="cl-svc">' + esc(svcName(r)) + '</span><span class="cl-lbl">' + esc(r.label || r.key || '') + (r.sub ? ' · ' + esc(r.sub) : '') + '</span>' +
     (r.note || r.muted ? '<span class="cl-note muted" data-no-tx>' + esc(r.note || r.muted) + '</span>' : '');
   var how = outcomeHtml(r.outcome, r.resolution), res = resolutionOf(r);
   var out = '<span class="tag ' + (how ? 'k-good res-tag' : o[2]) + '">' + (how || esc(o[1])) + '</span>' +

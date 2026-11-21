@@ -29,6 +29,8 @@ MESSAGES: dict[str, str] = {
     'slack.sender.server': '{product} \u00b7 auto-sent',
     'settings.slack_bot_missing': 'the {product} bot is not in #{channel}: invite it there first',
     'slack.sent_from': 'Sent from {product} by {sender}',
+    'slack.summary.recommended': 'Recommended: {text}',
+    'slack.summary.notified': 'Notified: {routes}',
     'page.off_topic': 'Only questions about {product} and {about}: {reason}',
     'review.dm': '*{product} self-review \u00b7 {when}*\n{text}\n<{link}|Open in {product}>',
     'setup.announce': '{product} setup: open {url}/setup and enter the code {code}',

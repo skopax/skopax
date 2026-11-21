@@ -55,7 +55,7 @@ async function theHistoryRunListAsksTheServerToLeaveChatRunsOut() {
   //then
   assert.ok(asked.length && asked.every((p) => p.includes('chats=false')), asked.join(' | '));
   assert.strictEqual(rows(doc).length, 2, 'the card run and the page ask');
-  assert.ok(rows(doc)[0].textContent.includes('checkout-service') && rows(doc)[1].textContent.includes('Ask by nina.white@example.com: Why is it slow?'));
+  assert.ok(rows(doc)[0].textContent.includes('checkout-service') && rows(doc)[1].textContent.includes('Request by nina.white@example.com: Why is it slow?'));
   assert.strictEqual(doc.getElementById('hist-runs-n').textContent, '2');
   assert.deepStrictEqual(errors, []);
   w.close();
@@ -76,7 +76,7 @@ async function aChatRunThatStillArrivesReadsAsAPrivateChatMessage() {
   assert.deepStrictEqual(chats, ['private chat message', 'private chat message']);
   assert.ok(list.slice(0, 2).every((li) => !li.querySelector('.hbody p:not(.hmeta)')), 'no answer line on a private chat run');
   assert.ok(!/an operator|No answer text|Working on it/.test(text), 'no empty operator ask and no blank answer: ' + text);
-  assert.ok(list[3].textContent.includes('Ask by nina.white@example.com: Why is it slow?'));
+  assert.ok(list[3].textContent.includes('Request by nina.white@example.com: Why is it slow?'));
   assert.deepStrictEqual(errors, []);
   w.close();
   console.log('PASS a chat run that still arrives reads as a private chat message with no answer line, not as an empty operator ask');

@@ -94,8 +94,8 @@ async function theBoardTileSaysTheCardStoppedAfterTheEvent() {
 
   //then
   assert.ok(tags(EVENT)[0].startsWith('Stopped after the event '), 'the waiting event tile: ' + tags(EVENT).join(' | '));
-  assert.ok(tile(EVENT).querySelector('.tile-foot .tag.k-crit').title.startsWith('Stopped after the event ' ), 'its tip says so too');
-  assert.ok(tags(PLAIN)[0].startsWith('Stopped firing \u00b7 unassigned '), 'a plain waiting tile still reads Stopped firing \u00b7 unassigned');
+  assert.ok(tile(EVENT).querySelector('.tile-foot .tag.k-cleared').title.startsWith('Stopped after the event \u00b7 unassigned '), 'its tip says so too');
+  assert.ok(/^Stopped firing \d/.test(tags(PLAIN)[0]), 'a plain waiting tile reads the short Stopped firing: ' + tags(PLAIN)[0]);
   assert.deepStrictEqual(errors, []);
   w.close();
   console.log('PASS a waiting tile on the board reads Stopped after the event when the investigator tied it to one');

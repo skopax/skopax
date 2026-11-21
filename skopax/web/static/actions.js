@@ -248,10 +248,14 @@ async function initActions() {
     var headers = {'Accept': 'application/json'};
     if (method !== 'GET' && body && typeof watchHide === 'function') watchHide(body.key || body.target);
     if (body !== undefined) headers['Content-Type'] = 'application/json';
-    var r = await fetch(path, {method: method, headers: headers, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body)});
-    if (r.status === 401) { me.user = null; me.operator = false; account(); gate(); throw {code: 401}; }
-    if (r.status === 403) { me.operator = false; account(); gate(); throw {code: 403}; }
-    if (!r.ok) { var detail = null; try { detail = (await r.json()).detail; } catch (e) {} throw {code: r.status, detail: typeof detail === 'string' ? detail : null}; }
+    var r;
+    try { r = await fetch(path, {method: method, headers: headers, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body)}); } catch (e) {
+      if (method !== 'GET') failToast('the server did not answer (' + method + ' ' + path + ')');
+      throw e;
+    }
+    if (r.status === 401) { me.user = null; me.operator = false; account(); gate(); if (method !== 'GET') failToast('you are signed out; sign in and try again'); throw {code: 401}; }
+    if (r.status === 403) { me.operator = false; account(); gate(); if (method !== 'GET') failToast('you are not allowed to do this'); throw {code: 403}; }
+    if (!r.ok) { var detail = null; try { detail = (await r.json()).detail; } catch (e) {} if (method !== 'GET') failToast((typeof detail === 'string' && detail ? detail : 'not saved') + ' (' + r.status + ')'); throw {code: r.status, detail: typeof detail === 'string' ? detail : null}; }
     return r.json();
   }
   async function queue(a, b) {
@@ -273,7 +277,7 @@ async function initActions() {
   }
   var TASK_PROJECT_KEY = 'skopax-task-project';
   function taskText(a) {
-    var lines = [(a.sev || '?') + ' · ' + a.svc + ' · ' + a.label + ' · now ' + a.now + ' vs 1 d ' + a.d1 + ' / 7 d ' + a.d7 + ' · since ' + dayhm(a.firstSeen)];
+    var lines = [(a.sev || '?') + ' · ' + svcName(a) + ' · ' + a.label + ' · now ' + a.now + ' vs 1 d ' + a.d1 + ' / 7 d ' + a.d7 + ' · since ' + dayhm(a.firstSeen)];
     if (a.short) lines.push(a.short);
     if (a.note && a.note.text) lines.push('Findings: ' + a.note.text);
     if (a.suspects && a.suspects.length) lines.push('Suspects: ' + a.suspects.slice(0, 5).join('; '));
@@ -288,7 +292,7 @@ async function initActions() {
     wrap.dataset.open = '1';
     var d = me.task || {}, pfx = d.titlePrefix || '';
     document.getElementById('task-card').textContent = name + (a.ns && a.ns !== '-' ? ' · ' + a.ns : '');
-    title.value = pfx + a.svc + ' ' + a.label;
+    title.value = pfx + svcName(a) + ' ' + a.label;
     pts.value = d.points != null ? d.points : 1;
     desc.value = taskText(a);
     var tail = 'The card link' + ((a.links || []).length || (a.code || []).length ? ', the Kibana / Prometheus links and the code links' : '') + ' are added at the end';
@@ -566,6 +570,123 @@ async function initActions() {
   var ICON_REPLY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>';
   var ICON_TAKE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><polyline points="16 11 18 13 22 9"></polyline></svg>';
   var ICON_GROUP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>';
+  var GP_MAX = 8, GP_NEAR_MS = 30 * 60000;
+  function gpHas(v) { return v != null && String(v).trim() !== '' && String(v).trim() !== '-'; }
+  function gpName(o) { return svcName(o); }
+  function gpFold(s) { return typeof foldCase === 'function' ? foldCase(s) : String(s == null ? '' : s).toLowerCase(); }
+  function gpText(o, cache) {
+    if (cache && cache.has(o)) return cache.get(o);
+    var owner = [o.owner, o.ownerName, o.assigned && o.assigned.name].filter(gpHas).join(' ');
+    var tags = (o.tags || []).map(function (t) { return t && t.id ? t.id + ' ' + (typeof tagName === 'function' ? tagName(t.id) : '') : ''; }).join(' ');
+    var text = gpFold([o.svc, o.label, o.sub, o.ns, o.cluster, o.src, o.ticket, owner, tags, gpName(o)].filter(gpHas).join(' '));
+    if (cache) cache.set(o, text);
+    return text;
+  }
+  function gpMatch(o, q, cache) {
+    var raw = String(q || '').trim();
+    if (!raw) return true;
+    var hash = /^#\s*(\d+)$/.exec(raw);
+    if (hash) return String(o.num || '').indexOf(hash[1]) === 0;
+    if (/^\d+$/.test(raw) && String(o.num) === raw) return true;
+    var hay = gpText(o, cache);
+    return gpFold(raw).split(/\s+/).every(function (w) { return hay.indexOf(w.replace(/^#/, '')) >= 0; });
+  }
+  function gpSort(list) {
+    return list.slice().sort(function (x, y) { return bySevOrd(x, y) || (Date.parse(x.firstSeen) || 0) - (Date.parse(y.firstSeen) || 0) || (x.num || 0) - (y.num || 0); });
+  }
+  function gpSuggest(a, others) {
+    var at = Date.parse(a.firstSeen), left = others.slice(), out = [];
+    var take = function (test) {
+      var hit = left.filter(test);
+      left = left.filter(function (o) { return hit.indexOf(o) < 0; });
+      out = out.concat(gpSort(hit));
+    };
+    take(function (o) { return gpHas(a.svc) && o.svc === a.svc; });
+    take(function (o) { return (gpHas(a.ns) && o.ns === a.ns) || (gpHas(a.cluster) && o.cluster === a.cluster); });
+    take(function (o) { var t = Date.parse(o.firstSeen); return at > 0 && t > 0 && Math.abs(t - at) <= GP_NEAR_MS; });
+    return out.concat(gpSort(left));
+  }
+  function groupPicker(a, others, id, name, onPick) {
+    var wrap = el('div', 'gp'), input = el('input'), list = el('div', 'gp-list');
+    var shown = [], at = -1, picked = null, cache = new Map();
+    input.type = 'text'; input.id = 'parent-' + id; input.maxLength = 100; input.autocomplete = 'off';
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-expanded', 'false');
+    input.setAttribute('aria-controls', 'gpl-' + id);
+    input.setAttribute('aria-label', 'Parent card for ' + name);
+    input.placeholder = tx('Search by number, service, label or ticket');
+    list.id = 'gpl-' + id; list.hidden = true;
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', 'Cards to group under');
+    list.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    wrap.append(input, list);
+    function close() { cache = new Map(); list.hidden = true; at = -1; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); }
+    function mark() {
+      [].forEach.call(list.querySelectorAll('[role="option"]'), function (r, i) { r.setAttribute('aria-selected', String(i === at)); });
+      if (at >= 0) { input.setAttribute('aria-activedescendant', 'gpo-' + id + '-' + at); var r = list.children[at]; if (r && r.scrollIntoView) r.scrollIntoView({block: 'nearest'}); } else input.removeAttribute('aria-activedescendant');
+    }
+    function row(o, i) {
+      var r = el('div', 'gp-o');
+      r.id = 'gpo-' + id + '-' + i;
+      r.setAttribute('role', 'option');
+      r.setAttribute('aria-selected', 'false');
+      r.dataset.key = o.key;
+      var n = el('span', 'gp-num'), c = el('span', 'sev ' + (SEV[o.sev] || [o.sev, 'k-muted'])[1]), nm = el('span', 'gp-name'), lb = el('span', 'gp-label'), ag = el('span', 'gp-age');
+      n.textContent = o.num ? '#' + o.num : '';
+      c.textContent = tx((SEV[o.sev] || [o.sev])[0]);
+      nm.textContent = gpName(o); nm.setAttribute('data-no-tx', '');
+      lb.textContent = gpHas(o.label) && o.label !== gpName(o) ? o.label : ''; lb.setAttribute('data-no-tx', '');
+      ag.textContent = typeof ageShort === 'function' ? ageShort(o.firstSeen) : '';
+      r.append(n, c, nm, lb);
+      if (o.status === 'cleared') { var st = el('span', 'gp-stop'); st.textContent = tx('stopped'); r.append(st); }
+      r.append(ag);
+      r.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      r.addEventListener('click', function () { pick(o); });
+      return r;
+    }
+    function render() {
+      var q = input.value.trim(), all = q ? gpSuggest(a, others).filter(function (o) { return gpMatch(o, q, cache); }) : gpSuggest(a, others);
+      shown = all.slice(0, GP_MAX);
+      list.textContent = '';
+      shown.forEach(function (o, i) { list.append(row(o, i)); });
+      if (!shown.length) { var none = el('div', 'gp-empty'); none.setAttribute('role', 'presentation'); none.textContent = tx('No card matches'); list.append(none); }
+      if (all.length > shown.length) { var more = el('div', 'gp-more'); more.setAttribute('role', 'presentation'); more.textContent = tx((all.length - shown.length) + ' more - type to search'); list.append(more); }
+      at = -1;
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      mark();
+    }
+    function pick(o) {
+      picked = o;
+      input.value = (o.num ? '#' + o.num + ' ' : '') + gpName(o) + (gpHas(o.label) && o.label !== gpName(o) ? ' ' + o.label : '');
+      close();
+      onPick(o);
+    }
+    input.addEventListener('focus', render);
+    input.addEventListener('click', function () { if (list.hidden) render(); });
+    input.addEventListener('blur', close);
+    input.addEventListener('input', function () { if (picked) { picked = null; onPick(null); } render(); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (list.hidden) { render(); return; }
+        if (!shown.length) return;
+        at = e.key === 'ArrowDown' ? (at + 1) % shown.length : (at <= 0 ? shown.length - 1 : at - 1);
+        mark();
+      } else if (e.key === 'Enter') {
+        if (list.hidden) return;
+        e.preventDefault();
+        var o = shown[at >= 0 ? at : 0];
+        if (o && (at >= 0 || input.value.trim())) pick(o);
+      } else if (e.key === 'Escape') {
+        e.stopPropagation();
+        if (!list.hidden) { e.preventDefault(); close(); return; }
+        if (wrap.onleave) wrap.onleave();
+      }
+    });
+    return {box: wrap, input: input, current: function () { return picked; }};
+  }
   var ICON_TICKET = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><path d="M12 11v6"></path><path d="M9 14h6"></path></svg>';
   function jiraControls(a, box, name) {
     var key = ticketKey(a.ticket), wrap = el('span', 'jira-acts acts-keep');
@@ -973,7 +1094,7 @@ async function initActions() {
     root.querySelectorAll('.sq-acts').forEach(function (box) {
       if (box.dataset.wired) return;
       box.dataset.wired = '1';
-      var row = box.__row, name = row.kind === 'report' ? 'this deploy report' : row.x.svc + ' ' + row.x.label;
+      var row = box.__row, name = row.kind === 'report' ? 'this deploy report' : svcName(row.x) + ' ' + row.x.label;
       var send = iconBtn(ICON_SEND, 'Send now', 'sec small op-btn slack-btn');
       send.dataset.tip = send.title = 'Post this text to ' + (me.slackChannel || 'the Slack channel') + ' now, as the message for ' + name + '; click twice to confirm';
       send.addEventListener('click', function () { sqArm(send, ICON_SEND + esc('Post to ' + (me.slackChannel || 'Slack') + '?'), function () { sqPost(row, send); }); });
@@ -1042,7 +1163,7 @@ async function initActions() {
       box.dataset.wired = '1';
       var a = cardOfBox(box);
       if (!a) return;
-      var name = a.svc + ' ' + a.label;
+      var name = svcName(a) + ' ' + a.label;
       var prior = window.INV && INV[a.key];
       var dive = asIcon(btn('Investigate', 'inv-btn'), ICON_SPARKLES, prior ? 'Investigate · last run ' + dayhm(prior.startedAt) + ' (' + prior.mode + ') · ' + usdText(prior.usd) + ' · asks before running again' : 'Investigate: the investigator takes it within about two minutes');
       dive.addEventListener('click', function () {
@@ -1106,18 +1227,17 @@ async function initActions() {
           var grp = asIcon(btn('Group', 'sec'), ICON_GROUP, a.status === 'open' ? 'Group: merge this card under another open card, the one that explains it' : 'Group: merge this stopped card under an open card or another stopped one, the one that explains it');
           var gform = el('div', 'reason');
           gform.hidden = true;
-          var sel = el('select');
-          sel.id = 'parent-' + box.dataset.i;
-          sel.setAttribute('aria-label', 'Parent card for ' + name);
-          sel.innerHTML = '<option value="">Group under…</option>' + others.map(function (o) { return '<option value="' + esc(o.key) + '">' + esc((o.num ? '#' + o.num + ' · ' : '') + o.sev + ' · ' + o.svc + ' · ' + o.label + (o.status === 'cleared' ? ' · stopped' : '')) + '</option>'; }).join('');
           var gok = btn('Group', 'small');
-          gform.append(sel, gok);
-          grp.addEventListener('click', function () { gform.hidden = !gform.hidden; if (!gform.hidden) sel.focus(); });
+          gok.disabled = true;
+          gok.dataset.gpWait = '1';
+          var gp = groupPicker(a, others, box.dataset.i, name, function (o) { if (o) delete gok.dataset.gpWait; else gok.dataset.gpWait = '1'; gok.disabled = !o || cardBusy(a.key); });
+          gform.append(gp.box, gok);
+          gp.box.onleave = function () { gform.hidden = true; grp.focus(); };
+          grp.addEventListener('click', function () { gform.hidden = !gform.hidden; if (!gform.hidden) gp.input.focus(); });
           gok.addEventListener('click', function () {
-            var p = sel.value;
-            if (!p) { sel.focus(); return; }
-            var o = others.filter(function (x) { return x.key === p; })[0];
-            queue({type: 'group', target: a.key, key: a.key, parent: p, label: 'Group ' + name + ' under ' + (o ? o.svc + ' ' + o.label : p)}, gok);
+            var o = gp.current();
+            if (!o) { gp.input.focus(); return; }
+            queue({type: 'group', target: a.key, key: a.key, parent: o.key, label: 'Group ' + name + ' under ' + gpName(o) + ' ' + o.label}, gok);
           });
           box.append(grp, gform);
         }
@@ -1206,7 +1326,7 @@ async function initActions() {
       var a = cardOfBox(box);
       if (!a) return;
       var x = latest[a.key];
-      box.querySelectorAll('button.btn:not(.free):not(.slack-btn)').forEach(function (b) { b.disabled = !!(x && (x.status === 'requested' || x.status === 'processing')); });
+      box.querySelectorAll('button.btn:not(.free):not(.slack-btn)').forEach(function (b) { b.disabled = !!(x && (x.status === 'requested' || x.status === 'processing')) || b.dataset.gpWait === '1'; });
       var st = box.querySelector('.stat'), la = box.closest('article.inc').querySelector('.last-act');
       if (st) {
         st.innerHTML = x && !earlier(x, a) ? pill(x, true) : '';

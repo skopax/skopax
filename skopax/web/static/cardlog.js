@@ -2,6 +2,13 @@ var HIST_ACTS = {take: 'Started progress', resolve: 'Resolved', ticket: 'Ticket 
   dive: 'Investigation queued', group: 'Grouped', severity: 'Severity changed', ask: 'Asked the investigator'};
 var HIST_SEV = {crit: 'Critical', warn: 'Warning', info: 'Info'};
 var HIST_CUT = 160;
+function svcReal(v) { v = String(v == null ? '' : v).trim(); return v === '-' ? '' : v; }
+function svcFromCluster(a) { return !!(a && a.cluster && !svcReal(a.svc) && !svcReal(a.ns) && !svcReal(a.sub)); }
+function svcName(a) {
+  a = a || {};
+  var fromKey = svcReal(String(a.key || '').split('|')[1]);
+  return svcReal(a.svc) || svcReal(a.ns) || svcReal(a.sub) || (a.cluster ? 'instance ' + a.cluster : '') || svcReal(a.label) || svcReal(a.src) || fromKey || '?';
+}
 function histEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]; }); }
 function histWho(by) {
   var s = String(by == null ? '' : by);
@@ -81,4 +88,27 @@ function cardHistoryHtml(rows, when, state) {
       (r.data ? '<span data-no-tx>' + histEsc(r.data) + '</span>' : '') + '</span>' + chg +
       ' <span class="h-who"' + (HIST_FIXED[r.who] ? '' : ' data-no-tx') + '>' + histEsc(r.who) + '</span>' + link + '</span></li>';
   }).join('') + '</ol>';
+}
+
+var FAIL_SEEN = {}, FAIL_GAP_MS = 10000;
+function failToast(text) {
+  var said = String(text || 'Something went wrong').slice(0, 300), now = Date.now();
+  if (FAIL_SEEN[said] && now - FAIL_SEEN[said] < FAIL_GAP_MS) return null;
+  FAIL_SEEN[said] = now;
+  var box = document.getElementById('fail-toasts');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'toasts fail-toasts';
+    box.id = 'fail-toasts';
+    box.setAttribute('role', 'alert');
+    document.body.appendChild(box);
+  }
+  var t = document.createElement('div');
+  t.className = 'toast fail';
+  t.innerHTML = '<span class="toast-t"></span><button type="button" class="toast-x" aria-label="Dismiss" title="Dismiss">\u00d7</button>';
+  t.querySelector('.toast-t').textContent = 'Not done: ' + said + '.';
+  t.querySelector('.toast-x').addEventListener('click', function () { t.remove(); });
+  box.appendChild(t);
+  setTimeout(function () { t.remove(); }, 12000);
+  return t;
 }

@@ -1539,10 +1539,11 @@ class Toolbox:
             raise ToolError(f'at most {FIX_PER_CARD} suggestions per card; this assess has {fixes}')
         code = [code_link(self.sources.gitlab, c, code_ref(c, i)) for i, c in enumerate(items)]
         summary = (suspects[0] + ' \u2192 ' if suspects else '') + recommend
-        return self._write('assess', key, summary, lambda: self._assessed(key, suspects, recommend, code))
+        flagged = bool(self._flag_hold())
+        return self._write('assess', key, summary, lambda: self._assessed(key, suspects, recommend, code, flagged))
 
-    def _assessed(self, key: str, suspects: list[str], recommend: str, code: list[dict]) -> None:
-        self.store.assess(key, suspects, recommend, code or None, by='pod')
+    def _assessed(self, key: str, suspects: list[str], recommend: str, code: list[dict], flagged: bool = False) -> None:
+        self.store.assess(key, suspects, recommend, code or None, by='pod', flagged=flagged)
         if self.effects.fixes and any(c.get('suggestion') is not None for c in code):
             hold = self._flag_hold()
             if hold:
@@ -1566,7 +1567,8 @@ class Toolbox:
             if hold:
                 raise Held(f'this run read {hold}, so it sets no cause: the thread note when the card clears carries it to Slack with no person checking; name the trigger in the note text', 'cause', self.flags)
         dropped = 'cause' in a and cause is None
-        return self._write('note', key, text, lambda: self.store.note(key, text, by='pod', cause=cause, drop_cause=dropped))
+        flagged = bool(self._flag_hold())
+        return self._write('note', key, text, lambda: self.store.note(key, text, by='pod', cause=cause, drop_cause=dropped, flagged=flagged))
 
     def _what_problem(self, what: str) -> str | None:
         if PING.search(what):
@@ -1742,7 +1744,7 @@ class Toolbox:
         for c in children if line else ():
             said = (self._card(c).get('note') or {}).get('text') or ''
             if not said.startswith(line):
-                self.store.note(c, (line + (f'\n{said}' if said else ''))[:DRAFT_LIMIT], by='pod')
+                self.store.note(c, (line + (f'\n{said}' if said else ''))[:DRAFT_LIMIT], by='pod', flagged=bool(self._flag_hold()))
 
     def _t_slack_draft(self, a: dict):
         if self.ask:

@@ -1,4 +1,4 @@
-var COST_SOURCES = [{id: 'pod', label: 'Investigator runs'}, {id: 'page', label: 'Page asks'}, {id: 'slack', label: 'Slack asks'}, {id: 'chat', label: 'Chat'}, {id: 'assess', label: 'Assessments'}, {id: 'gate', label: 'Gate'}, {id: 'smalltalk', label: 'Small talk'}, {id: 'pagescan', label: 'Page scan'}, {id: 'selfreview', label: 'Self-review'}, {id: 'mcp', label: 'MCP'}];
+var COST_SOURCES = [{id: 'pod', label: 'Investigator runs'}, {id: 'page', label: 'Page requests'}, {id: 'slack', label: 'Slack requests'}, {id: 'chat', label: 'Chat'}, {id: 'assess', label: 'Assessments'}, {id: 'gate', label: 'Gate'}, {id: 'smalltalk', label: 'Small talk'}, {id: 'pagescan', label: 'Page scan'}, {id: 'selfreview', label: 'Self-review'}, {id: 'mcp', label: 'MCP'}];
 var COST_PARTS = [{id: 'cacheRead', label: 'Cache read'}, {id: 'input', label: 'Input'}, {id: 'cacheWrite5m', label: 'Cache write'}, {id: 'cacheWrite1h', label: 'Cache write, long'}, {id: 'output', label: 'Output'}, {id: 'webSearch', label: 'Web search'}];
 var COST_RANGES = [1, 7, 30];
 var COSTS = null;
@@ -23,7 +23,7 @@ function costTile(label, value, note) {
 function costStrip(d) {
   return '<div class="cstrip">' + costMeter(d.today) +
     costTile(d.days === 1 ? 'Today, all sources' : 'Last ' + d.days + ' days', costUsd(d.total.usd), plural(d.total.runs, 'run', 'runs') + ' · ' + plural(d.total.calls, 'call', 'calls')) +
-    costTile('Avg per Slack ask', costUsd(d.avg.slackAsk)) + costTile('Avg per investigator run', costUsd(d.avg.podRun)) + costTile('Cache hit share', costPct(d.total.cacheHit), 'cache reads over all prompt tokens') + '</div>';
+    costTile('Avg per Slack request', costUsd(d.avg.slackAsk)) + costTile('Avg per investigator run', costUsd(d.avg.podRun)) + costTile('Cache hit share', costPct(d.total.cacheHit), 'cache reads over all prompt tokens') + '</div>';
 }
 var COST_RUN_SOURCES = COST_SOURCES.filter(function (s) { return s.id !== 'gate' && s.id !== 'smalltalk' && s.id !== 'pagescan' && s.id !== 'selfreview'; });
 function costModel(m) { return String(m || '?').replace(/^claude-/, ''); }
@@ -110,7 +110,7 @@ function costSources(d) {
 }
 function costCardName(key) {
   var card = CARDS.filter(function (a) { return a.key === key; })[0];
-  if (card) return card.svc + ' / ' + card.label;
+  if (card) return svcName(card) + ' / ' + card.label;
   var p = String(key).split('|');
   return p.length > 1 ? p.slice(1, 3).join(' / ') : String(key);
 }

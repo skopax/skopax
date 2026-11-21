@@ -29,7 +29,7 @@ POD_REOPEN = ('dived',) + HANDLED
 HISTORY_KEEP = 300
 SEV_RANK = {'info': 0, 'warn': 1, 'crit': 2}
 OFFER_MARKS = ('takeOffered', 'resolveOffered', 'knownOffered', 'muteOffered', 'ticketOffered')
-CARRY = ('note', 'suspects', 'recommend', 'assessedAt', 'triage', 'ticket', 'owner', 'absorb', 'code', 'slackDraft', 'slackPost', 'autoSend', 'slackFallback', 'triagedBy', 'investigator', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'num', 'assigned', 'sevSet', 'resolution', 'cause', 'noteBy', 'recommendBy', 'autoAssigned', 'handAssigned', 'ownerName')
+CARRY = ('note', 'suspects', 'recommend', 'assessedAt', 'triage', 'ticket', 'owner', 'absorb', 'code', 'slackDraft', 'slackPost', 'autoSend', 'slackFallback', 'triagedBy', 'investigator', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'num', 'assigned', 'sevSet', 'resolution', 'cause', 'noteBy', 'recommendBy', 'noteFlagged', 'recommendFlagged', 'autoAssigned', 'handAssigned', 'ownerName')
 POST_LISTS = ('teamsPosts', 'fixPosts')
 SHOTS = 'screenshots'
 NO_SERVICE = (None, '', '-', '?')
@@ -374,8 +374,17 @@ def follow_parents(state: dict, now: float) -> list[dict]:
             head, why = 'Auto-resolved', f'its parent {pk} was ' + ('handled and has left the page' if p is None else 'marked no action needed')
         if not a.get('note'):
             put_note(a, f'{head}: {why}', t)
-        out.append({'key': a['key'], 'text': f"{head.lower()} {a.get('svc')} {a.get('label')} \u00b7 {why}", 'since': 'parent'})
+        row = {'key': a['key'], 'text': f"{head.lower()} {a.get('svc')} {a.get('label')} \u00b7 {why}", 'since': 'parent'}
+        out.append(row | ({'progress': True} if triage == 'progress' else {'why': parent_reason(p)}))
     return out
+
+
+def parent_reason(p: dict | None) -> str:
+    if p is None:
+        return PARENT_GONE
+    name = ' '.join(f"{'#' + str(p['num']) + ' ' if p.get('num') else ''}{p.get('svc') or '-'} / {p.get('label') or '?'}".split())
+    room = REASON_LIMIT - len(PARENT_HEAD) - len(PARENT_MARKED)
+    return PARENT_HEAD + (name if len(name) <= room else name[:room - 1].rstrip() + '\u2026') + PARENT_MARKED
 
 
 def window_text(hours: int, business: bool = False, words: str = '') -> str:
@@ -400,6 +409,29 @@ def window_for(a: dict, windows: tuple) -> int | None:
     return next((hours for found, sig, hours in windows if a.get('sig') == sig and found & names), None)
 
 
+OWNED_WINDOWS = 3
+REASON_LIMIT = 160
+PARENT_HEAD = 'its parent '
+PARENT_MARKED = ' was marked no action needed'
+PARENT_GONE = 'its parent was handled and has left the page'
+
+
+def has_owner(a: dict) -> bool:
+    return bool(a.get('owner') or a.get('assigned'))
+
+
+def wait_start(a: dict, cleared: float) -> float:
+    assigned = a.get('assigned') if isinstance(a.get('assigned'), dict) else {}
+    marks = [cleared]
+    for at in (assigned.get('at'), a.get('reopenedAt')):
+        if isinstance(at, str) and at:
+            try:
+                marks.append(parse_iso(at))
+            except ValueError:
+                continue
+    return max(marks)
+
+
 def acted_on(a: dict) -> bool:
     return bool(a.get('triage') in ADDRESSED_TRIAGE + ('investigating',) or a.get('ticket') or a.get('owner') or a.get('muted'))
 
@@ -420,7 +452,7 @@ def auto_resolve_kinds(state: dict, now: float, windows: tuple, business: tzinfo
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
             put_note(a, f'Auto-resolved: {why}', t)
-        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': hours, 'since': 'first'} | business_mark(business))
+        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'why': why, 'hours': hours, 'since': 'first'} | business_mark(business))
     return out
 
 
@@ -433,16 +465,17 @@ def auto_resolve(state: dict, now: float, hours: int, windows: tuple = (), by_se
         window = (by_severity or {}).get(a.get('sev'), hours)
         if window <= 0 or a.get('triage') == 'investigating' or a.get('autoResolvedAt') or not a.get('clearedAt') or window_for(a, windows):
             continue
+        window *= OWNED_WINDOWS if has_owner(a) else 1
         cleared = parse_iso(a['clearedAt'])
         event = causes.event(a, by_key) and not a.get('ticket')
         waited = window + (causes.EVENT_EXTRA_HOURS if event else 0)
-        if elapsed(cleared, now, business) <= waited * 3600:
+        if elapsed(wait_start(a, cleared), now, business) <= waited * 3600:
             continue
         why = msg('engine.auto.event') if event else f"cleared {clock.date(cleared)}, nobody acted in {english_window(window, business is not None)}"
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
             put_note(a, why if event else f'Auto-resolved: {why}', t)
-        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'hours': waited} | ({'event': True} if event else {}) | business_mark(business))
+        out.append({'key': a['key'], 'text': f"auto-resolved {a.get('svc')} {a.get('label')} \u00b7 {why}", 'why': why, 'hours': waited} | ({'event': True} if event else {}) | business_mark(business))
     return out
 
 

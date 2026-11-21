@@ -8,8 +8,8 @@ const CARD_PAGE = path.join(path.dirname(TEMPLATE), 'card.html');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
 const MARKUP = '<b>&"x';
-const HOSTILE = {name: MARKUP, slug: 'x', version: '0.1.0', attribution: {text: MARKUP + ' · powered by Skopax 0.1.0', href: 'https://skopax.io'}};
-const PLAIN = {name: 'Skopax', slug: 'skopax', version: '0.1.0', attribution: {text: 'Skopax 0.1.0 · skopax.io', href: 'https://skopax.io'}};
+const HOSTILE = {name: MARKUP, slug: 'x', version: '0.1.0', attribution: {text: MARKUP + ' \u00b7 powered by Skopax 0.1.0', href: 'https://skopax.io'}};
+const PLAIN = {name: 'Skopax', slug: 'skopax', version: '0.1.0', attribution: {text: 'Skopax 0.1.0 \u00b7 skopax.io', href: 'https://skopax.io'}};
 
 function state() {
   return {rev: 1, updatedAt: iso(0), sweptIso: iso(1), nextIso: new Date(Date.now() + 59 * 60000).toISOString(), sources: {prom: 'ok'},
@@ -120,7 +120,7 @@ async function theDefaultNameGivesTheShortAttributionLine() {
   //then
   assert.deepStrictEqual(errors, []);
   assert.strictEqual(doc.querySelector('h1 a.home').textContent, 'Skopax');
-  assert.strictEqual(doc.getElementById('attribution').textContent, 'Skopax 0.1.0 · skopax.io');
+  assert.strictEqual(doc.getElementById('attribution').textContent, 'Skopax 0.1.0 \u00b7 skopax.io');
   assert.strictEqual(doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
   assert.ok(/footer\.attribution \{[^}]*justify-content: center;/.test(require('fs').readFileSync(CARD_PAGE, 'utf8')), 'the card page centres the attribution line');
   console.log('PASS the default name shows the short attribution line');
@@ -129,13 +129,13 @@ async function theDefaultNameGivesTheShortAttributionLine() {
 async function theScriptFallbackBuildsTheFullAttributionAndNeverShortensAServerLine() {
   //given
   const blank = (name) => ({name, slug: 'x', version: '0.1.0', attribution: {text: '', href: 'https://skopax.io'}});
-  const custom = await boot(blank('Acme Ops'), {name: 'Acme Ops', slug: 'acme-ops', version: '0.4.9'});
-  const plain = await boot(blank('Skopax'), {name: 'Skopax', slug: 'skopax', version: '0.4.9'});
+  const custom = await boot(blank('Acme Ops'), {name: 'Acme Ops', slug: 'acme-ops', version: '0.4.10'});
+  const plain = await boot(blank('Skopax'), {name: 'Skopax', slug: 'skopax', version: '0.4.10'});
   const kept = await boot(PLAIN, {name: 'Skopax', slug: 'skopax', version: '0.1.0'});
 
   //then
-  assert.strictEqual(custom.doc.getElementById('attribution').textContent, 'Acme Ops \u00b7 powered by Skopax 0.4.9');
-  assert.strictEqual(plain.doc.getElementById('attribution').textContent, 'Skopax 0.4.9 \u00b7 skopax.io');
+  assert.strictEqual(custom.doc.getElementById('attribution').textContent, 'Acme Ops \u00b7 powered by Skopax 0.4.10');
+  assert.strictEqual(plain.doc.getElementById('attribution').textContent, 'Skopax 0.4.10 \u00b7 skopax.io');
   assert.strictEqual(kept.doc.getElementById('attribution').textContent, PLAIN.attribution.text);
   for (const page of [custom, plain, kept]) { assert.deepStrictEqual(page.errors, []); page.w.close(); }
   console.log('PASS the script fallback builds the full attribution and keeps a correct server line');
@@ -181,7 +181,7 @@ async function aMissingOrUnreadableBrandBlobStillGetsTheFallbackLine() {
   //then
   for (const page of [missing, unreadable]) {
     assert.deepStrictEqual(page.errors, []);
-    assert.strictEqual(page.doc.getElementById('attribution').textContent, 'Skopax 0.4.9 \u00b7 skopax.io');
+    assert.strictEqual(page.doc.getElementById('attribution').textContent, 'Skopax 0.4.10 \u00b7 skopax.io');
     assert.strictEqual(page.doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
     page.w.close();
   }
@@ -210,7 +210,7 @@ async function theCardPageShowsTheNameInTitleHeaderFooterAndAttribution() {
 
   //then
   assert.deepStrictEqual(found.errors, []);
-  assert.strictEqual(found.doc.title, '#482 · example.com/orders / Typos · ' + MARKUP);
+  assert.strictEqual(found.doc.title, '#482 \u00b7 example.com/orders / Typos \u00b7 ' + MARKUP);
   assert.strictEqual(found.doc.querySelector('a.brand').textContent, MARKUP);
   assert.strictEqual(found.doc.getElementById('full').textContent, 'The whole ' + MARKUP);
   assert.strictEqual(found.doc.getElementById('attribution').textContent, HOSTILE.attribution.text);

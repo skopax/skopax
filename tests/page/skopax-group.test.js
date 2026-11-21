@@ -55,14 +55,14 @@ async function nestedMergesShowUnderTheTopCardAndCopyLinkCopiesTheCardPage() {
   top.querySelector('.fold').click();
   await wait(30);
   const copy = [...top.querySelectorAll('.acts button')].find((b) => b.textContent.includes('Copy link'));
-  const groupOptions = [...top.querySelectorAll('select option')].map((o) => o.value).filter(Boolean);
+  const groupOptions = [...top.querySelectorAll('[role="listbox"] [role="option"] .gp-num')].map((o) => o.textContent);
   copy.click();
   await wait(30);
 
   //then
   assert.deepStrictEqual(copied, ['https://skopax.example.com/c/5']);
   assert.ok(copy.dataset.tip.includes('card #5') || (copy.title || '').includes('card #5'));
-  assert.ok(!groupOptions.includes('page-layout|r'), 'a resolved card is not offered as a parent');
+  assert.ok(!groupOptions.includes('#4'), 'a resolved card is not offered as a parent');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
   console.log('PASS Investigate is icon only and the other actions fold behind More; cards merged in a chain show under the top card, Copy link copies the card page link, and a resolved card is never offered as a parent');

@@ -145,7 +145,7 @@
   function index() {
     var out = [], opened = openAll().slice().sort(bySevOrd);
     opened.concat(CARDS.filter(function (a) { return opened.indexOf(a) < 0; })).forEach(function (a) {
-      out.push({kind: 'Cards', raw: true, open: opened.indexOf(a) >= 0, sev: a.sev, label: (a.num ? '#' + a.num + ' ' : '') + [a.svc, a.label].filter(Boolean).join(' '), hay: cardText(a),
+      out.push({kind: 'Cards', raw: true, open: opened.indexOf(a) >= 0, sev: a.sev, label: (a.num ? '#' + a.num + ' ' : '') + [svcName(a), a.label].filter(Boolean).join(' '), hay: cardText(a),
         meta: (SEV[a.sev] || SEV.info)[0], tickets: ticketsOf(a), num: a.num, run: function () { showLinked(encodeURIComponent(a.key)); }});
     });
     S.forEach(function (s) { out.push({kind: 'Services', raw: true, label: String(s.svc || ''), hay: s.ns, meta: s.ns || 'service', icon: 'server', run: function () { showSvcCards(s); }}); });

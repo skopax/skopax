@@ -128,7 +128,7 @@ async function anOperatorAssignsAPersonFromTheJiraSearchThemselvesAndNobody() {
   assert.deepStrictEqual(options, ['Zoe Hart zoe.hart@example.com', 'Zoe Lane']);
   assert.deepStrictEqual(calls, [['PUT', '/api/assignee', {key: FREE, name: 'Zoe Hart', email: 'zoe.hart@example.com'}],
     ['PUT', '/api/assignee', {key: FREE, me: true}], ['PUT', '/api/assignee', {key: PICKED, name: ''}]]);
-  assert.strictEqual(said, 'Assigned to Zoe Hart · told on Slack · noted in the Slack thread');
+  assert.strictEqual(said, 'Assigned to Zoe Hart \u00b7 told on Slack \u00b7 noted in the Slack thread');
   assert.strictEqual(cardOf(doc, PICKED).querySelector('.asg-msg').textContent, 'Assignee removed');
   assert.deepStrictEqual(errors, []);
   w.close();

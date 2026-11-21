@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import hashlib
 import hmac
 import html
@@ -98,7 +99,7 @@ from skopax import tagreport
 from skopax.routes import TRIES, Echo, Refused as RouteRefused, Routes
 from skopax.models import RouteSendIn, SsoIn, SsoTestIn
 from skopax.statenotes import StateNotes, who_of
-from skopax.slack import stopped_who, anomaly_message, fix_hash, fix_message, AUTO_BY, same_person, built_link, cut, esc, esc_keep_mentions, menu_kinds, NoThread, opening, reason_of, recurring_line, report_message, Slack, SlackError
+from skopax.slack import stopped_who, anomaly_message, fix_hash, fix_message, AUTO_BY, same_person, built_link, cut, esc, esc_keep_mentions, link_addresses, menu_kinds, NoThread, opening, public_hosts, reason_of, recurring_line, report_message, Slack, SlackError, SECTION_LIMIT
 from skopax.setup import BadCode, SetupDone, SetupGate, render_form
 from skopax import migrations
 from skopax.errkind import NoAccess, Refusal, kind, text_of
@@ -680,6 +681,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     base_url = public_base(settings)
     odd_stamp: list[str] = []
 
+    def site_hosts() -> tuple[str, ...]:
+        return public_hosts([i.values for i in runtime.instances_of('website')], base_url)
+
     def stop_time() -> float | None:
         entry = live.overrides.get(SESSIONS_AFTER_KEY)
         if entry is None:
@@ -703,7 +707,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def slack_name(email: str) -> str:
         return user_name(email) or slack_ids.name_now(email)
 
-    card_posts = CardPosts(store, slack, base_url, menu_on=lambda: started_at_boot('slack-socket'), name_of=slack_name)
+    def post_check() -> Callable[[str], str | None]:
+        hosts = allowed_link_hosts(settings, runtime.org()['link_hosts'] + runtime.ui_hosts())
+        try:
+            rule = gitlab.link_problem if gitlab is not None and gitlab.enabled else None
+        except SourceDown:
+            rule = None
+        return lambda text: draft_problem(text, hosts, rule)
+
+    card_posts = CardPosts(store, slack, base_url, menu_on=lambda: started_at_boot('slack-socket'), name_of=slack_name, plugin_name=runtime.plugin_name, check=post_check, hosts=site_hosts)
     attacher = Attacher(store, slack, settings.slack_attach_screenshots, base_url)
     notices = Notices(store)
     versions = VersionCheck(store, transport, lambda: features.on('update-check'), clock=clock)
@@ -772,7 +784,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         who = stopped_who(anomaly, mute, slack_name)
         message = anomaly_message(anomaly, link, by, draft, buttons['id'] if buttons else None, chat_url(base_url or base, key, anomaly.get('num')), head=head,
                                   attribution=None if thread else slack.signature(), mute=mute, kinds=menu_kinds(anomaly, mute), shots=shots, base=base_url,
-                                  parent=parent_of(anomaly), who=who) | ({'channel': thread['channel'], 'thread_ts': thread['ts']} if thread else {})
+                                  parent=parent_of(anomaly), who=who, hosts=site_hosts()) | ({'channel': thread['channel'], 'thread_ts': thread['ts']} if thread else {})
         try:
             posted = slack.post(message, sign=False)
         except SlackError as e:
@@ -851,7 +863,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return 0
         link = card_url(base_url or base, key, card.get('num'))
         try:
-            slack.post(fix_message([c for c, _ in claimed], link) | {'channel': post['channel'], 'thread_ts': post['ts']})
+            slack.post(fix_message([c for c, _ in claimed], link, site_hosts()) | {'channel': post['channel'], 'thread_ts': post['ts']})
         except SlackError as e:
             for _, h in claimed:
                 store.unclaim_fix(key, h)
@@ -876,7 +888,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         shots = (report.get('slackDraft') or {}).get('screenshots') or []
         action = {'type': 'slack', 'key': f'report:{report_id}', 'target': f'slack:report:{report_id}', 'label': f"Send to Slack: deploy report {cut(report.get('summary') or report_id, 80)}", 'requestedBy': by, 'draft': bool(draft)}
         thread = report_thread(report_id)
-        message = report_message(report, link, by, draft, store.load().get('anomalies') or [], jira_site(), settings.jira_release_name)
+        message = report_message(report, link, by, draft, store.load().get('anomalies') or [], jira_site(), settings.jira_release_name, site_hosts())
         if thread:
             message |= {'channel': thread['channel'], 'thread_ts': thread['ts']}
         try:
@@ -898,14 +910,16 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         where = f"today's deploy thread in {slack.channel}" if thread else slack.channel
         return store.add_action(action | {'slack': sent}, 'done', f"sent to {where}{' with the draft' if draft else ''}" + (f'; {pictures}' if pictures else ''))
 
-    def slack_thread_update(key: str, text: str, by: str, shots: list[dict] | None = None, run_id: str | None = None, notice: str | None = None) -> dict:
+    def slack_thread_update(key: str, text: str, by: str, shots: list[dict] | None = None, run_id: str | None = None, notice: str | None = None, linked: bool = False) -> dict:
         anomaly = store.anomaly(key)
         post = anomaly.get('slackPost') or {}
         if not post.get('channel') or not post.get('ts'):
             raise NoThread('this anomaly has no Slack message from this page to reply to')
         action = {'type': 'slack-update', 'key': key, 'target': f'slack-update:{key}', 'label': f"Slack thread update: {anomaly.get('svc')} {anomaly.get('label')}", 'requestedBy': by}
         try:
-            sent, pictures = attacher.post({'channel': post['channel'], 'thread_ts': post['ts'], 'text': esc_keep_mentions(text) + recurring_line(anomaly)}, shots or [], key, run_id)
+            tail = recurring_line(anomaly)
+            sent, pictures = attacher.post({'channel': post['channel'], 'thread_ts': post['ts'], 'text': (link_addresses(esc_keep_mentions(text), site_hosts(), SECTION_LIMIT - len(tail)) if linked else esc_keep_mentions(text)) + tail},
+                                           shots or [], key, run_id)
         except SlackError as e:
             log.warning('slack thread update for %s failed: %s', key, kind(e))
             store.add_action(action, 'failed', f'not sent: {reason_of(e)}')
@@ -944,7 +958,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise Refusal(f'no Slack user has the email {email}')
         if not same_person(name, user['name']):
             raise Refusal(f"{email} belongs to {user['name'] or 'a Slack user without a name'} in Slack, not {name}; ask the asker who they meant")
-        line = msg('slack.tell', id=user['id'], text=esc(text), who=esc(who_of(by)))
+        line = msg('slack.tell', id=user['id'], text=link_addresses(esc(text), site_hosts()), who=esc(who_of(by)))
         root = None
         if key:
             if not (store.anomaly(key).get('slackPost') or {}).get('ts'):
@@ -967,7 +981,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise ValueError('this card is being posted to Slack already')
         return {'result': 'posting to Slack now' if said == 'queued' else 'not posted: Slack auto-send is off'}
 
-    replier = Replier(store, slack, settings, attach=attacher, base_url=base_url)
+    replier = Replier(store, slack, settings, attach=attacher, base_url=base_url, hosts=site_hosts)
 
     def state_note(key: str, before: dict) -> None:
         notes.triaged(key, before)
@@ -994,7 +1008,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         store, Sources(gitlab=gitlab, jira=jira, plugin_tools=PluginTools(runtime), selfreview=lambda now: review_facts(store, server_info() | store.server_runs(), runtime.client('elasticsearch') if settings.self_log_index else None, now, own_commits, self_service(settings), settings.self_log_index, PluginTools(runtime)),
                               link_hosts=lambda: allowed_link_hosts(settings, runtime.org()['link_hosts'] + runtime.ui_hosts()), org=runtime.org,
                               bridge=mcptools_bridge),
-        Effects(pod_slack_send, slack_thread_update, replier.reply, state_note, tell=slack_tell, fixes=lambda key: post_fixes(key), slack_file=slack.file, autopost=lambda: auto.on(), wake=lambda: auto.wake()), settings, client=anthropic_client, base_url=base_url, talk=talk, key=ai_keys.current)
+        Effects(pod_slack_send, functools.partial(slack_thread_update, linked=True), replier.reply, state_note, tell=slack_tell, fixes=lambda key: post_fixes(key), slack_file=slack.file, autopost=lambda: auto.on(), wake=lambda: auto.wake()), settings, client=anthropic_client, base_url=base_url, talk=talk, key=ai_keys.current)
 
     if isinstance(investigator, Investigator):
         investigator.notices = notices
@@ -1046,7 +1060,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         return way_in(bool(settings.sso_on), doc is not None, base_url, added_only=settings.sso_new_accounts == 'added-only', viewer_default=settings.sso_default_role != 'operator',
                       mapped=mapped, closed=closed)
 
-    clicks = Clicks(store, slack, operators, apply_from_slack, jira_site, on=lambda: features.on('slack-listener') and slack.enabled, confirm=proposals.confirm, way_in=slack_way_in)
+    clicks = Clicks(store, slack, operators, apply_from_slack, jira_site, on=lambda: features.on('slack-listener') and slack.enabled, confirm=proposals.confirm, way_in=slack_way_in, hosts=site_hosts)
     listen_mode = settings.slack_listen
     listener: Listener | None = None
 
@@ -1118,7 +1132,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if applied and applied.resolved:
             for r in applied.resolved:
                 notes.auto_resolved([r['key']], r.get('hours') or settings.auto_resolve_hours, r.get('since'), {r['key']} if r.get('event') else (), bool(r.get('businessTime')))
-            notices.auto_resolved([r['key'] for r in applied.resolved])
+            notices.auto_resolved([r['key'] for r in applied.resolved if not r.get('progress')], {r['key']: r['why'] for r in applied.resolved if r.get('why')})
+            notices.followed([r['key'] for r in applied.resolved if r.get('progress')])
         if applied:
             notices.fired(applied.events, applied.cards)
             auto_assign.sweep(applied.cards)

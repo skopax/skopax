@@ -65,7 +65,11 @@
     if (unit === 'ms') return v >= 1000 ? (v / 1000).toLocaleString('en-GB', {maximumFractionDigits: 1}) + ' s' : Math.round(v) + ' ms';
     return Number(v).toLocaleString('en-GB', {maximumFractionDigits: 2}) + (unit && unit !== 'ms' ? ' ' + unit : '');
   }
-  function title(c) { return (c.svc && c.label ? c.svc + ' / ' + c.label + (c.sub && c.sub !== c.label ? ' \u00b7 ' + c.sub : '') : c.key || ('#' + c.num)) + (c.cluster ? ' \u00b7 instance ' + c.cluster : ''); }
+  function title(c) {
+    var s = svcName(c), l = svcReal(c.label), sub = svcReal(c.sub);
+    var head = l && s !== l ? s + ' / ' + l + (sub && sub !== l && sub !== s ? ' \u00b7 ' + sub : '') : s;
+    return head + (c.cluster && !svcFromCluster(c) ? ' \u00b7 instance ' + c.cluster : '');
+  }
   function resolution(c) { var r = c.resolution; return r && RES_NAMES[r.kind] ? r : null; }
   function resolvedName(r) { return !r ? 'Resolved' : r.kind === 'duplicate' && r.ref ? RES_NAMES.duplicate + ': ' + r.ref : RES_NAMES[r.kind] + (r.ref ? ' (' + r.ref + ')' : ''); }
   function resolvedBy(r) {
@@ -249,6 +253,7 @@
     } catch (e) {
       b.disabled = false;
       msg.textContent = 'Could not assign: ' + (e && e.message ? e.message : 'try again');
+      failToast('could not assign: ' + (e && e.message ? e.message : 'try again'));
     }
   }
   async function queue(body, b) {
@@ -272,6 +277,7 @@
       if (said) said.remove();
       var note = box.querySelector('.act-last') || box.querySelector('.acts');
       if (note) note.insertAdjacentHTML('afterend', '<p class="act-err">The action was not saved; try again.</p>');
+      failToast('the action was not saved' + (e && e.message ? ' (' + e.message + ')' : ''));
     }
   }
   function wireActions(c) {

@@ -1,6 +1,6 @@
 var TOOL_RANGES = [1, 7, 30];
 var TOOL_KINDS = {read: 'read', write: 'write', propose: 'proposal', gone: 'removed', mcp: 'MCP server'};
-var TOOL_TRIGGERS = {check: 'Checks', cards: 'Cards', action: 'Investigate', ask: 'Page asks', slack: 'Slack asks', chat: 'Chat', assess: 'Assessments', other: 'Other'};
+var TOOL_TRIGGERS = {check: 'Checks', cards: 'Cards', action: 'Investigate', ask: 'Page requests', slack: 'Slack requests', chat: 'Chat', assess: 'Assessments', other: 'Other'};
 var TOOL_COLUMNS = [
   {id: 'name', label: 'Tool'}, {id: 'calls', label: 'Calls', num: true}, {id: 'runs', label: 'Runs', num: true}, {id: 'errors', label: 'Errors', num: true},
   {id: 'held', label: 'Held', num: true}, {id: 'refused', label: 'Refused input', num: true}, {id: 'errorRate', label: 'Error rate', num: true}, {id: 'p50Ms', label: 'p50', num: true}, {id: 'p95Ms', label: 'p95', num: true}, {id: 'maxMs', label: 'Max', num: true},

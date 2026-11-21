@@ -145,6 +145,7 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
             store.triage(key, None)
         if system_note(doc):
             store.drop_note(key)
+        store.set_tagging(key, {'reopenedAt': iso(utc_now())})
         return 'reopened'
     if kind == 'resolve':
         ticket = (action.get('ticket') or '').strip()

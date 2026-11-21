@@ -85,7 +85,7 @@ async function closedListsCardsThatLeftThePageWithPagingAndFilters() {
   assert.strictEqual(first.querySelector('.cl-svc').textContent, 'svc-0');
   assert.ok(first.querySelector('.cl-res').textContent.includes('Resolved') && first.querySelector('.cl-ticket').getAttribute('href') === 'https://jira.example.com/browse/OPS-140');
   assert.strictEqual(first.querySelector('.cl-note').textContent, 'Supplier answered 503 for ten minutes');
-  assert.ok(doc.querySelector('.cl-pager').textContent.includes('1–50 of 60'));
+  assert.ok(doc.querySelector('.cl-pager').textContent.includes('1\u201350 of 60'));
   assert.deepStrictEqual(second.slice(0, 2), ['#150', '#151'], 'Older shows the next page');
   assert.deepStrictEqual(asked[0], {page: '0', size: '50', days: '7'});
   assert.deepStrictEqual(asked[1], {page: '1', size: '50', days: '7'});

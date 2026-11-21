@@ -113,18 +113,18 @@ async function cardSentTagAndNotifyRowLinkToSlack() {
 
   //then
   const orders = card(doc, ORDERS);
-  assert.strictEqual(sentTag(orders).textContent, 'Sent to Slack ' + hhmm(POSTED.orders) + ' ↗', 'the sent tag says where it goes');
+  assert.strictEqual(sentTag(orders).textContent, 'Sent to Slack ' + hhmm(POSTED.orders) + ' \u2197', 'the sent tag says where it goes');
   opensSlack(sentTag(orders).querySelector('a'), SLACK + '11', 'the sent tag');
-  assert.strictEqual(notify(orders).textContent, 'Thread update ' + hhmm(POSTED.update) + ' ↗ · Sent to Slack ' + hhmm(POSTED.orders) + ' ↗ · op · draft', 'the Notify row line');
+  assert.strictEqual(notify(orders).textContent, 'Thread update ' + hhmm(POSTED.update) + ' \u2197 \u00b7 Sent to Slack ' + hhmm(POSTED.orders) + ' \u2197 \u00b7 op \u00b7 draft', 'the Notify row line');
   assert.deepStrictEqual(links(notify(orders)), [
-    ['Thread update ' + hhmm(POSTED.update) + ' ↗', SLACK + '16?thread_ts=1.1&cid=C1', '_blank', 'noopener'],
-    ['Sent to Slack ' + hhmm(POSTED.orders) + ' ↗', SLACK + '11', '_blank', 'noopener'],
+    ['Thread update ' + hhmm(POSTED.update) + ' \u2197', SLACK + '16?thread_ts=1.1&cid=C1', '_blank', 'noopener'],
+    ['Sent to Slack ' + hhmm(POSTED.orders) + ' \u2197', SLACK + '11', '_blank', 'noopener'],
   ], 'the thread update and the post each open their own message');
 
   const cart = card(doc, CART);
   assert.strictEqual(sentTag(cart).textContent, 'Sent to Slack ' + hhmm(POSTED.cart), 'no link, the tag stays plain');
   assert.ok(!sentTag(cart).querySelector('a'));
-  assert.strictEqual(notify(cart).textContent, 'Thread update ' + hhmm(POSTED.update) + ' · Sent to Slack ' + hhmm(POSTED.cart) + ' · op · draft', 'no link, the line stays plain');
+  assert.strictEqual(notify(cart).textContent, 'Thread update ' + hhmm(POSTED.update) + ' \u00b7 Sent to Slack ' + hhmm(POSTED.cart) + ' \u00b7 op \u00b7 draft', 'no link, the line stays plain');
   assert.ok(!notify(cart).querySelector('a'));
 
   const gw = card(doc, GW);
@@ -140,7 +140,7 @@ async function cardSentTagAndNotifyRowLinkToSlack() {
 
 async function statusNoteShowsInTheNotifyRow() {
   //given
-  const note = {state: 'handled', text: '✅ Solved: op · disk cleaned', at: POSTED.note, by: 'op', ts: '1.9', permalink: SLACK + '19?thread_ts=1.1&cid=C1'};
+  const note = {state: 'handled', text: '\u2705 Solved: op \u00b7 disk cleaned', at: POSTED.note, by: 'op', ts: '1.9', permalink: SLACK + '19?thread_ts=1.1&cid=C1'};
   const serve = {state: boardAt(5, {note}), actions: ACTIONS};
 
   //when
@@ -148,7 +148,7 @@ async function statusNoteShowsInTheNotifyRow() {
 
   //then
   const line = notify(card(doc, ORDERS));
-  assert.ok(line.textContent.startsWith('Status note ' + hhmm(POSTED.note) + ' ↗ · Thread update '), 'the newest thread reply leads: ' + line.textContent);
+  assert.ok(line.textContent.startsWith('Status note ' + hhmm(POSTED.note) + ' \u2197 \u00b7 Thread update '), 'the newest thread reply leads: ' + line.textContent);
   const a = line.querySelector('a');
   opensSlack(a, note.permalink, 'the status note');
   assert.strictEqual(a.title, note.text, 'its tooltip is the note');
@@ -168,14 +168,14 @@ async function reportLineAndTagLinkToSlack() {
   //then
   const r1 = doc.getElementById('rep-r1'), r2 = doc.getElementById('rep-r2');
   const tag = r1.querySelector(':scope > summary .slack-rec.sent');
-  assert.strictEqual(tag.textContent, 'Sent to Slack ' + hhmm(REPORTS[0].slackPost.at) + ' ↗');
+  assert.strictEqual(tag.textContent, 'Sent to Slack ' + hhmm(REPORTS[0].slackPost.at) + ' \u2197');
   opensSlack(tag.querySelector('a'), SLACK + '21', 'the report tag');
   const st = r1.querySelector('.rep-acts .slack-st');
-  assert.strictEqual(st.textContent, 'Sent to Slack ' + hhmm(REPORTS[0].slackPost.at) + ' ↗ · op');
+  assert.strictEqual(st.textContent, 'Sent to Slack ' + hhmm(REPORTS[0].slackPost.at) + ' \u2197 \u00b7 op');
   opensSlack(st.querySelector('a'), SLACK + '21', 'the report line');
   assert.ok(!r1.open, 'the link in the summary row does not unfold the report on render');
   assert.strictEqual(r2.querySelector(':scope > summary .slack-rec.sent').textContent, 'Sent to Slack ' + hhmm(REPORTS[1].slackPost.at));
-  assert.strictEqual(r2.querySelector('.rep-acts .slack-st').textContent, 'Sent to Slack ' + hhmm(REPORTS[1].slackPost.at) + ' · op');
+  assert.strictEqual(r2.querySelector('.rep-acts .slack-st').textContent, 'Sent to Slack ' + hhmm(REPORTS[1].slackPost.at) + ' \u00b7 op');
   assert.ok(!r2.querySelector('.slack-rec a, .rep-acts .slack-st a'), 'a report without a link stays plain');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
@@ -193,12 +193,12 @@ async function slackTabSentListLinksTheTime() {
   const when = (key) => rows.find((tr) => tr.children[1].textContent.includes(key)).children[0];
 
   //then
-  assert.strictEqual(when('orders-service').textContent, hhmm(POSTED.orders) + ' ↗');
+  assert.strictEqual(when('orders-service').textContent, hhmm(POSTED.orders) + ' \u2197');
   opensSlack(when('orders-service').querySelector('a'), SLACK + '11', 'the Sent list time');
   assert.strictEqual(when('checkout-service').textContent, hhmm(POSTED.cart), 'no link, plain time');
   assert.ok(!when('shop-web').querySelector('a'), 'a non-Slack link stays plain');
   const reps = rows.filter((tr) => tr.children[1].textContent.startsWith('Report')).map((tr) => tr.children[0]);
-  assert.deepStrictEqual(reps.map((td) => td.textContent), [hhmm(REPORTS[1].slackPost.at), hhmm(REPORTS[0].slackPost.at) + ' ↗'], 'report rows too, newest first');
+  assert.deepStrictEqual(reps.map((td) => td.textContent), [hhmm(REPORTS[1].slackPost.at), hhmm(REPORTS[0].slackPost.at) + ' \u2197'], 'report rows too, newest first');
   opensSlack(reps[1].querySelector('a'), SLACK + '21', 'a report row');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
@@ -212,14 +212,14 @@ async function aLinkThatArrivesLaterShowsOnTheLiveUpdate() {
   assert.ok(!sentTag(card(doc, CART)).querySelector('a'));
 
   //when
-  serve.state = boardAt(6, {cartLink: SLACK + '12', note: {state: 'progress', text: '🛠️ Being worked on: op', at: POSTED.note, by: 'op', ts: '1.9', permalink: SLACK + '19'}});
+  serve.state = boardAt(6, {cartLink: SLACK + '12', note: {state: 'progress', text: '🛠\ufe0f Being worked on: op', at: POSTED.note, by: 'op', ts: '1.9', permalink: SLACK + '19'}});
   visible(w);
   await wait(400);
 
   //then
   opensSlack(sentTag(card(doc, CART)).querySelector('a'), SLACK + '12', 'the sent tag after the live update');
   const line = notify(card(doc, CART));
-  assert.strictEqual(line.textContent, 'Thread update ' + hhmm(POSTED.update) + ' · Sent to Slack ' + hhmm(POSTED.cart) + ' ↗ · op · draft', 'the Notify row takes the card post link');
+  assert.strictEqual(line.textContent, 'Thread update ' + hhmm(POSTED.update) + ' \u00b7 Sent to Slack ' + hhmm(POSTED.cart) + ' \u2197 \u00b7 op \u00b7 draft', 'the Notify row takes the card post link');
   opensSlack(line.querySelector('a'), SLACK + '12', 'the Notify row after the live update');
   opensSlack(notify(card(doc, ORDERS)).querySelector('a'), SLACK + '19', 'a status note that arrives later');
   assert.deepStrictEqual(errors, []);

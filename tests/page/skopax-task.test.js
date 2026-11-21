@@ -28,7 +28,7 @@ async function boot(stored, prefix) {
         if (p.startsWith('/api/me')) return ok({loginEnabled: true, user: 'dora.lane@example.com', operator: true, jira: true, teams: [], tags: [],
           task: {project: 'OPS', projects: ['OPS', 'WEB', 'APP', 'MOB'], parent: '', points: 1, techProject: 'INFRA', techAssignee: true, titlePrefix: prefix === undefined ? 'OPS: ' : prefix}});
         if (p.startsWith('/api/jira/search')) return ok([{key: 'WEB-201', summary: 'Audit History', status: 'In Progress', developer: null}]);
-        if (p.startsWith('/api/actions') && method === 'POST') return ok({id: 'a1', status: 'done', result: 'WEB-202 created · In progress'});
+        if (p.startsWith('/api/actions') && method === 'POST') return ok({id: 'a1', status: 'done', result: 'WEB-202 created \u00b7 In progress'});
         if (p.startsWith('/api/actions') || p.startsWith('/api/deploy-reports') || p.startsWith('/api/requests')) return ok([]);
         if (p.startsWith('/api/rev')) return ok({rev: 1});
         if (p.startsWith('/api/nodes')) return ok({nodes: []});
@@ -56,7 +56,7 @@ async function theDialogAsksForTheProjectAndTakesAnEpicFromJiraSearch() {
   const proj = doc.getElementById('task-project'), epic = doc.getElementById('task-epic'), err = doc.getElementById('task-err'), meta = doc.getElementById('task-meta');
 
   //then
-  assert.deepStrictEqual([...proj.options].map((o) => o.textContent), ['Choose…', 'OPS', 'WEB', 'APP', 'MOB', 'INFRA (Infra)']);
+  assert.deepStrictEqual([...proj.options].map((o) => o.textContent), ['Choose\u2026', 'OPS', 'WEB', 'APP', 'MOB', 'INFRA (Infra)']);
   assert.ok(proj.value === '' && epic.value === '' && meta.textContent.startsWith('Pick the project this task goes to'), 'no project and no epic are preset');
 
   //when
@@ -77,7 +77,7 @@ async function theDialogAsksForTheProjectAndTakesAnEpicFromJiraSearch() {
   //then
   assert.strictEqual(refused, 'Pick the project this task goes to.');
   assert.ok(calls.some((c) => c[1] === '/api/jira/search?q=' + encodeURIComponent('audit hist') + '&type=epic&project=WEB'), 'the epic search is limited to epics of the chosen project');
-  assert.ok(picked === 'WEB-201' && said.startsWith('Project WEB · Epic WEB-201 · Active sprint'));
+  assert.ok(picked === 'WEB-201' && said.startsWith('Project WEB \u00b7 Epic WEB-201 \u00b7 Active sprint'));
   const post = calls.filter((c) => c[0] === 'POST' && c[1] === '/api/actions')[0][2];
   assert.ok(post.type === 'ticket' && post.project === 'WEB' && post.epic === 'WEB-201' && post.points === 1 && post.title === 'OPS: checkout-service ERROR lines');
   assert.strictEqual(w.localStorage.getItem('skopax-task-project'), 'WEB');
