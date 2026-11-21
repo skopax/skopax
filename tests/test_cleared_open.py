@@ -99,7 +99,7 @@ def test_every_pack_translates_the_new_texts_and_no_pack_calls_a_cleared_card_re
     assert '\U0001F7E2' not in pack['clear.cleared'] and '\U0001F7E2' not in pack['clear.plugin_note']
 
 
-def test_the_turkish_texts_are_the_ones_the_owner_asked_for():
+def test_the_turkish_texts_say_the_card_is_still_open():
     # given
     pack = json.loads((LOCALES / 'tr' / 'messages.json').read_text(encoding='utf-8'))
 
