@@ -9,9 +9,9 @@ from tests.test_elasticsearch_plugin import ES_URL, QUERY
 from tests.test_esql_narrow import ROWS, THREE, ctx, sent
 
 RESOLVE = f'{ES_URL}/_resolve/index/*'
-MISSING = HttpError(400, QUERY, '{"error": {"type": "verification_exception", "reason": "Found 1 problem\\nline 1:1: Unknown index [eks-shop-prod-logs-*]"}}')
-INDICES = {'indices': [{'name': f'eks-checkout-prod-logs-2026.11.{d:02d}'} for d in range(1, 6)] + [{'name': 'eks-shop-prod-app-logs-2026.11.01'}, {'name': 'metrics-system.cpu-default'}, {'name': 'zzz-unrelated'}],
-           'aliases': [], 'data_streams': [{'name': 'eks-cart-prod-logs-default'}]}
+MISSING = HttpError(400, QUERY, '{"error": {"type": "verification_exception", "reason": "Found 1 problem\\nline 1:1: Unknown index [k8s-shop-prod-logs-*]"}}')
+INDICES = {'indices': [{'name': f'k8s-checkout-prod-logs-2026.11.{d:02d}'} for d in range(1, 6)] + [{'name': 'k8s-shop-prod-app-logs-2026.11.01'}, {'name': 'metrics-system.cpu-default'}, {'name': 'zzz-unrelated'}],
+           'aliases': [], 'data_streams': [{'name': 'k8s-cart-prod-logs-default'}]}
 
 
 @pytest.fixture(autouse=True)
@@ -32,26 +32,26 @@ def test_an_index_pattern_that_matches_no_index_answers_with_the_closest_existin
 
     # when
     with pytest.raises(ReadError) as raised:
-        run_esql(ctx(http), {'query': 'FROM eks-shop-prod-logs-* | WHERE @timestamp >= NOW() - 1 hour | LIMIT 5'})
+        run_esql(ctx(http), {'query': 'FROM k8s-shop-prod-logs-* | WHERE @timestamp >= NOW() - 1 hour | LIMIT 5'})
 
     # then
     message = raised.value.message
     assert 'closest existing' in message, message
-    assert 'eks-checkout-prod-logs-*' in message and 'eks-cart-prod-logs-default' in message, message
+    assert 'k8s-checkout-prod-logs-*' in message and 'k8s-cart-prod-logs-default' in message, message
     assert 'zzz-unrelated' not in message
     assert len(http.hits(QUERY)) == 1
 
 
 def test_the_closest_patterns_are_capped_at_ten_and_the_index_list_is_read_once_per_cache_window():
     # given
-    many = {'indices': [{'name': f'eks-shop-prod-logs-{c}-x'} for c in 'abcdefghijklmnop'], 'aliases': [], 'data_streams': []}
+    many = {'indices': [{'name': f'k8s-shop-prod-logs-{c}-x'} for c in 'abcdefghijklmnop'], 'aliases': [], 'data_streams': []}
     http = scripted(MISSING, MISSING, resolve=many)
 
     # when
     texts = []
     for _ in range(2):
         with pytest.raises(ReadError) as raised:
-            run_esql(ctx(http), {'query': 'FROM eks-shop-prod-logs-* | WHERE @timestamp >= NOW() - 1 hour | LIMIT 5'})
+            run_esql(ctx(http), {'query': 'FROM k8s-shop-prod-logs-* | WHERE @timestamp >= NOW() - 1 hour | LIMIT 5'})
         texts.append(raised.value.message)
 
     # then
@@ -65,7 +65,7 @@ def test_a_failing_index_list_read_leaves_the_plain_error():
 
     # when
     with pytest.raises(ReadError) as raised:
-        run_esql(ctx(http), {'query': 'FROM eks-shop-prod-logs-* | WHERE @timestamp >= NOW() - 1 hour | LIMIT 5'})
+        run_esql(ctx(http), {'query': 'FROM k8s-shop-prod-logs-* | WHERE @timestamp >= NOW() - 1 hour | LIMIT 5'})
 
     # then
     assert 'Unknown index' in raised.value.message
@@ -122,7 +122,7 @@ def test_a_failed_index_list_read_is_not_repeated_within_a_minute():
     # when
     for _ in range(2):
         with pytest.raises(ReadError):
-            run_esql(ctx(http), {'query': 'FROM eks-shop-prod-logs-* | WHERE @timestamp >= NOW() - 1 hour | LIMIT 5'})
+            run_esql(ctx(http), {'query': 'FROM k8s-shop-prod-logs-* | WHERE @timestamp >= NOW() - 1 hour | LIMIT 5'})
 
     # then
     assert len(http.hits(RESOLVE)) == 1

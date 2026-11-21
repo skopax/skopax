@@ -27,11 +27,11 @@ def test_a_cleared_card_is_still_open_and_never_wears_the_done_mark():
     cleared_progress = anomaly_message(CARD | {'status': 'cleared', 'triage': 'progress'}, LINK, 'server', head={'kind': 'took', 'by': 'alice@example.com'})
 
     # then
-    assert head_of(cleared) == ':eyes: #14 stopped firing · still open'
+    assert head_of(cleared) == ':eyes: #14 stopped firing \u00b7 still open'
     assert head_of(cleared_progress).startswith(':eyes: ')
-    assert bar_of(cleared)[0].startswith('Stopped firing · still open')
+    assert bar_of(cleared)[0].startswith('Stopped firing \u00b7 still open')
     assert ':white_check_mark:' not in ''.join(texts(cleared)) and ':large_green_circle:' not in ''.join(texts(cleared))
-    assert cleared['text'].startswith('Stopped firing · still open')
+    assert cleared['text'].startswith('Stopped firing \u00b7 still open')
 
 
 def test_only_a_closed_card_wears_the_done_mark():
@@ -104,8 +104,8 @@ def test_the_turkish_texts_are_the_ones_the_owner_asked_for():
     pack = json.loads((LOCALES / 'tr' / 'messages.json').read_text(encoding='utf-8'))
 
     # then
-    assert pack['slack.head.cleared'] == '{card} sinyali durdu · kart açık'
-    assert pack['slack.status.cleared'] == 'Sinyal durdu · kart açık'
+    assert pack['slack.head.cleared'] == '{card} sinyali durdu \u00b7 kart a\u00e7\u0131k'
+    assert pack['slack.status.cleared'] == 'Sinyal durdu \u00b7 kart a\u00e7\u0131k'
 
 
 def test_the_cleared_thread_notes_carry_no_green_mark():
