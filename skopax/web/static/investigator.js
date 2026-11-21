@@ -60,7 +60,7 @@ function invLimits(d) {
   var l = d.limits || {};
   var askers = (l.askers || []).map(function (a) { return esc(invWho(a.by)) + ' ' + a.asks + (l.perPersonCap ? '/' + l.perPersonCap : ''); }).join(' · ');
   return '<div class="inv-lims">' +
-    invMeter('Slack questions this hour', l.slackAsks || 0, l.slackAskCap || 0, 'Everyone together; change it on Admin \u203a General \u203a Slack') +
+    invMeter('Slack questions this hour', l.slackAsks || 0, l.slackAskCap || 0, 'Everyone together; change it on Admin \u203a Settings \u203a Slack') +
     invMeter('Page questions this hour', l.pageAsks || 0, l.pageAskCap || 0) +
     invMeter('Topic checks this hour', l.gateCalls || 0, l.gateCap || 0, 'The small model call that decides whether a Slack message is for ' + brandName()) +
     invMeter('Spend today ($)', Number(l.spentToday || 0).toFixed(2), Number(l.cap || 0).toFixed(2), 'The daily limit; the investigator stops for the day when it is reached') + '</div>' +

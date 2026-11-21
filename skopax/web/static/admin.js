@@ -3,10 +3,10 @@ var ADMIN_NOTES = [], NOTES_SEQ = 0, FEATS = null, FEATS_SEQ = 0, AIKEY = null, 
 var FEAT_PENDING = {}, FEAT_HELD = {}, FEAT_SAID = {}, FEAT_HOLD_MS = 15000;
 var TALK_NAMES = {'small-talk.enabled': 'Small talk replies', 'small-talk.hourly-cap': 'Small talk replies per hour', 'small-talk.rules': 'Small talk rules'};
 var ADMIN_FOLD = {}, ADMIN_HIST_SHOW = 10, ADMIN_HIST_STEP = 20, ADMIN_HIST_MAX = 200, ADMIN_CLIP = 140, ADMIN_LINE_MAX = 1000;
-var FEATURES_GROUP = 'Features', AI_GROUP = 'Investigator', SIGNIN_GROUP = 'Sign-in', MCP_GROUP = 'MCP', OTHER_SWITCHES = 'Other switches';
+var FEATURES_GROUP = 'Features', AI_GROUP = 'Investigator', SIGNIN_GROUP = 'Sign-in', MCP_GROUP = 'MCP', INSTANCES_GROUP = 'Workspaces', OTHER_SWITCHES = 'Other switches';
 var ADMIN_REVEAL = null, ADMIN_HIT_MS = 2000;
-var ADMIN_TITLES = {settings: 'General: the tunable settings', access: 'Access & sign-in: single sign-on, users, API tokens and MCP',
-  features: 'Features: core features to switch on or off', ai: 'Investigator: the AI provider, its API key and the investigator settings', changes: 'Changes: what was changed in Admin, with Revert'};
+var ADMIN_TITLES = {settings: 'Settings: the tunable settings', access: 'Access & sign-in: single sign-on, users, API tokens and MCP',
+  workspaces: 'Workspaces: the other workspaces the switcher opens', features: 'Features: core features to switch on or off', ai: 'Investigator: the AI provider, its API key and the investigator settings', changes: 'Changes: what was changed in Admin, with Revert'};
 function markAdminTab(id, on) {
   var tab = document.getElementById('tab-' + id);
   if (!tab) return;
@@ -23,6 +23,7 @@ function setAdminAccess(on) {
   ADMIN_OK = !!on;
   ADMIN_TABS.forEach(function (id) { markAdminTab(id, ADMIN_OK); });
   if (typeof renderMeta === 'function') renderMeta();
+  document.dispatchEvent(new CustomEvent('skopax:admin', {detail: {on: ADMIN_OK}}));
   if (!ADMIN_OK) {
     ADMIN = null;
     ACCESS = null;
@@ -56,6 +57,7 @@ function adminShow(id) {
   else if (id === 'access') loadAccess();
   else if (id === 'features') loadFeatures();
   else if (id === 'ai') loadAi();
+  else if (id === 'workspaces') loadInstances();
   else loadChanges();
   adminCounts(id);
 }
@@ -83,7 +85,7 @@ function featItems() { return FEATS ? FEATS.items : []; }
 function featKeys() { return featItems().map(function (f) { return f.key; }); }
 function generalOf(items) {
   var keys = featKeys();
-  return items.filter(function (i) { return [FEATURES_GROUP, AI_GROUP, SIGNIN_GROUP, MCP_GROUP].indexOf(i.group) < 0 && keys.indexOf(i.key) < 0; });
+  return items.filter(function (i) { return [FEATURES_GROUP, AI_GROUP, SIGNIN_GROUP, MCP_GROUP, INSTANCES_GROUP].indexOf(i.group) < 0 && keys.indexOf(i.key) < 0; });
 }
 function otherSwitches() {
   var keys = featKeys();
@@ -311,6 +313,35 @@ function adminValue(row, i) {
   });
   return Object.keys(out).length ? JSON.stringify(out) : '';
 }
+var BUILT_SHOWN = 8;
+function adminLeftOut(value) {
+  return String(value || '').toLowerCase().split(/[\s,]+/).filter(function (t) { return t.charAt(0) === '-' && t.length > 1; }).map(function (t) { return t.slice(1); });
+}
+function adminBuiltIn(i, row) {
+  var host = row.querySelector('.adm-c') || row, input = row.querySelector('.adm-in'), own = i.ownDomains || [], all = i.builtIn || [], open = false;
+  var box = el('div', 'adm-built'), list = el('div', 'adm-built-l'), more = accText('button', 'btn sec small adm-built-more', '');
+  box.appendChild(accText('b', 'adm-built-h', 'Built-in sites'));
+  box.appendChild(list);
+  more.type = 'button';
+  var paint = function () {
+    var out = adminLeftOut(input ? input.value : i.value);
+    list.textContent = '';
+    all.forEach(function (h, n) {
+      var chip = accText('span', 'adm-chip' + (own.indexOf(h) >= 0 ? ' own' : '') + (out.indexOf(h) >= 0 ? ' removed' : ''), own.indexOf(h) >= 0 ? h + ' \u00b7 ' + tx('your domain') : h);
+      chip.title = out.indexOf(h) >= 0 ? tx('Left out by -{0}').replace('{0}', h) : own.indexOf(h) >= 0 ? tx('Your domain (from sign-in e-mail domains)') : '';
+      chip.hidden = !open && n >= BUILT_SHOWN;
+      list.appendChild(chip);
+    });
+    more.hidden = all.length <= BUILT_SHOWN;
+    more.textContent = open ? tx('Show fewer') : tx('Show all {0}').replace('{0}', all.length);
+    more.setAttribute('aria-expanded', String(open));
+  };
+  more.addEventListener('click', function () { open = !open; paint(); });
+  if (input) input.addEventListener('input', paint);
+  box.appendChild(more);
+  host.appendChild(box);
+  paint();
+}
 function adminRow(i, card) {
   var row = el('div', 'adm-row' + (i.source === 'admin' ? ' set' : '') + (card ? ' adm-field' : ''));
   row.dataset.key = i.key;
@@ -321,6 +352,9 @@ function adminRow(i, card) {
     '<div class="adm-c">' + adminControl(i) + (i.pluginTerms && i.pluginTerms.length ? '<p class="adm-help adm-plugin-terms">From plug-ins, not saved here: ' + i.pluginTerms.map(function (t) { return '<code>' + esc(t) + '</code>'; }).join(' ') + '</p>' : '') + '<div class="adm-acts">' + (card ? '' : '<button type="button" class="btn small adm-save" disabled>Save</button>') +
     (i.source === 'admin' ? '<button type="button" class="btn sec small adm-reset" title="' + esc('Drop the value set here and go back to ' + (i.base ? i.base : 'the default')) + '">Reset</button>' : '') +
     '<span class="adm-msg" role="status"></span></div></div>';
+  if (i.builtIn && i.builtIn.length) adminBuiltIn(i, row);
+  var chipIn = i.items && i.kind !== 'rules' ? row.querySelector('.adm-in') : null;
+  if (chipIn && chipIn.tagName === 'INPUT') admChipsMount(chipIn, i.items, i.label);
   if (i.problem) {
     var note = el('p', 'adm-help adm-problem');
     note.textContent = i.problem;
@@ -337,7 +371,7 @@ function adminRow(i, card) {
   admUnfold(row);
   if (!card) admSeg(row, i);
   var save = row.querySelector('.adm-save'), msg = row.querySelector('.adm-msg');
-  row.querySelectorAll('input, select, textarea').forEach(function (inp) { ['input', 'change'].forEach(function (ev) { inp.addEventListener(ev, function () { if (save) save.disabled = adminValue(row, i) === adminCurrent(i); msg.textContent = ''; }); }); });
+  row.querySelectorAll('input:not(.adm-chip-in), select, textarea').forEach(function (inp) { ['input', 'change'].forEach(function (ev) { inp.addEventListener(ev, function () { if (save) save.disabled = adminValue(row, i) === adminCurrent(i) || admChipsBad(row); msg.textContent = ''; }); }); });
   if (save) save.addEventListener('click', function () { adminSave(i, adminValue(row, i), save, msg); });
   var reset = row.querySelector('.adm-reset');
   if (reset) reset.addEventListener('click', function () { adminReset(i, reset, msg); });
@@ -878,6 +912,7 @@ function adminPaintAll(saved) {
   renderAdmin(saved);
   renderFeatOther(saved);
   renderAiRows(saved);
+  renderInstances(saved);
   renderMcpRows(saved);
   renderSsoRoles(saved);
   renderChanges();
@@ -966,7 +1001,7 @@ function renderFeatOther(saved) {
   });
 }
 var AI_PAIRS = {'investigate.model': ['investigate.effort', 'Card model and effort'], 'investigate.slack-model': ['investigate.slack-effort', 'Slack model and effort'],
-  'investigate.gate-model': ['investigate.gate-effort', 'Topic gate model and effort']};
+  'investigate.gate-model': ['investigate.gate-effort', 'Topic gate model and effort'], 'chat.model': ['chat.effort', 'Chat model and effort']};
 function aiPair(model, effort, title) {
   var pair = el('div', 'adm-pair'), id = adminId(model.key) + '-pair';
   pair.setAttribute('role', 'group');
@@ -2655,6 +2690,9 @@ function renderSso(said) {
   card.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.classList.contains('sso-chip-in')) { e.preventDefault(); ssoAddDomain(); } });
   card.addEventListener('click', function (e) { ssoClick(e); ssoBarPaint(); });
   renderSsoRoles();
+  var scopeIn = document.getElementById('sso-in-scope');
+  var scopeItem = adminItems().filter(function (x) { return x.key === 'sso.scope'; })[0];
+  if (scopeIn && scopeIn.tagName === 'INPUT') admChipsGate(admChipsMount(scopeIn, (scopeItem && scopeItem.items) || {kind: 'scope', separator: ' '}, SSO_LABELS.scope));
   var again = document.querySelector('#acc-sso .sso-roles');
   if (again && edits.length) restoreUnsaved(again, edits);
   ssoChips();
@@ -2790,6 +2828,7 @@ function ssoRestore(draft, skip) {
     if (!inp || skip.indexOf(name) >= 0) return;
     if (inp.type === 'checkbox') inp.checked = draft.fields[name];
     else inp.value = draft.fields[name];
+    if (inp.dataset.chips) inp.dispatchEvent(new Event('input'));
     var fold = inp.closest('details');
     if (fold) fold.open = true;
   });
@@ -3013,10 +3052,12 @@ function renderMcpRows(saved) {
       save.addEventListener('click', function () { mcpSave(save, said); });
     }
     box.appendChild(s);
+    admChipsGate(box);
   });
   accNavPaint();
 }
 async function mcpSave(b, said) {
+  if (admChipsBad(document.getElementById('acc-mcp'))) return;
   var edits = accCardEdits(document.getElementById('acc-mcp'));
   if (!edits.length) { ssoNote(said, 'Nothing changed'); return; }
   b.disabled = true;

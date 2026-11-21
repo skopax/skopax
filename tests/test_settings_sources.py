@@ -333,9 +333,9 @@ def test_a_plugin_setting_out_of_range_is_refused_and_a_bad_source_value_falls_b
 
 def test_an_over_long_org_about_from_a_settings_source_is_refused_for_that_field(store, tmp_path, monkeypatch, caplog):
     # given
-    monkeypatch.setattr(demo_plugin, 'SOURCE', {'values': {'core.org-about': 'y' * 301, 'core.timezone': 'Asia/Tokyo'}})
+    monkeypatch.setattr(demo_plugin, 'SOURCE', {'values': {'core.org-about': 'y' * 2001, 'core.timezone': 'Asia/Tokyo'}})
     first = SourceData('feed', {'core.org-about': 'We run a shop.'})
-    second = SourceData('feed', {'core.org-about': 'z' * 301, 'investigate.max-cards': '7'})
+    second = SourceData('feed', {'core.org-about': 'z' * 2001, 'investigate.max-cards': '7'})
     box = {'data': first}
     sources = SourceSet([('feed', lambda: box['data'])], {'feed': first})
 
@@ -353,13 +353,13 @@ def test_an_over_long_org_about_from_a_settings_source_is_refused_for_that_field
     # then
     assert (b.settings.org_about, b.settings.timezone) == ('We sell books.', 'Asia/Tokyo')
     assert (followed.org_about, followed.investigate_max_cards) == ('', 7)
-    assert warned == [msg('settings.source_too_long', key='core.org-about', limit=300)] * 2
+    assert warned == [msg('settings.source_too_long', key='core.org-about', limit=2000)] * 2
     assert 'yyy' not in caplog.text and 'zzz' not in caplog.text
 
 
 def test_admin_names_where_the_org_about_in_use_comes_from_when_a_source_value_is_refused(store, tmp_path, monkeypatch):
     # given
-    monkeypatch.setattr(demo_plugin, 'SOURCE', {'values': {'core.org-about': 'y' * 301, 'core.timezone': 'Asia/Tokyo'}})
+    monkeypatch.setattr(demo_plugin, 'SOURCE', {'values': {'core.org-about': 'y' * 2001, 'core.timezone': 'Asia/Tokyo'}})
     b = boot({**MAIN, 'SKOPAX_ORG_ABOUT': 'We sell books.'}, registry_with(demo_plugin))
 
     # when
@@ -373,7 +373,7 @@ def test_admin_names_where_the_org_about_in_use_comes_from_when_a_source_value_i
 
 def test_admin_measures_the_resolved_org_about_of_a_source_when_it_names_where_the_value_comes_from(store, tmp_path, monkeypatch):
     # given
-    monkeypatch.setenv('ORG_TEXT', 'y' * 301)
+    monkeypatch.setenv('ORG_TEXT', 'y' * 2001)
     monkeypatch.setattr(demo_plugin, 'SOURCE', {'values': {'core.org-about': '${ORG_TEXT}'}})
     b = boot({**MAIN, 'SKOPAX_ORG_ABOUT': 'We sell books.'}, registry_with(demo_plugin))
 

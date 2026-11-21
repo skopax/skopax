@@ -4,7 +4,7 @@ from skopax import remote
 from skopax.instances import Instances, PluginState
 from skopax.investigator.tools import Effects, Toolbox
 from skopax.kit import browser as browser_kit, web
-from skopax.plugins import website
+from skopax.plugins import browser as browser_plugin, website
 from skopax.plugintools import PluginTools
 from skopax.registry import Registry
 from skopax.remote import Reply
@@ -57,9 +57,11 @@ def quiet(monkeypatch) -> None:
     website.BROWSERS.clear()
 
 
-def website_runtime(store, transport, instances: dict[str, dict] | None = None) -> Runtime:
-    registry = Registry.of(website.PLUGIN)
+def website_runtime(store, transport, instances: dict[str, dict] | None = None, browsers: dict[str, dict] | None = None) -> Runtime:
+    registry = Registry.of(website.PLUGIN, browser_plugin.PLUGIN)
     runtime = Runtime(registry, PluginState(store.db), Instances(store.db, registry, lambda: Sealer(KIT_KEY)), transport)
+    for index, (name, values) in enumerate((browsers or {}).items()):
+        add_instance(store, browser_plugin.PLUGIN, name, sealer_key=KIT_KEY, primary=index == 0, **values)
     for index, (name, values) in enumerate((instances or {'main': {}}).items()):
         add_instance(store, website.PLUGIN, name, sealer_key=KIT_KEY, primary=index == 0, **({'url': SITE} | FIELDS | values))
     runtime.refresh()
@@ -71,7 +73,7 @@ def effects() -> Effects:
 
 
 def site_box(store, transport, instances: dict[str, dict] | None = None, mode: str = 'live', keys=('log|a|ERROR|x',), run_id: str | None = None, fx: Effects | None = None,
-             runtime: Runtime | None = None, **kw) -> Toolbox:
-    tools = PluginTools(runtime or website_runtime(store, transport, instances))
+             runtime: Runtime | None = None, browsers: dict[str, dict] | None = None, **kw) -> Toolbox:
+    tools = PluginTools(runtime or website_runtime(store, transport, instances, browsers))
     return Toolbox(sources(plugin_tools=tools), store, fx or effects(), list(keys), mode, NOW, BASE, run_id=run_id,
                    settings=dataclasses.replace(settings(), link_hosts=('example.com', 'gitlab.com')), **kw)

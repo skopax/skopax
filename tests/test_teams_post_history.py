@@ -57,7 +57,7 @@ def test_an_info_card_that_fires_again_before_its_fixed_post_still_gets_one_when
     # then
     assert first == {'teams/seo': [KEY]} and held == {} and refired == {}, 'the channel already has it, so the quick return is not said twice'
     assert fixed == {'teams/seo:fixed': [KEY]} and again == {}, 'the channel was told the problem is on, so it hears once that it stopped'
-    assert [texts(b)[0] for _, b in t.calls] == ['Skopax \u00b7 SEO', 'Skopax \u00b7 SEO \u00b7 stopped firing, still open']
+    assert [texts(b)[0] for _, b in t.calls] == ['Skopax \u00b7 SEO', 'Skopax \u00b7 SEO \u00b7 stopped firing, awaiting review']
 
 
 def test_an_info_card_whose_check_stopped_reporting_gets_no_fixed_post(store: Store):
@@ -124,7 +124,7 @@ def test_a_card_that_was_resolved_left_the_page_and_came_back_gets_its_fixed_pos
 
     # then
     assert held == {} and fixed == {'teams/seo:fixed': [KEY]}, 'the channel still believed the problem was on, so it hears once that it stopped'
-    assert [texts(b)[0] for _, b in t.calls] == ['Skopax \u00b7 SEO', 'Skopax \u00b7 SEO \u00b7 stopped firing, still open']
+    assert [texts(b)[0] for _, b in t.calls] == ['Skopax \u00b7 SEO', 'Skopax \u00b7 SEO \u00b7 stopped firing, awaiting review']
 
 
 def test_a_business_post_sent_by_hand_carries_the_merged_cards_and_the_team_title_like_the_automatic_one(store: Store, tmp_path):
@@ -184,7 +184,7 @@ def test_a_markdown_link_in_a_stored_sentence_reaches_the_business_channel_as_pl
     assert posted[1:4] == ['**Info:** For the campaign click here (https://evil.example/login) and update the page.',
                            'Why: The old campaign [2025] (https://evil.example/old) link opens an empty page.',
                            '\u2022 Add a redirect for the products page (https://www.example.com/products), instead of [old [[x]] link] (https://evil.example/x).']
-    assert fixed[1] == '\U0001F440 **Stopped firing, still open:** For the campaign click here (https://evil.example/login) and update the page.'
+    assert fixed[1] == '\U0001F7E1 **Stopped firing, awaiting review:** For the campaign click here (https://evil.example/login) and update the page.'
 
 
 class Refusing:

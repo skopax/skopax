@@ -12,7 +12,7 @@ const LINKS = [{name: 'staging', url: STAGING, letter: 'S', colour: '#5cbf80'}, 
 const BRAND = 'rgb(60, 200, 240)';
 const ADMIN_ITEMS = [
   {key: 'general.timezone', group: 'General', label: 'Timezone', help: 'IANA timezone name', kind: 'text', live: true, value: 'UTC', base: 'UTC', default: 'UTC', source: 'default'},
-  {key: 'core.instance-links', group: 'General', label: 'Other instances', help: 'name=url pairs', kind: 'text', live: true, value: '', base: '', default: '', source: 'default'},
+  {key: 'core.workspace-links', group: 'Workspaces', label: 'Other workspaces', help: 'name=url pairs', kind: 'text', live: true, value: '', base: '', default: '', source: 'default'},
   {key: 'investigate.model', group: 'Investigator', label: 'Card model', help: 'Model for card runs', kind: 'choice', choices: ['claude-opus-5-5'], live: true, value: 'claude-opus-5-5', base: 'claude-opus-5-5', default: 'claude-opus-5-5', source: 'default'}];
 
 function state() {
@@ -68,11 +68,14 @@ async function theButtonNamesTheCurrentInstance() {
   //then
   assert.deepStrictEqual([...doc.getElementById('side-top').children].map((c) => c.id), ['inst', 'search-btn'], 'the switcher, then the search, at the top of the sidebar');
   assert.strictEqual(btn.querySelector('.inst-name').textContent, 'production', 'the button names the current instance');
-  assert.strictEqual(btn.querySelector('.inst-k').textContent, 'Instance');
+  const nameStyle = w.getComputedStyle(btn.querySelector('.inst-name'));
+  assert.ok(nameStyle.paddingTop !== '7px' && nameStyle.borderTopWidth !== '1px', 'the Admin workspace field rules do not restyle the sidebar name');
+  assert.ok(![...doc.styleSheets].some((sheet) => [...sheet.cssRules].some((r) => r.selectorText && /\.inst-(name|url)\b/.test(r.selectorText) && /padding: 7px/.test(r.cssText))), 'no rule gives the sidebar name the field padding');
+  assert.strictEqual(btn.querySelector('.inst-k').textContent, 'Workspace');
   assert.strictEqual(btn.querySelector('.inst-tile').textContent, 'P', 'with its letter on the tile');
   assert.strictEqual(tile(w, btn), BRAND, 'the current entry is brand cyan');
   assert.deepStrictEqual(['aria-haspopup', 'aria-expanded', 'aria-controls', 'aria-label', 'title'].map((a) => btn.getAttribute(a)),
-    ['menu', 'false', 'inst-menu', 'Instance: production. Switch instance', 'Instance: production']);
+    ['menu', 'false', 'inst-menu', 'Workspace: production. Switch workspace', 'Workspace: production']);
   assert.strictEqual(doc.getElementById('inst-menu').getAttribute('role'), 'menu');
   assert.ok(doc.getElementById('inst-menu').hidden, 'the menu starts closed');
   assert.strictEqual(doc.getElementById('env-tag'), null, 'the environment chip left the top bar: the switcher names the deployment now');
@@ -82,7 +85,7 @@ async function theButtonNamesTheCurrentInstance() {
   assert.strictEqual(early.doc.querySelector('#inst-btn .inst-name').textContent, 'production', 'and the name once it answers');
   assert.deepStrictEqual(errors.concat(early.errors, old.errors), []);
   dom.window.close(); early.dom.window.close(); old.dom.window.close();
-  return 'the switcher button shows the letter tile, "Instance" and the current name, closed, ahead of the search button';
+  return 'the switcher button shows the letter tile, "Workspace" and the current name, closed, ahead of the search button';
 }
 
 async function theMenuListsTheLinksWithTheirHosts() {
@@ -96,7 +99,7 @@ async function theMenuListsTheLinksWithTheirHosts() {
   //then
   const menu = doc.getElementById('inst-menu'), list = items(doc);
   assert.ok(!menu.hidden && btn.getAttribute('aria-expanded') === 'true', 'a click opens it');
-  assert.strictEqual(menu.getAttribute('aria-label'), 'Switch instance');
+  assert.strictEqual(menu.getAttribute('aria-label'), 'Switch workspace');
   assert.deepStrictEqual(names(doc), ['production', 'staging', 'eu'], 'the current entry first, then the links in their order');
   assert.deepStrictEqual(list.map((i) => i.getAttribute('role')), ['menuitemradio', 'menuitemradio', 'menuitemradio']);
   assert.deepStrictEqual(list.map((i) => i.getAttribute('aria-checked')), ['true', 'false', 'false'], 'the current one is checked');
@@ -106,7 +109,7 @@ async function theMenuListsTheLinksWithTheirHosts() {
   assert.deepStrictEqual(list.slice(1).map((i) => [i.tagName, i.getAttribute('href'), i.getAttribute('rel')]), [['A', STAGING, 'noopener noreferrer'], ['A', EU, 'noopener noreferrer']], 'the links are real links');
   assert.deepStrictEqual(list.slice(1).map((i) => w.getComputedStyle(i).getPropertyValue('box-sizing')), ['border-box', 'border-box'], 'a link row keeps its padding inside the menu width, as the button rows do');
   assert.strictEqual(doc.querySelector('#inst-menu [role="separator"]'), null, 'a non-admin gets no separator');
-  assert.ok(!/Manage instances/.test(menu.textContent), 'and no Manage instances');
+  assert.ok(!/Manage workspaces/.test(menu.textContent), 'and no Manage workspaces');
   assert.strictEqual(doc.activeElement, list[0], 'the checked entry takes the focus');
 
   //when
@@ -198,7 +201,7 @@ async function pickingAnotherInstanceGoesToItsAddress() {
   return 'picking staging goes to its URL, Enter does the same, the current entry only closes the menu, and Ctrl- or Cmd-click is left to the browser for a new tab';
 }
 
-async function manageInstancesIsOnlyForAdmins() {
+async function manageWorkspacesIsOnlyForAdmins() {
   //given
   const admin = await boot({me: {admin: true, userRole: 'admin'}});
   const viewer = await boot({me: {admin: false, operator: false, userRole: 'viewer'}});
@@ -212,7 +215,7 @@ async function manageInstancesIsOnlyForAdmins() {
 
   //then
   assert.ok(sep && sep.previousElementSibling === items(doc)[2], 'a separator follows the entries');
-  assert.deepStrictEqual(manage.map((m) => m.textContent), ['Manage instances'], 'then Manage instances');
+  assert.deepStrictEqual(manage.map((m) => m.textContent), ['Manage workspaces'], 'then Manage workspaces');
   assert.strictEqual(items(doc).pop(), manage[0], 'it is the last item the keys reach');
   assert.deepStrictEqual([viewer.doc.querySelector('#inst-menu [role="separator"]'), viewer.doc.querySelectorAll('#inst-menu [role="menuitem"]').length], [null, 0], 'a viewer gets neither');
 
@@ -221,15 +224,12 @@ async function manageInstancesIsOnlyForAdmins() {
   await wait(150);
 
   //then
-  const find = doc.getElementById('adm-find');
   assert.ok(doc.getElementById('inst-menu').hidden, 'the menu closes');
-  assert.ok(!doc.getElementById('panel-settings').hidden, 'Manage instances opens the admin settings');
-  assert.strictEqual(admin.w.location.hash, '#t=settings');
-  assert.ok(find && find.value === 'instance', 'with the search set to instance: ' + (find && find.value));
-  assert.deepStrictEqual([...doc.querySelectorAll('#admin .adm-row:not([hidden])')].map((r) => r.dataset.key), ['core.instance-links'], 'so only Other instances shows');
+  assert.ok(!doc.getElementById('panel-workspaces').hidden, 'Manage workspaces opens the Workspaces section');
+  assert.strictEqual(admin.w.location.hash, '#t=workspaces');
   assert.deepStrictEqual(admin.errors.concat(viewer.errors), []);
   admin.dom.window.close(); viewer.dom.window.close();
-  return 'admins get a separator and Manage instances, which opens the admin settings searched for instance; viewers get neither';
+  return 'admins get a separator and Manage workspaces, which opens the Workspaces section; viewers get neither';
 }
 
 async function hostileNamesAndAddressesStayText() {
@@ -243,7 +243,7 @@ async function hostileNamesAndAddressesStayText() {
 
   //then
   assert.strictEqual(btn.querySelector('.inst-name').textContent, EVIL, 'the name is text');
-  assert.strictEqual(btn.getAttribute('aria-label'), 'Instance: ' + EVIL + '. Switch instance');
+  assert.strictEqual(btn.getAttribute('aria-label'), 'Workspace: ' + EVIL + '. Switch workspace');
   assert.deepStrictEqual(names(doc), [EVIL, EVIL], 'only http and https links are listed');
   assert.strictEqual(items(doc)[1].getAttribute('href'), 'https://evil.example.com/?q="><img src=x>');
   assert.strictEqual(items(doc)[1].querySelector('small').textContent, 'evil.example.com');
@@ -274,10 +274,10 @@ async function withNoLinksTheMenuHoldsTheCurrentEntry() {
   //then
   assert.deepStrictEqual(names(viewer.doc), ['production'], 'the current entry alone');
   assert.strictEqual(items(viewer.doc)[0].getAttribute('aria-checked'), 'true');
-  assert.deepStrictEqual(items(admin.doc).map((i) => [i.getAttribute('role'), (i.querySelector('.mi-n') || i).textContent]), [['menuitemradio', 'production'], ['menuitem', 'Manage instances']], 'and Manage instances for an admin');
+  assert.deepStrictEqual(items(admin.doc).map((i) => [i.getAttribute('role'), (i.querySelector('.mi-n') || i).textContent]), [['menuitemradio', 'production'], ['menuitem', 'Manage workspaces']], 'and Manage workspaces for an admin');
   assert.deepStrictEqual(viewer.errors.concat(admin.errors), []);
   viewer.dom.window.close(); admin.dom.window.close();
-  return 'with no linked deployments the menu holds the current entry, and Manage instances for admins';
+  return 'with no linked deployments the menu holds the current entry, and Manage workspaces for admins';
 }
 
 async function theRailKeepsTheTileAndTheSearchIcon() {
@@ -300,20 +300,19 @@ async function theRailKeepsTheTileAndTheSearchIcon() {
 async function aRefusedValueShowsOnlyItsNoteInAdmin() {
   //given
   const problem = 'The environment value is not used. Entry 1: ' + EVIL;
-  const items = ADMIN_ITEMS.map((i) => i.key === 'core.instance-links' ? Object.assign({}, i, {value: null, base: null, source: 'config', from: 'environment', problem}) : i);
-  const {dom, doc, errors} = await boot({me: {admin: true, userRole: 'admin'}, items, hash: '#t=settings'});
-  const row = doc.querySelector('#admin .adm-row[data-key="core.instance-links"]');
+  const items = ADMIN_ITEMS.map((i) => i.key === 'core.workspace-links' ? Object.assign({}, i, {value: null, base: null, source: 'config', from: 'environment', problem}) : i);
+  const {dom, doc, errors} = await boot({me: {admin: true, userRole: 'admin'}, items, hash: '#t=workspaces'});
+  const row = doc.querySelector('#workspaces .adm-row[data-key="core.workspace-links"]');
 
   //then
-  assert.ok(row, 'the Other instances row is listed');
+  assert.ok(row, 'the Other workspaces list is shown');
   assert.deepStrictEqual([...row.querySelectorAll('.adm-problem')].map((n) => n.textContent), [problem], 'it carries the note naming the source, the entry and the rule');
-  assert.deepStrictEqual([...row.querySelectorAll('.adm-problem')].map((n) => n.parentNode.className), ['adm-l'], 'under the name and the help, in the left column');
-  assert.strictEqual(row.querySelector('input.adm-in').value, '', 'and no value');
+  assert.strictEqual(row.querySelectorAll('.ws-row').length, 0, 'and no rows');
   assert.strictEqual(row.querySelectorAll('img').length, 0, 'the note is text');
-  assert.strictEqual(doc.querySelectorAll('#admin .adm-problem').length, 1, 'other rows carry none');
+  assert.strictEqual(doc.querySelectorAll('#workspaces .adm-problem').length, 1, 'there is only the one note');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-  return 'Admin \u203a General shows a refused Other instances value only as its note, as text, with an empty field';
+  return 'Admin \u203a Workspaces shows a refused Other workspaces value only as its note, as text, with no rows';
 }
 
 (async () => {
@@ -321,7 +320,7 @@ async function aRefusedValueShowsOnlyItsNoteInAdmin() {
   console.log('PASS ' + await theMenuListsTheLinksWithTheirHosts());
   console.log('PASS ' + await downOpensTheMenuOnTheCheckedItem());
   console.log('PASS ' + await pickingAnotherInstanceGoesToItsAddress());
-  console.log('PASS ' + await manageInstancesIsOnlyForAdmins());
+  console.log('PASS ' + await manageWorkspacesIsOnlyForAdmins());
   console.log('PASS ' + await hostileNamesAndAddressesStayText());
   console.log('PASS ' + await withNoLinksTheMenuHoldsTheCurrentEntry());
   console.log('PASS ' + await theRailKeepsTheTileAndTheSearchIcon());

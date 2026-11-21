@@ -37,9 +37,27 @@ def waiting_since(card: dict) -> float:
     return max(parse_iso(s) for s in (card['slackPost'].get('at'), card.get('firstSeen')) if s)
 
 
-def who_text(card: dict) -> str:
+def person(owner: str, mention: Callable[[str], str | None] | None = None, name_of: Callable[[str], str] | None = None) -> str:
+    if '@' not in owner:
+        return esc(owner)
+    found = None
+    try:
+        found = mention(owner) if mention is not None else None
+    except Exception as e:
+        log.warning('the assignee of a reminder was not looked up in Slack: %s', error_kind(e))
+    if found:
+        return found
+    name = ''
+    try:
+        name = (name_of(owner) if name_of is not None else '') or ''
+    except Exception as e:
+        log.warning('the assignee name of a reminder was not read: %s', error_kind(e))
+    return esc(name if name and '@' not in name else owner.split('@')[0])
+
+
+def who_text(card: dict, mention: Callable[[str], str | None] | None = None, name_of: Callable[[str], str] | None = None) -> str:
     owner = str(card.get('owner') or '').strip()
-    return msg('reminder.owned', owner=esc(owner)) if owner else msg('reminder.nobody')
+    return msg('reminder.owned', owner=person(owner, mention, name_of)) if owner else msg('reminder.nobody')
 
 
 def state_text(card: dict, by_key: dict | None = None) -> str:
@@ -51,7 +69,10 @@ def age_text(hours: float) -> str:
 
 
 class Reminders:
-    def __init__(self, store: Store, slack: Slack, hours: float, base_url: str, clock: Callable[[], float] = time.time):
+    def __init__(self, store: Store, slack: Slack, hours: float, base_url: str, clock: Callable[[], float] = time.time,
+                 mention: Callable[[str], str | None] | None = None, name_of: Callable[[str], str] | None = None):
+        self.mention = mention
+        self.name_of = name_of
         self.store = store
         self.slack = slack
         self.hours = hours
@@ -119,7 +140,7 @@ class Reminders:
     def _remind(self, card: dict, now: float) -> bool:
         key, post = card['key'], card['slackPost']
         is_open = card.get('status') == 'open'
-        text = msg('reminder.card', age=age_text((now - waiting_since(card)) / 3600), who=who_text(card), state=state_text(card, self.by_key), link=self._link(card))
+        text = msg('reminder.card', age=age_text((now - waiting_since(card)) / 3600), who=who_text(card, self.mention, self.name_of), state=state_text(card, self.by_key), link=self._link(card))
         call = {'key': key, 'action': 'take' if is_open else 'resolve'}
         offer = self.store.add_action({'type': REMINDER_TYPE, 'source': 'slack', 'key': key, 'target': key, 'label': f'Slack reminder: {key}'[:300], 'requestedBy': 'server',
                                        'cardAction': call, 'slack': {'where': 'card', 'channel': post['channel'], 'threadTs': post['ts']}})

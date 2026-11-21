@@ -38,7 +38,7 @@ class Pusher:
             try:
                 self.slack.post({'channel': user, 'text': text})
             except SlackError as e:
-                log.warning('phone push DM to %s failed: %s', user, error_kind(e))
+                log.warning('Slack DM to %s failed: %s', user, error_kind(e))
                 continue
             sent.append(user)
         return sent
@@ -51,5 +51,5 @@ class Pusher:
         sent = self.text(f'{esc(line)}\n<{page_link(self.base, items)}|{msg('slack.open')}>{chat}')
         if not sent:
             return None
-        log.info('phone push DM sent to %s for %s', ', '.join(sent), ', '.join(a['key'] for a in items))
+        log.info('Slack DM sent to %s for %s', ', '.join(sent), ', '.join(a['key'] for a in items))
         return line

@@ -51,18 +51,18 @@ const rowShown = (doc, id) => !!doc.getElementById(id) && !doc.getElementById(id
   await wait(100);
 
   //then
-  assert.deepStrictEqual(menu(admin.doc).slice(0, 3), ['Settings', 'Admin2', 'Change password'], 'Settings and Admin lead the menu, Admin with its warning count');
-  assert.deepStrictEqual([rowShown(admin.doc, 'tab-prefs'), rowShown(admin.doc, 'side-admin')], [false, false], 'no Settings or Admin row for a signed-in admin');
-  assert.strictEqual(focusedFirst, 'Settings');
+  assert.deepStrictEqual(menu(admin.doc).slice(0, 3), ['Preferences', 'Admin2', 'Change password'], 'Preferences and Admin lead the menu, Admin with its warning count');
+  assert.deepStrictEqual([rowShown(admin.doc, 'tab-prefs'), rowShown(admin.doc, 'side-admin')], [false, false], 'no Preferences or Admin row for a signed-in admin');
+  assert.strictEqual(focusedFirst, 'Preferences');
   assert.ok(!btn.querySelector('.u-dot').hidden && btn.querySelector('.u-dot').textContent === '2' && btn.querySelector('.u-dot').getAttribute('aria-label') === '2 warnings', 'the warning count shows on the user button');
   assert.ok(!admin.doc.getElementById('adm-shell').hidden && btn.getAttribute('aria-current') === 'page', 'Admin opens its remembered tab and the user button is current');
-  assert.deepStrictEqual(menu(op.doc), ['Settings', 'Change password', 'Sign out'], 'a non-admin sees only Settings');
+  assert.deepStrictEqual(menu(op.doc), ['Preferences', 'Change password', 'Sign out'], 'a non-admin sees only Preferences');
   assert.deepStrictEqual([rowShown(op.doc, 'tab-prefs'), rowShown(op.doc, 'side-admin')], [false, false]);
   assert.ok(!op.doc.getElementById('user-btn').querySelector('.u-dot') || op.doc.getElementById('user-btn').querySelector('.u-dot').hidden);
-  assert.ok(rowShown(guest.doc, 'tab-prefs') && !guest.doc.getElementById('user-btn'), 'a read-only viewer keeps the Settings row');
-  assert.ok(!link.doc.getElementById('panel-prefs').hidden && link.doc.getElementById('user-btn').getAttribute('aria-current') === 'page', 'a link to Settings opens it and marks the user button');
+  assert.ok(rowShown(guest.doc, 'tab-prefs') && !guest.doc.getElementById('user-btn'), 'a read-only viewer keeps the Preferences row');
+  assert.ok(!link.doc.getElementById('panel-prefs').hidden && link.doc.getElementById('user-btn').getAttribute('aria-current') === 'page', 'a link to Preferences opens it and marks the user button');
   assert.ok(!adminTab.doc.getElementById('panel-access').hidden, 'a link to an admin tab opens it');
-  assert.ok(rowShown(off.doc, 'tab-prefs') && rowShown(off.doc, 'side-admin') && !off.doc.getElementById('user-btn'), 'a login-off install keeps the Settings and Admin rows, its only way in');
+  assert.ok(rowShown(off.doc, 'tab-prefs') && rowShown(off.doc, 'side-admin') && !off.doc.getElementById('user-btn'), 'a login-off install keeps the Preferences and Admin rows, its only way in');
   [admin, op, guest, off, link, adminTab].forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
-  console.log('PASS Settings and Admin live in the user menu for a signed-in person, with the Admin warning count on the button, and a read-only viewer keeps the Settings row');
+  console.log('PASS Preferences and Admin live in the user menu for a signed-in person, with the Admin warning count on the button, and a read-only viewer keeps the Preferences row');
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

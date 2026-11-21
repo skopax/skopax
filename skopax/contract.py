@@ -275,6 +275,7 @@ class Tool:
     confirm: Callable[['Context', dict], dict] | None = None
     needs_field: str = ''
     image: bool = False
+    available: Callable[[object, object], bool] | None = None
 
 
 @dataclass(frozen=True)

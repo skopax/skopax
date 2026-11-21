@@ -11,7 +11,7 @@ const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
 const EVIL = '<img src=x onerror=alert(1)>"\'';
 const FEATURE_SRC = fs.readFileSync(path.join(path.dirname(TEMPLATE), '..', 'features.py'), 'utf8');
 const TABLE = [...FEATURE_SRC.matchAll(/Feature\('([a-z-]+)', '([a-z.-]+)', '([^']+)',\s*'([^']*)', '([a-z]+)'(?:, edition='([a-z]+)')?/g)].map((m) => ({id: m[1], key: m[2], label: m[3], help: m[4], icon: m[5], edition: m[6] || 'community'}));
-const SUBNAV = [['tab-settings', 'General', 'gear'], ['tab-access', 'Access & sign-in', 'lock'], ['tab-features', 'Features', 'toggle'], ['tab-ai', 'Investigator', 'spark'], ['tab-changes', 'Changes', 'history']];
+const SUBNAV = [['tab-settings', 'Settings', 'gear'], ['tab-access', 'Access & sign-in', 'lock'], ['tab-workspaces', 'Workspaces', 'server'], ['tab-features', 'Features', 'toggle'], ['tab-ai', 'Investigator', 'spark'], ['tab-changes', 'Changes', 'history']];
 
 function setting(key, group, label, extra) {
   return Object.assign({key, group, label, help: label + ' help', kind: 'bool', live: true, value: 'true', base: 'true', default: 'true', source: 'default', by: null, at: null}, extra || {});
@@ -102,7 +102,7 @@ async function theSubNavListsTheSixSectionsWithTheirIconsAndCounts() {
   assert.deepStrictEqual(navRows(doc).map((a) => a.getAttribute('href')), SUBNAV.map((r) => '#t=' + r[0].slice(4)));
   assert.strictEqual(doc.getElementById('count-features').textContent, '9/12', 'Features counts the switches that are on out of all of them');
   assert.ok(!doc.getElementById('adm-shell').hidden && doc.getElementById('tab-settings').getAttribute('aria-current') === 'page');
-  assert.strictEqual(doc.getElementById('crumb-page').textContent, 'Admin \u203a General');
+  assert.strictEqual(doc.getElementById('crumb-page').textContent, 'Admin \u203a Settings');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
   return 'the Admin sub-nav lists General, Access & sign-in, Features, Investigator and Changes with their icons, and Features counts the features that are on';

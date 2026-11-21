@@ -6,18 +6,21 @@ PLUGIN_OWN = 'Settings'
 
 CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     'General': (
-        ('Language and instances', ('core.language', 'core.instance-links')),
+        ('Language', ('core.language',)),
         ('Time', ('general.timezone',)),
         ('Logs', ('core.log-format', 'core.log-color', 'core.log-level')),
+    ),
+    'Workspaces': (
+        ('Other workspaces', ('core.workspace-links',)),
     ),
     'Access': (
         ('Reading', ('access.public-read',)),
     ),
     'Investigator': (
         ('Provider', ('investigate.provider',)),
-        ('Models', ('investigate.model', 'investigate.effort', 'investigate.slack-model', 'investigate.slack-effort', 'chat.model', 'investigate.gate-model', 'investigate.gate-effort')),
+        ('Models', ('investigate.model', 'investigate.effort', 'investigate.slack-model', 'investigate.slack-effort', 'chat.model', 'chat.effort', 'investigate.gate-model', 'investigate.gate-effort')),
         ('Spend and limits', ('investigate.daily-usd', 'page.ask-cap', 'chat.max-chars', 'chat.daily-cap', 'mcp.dive-cap', 'investigate.max-cards', 'investigate.rooms',
-                              'investigate.max-tool-calls', 'investigate.assess-max-tool-calls', 'investigate.slack-max-tool-calls', 'screenshot.max-per-day')),
+                              'investigate.max-tool-calls', 'investigate.assess-max-tool-calls', 'investigate.slack-max-tool-calls', 'chat.max-tool-calls', 'screenshot.max-per-day')),
         ('Web', ('investigate.web-domains', 'investigate.web-searches', 'investigate.web-fetches')),
         ('Behaviour', ('investigate.mode', 'investigate.language', 'investigate.refire-hours', 'investigate.strict-tools', 'core.org-about', 'mcp.wait-seconds')),
     ),
@@ -49,7 +52,7 @@ SECTION_CARD = {'Card tags': 'Tag rules', 'Features': 'Switches'}
 UNITS = {
     'investigate.daily-usd': '$', 'page.ask-cap': 'per hour', 'slack.ask-cap': 'per hour', 'slack.user-ask-cap': 'per hour', 'mcp.dive-cap': 'per hour', 'chat.daily-cap': 'per day',
     'screenshot.max-per-day': 'per day', 'investigate.web-searches': 'per run', 'investigate.web-fetches': 'per run', 'investigate.max-cards': 'cards',
-    'investigate.max-tool-calls': 'calls', 'investigate.assess-max-tool-calls': 'calls', 'investigate.slack-max-tool-calls': 'calls', 'investigate.rooms': 'rooms',
+    'investigate.max-tool-calls': 'calls', 'investigate.assess-max-tool-calls': 'calls', 'investigate.slack-max-tool-calls': 'calls', 'chat.max-tool-calls': 'calls', 'investigate.rooms': 'rooms',
     'chat.max-chars': 'chars', 'investigate.refire-hours': 'h', 'jira.points': 'points', 'slack.operator-cache-seconds': 's',
 }
 LABEL_UNITS = {'h': 'h', 'hours': 'h', 'min': 'min', 'minutes': 'min', 's': 's', 'seconds': 's', 'days': 'days', '$': '$', 'times': 'times', 'characters': 'chars'}

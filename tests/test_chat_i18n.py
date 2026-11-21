@@ -588,7 +588,7 @@ def test_a_refusal_brings_back_its_detail_from_core_values_only():
     assert ready == f'{msg("chat.not_ready")} {escaped(needs)}' and bare == msg('chat.not_ready'), 'the needs list comes back, and none leaves no trailing space'
     assert german == r'Der Ermittler ist nicht bereit\. ' + escaped(needs), 'the core needs are filled in escaped, inside the escaped pack text'
     assert failed == 'Not applied: only open or stopped cards can be grouped.' and failed_de == r'Nicht angewandt\: only open or stopped cards can be grouped\.'
-    assert other == [off_text('postdeploy').replace('Post-deploy', r'Post\-deploy', 1), r'Phone push ist aus\.', 'no\\-such\\-feature is turned off in Admin \u203a Features.']
+    assert other == [off_text('postdeploy').replace('Post-deploy', r'Post\-deploy', 1), r'Slack DMs for critical cards ist aus\.', 'no\\-such\\-feature is turned off in Admin \u203a Features.']
     assert not [text for text in [ready, bare, german, failed, failed_de, *other] if 'secret' in text]
 
 

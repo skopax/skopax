@@ -29,7 +29,7 @@ FEATURES: tuple[Feature, ...] = (
     Feature('slack-listener', 'core.slack-listener', 'Slack listener', 'Answers questions, direct messages and button clicks in Slack', 'ear', started='slack-socket'),
     Feature('mcp', 'core.mcp', 'MCP server', 'Lets AI assistants read and triage cards over MCP', 'plug'),
     Feature('public-read', 'access.public-read', 'Read without login', 'Lets anyone who can reach the page read the board without logging in. Changes still need a login', 'eye'),
-    Feature('push', 'core.push', 'Phone push', 'Sends new critical cards and task notices to the push users as a Slack direct message', 'phone'),
+    Feature('push', 'core.push', 'Slack DMs for critical cards', 'Sends new critical cards and task notices to the chosen people as a Slack direct message', 'chat'),
     Feature('postdeploy', 'core.postdeploy', 'Post-deploy check', 'Checks every prod deploy and writes a deploy report', 'report'),
     Feature('self-review', 'self-review.enabled', 'Self-review', 'Writes the daily self-review of {product} itself and sends it as a Slack direct message', 'check'),
     Feature('update-check', 'core.update-check', 'Check for new versions', 'Asks GitHub once a day for the latest Skopax release and shows an admin notice when a newer one exists', 'tag'),

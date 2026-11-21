@@ -12,6 +12,7 @@ RESULTS = {'web_search_tool_result': 'web_search', 'web_fetch_tool_result': 'web
 FETCH_TOKENS = 20_000
 OFF_WORDS = ('off', 'none', 'false', 'no')
 ANY = 'any'
+MAX_SITES = 100
 DOMAIN = re.compile(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}')
 DOMAINS = ('support.google.com', 'developers.google.com', 'firebase.google.com', 'cloud.google.com', 'status.cloud.google.com', 'blog.google',
            'developer.apple.com', 'developer.android.com', 'developers.cloudflare.com', 'cloudflarestatus.com',
@@ -36,24 +37,50 @@ class Web:
         return tools
 
 
-def domains_of(value: str) -> tuple[str, ...] | None:
+def own_domains(*groups) -> tuple[str, ...]:
+    found = [str(d).strip().lower() for group in groups for d in (group or ())]
+    return tuple(dict.fromkeys(d for d in found if DOMAIN.fullmatch(d)))
+
+
+def built_in(own: tuple[str, ...] = ()) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(tuple(own) + DOMAINS))
+
+
+def domains_of(value: str, own: tuple[str, ...] = ()) -> tuple[str, ...]:
     wanted = [d for d in re.split(r'[\s,]+', value.strip().lower()) if d]
-    kept = tuple(dict.fromkeys(d for d in wanted if DOMAIN.fullmatch(d)))
-    dropped = [d for d in wanted if not DOMAIN.fullmatch(d)]
-    if dropped:
-        log.warning('investigate.web-domains: %s left out, only plain host names such as support.google.com work', ', '.join(dropped))
-    return kept
+    base = built_in(own)
+    added = [d for d in wanted if not d.startswith('-')]
+    removed = [d[1:] for d in wanted if d.startswith('-')]
+    kept = tuple(dict.fromkeys(d for d in added if DOMAIN.fullmatch(d)))
+    dropped = [d for d in added if not DOMAIN.fullmatch(d)]
+    unknown = [d for d in removed if d not in base and d not in kept]
+    if dropped or unknown:
+        log.warning('investigate.web-domains: %s left out, only plain host names such as support.google.com work, and -host only removes a built-in site',
+                    ', '.join(dropped + ['-' + d for d in unknown]))
+    return tuple(dict.fromkeys(tuple(d for d in base if d not in removed) + tuple(d for d in kept if d not in removed)))
 
 
-def web_from(domains: str, searches: int, fetches: int) -> Web | None:
+CUT_LOGGED = set()
+
+
+def cut_at(listed: tuple[str, ...]) -> tuple[str, ...]:
+    if len(listed) <= MAX_SITES:
+        return listed
+    if len(listed) not in CUT_LOGGED:
+        CUT_LOGGED.add(len(listed))
+        log.warning('investigate.web-domains: %d allowed sites are too many, only the first %d are used', len(listed), MAX_SITES)
+    return listed[:MAX_SITES]
+
+
+def web_from(domains: str, searches: int, fetches: int, own: tuple[str, ...] = ()) -> Web | None:
     value = (domains or '').strip().lower()
     if value in OFF_WORDS or (searches <= 0 and fetches <= 0):
         return None
     if value == ANY:
         return Web(None, max(0, searches), max(0, fetches))
-    listed = domains_of(value) if value else DOMAINS
+    listed = cut_at(domains_of(value, own) if value else built_in(own))
     if not listed:
-        log.warning('investigate.web-domains has no usable host name; the web tools stay off')
+        log.warning('investigate.web-domains leaves no site; the web tools stay off')
         return None
     return Web(listed, max(0, searches), max(0, fetches))
 

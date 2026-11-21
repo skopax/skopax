@@ -184,7 +184,7 @@ def test_without_tokens_the_app_starts_only_the_version_check_job(store: Store, 
     assert [j.name for j in jobs] == ['version-check']
     assert {k: v for k, v in info.items() if k not in ('displayName', 'product', 'version')} == {'enrich': {'gitlab': False, 'jira': False}, 'settle': False, 'jiraLinks': False, 'postdeploy': False, 'push': False, 'plugins': [],
                     'kube': False, 'slack': {'listen': 'off', 'socket': False}, 'investigate': {'mode': 'off', 'enabled': False, 'model': 'claude-opus-5-5', 'effort': 'medium',
-                    'maxToolCalls': 30, 'rooms': 2, 'slackModel': 'claude-sonnet-5-5', 'slackEffort': 'medium', 'slackMaxToolCalls': 10, 'stopped': None, 'spentToday': 0.0, 'cap': 25.0, 'lastRun': None},
+                    'maxToolCalls': 30, 'rooms': 2, 'slackModel': 'claude-sonnet-5-5', 'slackEffort': 'medium', 'slackMaxToolCalls': 10, 'chatEffort': 'medium', 'chatMaxToolCalls': 10, 'stopped': None, 'spentToday': 0.0, 'cap': 25.0, 'lastRun': None},
                     'passes': {}, 'pushes': [], 'tz': 'UTC', 'probe': False, 'reach': None}
 
 

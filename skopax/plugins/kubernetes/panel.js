@@ -70,6 +70,20 @@
     }
     return parts.join('');
   }
+  function admin() { return typeof ADMIN_OK !== 'undefined' && !!ADMIN_OK; }
+  var asked = false;
+  function known(name) {
+    if (typeof intFind !== 'function' || typeof INTEG === 'undefined' || !INTEG) return false;
+    var p = intFind('kubernetes');
+    return !!p && (p.instances || []).some(function (i) { return i && i.name === name; });
+  }
+  function ensureCatalog() {
+    if (asked || !admin() || typeof loadIntegrations !== 'function' || (typeof INTEG !== 'undefined' && INTEG)) return;
+    asked = true;
+    loadIntegrations().then(function () { draw(); });
+  }
+  function editCell(n) { return admin() ? '<td>' + (known(n.name) ? '<button type="button" class="btn sec small node-edit" data-edit="' + esc(n.name) + '">Edit</button>' : '') + '</td>' : ''; }
+  function cols() { return admin() ? 8 : 7; }
   function nodeRow(n) {
     var shown = !!open[n.name];
     var status = waiting(n) ? tag(false, 'Waiting for first contact', 'Added but it has never answered: no card for the first 24 h (time to install it), then one warning card' + (n.error ? '\n' + n.error : ''), 'k-muted')
@@ -78,16 +92,17 @@
       '<td><b>' + esc(n.name) + '</b>' + relayTag(n) + '</td><td>' + esc(n.role) + '</td><td>' + status + '</td>' +
       '<td>' + esc(n.startedAt ? age(n.startedAt) : DASH) + '</td><td>' + versionCell(n) + '</td>' +
       '<td title="' + esc(n.lastSeen || '') + '">' + esc(n.lastSeen ? ago(n.lastSeen) || 'just now' : n.seenBefore ? DASH : 'never') + '</td>' +
-      '<td>' + clusterCell(n) + '</td></tr>' +
-      '<tr class="node-more"' + (shown ? '' : ' hidden') + '><td colspan="7">' + more(n) + '</td></tr>';
+      '<td>' + clusterCell(n) + '</td>' + editCell(n) + '</tr>' +
+      '<tr class="node-more"' + (shown ? '' : ' hidden') + '><td colspan="' + cols() + '">' + more(n) + '</td></tr>';
   }
   function browserRow(b) {
     var label = 'Browser' + (b.cluster ? ' ' + b.cluster : '');
     var tip = (b.ok ? 'Answered ' : 'Not answering since ') + (b.lastSeen ? hm(b.lastSeen) : DASH) + (b.error ? '\n' + b.error : '');
     return '<tr class="node-browser" data-browser="' + esc(b.cluster || b.name || '') + '"><td><b>' + esc(label) + '</b></td><td>browser</td>' +
       '<td>' + tag(!!b.ok, b.ok ? 'reachable' : 'not reachable', tip) + '</td><td>' + DASH + '</td><td><code>' + esc(b.version || DASH) + '</code></td>' +
-      '<td title="' + esc(b.lastSeen || '') + '">' + esc(b.lastSeen ? ago(b.lastSeen) || 'just now' : 'never') + '</td><td><span class="muted">' + DASH + '</span></td></tr>';
+      '<td title="' + esc(b.lastSeen || '') + '">' + esc(b.lastSeen ? ago(b.lastSeen) || 'just now' : 'never') + '</td><td><span class="muted">' + DASH + '</span></td>' + (admin() ? '<td></td>' : '') + '</tr>';
   }
+  function tools() { return admin() ? '<p class="node-tools"><button type="button" class="btn small node-add">+ Add node</button></p>' : ''; }
   function count(rows) {
     var box = document.getElementById('count-' + TAB);
     if (!box) return;
@@ -104,16 +119,17 @@
   }
   function draw() {
     if (!state || !section) return;
+    ensureCatalog();
     var rows = list(state.nodes, 'kubernetes').filter(function (n) { return typeof n.name === 'string' && n.name; });
     var browsers = list(state.browser, 'website');
     count(rows);
     if (!rows.length && !browsers.length) {
-      section.innerHTML = '<p class="muted">No heartbeat yet: the node check runs every ' + PERIOD_MIN + ' min.</p>';
+      section.innerHTML = tools() + '<p class="muted">No heartbeat yet: the node check runs every ' + PERIOD_MIN + ' min.</p>';
       return;
     }
     var at = newest(rows), focused = document.activeElement && section.contains(document.activeElement) && document.activeElement.dataset ? document.activeElement.dataset.node : null;
-    section.innerHTML = '<p class="muted node-at">' + esc('Last heartbeat ' + (at ? hm(at) + ' (' + (ago(at) || 'just now') + ')' : DASH) + DOT + 'every ' + PERIOD_MIN + ' min') + '</p>' +
-      '<div class="box"><table class="ntable"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Age</th><th>Version</th><th>Last heartbeat</th><th>Cluster nodes</th></tr></thead><tbody>' +
+    section.innerHTML = tools() + '<p class="muted node-at">' + esc('Last heartbeat ' + (at ? hm(at) + ' (' + (ago(at) || 'just now') + ')' : DASH) + DOT + 'every ' + PERIOD_MIN + ' min') + '</p>' +
+      '<div class="box"><table class="ntable"><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Age</th><th>Version</th><th>Last heartbeat</th><th>Cluster nodes</th>' + (admin() ? '<th></th>' : '') + '</tr></thead><tbody>' +
       rows.map(nodeRow).join('') + browsers.map(browserRow).join('') + '</tbody></table></div>';
     var back = focused ? [].filter.call(section.querySelectorAll('tr.node-row'), function (r) { return r.dataset.node === focused; })[0] : null;
     if (back) back.focus();
@@ -124,17 +140,27 @@
     row.setAttribute('aria-expanded', String(open[name]));
     row.nextElementSibling.hidden = !open[name];
   }
+  async function openForm(name) {
+    if (typeof intOpen !== 'function' || typeof loadIntegrations !== 'function') return;
+    if (typeof INTEG === 'undefined' || !INTEG) { if (!(await loadIntegrations())) return; }
+    if (typeof intFind !== 'function' || !intFind('kubernetes')) return;
+    intOpen('kubernetes', name || null, {});
+  }
   function wire(box) {
     box.addEventListener('click', function (e) {
+      var edit = e.target.closest('.node-edit'), add = e.target.closest('.node-add');
+      if (edit || add) { e.stopPropagation(); openForm(edit ? edit.dataset.edit : null); return; }
       if (e.target.closest('a')) return;
       var row = e.target.closest('tr.node-row');
       if (row) toggle(row);
     });
     box.addEventListener('keydown', function (e) {
       var row = e.target.closest('tr.node-row');
+      if (e.target.closest('button')) return;
       if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(row); }
     });
   }
+  document.addEventListener('skopax:admin', function () { draw(); });
   document.addEventListener('skopax:state', function (e) { state = e.detail && e.detail.state; draw(); });
   document.addEventListener('skopax:page', function (e) {
     if (!e.detail || e.detail.tab !== TAB || !e.detail.section) return;

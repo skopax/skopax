@@ -44,7 +44,7 @@ NEW_ENV_PREFIX = 'SKOPAX_'
 ROLES_STALE_MINUTES = 60
 LOG_FORMAT_KEY, LOG_COLOR_KEY, LOG_LEVEL_KEY = 'core.log-format', 'core.log-color', 'core.log-level'
 BOOT_ENV = ('SKOPAX_PLUGINS', 'SKOPAX_CONFIG_FILE', 'SKOPAX_MODE', 'SKOPAX_AGENT_TOKEN', 'SKOPAX_AGENT_RELAY_HOSTS', 'SKOPAX_KUBE_LOCAL_NAME')
-ORG_ABOUT_MAX = 300
+ORG_ABOUT_MAX = 2000
 SETTING_TEXT_MAX = 20000
 DEFAULT_ROLES = tuple(role for role in ROLES if role != 'admin')
 
@@ -191,6 +191,8 @@ class Settings:
     investigate_gate_effort: str = 'low'
     investigate_slack_model: str = 'claude-sonnet-5-5'
     chat_model: str = 'claude-sonnet-5-5'
+    chat_effort: str = ''
+    chat_max_tool_calls: int = 0
     investigate_language: str = 'en'
     chat_daily_cap: int = 30
     chat_max_chars: int = 1000
@@ -239,7 +241,7 @@ class Settings:
     mcp_dive_cap: int = MCP_DIVE_CAP
     base_url: str = ''
     env_label: str = ''
-    instance_links: str = ''
+    workspace_links: str = ''
     timezone: str = 'UTC'
     language: str = 'en'
     org_about: str = ''
@@ -380,6 +382,35 @@ def bounded(key: str, raw: str, low: int, high: int, default: int) -> int:
         return value
     log.warning('%s %r is not a whole number from %d to %d; using %d', key, raw, low, high, default)
     return default
+
+
+CHAT_EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
+
+
+def chat_effort_of(raw: str) -> str:
+    if raw in ('',) + CHAT_EFFORTS:
+        return raw
+    log.warning('chat.effort %r is not one of %s; it follows the Slack effort', raw, ', '.join(CHAT_EFFORTS))
+    return ''
+
+
+def clamped(key: str, raw: str, low: int, high: int, default: int) -> int:
+    try:
+        value = int(raw)
+    except ValueError:
+        log.warning('%s %r is not a whole number; using %d', key, raw, default)
+        return default
+    if low <= value <= high:
+        return value
+    kept = min(max(value, low), high)
+    log.warning('%s %d is outside %d to %d; using %d', key, value, low, high, kept)
+    return kept
+
+
+def chat_calls_of(raw: str) -> int:
+    if raw == '0':
+        return 0
+    return clamped('chat.max-tool-calls', raw, 3, 30, 0)
 
 
 def sso_role_map(raw: str) -> str:
@@ -596,12 +627,14 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         investigate_gate_effort=get('investigate.gate-effort', 'INVESTIGATE_GATE_EFFORT', 'low').strip() or 'low',
         investigate_slack_model=get('investigate.slack-model', 'INVESTIGATE_SLACK_MODEL', 'claude-sonnet-5-5').strip(),
         chat_model=get('chat.model', 'CHAT_MODEL', 'claude-sonnet-5-5').strip(),
+        chat_effort=chat_effort_of(get('chat.effort', 'CHAT_EFFORT', '').strip()),
+        chat_max_tool_calls=chat_calls_of(get('chat.max-tool-calls', 'CHAT_MAX_TOOL_CALLS', '0').strip() or '0'),
         investigate_language=(get('investigate.language', 'INVESTIGATE_LANGUAGE', 'en').strip() or 'en'),
         chat_daily_cap=int(get('chat.daily-cap', 'CHAT_DAILY_CAP', '30').strip() or 30),
         chat_max_chars=int(get('chat.max-chars', 'CHAT_MAX_CHARS', '1000').strip() or 1000),
         chat_ui=get('chat.ui', 'CHAT_UI', 'true').strip().lower() == 'true',
         investigate_slack_effort=get('investigate.slack-effort', 'INVESTIGATE_SLACK_EFFORT', 'medium').strip(),
-        investigate_slack_max_tool_calls=int(get('investigate.slack-max-tool-calls', 'INVESTIGATE_SLACK_MAX_TOOL_CALLS', '10')),
+        investigate_slack_max_tool_calls=clamped('investigate.slack-max-tool-calls', get('investigate.slack-max-tool-calls', 'INVESTIGATE_SLACK_MAX_TOOL_CALLS', '10').strip(), 3, 30, 10),
         investigate_strict_tools=get('investigate.strict-tools', 'INVESTIGATE_STRICT_TOOLS', 'false').strip().lower() == 'true',
         investigate_web_domains=get('investigate.web-domains', 'INVESTIGATE_WEB_DOMAINS', '').strip(),
         investigate_web_searches=int(get('investigate.web-searches', 'INVESTIGATE_WEB_SEARCHES', '3').strip() or 3),
@@ -645,7 +678,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         mcp_dive_cap=bounded('mcp.dive-cap', get('mcp.dive-cap', 'MCP_DIVE_CAP', str(MCP_DIVE_CAP)).strip() or str(MCP_DIVE_CAP), 0, 50, MCP_DIVE_CAP),
         base_url=get('core.base-url', 'SKOPAX_BASE_URL', '').strip(),
         env_label=get('core.env-label', 'SKOPAX_ENV_LABEL', '').strip(),
-        instance_links=get('core.instance-links', 'SKOPAX_INSTANCE_LINKS', '').strip(),
+        workspace_links=get('core.workspace-links', 'SKOPAX_WORKSPACE_LINKS', '').strip() or get('core.instance-links', 'SKOPAX_INSTANCE_LINKS', '').strip(),
         timezone=get('core.timezone', 'SKOPAX_TIMEZONE', 'UTC').strip() or 'UTC',
         language=get('core.language', 'SKOPAX_LANGUAGE', 'en').strip() or 'en',
         org_about=org_about,

@@ -26,6 +26,10 @@ services:
       SKOPAX_ADMIN_EMAIL: ${SKOPAX_ADMIN_EMAIL:-}
       SKOPAX_ADMIN_PASSWORD: ${SKOPAX_ADMIN_PASSWORD:-}
       SKOPAX_PUBLIC_READ: ${SKOPAX_PUBLIC_READ:-false}
+  browser:
+    image: chromedp/headless-shell:157.0.8103.15
+    restart: unless-stopped
+    shm_size: 1gb
   prometheus:
     image: prom/prometheus:v3.1.0@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218
     profiles: [demo]

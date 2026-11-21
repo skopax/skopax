@@ -2,7 +2,7 @@ import pytest
 
 from skopax import remote
 from skopax.kit.browser import Browser, Connection
-from skopax.plugins import website
+from skopax.plugins import browser as browser_plugin
 from tests.fake_cdp import WS_PATH, FakeChrome, Site
 from tests.test_remote import Proxy, clear_proxies
 from tests.website_kit import CHAIRS, NOW, SHOP, Clock, quiet, website_runtime
@@ -73,14 +73,14 @@ def test_a_shot_under_a_proxy_reaches_the_browser_directly(chrome, proxy, monkey
     assert pic.data and proxy.asked == []
 
 
-def test_the_website_browser_check_on_the_production_transport_never_goes_through_the_proxy(store, chrome, proxy, monkeypatch):
+def test_the_browser_check_on_the_production_transport_never_goes_through_the_proxy(store, chrome, proxy, monkeypatch):
     # given
     proxied(monkeypatch, proxy, 'HTTP_PROXY', 'HTTPS_PROXY')
-    runtime = website_runtime(store, None, {'main': {'browser-url': f'http://127.0.0.1:{chrome.port}'}})
-    ctx = runtime.context(website.PLUGIN, runtime.instances.get('website', 'main'), NOW)
+    runtime = website_runtime(store, None, browsers={'main': {'url': f'http://127.0.0.1:{chrome.port}'}})
+    ctx = runtime.context(browser_plugin.PLUGIN, runtime.instances.get('browser', 'main'), NOW)
 
     # when
-    swept = website.browser_check(ctx)
+    swept = browser_plugin.browser_check(ctx)
 
     # then
     assert runtime.transport is None and ctx.http() is remote.send

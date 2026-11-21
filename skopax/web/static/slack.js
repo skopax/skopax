@@ -27,7 +27,7 @@ function sqSender(by, drafted) { return by === AUTO_BY ? draftBy(by, drafted) : 
 function sqFirstLine(t) { return String(t).split('\n').filter(function (l) { return l.trim(); })[0] || ''; }
 function slackTabState() {
   var rows = sqDrafts();
-  return [rows.length || '–', 'k-warn', false, rows.length ? rows.length + ' not posted' : 'nothing waiting'];
+  return [rows.length || '–', rows.length ? 'k-warn' : 'k-info', false, rows.length ? rows.length + ' not posted' : 'nothing waiting'];
 }
 function renderSlackSent() {
   var tb = document.querySelector('#slack-sent tbody');

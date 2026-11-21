@@ -627,13 +627,13 @@ def test_an_unknown_default_role_is_a_configuration_error():
 
 def test_an_over_long_org_about_in_the_environment_stops_boot_and_one_at_the_admin_limit_is_kept():
     # when
-    kept = load_settings(env={'SKOPAX_ORG_ABOUT': 'x' * 300})
+    kept = load_settings(env={'SKOPAX_ORG_ABOUT': 'x' * 2000})
     with pytest.raises(ConfigurationError) as stopped:
-        load_settings(env={'SKOPAX_ORG_ABOUT': 'x' * 301})
+        load_settings(env={'SKOPAX_ORG_ABOUT': 'x' * 2001})
 
     # then
-    assert kept.org_about == 'x' * 300 and TEXT_LIMITS['core.org-about'] == 300
-    assert str(stopped.value) == msg('settings.env_too_long', name='SKOPAX_ORG_ABOUT', limit=300)
+    assert kept.org_about == 'x' * 2000 and TEXT_LIMITS['core.org-about'] == 2000
+    assert str(stopped.value) == msg('settings.env_too_long', name='SKOPAX_ORG_ABOUT', limit=2000)
 
 
 def test_empty_access_variables_behave_as_unset():

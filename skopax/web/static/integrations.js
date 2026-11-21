@@ -198,6 +198,7 @@ function intFlushPickers(form) {
 function intFieldHtml(p, f, inst) {
   var id = 'int-' + p.id + '-' + (inst ? inst.name : 'new') + '-' + f.key;
   var init = intInit(f, inst);
+  if (!inst && init === '' && f.kind === 'instance' && f.key === 'browser' && intPeerNames(f).length === 1) init = intPeerNames(f)[0];
   var plain = f.kind === 'choice' && f.key === 'slack-echo' && intList(f.choices).indexOf('default') >= 0;
   if (plain && init === '') init = 'default';
   var owned = !!(inst && (inst.owned || []).indexOf(f.key) >= 0);
@@ -922,6 +923,7 @@ function intPanelPaint(note) {
   panel.appendChild(slot);
   intForm(slot, p, cur);
   if (p.id === INT_MCP && cur) intMcpMount(panel, p, cur);
+  if (p.id === 'slack' && !intRO()) intSlackRedraw(panel);
   return true;
 }
 function intCard(p, i, cur, said) {
@@ -1144,6 +1146,7 @@ function intFormHtml(p, inst) {
   var top = (by[''] || order.length === 1) ? '' : order[1];
   if (!inst) by[top] = '<div class="int-field int-name" data-key="name"><div class="int-lrow"><label for="int-' + esc(p.id) + '-name">Name<span class="int-req"> *</span></label></div><input id="int-' + esc(p.id) + '-name" class="int-name-in" type="text" maxlength="20" autocomplete="off"><span class="adm-msg int-field-msg" role="status"></span></div>' + by[top];
   order.forEach(function (g) { if (by[g]) h += intGroupHtml(p, g, by[g]); });
+  if (intMovable(p, inst)) h += '<div class="int-field int-move" data-key="move-browser"><span class="adm-help int-move-t">Move this to a Headless browser integration</span><button type="button" class="btn sec small int-move-b">Move</button><span class="adm-msg int-move-msg" role="status"></span></div>';
   var checks = intShownChecks(p, inst), off = inst ? intList(inst.offChecks) : [];
   if (checks.length) {
     h += '<div class="int-field int-checks" data-key="offChecks" data-kind="checks" role="group" aria-labelledby="int-checks-h"><span class="int-checks-h" id="int-checks-h">What it watches</span>' +
@@ -1158,6 +1161,26 @@ function intFormHtml(p, inst) {
   h += '<button type="submit" class="btn small int-save">Save</button>';
   if ((!inst || !inst.enabled) && p.id !== INT_MCP) h += '<button type="button" class="btn small int-save-on">Save &amp; turn on</button>';
   return h + '</div></div></div></form>';
+}
+function intMovable(p, inst) {
+  return p.id === 'website' && !!inst && inst.source === 'admin' && !intRO() && String((inst.values || {})['browser-url'] || '').trim() !== '';
+}
+function intMoveBrowser(form, p, inst) {
+  var b = form.querySelector('.int-move-b');
+  if (!b) return;
+  b.addEventListener('click', async function () {
+    var msg = form.querySelector('.int-move-msg');
+    intBusy(form, true);
+    intSay(msg, 'Moving\u2026', false);
+    try {
+      await adminApi('POST', intBase(p) + '/instances/' + encodeURIComponent(inst.name) + '/move-browser');
+      await loadIntegrations('Moved to a Headless browser integration');
+      intClose(true);
+    } catch (e) {
+      intSay(msg, e && e.detail ? e.detail : 'Not moved, try again', true);
+      intBusy(form, false);
+    }
+  });
 }
 function intForm(slot, p, inst) {
   slot.innerHTML = intFormHtml(p, inst);
@@ -1177,6 +1200,7 @@ function intForm(slot, p, inst) {
     });
   });
   intWidgets(form);
+  intMoveBrowser(form, p, inst);
   form.querySelectorAll('.int-sug').forEach(function (b) { intPicker(form, p, inst, b.closest('.int-field')); });
   var cancel = form.querySelector('.int-cancel');
   if (cancel) cancel.addEventListener('click', function () {
@@ -1898,3 +1922,51 @@ function intMcpWarn(box, inst, v) {
   if (w) w.querySelector('.int-scrim').addEventListener('click', function () { intClose(true); });
   window.__skopaxAssign = function (url) { location.assign(url); };
 })();
+var INT_REDRAW_EVERY = 2000;
+function intRedrawLine(r) {
+  if (!r || (!r.running && !r.result)) return '';
+  if (r.running) return tx('Redrawing Slack posts: {0} of {1}').replace('{0}', r.done || 0).replace('{1}', r.total || 0);
+  if (r.result === 'off') return tx('Slack is not connected, so there is nothing to redraw');
+  if (r.result === 'failed') return tx('The redraw stopped: {0} redrawn, {1} skipped').replace('{0}', r.done || 0).replace('{1}', r.skipped || 0);
+  return tx('Slack posts redrawn: {0}').replace('{0}', r.done || 0) + (r.skipped ? tx(', {0} skipped (gone or not reachable)').replace('{0}', r.skipped) : '') + (r.result === 'slow' ? tx(', Slack asked to slow down, run it again later') : '');
+}
+function intSlackRedraw(panel) {
+  var box = accText('section', 'int-redraw'), b = accText('button', 'btn small int-redraw-b', 'Redraw Slack posts'), said = accText('p', 'adm-msg int-redraw-s', ''), timer = null;
+  box.appendChild(accText('h4', null, 'Redraw Slack posts'));
+  box.appendChild(accText('p', 'adm-help', 'Redraws the Slack posts of the cards still on the board with today\u2019s look and wording. Nothing new is posted and the thread replies stay as they are.'));
+  box.appendChild(b);
+  box.appendChild(said);
+  panel.appendChild(box);
+  var show = function (r) {
+    said.textContent = intRedrawLine(r);
+    said.className = 'adm-msg int-redraw-s' + (r && r.result === 'failed' ? ' bad' : said.textContent ? ' ok' : '');
+    b.disabled = !!(r && r.running);
+    return !!(r && r.running);
+  };
+  var watch = function () {
+    if (timer) return;
+    timer = setInterval(async function () {
+      if (!box.isConnected) { clearInterval(timer); timer = null; return; }
+      try {
+        if (!show(await adminApi('GET', '/api/admin/slack-redraw'))) { clearInterval(timer); timer = null; }
+      } catch (e) { clearInterval(timer); timer = null; }
+    }, INT_REDRAW_EVERY);
+  };
+  b.type = 'button';
+  b.addEventListener('click', async function () {
+    if (b.disabled) return;
+    var ask = window.__skopaxConfirm;
+    if (typeof ask === 'function' && !(await ask(tx('Redraw Slack posts?'), tx('The posts of the cards still on the board are updated in place, at Slack\u2019s pace. Nothing new is posted.'), tx('Redraw')))) return;
+    b.disabled = true;
+    try {
+      var r = await adminApi('POST', '/api/admin/slack-redraw');
+      if (r && r.started === false && !r.running) b.disabled = false;
+      if (show(r)) watch();
+    } catch (e) {
+      b.disabled = false;
+      said.textContent = e && e.detail ? e.detail : tx('Not started, try again');
+      said.className = 'adm-msg int-redraw-s bad';
+    }
+  });
+  adminApi('GET', '/api/admin/slack-redraw').then(function (r) { if (show(r)) watch(); }, function () {});
+}

@@ -15,6 +15,7 @@ from skopax.kit import flags, umami
 from skopax.kit.browser import BrowserDown, Picture, ShotError
 from skopax.kit.web import CHALLENGE, Site, allowed_host, host_of, refusal
 from skopax.messages import msg
+from skopax.plugins.website import browsers
 
 log = logging.getLogger('skopax.plugins.website.pagescan')
 
@@ -63,7 +64,7 @@ ELLIPSIS = '\u2026'
 DOT = ' \u00b7 '
 HANDLED = ('handled', 'progress')
 VERDICTS = {'overflow': 'page', 'cut': 'cut', 'swipe': 'scrolls'}
-NO_BROWSER = 'the page scan is off: set browser-url on this Website instance to the DevTools endpoint of a browser service'
+NO_BROWSER = 'the page scan is off: pick a Headless browser on this Website instance'
 AI_OFF = ('the AI review is not available now (no Anthropic key, an unpriced model, the investigator switched off or stopped, or the daily cap reached); '
           'the review waits for the next batch')
 NOT_SCHEMA = 'the review answer did not match the schema'
@@ -495,8 +496,7 @@ def seconds_of(value: object) -> float | None:
 
 
 def switched_on(ctx: Context) -> bool:
-    config = ctx.instance.config if ctx.instance is not None else {}
-    return bool(ctx.setting('page-scan')) and bool((config.get('browser-url') or '').strip())
+    return bool(ctx.setting('page-scan')) and ctx.instance is not None and browsers.ready(ctx)
 
 
 def off_status() -> str:
@@ -572,7 +572,7 @@ class Scan:
         self.deadline = time.monotonic() + DEADLINE_SHARE * TIMEOUT_S
         self.model = str(ctx.setting('model') or '')
         self.ignore = [str(w) for w in ctx.setting('ignore') or ()]
-        self.browser = ctx.client()
+        self.browser = browsers.browser_of(ctx)
         self.headers: dict[str, str] = {}
         self.ai = None
         self.ai_asked = False
@@ -1070,7 +1070,7 @@ def digested_on(card: dict, day: str) -> bool:
 
 
 def tool(ctx: Context, args: dict) -> dict:
-    browser = ctx.client()
+    browser = browsers.browser_of(ctx)
     if browser is None:
         raise ReadError(503, NO_BROWSER)
     config = ctx.instance.config

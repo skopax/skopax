@@ -17,7 +17,7 @@ def notes(store: Store, transport: Transport, minutes: float = 15, prefix: str =
 
 
 def line(tail: str = msg('clear.free_task')) -> str:
-    return f"👀 Stopped firing, still open: *checkout-service / ERROR pattern* · clean since 26 Oct 09:30 UTC, lasted 2 h 30 min. {tail}"
+    return f"🟡 Stopped firing, awaiting review: *checkout-service / ERROR pattern* · clean since 26 Oct 09:30 UTC, lasted 2 h 30 min. {tail}"
 
 
 def test_a_posted_card_that_stays_clear_gets_one_note_in_its_thread_with_a_resolve_button(store: Store):
@@ -141,7 +141,7 @@ def test_a_refire_with_a_thread_update_gets_its_own_note_and_a_taken_card_says_s
 
     # then
     assert sent == [KEY]
-    assert t.replies() == [(POST_TS, f"👀 Stopped firing, still open: *checkout-service / ERROR pattern* · clean since 26 Oct 11:30 UTC, lasted 2 h 30 min. {msg('clear.taken')}")]
+    assert t.replies() == [(POST_TS, f"🟡 Stopped firing, awaiting review: *checkout-service / ERROR pattern* · clean since 26 Oct 11:30 UTC, lasted 2 h 30 min. {msg('clear.taken')}")]
 
 
 def test_a_newer_clear_note_survives_a_state_write_from_an_older_copy_and_minutes_zero_turns_it_off(store: Store):

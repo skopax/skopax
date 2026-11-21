@@ -119,6 +119,6 @@ PLUGIN = Plugin(
     env_instances=env_instances, test=test,
     checks=(Check(PASS, 'Node and agent heartbeat', PERIOD, 165, (PASS,), nodes_run, sections=(PASS,), section_help=SECTION_HELP, once=True),),
     tools=(Tool('kube', DESCRIPTION, SCHEMA, kube, instance_input='cluster'),),
-    panels=(Panel(PASS, 'panel.js', label='Nodes', group='observe'),),
+    panels=(Panel(PASS, 'panel.js', label='Nodes', group='connect'),),
     knowledge=(Knowledge('kubernetes', 'Kubernetes', (Path(__file__).parent / 'kubernetes.md').read_text(encoding='utf-8'), slack=True),),
 )

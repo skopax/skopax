@@ -197,7 +197,7 @@ def test_the_tunable_store_builds_without_touching_mongo_and_makes_its_index_on_
         tunables.ensure_indexes()
 
 
-OLD_TAB = re.compile(r'Admin\s+(?:\u203a|\\u203[aA]|&rsaquo;|&#8250;)\s+Settings\b')
+OLD_TAB = re.compile(r'Admin\s+(?:\u203a|\\u203[aA]|&rsaquo;|&#8250;)\s+General\b')
 PACKAGE = Path(__file__).resolve().parent.parent / 'skopax'
 
 
@@ -225,8 +225,8 @@ def test_no_text_calls_the_chat_page_a_tab():
 
 def test_the_old_tab_name_matcher_finds_every_way_of_writing_it():
     # given
-    written = ['Admin \u203a Settings \u203a Slack', 'on Admin \\u203a Settings.', 'Admin \\u203A Settings', 'Admin &rsaquo; Settings', 'Admin &#8250; Settings']
-    kept = ['Admin \u203a General \u203a Slack', 'Admin \u203a Investigator', 'the admin Settings tab', 'Admin \u203a Settings2']
+    written = ['Admin \u203a General \u203a Slack', 'on Admin \\u203a General.', 'Admin \\u203A General', 'Admin &rsaquo; General', 'Admin &#8250; General']
+    kept = ['Admin \u203a Settings \u203a Slack', 'Admin \u203a Investigator', 'the admin General tab', 'Admin \u203a General2']
 
     # then
     assert [bool(OLD_TAB.search(t)) for t in written + kept] == [True] * len(written) + [False] * len(kept)

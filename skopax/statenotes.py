@@ -17,7 +17,7 @@ from skopax.store import Store, glob_match, iso, utc_now
 
 log = logging.getLogger('skopax.statenotes')
 
-NOTED = {'resolve': 'handled', 'take': 'progress', 'known': 'known', 'mute': 'muted'}
+NOTED = {'resolve': 'handled', 'take': 'progress', 'known': 'known', 'mute': 'muted', 'reopen': 'reopened'}
 GLOB_KINDS = ('known', 'muted')
 TRIAGE_KINDS = ('handled', 'progress')
 TICKET_KEY = re.compile(r'\b[A-Z][A-Z0-9]+-\d+\b')
@@ -114,7 +114,17 @@ def marked(kind: str, card: dict, mute: dict | None):
         return ('progress', card.get('ticket') or '') if card.get('triage') == 'progress' else None
     if kind == 'known':
         return 'known' if mute and mute.get('kind') == 'known' else None
+    if kind == 'reopened':
+        return 'closed' if was_closed(card, mute) else 'open'
     return 'muted' if mute and mute.get('kind') != 'known' else None
+
+
+def was_closed(card: dict, mute: dict | None) -> bool:
+    return card.get('triage') == 'handled' or bool(card.get('autoResolvedAt')) or bool(card.get('expired')) or bool(mute and mute.get('kind') == 'known')
+
+
+def reopened_now(card: dict, mute: dict | None) -> bool:
+    return card.get('triage') != 'handled' and not (mute and mute.get('kind') == 'known')
 
 
 def card_name(card: dict) -> str:
@@ -174,6 +184,10 @@ class StateNotes:
             return
         for card, mute in cards:
             now = marked(kind, card, mute)
+            if kind == 'reopened':
+                if before.get(card['key']) == 'closed' and reopened_now(card, mute):
+                    self._send(card, kind, self._text(kind, card, who, action), who)
+                continue
             if now is not None and card['key'] in before and before[card['key']] != now:
                 self._send(card, kind, self._text(kind, card, who, action), who)
 
@@ -243,6 +257,8 @@ class StateNotes:
             return progress_text(who, card.get('ticket'), self.jira_url)
         if kind == 'known':
             return known_text(who)
+        if kind == 'reopened':
+            return msg('notes.state.reopened', who=esc(who), card=esc(f"#{card['num']}" if card.get('num') else card_name(card)))
         return muted_text(who, action.get('hours') or DEFAULT_MUTE_HOURS)
 
     def _send(self, card: dict, kind: str, text: str, who: str) -> None:

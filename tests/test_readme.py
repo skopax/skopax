@@ -129,7 +129,7 @@ def test_the_setup_page_lists_every_feature_switch_and_the_docs_promise_no_resta
 
 def test_the_phone_push_card_and_the_setup_page_both_cover_task_notices():
     # then
-    assert 'task notices' in BY_ID['push'].help and 'task notices' in switch_rows()['Phone push']
+    assert 'task notices' in BY_ID['push'].help and 'task notices' in switch_rows()['Slack DMs for critical cards']
 
 
 def test_the_plugins_page_puts_a_wrong_version_plug_in_in_the_catalog_and_a_broken_one_on_the_notices_strip():
@@ -182,7 +182,7 @@ def test_the_mcp_section_states_the_wave_rules():
 
 def test_the_web_section_states_the_wave_rules():
     # then
-    for said in ('It needs `browser-url`. Without the Anthropic key', 'only that site\'s hosts are opened', '`slack.attach-screenshots`', 'Separate headers with semicolons',
+    for said in ('It needs a Headless browser (or the older `browser-url`). Without the Anthropic key', 'only that site\'s hosts are opened', '`slack.attach-screenshots`', 'Separate headers with semicolons',
                  '`internal-subdomains`', 'can still be reached by panning', 'is held back from the model', 'CONNECT tunnel to the checked address', 'the check is best-effort', 'must be an `http://` URL', 'no proxy sits in front of the browser service', 'its pictures are not sent', 'a day after it'):
         assert said in read('docs/plugins.md'), said
     assert 'It needs `browser-url`, the Anthropic key and the AI investigator switched on' not in all_docs()
@@ -554,6 +554,27 @@ def test_the_no_clone_compose_file_runs_the_current_release_and_refuses_a_missin
     assert f'    echo SKOPAX_SECRET_KEY={GENERATED_SECRET} >> .env\n    docker compose up -d\n' in part
 
 
+def test_every_compose_example_carries_the_same_pinned_browser_service_and_the_docs_say_what_it_is_for():
+    # given
+    readme = read('README.md')
+    part = readme[readme.index('### With Docker Compose, no clone'):readme.index('### From source, with Docker Compose')]
+    start = part.index('Save this as `compose.yml`')
+    block = '\n'.join(line[4:] for line in part[start:part.index('Then, in that folder')].splitlines() if line.startswith('    '))
+    image = 'chromedp/headless-shell:157.0.8103.15'
+
+    # when
+    quick = yaml.safe_load(block)['services']['browser']
+    repo = yaml.safe_load(read('docker-compose.yml'))['services']['browser']
+    operations, hub, plugins = ' '.join(read('docs/operations.md').split()), read('docs/dockerhub.md'), read('docs/plugins.md')
+
+    # then
+    assert quick == repo == {'image': image, 'restart': 'unless-stopped', 'shm_size': '1gb'}
+    assert 'ports' not in quick
+    assert image in operations and 'http://browser:9222' in operations and 'optional' in operations
+    assert f'docker run -d --name skopax-browser --network skopax --shm-size 1g {image}' in hub and 'http://skopax-browser:9222' in hub
+    assert f'image: {image}' in plugins and 'http://browser:9222' in part and 'page scan' in part
+
+
 def test_every_env_name_the_docs_mention_exists_and_the_settings_list_points_at_the_setting_ids():
     # given
     known = known_names()
@@ -567,7 +588,7 @@ def test_every_env_name_the_docs_mention_exists_and_the_settings_list_points_at_
     assert missing == []
     assert planted == ['docs/x.md: SKOPAX_NOTHING_*', 'docs/x.md: SKOPAX_NO_SUCH_SETTING']
     assert {'PROMETHEUS_UI_URL', 'PROMETHEUS_NAMESPACES', 'GITLAB_TOKEN'} <= plugin_env_names()
-    assert 'Every setting has an id, such as `core.timezone`, shown under its row in Admin > General' in flat
+    assert 'Every setting has an id, such as `core.timezone`, shown under its row in Admin > Settings' in flat
     assert 'give it under `settings:` in the config file' in flat
 
 

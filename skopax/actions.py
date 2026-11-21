@@ -1,4 +1,5 @@
 import datetime as dt
+import re
 
 from skopax import history, information, tickets
 from skopax import clock
@@ -21,6 +22,29 @@ PRESET = 'presetReason'
 
 class Refused(Authored, ValueError):
     pass
+
+
+SYSTEM_NOTE_BY = ('system', 'server', 'auto')
+CLOSE_NOTES = ('cards.retired', 'cards.retired_plugin', 'cards.retired_check')
+NOT_SEEN = 'Closed: not seen since '
+
+
+def close_note_patterns() -> list[re.Pattern]:
+    found = []
+    for key in CLOSE_NOTES:
+        text = msg(key, plugin='\x00', instance='\x01', check='\x02')
+        found.append(re.compile(re.escape(text).replace('\x00', '.+').replace('\x01', '.+').replace('\x02', '.+')))
+    return found
+
+
+def system_note(doc: dict) -> bool:
+    note = doc.get('note')
+    text = str(note.get('text') or '') if isinstance(note, dict) else ''
+    if not text:
+        return False
+    if doc.get('noteBy'):
+        return doc['noteBy'] in SYSTEM_NOTE_BY
+    return bool(doc.get('expired')) and (text.startswith(NOT_SEEN) or any(p.fullmatch(text) for p in close_note_patterns()))
 
 
 def note_under(note, why: str, by: str | None, verb: str) -> str:
@@ -106,6 +130,8 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
             store.unmute(key)
         if doc.get('triage'):
             store.triage(key, None)
+        if system_note(doc):
+            store.drop_note(key)
         return 'reopened'
     if kind == 'resolve':
         ticket = (action.get('ticket') or '').strip()

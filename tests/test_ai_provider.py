@@ -61,7 +61,7 @@ def test_a_card_run_on_openai_uses_the_openai_model_answers_and_spends(store: St
     seen = []
     import skopax.investigator as investigator_module
     real = investigator_module.web_from
-    monkeypatched = lambda domains, searches, fetches: seen.append((searches, fetches)) or real(domains, searches, fetches)
+    monkeypatched = lambda domains, searches, fetches, own=(): seen.append((searches, fetches)) or real(domains, searches, fetches, own)
     investigator_module.web_from = monkeypatched
 
     # when

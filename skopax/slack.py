@@ -88,7 +88,7 @@ SCOPE_ERRORS = ('missing_scope', 'not_allowed_token_type')
 SCOPE_NAME = re.compile(r'[a-z][a-z0-9.:_,-]{0,200}')
 MACHINE_BY = frozenset({SYSTEM, SERVER_BY, 'pod', 'auto', AUTO_BY, ''})
 HEAD_KINDS = ('took', 'resolved', 'cleared', 'reopened', 'known', 'muted', 'unassigned')
-OPEN_MARK = ':eyes:'
+OPEN_MARK = ':large_yellow_circle:'
 
 
 class SlackError(Authored, Exception):
@@ -296,7 +296,7 @@ class Slack:
             fallback = self._channel_id or self.known_channel()
             if str(e) != CHANNEL_NOT_FOUND or payload['channel'] != self.channel or not fallback or fallback == self.channel:
                 raise
-            log.warning('Slack has no channel %s any more, posting to %s, the channel of the last post; set the channel id on Admin \u203a General \u203a Slack', self.channel, fallback)
+            log.warning('Slack has no channel %s any more, posting to %s, the channel of the last post; set the channel id on Admin \u203a Settings \u203a Slack', self.channel, fallback)
             body = self.transport(self.token, payload | {'channel': fallback})
             self._name_gone = True
         if payload['channel'] in (self.channel, self._channel_id) and body.get('channel') and 'thread_ts' not in payload:

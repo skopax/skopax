@@ -1331,11 +1331,11 @@ async function aTileSwitchKeepsTheKeyboardFocusOnItsSwitch() {
   sw('acme').focus();
   sw('acme').click();
   await wait(20);
-  doc.getElementById('search-btn').focus();
+  doc.getElementById('theme-btn').focus();
   t.flags.hook = null;
   release();
   await wait(80);
-  const movedOn = doc.activeElement === doc.getElementById('search-btn');
+  const movedOn = doc.activeElement === doc.getElementById('theme-btn');
 
   //then
   assert.deepStrictEqual(first, [true, 'Acme metrics switched off'], 'after a toggle and the redraw, the focus is on the same tile switch, not on the page body');
@@ -1359,22 +1359,26 @@ async function theSearchOwnsTabWhileItIsOpenOverTheSidePanel() {
   //when
   press(from, 'k', {ctrlKey: true});
   const q = doc.getElementById('pal-q');
-  const opened = [!doc.getElementById('pal').hidden, doc.activeElement === q];
+  const opened = [!doc.getElementById('pal').hidden, doc.activeElement === doc.getElementById('top-q')];
   press(q, 'Tab');
-  const tab = doc.activeElement === q;
+  const tab = doc.getElementById('pal').hidden;
+  from.focus();
+  press(from, 'k', {ctrlKey: true});
   press(q, 'Tab', {shiftKey: true});
-  const shiftTab = doc.activeElement === q;
+  const shiftTab = doc.getElementById('pal').hidden;
+  from.focus();
+  press(from, 'k', {ctrlKey: true});
   press(q, 'Escape');
   const closed = [doc.getElementById('pal').hidden, wrap(doc).hidden, doc.activeElement === from];
 
   //then
   assert.ok(panel(doc).contains(from), 'the side panel had the focus');
   assert.deepStrictEqual(opened, [true, true], 'Ctrl+K opens the search over the side panel');
-  assert.deepStrictEqual([tab, shiftTab], [true, true], 'Tab and Shift+Tab stay in the search input; the side panel trap below does not pull the focus away');
+  assert.deepStrictEqual([tab, shiftTab], [true, true], 'Tab and Shift+Tab close the search so the focus moves on');
   assert.deepStrictEqual(closed, [true, false, true], 'Esc closes only the search and gives the focus back inside the panel');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Integrations: the search owns Tab while it is open over the side panel, and Esc closes only the search');
+  console.log('PASS Integrations: Tab closes the search over the side panel, and Esc closes only the search');
 }
 
 async function testConnectionSendsTheTicksOnlyWhenTheFormChangedThem() {
@@ -2248,6 +2252,103 @@ async function thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne() 
   console.log('PASS Integrations: the setup guide is open without instances, closed with one, escaped, and links only https docs');
 }
 
+const BROWSER_FIELDS = [{key: 'url', label: 'Browser URL', kind: 'url', required: true, default: '', help: 'DevTools endpoint', choices: [], low: null, high: null, showIf: null, ui: false}];
+const SITE_FIELDS = [
+  {key: 'url', label: 'Site URL', kind: 'url', required: true, default: '', help: '', choices: [], low: null, high: null, showIf: null, ui: true},
+  {key: 'browser', label: 'Headless browser', kind: 'instance', required: false, default: '', help: '', choices: ['browser'], low: null, high: null, showIf: null, ui: false},
+  {key: 'browser-url', label: 'Browser URL (old)', kind: 'url', required: false, default: '', help: '', choices: [], low: null, high: null, showIf: null, ui: false},
+];
+
+function browserCatalog(browsers, siteValues) {
+  const cat = catalog();
+  cat.plugins.push({id: 'browser', name: 'Headless browser', version: '0.1.0', category: 'other', description: 'A headless Chrome service for screenshots and the page scan.', edition: 'community', icon: true,
+    state: 'ok', reason: null, enabled: true, fields: BROWSER_FIELDS, checks: [{id: 'browser', label: 'Browser answers', period: 300, offset: 45, ran: ['browser']}], uses: [], maxInstances: null,
+    instances: browsers.map((n, i) => instance(n, {primary: i === 0, values: {url: 'http://' + n + ':9222'}, secrets: {}})),
+    health: health('warn', 'browser down', iso(2), browsers.map((n) => ({name: n, state: 'warn', text: 'browser down', at: iso(2)})))});
+  cat.plugins.push({id: 'website', name: 'Website', version: '0.1.0', category: 'web', description: 'Reads pages.', edition: 'community', icon: true, state: 'ok', reason: null, enabled: true,
+    fields: SITE_FIELDS, checks: [], uses: ['browser'], maxInstances: null, instances: [instance('main', {primary: true, values: siteValues, secrets: {}})], health: health('ok', 'Healthy', iso(2), [])});
+  return cat;
+}
+
+async function theHeadlessBrowserHasItsOwnTileWithItsStatusAndAWebsiteFormPicksTheOnlyOne() {
+  //given
+  const t = await boot({catalog: browserCatalog(['chrome'], {url: 'https://www.example.com'})});
+  await open(t);
+
+  //when
+  const own = tile(t.doc, 'browser');
+  const text = own.textContent;
+  addInstance(t, 'website');
+  const only = field(t.doc, 'browser').querySelector('.int-in').value;
+  const options = [...field(t.doc, 'browser').querySelectorAll('.int-in option')].map((o) => o.value);
+
+  //then
+  assert.ok(own && /Headless browser/.test(text) && /browser down/.test(text), text);
+  assert.strictEqual(only, 'chrome');
+  assert.deepStrictEqual(options, ['chrome']);
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+
+  //given
+  const two = await boot({catalog: browserCatalog(['chrome', 'spare'], {url: 'https://www.example.com'})});
+  await open(two);
+
+  //when
+  addInstance(two, 'website');
+
+  //then
+  assert.strictEqual(field(two.doc, 'browser').querySelector('.int-in').value, '');
+  assert.deepStrictEqual(two.errors, []);
+  two.w.close();
+  console.log('PASS Integrations: the Headless browser has its own tile with its status, and a new Website form picks the only browser');
+}
+
+async function anOldBrowserUrlShowsTheMoveHintAndTheButtonMovesIt() {
+  //given
+  const t = await boot({catalog: browserCatalog(['chrome'], {url: 'https://www.example.com', 'browser-url': 'http://old-browser:9222'})});
+  await open(t);
+  t.flags.hook = async (method, p, body, r) => p === '/api/admin/plugins/website/instances/main/move-browser' ? r.ok({browser: 'headless', created: true}) : null;
+
+  //when
+  openInstance(t, 'website', 'main');
+  const hint = inPanel(t.doc, '.int-move-t');
+  const button = inPanel(t.doc, '.int-move-b');
+  button.click();
+  await wait(120);
+
+  //then
+  assert.ok(hint && hint.textContent === 'Move this to a Headless browser integration' && button.textContent === 'Move');
+  assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'POST').map((c) => c[1]), ['/api/admin/plugins/website/instances/main/move-browser']);
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+
+  //given
+  const off = browserCatalog(['chrome'], {url: 'https://www.example.com', 'browser-url': 'http://old-browser:9222'});
+  off.plugins.filter((x) => x.id === 'website')[0].instances[0].enabled = false;
+  const disabled = await boot({catalog: off});
+  await open(disabled);
+
+  //when
+  openInstance(disabled, 'website', 'main');
+
+  //then
+  assert.ok(inPanel(disabled.doc, '.int-move-b'), 'a disabled Website with an old Browser URL shows the hint too');
+  disabled.w.close();
+
+  //given
+  const clean = await boot({catalog: browserCatalog(['chrome'], {url: 'https://www.example.com', browser: 'chrome'})});
+  await open(clean);
+
+  //when
+  openInstance(clean, 'website', 'main');
+
+  //then
+  assert.strictEqual(inPanel(clean.doc, '.int-move-b'), null);
+  clean.w.close();
+
+  console.log('PASS Integrations: an old Browser URL shows the move hint with a Move button, and nothing once a browser is picked');
+}
+
 (async () => {
   await theTilesShowEveryConnectedPluginWithItsStateHealthAndIcon();
   await aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin();
@@ -2321,4 +2422,6 @@ async function thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne() 
   await theKnowledgeChipFiltersWithSearchCountsEachTileOnceAndFollowsAll();
   await theCatalogHasNoKnowledgeGroupAndBadgesEveryKnowledgeEntryOnce();
   await aCustomKnowledgePluginCarriesTheBadgeInItsGroupAndABrokenOneHasNone();
+  await theHeadlessBrowserHasItsOwnTileWithItsStatusAndAWebsiteFormPicksTheOnlyOne();
+  await anOldBrowserUrlShowsTheMoveHintAndTheButtonMovesIt();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

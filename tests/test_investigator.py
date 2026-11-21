@@ -274,7 +274,7 @@ def test_the_page_api_lists_runs_and_server_info_shows_the_investigator(store: S
     # then
     assert [r['id'] for r in runs] == ['r1']
     assert info == {'mode': 'off', 'enabled': False, 'model': 'claude-opus-5-5', 'effort': 'medium', 'maxToolCalls': 30, 'rooms': 2,
-                    'slackModel': 'claude-sonnet-5-5', 'slackEffort': 'medium', 'slackMaxToolCalls': 10,
+                    'slackModel': 'claude-sonnet-5-5', 'slackEffort': 'medium', 'slackMaxToolCalls': 10, 'chatEffort': 'medium', 'chatMaxToolCalls': 10,
                     'stopped': None, 'spentToday': 0.0, 'cap': 25.0, 'lastRun': iso(NOW)}
     assert 'investigate' not in names
 

@@ -51,6 +51,7 @@ BUILTIN: tuple[str, ...] = (
     'skopax.plugins.csp',
     'skopax.plugins.varnish',
     'skopax.plugins.website',
+    'skopax.plugins.browser',
     'skopax.plugins.umami',
     'skopax.plugins.crux',
     'skopax.plugins.safe_browsing',
@@ -129,7 +130,7 @@ LOCALE_NAMES = {'months': MONTHS, 'days': DAYS}
 LOOSE_DOLLAR = re.compile(r'\$(?![1-9])')
 SHOWN_MAX = 60
 PANEL_TAB = re.compile(r'[a-z][a-z0-9-]{1,30}')
-CORE_TABS = ('anoms', 'reqs', 'chat', 'inv', 'svcs', 'info', 'lat', 'rels', 'reps', 'slack', 'hist', 'acts', 'costs', 'tools', 'mcp', 'review', 'docs', 'prefs', 'settings', 'access', 'integrations', 'features', 'ai', 'changes')
+CORE_TABS = ('anoms', 'reqs', 'chat', 'inv', 'svcs', 'info', 'lat', 'rels', 'reps', 'slack', 'hist', 'acts', 'costs', 'tools', 'mcp', 'review', 'docs', 'prefs', 'settings', 'access', 'workspaces', 'integrations', 'features', 'ai', 'changes')
 NAV_GROUPS = ('main', 'observe', 'activity', 'connect', 'more')
 RESERVED_TABS = ('sub-anoms', 'fold-anoms')
 PAGE_LABEL_MAX = 24

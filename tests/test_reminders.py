@@ -14,8 +14,8 @@ BASE = 'https://skopax.example.com'
 LINK = f'{BASE}/#a=log%7Ccheckout-service%7CERROR%7Cboom'
 
 
-def reminders(store: Store, transport: Transport, hours: float = 24) -> Reminders:
-    return Reminders(store, Slack('xoxb-test', '#ops', transport, FakeSlackApi()), hours, BASE + '/')
+def reminders(store: Store, transport: Transport, hours: float = 24, **kw) -> Reminders:
+    return Reminders(store, Slack('xoxb-test', '#ops', transport, FakeSlackApi()), hours, BASE + '/', **kw)
 
 
 def line(age: str, state: str) -> str:
@@ -164,7 +164,7 @@ def test_an_assigned_card_that_nobody_started_says_who_has_it_not_that_nobody_to
     box.run_once(POSTED + 24.5 * H)
 
     # then
-    assert t.replies() == [(POST_TS, f'⏰ Reminder: this card has been waiting for 24 hours, Dora Lane was assigned but has not started yet. {msg('reminder.still')} <{LINK}|Open card>')]
+    assert t.replies() == [(POST_TS, f'⏰ Reminder: this card has been waiting for 24 hours, :bust_in_silhouette: Dora Lane was assigned but has not started yet. {msg('reminder.still')} <{LINK}|Open card>')]
     assert t.calls[0]['blocks'][1]['elements'][0]['text']['text'] == 'Take', 'the Take button stays: taking the card starts the work'
 
 
@@ -183,3 +183,63 @@ def test_a_shared_thread_reminder_names_the_assignee_of_each_card(store: Store):
         '⏰ Reminder: the 2 cards on this topic have been waiting for 24 hours, work has not started yet.',
         f'• *checkout-service / ERROR pattern* · assigned to Dora Lane. {msg('reminder.still')} <{LINK}|Open card>',
         f"• *shop.example.com/products/chairs / Typos* · {msg('reminder.still')} <{BASE}/#a=page-typos%7Cshop.example.com%2Fproducts%2Fchairs|Open card>"]
+
+
+def test_an_assigned_card_with_a_slack_user_pings_that_person_once_with_the_person_mark(store: Store):
+    # given
+    seed(store, card(KEY, owner='dora.lane@example.com'))
+    t = Transport()
+    asked = []
+    box = reminders(store, t, mention=lambda email: asked.append(email) or '<@U123>', name_of=lambda email: 'Dora Lane')
+
+    # when
+    box.run_once(POSTED + 24.5 * H)
+
+    # then
+    text = t.replies()[0][1]
+    assert asked == ['dora.lane@example.com']
+    assert text == f'\u23f0 Reminder: this card has been waiting for 24 hours, :bust_in_silhouette: <@U123> was assigned but has not started yet. {msg("reminder.still")} <{LINK}|Open card>'
+    assert text.count('<@') == 1 and 'dora.lane@example.com' not in text
+
+
+def test_a_failed_lookup_falls_back_to_the_display_name_and_never_the_email(store: Store):
+    # given
+    seed(store, card(KEY, owner='dora.lane@example.com'))
+    t = Transport()
+    named = reminders(store, t, mention=lambda email: None, name_of=lambda email: 'Dora Lane')
+
+    # when
+    named.run_once(POSTED + 24.5 * H)
+    store.anomalies.update_one({'_id': KEY}, {'$unset': {'slackPost.reminder': ''}})
+    other = Transport()
+    reminders(store, other, mention=lambda email: None, name_of=lambda email: '').run_once(POSTED + 24.5 * H)
+
+    # then
+    assert ':bust_in_silhouette: Dora Lane was assigned' in t.replies()[0][1]
+    assert ':bust_in_silhouette: dora.lane was assigned' in other.replies()[0][1] and '@example.com' not in other.replies()[0][1]
+
+
+def test_a_card_without_an_owner_keeps_its_plain_text_and_asks_no_one(store: Store):
+    # given
+    seed(store, card(KEY))
+    t = Transport()
+    asked = []
+
+    # when
+    reminders(store, t, mention=lambda email: asked.append(email), name_of=lambda email: 'x').run_once(POSTED + 24.5 * H)
+
+    # then
+    assert asked == [] and t.replies() == [(POST_TS, line('for 24 hours', msg('reminder.still')))]
+
+
+def test_the_reminder_packs_carry_the_person_mark_in_every_language():
+    # given
+    import json
+    from pathlib import Path
+    root = Path(__file__).parent.parent / 'skopax' / 'locale'
+
+    # then
+    assert msg('reminder.owned', owner='x') == ':bust_in_silhouette: x was assigned but has not started yet.'
+    for lang in ('tr', 'de', 'es', 'fr'):
+        text = json.loads((root / lang / 'messages.json').read_text(encoding='utf-8'))['reminder.owned']
+        assert ':bust_in_silhouette: {owner}' in text

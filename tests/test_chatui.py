@@ -472,8 +472,8 @@ def test_the_chat_brand_json_follows_the_attribution_rules(monkeypatch):
         served = c.get('/chat/public/skopax-brand.json')
 
     # then
-    assert json.loads(plain.body) == {'attribution': {'text': 'Skopax 0.4.5 \u00b7 skopax.io', 'href': 'https://skopax.io'}}
-    assert json.loads(named.body) == {'attribution': {'text': 'Acme Ops \u00b7 powered by Skopax 0.4.5', 'href': 'https://skopax.io'}}
+    assert json.loads(plain.body) == {'attribution': {'text': 'Skopax 0.4.6 \u00b7 skopax.io', 'href': 'https://skopax.io'}}
+    assert json.loads(named.body) == {'attribution': {'text': 'Acme Ops \u00b7 powered by Skopax 0.4.6', 'href': 'https://skopax.io'}}
     assert plain.media_type == 'application/json' and plain.headers['cache-control'] == 'no-cache'
     assert served.status_code == 200 and served.json() == json.loads(named.body)
     assert served.headers['content-type'].startswith('application/json') and served.headers['cache-control'] == 'no-cache' and 'content-security-policy' not in served.headers
@@ -493,3 +493,12 @@ def test_the_served_chat_html_loads_the_brand_script(tmp_path):
     assert run.returncode == 0, run.stderr[-800:]
     served = json.loads(run.stdout)
     assert served['status'] == 200 and '<script src="/chat/public/skopax-chat.js"' in served['text'], 'the chat attribution rides on custom_js; a Chainlit upgrade that drops it would hide the line silently'
+
+
+def test_inside_skopax_the_chat_hides_its_own_theme_toggle_and_avatar_menu_but_the_standalone_tab_keeps_them():
+    # given
+    css = (pathlib.Path(__file__).parent.parent / 'skopax' / 'chatui' / 'public' / 'skopax-chat.css').read_text()
+
+    # then
+    assert 'html.in-frame #theme-toggle, html.in-frame #user-nav-button { display: none !important; }' in css
+    assert not [line for line in css.splitlines() if '#theme-toggle' in line and 'in-frame' not in line]

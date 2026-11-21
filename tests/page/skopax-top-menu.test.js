@@ -161,7 +161,7 @@ async function theSettingsGearIsAnInlineIcon() {
 
   //then
   assert.ok(gear.querySelector('svg.i[aria-hidden="true"]'), 'the settings gear is an inline svg from icons.js');
-  assert.strictEqual(gear.querySelector('.lbl').textContent, 'Settings', 'its name is the row label');
+  assert.strictEqual(gear.querySelector('.lbl').textContent, 'Preferences', 'its name is the row label');
   assert.ok(!doc.documentElement.outerHTML.includes('--gear'), 'the old mask variable is gone');
   assert.strictEqual(doc.getElementById('count-chat').textContent, '', 'and Chat has no count dash: it has nothing to count');
   assert.deepStrictEqual(errors, []);

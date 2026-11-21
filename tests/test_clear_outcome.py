@@ -108,7 +108,7 @@ def test_a_note_only_clear_keeps_the_resolve_hint(store: Store, tmp_path):
     assert shop['status'] == 'cleared' and shop.get('triage') is None and shop.get('resolution') is None
     assert shop['clearNote']['text'] == 'Traffic moved back to the main region'
     lines = {p['text'].split('*')[1]: p for p in post.posted}
-    assert lines['shop / Bad deploy']['text'] == ('\U0001F440 Stopped firing, still open: *shop / Bad deploy* \u00b7 Fixer: Traffic moved back to the main region \u00b7 '
+    assert lines['shop / Bad deploy']['text'] == ('\U0001F7E1 Stopped firing, awaiting review: *shop / Bad deploy* \u00b7 Fixer: Traffic moved back to the main region \u00b7 '
                                                   'If no action is needed, Resolve; if work is needed, Create task.')
     assert lines['shop / Bad deploy']['blocks'][-1]['type'] == 'actions', 'the Resolve button stays'
     assert 'Back to normal' not in lines['shop / Bad deploy']['text']

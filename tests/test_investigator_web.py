@@ -79,10 +79,11 @@ def test_an_empty_setting_uses_the_documentation_list_and_off_any_or_zero_caps_c
                        'developer.apple.com', 'developer.android.com', 'developers.cloudflare.com', 'cloudflarestatus.com',
                        'kubernetes.io', 'docs.gitlab.com', 'postgresql.org', 'mongodb.com', 'kafka.apache.org',
                        'redis.io', 'elastic.co', 'grafana.com', 'prometheus.io', 'langfuse.com', 'help.vwo.com', 'umami.is', 'platform.claude.com')
-    assert listed == Web(('support.google.com', 'kubernetes.io'), 2, 0), 'a scheme or path is left out and a repeat counts once'
+    assert listed == Web(DOMAINS, 2, 0), 'a scheme or path is left out and a built-in host written again counts once'
     assert anywhere == Web(None, 1, 1)
-    assert [web_from(v, 3, 4) for v in ('off', 'none', 'false', 'no', ', ,')] == [None] * 5
-    assert web_from('', 0, 0) is None and web_from('https://x.com/a', 3, 4) is None
+    assert [web_from(v, 3, 4) for v in ('off', 'none', 'false', 'no')] == [None] * 4
+    assert web_from('', 0, 0) is None and web_from('https://x.com/a', 3, 4) == Web(DOMAINS, 3, 4) and web_from(', ,', 3, 4) == Web(DOMAINS, 3, 4)
+    assert web_from(' '.join('-' + d for d in DOMAINS), 3, 4) is None, 'leaving every built-in out and adding none turns the tools off'
 
 
 def test_the_definitions_carry_the_domain_list_the_caps_and_the_fetch_limits():

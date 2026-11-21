@@ -45,14 +45,15 @@ async function boot(hash, stored, opts) {
 
 const tileOf = (doc, key) => [...doc.querySelectorAll('#anoms .tile')].find((x) => x.dataset.key === key);
 const colEl = (doc, col) => doc.querySelector('#anoms .bcol[data-col="' + col + '"]');
-function drag(w, doc, key, col) {
+function drag(w, doc, key, col, inner) {
   const t = tileOf(doc, key);
   t.dispatchEvent(new w.Event('dragstart', {bubbles: true}));
   const marks = [...doc.querySelectorAll('#anoms .bcol')].map((c) => c.dataset.col + ':' + (c.classList.contains('drop-ok') ? 'ok' : 'no'));
   const over = new w.Event('dragover', {bubbles: true, cancelable: true});
-  colEl(doc, col).dispatchEvent(over);
+  const target = inner ? colEl(doc, col).querySelector(inner) : colEl(doc, col);
+  target.dispatchEvent(over);
   const allowed = over.defaultPrevented;
-  colEl(doc, col).dispatchEvent(new w.Event('drop', {bubbles: true, cancelable: true}));
+  target.dispatchEvent(new w.Event('drop', {bubbles: true, cancelable: true}));
   return {marks, allowed};
 }
 
@@ -415,6 +416,31 @@ async function waitingAndInvestigatedAreTagsOnOpenCards() {
   console.log('PASS on the board waiting and investigated cards stay Open with an Investigated, Investigating or Cleared tag; the side menu and the tab show one Open count');
 }
 
+async function aDropAnywhereInAColumnMovesTheCardAndTheColumnsFillTheBoard() {
+  //given
+  const {w, doc, errors, posted} = await boot('#t=anoms/all', {'skopax-card-view': 'board'});
+  const board = doc.querySelector('#anoms .board');
+  const style = (el) => w.getComputedStyle(el);
+
+  //when
+  const empty = colEl(doc, 'progress');
+  [...empty.querySelectorAll('.tile')].forEach((t) => t.remove());
+  const zero = empty.querySelectorAll('.tile').length === 0;
+  const body = empty.querySelector('.bcol-body');
+  const moved = drag(w, doc, NEW, empty.dataset.col, '.bcol-body');
+  await wait(80);
+
+  //then
+  assert.strictEqual(style(board).getPropertyValue('align-items'), 'stretch', 'every column is as tall as the board');
+  assert.ok(/\.board \{[^}]*min-height: max\(14rem, calc\(100vh - var\(--top-h\)/.test(require('fs').readFileSync(TEMPLATE, 'utf8')) && style(body).getPropertyValue('align-content') === 'start', 'the board reaches the bottom of the screen and cards stay at the top');
+  assert.ok(zero, 'the column has no cards');
+  assert.ok(moved.allowed, 'the body area below the header accepts the drag, not only a tile');
+  assert.deepStrictEqual(posted.map((b) => b.key), [NEW], 'the drop on the column body sent the move');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  return 'a drop on the empty area of a column, or on a column with no cards, moves the card, and the columns stretch to the board height';
+}
+
 (async () => {
   console.log('PASS ' + await theBoardIsTheDefaultAndAllTopsTheMenu());
   console.log('PASS ' + await assigneeAndTagChipsFilterTheBoardTogetherAndALinkKeepsThem());
@@ -427,5 +453,6 @@ async function waitingAndInvestigatedAreTagsOnOpenCards() {
   console.log('PASS ' + await theListHasColumnsAndARowStillOpensForDetails());
   console.log('PASS ' + await theBoardPutsCardsInStatusColumnsAndATileOpensTheCardInASidePanel());
   console.log('PASS ' + await theFiltersStillNarrowTheBoardAndACardLinkOpensItsPanel());
+  console.log('PASS ' + await aDropAnywhereInAColumnMovesTheCardAndTheColumnsFillTheBoard());
   await waitingAndInvestigatedAreTagsOnOpenCards();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

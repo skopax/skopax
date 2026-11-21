@@ -75,7 +75,7 @@ The example carries a copy of the Apache License 2.0. `license-files = ["LICENSE
 
 Skopax is not published to a package index; only its images are. A plug-in in a repository of its own runs its tests against a clone of Skopax at the release it targets, next to the plug-in's folder. From the plug-in's folder:
 
-    git clone --branch v0.4.5 https://github.com/skopax/skopax ../skopax
+    git clone --branch v0.4.6 https://github.com/skopax/skopax ../skopax
     (cd ../skopax && uv sync --frozen)
     PYTHONPATH=../skopax:. ../skopax/.venv/bin/python -m pytest -q tests
 
@@ -87,7 +87,7 @@ The Skopax image is distroless, so it has no `pip` and no shell. Install the plu
 
 ```dockerfile
 ARG BASE_IMAGE=ghcr.io/skopax/skopax
-ARG SKOPAX_VERSION=0.4.5
+ARG SKOPAX_VERSION=0.4.6
 
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS build
 
@@ -102,7 +102,7 @@ COPY --from=build /plugins /usr/local/lib/python3.15/site-packages/
 ```
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.4.5 -t skopax-hello examples/hello-plugin
+docker build --build-arg SKOPAX_VERSION=0.4.6 -t skopax-hello examples/hello-plugin
 ```
 
 - `BASE_IMAGE` (default `ghcr.io/skopax/skopax`) names the Skopax image to build on, for example a mirror or your own registry. `SKOPAX_VERSION` (default: the current release) picks its tag.
@@ -300,6 +300,8 @@ A tool may return a picture for the model: a dict with `image` (`media_type` `im
 
 `needs_field` names one of the plug-in's own fields, not a field it reads on an agent; a name that is not one of them breaks the plug-in. The tool is then offered only for the serving instances whose value for that field is set, and the Tools page shows it off ("No instance has <field> set") while none has. Confluence uses it for `spaces`. Core masks the answer of every read tool with `scan=True` before the model sees it, as it does for outside MCP servers: the instance's own secret values become `***`, then `redact.redact_secrets` masks PEM blocks, credentials in addresses, secret-looking table columns (HTML tables, and pipe tables with a delimiter row) and secret values, then what `redact` masks except card numbers (Bearer tokens, JWTs, e-mail addresses, IBANs and phone numbers that start with +; long numeric IDs such as order, account or metric ids are kept as they are), and a text value under a secret-named key becomes `[redacted]`. So a committed config file read through a code tool shows `password: [redacted]`. A plug-in can call `redact.redact_secrets(text)` itself for text that goes anywhere else.
 
+`Tool(..., available=fn)` applies only together with `needs_field` and replaces that stored-value test with `fn(runtime, instance)`, for a tool that needs something other than one field set (Website offers `screenshot` when the instance has a browser, its own or a picked Headless browser instance); `needs_field` still names the field shown when the tool is off.
+
 ### Outbound
 
 `Plugin.outbound = Outbound(post, tags_field='tags', mentions_field='mentions', link_field=None, keys_field=None, sev_field=None)` makes each instance of the plug-in a route, as Teams does. The fields name the instance fields core reads: card tags, mentions (e-mail addresses) and card key patterns, each a text field, the address posts go to (any field), and the route's lowest severity (a choice within `info`, `warn` and `crit`). A plug-in whose `outbound` breaks this is not loaded.
@@ -313,7 +315,7 @@ A tool may return a picture for the model: a dict with `image` (`media_type` `im
 
 ### Echo to Slack
 
-Core can tell Slack where a card went, for any plug-in with an `outbound`, with no code in the plug-in. `skopax.contract.ECHO_FIELD` (`slack-echo`) and `ROUTE_ECHO` are the instance field core adds to every such plug-in, unless the plug-in declares a field of that name itself: a choice of `default`, `on` or `off`, shown as "Use the default", "On" and "Off". A route echoes when its field is `on`, or when it is empty or `default` and the core setting `routes.slack-echo` (Admin > General > Slack, `ROUTES_SLACK_ECHO`, default off) is on; `off` never echoes. Existing instances keep their values; an empty field means "Use the default".
+Core can tell Slack where a card went, for any plug-in with an `outbound`, with no code in the plug-in. `skopax.contract.ECHO_FIELD` (`slack-echo`) and `ROUTE_ECHO` are the instance field core adds to every such plug-in, unless the plug-in declares a field of that name itself: a choice of `default`, `on` or `off`, shown as "Use the default", "On" and "Off". A route echoes when its field is `on`, or when it is empty or `default` and the core setting `routes.slack-echo` (Admin > Settings > Slack, `ROUTES_SLACK_ECHO`, default off) is on; `off` never echoes. Existing instances keep their values; an empty field means "Use the default".
 
 The echo is a queue the route worker drains, never a call on the request or the route post:
 

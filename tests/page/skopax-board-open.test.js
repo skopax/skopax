@@ -53,7 +53,7 @@ const chip = (doc, f) => doc.querySelector('#tab-sub-anoms button[data-f="' + f 
   //then
   assert.deepStrictEqual(pressed(first.doc), ['open'], 'a first load opens the Open filter');
   assert.deepStrictEqual(shown(first.doc), [LIVE], 'and shows only the open cards');
-  assert.strictEqual(first.doc.getElementById('clear-f'), null, 'there is no way back while on the default');
+  assert.strictEqual(first.doc.getElementById('clear-all'), null, 'there is no way back while on the default');
   assert.deepStrictEqual(first.errors, []);
 
   //when
@@ -71,7 +71,7 @@ const chip = (doc, f) => doc.querySelector('#tab-sub-anoms button[data-f="' + f 
   assert.deepStrictEqual(pressed(all.doc), ['all'], 'an old All link still opens All');
   assert.deepStrictEqual(shown(all.doc), [LIVE, MUTED].sort(), 'with every card');
   assert.strictEqual(all.w.location.hash, '#t=anoms/all', 'and the address says so');
-  assert.strictEqual(all.doc.getElementById('clear-f').textContent, 'Back to Open \u203a', 'the way back leads to Open');
+  assert.strictEqual(all.doc.getElementById('clear-all').textContent, 'Clear filters \u2715', 'the way back leads to Open');
   const copy = all.doc.getElementById('copy-f');
   assert.ok(copy, 'All offers Copy link');
 
@@ -83,13 +83,13 @@ const chip = (doc, f) => doc.querySelector('#tab-sub-anoms button[data-f="' + f 
   assert.deepStrictEqual(all.copied, ['https://skopax.example.com/#t=anoms/all'], 'the All link is written with /all');
 
   //when
-  all.doc.getElementById('clear-f').click();
+  all.doc.getElementById('clear-all').click();
   await wait(30);
 
   //then
   assert.deepStrictEqual(pressed(all.doc), ['open'], 'Back to Open goes to Open');
   assert.deepStrictEqual(shown(all.doc), [LIVE]);
-  assert.strictEqual(all.doc.getElementById('clear-f'), null);
+  assert.strictEqual(all.doc.getElementById('clear-all'), null);
   assert.strictEqual(all.w.location.hash, '#t=anoms');
 
   //when
@@ -104,7 +104,7 @@ const chip = (doc, f) => doc.querySelector('#tab-sub-anoms button[data-f="' + f 
 
   //then
   assert.deepStrictEqual(shown(open.doc), [LIVE, MUTED].sort(), 'the All chip still shows every card');
-  assert.strictEqual(open.doc.getElementById('clear-f').textContent, 'Back to Open \u203a');
+  assert.strictEqual(open.doc.getElementById('clear-all').textContent, 'Clear filters \u2715');
 
   //when
   const box = open.doc.getElementById('card-search');
