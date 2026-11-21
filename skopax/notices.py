@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Mapping
 from typing import Callable
 
 from pymongo.errors import PyMongoError
@@ -185,8 +186,21 @@ class Notices:
             sent += self.add({holder(card)}, kind, 'server', card, f"{card.get('sev')}" if kind == 'escalated' else '')
         return sent
 
-    def auto_resolved(self, keys: list[str]) -> int:
-        return self._each(keys, 'auto', 'server')
+    @staticmethod
+    def reason(why: str) -> str:
+        why = str(why or '').strip()
+        return why[:1].upper() + why[1:]
+
+    def auto_resolved(self, keys: list[str], why: Mapping[str, str] | None = None) -> int:
+        return self._each(keys, 'auto', 'server', {k: self.reason(v) for k, v in (why or {}).items()})
+
+    def followed(self, keys: list[str]) -> int:
+        sent = 0
+        for key in keys or []:
+            card = self._card(key)
+            if card is not None:
+                sent += self.add({holder(card)}, 'progress', 'server', card, str(card.get('ticket') or ''))
+        return sent
 
     def jira_swept(self, results: list[dict]) -> int:
         sent = 0
@@ -238,10 +252,10 @@ class Notices:
             log.warning('notification for %s skipped, the card could not be read: %s', key, error_kind(e))
             return None
 
-    def _each(self, keys: list[str], kind: str, by: str) -> int:
+    def _each(self, keys: list[str], kind: str, by: str, notes: Mapping[str, str] | None = None) -> int:
         sent = 0
         for key in keys or []:
             card = self._card(key)
             if card is not None:
-                sent += self.add({holder(card)}, kind, by, card)
+                sent += self.add({holder(card)}, kind, by, card, (notes or {}).get(key) or '')
         return sent

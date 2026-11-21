@@ -599,6 +599,12 @@ class Routes:
             log.warning('route post of %s to %s not claimed: %s', card['key'], route.id, kind(e))
             return False
 
+    def delivered(self, card: dict, post: dict) -> None:
+        try:
+            self.store.teams_delivered(card['key'], post)
+        except Exception as e:
+            log.warning('route post of %s not marked as delivered: %s', card['key'], kind(e))
+
     def unclaim(self, card: dict, post: dict) -> None:
         try:
             self.store.teams_unclaim(card['key'], post, rev=False)
@@ -671,6 +677,8 @@ class Routes:
             if failed is None:
                 posted.add(a['key'])
                 self._done(records, [r.id + suffix for _, _, r in mine], a['key'])
+                for card, post, _ in mine:
+                    self.delivered(card, post)
                 continue
             for card, post, r in mine:
                 self.unclaim(card, post)
@@ -758,7 +766,7 @@ class Routes:
     def _posted(self, route: Route, cards: list[dict], by: str, now: float) -> list[str]:
         for a in cards:
             try:
-                self.store.teams_posted(a['key'], self._stamp(route, by, now))
+                self.store.teams_posted(a['key'], self._stamp(route, by, now) | {'ok': True})
             except Exception as e:
                 log.warning('route post of %s not recorded on the card: %s', a['key'], kind(e))
         return self.noted(route, cards, by)

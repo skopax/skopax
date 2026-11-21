@@ -27,7 +27,7 @@ from skopax import messages
 from skopax.investigator.toolset import NoProposal, ProposalClosed, ProposalUnavailable
 from skopax.messages import msg
 from skopax.operators import OperatorUnknown
-from skopax.slack import CARD_ACTION, CARD_MENU, CREATE_TASK, FILE_HOST, IMAGE_BYTES_MAX, IMAGE_MIMES, KNOWN_VIEW, POST_ACTIONS, PROPOSAL_CONFIRM, SCOPE_ERRORS, SECTION_LIMIT, SlackError, answer_blocks, card_action_label, cut, esc, known_view, reason_of, redact, take_offer_blocks
+from skopax.slack import CARD_ACTION, CARD_MENU, CREATE_TASK, FILE_HOST, IMAGE_BYTES_MAX, IMAGE_MIMES, KNOWN_VIEW, POST_ACTIONS, PROPOSAL_CONFIRM, SCOPE_ERRORS, SECTION_LIMIT, SlackError, answer_blocks, card_action_label, cut, esc, known_view, cut_clear, guard_addresses, link_addresses, reason_of, redact, take_offer_blocks
 from skopax.statenotes import card_name, who_of
 from skopax.store import NotFound, new_id
 from skopax.tickets import slack_reason
@@ -585,8 +585,9 @@ class Intake:
 
 
 class Replier:
-    def __init__(self, store, slack, settings, clock=time.time, attach=None, base_url: str = ''):
+    def __init__(self, store, slack, settings, clock=time.time, attach=None, base_url: str = '', hosts: Callable[[], tuple[str, ...]] = lambda: ()):
         self.base_url = base_url.rstrip('/')
+        self.hosts = hosts
         self.store = store
         self.slack = slack
         self.listen = settings.slack_listen
@@ -594,22 +595,26 @@ class Replier:
         self.attach = attach
 
     @staticmethod
-    def text_for(action: dict, outcome: str, recap: str) -> str:
+    def text_for(action: dict, outcome: str, recap: str, hosts: tuple[str, ...] = ()) -> str:
         body = redact(esc((recap or '').strip()))
         if outcome == 'done' and body:
             user = (action.get('slack') or {}).get('user') if (action.get('slack') or {}).get('where') != 'dm' else None
-            return cut((f'<@{user}> ' if user else '') + body, SECTION_LIMIT)
+            return Replier.linked((f'<@{user}> ' if user else '') + body, hosts)
         if outcome == 'capped':
-            return cut(msg('slackevents.reply.capped') + (f'\n{body}' if body else ''), SECTION_LIMIT)
+            return Replier.linked(msg('slackevents.reply.capped') + (f'\n{body}' if body else ''), hosts)
         if outcome == 'stopped':
             return msg('slackevents.reply.stopped')
         return msg('slackevents.reply.failed')
+
+    @staticmethod
+    def linked(text: str, hosts: tuple[str, ...]) -> str:
+        return link_addresses(cut_clear(guard_addresses(cut_clear(text, SECTION_LIMIT), hosts), SECTION_LIMIT), hosts, SECTION_LIMIT)
 
     def reply(self, action: dict, outcome: str, recap: str) -> dict | None:
         s = action.get('slack') or {}
         if not s.get('channel'):
             return None
-        text = self.text_for(action, outcome, recap)
+        text = self.text_for(action, outcome, recap, self.hosts())
         answered = outcome == 'done' and text != msg('slackevents.reply.failed')
         proposal = action.get('ticketProposal') if answered and s.get('where') == 'card' else None
         card_action = action.get('cardAction') if answered else None
@@ -708,8 +713,10 @@ def way_in(sso: bool, account: bool, base: str, added_only: bool = False, viewer
 
 class Clicks:
     def __init__(self, store, slack, operators, apply: Callable[[dict], str], jira_site: str | Callable[[], str] = '', on: Callable[[], bool] = lambda: True,
-                 confirm: Callable[[str, str], dict] | None = None, background: Callable[[Callable[[], None]], None] | None = None, way_in: Callable[[str], str] | None = None):
+                 confirm: Callable[[str, str], dict] | None = None, background: Callable[[Callable[[], None]], None] | None = None, way_in: Callable[[str], str] | None = None,
+                 hosts: Callable[[], tuple[str, ...]] = lambda: ()):
         self.on = on
+        self.hosts = hosts
         self.way_in = way_in
         self.confirm = confirm
         self.background = background or (lambda job: threading.Thread(target=job, name='proposal-confirm', daemon=True).start())
@@ -920,7 +927,7 @@ class Clicks:
         except Exception as e:
             log.error('proposal of run %s not confirmed: %s', run_id, error_kind(e))
             return self._tell(channel, user, msg('proposals.failed'), thread_ts, 'refused')
-        summary = msg('proposals.timed_out') if result.get('outcome') == 'timeout' else msg('proposals.failed') if result.get('outcome') == 'failed' else redact(esc(result['summary']))
+        summary = msg('proposals.timed_out') if result.get('outcome') == 'timeout' else msg('proposals.failed') if result.get('outcome') == 'failed' else link_addresses(redact(esc(result['summary'])), self.hosts(), SECTION_LIMIT)
         try:
             self.slack.post({'channel': channel, 'thread_ts': thread_ts, 'text': summary})
         except SlackError as e:

@@ -64,13 +64,19 @@ function adminShow(id) {
 async function adminApi(method, path, body, signal, raw) {
   var headers = {'Accept': 'application/json'};
   if (body !== undefined) headers['Content-Type'] = raw || 'application/json';
-  var r = await fetch(path, {method: method, headers: headers, credentials: 'same-origin', body: body === undefined ? undefined : raw ? body : JSON.stringify(body), signal: signal});
+  var r;
+  try { r = await fetch(path, {method: method, headers: headers, credentials: 'same-origin', body: body === undefined ? undefined : raw ? body : JSON.stringify(body), signal: signal}); } catch (e) {
+    if (!(e && e.name === 'AbortError')) failToast('the server did not answer (' + method + ' ' + path + ')');
+    throw e;
+  }
   if (!r.ok) {
     var detail = null, field = null;
     try { var failure = await r.json(); detail = failure.detail; field = failure.field; } catch (e) {}
     var list = Array.isArray(detail);
     if (list) detail = detail.map(function (d) { return d && d.msg; }).filter(Boolean).join('; ');
-    throw {code: r.status, detail: typeof detail === 'string' && detail ? detail : null, field: typeof field === 'string' ? field : null, list: list};
+    var said = typeof detail === 'string' && detail ? detail : null;
+    if (method !== 'GET') failToast((said || 'the change was not saved') + ' (' + r.status + ')');
+    throw {code: r.status, detail: said, field: typeof field === 'string' ? field : null, list: list};
   }
   if (r.status === 204) return null;
   return r.json();
@@ -280,22 +286,29 @@ function adminControl(i) {
   return '<input id="' + esc(id) + '" class="adm-in"' + named + ' type="text"' + (i.limit ? ' maxlength="' + esc(i.limit) + '"' : '') + ' value="' + esc(i.value) + '" placeholder="' + esc(i.default != null ? 'default: ' + (i.default || 'empty') : '') + '">';
 }
 function rowId(row) { return row.dataset.key || row.dataset.secret || row.dataset.route || row.dataset.source || row.dataset.talk || (row.classList.contains('route-add') ? '+route' : ''); }
+var UNSAVED_FIELDS = 'input:not(.r-link), select, textarea';
 function unsaved(box, saved) {
   var out = [];
   box.querySelectorAll('.adm-row').forEach(function (row) {
     var id = rowId(row);
     if (!id || id === saved) return;
-    row.querySelectorAll('input:not(.r-link), select, textarea').forEach(function (inp) {
+    row.querySelectorAll(UNSAVED_FIELDS).forEach(function (inp, at) {
       var box = inp.type === 'checkbox', was = box ? String(inp.defaultChecked) : inp.tagName === 'SELECT' ? ([].filter.call(inp.options, function (o) { return o.defaultSelected; })[0] || inp.options[0] || {}).value : inp.defaultValue, on = inp === document.activeElement;
       var now = box ? String(inp.checked) : inp.value;
-      if (now !== was || on) out.push({id: id, sel: '.' + inp.className.trim().split(/\s+/).join('.') + (inp.dataset.rule ? '[data-rule="' + inp.dataset.rule + '"]' : ''), value: now, on: on});
+      if (now !== was || on) out.push({id: id, at: at, rule: inp.dataset.rule || '', value: now, on: on});
     });
   });
   return out;
 }
 function restoreUnsaved(box, list) {
   list.forEach(function (u) {
-    var row = [].filter.call(box.querySelectorAll('.adm-row'), function (r) { return rowId(r) === u.id; })[0], inp = row && row.querySelector(u.sel);
+    try { restoreOne(box, u); } catch (e) { failToast('an unsaved edit could not be kept: ' + (e && e.message ? e.message : 'unknown error')); }
+  });
+}
+function restoreOne(box, u) {
+  [u].forEach(function (u) {
+    var row = [].filter.call(box.querySelectorAll('.adm-row'), function (r) { return rowId(r) === u.id; })[0], fields = row ? [].slice.call(row.querySelectorAll(UNSAVED_FIELDS)) : [];
+    var inp = (u.rule ? fields.filter(function (f) { return f.dataset.rule === u.rule; })[0] : null) || fields[u.at];
     if (!inp || inp.disabled) return;
     if (inp.type === 'checkbox') { if (String(inp.checked) !== u.value) { inp.checked = u.value === 'true'; inp.dispatchEvent(new Event('input')); } }
     else if (inp.value !== u.value) { inp.value = u.value; inp.dispatchEvent(new Event('input')); }

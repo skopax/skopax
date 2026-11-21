@@ -1,8 +1,12 @@
 const pageHtml = require('./skopax-page');
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const {JSDOM, VirtualConsole} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
+const CORE_PACK = /^CORE_PACK = '(.+)'$/m.exec(fs.readFileSync(path.join(path.dirname(TEMPLATE), '..', 'locales.py'), 'utf8'))[1];
+const SLOT = '<script type="text/plain" id="plugin-scripts"></script>';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
 const CARD = 'log|checkout-service|ERROR|boom';
@@ -22,16 +26,24 @@ function rows(total, unread) {
       : {id: 'n' + i, kind, key: CARD, num: 14, title: 'checkout-service / ERROR lines', note: kind === 'resolved' ? 'Fixed \u00b7 OPS-12' : '', by: 'paul.stone', t: iso(i + 2), read: i >= unread};
   });
 }
+function builtIn(lang) {
+  const raw = JSON.parse(fs.readFileSync(path.join(path.dirname(TEMPLATE), '..', 'locale', lang, 'page.json'), 'utf8'));
+  return Object.assign({}, raw.page, {'@rules': raw.rules, '@months': raw.months, '@days': raw.days, '@tails': raw.tails, '@th': raw.headers});
+}
+function served(lang) {
+  const args = [JSON.stringify(lang), JSON.stringify(builtIn(lang)).replace(/</g, '\\u003c')];
+  return '<script>' + CORE_PACK.replace(/%s/g, () => args.shift()) + '</script>';
+}
 const newcomer = (id) => ({id, kind: 'fired', key: CARD, num: 14, title: 'checkout-service / ERROR lines', note: '', by: 'paul.stone', t: iso(0), read: false});
 
 async function boot(opts) {
   const o = opts || {};
   const errors = [], calls = [];
-  const srv = {list: rows(o.total || 4, o.unread || 0), gets: 0};
+  const srv = {list: o.list || rows(o.total || 4, o.unread || 0), gets: 0};
   srv.count = () => srv.list.filter((n) => !n.read).length;
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
-  const dom = new JSDOM(pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state())), {
+  const dom = new JSDOM(pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state())).replace(SLOT, () => (o.lang && o.pack ? served(o.lang) : '')), {
     url: 'https://skopax.example.com/' + (o.hash || '#t=anoms/all'), runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
       w.scrollTo = () => {};
@@ -261,6 +273,47 @@ async function guestsSeeNoFeedAndAnotherLanguageKeepsCardTitles() {
   return 'a guest gets no feed and no badge, and with another language picked the card titles stay as they are';
 }
 
+function autoRows() {
+  const auto = (id, num, note) => ({id, kind: 'auto', key: CARD + num, num, title: 'checkout-service / ERROR lines', note, by: 'Skopax', t: iso(num), read: true});
+  return [auto('a1', 21, 'Cleared 17 Oct 01:00, nobody acted in 6 hours'), auto('a2', 22, 'First seen 16 Oct 02:00, nobody acted in 2 business hours'),
+    auto('a3', 23, 'Stopped after the event; nobody opened a task'), auto('a4', 24, 'Its parent #9 checkout-service / ERROR lines was marked no action needed'),
+    auto('a5', 25, 'Its parent was handled and has left the page'), auto('a6', 26, 'Its parent #9 <img src=x onerror=alert(1)> / ERROR was marked no action needed'),
+    auto('a7', 27, '<img src=x onerror=alert(1)>'), {id: 'r1', kind: 'resolved', key: CARD, num: 14, title: 'checkout-service / ERROR lines', note: 'Fixed \u00b7 OPS-12', by: 'paul.stone', t: iso(30), read: true}];
+}
+
+async function anAutoResolveShowsWhyUnderTheTitleInEnglishAndTurkish() {
+  //given
+  const en = await boot({list: autoRows(), hash: '#t=slack'});
+  const tr = await boot({list: autoRows(), lang: 'tr', pack: true, hash: '#t=slack'});
+  const notes = (doc) => [...doc.querySelectorAll('#nt-list .nt-item')].map((i) => [i.querySelector('.nt-what').textContent, (i.querySelector('.nt-note') || {}).textContent]);
+
+  //then
+  assert.deepStrictEqual(notes(en.doc), [
+    ['#21 checkout-service / ERROR lines', 'Cleared 17 Oct 01:00, nobody acted in 6 hours'],
+    ['#22 checkout-service / ERROR lines', 'First seen 16 Oct 02:00, nobody acted in 2 business hours'],
+    ['#23 checkout-service / ERROR lines', 'Stopped after the event; nobody opened a task'],
+    ['#24 checkout-service / ERROR lines', 'Its parent #9 checkout-service / ERROR lines was marked no action needed'],
+    ['#25 checkout-service / ERROR lines', 'Its parent was handled and has left the page'],
+    ['#26 checkout-service / ERROR lines', 'Its parent #9 <img src=x onerror=alert(1)> / ERROR was marked no action needed'],
+    ['#27 checkout-service / ERROR lines', '<img src=x onerror=alert(1)>'],
+    ['#14 checkout-service / ERROR lines', 'Fixed \u00b7 OPS-12']]);
+  assert.strictEqual(en.doc.querySelector('#nt-list img'), null, 'the reason is text, never markup');
+  assert.deepStrictEqual(notes(tr.doc).map((n) => n[1]), [
+    '17 Eki 01:00 normale d\u00f6nd\u00fc, 6 saat boyunca kimse ilgilenmedi',
+    '\u0130lk g\u00f6r\u00fclme 16 Eki 02:00, 2 i\u015f saati boyunca kimse ilgilenmedi',
+    'Olaydan sonra durdu; kimse g\u00f6rev a\u00e7mad\u0131',
+    '\u00dcst kart #9 checkout-service / ERROR lines \'aksiyon gerekmiyor\' olarak i\u015faretlendi',
+    '\u00dcst kart \u00e7\u00f6z\u00fcld\u00fc ve sayfadan kalkt\u0131',
+    '\u00dcst kart #9 <img src=x onerror=alert(1)> / ERROR \'aksiyon gerekmiyor\' olarak i\u015faretlendi',
+    '<img src=x onerror=alert(1)>',
+    'Fixed \u00b7 OPS-12']);
+  assert.strictEqual(tr.doc.querySelector('#nt-list img'), null, 'markup in the part a rule puts back stays text');
+  assert.strictEqual(tr.doc.querySelector('#nt-list .nt-item .nt-what').textContent, '#21 checkout-service / ERROR lines', 'the card title stays as it is');
+  assert.deepStrictEqual(en.errors.concat(tr.errors), []);
+  en.w.close(); tr.w.close();
+  return 'an auto-resolve notice shows why under the card title, escaped, and in Turkish with the Turkish pack, markup in a rule\'s part included';
+}
+
 async function aSignedOutBoardNeverAsksForTheCount() {
   //given
   const {w, doc, errors, calls} = await boot({guest: true});
@@ -301,6 +354,7 @@ async function theDraftsTableIsUnchanged() {
   console.log('PASS ' + await clickingOneOpensItsCardOrChat());
   console.log('PASS ' + await markAllReadAndOlderPages());
   console.log('PASS ' + await guestsSeeNoFeedAndAnotherLanguageKeepsCardTitles());
+  console.log('PASS ' + await anAutoResolveShowsWhyUnderTheTitleInEnglishAndTurkish());
   console.log('PASS ' + await aSignedOutBoardNeverAsksForTheCount());
   console.log('PASS ' + await theDraftsTableIsUnchanged());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

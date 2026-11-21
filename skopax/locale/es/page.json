@@ -77,6 +77,7 @@
   "Archived": "Archivadas",
   "Argo CD app": "App de Argo CD",
   "Ask": "Preguntar",
+  "Request": "Solicitud",
   "Ask about this card": "Preguntar sobre esta tarjeta",
   "Ask in chat": "Preguntar en el chat",
   "Ask the investigator": "Preguntar al investigador",
@@ -323,7 +324,10 @@
   "General": "General",
   "Got worse": "Empeoró",
   "Group": "Agrupar",
-  "Group under…": "Agrupar bajo…",
+  "Search by number, service, label or ticket": "Buscar por número, servicio, etiqueta o ticket",
+  "{0} more - type to search": "{0} más - escribe para buscar",
+  "stopped": "detenida",
+  "Cards to group under": "Tarjetas para agrupar",
   "Group: merge this card under another open card, the one that explains it": "Agrupar: fusiona esta tarjeta bajo otra tarjeta abierta, la que la explica",
   "Group: merge this stopped card under an open card or another stopped one, the one that explains it": "Agrupar: fusiona esta tarjeta detenida bajo una tarjeta abierta u otra detenida, la que la explica",
   "Grouped {0} {M} {1}": "Agrupada {0} {M} {1}",
@@ -629,8 +633,8 @@
   "Overview": "Resumen general",
   "PAUSED": "EN PAUSA",
   "Page": "Página",
-  "Page ask": "Pregunta desde la página",
-  "Page asks": "Preguntas desde la página",
+  "Page request": "Pregunta desde la página",
+  "Page requests": "Preguntas desde la página",
   "Page asks {0}": "Preguntas desde la página {0}",
   "Page question": "Pregunta de la página",
   "Page questions this hour": "Preguntas de la página esta hora",
@@ -821,8 +825,8 @@
   "Single sign-on did not load": "No se cargó el inicio de sesión único",
   "Single sign-on did not load.": "No se cargó el inicio de sesión único.",
   "Single sign-on is on but needs setup": "El inicio de sesión único está activado pero requiere configuración",
-  "Slack ask": "Pregunta desde Slack",
-  "Slack asks": "Preguntas desde Slack",
+  "Slack request": "Pregunta desde Slack",
+  "Slack requests": "Preguntas desde Slack",
   "Slack asks {0}": "Preguntas desde Slack {0}",
   "Slack failed": "Falló Slack",
   "Slack is not set up": "Slack no está configurado",
@@ -1380,9 +1384,79 @@
   "Workspaces": "Espacios de trabajo",
   "A value saved here wins over it": "Un valor guardado aquí tiene prioridad",
   "Drop the list saved here and go back to the configured list": "Descartar la lista guardada aquí y volver a la lista configurada",
-  "Drop the list saved here and go back to the default": "Descartar la lista guardada aquí y volver al valor predeterminado"
+  "Drop the list saved here and go back to the default": "Descartar la lista guardada aquí y volver al valor predeterminado",
+  "Stopped after the event; nobody opened a task": "Se detuvo tras el evento; nadie abrió una tarea",
+  "Its parent was handled and has left the page": "Tarjeta principal resuelta; ya salió de la página"
  },
  "rules": [
+  [
+   "^Cleared (.+), nobody acted in (\\d+) hour$",
+   "Recuperada $1, nadie actuó en $2 hora"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) hours$",
+   "Recuperada $1, nadie actuó en $2 horas"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) day$",
+   "Recuperada $1, nadie actuó en $2 día"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) days$",
+   "Recuperada $1, nadie actuó en $2 días"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) business hour$",
+   "Recuperada $1, nadie actuó en $2 hora laborable"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) business hours$",
+   "Recuperada $1, nadie actuó en $2 horas laborables"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) business day$",
+   "Recuperada $1, nadie actuó en $2 día laborable"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) business days$",
+   "Recuperada $1, nadie actuó en $2 días laborables"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) hour$",
+   "Vista por primera vez $1, nadie actuó en $2 hora"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) hours$",
+   "Vista por primera vez $1, nadie actuó en $2 horas"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) day$",
+   "Vista por primera vez $1, nadie actuó en $2 día"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) days$",
+   "Vista por primera vez $1, nadie actuó en $2 días"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) business hour$",
+   "Vista por primera vez $1, nadie actuó en $2 hora laborable"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) business hours$",
+   "Vista por primera vez $1, nadie actuó en $2 horas laborables"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) business day$",
+   "Vista por primera vez $1, nadie actuó en $2 día laborable"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) business days$",
+   "Vista por primera vez $1, nadie actuó en $2 días laborables"
+  ],
+  [
+   "^Its parent (.+) was marked no action needed$",
+   "Tarjeta principal $1 marcada como 'No requiere acción'"
+  ],
   [
    "^([\\s\\S]+)\\nFull text in the expanded card$",
    "$1\nTexto completo en la tarjeta desplegada"
@@ -1418,6 +1492,10 @@
   [
    "^Stopped firing (\\d[^,]*)$",
    "Dejó de dispararse $1"
+  ],
+  [
+   "^Stopped after the event (\\d[^,]*)$",
+   "Detenida tras el evento $1"
   ],
   [
    "^Stopped firing · unassigned (\\d.*)$",
@@ -1462,10 +1540,6 @@
   [
    "^Before the card fired again ([^:]+): ([\\s\\S]+)$",
    "Antes de dispararse de nuevo ($1): $2"
-  ],
-  [
-   "^Stopped firing (.+), nobody acted yet: waiting to be addressed$",
-   "Dejó de dispararse $1, nadie ha actuado aún: esperando atención"
   ],
   [
    "^Recurring ×(\\d+)$",

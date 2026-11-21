@@ -34,7 +34,7 @@ const CLOSED_ROWS = [
   {key: 'log|c|ERROR|c', num: 203, svc: 'c', label: 'ERROR pattern', sev: 'warn', firstSeen: iso(3000), lastSeen: iso(2002), outcome: 'handled'},
 ];
 
-const statusOf = (doc) => [doc.getElementById('state'), doc.querySelector('.status')].filter(Boolean).map((e) => e.textContent).join(' · ');
+const statusOf = (doc) => [doc.getElementById('state'), doc.querySelector('.status')].filter(Boolean).map((e) => e.textContent).join(' \u00b7 ');
 async function boot(hash, opts) {
   const errors = [], posted = [], asked = [];
   const o = opts || {};
@@ -163,10 +163,10 @@ async function aResolvedCardSaysHowViaAndWhoAndAnOldOneReadsResolved() {
   const line = seen(en.doc);
 
   //then
-  assert.deepStrictEqual(english, ['Fixed (OPS-140 \u2197) \u00b7 via Slack \u00b7 alice', 'Duplicate of #12 · via chat · carol', 'Resolved']);
+  assert.deepStrictEqual(english, ['Fixed (OPS-140 \u2197) \u00b7 via Slack \u00b7 alice', 'Duplicate of #12 \u00b7 via chat \u00b7 carol', 'Resolved']);
   assert.strictEqual(tag(en.doc, DUP).querySelector('a').getAttribute('href'), '/c/12', 'the other card links to its page');
-  assert.strictEqual(auto, 'No action needed · auto-resolved', 'auto-resolved keeps its own tag');
-  assert.ok(/^Seen before: 2 times, last .+, resolved as Fixed \(OPS-120 \u2197\) · via page · alice$/.test(line.textContent), line.textContent);
+  assert.strictEqual(auto, 'No action needed \u00b7 auto-resolved', 'auto-resolved keeps its own tag');
+  assert.ok(/^Seen before: 2 times, last .+, resolved as Fixed \(OPS-120 \u2197\) \u00b7 via page \u00b7 alice$/.test(line.textContent), line.textContent);
   assert.deepStrictEqual(en.errors, []);
   en.w.close();
   console.log('PASS a resolved card shows Fixed, Duplicate of #n or No action needed with via and who, in English; an old one reads Resolved and auto-resolved keeps its tag');
@@ -184,7 +184,7 @@ async function theClosedViewFiltersByTheNewKindsAndSaysHowEachRowEnded() {
 
   //then
   assert.deepStrictEqual(outcomes.slice(0, 5), [':Every outcome', 'fixed:Fixed', 'handled:No action needed', 'duplicate:Duplicate', 'auto-resolved:Auto-resolved']);
-  assert.deepStrictEqual(rows, ['Fixed (OPS-140 \u2197) · via page · alice', 'Duplicate of #12 · via Skopax · investigator', 'Resolved'], 'the ticket is not repeated when it is the fix');
+  assert.deepStrictEqual(rows, ['Fixed (OPS-140 \u2197) \u00b7 via page \u00b7 alice', 'Duplicate of #12 \u00b7 via Skopax \u00b7 investigator', 'Resolved'], 'the ticket is not repeated when it is the fix');
   assert.strictEqual(asked[asked.length - 1].outcome, 'duplicate');
   assert.deepStrictEqual(errors, []);
   w.close();

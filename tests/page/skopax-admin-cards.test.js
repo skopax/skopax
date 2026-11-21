@@ -14,7 +14,7 @@ function items() {
   return [
     item('slack.channel', 'Slack', 'Channel', 'text', 'C0123', {card: 'Channel and posting', order: 0}),
     item('slack.thread-hours', 'Slack', 'Thread window (h)', 'float', '6', {card: 'Threads and reminders', order: 200, unit: 'h', shortLabel: 'Thread window', default: '2', base: '2', source: 'admin', by: 'dora.lane@example.com', at: iso(5), low: 0, high: 72}),
-    item('slack.ask-cap', 'Slack', 'Slack asks per hour', 'int', '10', {card: 'Questions', order: 100, unit: 'per hour', low: 0, high: 100}),
+    item('slack.ask-cap', 'Slack', 'Slack requests per hour', 'int', '10', {card: 'Questions', order: 100, unit: 'per hour', low: 0, high: 100}),
     item('slack.dm-chats', 'Slack', 'Direct message chats', 'bool', 'true', {card: 'Questions', order: 103}),
     item('slack.state-notes', 'Slack', 'Status notes in threads', 'bool', 'false', {card: 'Threads and reminders', order: 203}),
     item('general.timezone', 'General', 'Timezone', 'text', 'UTC', {card: 'Time', order: 100}),

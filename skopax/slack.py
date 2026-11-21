@@ -20,6 +20,7 @@ from skopax.postdeploy import SERVER_BY
 from skopax.redact import redact, redact_lines
 from skopax import drafts, history, information, tags
 from skopax.kit.text import duration
+from skopax.kit.web import host_list, host_of
 
 log = logging.getLogger('skopax.slack')
 
@@ -89,6 +90,16 @@ SCOPE_NAME = re.compile(r'[a-z][a-z0-9.:_,-]{0,200}')
 MACHINE_BY = frozenset({SYSTEM, SERVER_BY, 'pod', 'auto', AUTO_BY, ''})
 HEAD_KINDS = ('took', 'resolved', 'cleared', 'reopened', 'known', 'muted', 'unassigned')
 OPEN_MARK = ':large_yellow_circle:'
+WORD_JOINER = '\u2060'
+ADDRESS_CHAR = r'(?:(?!&[lg]t;)[^\s<>|`*])'
+ADDRESS = re.compile(rf'(?P<explicit>(?<![^\W_])https?://{ADDRESS_CHAR}+)|(?P<bare>(?<![^\W_]|[@./:\\\u2060-])(?:[a-z0-9-]+\.)+[a-z]{{2,}}(?![\w-]|\.\w)(?P<port>:\d+)?(?:[/?#]{ADDRESS_CHAR}*)?)', re.I)
+ADDRESS_SPANS = re.compile(r'(?P<block>```.*?```)|(?P<inline>`[^`\n]*`)|(?P<markup><[^<>\n]*>)|(?P<escaped>&lt;(?=[a-z][a-z0-9+.-]*:|[@#!])[^\n]{0,500}?&gt;)', re.S | re.I)
+PLAIN, INLINE, MARKUP = 'plain', 'inline', 'markup'
+EMPTY_END = re.compile(r'=[.,;:!?_~\'")]*$')
+ELLIPSES = ('\u2026', '...')
+ESCAPED = ('&lt;', '&gt;')
+ENTITIES = ('&amp;', '&lt;', '&gt;')
+TRAILING = '.,;:!?_~\'"'
 
 
 class SlackError(Authored, Exception):
@@ -493,6 +504,128 @@ def esc_keep_mentions(text) -> str:
     return USER_MENTION.sub(r'<\1>', esc(text))
 
 
+def public_hosts(sites, base: str = '') -> tuple[str, ...]:
+    found = [host_of(base)] if str(base or '').startswith('https://') else []
+    for site in sites:
+        found += [host_of(site.get('url') or ''), *host_list(site.get('hosts'))]
+    return tuple(dict.fromkeys(host for host in found if host))
+
+
+def host_known(host: str, hosts: tuple[str, ...]) -> bool:
+    host = host.lower().rstrip('.')
+    return any(host == h or host.endswith('.' + h) for h in hosts)
+
+
+def trimmed(address: str) -> tuple[str, str]:
+    end = len(address)
+    while end and not address.endswith(ENTITIES, 0, end) and (address[end - 1] in TRAILING or (address[end - 1] == ')' and address.count('(', 0, end) < address.count(')', 0, end))):
+        end -= 1
+    return address[:end], address[end:]
+
+
+def bare_host(address: str) -> str:
+    return re.match(r'[^/?#]+', address).group()
+
+
+def explicit_host(address: str) -> str:
+    return trimmed(re.match(r'[^/?#]*', address.split('://', 1)[1]).group())[0].lower().rstrip('.')
+
+
+def inert(address: str) -> str:
+    scheme = re.match(r'https?:(?=//)', address, re.I)
+    head = scheme.group() + WORD_JOINER + '//' if scheme else ''
+    rest = address[len(scheme.group()) + 2:] if scheme else address
+    host = re.match(r'[^/?#]*', rest).group()
+    return head + host.replace('.', '.' + WORD_JOINER) + rest[len(host):]
+
+
+def after(m: re.Match) -> str:
+    return m.string[m.end():m.end() + 4]
+
+
+def elided(m: re.Match) -> bool:
+    found = m.group()
+    if any(dots in found for dots in ELLIPSES) or after(m).startswith(ELLIPSES):
+        return True
+    return bool(EMPTY_END.search(found)) and not after(m).startswith('&')
+
+
+def untouched(m: re.Match) -> bool:
+    return bool(m.group('port')) or after(m).startswith(ESCAPED)
+
+
+def guarded(m: re.Match, hosts: tuple[str, ...], where: str) -> str:
+    found = m.group()
+    if elided(m):
+        return inert(found)
+    if where != INLINE or untouched(m):
+        return found
+    if m.group('explicit'):
+        return inert(found) if found[:7].lower() == 'http://' and explicit_host(found) in hosts else found
+    return inert(found) if host_known(bare_host(trimmed(found)[0]), hosts) else found
+
+
+def linked_address(m: re.Match, hosts: tuple[str, ...]) -> str:
+    found = m.group()
+    if untouched(m):
+        return found
+    if m.group('explicit'):
+        return 'https://' + found[7:] if found[:7].lower() == 'http://' and explicit_host(found) in hosts else found
+    address, tail = trimmed(found)
+    return f'<https://{address}|{address}>{tail}' if host_known(bare_host(address), hosts) else found
+
+
+def by_span(text: str, change: Callable[[str, str], str]) -> str:
+    out, at = [], 0
+    for m in ADDRESS_SPANS.finditer(text):
+        out.append(change(text[at:m.start()], PLAIN))
+        out.append(change(m.group(), m.lastgroup))
+        at = m.end()
+    out.append(change(text[at:], PLAIN))
+    return ''.join(out)
+
+
+def known_hosts(hosts: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(h.lower().rstrip('.') for h in hosts if h)
+
+
+def guard_addresses(text: str, hosts: tuple[str, ...] = ()) -> str:
+    known = known_hosts(hosts)
+    return by_span(text, lambda part, where: part if where == MARKUP else ADDRESS.sub(lambda m: guarded(m, known, where), part))
+
+
+def link_addresses(text: str, hosts: tuple[str, ...] = (), limit: int | None = None) -> str:
+    known = known_hosts(hosts)
+    text = guard_addresses(text, known)
+    left = [None if limit is None else max(limit - len(text), 0)]
+
+    def one(m: re.Match) -> str:
+        found = m.group()
+        new = linked_address(m, known)
+        if left[0] is not None:
+            if len(new) - len(found) > left[0]:
+                return found
+            left[0] -= len(new) - len(found)
+        return new
+    return by_span(text, lambda part, where: ADDRESS.sub(one, part) if where == PLAIN else part)
+
+
+def cut_clear(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    at = limit - 2
+    word = next((w for w in re.finditer(r'\S+', text) if w.start() < at < w.end()), None)
+    if word is not None and addressish(word.group()):
+        at = word.start()
+    head = text[:at].rstrip()
+    last = head.rsplit(None, 1)[-1] if head.strip() else ''
+    return head + (' ' if addressish(last) else '') + '\u2026'
+
+
+def addressish(word: str) -> bool:
+    return WORD_JOINER in word or word.endswith('>') or bool(ADDRESS.search(word))
+
+
 def cut(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit - 1].rstrip() + '…'
 
@@ -770,7 +903,7 @@ def attribution_mark(line: dict) -> str:
 
 def anomaly_message(a: dict, link: str, by: str, draft: str | None = None, buttons: str | None = None, chat: str | None = None, *, head: dict | None = None,
                     attribution: dict | None = None, mute: str | None = None, kinds: tuple[str, ...] = POST_ACTIONS, shots: list | None = None, base: str = '',
-                    parent: dict | None = None, name_of: Callable[[str], str] | None = None, who: str | None = None) -> dict:
+                    parent: dict | None = None, name_of: Callable[[str], str] | None = None, who: str | None = None, hosts: tuple[str, ...] = ()) -> dict:
     sev = a.get('sev', 'info')
     cleared = a.get('status') == 'cleared'
     status = status_of(a, mute)
@@ -782,15 +915,17 @@ def anomaly_message(a: dict, link: str, by: str, draft: str | None = None, butto
     title = (f"#{a['num']} " if a.get('num') else '') + f"{a.get('svc', '?')} / {a.get('label', '?')}" + (f" \u00b7 {a['sub']}" if a.get('sub') else '')
     blocks = [top, {'type': 'section', 'text': {'type': 'mrkdwn', 'text': f'*<{link}|{esc(title)}>*'}}]
     summary = str((a.get('slackDraft') or {}).get('headline') or '').strip() if draft else ''
+    lead = f'*{esc(summary)}*\n' if summary else ''
+    said = link_addresses(esc_keep_mentions(draft), hosts, SECTION_LIMIT - len(lead)) if draft else ''
     if draft:
-        blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': (f'*{esc(summary)}*\n' if summary else '') + esc_keep_mentions(draft)}})
+        blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': lead + said}})
     if a.get('msg'):
         blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': f"`{esc(cut(a['msg'], SHORT_LIMIT).replace('`', "'"))}`"}]})
     drafted_by = sender(by, (a.get('slackDraft') or {}).get('by')) if draft and by == AUTO_BY else ''
     bar = [facts_line(a, mute, drafted_by, parent), numbers_line(a), links_line(a.get('links')), shot_links(shots, base) if base else ''] + ([attribution_mark(attribution)] if attribution else [])
     blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': t} for t in bar if t]})
     fallback = f"{(stopped_status(a, parent, who) if status == 'cleared' else msg(f'slack.status.{status}')) if cleared else sev_label(sev, sev)} \u00b7 {esc(a.get('svc', '?'))} / {esc(a.get('label', '?'))}" + (f" \u00b7 {esc(a['sub'])}" if a.get('sub') else '')
-    return {'text': (f'{esc(summary)}\n' if summary else '') + esc_keep_mentions(draft) if draft else fallback, 'blocks': blocks}
+    return {'text': (f'{esc(summary)}\n' if summary else '') + said if draft else fallback, 'blocks': blocks}
 
 
 def known_view(ask_id: str, channel: str, ts: str) -> dict:
@@ -836,14 +971,14 @@ def fix_hash(ts: str, c: dict) -> str:
     return hashlib.sha1('|'.join(str(x) for x in (ts, c.get('repo'), c.get('path'), c.get('lines'), c.get('suggestion'))).encode()).hexdigest()[:16]
 
 
-def fix_message(fixes: list[dict], link: str) -> dict:
+def fix_message(fixes: list[dict], link: str, hosts: tuple[str, ...] = ()) -> dict:
     blocks = []
     for c in fixes:
         where = f"{c.get('repo') or ''} · {c.get('path') or ''}:{c.get('lines') or ''}"
         head = msg('slack.fix.head') + (f"<{c['url']}|{esc(where)}>" if str(c.get('url', '')).startswith('https://') else esc(where)) + (f" @ `{esc(c['sha'])}`" if c.get('sha') else '')
         blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': head}})
         if c.get('note'):
-            blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': esc(cut(c['note'], FIX_NOTE_LIMIT))}]})
+            blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': link_addresses(esc(cut(c['note'], FIX_NOTE_LIMIT)), hosts, SECTION_LIMIT)}]})
         diff = '\n'.join(['- ' + line for line in str(c.get('current') or '').splitlines()] + ['+ ' + line for line in str(c.get('suggestion') or '').splitlines()])
         blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': FENCE + esc_cut(diff.replace(FENCE, "'''"), FIX_DIFF_LIMIT) + FENCE}})
     blocks.append({'type': 'actions', 'elements': [button(msg('slack.open'), link)]})
@@ -922,7 +1057,8 @@ def shipped_tickets(r: dict) -> list[str]:
     return known if r.get('issues') else deployed
 
 
-def report_message(r: dict, link: str, by: str, draft: str | None = None, anomalies: list[dict] | None = None, jira_site: str = '', release_template: str = RELEASE_NAME) -> dict:
+def report_message(r: dict, link: str, by: str, draft: str | None = None, anomalies: list[dict] | None = None, jira_site: str = '', release_template: str = RELEASE_NAME,
+                   hosts: tuple[str, ...] = ()) -> dict:
     rows = r.get('rows') or []
     flagged = [x for x in rows if x.get('flags')]
     brief = r.get('brief') or {}
@@ -971,7 +1107,7 @@ def report_message(r: dict, link: str, by: str, draft: str | None = None, anomal
     window = local_hm(r.get('windowFrom'))
     span = msg('slack.report.window', start=window, end=local_hm(r.get('windowTo')) or msg('slack.report.now'), zone=clock.label(dt.datetime.fromisoformat(r['windowFrom']))) + ' \u00b7 ' if window else ''
     blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': f"{span}{msg('slack.sent_from', sender=esc(sender(by, (r.get('slackDraft') or {}).get('by'))))}"}]})
-    return {'text': esc_keep_mentions(draft) if draft else headline, 'attachments': [{'color': COLOR.get(level, '#687385'), 'blocks': blocks}]}
+    return {'text': link_addresses(esc_keep_mentions(draft), hosts) if draft else headline, 'attachments': [{'color': COLOR.get(level, '#687385'), 'blocks': blocks}]}
 
 
 def card_action_label(call: dict) -> str:

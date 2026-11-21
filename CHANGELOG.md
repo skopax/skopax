@@ -2,6 +2,36 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.4.10 (2026-11-21)
+
+Calmer board tiles and a searchable Group picker, assigned cards that wait for their person, Slack posts that carry the investigator's summary and safe links, a fix for a save that could get stuck, and failure toasts on every failed action.
+
+**Upgrade notes:**
+
+- A card assigned to someone (by hand or by auto-assign) that stopped firing now waits three times its severity window before it is auto-resolved (18 hours with the default of 6, counted in business hours when Business days only is on), counted from the latest of when it cleared, was assigned or was reopened. Unassigned cards keep one window; plug-in windows still skip assigned cards. The assignee gets an Auto-resolved notification that says why.
+- A card's Slack main post that went out before the investigation (a route echo, or the server's numbers-only post) is updated in place once the investigator has a result: a bold headline, a short summary, "Recommended: ..." and "Notified: <routes> (<channel>)". The full findings stay in the thread, nothing new is posted, and a post with the investigator's or a person's own text is never changed. Route posts recorded before 0.4.10 count as delivered once they are 10 minutes old.
+- A note or recommendation written by an investigator run that read planted (untrusted) text is marked on the card and never used for the main post until a clean run writes it again.
+- Route post records now mark a delivery only after it went out.
+
+**Added:**
+
+- Group: the parent picker is a searchable list. Before typing it suggests cards on the same service, then the same namespace or cluster, then cards that opened around the same time; you can search by number, service, label, namespace, tag, ticket or owner.
+- A red "Not done: <reason>" toast whenever a save or a card action fails.
+
+**Changed:**
+
+- Board tiles show the short stopped tag ("Stopped firing 21 Nov 19:39") in the stopped colour instead of critical red; the full wording with the assignee is in its tooltip, the card drawer and the card page.
+- A card with no service is named by its namespace, subject, cluster instance or alert everywhere (board, card page, palette, Group picker, closed list, history, costs, drafts), never "-".
+- Auto-resolve notifications say why, translated with the page language.
+- Investigator text in Slack: an address meant as a link is written in full with https; a shortened address is written as a path. Skopax keeps shortened addresses from becoming half links, turns bare addresses of your own sites into https links, and leaves addresses with a port, internal names and text people type as written.
+- "Asks" are called requests on the page (Page requests, Slack requests).
+
+**Fixed:**
+
+- Saving a setting (for example Daily limit) could get stuck with a page error when another row had a field without a class.
+- Board tags and the tile footer wrap inside the tile instead of overflowing into the next column.
+- A grouped card that follows its parent into In progress sends an In progress notification instead of Auto-resolved.
+
 ## 0.4.9 (2026-11-21)
 
 A Slack post of a stopped card says its status once, and the daily tag report shows in-progress counts and the open cards nobody is responsible for.

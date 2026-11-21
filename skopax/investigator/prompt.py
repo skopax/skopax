@@ -139,6 +139,8 @@ def small_talk_system(org: str, pack: OrgPack | None = None) -> str:
 
 NO_CARD = 'No card: asked in the channel.'
 PAGE_NO_CARD = 'No card: asked on the {product} page.'
+ADDRESS_RULE = ('Write a web address you mean as a link in full with https://, https for public sites even when logs or ingress show http; '
+                'a shortened address or one with parts left out (... or an ellipsis) goes as a path only, with no host, so it is not turned into a broken link. ')
 SLACK_CLOSE = ('Answer the question with the read tools. Up to {calls} tool calls. '
                'The card\'s earlier note, earlier suspects and earlier Slack answers are past findings, not data for this answer: for a question about prod, '
                'run at least one query that checks the numbers asked about before you answer, and say a number you repeat from them without checking it as earlier, with its time. '
@@ -148,7 +150,7 @@ SLACK_CLOSE = ('Answer the question with the read tools. Up to {calls} tool call
                'Never write that you did not search something while tool calls are left, and never ask the asker for something a tool can find. '
                'Your answer is a Slack message in the language of the question: 2-6 short lines of Slack mrkdwn (*bold*, no tables, no headings), '
                'each number with its query source and local time (the zone named next to each time), "the data does not say" only after those checks came back empty, '
-               'with what you checked, no personal data and no mentions. '
+               'with what you checked, no personal data and no mentions. ' + ADDRESS_RULE +
                'Propose a ticket only when the asker asked for one. When the asker asks to change a card (resolve, handled, take, known noise, mute), find the card, call propose_card_action once and say in the answer: '
                '"I cannot make changes myself; they are made only with action buttons, the one below if shown." (in the language of the question). '
                'Say it only when the asker asked for a change, and say that no button is possible when propose_card_action failed or you found no card. '

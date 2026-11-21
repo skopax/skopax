@@ -782,7 +782,7 @@ class Store:
     def post_channels(self) -> set[str]:
         return {c for coll in (self.anomalies, self.deploy_reports) for c in coll.distinct('slackPost.channel') if c}
 
-    def assess(self, key: str, suspects: list[str] | None, recommend: str | None, code: list[dict] | None, by: str | None = None) -> int:
+    def assess(self, key: str, suspects: list[str] | None, recommend: str | None, code: list[dict] | None, by: str | None = None, flagged: bool = False) -> int:
         doc = self._anomaly(key)
         update = {'$set': {'assessedAt': iso(utc_now())}}
         for field, value in (('suspects', suspects), ('recommend', recommend), ('code', code)):
@@ -795,19 +795,24 @@ class Store:
                 update['$set']['recommendBy'] = 'pod'
             else:
                 update.setdefault('$unset', {})['recommendBy'] = ''
+            if recommend and flagged:
+                update['$set']['recommendFlagged'] = True
+            else:
+                update.setdefault('$unset', {})['recommendFlagged'] = ''
         with self._locked():
             rev, _ = self._claim(None)
             self.anomalies.update_one({'_id': doc['_id']}, update)
             return rev
 
-    def note(self, key: str, text: str, by: str | None = None, cause: dict | None = None, drop_cause: bool = False) -> int:
+    def note(self, key: str, text: str, by: str | None = None, cause: dict | None = None, drop_cause: bool = False, flagged: bool = False) -> int:
         doc = self._anomaly(key)
         kept = ['progress', 'handled'] if by == 'pod' else ['progress']
         dived = {'$set': {'triage': 'dived', 'triagedBy': 'pod'}, '$unset': {'resolution': ''}} if by == 'pod' else {'$set': {'triage': 'dived'}, '$unset': {'triagedBy': '', 'resolution': ''}}
         with self._locked():
             rev, _ = self._claim(None)
-            unset = ({'cause': ''} if drop_cause else {}) | ({} if by == 'pod' else {'noteBy': ''})
-            self.anomalies.update_one({'_id': doc['_id']}, {'$set': {'note': {'text': text, 'at': iso(utc_now())}} | ({'noteBy': 'pod'} if by == 'pod' else {}) | ({'cause': causes.recorded(cause, doc.get('firstSeen'))} if cause else {})}
+            unset = ({'cause': ''} if drop_cause else {}) | ({} if by == 'pod' else {'noteBy': ''}) | ({} if flagged else {'noteFlagged': ''})
+            self.anomalies.update_one({'_id': doc['_id']}, {'$set': {'note': {'text': text, 'at': iso(utc_now())}} | ({'noteBy': 'pod'} if by == 'pod' else {}) | ({'noteFlagged': True} if flagged else {})
+                                                        | ({'cause': causes.recorded(cause, doc.get('firstSeen'))} if cause else {})}
                                       | ({'$unset': unset} if unset else {}))
             self.anomalies.update_one({'_id': doc['_id'], 'triage': {'$nin': kept}}, dived)
             return rev
@@ -1632,6 +1637,9 @@ class Store:
                 self._claim(None)
             return True
 
+    def teams_delivered(self, key: str, post: dict) -> bool:
+        return bool(self.anomalies.update_one({'_id': key, 'teamsPosts': post}, {'$set': {'teamsPosts.$.ok': True}}).modified_count)
+
     def teams_unclaim(self, key: str, post: dict, rev: bool = True) -> None:
         with self._locked():
             self.anomalies.update_one({'_id': key}, {'$pull': {'teamsPosts': post}})
@@ -1768,6 +1776,11 @@ class Store:
 
     def route_echo_release(self, key: str, holder: str) -> None:
         self.anomalies.update_one({'_id': key, 'routeEcho.posting.by': holder}, {'$unset': {'routeEcho.posting': ''}})
+
+    def slack_post_body(self, key: str, post_ts: str, body: dict, over: tuple[str, ...] = (), no_thread: list | None = None) -> bool:
+        empty = [{'slackPost.body.text': {'$not': re.compile(r'\S')}}] + ([{'slackPost.body.by': {'$in': list(over)}}] if over else [])
+        query = {'_id': key, 'slackPost.ts': post_ts, 'slackPost.threadOf': {'$in': no_thread or [None, '', False]}, '$or': empty}
+        return bool(self.anomalies.update_one(query, {'$set': {'slackPost.body': body}}).modified_count)
 
     def slack_post_drawn(self, key: str, post_ts: str, drawn: dict) -> bool:
         return bool(self.anomalies.update_one({'_id': key, 'slackPost.ts': post_ts}, {'$set': {'slackPost.drawn': drawn}}).matched_count)

@@ -59,10 +59,10 @@ async function kubeCallsSplitByCluster() {
 
   //then
   const split = row('kube').querySelector('.tclusters');
-  assert.strictEqual(split.textContent, 'prod 2 · east 3 (1 err)', 'the primary first, from the plug-in data, then the others, errors marked');
+  assert.strictEqual(split.textContent, 'prod 2 \u00b7 east 3 (1 err)', 'the primary first, from the plug-in data, then the others, errors marked');
   assert.strictEqual(split.title, 'prod: 2 calls\neast: 3 calls, 1 error');
   assert.ok(!row('esql').querySelector('.tclusters'), 'other tools have no split');
-  assert.ok(/By cluster\s*east: 3 calls, 1 error · prod: 2 calls/.test(row('kube').nextElementSibling.textContent), 'the opened row says it in words');
+  assert.ok(/By cluster\s*east: 3 calls, 1 error \u00b7 prod: 2 calls/.test(row('kube').nextElementSibling.textContent), 'the opened row says it in words');
   assert.deepStrictEqual(errors, []);
   w.close();
   console.log('PASS the kube row splits its calls by cluster with errors, in the row and when opened');
@@ -91,8 +91,8 @@ async function checksCountAndASearchNarrowsTheList() {
 
   //then
   assert.strictEqual(row('wingify').querySelector('.ttrig').textContent, 'Checks 4', 'scheduled check runs show as their own run type');
-  assert.ok(/Scheduled checks on the same source\s*wingify: 3 runs · wingify-verdict: 1 run, 1 error/.test(more.textContent), 'the opened row names the checks behind the calls');
-  assert.ok(!more.querySelector('a.run-link') && /Checks · wingify-verdict · error: HTTP 401/.test(more.textContent), 'a check error has no run record to open');
+  assert.ok(/Scheduled checks on the same source\s*wingify: 3 runs \u00b7 wingify-verdict: 1 run, 1 error/.test(more.textContent), 'the opened row names the checks behind the calls');
+  assert.ok(!more.querySelector('a.run-link') && /Checks \u00b7 wingify-verdict \u00b7 error: HTTP 401/.test(more.textContent), 'a check error has no run record to open');
   assert.deepStrictEqual(byCheck, ['wingify'], 'the search finds a tool by its check names');
   assert.deepStrictEqual(byDescription, ['kube'], 'and by its description, whatever the case');
   assert.ok(none.includes('No tool matches') && shown === '0 of 4', none + ' / ' + shown);

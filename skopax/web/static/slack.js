@@ -21,7 +21,7 @@ function sqSent() {
 }
 function sqWhat(r) {
   if (r.kind === 'report') return '<span class="state k-info">Report</span><span class="svc">' + esc(sqTitle(r.x)) + '</span>';
-  return state(r.x.sev) + '<span class="svc">' + esc(r.x.svc + ' / ' + r.x.label) + '</span>';
+  return state(r.x.sev) + '<span class="svc">' + esc(svcName(r.x) + ' / ' + r.x.label) + '</span>';
 }
 function sqSender(by, drafted) { return by === AUTO_BY ? draftBy(by, drafted) : isTokenActor(by) ? tokenActorLabel(by, 'Investigator') + ' (on request)' : !by || isInvestigatorBy(by) ? investigatorName() + ' (on request)' : String(by).split('@')[0]; }
 function sqFirstLine(t) { return String(t).split('\n').filter(function (l) { return l.trim(); })[0] || ''; }

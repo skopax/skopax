@@ -76,6 +76,7 @@
   "Close": "Kapat",
   "Hide": "Gizle",
   "Ask": "Sor",
+  "Request": "İstek",
   "Ask the investigator": "Investigator'a sor",
   "Ask the investigator…": "Investigator'a sor…",
   "Appearance": "Görünüm",
@@ -306,7 +307,10 @@
   "GTM publish ·": "GTM yayını ·",
   "Gateway errors": "Gateway hataları",
   "Gateways": "Gateway'ler",
-  "Group under…": "Şunun altına grupla…",
+  "Search by number, service, label or ticket": "Numara, servis, etiket veya ticket ile ara",
+  "{0} more - type to search": "{0} tane daha - aramak için yazın",
+  "stopped": "durdu",
+  "Cards to group under": "Gruplanacak kartlar",
   "Group: merge this card under another open card, the one that explains it": "Grupla: bu kartı, onu açıklayan başka bir açık kartın altına birleştirin",
   "Group: merge this stopped card under an open card or another stopped one, the one that explains it": "Grupla: bu durmuş kartı, onu açıklayan açık ya da durmuş başka bir kartın altına birleştirin",
   "Grouped {0} {M} {1}": "Gruplandı {0} {M} {1}",
@@ -474,8 +478,8 @@
   "Overview": "Genel bakış",
   "PAUSED": "DURAKLATILDI",
   "Page": "Sayfa",
-  "Page ask": "Sayfa sorusu",
-  "Page asks": "Sayfa soruları",
+  "Page request": "Sayfa sorusu",
+  "Page requests": "Sayfa soruları",
   "Page asks {0}": "Sayfa soruları {0}",
   "Page question": "Sayfa sorusu",
   "Page questions this hour": "Bu saatteki sayfa soruları",
@@ -572,8 +576,8 @@
   "Show the open cards": "Açık kartları göster",
   "Signals now ({0}d/{1}d)": "Şu anki sinyaller ({0}g/{1}g)",
   "Since": "Ne zamandan beri",
-  "Slack ask": "Slack sorusu",
-  "Slack asks": "Slack soruları",
+  "Slack request": "Slack sorusu",
+  "Slack requests": "Slack soruları",
   "Slack asks {0}": "Slack soruları {0}",
   "Slack failed": "Slack başarısız",
   "Slack is not set up": "Slack kurulu değil",
@@ -1380,9 +1384,79 @@
   "Workspaces": "Çalışma alanları",
   "A value saved here wins over it": "Burada kaydedilen değer önceliklidir",
   "Drop the list saved here and go back to the configured list": "Burada kaydedilen listeyi bırak ve yapılandırılmış listeye dön",
-  "Drop the list saved here and go back to the default": "Burada kaydedilen listeyi bırak ve varsayılana dön"
+  "Drop the list saved here and go back to the default": "Burada kaydedilen listeyi bırak ve varsayılana dön",
+  "Stopped after the event; nobody opened a task": "Olaydan sonra durdu; kimse görev açmadı",
+  "Its parent was handled and has left the page": "Üst kart çözüldü ve sayfadan kalktı"
  },
  "rules": [
+  [
+   "^Cleared (.+), nobody acted in (\\d+) hour$",
+   "$1 normale döndü, $2 saat boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) hours$",
+   "$1 normale döndü, $2 saat boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) day$",
+   "$1 normale döndü, $2 gün boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) days$",
+   "$1 normale döndü, $2 gün boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) business hour$",
+   "$1 normale döndü, $2 iş saati boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) business hours$",
+   "$1 normale döndü, $2 iş saati boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) business day$",
+   "$1 normale döndü, $2 iş günü boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^Cleared (.+), nobody acted in (\\d+) business days$",
+   "$1 normale döndü, $2 iş günü boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) hour$",
+   "İlk görülme $1, $2 saat boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) hours$",
+   "İlk görülme $1, $2 saat boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) day$",
+   "İlk görülme $1, $2 gün boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) days$",
+   "İlk görülme $1, $2 gün boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) business hour$",
+   "İlk görülme $1, $2 iş saati boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) business hours$",
+   "İlk görülme $1, $2 iş saati boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) business day$",
+   "İlk görülme $1, $2 iş günü boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^First seen (.+), nobody acted in (\\d+) business days$",
+   "İlk görülme $1, $2 iş günü boyunca kimse ilgilenmedi"
+  ],
+  [
+   "^Its parent (.+) was marked no action needed$",
+   "Üst kart $1 'aksiyon gerekmiyor' olarak işaretlendi"
+  ],
   [
    "^([\\s\\S]+)\\nFull text in the expanded card$",
    "$1\nMetnin tamamı açık kartta"
@@ -1418,6 +1492,10 @@
   [
    "^Stopped firing (\\d[^,]*)$",
    "Sinyal durdu $1"
+  ],
+  [
+   "^Stopped after the event (\\d[^,]*)$",
+   "Olaydan sonra sinyal durdu $1"
   ],
   [
    "^Stopped firing · unassigned (\\d.*)$",
@@ -1462,10 +1540,6 @@
   [
    "^Before the card fired again ([^:]+): ([\\s\\S]+)$",
    "Kart $1 yeniden tetiklenmeden önce: $2"
-  ],
-  [
-   "^Stopped firing (.+), nobody acted yet: waiting to be addressed$",
-   "Durdu $1, henüz kimse ilgilenmedi: ilgilenilmeyi bekliyor"
   ],
   [
    "^Recurring ×(\\d+)$",

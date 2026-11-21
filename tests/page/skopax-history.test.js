@@ -132,7 +132,7 @@ async function runsOnThisCardLoadOnExpandAndSurviveALiveUpdate() {
   assert.deepStrictEqual(runFetches(gets), ['/api/investigations?key=' + encodeURIComponent(KEY) + '&limit=10'], 'one fetch, also across the live update');
   assert.strictEqual(article(doc, KEY).querySelector('.card-runs h5').textContent, 'Runs on this card2');
   assert.strictEqual(shown.length, 2, 'runs of other cards are left out');
-  assert.ok(shown[0].includes(w.dayhm(RUNS[0].startedAt)) && shown[0].includes('Slack ask') && shown[0].includes('done') && shown[0].includes('ShipCorp 456 again, IP allow-list') && !shown[0].includes('second line'), shown[0]);
+  assert.ok(shown[0].includes(w.dayhm(RUNS[0].startedAt)) && shown[0].includes('Slack request') && shown[0].includes('done') && shown[0].includes('ShipCorp 456 again, IP allow-list') && !shown[0].includes('second line'), shown[0]);
   assert.strictEqual(first.querySelector('a.thread').getAttribute('href'), PERMALINK);
   assert.strictEqual(first.querySelector('a.record').getAttribute('href'), '/api/investigations/r-slack');
   assert.ok(shown[1].includes('Investigate (auto) \u00b7 shadow') && shown[1].includes('failed') && !shown[1].includes('Slack thread'), shown[1]);
@@ -610,7 +610,7 @@ async function historyRowsFoldAndRememberWhichAreOpen() {
   assert.ok(shapes.doneBody.includes('Same PayCo outage') && !shapes.doneSum.includes('Same PayCo'), 'the result waits in the expanded row');
   assert.strictEqual(shapes.queuedCancel, 'Cancel');
   assert.strictEqual(shapes.reportPre, 'checkout-service err 40 (5/4)\npayments-api clean', 'the report is right in the expanded row');
-  assert.ok(shapes.pageSum.includes('Ask by op@example.com: How does shop.example.com look?') && shapes.pageSum.includes('$0.30') && shapes.pageSum.includes('1 screenshot') && !shapes.pageSum.includes('hero banner'), shapes.pageSum);
+  assert.ok(shapes.pageSum.includes('Request by op@example.com: How does shop.example.com look?') && shapes.pageSum.includes('$0.30') && shapes.pageSum.includes('1 screenshot') && !shapes.pageSum.includes('hero banner'), shapes.pageSum);
   assert.deepStrictEqual(shapes.pageBody, [true, 1, '/api/investigations/r-page', true], 'answer, thumbnails and the run record live in the expanded run');
   assert.ok(!shapes.cardSum.includes('owns it') && shapes.cardBody.includes('owns it.') && shapes.cardBody.includes('second line'), 'a card run shows its whole recap when expanded');
   assert.deepStrictEqual(openAfter, [5, ['Post-deploy check'], [true], true], 'the open rows stay open across live re-renders');
@@ -778,12 +778,12 @@ async function pageAskRunsOnTheCardShowTheQuestionAndTheFullAnswer() {
   const row = runRows(answered.doc)[0];
   //then
   assert.deepStrictEqual(oldAnswer, ['Earlier answer.Second line of it.', 1, 'op: ' + Q], 'a page ask shows its question and its full answer, line breaks kept');
-  assert.deepStrictEqual(runningRow, ['page-ask', 'Page ask', 'running', 'op: ' + Q, 'Working on it\u2026']);
+  assert.deepStrictEqual(runningRow, ['page-ask', 'Page request', 'running', 'op: ' + Q, 'Working on it\u2026']);
   assert.strictEqual(row.querySelector('.tag').textContent, 'done');
   assert.strictEqual(row.querySelector('.ra').textContent, ANSWER.replace(/\n/g, ''), 'the full answer, not only its first line');
   assert.strictEqual(row.querySelectorAll('.ra br').length, 2);
   assert.strictEqual(row.querySelector('.ra a').getAttribute('href'), 'https://jira.example.com/browse/OPS-120', 'links in the answer are clickable');
-  assert.ok(runRows(answered.doc).find((li) => li.textContent.includes('Slack ask')).querySelector('.ra') === null, 'a Slack ask keeps its first line, the thread has the rest');
+  assert.ok(runRows(answered.doc).find((li) => li.textContent.includes('Slack request')).querySelector('.ra') === null, 'a Slack request keeps its first line, the thread has the rest');
   assert.deepStrictEqual(running.errors.concat(answered.errors), []);
   close(running.dom);
   close(answered.dom);

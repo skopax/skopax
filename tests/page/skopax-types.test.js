@@ -15,7 +15,7 @@ function state() {
   return {rev: 1, updatedAt: iso(0), sweptIso: iso(1), nextIso: new Date(Date.now() + 59 * 60000).toISOString(), sources: {prom: 'ok'},
     summary: {level: 'warn', headline: 'Typos', points: [], at: iso(1)},
     anomalies: [
-      card('page-typos|pages//shipping-calculator', 'pagescan', 'page-typos', {url: 'https://shop.example.com/shipping-calculator?amount=1000', what: '1 typo on https://shop.example.com/shipping-calculator?amount=1000: "bettter" → "better". Found by the page scan.'}),
+      card('page-typos|pages//shipping-calculator', 'pagescan', 'page-typos', {url: 'https://shop.example.com/shipping-calculator?amount=1000', what: '1 typo on https://shop.example.com/shipping-calculator?amount=1000: "bettter" \u2192 "better". Found by the page scan.'}),
       card('page-typos|pages//gift-cards', 'pagescan', 'page-typos', {status: 'cleared', clearedAt: iso(30), sev: 'info'}),
       card('page-layout|pages//garden-chairs', 'pagescan', 'page-layout', {gone: {status: 404, since: '2026-11-09T12:45:00Z'}}),
       card('log|members/sms-sender|ERROR', 'logs', 'log', {sev: 'crit'}),
@@ -58,7 +58,7 @@ async function aLinkOpensTheFilterAndTypeAndTheChipsKeepTheLinkCurrent() {
 
   //then
   assert.deepStrictEqual(shown(), ['page-typos|pages//shipping-calculator', 'page-typos|pages//gift-cards'], 'all typo cards, open and cleared');
-  assert.ok(note().classList.contains('on') && /Showing All · Typos\s*2/.test(note().querySelector('.fn-cur').textContent));
+  assert.ok(note().classList.contains('on') && /Showing All \u00b7 Typos\s*2/.test(note().querySelector('.fn-cur').textContent));
   assert.strictEqual(chip('page-typos').getAttribute('aria-pressed'), 'true');
   assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms .types-g button[data-type]')].map((b) => [b.querySelector('.lbl').textContent, b.querySelector('.count').textContent]),
     [['Typos', '2'], ['Layout', '1'], ['Log errors', '1']], 'the types on the page, most cards first, with readable names');
@@ -200,7 +200,7 @@ async function aPageCardOpensItsPageFromTheHeadAndFromItsText() {
   assert.ok(!cardOf('page-layout|pages//garden-chairs').querySelector('a.open-page'), 'a card without a url gets no link');
   assert.ok(!cardOf('log|members/sms-sender|ERROR').querySelector('a.open-page'));
   const gone = cardOf('page-layout|pages//garden-chairs');
-  assert.strictEqual(gone.querySelector('.inc-title .page-gone').textContent, 'Page gone · 404', 'a removed page says so on the folded head');
+  assert.strictEqual(gone.querySelector('.inc-title .page-gone').textContent, 'Page gone \u00b7 404', 'a removed page says so on the folded head');
   assert.strictEqual(gone.querySelector('.rec-line').textContent, 'NextThe page answers HTTP 404 since ' + short('2026-11-09T12:45:00Z') + ': if it was taken down on purpose, Resolve this card.');
   assert.ok(!page.querySelector('.page-gone') && !page.querySelector('.rec-line'), 'a live page gets neither');
   assert.deepStrictEqual(errors, []);

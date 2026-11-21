@@ -95,9 +95,9 @@ async function warnRowOpensItsCards() {
   assert.ok(prod.classList.contains('clk'), 'non-ok row is clickable');
   const btn = prod.querySelector('td:first-child button.go');
   assert.ok(btn && btn.type === 'button', 'status is a real button, so Tab focuses it and Enter / Space press it');
-  assert.strictEqual(btn.textContent, 'Critical 5 cards ›', 'worst open card wins; muted and handled ones do not count');
-  assert.strictEqual(prod.querySelector('td:first-child').title, 'Critical · ERROR log\nWarning · requests\nWarning · 5xx\n+2 more\nClick to see these cards', 'tooltip names the cards behind the status');
-  assert.strictEqual(row(doc, 'orders-service').querySelector('td:first-child').title, 'Warning · ERROR count\nClick to see this card', 'stored ok is overridden by its open card');
+  assert.strictEqual(btn.textContent, 'Critical 5 cards \u203a', 'worst open card wins; muted and handled ones do not count');
+  assert.strictEqual(prod.querySelector('td:first-child').title, 'Critical \u00b7 ERROR log\nWarning \u00b7 requests\nWarning \u00b7 5xx\n+2 more\nClick to see these cards', 'tooltip names the cards behind the status');
+  assert.strictEqual(row(doc, 'orders-service').querySelector('td:first-child').title, 'Warning \u00b7 ERROR count\nClick to see this card', 'stored ok is overridden by its open card');
   const pricing = row(doc, 'pricing-service');
   assert.ok(!pricing.classList.contains('clk') && !pricing.querySelector('button') && /Healthy/.test(pricing.textContent), 'a card merged into an open parent does not colour its service, whatever the stored status said');
   assert.match(chip(doc, 'bad').textContent, /Not healthy 2/, 'Not healthy chip counts the live status');
@@ -120,8 +120,8 @@ async function warnRowOpensItsCards() {
   //then
   assert.strictEqual(selected(doc), 'anoms', 'row click switches to the anomaly list');
   const want = ['log|catalog-service|ERROR|boom', 'traffic-drop|store/catalog-service', '5xx|store/catalog-service', 'out-err|store/catalog-service', 'avg-latency|store/catalog-service'];
-  assert.deepStrictEqual(cards(doc), want, 'only that service’s open cards, worst first; muted, handled and merged ones left out');
-  assert.match(doc.querySelector('#anoms .grp-h h3').textContent, /^catalog-service · open$/, 'group says which service and tier');
+  assert.deepStrictEqual(cards(doc), want, 'only that service\u2019s open cards, worst first; muted, handled and merged ones left out');
+  assert.match(doc.querySelector('#anoms .grp-h h3').textContent, /^catalog-service \u00b7 open$/, 'group says which service and tier');
   const first = doc.querySelector('#anoms article.inc');
   assert.ok(first.classList.contains('linked') && expanded(first), 'first card ringed and expanded like a Copy-link jump');
   assert.strictEqual(scrolled[scrolled.length - 1], first, 'scrolled to the first card');
@@ -185,7 +185,7 @@ async function handledCardsClearTheRowOnLiveUpdate() {
   //then
   assert.strictEqual(serve.state.services[0].status, 'warn', 'the stored status still says warn');
   assert.ok(!doc.getElementById('filter-note').hidden && /pricing-service cards/.test(doc.getElementById('filter-note').textContent), 'the service filter survives the live update');
-  assert.match(doc.querySelector('#anoms .grp-h h3').textContent, /^pricing-service · in progress, action taken or muted$/, 'no open card left, so it shows where they went');
+  assert.match(doc.querySelector('#anoms .grp-h h3').textContent, /^pricing-service \u00b7 in progress, action taken or muted$/, 'no open card left, so it shows where they went');
   assert.deepStrictEqual(cards(doc), [parent], 'the handled parent that holds the merged pricing cards');
   doc.getElementById('back-svcs').click();
   assert.ok(rows(doc).every((r) => !r.classList.contains('clk') && /Healthy/.test(r.querySelector('td').textContent)), 'both rows healthy without waiting for a check');
@@ -213,7 +213,7 @@ async function noAnomalyListFallsBackToStoredStatus() {
   orders.click();
 
   //then
-  assert.match(doc.querySelector('#anoms .grp-h h3').textContent, /^orders-service · nothing open$/);
+  assert.match(doc.querySelector('#anoms .grp-h h3').textContent, /^orders-service \u00b7 nothing open$/);
   assert.match(doc.querySelector('#anoms .empty-card').textContent, /Nothing on orders-service any more/);
   assert.ok(!errors.length, 'no errors: ' + errors.join(' | '));
   dom.window.close();
@@ -248,8 +248,8 @@ async function severityChipsFilterTheOpenCards() {
   assert.match(sevItem('crit').title, /^open critical items \(pushed\) \u00b7 opens Board filtered to Critical, click again for all open$/);
   const anoms = doc.getElementById('tab-anoms');
   assert.ok(anoms.classList.contains('hot') && anoms.classList.contains('k-crit'), 'the Anomalies tab takes the worst open severity');
-  assert.strictEqual(anoms.title, '1 critical · 2 warning');
-  assert.strictEqual(doc.getElementById('filter-note').title, '1 critical · 2 warning · 1 muted · 1 stopped firing', 'the filter line tooltip keeps the counts');
+  assert.strictEqual(anoms.title, '1 critical \u00b7 2 warning');
+  assert.strictEqual(doc.getElementById('filter-note').title, '1 critical \u00b7 2 warning \u00b7 1 muted \u00b7 1 stopped firing', 'the filter line tooltip keeps the counts');
 
   //when
   sevItem('warn').click();
@@ -268,7 +268,7 @@ async function severityChipsFilterTheOpenCards() {
   assert.strictEqual(doc.getElementById('clear-f'), null, 'Open is the default filter, so the line offers no way back');
   assert.ok(!navigated(errors) && !errors.length, 'no errors: ' + errors.join(' | '));
   dom.window.close();
-  return 'Critical / Warning / Info in the side menu sub menu (group Open, counts, zero-faded) filter the open cards and toggle back; no chips row on the tab; the Anomalies tab takes the worst severity with an N critical · N warning tooltip; the filter line tooltip keeps the counts';
+  return 'Critical / Warning / Info in the side menu sub menu (group Open, counts, zero-faded) filter the open cards and toggle back; no chips row on the tab; the Anomalies tab takes the worst severity with an N critical \u00b7 N warning tooltip; the filter line tooltip keeps the counts';
 }
 
 async function inProgressSplitsFromActionTaken() {
@@ -285,7 +285,7 @@ async function inProgressSplitsFromActionTaken() {
 
   //then
   assert.deepStrictEqual([...statusGroup.querySelectorAll('button:not(.child)')].map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['All 3', 'Open 1', 'In progress 1', 'Action taken 1', 'Muted 0', 'Stopped firing 0'], 'All first, the default; In progress is its own filter, after Open, before Action taken');
-  assert.match(doc.getElementById('filter-note').title, /1 in progress · 1 action taken/, 'the filter line tooltip counts the two buckets apart');
+  assert.match(doc.getElementById('filter-note').title, /1 in progress \u00b7 1 action taken/, 'the filter line tooltip counts the two buckets apart');
 
   //when
   seg('progress').click();
@@ -326,16 +326,16 @@ async function sameServiceInSeveralNamespaces() {
 
   //then
   assert.deepStrictEqual(rows(doc).map((r) => r.dataset.ns), ['members', 'store', 'reports'], 'the namespace with the critical card first');
-  assert.strictEqual(go('members').textContent, 'Critical 3 cards ›', 'cards naming members colour only that row, plus the namespace-less log card');
-  assert.strictEqual(go('store').textContent, 'Info 1 card ›', 'another namespace of the same service gets only the namespace-less card');
-  assert.strictEqual(go('reports').textContent, 'Info 1 card ›');
+  assert.strictEqual(go('members').textContent, 'Critical 3 cards \u203a', 'cards naming members colour only that row, plus the namespace-less log card');
+  assert.strictEqual(go('store').textContent, 'Info 1 card \u203a', 'another namespace of the same service gets only the namespace-less card');
+  assert.strictEqual(go('reports').textContent, 'Info 1 card \u203a');
   assert.strictEqual(doc.getElementById('count-svcs').textContent, '0/3');
 
   //when
   go('store').click();
 
   //then
-  assert.deepStrictEqual(cards(doc), ['log|batch-service|WARN|lock wait'], 'its card list leaves out the other namespace’s job cards');
+  assert.deepStrictEqual(cards(doc), ['log|batch-service|WARN|lock wait'], 'its card list leaves out the other namespace\u2019s job cards');
 
   //when
   doc.getElementById('back-svcs').click();

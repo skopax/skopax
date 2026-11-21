@@ -13,7 +13,7 @@ function cardName(key) {
   var a = (typeof ALL !== 'undefined' ? ALL : []).filter(function (x) { return x.key === key; })[0];
   if (!a) return String(key).split('|').slice(1).join(' · ') || String(key);
   var what = a.msg ? String(a.msg) : a.label + (a.sub ? ' · ' + a.sub : '');
-  return a.svc + ' / ' + (what.length > CARD_NAME_LIMIT ? what.slice(0, CARD_NAME_LIMIT - 1) + '…' : what);
+  return svcName(a) + ' / ' + (what.length > CARD_NAME_LIMIT ? what.slice(0, CARD_NAME_LIMIT - 1) + '…' : what);
 }
 function cardNames(keys) {
   return (keys || []).map(function (k) { return '<span class="hk" title="' + esc(k) + '">' + esc(cardName(k)) + '</span>'; }).join(', ');
@@ -94,7 +94,7 @@ function askDialog() {
   err.textContent = '';
   var open = (typeof A !== 'undefined' ? A : []).filter(function (a) { return a.status === 'open' && (a.sev === 'warn' || a.sev === 'crit'); });
   list.innerHTML = open.length ? open.map(function (a) {
-    return '<label><input type="checkbox" value="' + esc(a.key) + '"> <span class="tag ' + (SEV[a.sev] || SEV.info)[1] + '">' + esc(a.sev) + '</span> <span>' + esc(a.svc || '') + ' · ' + esc(a.short || a.label || a.key) + '</span></label>';
+    return '<label><input type="checkbox" value="' + esc(a.key) + '"> <span class="tag ' + (SEV[a.sev] || SEV.info)[1] + '">' + esc(a.sev) + '</span> <span>' + esc(svcName(a)) + ' · ' + esc(a.short || a.label || a.key) + '</span></label>';
   }).join('') : '<span class="muted">No open warning or critical card to attach.</span>';
   function close() {
     wrap.hidden = true;
@@ -235,7 +235,7 @@ function renderPodRuns() {
     if (POD_OPEN[r.id]) d.open = true;
     var slackAsk = !!(r.ask && r.ask.source === 'slack'), priv = !!(r.ask && r.ask.private);
     var thread = slackAsk && slackThread(r.ask.thread) ? ' · <a href="' + esc(r.ask.thread) + '" target="_blank" rel="noopener">thread</a>' : '';
-    var what = priv ? '<span class="muted">private chat message</span>' : r.ask ? '<b>' + (slackAsk ? 'Slack ask' : 'Ask') + '</b> by ' + esc(r.ask.by || 'an operator') + ': ' + esc(r.ask.text) + ((r.keys || []).length ? ' · ' + cardNames(r.keys) : '') + thread : cardNames(r.keys);
+    var what = priv ? '<span class="muted">private chat message</span>' : r.ask ? '<b>' + (slackAsk ? 'Slack request' : 'Request') + '</b> by ' + esc(r.ask.by || 'an operator') + ': ' + esc(r.ask.text) + ((r.keys || []).length ? ' · ' + cardNames(r.keys) : '') + thread : cardNames(r.keys);
     var n = (r.screenshots || []).length;
     var answer = priv ? '' : r.recap ? '<p class="' + (r.ask ? 'answer' : 'recap') + '">' + linkify(r.recap).replace(/\n/g, '<br>') + '</p>' : '<p class="muted">' + (r.outcome === 'running' ? 'Working on it…' : 'No answer text.') + '</p>';
     d.innerHTML = '<summary class="chev"><span class="when"><b>' + esc(dayhm(r.startedAt)) + '</b></span><span class="st ' + (POD_OUT[r.outcome] || 'k-muted') + '">' + esc(r.outcome || '') + '</span><span class="tag plain">' + esc(r.mode) + '</span>' +

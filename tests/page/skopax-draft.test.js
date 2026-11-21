@@ -145,7 +145,7 @@ const INFO = 'log|shop-web|WARN pattern';
 const PROG = 'restarts|catalog-service|restarts';
 const HELD = '5xx|api-gateway-public|5xx';
 const EDITED = 'lag|logstash|Kafka lag';
-const AUTO_SENDER = 'auto · Claude draft';
+const AUTO_SENDER = 'auto \u00b7 Claude draft';
 const rows = (doc) => [...doc.querySelectorAll('#slackq tbody tr')];
 const cells = (tr) => [...tr.children].map((td) => td.textContent.trim());
 

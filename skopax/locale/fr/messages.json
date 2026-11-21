@@ -170,6 +170,8 @@
 "slack.sender.auto": "{who} · envoi automatique",
 "slack.sender.server": "{product} · envoi automatique",
 "slack.sent_from": "Envoyé depuis {product} par {sender}",
+"slack.summary.recommended": "Recommandation : {text}",
+"slack.summary.notified": "Notifi\u00e9 : {routes}",
 "slack.sev.crit": "Critique",
 "slack.sev.info": "Info",
 "slack.sev.warn": "Avertissement",

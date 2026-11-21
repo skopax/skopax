@@ -163,7 +163,7 @@ async function aGuestGetsTheReasonAndNoNumbers() {
   //then
   assert.strictEqual(guest.doc.getElementById('costs').textContent, 'Log in to see costs.');
   assert.strictEqual(other.doc.getElementById('costs').textContent, 'Costs are not open to this account.');
-  assert.ok(!guest.doc.querySelector('#costs .ctile') && guest.doc.getElementById('count-costs').textContent === '–', 'no numbers and no count');
+  assert.ok(!guest.doc.querySelector('#costs .ctile') && guest.doc.getElementById('count-costs').textContent === '\u2013', 'no numbers and no count');
   assert.deepStrictEqual(guest.errors.concat(other.errors), []);
   guest.dom.window.close();
   other.dom.window.close();
@@ -214,7 +214,7 @@ async function costsAreForOperatorsOnlyAndAGuestNeverSeesTheTab() {
   assert.ok(!gt.hidden, 'a guest still sees the Costs tab');
   assert.strictEqual(gt.getAttribute('aria-disabled'), 'true', 'but disabled');
   assert.strictEqual(gt.title, 'Log in to see costs', 'every login sees costs since the operator role went away; a guest is asked to log in');
-  assert.strictEqual(guest.doc.getElementById('count-costs').textContent, '–', 'and no count');
+  assert.strictEqual(guest.doc.getElementById('count-costs').textContent, '\u2013', 'and no count');
   gt.click();
   gt.dispatchEvent(new guest.dom.window.KeyboardEvent('keydown', {key: ' ', bubbles: true, cancelable: true}));
   await wait(100);
@@ -249,9 +249,9 @@ async function theStripShowsTodayAgainstTheCapAndTheRange() {
   w.renderCosts(Object.assign({}, body, {today: {day: TODAY, spent: 21, cap: 20}}));
   const over = [doc.querySelector('#costs .cmeter').className, doc.querySelector('#costs .cmeter').firstChild.style.width];
   //then
-  assert.deepStrictEqual(labels, ['Today', 'Last 7 days', 'Avg per Slack ask', 'Avg per investigator run', 'Cache hit share']);
+  assert.deepStrictEqual(labels, ['Today', 'Last 7 days', 'Avg per Slack request', 'Avg per investigator run', 'Cache hit share']);
   assert.deepStrictEqual(values, ['$3.40 of $20.00 cap', '$2.75', '$0.25', '$1.50', '93 %']);
-  assert.deepStrictEqual(notes, ['4 runs · 6 calls', 'cache reads over all prompt tokens']);
+  assert.deepStrictEqual(notes, ['4 runs \u00b7 6 calls', 'cache reads over all prompt tokens']);
   assert.deepStrictEqual(calm, ['cmeter k-info', '17%'], 'the meter fills to the share of the cap');
   assert.strictEqual(warn, 'cmeter k-warn', 'from 75 % of the cap it turns to warning');
   assert.deepStrictEqual(over, ['cmeter k-crit', '100%'], 'at the cap it is critical and full');
@@ -273,7 +273,7 @@ async function oneDayIsCutIntoHoursAndThirtyDaysLabelEveryFifthDay() {
   assert.strictEqual(day.doc.querySelector('#costs-spend h3').textContent, 'Spend per hour, today');
   assert.strictEqual(hourCols.length, 24);
   assert.deepStrictEqual([...day.doc.querySelectorAll('#costs-spend .cx span')].slice(0, 7).map((s) => s.textContent), ['00:00', '', '', '', '', '', '06:00'], 'every sixth hour is labelled');
-  assert.strictEqual(hourCols[23].title, '23:00 · $2.10 · Investigator runs $1.50 · Assessments $0.60');
+  assert.strictEqual(hourCols[23].title, '23:00 \u00b7 $2.10 \u00b7 Investigator runs $1.50 \u00b7 Assessments $0.60');
   assert.strictEqual(month.doc.querySelector('#costs-spend h3').textContent, 'Spend per day');
   assert.strictEqual(month.doc.querySelectorAll('#costs-spend .ccol').length, 30);
   assert.deepStrictEqual([...month.doc.querySelectorAll('#costs-spend .cx span')].slice(0, 8).map((s) => s.textContent), ['25 Sep', '', '', '', '', '', '', '2 Oct'], 'every seventh day is labelled, day and English month');
@@ -294,14 +294,14 @@ async function spendPerDayStacksEverySourceWithALegendTooltipsAndATable() {
   assert.strictEqual(cols.length, 7);
   assert.deepStrictEqual([...last.children].map((b) => b.className), ['s-pod', 's-assess'], 'sources stack in their fixed order, the first on the baseline');
   assert.deepStrictEqual([...last.children].map((b) => b.style.height), ['50%', '20%'], 'heights follow the axis top of $3');
-  assert.strictEqual(last.title, '24 Oct · $2.10 · Investigator runs $1.50 · Assessments $0.60');
-  assert.strictEqual(cols[5].title, '23 Oct · $0.25 · Slack asks $0.25 · Gate $0.0003', 'a sub-cent gate cost keeps four decimals');
+  assert.strictEqual(last.title, '24 Oct \u00b7 $2.10 \u00b7 Investigator runs $1.50 \u00b7 Assessments $0.60');
+  assert.strictEqual(cols[5].title, '23 Oct \u00b7 $0.25 \u00b7 Slack requests $0.25 \u00b7 Gate $0.0003', 'a sub-cent gate cost keeps four decimals');
   assert.strictEqual(last.getAttribute('tabindex'), null, 'no tab stops inside the chart: the table view serves keyboard users');
   assert.strictEqual(doc.querySelector('#costs-spend .cchart').getAttribute('aria-label'), 'Spend per day, 7 days by source, $2.75');
   assert.strictEqual(doc.querySelector('#costs-hit .cchart').getAttribute('aria-label'), 'Cache hit share per day, 7 days by source');
   assert.strictEqual(doc.querySelector('#costs-writes .cchart').getAttribute('aria-label'), 'Cache-write spend per day, 7 days by source, $0.50');
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-spend .clegend span')].map((s) => [s.textContent, s.querySelector('.sw').className]),
-    [['Investigator runs', 'sw s-pod'], ['Page asks', 'sw s-page'], ['Slack asks', 'sw s-slack'], ['Chat', 'sw s-chat'], ['Assessments', 'sw s-assess'], ['Gate', 'sw s-gate'], ['Small talk', 'sw s-smalltalk'], ['Page scan', 'sw s-pagescan'], ['Self-review', 'sw s-selfreview'], ['MCP', 'sw s-mcp']], 'the legend always lists all ten sources in slot order');
+    [['Investigator runs', 'sw s-pod'], ['Page requests', 'sw s-page'], ['Slack requests', 'sw s-slack'], ['Chat', 'sw s-chat'], ['Assessments', 'sw s-assess'], ['Gate', 'sw s-gate'], ['Small talk', 'sw s-smalltalk'], ['Page scan', 'sw s-pagescan'], ['Self-review', 'sw s-selfreview'], ['MCP', 'sw s-mcp']], 'the legend always lists all ten sources in slot order');
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-spend .cy span')].map((s) => s.textContent), ['$0.00', '$1.00', '$2.00', '$3.00']);
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-spend .cx span')].map((s) => s.textContent), ['18 Oct', '', '20 Oct', '', '22 Oct', '', '24 Oct'], 'seven days label every second one');
   const rows = [...doc.querySelectorAll('#costs-spend .ctable tbody tr')];
@@ -324,8 +324,8 @@ async function theBySourceTableShowsSplitHitShareAverageAndModels() {
   assert.deepStrictEqual(rows.map((r) => r.dataset.source), SOURCES);
   assert.deepStrictEqual(cells(rows[0]), ['Investigator runs', '2', '1', '$1.50', '$0.60', '$0.20', '$0.30', '$0.00', '$0.40', '$0.00', '95 %', '$1.50', 'opus-5-5 2']);
   assert.deepStrictEqual(cells(rows[2]).slice(7), ['$0.20', '$0.00', '$0.00', '0 %', '$0.25', 'sonnet-5-5 1']);
-  assert.deepStrictEqual(cells(rows[3]).slice(10), ['–', '$0.60', 'opus-5-5 1'], 'no prompt tokens, no hit share');
-  assert.deepStrictEqual(cells(rows[4]).slice(1, 4).concat(cells(rows[4]).slice(11)), ['1', '0', '$0.0003', '–', 'haiku-5-5 1'], 'the gate has calls but no runs');
+  assert.deepStrictEqual(cells(rows[3]).slice(10), ['\u2013', '$0.60', 'opus-5-5 1'], 'no prompt tokens, no hit share');
+  assert.deepStrictEqual(cells(rows[4]).slice(1, 4).concat(cells(rows[4]).slice(11)), ['1', '0', '$0.0003', '\u2013', 'haiku-5-5 1'], 'the gate has calls but no runs');
   assert.deepStrictEqual(cells(rows[5]).slice(0, 4), ['Small talk', '0', '0', '$0.00'], 'small talk has its own row, with calls but never runs');
   assert.strictEqual(rows[0].querySelector('.sw').className, 'sw s-pod', 'each source keeps its chart colour in the table');
   dom.window.close();
@@ -347,9 +347,9 @@ async function cacheEfficiencyIsTwoChartsAHitShareLineAndWriteBars() {
   assert.strictEqual(lines[0].getAttribute('points'), '50.00,60.00 64.29,50.00');
   assert.strictEqual(lines[0].getAttribute('vector-effect'), 'non-scaling-stroke', 'the 2 px line stays 2 px at any width');
   assert.deepStrictEqual(dots.map((d) => [d.className, d.style.left, d.style.bottom]), [['cdot s-pod', '50%', '40%'], ['cdot s-pod', '64.29%', '50%'], ['cdot s-pod', '92.86%', '95%'], ['cdot s-slack', '78.57%', '0%']]);
-  assert.strictEqual(hits[6].title, '24 Oct · Investigator runs 95 % · Page asks – · Slack asks – · Chat – · Assessments – · MCP –', 'one tooltip lists every source at that day');
+  assert.strictEqual(hits[6].title, '24 Oct \u00b7 Investigator runs 95 % \u00b7 Page requests \u2013 \u00b7 Slack requests \u2013 \u00b7 Chat \u2013 \u00b7 Assessments \u2013 \u00b7 MCP \u2013', 'one tooltip lists every source at that day');
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-hit .cy span')].map((s) => s.textContent), ['0 %', '50 %', '100 %']);
-  assert.deepStrictEqual([...doc.querySelectorAll('#costs-hit .clegend span')].map((s) => s.textContent), ['Investigator runs', 'Page asks', 'Slack asks', 'Chat', 'Assessments', 'MCP'], 'the gate and small talk are not cached and not drawn');
+  assert.deepStrictEqual([...doc.querySelectorAll('#costs-hit .clegend span')].map((s) => s.textContent), ['Investigator runs', 'Page requests', 'Slack requests', 'Chat', 'Assessments', 'MCP'], 'the gate and small talk are not cached and not drawn');
   assert.deepStrictEqual([writes[5], writes[6]].map((c) => [...c.children].map((b) => b.className)), [['s-slack'], ['s-pod']]);
   assert.ok(!doc.querySelector('#costs-hit .ccol > b') && !doc.querySelector('#costs-writes polyline'), 'one measure per chart: no dual axis');
   assert.match(doc.getElementById('costs').textContent, /The gate and small talk are not cached, so they are left out of the two cache charts\./);
@@ -521,12 +521,12 @@ async function theRunListShowsTheSplitBarAndLinksTheFullRunRecord() {
   const split = rows[0].querySelector('.csplit');
   //then
   assert.deepStrictEqual(rows.map((r) => r.dataset.run), ['r1', 'r4', 'r2']);
-  assert.deepStrictEqual(cells(rows[0]).slice(1), ['Investigator runs', 'pod', 'checkout-service / ERROR pattern', 'opus-5-5 · medium', '2', '95 s', '', '$1.50']);
+  assert.deepStrictEqual(cells(rows[0]).slice(1), ['Investigator runs', 'pod', 'checkout-service / ERROR pattern', 'opus-5-5 \u00b7 medium', '2', '95 s', '', '$1.50']);
   assert.deepStrictEqual([link.getAttribute('href'), link.getAttribute('target'), link.getAttribute('rel')], ['/api/investigations/r1', '_blank', 'noopener'], 'the time opens the full run record');
   assert.deepStrictEqual([...split.children].map((b) => [b.className, b.style.width]), [['p-cacheRead', '40%'], ['p-input', '13.3%'], ['p-cacheWrite5m', '20%'], ['p-output', '26.7%']]);
-  assert.strictEqual(split.title, 'Cache read $0.60 · Input $0.20 · Cache write $0.30 · Cache write, long $0.00 · Output $0.40 · Web search $0.00');
+  assert.strictEqual(split.title, 'Cache read $0.60 \u00b7 Input $0.20 \u00b7 Cache write $0.30 \u00b7 Cache write, long $0.00 \u00b7 Output $0.40 \u00b7 Web search $0.00');
   assert.deepStrictEqual(cells(rows[1]).slice(1, 2), ['Assessments failed'], 'a run that did not finish says so');
-  assert.deepStrictEqual(cells(rows[2]).slice(5, 7), ['–', '–'], 'an expired run record leaves tools and duration empty');
+  assert.deepStrictEqual(cells(rows[2]).slice(5, 7), ['\u2013', '\u2013'], 'an expired run record leaves tools and duration empty');
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-runs .clegend span')].map((s) => [s.textContent, s.querySelector('.sw').className]),
     [['Cache read', 'sw p-cacheRead'], ['Input', 'sw p-input'], ['Cache write', 'sw p-cacheWrite5m'], ['Cache write, long', 'sw p-cacheWrite1h'], ['Output', 'sw p-output'], ['Web search', 'sw p-webSearch']], 'the split legend runs from the cheapest token to the dearest, then the search fee');
   dom.window.close();
@@ -569,12 +569,12 @@ async function historyUsageIsOneLineThatOpensCosts() {
   line.querySelector('a').click();
   await wait(100);
   //then
-  assert.strictEqual(line.textContent, 'Usage · 7 d · 4 runs · $2.00 · cache 79 % · Open Costs ›');
+  assert.strictEqual(line.textContent, 'Usage \u00b7 7 d \u00b7 4 runs \u00b7 $2.00 \u00b7 cache 79 % \u00b7 Open Costs \u203a');
   assert.strictEqual(line.querySelector('a').getAttribute('href'), '#t=costs');
-  assert.ok(!doc.getElementById('panel-costs').hidden, 'Open Costs › switches to the Costs tab');
+  assert.ok(!doc.getElementById('panel-costs').hidden, 'Open Costs \u203a switches to the Costs tab');
   assert.deepStrictEqual(costGets(gets), ['/api/costs?days=7']);
   dom.window.close();
-  console.log('PASS History keeps one usage line whose Open Costs › link opens the Costs tab');
+  console.log('PASS History keeps one usage line whose Open Costs \u203a link opens the Costs tab');
 }
 
 async function theSplitBarScalesFromThePartsAndAnIdThatNeedsEncodingStillLinks() {
@@ -608,9 +608,9 @@ async function theUsageLineFollowsWhoLooksAndWhetherUsageIsThere() {
   //when
   const lines = [guest, bare, bareGuest].map((b) => b.doc.querySelector('#pod-ctl .pod-usage'));
   //then
-  assert.strictEqual(lines[0].textContent, 'Usage · 7 d · 4 runs · $2.00 · cache 79 %', 'a guest sees the usage text');
+  assert.strictEqual(lines[0].textContent, 'Usage \u00b7 7 d \u00b7 4 runs \u00b7 $2.00 \u00b7 cache 79 %', 'a guest sees the usage text');
   assert.ok(!lines[0].querySelector('a.costs-link'), 'and no link to a tab they do not have');
-  assert.strictEqual(lines[1].textContent, 'Open Costs ›', 'an operator without usage numbers still gets the link');
+  assert.strictEqual(lines[1].textContent, 'Open Costs \u203a', 'an operator without usage numbers still gets the link');
   assert.strictEqual(lines[2], null, 'a guest without usage numbers gets no line');
   [guest, bare, bareGuest].forEach((b) => b.dom.window.close());
   console.log('PASS the usage line shows the text to everyone, the link to operators only, and nothing when there is neither');
@@ -626,7 +626,7 @@ async function accessResolvingBeforeTheInvestigationsDoesNotRenderAnEmptyHistory
   release();
   await wait(100);
   //then
-  assert.deepStrictEqual(before, ['', 'Loading investigations…', 0], 'the loading note stays: no "not set up" and no "No investigations yet." while the data is still on its way');
+  assert.deepStrictEqual(before, ['', 'Loading investigations\u2026', 0], 'the loading note stays: no "not set up" and no "No investigations yet." while the data is still on its way');
   assert.strictEqual(doc.querySelectorAll('#pod-ctl .costs-link').length, 1, 'the link appears once the data is in');
   assert.strictEqual(doc.querySelectorAll('#pod-ctl .pod-usage').length, 1);
   dom.window.close();

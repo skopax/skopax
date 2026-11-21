@@ -62,7 +62,7 @@ async function thePageShowsRoomsTheQueueLimitsAndRecentRuns() {
   const rooms = [...doc.querySelectorAll('#inv .inv-room')];
   assert.deepStrictEqual(rooms.map((r) => r.querySelector('b').textContent + ':' + r.querySelector('.tag').textContent), ['Room 1:Running', 'Room 2:Free', 'Cards:Free']);
   const busy = rooms[0].textContent;
-  assert.ok(busy.includes('Why did it go up?') && busy.includes('Slack question') && busy.includes('asked by adam.baker') && /4 tool calls, last esql \d+ s ago/.test(busy) && busy.includes('sonnet-5-5 · high') && busy.includes('skopax-abc'));
+  assert.ok(busy.includes('Why did it go up?') && busy.includes('Slack question') && busy.includes('asked by adam.baker') && /4 tool calls, last esql \d+ s ago/.test(busy) && busy.includes('sonnet-5-5 \u00b7 high') && busy.includes('skopax-abc'));
   assert.ok(/running for 2 min \d+ s/.test(busy), busy);
   assert.strictEqual(rooms[0].querySelector('.inv-links a').href, 'https://example.slack.com/archives/C1/p1');
   assert.ok(rooms[2].textContent.includes('Takes new and escalated cards'));
@@ -72,7 +72,7 @@ async function thePageShowsRoomsTheQueueLimitsAndRecentRuns() {
   const lims = [...doc.querySelectorAll('#inv .inv-lim')];
   assert.deepStrictEqual(lims.map((l) => l.textContent), ['Slack questions this hour10 of 10', 'Page questions this hour1 of 6', 'Topic checks this hour12 of 60', 'Spend today ($)4.10 of 25.00']);
   assert.ok(lims[0].classList.contains('full') && !lims[1].classList.contains('full') && !lims[3].classList.contains('full'), 'only a limit that is used up is marked');
-  assert.ok(doc.getElementById('inv').textContent.includes('Asked in Slack this hour: adam.baker 4/4 · nina.white 1/4'));
+  assert.ok(doc.getElementById('inv').textContent.includes('Asked in Slack this hour: adam.baker 4/4 \u00b7 nina.white 1/4'));
   const recent = [...doc.querySelectorAll('#inv .inv-recent tbody tr')].map((r) => [...r.children].map((c) => c.textContent));
   assert.deepStrictEqual(recent.map((r) => r.slice(1)), [['New cards', 'checkout-service / ERROR lines', 'done', '7', '$0.42'], ['Slack question', 'can you see the ios repo?', 'failed', '1', '$0.05'], ['Chat message', 'private chat message', 'done', '2', '$0.12']], 'a chat run says it is private instead of a dash');
   const tab = doc.getElementById('tab-inv');

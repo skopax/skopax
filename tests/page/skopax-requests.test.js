@@ -68,11 +68,11 @@ async function requestsSitApartFromAnomaliesWithWhereWhoAndTheAnswer() {
   assert.ok(tab.className.includes('k-act'));
   assert.ok(calls.includes('/api/requests'));
   const rows = [...doc.querySelectorAll('#reqs details.req')];
-  assert.deepStrictEqual(rows.map((r) => r.querySelector('.tag').textContent), ['Running', 'Answered', 'Not answered · failed', 'Answered']);
+  assert.deepStrictEqual(rows.map((r) => r.querySelector('.tag').textContent), ['Running', 'Answered', 'Not answered \u00b7 failed', 'Answered']);
   assert.deepStrictEqual(rows.map((r) => r.querySelector('.req-q').textContent), ['why is checkout-service slow?', 'what was the 5xx yesterday?', 'why did kafka lag go up?', 'what is the problem here']);
-  assert.ok(/^evan\.cross · #dev-backend · /.test(rows[0].querySelector('.req-meta').textContent), rows[0].querySelector('.req-meta').textContent);
-  assert.ok(/^adam\.baker · #alerts · .* · \$0\.42 · 3 tool calls$/.test(rows[1].querySelector('.req-meta').textContent), rows[1].querySelector('.req-meta').textContent);
-  assert.ok(/^sara\.bell · Skopax page · /.test(rows[2].querySelector('.req-meta').textContent));
+  assert.ok(/^evan\.cross \u00b7 #dev-backend \u00b7 /.test(rows[0].querySelector('.req-meta').textContent), rows[0].querySelector('.req-meta').textContent);
+  assert.ok(/^adam\.baker \u00b7 #alerts \u00b7 .* \u00b7 \$0\.42 \u00b7 3 tool calls$/.test(rows[1].querySelector('.req-meta').textContent), rows[1].querySelector('.req-meta').textContent);
+  assert.ok(/^sara\.bell \u00b7 Skopax page \u00b7 /.test(rows[2].querySelector('.req-meta').textContent));
   assert.ok(rows[0].open && !rows[1].open, 'a running one is open, an answered one folded');
   assert.ok(/investigator is on it/.test(rows[0].querySelector('.req-ans').textContent));
   assert.strictEqual(rows[1].querySelector('.req-ans strong').textContent, 'web-bff');
@@ -85,7 +85,7 @@ async function requestsSitApartFromAnomaliesWithWhereWhoAndTheAnswer() {
   assert.ok(thread.classList.contains('req-thread') && !thread.open);
   assert.strictEqual(thread.querySelector('.req-q').textContent, 'what is the problem here', 'the thread shows its first question');
   assert.strictEqual(thread.querySelector('.req-n').textContent, '2 in thread');
-  assert.ok(/^evan\.cross, adam\.baker · #alerts · /.test(thread.querySelector('.req-meta').textContent), thread.querySelector('.req-meta').textContent);
+  assert.ok(/^evan\.cross, adam\.baker \u00b7 #alerts \u00b7 /.test(thread.querySelector('.req-meta').textContent), thread.querySelector('.req-meta').textContent);
   assert.deepStrictEqual([...thread.querySelectorAll('.req-item .req-iq strong')].map((x) => x.textContent), ['what is the problem here', 'read it with the admin tool and look again'], 'oldest first inside');
   assert.deepStrictEqual([...thread.querySelectorAll('.req-item .req-ans')].map((x) => x.textContent.trim()), ['First answer.', 'Second answer.']);
   assert.deepStrictEqual(errors, []);
@@ -103,9 +103,9 @@ async function aMainChannelAskShowsTheChannelNameOnlyWhenItIsOneAndNeverTheDispl
   const meta = (page) => [...page.doc.querySelectorAll('#reqs details.req .req-meta')].map((m) => m.textContent).find((t) => t.startsWith('adam.baker'));
 
   //then
-  assert.ok(/ · #alerts · /.test(meta(named)), meta(named));
+  assert.ok(/ \u00b7 #alerts \u00b7 /.test(meta(named)), meta(named));
   for (const page of [byId, empty]) {
-    assert.ok(/ · main channel · /.test(meta(page)), meta(page));
+    assert.ok(/ \u00b7 main channel \u00b7 /.test(meta(page)), meta(page));
     assert.ok(!/#skopax|C123/.test(meta(page)), meta(page));
   }
   for (const page of [named, byId, empty]) { assert.deepStrictEqual(page.errors, []); page.w.close(); }
@@ -161,11 +161,11 @@ async function questionsAboutOneCardAreGroupedUnderThatCardWhicheverThreadTheyCa
   //then
   assert.strictEqual(boxes.length, 2, 'three questions about one card are one group; the question without a card stands alone');
   const group = boxes[0];
-  assert.strictEqual(group.querySelector('.req-q').textContent, 'web-bff · WARN · Rest error occurred', 'the card is the heading');
+  assert.strictEqual(group.querySelector('.req-q').textContent, 'web-bff \u00b7 WARN \u00b7 Rest error occurred', 'the card is the heading');
   assert.strictEqual(group.querySelector('.req-n').textContent, '3 about this card');
   assert.ok(group.hasAttribute('open'), 'a group with a running question starts open');
   assert.deepStrictEqual([...group.querySelectorAll('.req-item .req-iq strong')].map((x) => x.textContent), ['can you give me a link', 'is it fixed', 'who is on it?'], 'oldest first, across threads and the page');
-  assert.ok(/nina\.white, paul\.stone, zoe\.hart · #dev-backend, #alerts, Skopax page · /.test(group.querySelector('.req-meta').textContent), group.querySelector('.req-meta').textContent);
+  assert.ok(/nina\.white, paul\.stone, zoe\.hart \u00b7 #dev-backend, #alerts, Skopax page \u00b7 /.test(group.querySelector('.req-meta').textContent), group.querySelector('.req-meta').textContent);
   assert.strictEqual(group.querySelector('.req-card a').getAttribute('href'), '#a=' + encodeURIComponent(card));
   assert.strictEqual(boxes[1].querySelector('.req-q').textContent, 'why did kafka lag go up?');
   assert.deepStrictEqual(errors, []);

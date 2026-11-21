@@ -7,6 +7,8 @@
  "slack.head.auto": "{card} otomatik kapandı: {span} boyunca sinyal gelmedi",
  "slack.sender.server": "{product} · otomatik gönderildi",
  "slack.sent_from": "{product} üzerinden {sender} gönderdi",
+ "slack.summary.recommended": "\u00d6neri: {text}",
+ "slack.summary.notified": "Bildirildi: {routes}",
  "review.dm": "*{product} öz değerlendirme · {when}*\n{text}\n<{link}|{product} içinde aç>",
  "push.prefix": "{product}: ",
  "slack.open": "{product} içinde aç",

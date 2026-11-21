@@ -12,7 +12,7 @@ const STOPPED = '2026-11-09T18:10:00Z';
 
 const BRAND_BLOB = /(<script type="application\/json" id="brand-data">)[\s\S]*?(<\/script>)/;
 
-const statusOf = (doc) => [doc.getElementById('state'), doc.querySelector('.status')].filter(Boolean).map((e) => e.textContent).join(' · ');
+const statusOf = (doc) => [doc.getElementById('state'), doc.querySelector('.status')].filter(Boolean).map((e) => e.textContent).join(' \u00b7 ');
 function cardHtml(brand, blob) {
   const html = pageHtml(CARD_PAGE, brand ? {brand} : undefined);
   if (blob === 'slot') return html.replace('</main>', '<footer class="attribution"><a id="attribution"></a></footer></main>');
@@ -51,7 +51,7 @@ async function aBusinessCardLeadsWithTheActionAndFoldsTheTechnicalPart() {
 
   //then
   assert.deepStrictEqual(hits, ['/api/cards/482', '/api/investigator/status']);
-  assert.strictEqual(doc.title, '#482 · example.com/orders / Typos · Skopax');
+  assert.strictEqual(doc.title, '#482 \u00b7 example.com/orders / Typos \u00b7 Skopax');
   assert.strictEqual(doc.getElementById('num').textContent, '#482');
   assert.deepStrictEqual([...doc.querySelectorAll('.head .pill')].map((p) => p.textContent), ['Warning', 'SEO']);
   assert.ok(doc.querySelector('.head').firstElementChild.id === 'state' && doc.getElementById('state').classList.contains('state-pill'), 'the status leads the head row as a large pill');
@@ -171,7 +171,7 @@ async function operatorsGetTheCardActionsAndOthersAReadOnlyCard() {
   //then
   assert.ok(keptOpen, 'a refresh waits while someone types');
   assert.ok(op.hits.includes('/api/jira/search?q=seo%20cache'));
-  assert.deepStrictEqual(shown, ['OPS-144 SEO metadata fetch cacheIn UAT · Bob Stone']);
+  assert.deepStrictEqual(shown, ['OPS-144 SEO metadata fetch cacheIn UAT \u00b7 Bob Stone']);
   assert.strictEqual(picked, 'OPS-144', 'picking a suggestion fills the key');
   assert.deepStrictEqual(op.posts[1][1], {type: 'take', ticket: 'OPS-12', reason: 'looking into it', label: 'Take checkout-service / ERROR lines with OPS-12', key: card.key, target: card.key});
   [op, guest, noRole].forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
@@ -252,7 +252,7 @@ async function theCardPageFollowsTheAttributionRule() {
   assert.strictEqual(slot.getAttribute('href'), null);
   slotted.w.close();
   assert.deepStrictEqual(missing.errors, []);
-  assert.strictEqual(missing.doc.getElementById('attribution').textContent, 'Skopax 0.4.9 \u00b7 skopax.io');
+  assert.strictEqual(missing.doc.getElementById('attribution').textContent, 'Skopax 0.4.10 \u00b7 skopax.io');
   assert.strictEqual(missing.doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
   hidden.w.close();
   missing.w.close();

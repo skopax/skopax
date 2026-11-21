@@ -85,18 +85,18 @@ async function suggestedFixShowsTheAddressWhoWhatAndTheDiff() {
   const people = [...c.querySelectorAll('.people li b')].map((b) => b.textContent);
   //then
   assert.strictEqual(box.querySelector('h5').textContent, 'Suggested fix (untested)');
-  assert.strictEqual(at.textContent, 'checkout-service · ' + PATH + ':3-5 @ 1a1a1a1a ↗');
+  assert.strictEqual(at.textContent, 'checkout-service \u00b7 ' + PATH + ':3-5 @ 1a1a1a1a \u2197');
   assert.strictEqual(at.getAttribute('href'), WEB + '/-/blob/' + SHA + '/' + PATH + '#L3-5', 'the address links GitLab at that commit and those lines');
   assert.strictEqual(at.getAttribute('target'), '_blank');
   assert.ok(box.querySelector('.fix-at').compareDocumentPosition(box.querySelector('.fix-by')) & 4, 'who last changed the lines comes after the address');
-  assert.strictEqual(box.querySelector('.fix-by li').textContent, 'Last changed by Nina · 3 of 3 lines · OPS-1 total from the cart ↗ 2026-10-20');
+  assert.strictEqual(box.querySelector('.fix-by li').textContent, 'Last changed by Nina \u00b7 3 of 3 lines \u00b7 OPS-1 total from the cart \u2197 2026-10-20');
   assert.strictEqual(box.querySelector('.fix-by a').getAttribute('href'), BY[0].url);
   assert.ok(box.querySelector('.fix-by').compareDocumentPosition(box.querySelector('.fix-what')) & 4);
   assert.strictEqual(box.querySelector('.fix-what').textContent, 'check that callers handle a null total');
   assert.deepStrictEqual(rows(box), DIFF, 'removed lines first with -, then added with +, line numbers from the span, the unchanged line as context');
   assert.strictEqual(box.querySelector('.diff').getAttribute('tabindex'), '0', 'the scroll box takes the keyboard');
   assert.strictEqual(box.querySelector('.fix-copy').textContent, 'Copy');
-  assert.deepStrictEqual(refs, ['CartClient.kt:40 ↗'], 'the Code list keeps the plain link and does not repeat the fix');
+  assert.deepStrictEqual(refs, ['CartClient.kt:40 \u2197'], 'the Code list keeps the plain link and does not repeat the fix');
   assert.deepStrictEqual(people.sort(), ['Adam', 'Nina'], 'Responsible still counts who changed the lines of both links');
   assert.strictEqual(c.querySelectorAll('.analysis .fix').length, 1);
   assert.deepStrictEqual(errors, []);
@@ -207,7 +207,7 @@ async function aSuggestionWithoutServerReadLinesStaysAPlainLink() {
   expand(c);
   //then
   assert.strictEqual(c.querySelector('.fix'), null, 'no diff without the current lines the server read');
-  assert.deepStrictEqual([...c.querySelectorAll('.code-refs li a')].map((a) => a.textContent), ['Hand.kt:1 ↗']);
+  assert.deepStrictEqual([...c.querySelectorAll('.code-refs li a')].map((a) => a.textContent), ['Hand.kt:1 \u2197']);
   assert.deepStrictEqual(errors, []);
   close(dom);
   console.log('PASS aSuggestionWithoutServerReadLinesStaysAPlainLink');

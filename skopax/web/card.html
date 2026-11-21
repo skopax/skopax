@@ -184,6 +184,10 @@ footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8p
 .run-banner.run-ok { --info: var(--good); --info-bg: var(--good-bg); }
 .run-banner.run-bad { --info: var(--crit); --info-bg: var(--crit-bg); }
 @media (prefers-reduced-motion: reduce) { .run-ind::after { display: none; animation: none; } }
+.toasts { position: fixed; z-index: 80; right: 16px; top: 16px; display: grid; gap: 8px; width: min(420px, calc(100vw - 32px)); }
+.toast { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--surface, #fff); color: inherit; border: 1px solid var(--line, #ccc); border-left: 4px solid var(--crit); border-radius: 6px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); font-size: 0.88rem; overflow-wrap: anywhere; }
+.toast-t { flex: 1 1 auto; min-width: 0; }
+.toast-x { background: none; border: 0; color: inherit; font-size: 1.1rem; cursor: pointer; }
 </style>
 </head>
 <body>

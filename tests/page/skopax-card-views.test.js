@@ -205,7 +205,7 @@ async function jiraCreateAndLinkShowAsTextButtonsOutsideTheFoldedActions() {
   assert.ok(shown, 'Link opens a field for the key');
   assert.deepStrictEqual(refused, {msg: 'Type the ticket key, like OPS-123', sent: 0}, 'words with no key are not sent (no Jira search on this service, so it asks for the key)');
   assert.deepStrictEqual(posted.map((b) => [b.type, b.key, b.ticket]), [['link', NEW, 'OPS-145']]);
-  assert.deepStrictEqual([open.textContent, open.getAttribute('href'), [...linked.querySelectorAll('.jira-act')].map((b) => b.textContent)], ['OPS-1234 ↗', 'https://jira.example.com/browse/OPS-1234', ['Change ticket']], 'a card with a ticket links it and offers Change ticket');
+  assert.deepStrictEqual([open.textContent, open.getAttribute('href'), [...linked.querySelectorAll('.jira-act')].map((b) => b.textContent)], ['OPS-1234 \u2197', 'https://jira.example.com/browse/OPS-1234', ['Change ticket']], 'a card with a ticket links it and offers Change ticket');
   assert.deepStrictEqual(errors, []);
   w.close();
   return 'Create Jira task and Link ticket sit as text buttons next to Investigate and Assign; Link takes a key (or a pick from the Jira search) and a card with a ticket shows it with Change ticket';
@@ -259,7 +259,7 @@ async function tilesAndRowsTitleACardByItsMessageOrItsBusinessSentence() {
   assert.deepStrictEqual(got, ['Store not found', 'Store not found', 'OrderDetailPage \u00b7 getStoreDetails', 'Error in HTTP response', 'Recommended: change "a.b" to "a. b" in the copy.', '']);
   assert.strictEqual(info, 'The sale page is down for visitors.', 'an info sentence is not a recommendation');
   assert.ok(east.querySelector('.tile-sig').textContent.endsWith('instance east') && east.title.includes('instance east'), 'the tile names the instance');
-  assert.deepStrictEqual([tileOfNew.querySelector('.tile-title').textContent, tileOfNew.querySelector('.tile-sig').textContent], ['boom', 'checkout-service · ERROR lines'], 'the tile leads with the message and puts the service and signal under it');
+  assert.deepStrictEqual([tileOfNew.querySelector('.tile-title').textContent, tileOfNew.querySelector('.tile-sig').textContent], ['boom', 'checkout-service \u00b7 ERROR lines'], 'the tile leads with the message and puts the service and signal under it');
   assert.deepStrictEqual(errors, []);
   w.close();
   return 'a card is titled by its log message (no request data, JSON or repeated code) or, for a business team, by its sentence without the page address; others keep service and label';
@@ -403,8 +403,8 @@ async function waitingAndInvestigatedAreTagsOnOpenCards() {
   assert.deepStrictEqual(order, [NEW, DIVED, LOOKING, WAIT], 'critical first, then the firing ones, the stopped one last');
   assert.deepStrictEqual(tags(DIVED), ['Investigated'], 'the investigation is a tag, not a column');
   assert.deepStrictEqual(tags(LOOKING), ['Investigating']);
-  assert.ok(tags(WAIT)[0].startsWith('Stopped firing \u00b7 unassigned '), 'a stopped card says when it stopped');
-  assert.ok(tileOf(doc, WAIT).querySelector('.tile-foot .tag.k-crit').title.endsWith('nobody acted yet: waiting to be addressed'), 'and that it waits to be addressed');
+  assert.ok(/^Stopped firing \d/.test(tags(WAIT)[0]), 'a stopped card says when it stopped');
+  assert.ok(tileOf(doc, WAIT).querySelector('.tile-foot .tag.k-cleared').title.startsWith('Stopped firing \u00b7 unassigned '), 'and its tip carries the long form');
   assert.deepStrictEqual(tags(NEW), ['Data']);
   assert.ok(colEl(doc, 'done').querySelector('.bcol-h svg.bcol-tick') && [...doc.querySelectorAll('.bcol-h svg.bcol-tick')].length === 1, 'only the Done column carries the green tick');
   assert.strictEqual(colEl(doc, 'done').querySelector('.bcol-h h3').textContent, 'Done');
