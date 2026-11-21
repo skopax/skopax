@@ -6,6 +6,7 @@ from tests.conftest import AUTH, settings
 from skopax import settingcards
 from skopax.app import create_app
 from skopax.config import load_settings
+from skopax.investigator.web import DOMAIN
 from skopax.store import Store
 from skopax.tunables import GROUPS, TunableStore, registry
 
@@ -19,6 +20,7 @@ LISTS = {
     'sso.allowed-domains': {'kind': 'domain', 'separator': ','},
     'core.cert-skip': {'kind': 'host', 'separator': ','},
     'sso.scope': {'kind': 'scope', 'separator': ' '},
+    'investigate.web-domains': {'kind': 'web-host', 'separator': ',', 'keywords': ['any', 'off', 'none', 'false', 'no']},
 }
 SAMPLES = {
     'mcp.allowed-clients': 'cli-one, cli-two',
@@ -29,6 +31,7 @@ SAMPLES = {
     'sso.allowed-domains': 'example.com, example.org',
     'core.cert-skip': 'shop.example.com, *.example.com',
     'sso.scope': 'openid profile email',
+    'investigate.web-domains': 'example.com, -blog.google',
 }
 
 
@@ -306,3 +309,118 @@ def test_a_file_value_under_the_old_key_shows_its_source_on_the_new_row(store: S
     # then
     assert (row['value'], row['source']) == (f'staging={STAGING}', 'config')
     assert row['from'] != 'environment', 'the row names the file, not the generic environment'
+
+def test_history_rows_of_the_old_key_name_the_key_that_labels_them(store: Store):
+    # given
+    TunableStore(store.db).write_change('core.instance-links', None, f'staging={STAGING}', 'admin@example.com')
+    TunableStore(store.db).write_change('core.workspace-links', None, 'eu=https://eu.example.com', 'admin@example.com')
+
+    # when
+    with TestClient(create_app(settings(), store)) as c:
+        history = c.get('/api/admin/history', headers=AUTH).json()
+
+    # then
+    by_key = {h['key']: h for h in history}
+    assert by_key['core.instance-links']['current'] == 'core.workspace-links'
+    assert 'current' not in by_key['core.workspace-links']
+
+
+def test_a_copy_that_crashed_between_upsert_and_delete_still_gets_its_history_line_at_the_next_boot(store: Store):
+    # given
+    held = TunableStore(store.db)
+    held.write('core.instance-links', f'staging={STAGING}', 'admin@example.com', None, record=False)
+    store.db['tunables'].replace_one({'_id': 'core.workspace-links'}, {'_id': 'core.workspace-links', 'value': f'staging={STAGING}', 'by': 'system', 'at': '2026-11-01T00:00:00Z'}, upsert=True)
+
+    # when
+    with TestClient(create_app(settings(), store)) as c:
+        history = c.get('/api/admin/history', headers=AUTH).json()
+    with TestClient(create_app(settings(), store)) as c:
+        again = c.get('/api/admin/history', headers=AUTH).json()
+    kept = stored(store)
+
+    # then
+    assert 'core.instance-links' not in kept and kept['core.workspace-links']['value'] == f'staging={STAGING}'
+    assert len([h for h in history if h.get('renamed') == 'core.instance-links']) == 1
+    assert len([h for h in again if h.get('renamed') == 'core.instance-links']) == 1, 'and not a second one'
+    assert len([a for a in store.db['activity'].find({}) if 'renamed setting' in str(a)]) == 1
+
+
+def test_web_sites_use_the_runtime_host_rule_and_accept_a_dash_host(store: Store):
+    # when
+    with TestClient(create_app(settings(), store)) as c:
+        shown = items(c)['investigate.web-domains']['items']
+        seen = {v: c.put('/api/admin/settings', json={'key': 'investigate.web-domains', 'value': v}, headers=AUTH).status_code
+                for v in ('-blog.google, example.com', 'example.com blog.example.org', '-', '-bad_host', 'not_a_host!', '--blog.google', 'a..com',
+                          '*.example.com', 'localhost', '-localhost', 'Example.COM')}
+        saved = items(c)['investigate.web-domains']['value']
+        cert = c.put('/api/admin/settings', json={'key': 'core.cert-skip', 'value': 'localhost, *.example.com'}, headers=AUTH).status_code
+        listed = items(c)
+
+    # then
+    assert shown['kind'] == 'web-host' and shown['minus'] is True and shown['pattern'] == DOMAIN.pattern
+    assert 'covers only subdomains' not in shown['why'] and 'support.google.com' in shown['why']
+    assert seen == {'-blog.google, example.com': 200, 'example.com blog.example.org': 200, '-': 422, '-bad_host': 422, 'not_a_host!': 422, '--blog.google': 422, 'a..com': 422,
+                    '*.example.com': 422, 'localhost': 422, '-localhost': 422, 'Example.COM': 200}
+    assert saved == 'Example.COM'
+    assert cert == 200 and listed['core.cert-skip']['items']['kind'] == 'host' and 'minus' not in listed['core.cert-skip']['items']
+
+
+def test_web_sites_keywords_stand_alone_like_the_channel_keywords(store: Store):
+    # given
+    ok = ('any', 'OFF', 'none', 'false', 'no')
+    mixed = ('any, example.com', 'example.com, off', 'off, none', 'No, any')
+
+    # when
+    with TestClient(create_app(settings(), store)) as c:
+        accepted = [c.put('/api/admin/settings', json={'key': 'investigate.web-domains', 'value': v}, headers=AUTH).status_code for v in ok]
+        refused = [c.put('/api/admin/settings', json={'key': 'investigate.web-domains', 'value': v}, headers=AUTH) for v in mixed]
+
+    # then
+    assert accepted == [200] * 5
+    assert [r.status_code for r in refused] == [422] * 4
+    assert refused[0].json()['detail'] == 'Web sites: any, off, none, false and no stand alone, they cannot be mixed with hosts or each other'
+
+
+def test_two_copies_racing_on_the_rename_write_one_history_line(store: Store):
+    # given
+    first, second = TunableStore(store.db), TunableStore(store.db)
+    store.db['tunables'].insert_one({'_id': 'core.instance-links', 'value': f'staging={STAGING}', 'by': 'admin@example.com', 'at': '2026-11-01T00:00:00Z'})
+    store.db['tunables'].insert_one({'_id': 'core.workspace-links', 'value': f'staging={STAGING}', 'by': 'system', 'at': '2026-11-01T00:00:00Z'})
+
+    class Blind:
+        def __init__(self, real):
+            self.real = real
+
+        def find_one(self, *a, **k):
+            return None
+
+        def __getattr__(self, name):
+            return getattr(self.real, name)
+
+    second.changes = Blind(second.changes)
+
+    # when
+    results = [first.migrate_renamed()]
+    store.db['tunables'].insert_one({'_id': 'core.instance-links', 'value': f'staging={STAGING}', 'by': 'admin@example.com', 'at': '2026-11-01T00:00:00Z'})
+    results.append(second.migrate_renamed())
+
+    # then
+    assert results == [True, False]
+    assert len([c for c in store.db['tunable_changes'].find({}) if c.get('renamed') == 'core.instance-links']) == 1
+    assert store.db['tunables'].find_one({'_id': 'core.instance-links'}) is None
+
+
+def test_the_rename_line_is_written_before_the_old_key_goes(store: Store):
+    # given
+    held = TunableStore(store.db)
+    store.db['tunables'].insert_one({'_id': 'core.instance-links', 'value': f'staging={STAGING}', 'by': 'admin@example.com', 'at': '2026-11-01T00:00:00Z'})
+    seen = []
+    real = held.write_change
+    held.write_change = lambda *a, **k: seen.append(store.db['tunables'].find_one({'_id': 'core.instance-links'}) is not None) or real(*a, **k)
+
+    # when
+    held.migrate_renamed()
+
+    # then
+    assert seen == [True]
+    assert store.db['tunables'].find_one({'_id': 'core.instance-links'}) is None

@@ -207,6 +207,25 @@ def test_the_token_maps_to_the_same_login_name_as_the_page_session(store: Store)
     assert (done['type'], done['via'], store.anomaly(CARD)['owner'], store.anomaly(CARD)['ticket']) == ('take', 'mcp', NINA, 'OPS-146')
 
 
+def test_a_card_action_through_mcp_is_written_once_with_its_source(store: Store, monkeypatch):
+    # given
+    board(store, *cards())
+    s = mcp_settings()
+    written = []
+    real = store.add_action
+    monkeypatch.setattr(store, 'add_action', lambda action, *a, **k: written.append(dict(action)) or real(action, *a, **k))
+    monkeypatch.setattr(store, 'set_action_fields', lambda *a, **k: pytest.fail('the source is not patched in after the insert'))
+
+    # when
+    with mcp_client(store, s) as c:
+        said, failed = call(c, token(), 'take_card', {'card': 14, 'ticket': 'OPS-146'})
+
+    # then
+    assert not failed and '#14' in said
+    assert [(a['type'], a['via'], a['requestedBy']) for a in written] == [('take', 'mcp', NINA)]
+    assert store.list_actions(None, 10)[0]['via'] == 'mcp'
+
+
 def test_list_and_get_cards_read_like_the_page(store: Store):
     # given
     board(store, *cards())

@@ -85,7 +85,7 @@ function updateText(a) {
   return t.join(' ') || 'Update: ';
 }
 var AUTO_BY = 'auto · Claude draft';
-function autoSentBy(drafted) { var t = String(drafted == null ? '' : drafted), label = isTokenActor(t) && t !== 'token:bootstrap' ? tokenActorLabel(t, '') : ''; return (t === 'server' ? brandName() : label || 'Investigator') + ' \u00b7 auto-sent'; }
+function autoSentBy(drafted) { var t = String(drafted == null ? '' : drafted), label = isTokenActor(t) && t !== 'token:bootstrap' ? tokenActorLabel(t, '') : ''; return (t === 'server' ? brandName() : label || investigatorName()) + ' \u00b7 auto-sent'; }
 function draftBy(by, drafted) { return isTokenActor(by) ? tokenActorLabel(by, 'Investigator') : !by || isInvestigatorBy(by) ? investigatorName() : by === AUTO_BY ? autoSentBy(drafted) : String(by).split('@')[0]; }
 function autoArmed(x) {
   var s = x.autoSend, d = draftOf(x);
@@ -444,7 +444,7 @@ function body(a, recShown, i) {
   var kids = (KIDS[a.key] || []).map(function (c) {
     var ck = (SEV[c.sev] || SEV.info)[1];
     var said = c.business && c.business.text ? '<span class="kid-todo"><b>' + bizLead(c.business) + ':</b> ' + esc(c.business.text) + '</span>' : '';
-    return '<li class="' + ck + '"><div class="k1">' + sev(c.sev) + '<b>' + esc(c.svc) + '</b><span>' + esc(c.label) + (c.sub ? ' \u00b7 ' + esc(c.sub) : '') + '</span>' + numLink(c) + pageLink(c) + (c.status === 'cleared' ? '<span class="tag plain">' + (eventCause(c) ? 'stopped after the event' : 'cleared') + '</span>' : '') + '</div>' +
+    return '<li class="' + ck + '"><div class="k1">' + sev(c.sev) + '<b>' + esc(c.svc) + '</b><span>' + esc(c.label) + (c.sub ? ' \u00b7 ' + esc(c.sub) : '') + '</span>' + numLink(c) + pageLink(c) + (c.status === 'cleared' ? '<span class="tag plain">' + (eventCause(c) ? 'stopped after the event' : 'stopped firing') + '</span>' : '') + '</div>' +
       (c.what ? '<span class="kid-what">' + linkify(c.what) + '</span>' : '') + said +
       '<span class="kv">now <b>' + num(c.now, c.unit) + '</b> · 1 d ' + num(c.d1, c.unit) + ' · 7 d ' + num(c.d7, c.unit) + '</span>' + linksHtml(c.links, 2) + '<span class="keyline">' + esc(c.key) + '</span></li>';
   }).join('');
@@ -479,14 +479,15 @@ function recurringTag(a) {
   var tip = 'Fired ' + a.recurringCount + ' times in the last ' + (a.recurringDays || 7) + ' days (this one included) and no Jira ticket owns it; the investigator is asked to recommend one. Create task opens it.';
   return '<span class="tag k-warn recurring" title="' + esc(tip) + '">Recurring ×' + esc(a.recurringCount) + '</span>';
 }
-function clearedWord(a) { return eventCause(a) ? 'Stopped after the event' : 'Cleared'; }
+function clearedWord(a, short) { return eventCause(a) ? 'Stopped after the event' : short || !awaitingReview(a) ? 'Stopped firing' : 'Stopped firing \u00b7 awaiting review'; }
+function awaitingReview(a) { return a.status === 'cleared' && !a.muted && !done(a) && (a.sev === 'warn' || a.sev === 'crit'); }
 function causeHtml(a) {
   var c = causeOf(a);
   return c ? '<p class="rec-line cause-line">Cause: ' + (c.kind === 'event' ? 'an event' : 'recurring') + ' \u00b7 <span data-no-tx>' + esc(c.what) + '</span></p>' : '';
 }
 function statusTag(a) {
   if (a.muted) return '<span class="spill k-muted">Muted</span>';
-  if (a.status === 'cleared') return '<span class="spill k-cleared">' + clearedWord(a) + '</span>';
+  if (a.status === 'cleared') return '<span class="spill k-cleared">' + clearedWord(a, true) + '</span>';
   return '<span class="spill">Open</span>';
 }
 function ageShort(iso) {
@@ -1174,7 +1175,7 @@ function paintAnoms() {
   if (filter === 'progress' || filter === 'all') g('progress', TRI.progress[0], 'a ticket or hand-off is underway; pushes again only if it doubles or gets worse. A card with a Jira ticket stays until the ticket closes, one with free text drops off 24 hours after it cleared', TRI.progress[1], inprog);
   if (filter === 'taken' || filter === 'all') g('taken', 'Action taken', 'no action needed; pushes again only if it doubles or gets worse, and comes back under Open when it stops and fires again. Drops off 24 hours after it cleared or was resolved, whichever is later', 'k-good', taken);
   if (filter === 'muted' || filter === 'all') g('muted', 'Muted', 'no pushes while the mute lasts, open or already cleared; unmute to get them again', 'k-muted', muted);
-  if (filter === 'cleared' || filter === 'all') g('cleared', 'Cleared · no action needed', 'the signal went back to normal and nothing needs doing (info or muted); drops off 24 hours after it cleared', 'k-cleared', filter === 'all' ? cleared.filter(function (a) { return muted.indexOf(a) < 0; }) : cleared);
+  if (filter === 'cleared' || filter === 'all') g('cleared', 'Stopped firing \u00b7 no action needed', 'the signal went back to normal and nothing needs doing (info or muted); drops off 24 hours after it cleared', 'k-cleared', filter === 'all' ? cleared.filter(function (a) { return muted.indexOf(a) < 0; }) : cleared);
   if (filter === 'archived') g('archived', 'Archived', 'cards that are not firing (or are muted) and had no change for ' + archiveHours() + ' hours (Admin \u203a Settings, Archive after); they show nowhere else', 'k-cleared', ARCHIVED, 'Nothing archived.');
   if (filter === 'recurring') g('recurring', 'Recurring', 'cards that keep coming back with no Jira ticket on them, whatever their status: open a ticket with Create task, or Take one that exists', 'k-warn', recurringL, 'No recurring cards.');
   if (TRI[filter] && (filter === 'investigating' || filter === 'dived')) g(filter, TRI[filter][0], 'open, muted and cleared', TRI[filter][1], A.filter(function (a) { return a.triage === filter; }));

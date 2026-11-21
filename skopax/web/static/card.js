@@ -94,7 +94,7 @@
     if (c.cause && c.cause.what && (c.cause.kind === 'event' || c.cause.kind === 'recurring')) parts.push('<p class="cause">Cause: ' + (c.cause.kind === 'event' ? 'an event' : 'recurring') + ' \u00b7 <span data-no-tx>' + esc(c.cause.what) + '</span></p>');
     if (c.now != null) parts.push('<p class="nums">Now ' + esc(amount(c.now, c.unit)) + (c.d1 != null ? ' \u00b7 yesterday ' + esc(amount(c.d1, c.unit)) : '') + (c.d7 != null ? ' \u00b7 last week ' + esc(amount(c.d7, c.unit)) : '') + '</p>');
     if (c.note && c.note.text) parts.push('<h3>Investigation \u00b7 ' + esc(when(c.note.at)) + '</h3><p data-no-tx>' + esc(c.note.text) + '</p>');
-    if (c.clearNote && c.clearNote.text) parts.push('<h3>Cleared \u00b7 <span data-no-tx>' + esc(isInvestigatorBy(c.clearNote.by) ? investigatorName() : c.clearNote.by || '') + '</span> \u00b7 ' + esc(when(c.clearNote.at)) + '</h3><p data-no-tx>' + esc(c.clearNote.text) + '</p>');
+    if (c.clearNote && c.clearNote.text) parts.push('<h3>Stopped firing \u00b7 <span data-no-tx>' + esc(isInvestigatorBy(c.clearNote.by) ? investigatorName() : c.clearNote.by || '') + '</span> \u00b7 ' + esc(when(c.clearNote.at)) + '</h3><p data-no-tx>' + esc(c.clearNote.text) + '</p>');
     if ((c.suspects || []).length) parts.push('<h3>Suspects</h3><ul data-no-tx>' + c.suspects.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>');
     if (c.recommend) parts.push('<h3>Recommended step</h3><p data-no-tx>' + esc(c.recommend) + '</p>');
     parts.push('<p class="key" data-no-tx>' + esc(c.key || '') + '</p>');

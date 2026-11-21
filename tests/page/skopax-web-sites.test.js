@@ -83,6 +83,60 @@ async function theWebSitesSettingShowsTheBuiltInListWithYourDomainFirstAndMarksT
   console.log('PASS the Web sites setting lists the built-in sites, your domain first, and marks the ones left out with -host');
 }
 
+const HOST_ITEMS = {kind: 'web-host', separator: ',', pattern: '(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}', flags: 'i', strip: '', why: 'not a host name such as support.google.com; a host covers its subdomains', minus: true, keywords: ['any', 'off', 'none', 'false', 'no']};
+
+async function theWebSitesSettingUsesTheChipEditorAndKeepsTheBuiltInListAndDashRemoval() {
+  //given
+  const {w, doc, errors} = await boot([entry('investigate.web-domains', 'Web sites', {value: '-blog.google, example.org', builtIn: BUILT, ownDomains: ['example.com'], items: HOST_ITEMS})]);
+  const r = row(doc, 'investigate.web-domains');
+  const typed = () => [...r.querySelectorAll('.adm-chips li.adm-chip')];
+  const built = () => [...r.querySelectorAll('.adm-built .adm-chip')];
+  const text = r.querySelector('.adm-in');
+  const entryBox = r.querySelector('.adm-chip-in');
+
+  //then
+  assert.ok(r.querySelector('.adm-chips') && entryBox && text.hidden, 'the chip editor replaces the text field');
+  assert.deepStrictEqual(typed().map((c) => c.querySelector('.adm-chip-t').textContent), ['-blog.google', 'example.org']);
+  assert.ok(typed().every((c) => !c.classList.contains('bad')), 'a dash host is a valid chip');
+  assert.deepStrictEqual(built().filter((c) => c.classList.contains('removed')).map((c) => c.textContent), ['blog.google'], 'the built-in list still marks what is left out');
+
+  //when
+  entryBox.value = '-kubernetes.io';
+  entryBox.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
+  entryBox.value = '-bad_host';
+  entryBox.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
+  entryBox.value = 'localhost';
+  entryBox.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
+
+  //then
+  assert.deepStrictEqual(built().filter((c) => c.classList.contains('removed')).map((c) => c.textContent), ['blog.google', 'kubernetes.io'], 'the marks follow the chips');
+  assert.strictEqual(typed().filter((c) => c.classList.contains('bad')).length, 2, 'a dash before a bad host and a one-word host stay invalid');
+  assert.strictEqual(text.value, '-blog.google, example.org, -kubernetes.io, -bad_host, localhost', 'the saved text keeps the comma-separated form');
+
+  //when
+  const word = (name) => [...r.querySelectorAll('.adm-chip-word')].find((b) => b.dataset.word === name);
+  word('off').click();
+
+  //then
+  assert.deepStrictEqual(typed().map((c) => c.querySelector('.adm-chip-t').textContent), ['off'], 'a keyword replaces the list');
+  assert.strictEqual(text.value, 'off');
+  assert.deepStrictEqual(built().filter((c) => c.classList.contains('removed')), [], 'and no built-in site is marked left out');
+
+  //when
+  entryBox.value = 'example.net';
+  entryBox.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
+  entryBox.value = 'ANY';
+  entryBox.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
+  entryBox.value = 'example.net';
+  entryBox.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
+
+  //then
+  assert.strictEqual(text.value, 'example.net', 'adding a host removes a keyword, even typed in capitals');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS the Web sites setting uses the chip editor, keeps the built-in list and accepts -host chips');
+}
+
 async function aboutYourCompanyIsAnEightRowBoxThatResizesBothWays() {
   //given
   const {w, doc, errors} = await boot([entry('core.org-about', 'About your company', {limit: 2000, lines: 8})]);
@@ -101,6 +155,7 @@ async function aboutYourCompanyIsAnEightRowBoxThatResizesBothWays() {
 
 (async () => {
   await theWebSitesSettingShowsTheBuiltInListWithYourDomainFirstAndMarksTheOnesYouLeftOut();
+  await theWebSitesSettingUsesTheChipEditorAndKeepsTheBuiltInListAndDashRemoval();
   await aboutYourCompanyIsAnEightRowBoxThatResizesBothWays();
   process.exit(0);
 })().catch((e) => { console.error('FAIL ' + (e && e.stack || e)); process.exit(1); });

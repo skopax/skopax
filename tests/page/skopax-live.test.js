@@ -345,8 +345,8 @@ async function cardsCollapseToOneRow() {
   assert.ok(c(CART).querySelector('.inc-title .slack-rec.not-posted'));
   assert.deepStrictEqual(restTags(CART), [], 'nothing else to show for cart');
   assert.strictEqual(rowTags(MUTED)[0], 'Muted', 'Muted before Cleared');
-  assert.deepStrictEqual(restTags(MUTED).map((t) => t.replace(/\d{1,2} [A-Z][a-z]{2} \d\d:\d\d/, 'D Mon HH:MM')), ['Cleared D Mon HH:MM']);
-  assert.match(rowTags(CLEARED)[0], /^Cleared \d{1,2} [A-Z][a-z]{2} \d\d:\d\d$/, 'the cleared time carries its day');
+  assert.deepStrictEqual(restTags(MUTED).map((t) => t.replace(/\d{1,2} [A-Z][a-z]{2} \d\d:\d\d/, 'D Mon HH:MM')), ['Stopped firing D Mon HH:MM'], 'a muted card reads the short words with its time');
+  assert.match(rowTags(CLEARED)[0], /^Stopped firing \d{1,2} [A-Z][a-z]{2} \d\d:\d\d$/, 'the cleared time carries its day');
   assert.ok(c(ORDERS).querySelector('.rec-line') && !inCard(c(ORDERS), c(ORDERS).querySelector('.rec-line')), 'the Next line is in the panel too');
   assert.ok(!c(ORDERS).querySelector('.acts').hidden && inCard(c(ORDERS), c(ORDERS).querySelector('.acts button.icon')), 'action icons stay on the collapsed row');
 
@@ -440,7 +440,7 @@ async function anomalyFiltersInTheSideMenu() {
   assert.ok(sub.closest('#tabs') && sub.previousElementSibling.contains(foldBtn) && sub.previousElementSibling.querySelector('.filters-l').textContent === 'Anomaly filters', 'the filters lead the side menu under their own heading, the arrow beside it');
   assert.deepStrictEqual(items().map((b) => b.dataset.f), ['all', 'open', 'crit', 'warn', 'progress', 'taken', 'muted', 'cleared', 'archived', 'closed'], 'All first, then status, with Open split by severity right under it; Lists; Triage only when above 0');
   assert.deepStrictEqual([...sub.querySelectorAll('.tab-sub-g')].map((g) => (g.querySelector('.tab-sub-l') || {textContent: ''}).textContent.replace(/\s*\d+$/, '')), ['', 'Lists', 'Assignee', 'Tags', 'Types'], 'four groups: status (severity nested under Open), Lists, the business tags and the card types (with their count)');
-  assert.deepStrictEqual(items().map((b) => b.querySelector('.lbl').textContent), ['All', 'Open', 'Critical', 'Warning', 'In progress', 'Action taken', 'Muted', 'Cleared', 'Archived', 'Closed'], 'short labels');
+  assert.deepStrictEqual(items().map((b) => b.querySelector('.lbl').textContent), ['All', 'Open', 'Critical', 'Warning', 'In progress', 'Action taken', 'Muted', 'Stopped firing', 'Archived', 'Closed'], 'short labels');
   assert.deepStrictEqual(['taken', 'muted', 'cleared', 'all', 'crit', 'warn'].map((f) => kOf(item(f))), ['k-good', 'k-muted', 'k-cleared', 'k-act', 'k-crit', 'k-warn'], 'with their colours');
   assert.deepStrictEqual(['open', 'progress', 'taken', 'muted', 'cleared', 'all'].map((f) => item(f).querySelector('.count').textContent), ['3', '1', '1', '0', '1', '6'], 'Open counts the stopped card nobody acted on too, as the board does');
   assert.ok(item('crit').classList.contains('zero') && item('muted').classList.contains('zero') && !item('warn').classList.contains('zero'), 'a zero count is faded');
@@ -448,7 +448,7 @@ async function anomalyFiltersInTheSideMenu() {
   assert.ok(!doc.getElementById('filters') && !doc.getElementById('anom-chips') && !doc.getElementById('sev-chips') && !doc.getElementById('tri-chips') && !doc.querySelector('#panel-anoms .seg'), 'no chips row on the Anomalies tab any more');
   assert.strictEqual(note().textContent, 'Showing Open3Filters', 'one small line names the filter and its count');
   assert.ok(!doc.getElementById('clear-all'), 'no way back needed on All');
-  assert.match(note().title, /^2 warning \u00b7 1 in progress \u00b7 1 action taken \u00b7 1 cleared/, 'the line tooltip counts every bucket: ' + note().title);
+  assert.match(note().title, /^2 warning \u00b7 1 in progress \u00b7 1 action taken \u00b7 1 stopped firing/, 'the line tooltip counts every bucket: ' + note().title);
   const rules = [...doc.styleSheets].flatMap((sh) => [...sh.cssRules]);
   assert.ok(rules.some((r) => r.selectorText === '.tab-sub[hidden]' && r.style.getPropertyValue('display') === 'none'), 'a folded sub menu takes no space');
   const narrow = rules.filter((r) => r.cssRules && /max-width: 900px/.test(r.conditionText || (r.media && r.media.mediaText) || '')).flatMap((r) => [...r.cssRules]);
@@ -554,7 +554,7 @@ async function datesReadAsDayAndEnglishMonth() {
   const shown = doc.getElementById('anoms').textContent + doc.getElementById('hist').textContent;
 
   //then
-  assert.match(tag, /^Cleared 23 Oct \d{2}:\d{2}$/, 'a card cleared on another day reads day + English month: ' + tag);
+  assert.match(tag, /^Stopped firing \u00b7 awaiting review 23 Oct \d{2}:\d{2}$/, 'a card cleared on another day reads day + English month: ' + tag);
   assert.match(event, /^23 Oct \d{2}:\d{2}$/, 'so does the Events tab: ' + event);
   assert.ok(/\d (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/.test(shown), 'English short months on the cards or events');
   assert.ok(!/\d{1,2}\.\d{2}\b/.test(event), 'never "23.10"');

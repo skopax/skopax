@@ -272,7 +272,7 @@ def test_slack_not_configured_is_silent(store: Store, caplog):
         sent = routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
 
     # then
-    assert sent == 1 and fake.said == [] and caplog.text == ''
+    assert sent == 1 and fake.said == [] and [r.getMessage() for r in caplog.records if 'teams.min-sev info is retired' not in r.getMessage()] == []
 
 
 def two_pods(store: Store, fa: Fake | None = None, fb: Fake | None = None):

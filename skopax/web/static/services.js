@@ -46,7 +46,7 @@ function svcTip(s) {
 function svcCards(s) {
   var own = function (a) { return healthCard(a) && ownedBy(a, s); };
   var held = function (a) { return own(a) || (KIDS[a.key] || []).some(own); };
-  var tiers = [['open', open.filter(own)], ['stopped, not addressed', stale.filter(held), 'k-warn'], ['in progress, action taken or muted', inprog.concat(taken).concat(muted).filter(held), 'k-good'], ['cleared', cleared.filter(held), 'k-cleared']];
+  var tiers = [['open', open.filter(own)], ['stopped, not addressed', stale.filter(held), 'k-warn'], ['in progress, action taken or muted', inprog.concat(taken).concat(muted).filter(held), 'k-good'], ['stopped firing', cleared.filter(held), 'k-cleared']];
   for (var i = 0; i < tiers.length; i++) {
     var list = tiers[i][1].sort(bySevOrd);
     if (list.length) return {tier: tiers[i][0], list: list, k: tiers[i][2] || (SEV[list[0].sev] || SEV.info)[1]};

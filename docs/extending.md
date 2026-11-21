@@ -75,7 +75,7 @@ The example carries a copy of the Apache License 2.0. `license-files = ["LICENSE
 
 Skopax is not published to a package index; only its images are. A plug-in in a repository of its own runs its tests against a clone of Skopax at the release it targets, next to the plug-in's folder. From the plug-in's folder:
 
-    git clone --branch v0.4.6 https://github.com/skopax/skopax ../skopax
+    git clone --branch v0.4.7 https://github.com/skopax/skopax ../skopax
     (cd ../skopax && uv sync --frozen)
     PYTHONPATH=../skopax:. ../skopax/.venv/bin/python -m pytest -q tests
 
@@ -87,7 +87,7 @@ The Skopax image is distroless, so it has no `pip` and no shell. Install the plu
 
 ```dockerfile
 ARG BASE_IMAGE=ghcr.io/skopax/skopax
-ARG SKOPAX_VERSION=0.4.6
+ARG SKOPAX_VERSION=0.4.7
 
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS build
 
@@ -102,7 +102,7 @@ COPY --from=build /plugins /usr/local/lib/python3.15/site-packages/
 ```
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.4.6 -t skopax-hello examples/hello-plugin
+docker build --build-arg SKOPAX_VERSION=0.4.7 -t skopax-hello examples/hello-plugin
 ```
 
 - `BASE_IMAGE` (default `ghcr.io/skopax/skopax`) names the Skopax image to build on, for example a mirror or your own registry. `SKOPAX_VERSION` (default: the current release) picks its tag.
@@ -291,6 +291,8 @@ A proposal is confirmed in these steps:
 3. `confirm` returns a dict with a bool `ok` and a str `summary`. Anything else, or an error, counts as a failure. The summary is kept as printable text of at most 300 characters.
 4. `confirm` gets 30 seconds. After that the outcome is timed out. A timed-out or failed result says the action may or may not have happened and that someone should check it, because a proposal is confirmed only once.
 5. The result shows under the proposal and in the Slack thread, and goes to the activity log. On the page it is headed by its outcome: confirmed, failed, timed out, or declined when `confirm` answered with `ok` false. A result that is not ok carries its summary into the activity line, and Activity > Events marks that line.
+
+A read tool that refuses raises `ReadError(status, message)`. The model sees the message with known secret shapes masked, cut at 300 characters by default. A refusal that needs more room, such as one that lists the allowed paths, passes it as `ReadError(status, message, room=600)`; the room is capped at 800 characters, and a room that is not a positive whole number counts as the default.
 
 A tool may return a picture for the model: a dict with `image` (`media_type` `image/jpeg` or `image/png`, and `data` in base64), an optional `text` and optional `facts`. Core refuses a picture over 3 MB or past `screenshot.max-per-day`, stores it with the run and hands the model the picture and the text. Mark such a tool `image=True`, so the daily cap is checked before it runs.
 

@@ -13,6 +13,7 @@ from skopax.actors import SYSTEM
 from skopax.cardlink import card_url, chat_url
 from skopax.engine import mute_for, parse_iso, window_text
 from skopax.errkind import kind as error_kind
+from skopax.messages import language
 from skopax.slack import CALL_TIMEOUT_S, POST_ACTIONS, Slack, SlackDown, SlackError, SlackSlowed, anomaly_message, menu_kinds, status_of
 from skopax.store import NotFound, Store, glob_match, iso, utc_now
 
@@ -32,6 +33,7 @@ GONE_RETRY_S = 86400
 WORKER = 'slack-card-posts'
 MENU_LABEL = 'Take, Resolve and Known noise on the Slack post'
 REDRAW_MARK = 'slack-redraw-0-4-6'
+DRAW_VERSION = 2
 REDRAW_CAP = 500
 REDRAW_GAP_S = 1.2
 REDRAW_TRIES = 3
@@ -43,7 +45,7 @@ def auto_head(row: dict):
     hours = row.get('hours')
     if not isinstance(hours, (int, float)) or isinstance(hours, bool) or hours <= 0:
         return 'resolved'
-    span = window_text(int(hours), business=bool(row.get('businessTime')))
+    span = window_text(int(hours), words='notes.window.business_') if row.get('businessTime') else window_text(int(hours))
     return {'kind': 'auto_first' if row.get('since') == 'first' else 'auto', 'span': span}
 
 
@@ -60,7 +62,7 @@ def mute_kind(mute: dict | None) -> str | None:
 
 
 def drawn_sig(card: dict, mute: str | None) -> str:
-    shown = [status_of(card, mute), card.get('sev'), card.get('owner') or '', sorted(t for t in tags.ids(card) if t in tags.all_tags()), card.get('firstSeen') or '']
+    shown = [status_of(card, mute), card.get('sev'), card.get('owner') or '', sorted(t for t in tags.ids(card) if t in tags.all_tags()), card.get('firstSeen') or '', DRAW_VERSION, language()]
     return hashlib.sha1(json.dumps(shown, default=str).encode()).hexdigest()[:16]
 
 
@@ -167,7 +169,17 @@ class CardPosts:
     def refresh(self, key: str) -> None:
         self._add(Job(lambda card, keys, mute: card['key'] == key, lambda card: None))
 
+    def redrawing(self) -> bool:
+        try:
+            run = self.store.redraw_status()
+            return bool(run.get('running')) and parse_iso(str(run.get('heartbeat') or '')) > self.clock() - REDRAW_STALE_S
+        except Exception:
+            return False
+
     def reconcile(self) -> None:
+        if self.redrawing():
+            return
+
         def stale(card: dict, keys: frozenset, mute: str | None) -> bool:
             post = card['slackPost']
             drawn = post.get('drawn') or {}
@@ -363,7 +375,7 @@ class CardPosts:
     def redraw_status(self) -> dict:
         return self.store.redraw_status()
 
-    def redraw_start(self, cap: int = REDRAW_CAP, on_done: Callable[[dict], None] | None = None) -> bool:
+    def redraw_start(self, cap: int = REDRAW_CAP, on_done: Callable[[dict], None] | None = None, stale_only: bool = False) -> bool:
         holder = uuid.uuid4().hex
         try:
             if not self.store.redraw_claim(holder, iso(utc_now() - dt.timedelta(seconds=REDRAW_STALE_S))):
@@ -373,7 +385,7 @@ class CardPosts:
             return False
 
         def work() -> None:
-            result = self.redraw(cap, holder)
+            result = self.redraw(cap, holder, stale_only)
             if on_done is not None:
                 try:
                     on_done(result)
@@ -383,7 +395,7 @@ class CardPosts:
         threading.Thread(target=work, name='slack-redraw', daemon=True).start()
         return True
 
-    def redraw(self, cap: int = REDRAW_CAP, holder: str | None = None) -> dict:
+    def redraw(self, cap: int = REDRAW_CAP, holder: str | None = None, stale_only: bool = False) -> dict:
         own = holder is None
         holder = holder or uuid.uuid4().hex
         if own:
@@ -404,7 +416,7 @@ class CardPosts:
             rows = rows[:max(int(cap), 0)]
             self.store.redraw_progress(holder, total=len(rows))
             for index, (_, _, key, ts) in enumerate(rows):
-                got = self._redraw_row(key, ts)
+                got = self._redraw_row(key, ts, stale_only)
                 if got is None:
                     return self._redraw_end(holder, redrawn, skipped + len(rows) - index, 'slow')
                 redrawn += got
@@ -419,7 +431,7 @@ class CardPosts:
             log.warning('the Slack redraw stopped: %s', error_kind(e))
             return self._redraw_end(holder, redrawn, skipped, 'failed')
 
-    def _redraw_row(self, key: str, ts: str) -> int | None:
+    def _redraw_row(self, key: str, ts: str, stale_only: bool = False) -> int | None:
         now = self.clock()
         try:
             card = self.store.anomaly(key)
@@ -431,6 +443,8 @@ class CardPosts:
             return 0
         mute = mute_kind(mute_for(state, key, now))
         head = self._redraw_head(card, post, mute)
+        if stale_only and head is None and (post.get('drawn') or {}).get('sig') == drawn_sig(card, mute):
+            return 0
         for attempt in range(REDRAW_TRIES):
             self._tl.slow = 0.0
             got = self._rewrite(card, post, head, mute)

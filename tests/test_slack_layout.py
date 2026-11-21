@@ -656,10 +656,10 @@ def test_an_auto_sent_post_says_who_drafted_its_body():
 
     # then
     assert bar_of(server)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 Skopax \u00b7 auto-sent'
-    assert bar_of(investigator)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 Investigator \u00b7 auto-sent'
+    assert bar_of(investigator)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 Claude investigator \u00b7 auto-sent'
     assert bar_of(token)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 release-bot \u00b7 auto-sent'
-    assert bar_of(unnamed)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 Investigator \u00b7 auto-sent'
-    assert bar_of(core)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 Investigator \u00b7 auto-sent'
+    assert bar_of(unnamed)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 Claude investigator \u00b7 auto-sent'
+    assert bar_of(core)[0] == f'Open \u00b7 Warning \u00b7 {SINCE} \u00b7 Claude investigator \u00b7 auto-sent'
     assert bar_of(person)[0] == f'Open \u00b7 Warning \u00b7 {SINCE}', 'a person who shares it is named in the headline'
 
 

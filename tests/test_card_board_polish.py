@@ -6,6 +6,7 @@ from pymongo.errors import PyMongoError
 
 from tests.conftest import AUTH, anomaly, state
 from tests.test_tag_responsibles import ROLE, app_client, signed_in
+from skopax import store as store_module
 from skopax.store import TAG_HUE_NAMES, Store
 
 KEY = 'log|checkout-service|ERROR|boom'
@@ -119,3 +120,33 @@ def test_tag_colours_fall_back_to_none_with_one_warning_when_mongo_fails(store: 
     assert got == {}
     warned = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warned) == 1 and 'tag colours' in warned[0].getMessage()
+
+
+def test_tag_colours_warn_once_a_minute_while_mongo_stays_down(store: Store, caplog, monkeypatch):
+    # given
+    class Down:
+        def find(self, *a, **k):
+            raise PyMongoError('down')
+    real = store.db
+    class Db:
+        def __getitem__(self, name):
+            return Down() if name == 'tag_colors' else real[name]
+        def __getattr__(self, name):
+            return getattr(real, name)
+    store.db = Db()
+    now = [1000.0]
+    monkeypatch.setattr(store_module.time, 'monotonic', lambda: now[0])
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        results = [store.tag_colors()]
+        now[0] += 30
+        results += [store.tag_colors(), store.tag_colors()]
+        quiet = len([r for r in caplog.records if 'tag colours' in r.getMessage()])
+        now[0] += 31
+        results.append(store.tag_colors())
+
+    # then
+    assert results == [{}, {}, {}, {}]
+    assert quiet == 1, 'one warning for the first minute'
+    assert len([r for r in caplog.records if 'tag colours' in r.getMessage()]) == 2, 'and the next one a minute later'

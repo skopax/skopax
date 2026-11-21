@@ -89,7 +89,7 @@ from skopax.push import Pusher, push_users
 from skopax.redact import redact
 from skopax.scheduler import Job, Scheduler
 from skopax.settle import Settle, ignore_doc, ignored
-from skopax.slackevents import Clicks, Intake, Listener, Replier, TicketRefused, socket_client
+from skopax.slackevents import Clicks, Intake, Listener, Replier, TicketRefused, socket_client, way_in
 from skopax.clearnotes import ClearNotes
 from skopax.notices import Notices
 from skopax.versioncheck import OFFSET_S as VERSION_OFFSET, PERIOD_S as VERSION_PERIOD, START_DELAY_S as VERSION_START_DELAY, VersionCheck, jitter_of
@@ -120,7 +120,7 @@ from skopax.aikey import AiKey, AiKeys, InvalidKey, TestBusy
 from skopax.remote import Transport
 from skopax.sessions import LOGIN_KIND, SESSION_KIND, Sessions, User, role_at_least, session_secret
 from skopax.roles import Resolvers, role_map
-from skopax.signin import Refused, SignIn
+from skopax.signin import Refused, SignIn, domain_refused
 from skopax import ssobutton
 from skopax.ssoicon import ICON_MAX as SSO_ICON_MAX, IconRefused, SsoIcon, check as icon_check
 from skopax.sso import FIELDS as SSO_FIELDS, SECRET_FIELD as SSO_SECRET_FIELD, SECRET_ID as SSO_SECRET_ID, SECRET_MAX as SSO_SECRET_MAX, InvalidSecret, SignOn, SourceOwned as SecretOwned, SsoConfig, SsoHttp, SsoSecret, TestBusy as SsoTestBusy
@@ -195,6 +195,8 @@ PAGE_ASK_SOURCES = ('page', 'api')
 ACCESS_KIND = 'access'
 ADMIN_KIND = 'admin'
 REDRAW_START_DELAY_S = 30
+LANGUAGE_WAIT_S = 120
+LANGUAGE_POLL_S = 5
 REDRAW_MARK_STALE_S = 1800
 BROWSER_MOVE_MARK = 'browser-move'
 TEST_TIMEOUT_S = 15
@@ -548,6 +550,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     select.use_own_findings(registry.own_findings)
     outbound = [base_settings.language]
     writing: list[dict[str, str]] = [{}]
+    languages_loaded = [False]
+    booted_at = clock()
+
+    def languages_ready() -> bool:
+        return languages_loaded[0] or clock() - booted_at >= LANGUAGE_WAIT_S
+
     language_state: dict = {'warned': None}
     messages.use_language(lambda: outbound[0])
     prompt.use_writing(lambda: writing[0])
@@ -1017,7 +1025,20 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise TicketRefused(e.text) from None
 
     proposals = Proposals(store, runtime)
-    clicks = Clicks(store, slack, operators, apply_from_slack, jira_site, on=lambda: features.on('slack-listener') and slack.enabled, confirm=proposals.confirm)
+
+    def slack_way_in(slack_user: str) -> str:
+        if operators_lookup is not None:
+            return ''
+        email = operators.email_of(slack_user)
+        if not email:
+            return ''
+        doc = signin.users.get(email)
+        closed = bool(doc.get('disabled')) if doc is not None else domain_refused(email, settings)
+        mapped = bool(settings.sso_role_map) or bool(runtime.role_resolvers_named()) or (doc is not None and doc.get('roleFrom') in IDP_SOURCES)
+        return way_in(bool(settings.sso_on), doc is not None, base_url, added_only=settings.sso_new_accounts == 'added-only', viewer_default=settings.sso_default_role != 'operator',
+                      mapped=mapped, closed=closed)
+
+    clicks = Clicks(store, slack, operators, apply_from_slack, jira_site, on=lambda: features.on('slack-listener') and slack.enabled, confirm=proposals.confirm, way_in=slack_way_in)
     listen_mode = settings.slack_listen
     listener: Listener | None = None
 
@@ -1174,7 +1195,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             log.warning('the Slack scope check was not stored: %s', kind(e))
 
     def slack_posts_run(now: float) -> None:
-        card_posts.reconcile()
+        if languages_ready():
+            card_posts.reconcile()
         check_slack_scopes()
         results = slack_posts_pass(store.load().get('anomalies') or [], now)
         if results[0].found or store.open_cards_of(SLACK_POSTS):
@@ -1240,6 +1262,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         locales = core + added
         trees = core_locales.chainlit_trees(core, added)
         messages.set_catalogs([(locale.lang, locale.messages) for locale in locales])
+        languages_loaded[0] = True
         set_chat_texts([(locale.lang, locale.chat) for locale in locales], trees)
         chatui.set_translations(trees)
         writing[0] = {locale.lang: locale.writing for locale in locales if locale.writing}
@@ -1524,7 +1547,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
         async def redraw_later() -> None:
             await asyncio.sleep(REDRAW_START_DELAY_S)
-            await asyncio.to_thread(redraw_at_start)
+            while not await asyncio.to_thread(redraw_at_start):
+                await asyncio.sleep(LANGUAGE_POLL_S)
 
         redrawing = asyncio.create_task(redraw_later())
 
@@ -3650,13 +3674,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 store.add_activity('slack', by, msg('slack.redrawn', count=result['redrawn']))
         return done
 
-    def redraw_at_start() -> None:
+    def redraw_at_start() -> bool:
+        if not languages_ready():
+            return False
         try:
             if not slack.enabled or not store.begin_once(REDRAW_MARK, iso(utc_now() - dt.timedelta(seconds=REDRAW_MARK_STALE_S))):
-                return
-            card_posts.redraw_start(on_done=lambda result: (redrawn('server')(result), store.finish_once(REDRAW_MARK) if result.get('result') == 'done' else None))
+                return True
+            card_posts.redraw_start(on_done=lambda result: (redrawn('server')(result), store.finish_once(REDRAW_MARK) if result.get('result') == 'done' else None), stale_only=True)
         except Exception as e:
             log.warning('the redraw of the old Slack posts did not start: %s', kind(e))
+        return True
+
+    app.state.redraw_at_start = redraw_at_start
 
     @app.get('/api/admin/slack-redraw')
     def get_admin_slack_redraw(by: Annotated[str, Depends(require_admin)]) -> dict:
@@ -4158,7 +4187,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         return board
 
     mcp_bridge = mcpserver.Bridge(store=store, settings=settings, chat=lambda by, text, chat_id, cards, role: chat_post(by, text, chat_id, cards, via=mcpserver.MCP, role=role), chat_view=chat_view,
-                                  act=post_action, assign=assigner.assign, card_view=card_view, board=investigator_board,
+                                  act=lambda body, by: add_action(body, by, via=mcpserver.MCP), assign=assigner.assign, card_view=card_view, board=investigator_board,
                                   kick=lambda: investigator.kick(time.time()) if investigator.enabled else None, chat_used=chat_used, base=base_url, feature_on=features.on, registry=registry, plugin_on=plugin_state.enabled)
     mcp_manager = mcpserver.mount(app, mcp_bridge, mcp_auth, on=lambda: features.on('mcp'))
 

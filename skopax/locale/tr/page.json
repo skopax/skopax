@@ -41,7 +41,7 @@
   "Unassigned": "Atanmamış",
   "Tags": "Etiketler",
   "Types": "Türler",
-  "Cleared · no action needed": "Normale döndü · aksiyon gerekmiyor",
+  "Stopped firing · no action needed": "Sinyal durdu · aksiyon gerekmiyor",
   "Investigate": "İncele",
   "Assign": "Ata",
   "Assign to me": "Bana ata",
@@ -65,6 +65,7 @@
   "Re-assess": "Yeniden değerlendir",
   "Resolve": "Çözüldü",
   "Take": "Üstlen",
+  "Takes": "Aldıkları",
   "Start progress": "İşe başla",
   "Started": "Başlandı",
   "Starting…": "Başlanıyor…",
@@ -244,7 +245,8 @@
   "Chat message": "Sohbet mesajı",
   "Checks every image change of the last {0} h": "Son {0} sa içindeki her image değişikliğini kontrol eder",
   "Choose…": "Seç…",
-  "Cleared {0} {M} {1}": "Normale döndü {0} {M} {1}",
+  "Stopped firing · awaiting review {0} {M} {1}": "Sinyal durdu · inceleme bekleniyor {0} {M} {1}",
+  "Stopped firing {0} {M} {1}": "Sinyal durdu {0} {M} {1}",
   "Click again to confirm": "Onaylamak için tekrar tıklayın",
   "Clients": "Client'lar",
   "Cloudflare status": "Cloudflare durumu",
@@ -857,7 +859,9 @@
   "Unmuted": "Sesi açıldı",
   "Fired again": "Yeniden tetiklendi",
   "Got worse": "Kötüleşti",
-  "Stopped firing": "Durdu",
+  "Stopped firing": "Sinyal durdu",
+  "Stopped firing · awaiting review": "Sinyal durdu · inceleme bekleniyor",
+  "stopped firing": "sinyal durdu",
   "Investigation finished": "İnceleme bitti",
   "Slack thread update": "Slack thread güncellemesi",
   "Reminder sent": "Hatırlatma gönderildi",
@@ -1411,8 +1415,12 @@
    "Bu metni şimdi $1 kanalına, $2 için mesaj olarak gönder; onaylamak için iki kez tıklayın"
   ],
   [
-   "^Cleared (\\d.*)$",
-   "Normale döndü $1"
+   "^Stopped firing (\\d[^,]*)$",
+   "Sinyal durdu $1"
+  ],
+  [
+   "^Stopped firing · awaiting review (\\d.*)$",
+   "Sinyal durdu · inceleme bekleniyor $1"
   ],
   [
    "^Earlier: (.+)$",

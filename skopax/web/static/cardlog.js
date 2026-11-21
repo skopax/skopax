@@ -65,7 +65,7 @@ function cardHistoryRows(c, data, runs, names) {
   var p = c.slackPost;
   if (p && p.at) add(p.at, histWho(p.by), 'Posted to Slack', '', {kind: 'slack', href: p.permalink && /^https:\/\//.test(p.permalink) ? p.permalink : ''});
   (c.teamsPosts || []).forEach(function (t) { add(t.at, histWho(t.by), 'Posted to Teams', histLabel(t.route, names), {kind: 'teams'}); });
-  if (c.clearedAt) add(c.clearedAt, 'signal', 'Cleared', '', {kind: 'signal'});
+  if (c.clearedAt) add(c.clearedAt, 'signal', 'Stopped firing', '', {kind: 'signal'});
   var again = acts.some(function (x) { return (x.doneAt || x.requestedAt || '') < (c.firstSeen || ''); }) || !!(c.seenBefore && c.seenBefore.count);
   if (c.firstSeen) add(c.firstSeen, 'signal', again ? 'Fired again' : 'Fired', '', {kind: 'signal'});
   return rows.sort(function (x, y) { return x.at < y.at ? 1 : x.at > y.at ? -1 : 0; });

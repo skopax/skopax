@@ -677,7 +677,6 @@ class Tools:
             out = self.b.act(body, user.name)
         except HTTPException as e:
             raise ToolError(str(e.detail)) from None
-        self.store.set_action_fields(out['id'], {'via': MCP})
         if out.get('status') == 'failed':
             raise ToolError(str(out.get('result') or f'{VERB[kind]} was not applied'))
         self.store.add_activity(MCP, user.name, f'{VERB[kind]} · {key} · via MCP', key=key)

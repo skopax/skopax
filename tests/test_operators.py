@@ -145,5 +145,5 @@ def test_slack_actions_refused_for_someone_the_users_store_does_not_know(store: 
 
     # then
     assert access == (None, False)
-    assert got == 'not-operator' and ephemerals(api) == [msg('slackevents.click.action_non_operator')], 'an unknown account is refused, it never lets everyone act'
+    assert got == 'not-operator' and ephemerals(api) == [msg('slackevents.click.action_non_operator') + ' ' + msg('slackevents.click.sign_in_then_ask', url='https://skopax.example.com')], 'an unknown account is refused, it never lets everyone act'
     assert 'cardActionApplied' not in store.get_action(act['id'])

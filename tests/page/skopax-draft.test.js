@@ -46,7 +46,7 @@ async function boot(serve, me) {
   vc.on('error', (e) => errors.push('console.error ' + e));
   const calls = [];
   const blob = JSON.stringify(serve.state).replace(/<\//g, '<\\/');
-  const html = pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', blob).replace('<script type="text/plain" id="plugin-scripts"></script>', () => serve.lang ? packScript(serve.lang) : '<script type="text/plain" id="plugin-scripts"></script>');
+  const html = pageHtml(TEMPLATE, serve.brand ? {brand: serve.brand} : undefined).replace('/*__SKOPAX_DATA__*/', blob).replace('<script type="text/plain" id="plugin-scripts"></script>', () => serve.lang ? packScript(serve.lang) : '<script type="text/plain" id="plugin-scripts"></script>');
   const dom = new JSDOM(html, {
     url: 'https://skopax.dev.example.com/' + (serve.hash || ''),
     runScripts: 'dangerously',
@@ -325,8 +325,28 @@ async function autoSentPostsNameWhoDraftedThem() {
   return 'an auto-sent post names who drafted it: the product for the server, the token label for a token, Investigator for the rest';
 }
 
+async function autoSentPostsUseTheInvestigatorLabelOfTheInstall() {
+  //given
+  const sent = queueState(5);
+  const post = (x, by, atMin) => { x.slackDraft.by = by; x.slackPost = {channel: 'C1', ts: '2.' + atMin, at: iso(atMin), by: AUTO_SENDER, draft: true}; x.slackDraft.at = iso(atMin + 100); };
+  post(sent.anomalies[0], 'Claude (pod)', 10);
+  post(sent.anomalies[1], 'token', 20);
+  const brand = {name: 'Skopax', slug: 'skopax', version: '0.1.0', investigator: 'Claude investigator', podBy: 'Claude (pod)', attribution: {text: 'Skopax 0.1.0', href: 'https://skopax.io'}};
+
+  //when
+  const {doc, errors, dom} = await boot({rev: 5, state: sent, reports: [], brand});
+  await wait(100);
+  const out = [...doc.querySelectorAll('#slack-sent tbody tr')].map((tr) => cells(tr)[2]);
+
+  //then
+  assert.deepStrictEqual(out, ['Claude investigator \u00b7 auto-sent', 'Claude investigator \u00b7 auto-sent'], 'the page names the investigator as Slack does');
+  assert.ok(!navigated(errors), errors.join(' | '));
+  dom.window.close();
+  return 'an auto-sent post drafted by the investigator is named with the install investigator label, as on Slack';
+}
+
 (async () => {
-  for (const t of [aTextDroppedForAgeSaysSoInEnglishAndGerman, germanPackCoversTheNotPostedLinesAndTheSlackTab, autoSentPostsNameWhoDraftedThem, keptPostIsShownOnTheCardWithSendToSlack, noRecommendedTagArmedLabelHoldOrFilter, failedAndSkippedPostsSaySo, postUpdateRepliesInTheThread]) {
+  for (const t of [aTextDroppedForAgeSaysSoInEnglishAndGerman, germanPackCoversTheNotPostedLinesAndTheSlackTab, autoSentPostsNameWhoDraftedThem, autoSentPostsUseTheInvestigatorLabelOfTheInstall, keptPostIsShownOnTheCardWithSendToSlack, noRecommendedTagArmedLabelHoldOrFilter, failedAndSkippedPostsSaySo, postUpdateRepliesInTheThread]) {
     console.log('PASS ' + (await t()));
   }
 })().catch((e) => { console.error('FAIL', e.message); process.exit(1); });

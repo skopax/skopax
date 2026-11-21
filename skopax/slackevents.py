@@ -691,10 +691,26 @@ def colour(value) -> str | None:
     return None if not text else text if text.startswith('#') else '#' + text
 
 
+def way_in(sso: bool, account: bool, base: str, added_only: bool = False, viewer_default: bool = False, mapped: bool = False, closed: bool = False) -> str:
+    if closed:
+        return ''
+    if account:
+        return msg('slackevents.click.ask_access' if mapped else 'slackevents.click.ask_admin')
+    if not sso:
+        return ''
+    if mapped:
+        return msg('slackevents.click.ask_access')
+    if added_only:
+        return msg('slackevents.click.ask_add')
+    key = 'slackevents.click.sign_in_then_ask' if viewer_default else 'slackevents.click.sign_in'
+    return msg(key, url=base) if base else msg(key + '_bare')
+
+
 class Clicks:
     def __init__(self, store, slack, operators, apply: Callable[[dict], str], jira_site: str | Callable[[], str] = '', on: Callable[[], bool] = lambda: True,
-                 confirm: Callable[[str, str], dict] | None = None, background: Callable[[Callable[[], None]], None] | None = None):
+                 confirm: Callable[[str, str], dict] | None = None, background: Callable[[Callable[[], None]], None] | None = None, way_in: Callable[[str], str] | None = None):
         self.on = on
+        self.way_in = way_in
         self.confirm = confirm
         self.background = background or (lambda job: threading.Thread(target=job, name='proposal-confirm', daemon=True).start())
         self.off_logged = False
@@ -730,7 +746,7 @@ class Clicks:
             return 'operator-unknown'
         if login is None:
             refused = 'proposals.non_operator' if button['action_id'] == PROPOSAL_CONFIRM else 'slackevents.click.action_non_operator' if card_click else 'slackevents.click.non_operator'
-            return self._tell(channel, user, msg(refused), thread_ts, 'not-operator')
+            return self._tell(channel, user, self._refused(refused, user), thread_ts, 'not-operator')
         if button['action_id'] == PROPOSAL_CONFIRM:
             if self.confirm is None:
                 return self._tell(channel, user, msg('proposals.none'), thread_ts, 'gone')
@@ -776,6 +792,17 @@ class Clicks:
             log.warning('no ticket key in create result for ask %s: %s', ask['id'], result[:LABEL_LIMIT])
         return 'created'
 
+    def _refused(self, key: str, user: str) -> str:
+        text = msg(key)
+        if self.way_in is None:
+            return text
+        try:
+            hint = self.way_in(user)
+        except Exception as e:
+            log.warning('the way in for a refused click could not be read: %s', error_kind(e))
+            return text
+        return f'{text} {hint}' if hint else text
+
     def _operator(self, channel: str, user: str, thread_ts: str | None) -> tuple[str | None, str | None]:
         try:
             login = self.operators.login_for(user)
@@ -783,7 +810,7 @@ class Clicks:
             log.warning('click from %s: operator lookup is down, ignoring the click', user)
             return None, 'operator-unknown'
         if login is None:
-            return None, self._tell(channel, user, msg('slackevents.click.action_non_operator'), thread_ts, 'not-operator')
+            return None, self._tell(channel, user, self._refused('slackevents.click.action_non_operator', user), thread_ts, 'not-operator')
         return login, None
 
     def _menu(self, payload: dict, menu: dict) -> str | None:
