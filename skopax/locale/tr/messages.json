@@ -137,6 +137,8 @@
  "routes.why": "Neden",
  "routes.recommended": "Önerilen",
  "routes.info": "Bilgi",
+ "routes.state": "Durum",
+ "routes.taken": "{who} ilgileniyor",
  "routes.fixed": "Sinyal durdu",
  "routes.urgent": "🔴 Acil",
  "routes.sev.crit": "🔴 Kritik",

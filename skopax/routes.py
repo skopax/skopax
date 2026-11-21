@@ -73,6 +73,16 @@ def said(card: dict) -> str:
     return str((card.get('business') or {}).get('text') or '').strip()
 
 
+def taker(card: dict) -> str:
+    if card.get('triage') != 'progress' or not card.get('owner'):
+        return ''
+    name = str(card.get('ownerName') or '').strip()
+    if name and '@' not in name:
+        return unlinked(name)
+    local = str(card.get('owner') or '').split('@')[0].strip()
+    return unlinked(local) if local else ''
+
+
 def unlinked(text: str) -> str:
     return MD_LINK.sub(r'\1 (\2)', text).replace('](', '] (')
 
@@ -434,9 +444,11 @@ class Routes:
         info = given.get('kind') == tags.INFO
         why_line = [{'role': 'why', 'label': msg('routes.why'), 'text': why}] if why else []
         said_line = [{'role': 'info' if info else 'recommended', 'label': msg('routes.info' if info else 'routes.recommended'), 'text': unlinked(said(card))}]
+        who = taker(card)
+        state_line = [{'role': 'state', 'label': msg('routes.state'), 'text': msg('routes.taken', who=who)}] if who else []
         rows = [{'text': unlinked(said(k)), 'page': page_of(k), 'number': number(k), 'link': card_url(base, k['key'], number(k)) if number(k) else ''} for k in list(kids)[:MAX_CARDS]]
         return self._message('info' if info else 'action', msg('routes.title', label=label), card, mention, text=unlinked(said(card)), why=why,
-                             urgent=card.get('sev') == 'crit', teams=list(teams), kids=rows, lines=said_line + why_line if info else why_line + said_line)
+                             urgent=card.get('sev') == 'crit', teams=list(teams), kids=rows, lines=(said_line + why_line if info else why_line + said_line) + state_line)
 
     def cards_message(self, cards: list[dict], mention: Iterable[str], label: str | None) -> dict:
         base = self._base()

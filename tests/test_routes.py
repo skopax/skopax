@@ -378,3 +378,32 @@ def test_a_pass_delivers_its_pushed_and_tagged_cards(store: Store, tmp_path):
     # then
     assert [u for u, _ in t.calls] == [TECH, MARKETING]
     assert [(p['route'], p['plugin']) for p in store.anomaly(KEY)['teamsPosts']] == [('tech', 'teams'), ('eng', 'teams')]
+
+
+def test_a_business_post_names_who_took_the_card_and_nobody_when_it_is_only_open(store: Store, tmp_path):
+    # given
+    taken = {**open_card(KEY, 'warn', tags=tag('seo'), business=SAID), 'triage': 'progress', 'owner': 'alice.smith@example.com', 'ownerName': 'Alice Smith'}
+    plain = {**open_card('svc|other', 'warn', tags=tag('seo'), business=SAID), 'owner': 'bob@example.com'}
+    store.save({**state(taken, plain), 'initialized': True}, None)
+
+    # when
+    with TestClient(create_app(settings(), store, kube=Kube(root=tmp_path))) as c:
+        routes = c.app.state.routes
+        named = routes.business_message(store.anomaly(KEY), 'SEO', ())
+        bare = routes.business_message(store.anomaly('svc|other'), 'SEO', ())
+
+    # then
+    assert [line for line in named['lines'] if line['role'] == 'state'] == [{'role': 'state', 'label': 'Status', 'text': 'Alice Smith is on it'}]
+    assert [line for line in bare['lines'] if line['role'] == 'state'] == []
+    assert 'example.com' not in json.dumps(named['lines'])
+
+
+def test_the_business_rules_never_let_the_investigator_say_someone_is_fixing_it():
+    # given
+    from pathlib import Path
+    import skopax.investigator as inv
+    rules = (Path(inv.__file__).parent / 'process.md').read_text()
+
+    # then
+    assert 'while engineering fixes it' not in rules
+    assert 'Never say or imply that someone is looking into it, working on it or fixing it' in rules

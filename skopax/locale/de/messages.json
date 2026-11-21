@@ -92,6 +92,8 @@
  "routes.fixed": "Nicht mehr aktiv",
  "routes.gave_up": "{plugin} hat nach {tries} fehlgeschlagenen Versuchen ({reason}) aufgehört, {count} Karte(n) an die Route {route} zu posten. Korrigieren Sie die Route und führen Sie dann „Verbindung testen“ aus, um sie erneut zu posten.",
  "routes.info": "Info",
+ "routes.state": "Status",
+ "routes.taken": "{who} kümmert sich",
  "routes.more": "und {count} weitere Karten",
  "routes.open": "In {product} öffnen",
  "routes.open_card": "Karte öffnen",
