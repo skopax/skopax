@@ -13,6 +13,8 @@ from skopax.store import REDRAW_RUN, Store, iso, utc_now
 KEYS = ('log|a|ERROR|x', 'log|b|ERROR|x')
 NOW = 1_792_224_000.0
 TS = ('1792224000.000400', '1792224000.000401')
+LONE = 'log|c|ERROR|x'
+LONE_TS = '1792224000.000402'
 
 
 class Clock:
@@ -96,7 +98,11 @@ def test_a_language_switch_redraws_the_tracked_posts_once_in_the_new_language(st
     # then
     assert (first, second) == (2, 0)
     cleared = next(u for u in rewrites(api) if u['ts'] == TS[1])
-    assert messages.catalog('tr')['slack.status.cleared'] in str(cleared['blocks'])
+    blocks = str(cleared['blocks'])
+    pack = messages.catalog('tr')
+    assert pack['slack.head.cleared'].replace('{card}', '#41') in blocks
+    assert pack['slack.bar.stopped'] + ' \\u00b7 ' in blocks.replace(chr(183), '\\u00b7')
+    assert blocks.count(pack['slack.status.cleared']) == 0
     assert new_posts(api, post) == []
 
 
@@ -242,3 +248,36 @@ def test_the_first_start_redraw_waits_for_the_packs(store: Store):
 
     # then
     assert (early, late) == (False, True) and len(started) == 1
+
+
+def legacy_sig(card: dict, who: str = '') -> str:
+    import hashlib, json
+    from skopax.cardposts import language, tags
+    from skopax.slack import status_of, stopped_ending
+    shown = [status_of(card, None), card.get('sev'), card.get('owner') or '', sorted(t for t in tags.ids(card) if t in tags.all_tags()), card.get('firstSeen') or '', 3, language(), stopped_ending(card), who]
+    return hashlib.sha1(json.dumps(shown, default=str).encode()).hexdigest()[:16]
+
+
+def test_stopped_posts_drawn_with_the_old_signature_are_redrawn_once_and_a_firing_one_is_not(store: Store):
+    # given
+    store.save(state(anomaly(KEYS[0], num=40), anomaly(KEYS[1], num=41, status='cleared', owner='bob@example.com'), anomaly(LONE, num=42, status='cleared')), None)
+    keys, stamps = KEYS + (LONE,), TS + (LONE_TS,)
+    for key, ts in zip(keys, stamps):
+        posted(store, key, ts)
+    for key, ts in zip(keys[1:], stamps[1:]):
+        store.slack_post_head(key, ts, {'kind': 'cleared', 'by': 'server', 'at': '2026-11-11T07:00:00Z'})
+    for key, ts in zip(keys, stamps):
+        card = store.anomaly(key)
+        who = 'bob' if key == KEYS[1] else ''
+        store.slack_post_drawn(key, ts, {'sig': legacy_sig(card, who), 'at': '2026-11-11T07:00:00Z'})
+    slack, post, api = fake_slack()
+    posts = posts_of(store, slack)
+
+    # when
+    first = reconciled(posts)
+    second = reconciled(posts)
+
+    # then
+    assert (first, second) == (2, 0)
+    assert sorted(u['ts'] for u in rewrites(api)) == sorted([TS[1], LONE_TS])
+    assert new_posts(api, post) == []

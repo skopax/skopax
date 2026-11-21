@@ -350,10 +350,10 @@ def test_the_main_post_of_a_cleared_event_card_does_not_say_recovered():
 
     # then
     bar = lambda m: m['blocks'][-1]['elements'][0]['text']
-    assert bar(event).startswith(msg('slack.status.event')) and event['text'].startswith(msg('slack.status.event'))
+    assert bar(event).startswith(msg('slack.bar.event') + ' \u00b7 ') and msg('slack.status.event') not in bar(event) and event['text'].startswith(msg('slack.status.event'))
     assert msg('slack.status.event') == 'Stopped after the event \u00b7 unassigned'
-    assert bar(plain).startswith(msg('slack.status.cleared')) and plain['text'].startswith(msg('slack.status.cleared'))
-    assert bar(old).startswith(msg('slack.status.cleared'))
+    assert bar(plain).startswith(msg('slack.bar.stopped') + ' \u00b7 ') and plain['text'].startswith(msg('slack.status.cleared'))
+    assert bar(old).startswith(msg('slack.bar.stopped') + ' \u00b7 ')
 
 
 def test_a_reminder_on_a_quiet_event_card_does_not_say_back_to_normal():
@@ -478,7 +478,7 @@ def test_the_main_post_and_reminder_of_a_merged_child_take_the_parent_cause():
     line = state_text(child, {'p': parent, CART: child})
 
     # then
-    assert message['blocks'][-1]['elements'][0]['text'].startswith(msg('slack.status.event'))
+    assert message['blocks'][-1]['elements'][0]['text'].startswith(msg('slack.bar.event') + ' \u00b7 ')
     assert line == msg('reminder.event')
 
 

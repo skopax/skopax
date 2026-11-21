@@ -252,7 +252,7 @@ def test_message_for_a_cleared_latency_item_by_a_person():
     assert [b['type'] for b in blocks] == ['section', 'section', 'context']
     assert blocks[0]['text']['text'] == ':large_yellow_circle: oscar.green shared a card \u00b7 Info'
     assert blocks[1]['text']['text'] == '*<https://w/#a=x|reports-service / p95 \u00b7 GET /x>*'
-    assert [e['text'] for e in blocks[2]['elements']] == ['Stopped firing \u00b7 unassigned \u00b7 Info \u00b7 since 13 Oct 08:18 UTC', 'Now *1.7 s* \u00b7 yesterday 326 ms']
+    assert [e['text'] for e in blocks[2]['elements']] == ['Stopped firing \u00b7 Info \u00b7 since 13 Oct 08:18 UTC', 'Now *1.7 s* \u00b7 yesterday 326 ms']
 
 
 def test_message_with_a_draft_puts_it_under_the_title_and_keeps_the_rest_of_the_plain_message():
