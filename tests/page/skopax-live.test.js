@@ -447,7 +447,7 @@ async function anomalyFiltersInTheSideMenu() {
   assert.deepStrictEqual(pressed(), ['open'], 'the active filter is marked, Open by default');
   assert.ok(!doc.getElementById('filters') && !doc.getElementById('anom-chips') && !doc.getElementById('sev-chips') && !doc.getElementById('tri-chips') && !doc.querySelector('#panel-anoms .seg'), 'no chips row on the Anomalies tab any more');
   assert.strictEqual(note().textContent, 'Showing Open3Filters', 'one small line names the filter and its count');
-  assert.ok(!doc.getElementById('clear-f'), 'no way back needed on All');
+  assert.ok(!doc.getElementById('clear-all'), 'no way back needed on All');
   assert.match(note().title, /^2 warning \u00b7 1 in progress \u00b7 1 action taken \u00b7 1 cleared/, 'the line tooltip counts every bucket: ' + note().title);
   const rules = [...doc.styleSheets].flatMap((sh) => [...sh.cssRules]);
   assert.ok(rules.some((r) => r.selectorText === '.tab-sub[hidden]' && r.style.getPropertyValue('display') === 'none'), 'a folded sub menu takes no space');
@@ -469,14 +469,14 @@ async function anomalyFiltersInTheSideMenu() {
   assert.ok(note().classList.contains('on') && note().classList.contains('k-info'), 'the line takes the filter colour');
   assert.strictEqual(note().querySelector('.fn-cur').textContent, 'Showing In progress1', 'and names it with its count');
 
-  assert.strictEqual(doc.getElementById('clear-f').textContent, 'Back to Open \u203a', 'the way back leads to Open');
+  assert.strictEqual(doc.getElementById('clear-all').textContent, 'Clear filters \u2715', 'the way back leads to Open');
 
   //when
-  doc.getElementById('clear-f').click();
+  doc.getElementById('clear-all').click();
 
   //then
   assert.deepStrictEqual(pressed(), ['open'], 'Back to Open on the line goes back to Open');
-  assert.ok(!note().classList.contains('on') && !doc.getElementById('clear-f'));
+  assert.ok(!note().classList.contains('on') && !doc.getElementById('clear-all'));
 
   //when
   item('warn').click();

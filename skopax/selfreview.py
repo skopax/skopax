@@ -16,7 +16,7 @@ from skopax import toolusage
 from skopax.engine import iso, mute_for, parse_iso
 from skopax import clock
 from skopax.errkind import kind as error_kind
-from skopax.investigator import pricing
+from skopax.investigator import pricing, prompt
 from skopax.kit.elastic import LOG_DEFAULTS, level_filter, quoted
 from skopax.messages import msg
 from skopax.redact import TIMEOUT_MARK, redact
@@ -82,7 +82,7 @@ def card_state(state: dict, key: str, now: float) -> str:
     return ', '.join(parts)
 
 
-def runs_facts(runs: list[dict], card_cap: int | None = None, slack_cap: int | None = None, state_of: Callable[[str], str] | None = None) -> dict:
+def runs_facts(runs: list[dict], card_cap: int | None = None, slack_cap: int | None = None, chat_cap: int | None = None, state_of: Callable[[str], str] | None = None) -> dict:
     errors: dict[str, list[str]] = collections.defaultdict(list)
     last: dict[str, str] = {}
     where: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
@@ -90,7 +90,7 @@ def runs_facts(runs: list[dict], card_cap: int | None = None, slack_cap: int | N
     capped = 0
     for r in runs:
         calls = r.get('toolCalls') or []
-        cap = slack_cap if r.get('trigger') == 'slack' else card_cap
+        cap = {'slack': slack_cap, 'chat': chat_cap}.get(r.get('trigger'), card_cap)
         if cap and len(calls) >= cap:
             capped += 1
         for c in calls:
@@ -184,7 +184,7 @@ def gather(store, info: dict, logs, now: float, commits: Callable[[str], list[di
            'reachErrors': [{'target': r.get('name'), 'plugin': r.get('plugin'), 'instance': r.get('instance'), 'error': short(r.get('error'), 80)}
                            for r in probe.get('targets') or [] if isinstance(r, dict) and not r.get('ok')],
            'spend': {'today': investigate.get('spentToday'), 'cap': investigate.get('cap'), 'mode': investigate.get('mode'), 'stopped': bool(investigate.get('stopped'))},
-           'runs': runs_facts(runs, investigate.get('maxToolCalls'), investigate.get('slackMaxToolCalls'), lambda key: card_state(state, key, now)),
+           'runs': runs_facts(runs, investigate.get('maxToolCalls'), investigate.get('slackMaxToolCalls'), investigate.get('chatMaxToolCalls'), lambda key: card_state(state, key, now)),
            'toolCalls': {'day': {'calls': usage_day['calls'], 'errors': usage_day['errors']}, 'week': {'calls': usage_week['calls'], 'errors': usage_week['errors']},
                          'weekErrorTools': [{'tool': t['name'], 'calls': t['calls'], 'errors': t['errors']} for t in sorted(usage_week['tools'], key=lambda t: -t['errors']) if t['errors']][:TOP]},
            'actions': dict(collections.Counter(a.get('type') for a in actions)),
@@ -276,7 +276,7 @@ class SelfReview:
             return None
         facts = self.facts(now)
         model = pricing.effective(ai.provider, self.model, 'review')
-        resp = ai.once(model, SYSTEM, [{'role': 'user', 'content': 'Facts (JSON):\n' + json.dumps(facts, ensure_ascii=False, default=str)}], MAX_TOKENS, 'medium', THINK_AUTO)
+        resp = ai.once(model, prompt.org_block(self.settings.org_about) + SYSTEM, [{'role': 'user', 'content': 'Facts (JSON):\n' + json.dumps(facts, ensure_ascii=False, default=str)}], MAX_TOKENS, 'medium', THINK_AUTO)
         usd = pricing.usd(model, resp.usage)
         self.store.add_spend(day, usd)
         try:

@@ -32,6 +32,13 @@ function ntBadge(n) {
   }
   var all = document.getElementById('nt-read-all');
   if (all) all.disabled = !n;
+  if (typeof sideMarkFolds === 'function') sideMarkFolds();
+  var tb = document.getElementById('top-bell-badge'), bell = document.getElementById('top-bell');
+  if (tb) {
+    tb.firstChild.textContent = n > NT_CAP ? NT_CAP + '+' : String(n);
+    tb.hidden = !n;
+  }
+  if (bell) bell.setAttribute('aria-label', n ? 'Notifications, ' + n + ' unread' : 'Notifications');
 }
 async function ntCount() {
   try {
@@ -122,6 +129,7 @@ async function ntGo(n) {
   else if (to) location.href = to;
 }
 function ntSignedIn(on) {
+  NT.signed = !!on;
   if (!NT.ready) return;
   if (on) ntCount(); else ntShow(false);
 }
@@ -148,6 +156,22 @@ function ntTab(on) {
   end.appendChild(badge);
   all.addEventListener('click', function () { ntRead(null); });
   document.getElementById('nt-more').addEventListener('click', function () { ntLoad(true); });
+  var bell = document.getElementById('top-bell');
+  if (bell) {
+    bell.innerHTML = navIcon('bell');
+    var tb = el('span', 'b-num');
+    tb.id = 'top-bell-badge';
+    tb.hidden = true;
+    tb.appendChild(document.createTextNode('0'));
+    tb.appendChild(el('span', 'sr')).textContent = ' unread';
+    bell.appendChild(tb);
+    bell.addEventListener('click', function () {
+      if (NT.signed === false) { window.__skopaxGo('/login?next=' + encodeURIComponent(location.pathname + location.search + location.hash)); return; }
+      pickTab('slack');
+      var head = document.getElementById('crumb-page');
+      if (head) { head.tabIndex = -1; head.focus(); }
+    });
+  }
   NT.ready = true;
   setInterval(function () { if (!document.hidden && NT.on) ntCount(); }, NT_POLL_MS);
   document.addEventListener('visibilitychange', function () { if (!document.hidden && NT.on) ntCount(); });

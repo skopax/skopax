@@ -359,8 +359,8 @@ async function theAdminRowShowsForAdminsOnly() {
   assert.ok(row.hidden && !admin.doc.getElementById('um-admin').hidden && viewer.doc.getElementById('um-admin').hidden, 'an admin has Admin in the user menu, a viewer does not');
   assert.ok(!admin.doc.getElementById('panel-settings').hidden, 'the first time it opens General');
   assert.deepStrictEqual(current(admin.doc), ['side-admin', 'user-btn'], 'and the user button is marked current');
-  assert.strictEqual(admin.doc.getElementById('crumb-page').textContent, 'Admin \u203a General');
-  assert.deepStrictEqual([...admin.doc.querySelectorAll('#adm-nav a.tab')].map((a) => [a.id, a.querySelector('.lbl').textContent]), [['tab-settings', 'General'], ['tab-access', 'Access & sign-in'], ['tab-features', 'Features'], ['tab-ai', 'Investigator'], ['tab-changes', 'Changes']], 'the admin pages keep their tab ids');
+  assert.strictEqual(admin.doc.getElementById('crumb-page').textContent, 'Admin \u203a Settings');
+  assert.deepStrictEqual([...admin.doc.querySelectorAll('#adm-nav a.tab')].map((a) => [a.id, a.querySelector('.lbl').textContent]), [['tab-settings', 'Settings'], ['tab-access', 'Access & sign-in'], ['tab-workspaces', 'Workspaces'], ['tab-features', 'Features'], ['tab-ai', 'Investigator'], ['tab-changes', 'Changes']], 'the admin pages keep their tab ids');
   assert.ok(!admin.doc.getElementById('adm-shell').hidden && viewer.doc.getElementById('adm-shell').hidden, 'their sub-nav shows only on an admin page');
   assert.deepStrictEqual(viewer.errors.concat(admin.errors), []);
   viewer.dom.window.close(); admin.dom.window.close();
@@ -512,9 +512,9 @@ async function theTopBarHoldsTheCrumbAndTheLastCheck() {
 
   //then
   assert.ok(top, 'the content column starts with the top bar');
-  assert.deepStrictEqual([...top.children].map((c) => c.id || c.className), ['side-open', 'crumb', 'off-tag', 'top-r'], 'hamburger, crumb, stopped tag, then the right cluster');
+  assert.deepStrictEqual([...top.children].map((c) => c.id || c.className), ['side-open', 'crumb', 'off-tag', 'top-find', 'top-r'], 'hamburger, crumb, stopped tag, the search field, then the right cluster');
   assert.strictEqual(doc.getElementById('env-tag'), null, 'the environment label moved into the instance switcher');
-  assert.deepStrictEqual([...doc.querySelector('.top-r').children].map((c) => c.id), ['run-pill', 'last-check', 'inv-menu', 'theme-btn'], 'the bell and the Appearance button are retired; the run pill leads the right cluster');
+  assert.deepStrictEqual([...doc.querySelector('.top-r').children].map((c) => c.id), ['top-find-btn', 'run-pill', 'last-check', 'inv-menu', 'top-bell', 'theme-btn'], 'the search icon leads the right cluster, and the bell sits before the theme button');
   assert.match(doc.getElementById('last-check').textContent, /^Last check(\d\d:\d\d|\u2013)$/);
   assert.strictEqual(doc.querySelector('.top .live'), null, 'the Activity rail keeps the live class to itself');
   assert.ok(doc.getElementById('meta').parentNode.classList.contains('overview'), 'the source pills sit in the overview card');

@@ -2,6 +2,45 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.4.6 (2026-11-21)
+
+A clearer mark for cards that went quiet, old Slack posts redrawn, the headless browser as its own plug-in, a search box in the top bar with ticket completion, a notification bell, Admin > Workspaces and list editors for comma settings.
+
+**Upgrade notes:**
+
+- Slack and Teams: a card that stopped firing but is still open now shows :large_yellow_circle: "alert went quiet" (Turkish "Alarm sustu") instead of :eyes: "stopped firing - still open". The check mark still appears only when the card is closed.
+- On the first start of 0.4.6, Skopax redraws its existing Slack card posts once in the background with today's head, marks and words (open cards first, at most 500, throttled to Slack's rate). It only edits posts it made; it never posts new messages or touches thread replies. Admins can run it again from Admin > Integrations > Slack > "Redraw Slack posts". One run at a time holds a lease in the database, also across several server copies.
+- The headless browser is now a plug-in of its own, "Headless browser" (Connect > Integrations), with its health on its card; it owns the browser-down and access cards (same card keys). A Website instance picks a browser instance; when exactly one exists it is picked by default. The older `browser-url` field on a Website instance keeps working and wins when set, and Admin offers a one-click move of it into a Headless browser instance.
+- Web sites for the investigator (`investigate.web-domains`) now add to the built-in list instead of replacing it; the built-in sites are shown, your own e-mail domains are included, and `-host` removes one. The list is capped at 100 hosts.
+- About your company (`core.org-about`) is now read by every investigator prompt (chat, Slack questions, card investigations, self-review), framed as background written by the admins; its limit is 2000 characters.
+- The other deployments listed in the sidebar switcher are now called workspaces: the setting is `core.workspace-links` / `SKOPAX_WORKSPACE_LINKS` and has its own Admin section.
+- An out-of-range chat tool-call cap or Slack question tool-call cap in the environment or configuration now clamps to the nearest bound (3 to 30) with a warning, instead of falling back to the default.
+- Renamed in the page: the user page "Settings" is now "Preferences", Admin "General" is now "Settings", and "Phone push" is now "Slack DMs for critical cards". Addresses (#t=...) are unchanged.
+
+**Added:**
+
+- A search box in the top bar (Cmd/Ctrl K) that opens the palette as a dropdown under it; on phones a search icon opens it. Typing part of a ticket key or its digits suggests the full key; Tab completes it, Enter opens the card, and "Open KEY in Jira" opens the ticket.
+- A notification bell in the top bar with the unread count; it opens Notifications.
+- Admin > Workspaces: this workspace's name and the other workspaces as rows (name, address, Open, Remove, move up and down, "+ Add workspace"), with checks per row and one Save.
+- List settings (MCP allowed clients, self-review recipients, Jira projects, Slack DM people, Slack question channels, certificates not watched, SSO scope) are edited as chips: Enter, comma or paste splits, each entry is checked, Backspace removes the last. The server checks each entry with the same rules. The saved text is unchanged.
+- Board: when a filter is on, "All" and "Clear filters" sit next to "Showing ..."; Escape on the Board clears every filter.
+- Chat: separate effort and tool-call settings (`chat.effort`, `chat.max-tool-calls`); unset follows the Slack values.
+- Nodes sits under Connect after Integrations; admins can edit a node or add one from the Nodes page.
+- The Slack reminder mentions the assigned person.
+- The Compose example and docs include the browser service; docs/plugins.md has a Headless browser section and a Deploys section.
+
+**Changed:**
+
+- Reopening a card drops the note the system wrote when it closed it, and tells the Slack thread "X reopened #N" when the card was really closed.
+- Board columns fill the board height, so a card can be dropped anywhere in a column.
+- Inside Skopax the chat hides its own theme toggle and avatar menu; the chat in its own tab keeps them.
+- The triage pill on a card no longer cuts its label off.
+
+**Fixed:**
+
+- The folded Activity group no longer shows a count for Slack drafts that is hidden when it is opened; it shows the unread notifications.
+- A Slack reminder never shows an assignee's e-mail address.
+
 ## 0.4.5 (2026-11-21)
 
 A card that stopped firing never looks closed, the investigator is named as such, clearer investigator tools, and the single sign-on page shows whether MCP is connected and who uses it.

@@ -673,13 +673,13 @@ def test_the_page_scan_tool_reads_lines_layout_and_the_last_scan_without_a_pictu
     assert out['lastScan'] == {'checkedAt': iso(NOW - 600), 'typos': [{'wrong': 'Garden Chiars', 'fix': 'Garden Chairs'}], 'visual': []} and out['boxes'] == ps.BOXES_UNCHECKED
 
 
-def test_the_page_scan_tool_without_a_browser_names_browser_url():
+def test_the_page_scan_tool_without_a_browser_names_the_headless_browser():
     # when
     with pytest.raises(ReadError) as e:
         ps.tool(Ctx(None, None), {'url': CHAIRS})
 
     # then
-    assert 'browser-url' in e.value.message
+    assert 'Headless browser' in e.value.message
 
 
 def test_a_long_digest_folds_after_fifteen_pages_and_the_digest_hour_is_local_time():

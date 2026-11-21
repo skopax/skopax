@@ -58,7 +58,7 @@ async function eachControlWritesTheAppearanceAsTheOldPanelDid() {
 
   //then
   assert.ok(!panel.hidden, '#t=prefs opens the personal Settings page');
-  assert.strictEqual(doc.getElementById('crumb-page').textContent, 'Settings');
+  assert.strictEqual(doc.getElementById('crumb-page').textContent, 'Preferences');
   assert.deepStrictEqual(['ap-panel', 'ap-open', 'ap-backdrop', 'ap-close'].map((id) => doc.getElementById(id)), [null, null, null, null], 'the Appearance panel and its opener are gone');
   assert.deepStrictEqual([...panel.querySelectorAll('[data-ap]')].map((g) => [g.dataset.ap, g.getAttribute('role'), g.getAttribute('aria-label'), [...g.querySelectorAll('button')].map((b) => b.dataset.v + '=' + b.textContent)]), [
     ['size', 'group', 'Text size', ['sm=S', 'md=M', 'lg=L']],

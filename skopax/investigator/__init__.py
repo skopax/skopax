@@ -21,7 +21,7 @@ from skopax.investigator import pricing, prompt, select
 from skopax.investigator.flags import SOFT, scan
 from skopax.investigator.runner import Result, RunConfig, Runner
 from skopax.investigator.tools import Effects, Sources, Toolbox
-from skopax.investigator.web import web_from
+from skopax.investigator.web import own_domains as own_web_domains, web_from
 from skopax.postdeploy import NUMBERS_BY
 from skopax import clock
 from skopax.messages import msg
@@ -99,12 +99,15 @@ class Investigator:
     assess_max_tool_calls = Setting('investigate_assess_max_tool_calls')
     slack_model = ModelSetting('investigate_slack_model', 'slack')
     chat_model = ModelSetting('chat_model', 'chat')
+    chat_effort_set = Setting('chat_effort')
+    chat_max_tool_calls_set = Setting('chat_max_tool_calls')
     language = Setting('investigate_language')
     slack_effort = Setting('investigate_slack_effort')
     slack_max_tool_calls = Setting('investigate_slack_max_tool_calls')
     slack_ask_cap = Setting('slack_ask_cap')
     strict_tools = Setting('investigate_strict_tools')
     web_domains = Setting('investigate_web_domains')
+    org_about = Setting('org_about')
     web_searches = Setting('investigate_web_searches')
     web_fetches = Setting('investigate_web_fetches')
     rooms = Setting('investigate_rooms', lambda n: max(1, int(n)))
@@ -147,10 +150,22 @@ class Investigator:
     def _client(self):
         return self.box.get()
 
+    def own_domains(self) -> tuple[str, ...]:
+        org = self.sources.org() if self.sources.org is not None else {}
+        return own_web_domains(self.settings.email_domains, (org or {}).get('email_domains'))
+
+    @property
+    def chat_effort(self) -> str:
+        return self.chat_effort_set or self.slack_effort
+
+    @property
+    def chat_max_tool_calls(self) -> int:
+        return self.chat_max_tool_calls_set or self.slack_max_tool_calls
+
     def info(self) -> dict:
         last = self.store.list_investigations(None, 1)
         return {'mode': self.mode, 'enabled': self.enabled, 'model': self.model, 'effort': self.effort, 'maxToolCalls': self.max_tool_calls, 'rooms': self.rooms,
-                'slackModel': self.slack_model, 'slackEffort': self.slack_effort, 'slackMaxToolCalls': self.slack_max_tool_calls, 'stopped': self.store.investigator_stop(),
+                'slackModel': self.slack_model, 'slackEffort': self.slack_effort, 'slackMaxToolCalls': self.slack_max_tool_calls, 'chatEffort': self.chat_effort, 'chatMaxToolCalls': self.chat_max_tool_calls, 'stopped': self.store.investigator_stop(),
                 'spentToday': round(self.store.spent(clock.day(self.clock())), 2), 'cap': self.cap, 'lastRun': last[0]['startedAt'] if last else None}
 
     def board(self, now: float) -> dict:
@@ -450,7 +465,7 @@ class Investigator:
                 cards = [c for c in cards if c['key'] in keys]
             report = self.store.deploy_report(report_id) if report_id else None
             record = {'id': run_id, 'mode': mode, 'trigger': 'assess' if report_id else 'slack' if slack_ask else 'chat' if chat_ask else 'ask' if ask else 'action' if action else 'cards', 'actionId': action['id'] if action else None,
-                      'keys': keys, 'pod': self.owner, 'room': (lease or (LEASE_ID, self.owner))[0], 'startedAt': epoch_iso(now), 'model': quick_model if quick else self.model, 'effort': self.slack_effort if quick else self.effort, 'outcome': 'running'}
+                      'keys': keys, 'pod': self.owner, 'room': (lease or (LEASE_ID, self.owner))[0], 'startedAt': epoch_iso(now), 'model': quick_model if quick else self.model, 'effort': (self.chat_effort if chat_ask else self.slack_effort) if quick else self.effort, 'outcome': 'running'}
             if ask:
                 record['ask'] = {'text': ask, 'by': action.get('requestedBy')}
                 if slack_ask:
@@ -470,9 +485,9 @@ class Investigator:
                 readable = [k for _, k in index] if pack is None or pack.plugin_sections else []
                 toolbox = Toolbox(self.sources, self.store, self.effects, keys, mode, now, self.base_url, run_id=run_id, ask=bool(ask), report_id=report_id or None, read_only=quick,
                                   strict=self.strict_tools, asker=action.get('requestedBy') if ask and not quick else None, chat=chat_ask, language=self.language,
-                                  web=web_from(self.web_domains, self.web_searches, self.web_fetches if self.provider != pricing.OPENAI else 0), settings=self.settings, role=self.role_of(action), knowledge=readable)
+                                  web=web_from(self.web_domains, self.web_searches, self.web_fetches if self.provider != pricing.OPENAI else 0, self.own_domains()), settings=self.settings, role=self.role_of(action), knowledge=readable)
                 if quick:
-                    config = RunConfig(quick_model, self.slack_effort, self.slack_max_tool_calls, cache_ttl='1h', role='chat' if chat_ask else 'slack')
+                    config = RunConfig(quick_model, self.chat_effort if chat_ask else self.slack_effort, self.chat_max_tool_calls if chat_ask else self.slack_max_tool_calls, cache_ttl='1h', role='chat' if chat_ask else 'slack')
                     blocks, images = self._images(action) if action.get('images') else ([], '')
                     brief = (prompt.slack_brief(cards, action, self.base_url, config.max_tool_calls, self.limits(now), images) if slack_ask
                              else prompt.chat_brief(cards, action, self.base_url, config.max_tool_calls, images))
@@ -494,7 +509,7 @@ class Investigator:
                     extra = toolbox.start_bridge().knowledge()
                     runner = Runner(client, self.store, config, tag=tag)
                     first = [{'type': 'text', 'text': brief}] + blocks if quick and blocks else brief
-                    system = prompt.slack_system_prompt(sections, pack, extra, index) if quick else prompt.system_prompt(sections, pack, extra, index)
+                    system = prompt.slack_system_prompt(sections, pack, extra, index, self.org_about) if quick else prompt.system_prompt(sections, pack, extra, index, self.org_about)
                     result = runner.run(toolbox, system, first, day, lambda: self.halt(day, lease))
         except BaseException as e:
             crash = e

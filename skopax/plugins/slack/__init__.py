@@ -73,7 +73,7 @@ PLUGIN = Plugin(
     id=ID, name='Slack', version='0.1.0', category='chat', description='Posts cards and deploy reports to a Slack channel and answers questions and button clicks there.', icon='icon.svg',
     author='Skopax', licence='Apache-2.0', core='>=0.1,<0.5', edition='community', capabilities=Capabilities(hosts=('slack.com',), secrets=('bot-token', 'app-token')),
     max_instances=1,
-    fields=(Field('bot-token', 'Bot token', 'secret', required=True, help='The bot token (xoxb-...) of the Slack app. The channel cards go to is set in Admin \u203a General \u203a Slack \u203a Channel.'),
+    fields=(Field('bot-token', 'Bot token', 'secret', required=True, help='The bot token (xoxb-...) of the Slack app. The channel cards go to is set in Admin \u203a Settings \u203a Slack \u203a Channel.'),
             Field('app-token', 'App token', 'secret', help='The app-level token (xapp-...) for Socket Mode, which the Slack listener needs. A new app token takes effect after a restart.')),
     env_instances=env_instances, test=test,
     setup=Setup(steps=(
@@ -81,6 +81,6 @@ PLUGIN = Plugin(
         'Choose Install to Workspace, then Allow. Under OAuth & Permissions copy the bot token (xoxb-...) and paste it into Bot token.',
         'Under Basic Information, in the App-level tokens section, generate a token (Socket Mode needs one; if asked for a scope, choose connections:write) and paste the xapp-... token into App token.',
         'Choose Test connection, then Save & turn on. Restart Skopax once: an app token added or changed later is read only at start.',
-        'Invite the bot to the channel (/invite @Skopax) and set that channel in Admin > General > Slack > Channel.',
+        'Invite the bot to the channel (/invite @Skopax) and set that channel in Admin > Settings > Slack > Channel.',
     ), docs='https://docs.slack.dev/app-management/quickstart-app-settings', docs_label='Slack: app settings'),
 )

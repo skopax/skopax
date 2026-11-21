@@ -27,11 +27,11 @@ def test_a_cleared_card_is_still_open_and_never_wears_the_done_mark():
     cleared_progress = anomaly_message(CARD | {'status': 'cleared', 'triage': 'progress'}, LINK, 'server', head={'kind': 'took', 'by': 'alice@example.com'})
 
     # then
-    assert head_of(cleared) == ':eyes: #14 stopped firing \u00b7 still open'
-    assert head_of(cleared_progress).startswith(':eyes: ')
-    assert bar_of(cleared)[0].startswith('Stopped firing \u00b7 still open')
+    assert head_of(cleared) == ':large_yellow_circle: #14 stopped firing \u00b7 awaiting review'
+    assert head_of(cleared_progress).startswith(':large_yellow_circle: ')
+    assert bar_of(cleared)[0].startswith('Stopped firing \u00b7 awaiting review')
     assert ':white_check_mark:' not in ''.join(texts(cleared)) and ':large_green_circle:' not in ''.join(texts(cleared))
-    assert cleared['text'].startswith('Stopped firing \u00b7 still open')
+    assert cleared['text'].startswith('Stopped firing \u00b7 awaiting review')
 
 
 def test_only_a_closed_card_wears_the_done_mark():
@@ -49,7 +49,7 @@ def test_only_a_closed_card_wears_the_done_mark():
 
     # then
     assert [k for k, v in marks.items() if v.startswith(':white_check_mark:')] == ['handled', 'cleared_handled', 'known', 'cleared_known']
-    assert marks['muted'].startswith(':eyes:')
+    assert marks['muted'].startswith(':large_yellow_circle:')
     assert marks['open'].startswith(':large_orange_circle:') and marks['progress'].startswith(':large_orange_circle:')
 
 
@@ -61,7 +61,7 @@ def test_an_event_stop_says_it_is_still_open_in_the_bar_and_the_notification_tex
     message = anomaly_message(event, LINK, 'server', head={'kind': 'cleared'})
 
     # then
-    assert 'still open' in msg('slack.status.event') and 'still open' in msg('slack.cleared')
+    assert 'awaiting review' in msg('slack.status.event') and 'awaiting review' in msg('slack.cleared')
     assert ':white_check_mark:' not in head_of(message)
 
 
@@ -99,13 +99,19 @@ def test_every_pack_translates_the_new_texts_and_no_pack_calls_a_cleared_card_re
     assert '\U0001F7E2' not in pack['clear.cleared'] and '\U0001F7E2' not in pack['clear.plugin_note']
 
 
-def test_the_turkish_texts_say_the_card_is_still_open():
+def test_the_turkish_texts_say_the_signal_stopped_and_a_review_is_awaited():
     # given
     pack = json.loads((LOCALES / 'tr' / 'messages.json').read_text(encoding='utf-8'))
 
     # then
-    assert pack['slack.head.cleared'] == '{card} sinyali durdu \u00b7 kart a\u00e7\u0131k'
-    assert pack['slack.status.cleared'] == 'Sinyal durdu \u00b7 kart a\u00e7\u0131k'
+    assert pack['slack.head.cleared'] == '{card} sinyal durdu \u00b7 inceleme bekleniyor'
+    assert pack['slack.status.cleared'] == pack['slack.cleared'] == 'Sinyal durdu \u00b7 inceleme bekleniyor'
+    assert pack['routes.fixed'] == 'Sinyal durdu, inceleme bekleniyor'
+    assert pack['routes.title_fixed'] == '{product} \u00b7 {label} \u00b7 sinyal durdu, inceleme bekleniyor'
+    assert pack['reminder.calmed'] == 'Sinyal durdu, kart h\u00e2l\u00e2 inceleme bekliyor.'
+    assert pack['clear.cleared'].startswith('\U0001F7E1 Sinyal durdu, inceleme bekleniyor: ') and pack['clear.plugin_note'].startswith('\U0001F7E1 Sinyal durdu, inceleme bekleniyor: ')
+    assert pack['slack.status.event'] == 'Olaydan sonra sinyal durdu \u00b7 inceleme bekleniyor'
+    assert pack['slackevents.offer.take'].startswith('\U0001F440')
 
 
 def test_the_cleared_thread_notes_carry_no_green_mark():
@@ -189,9 +195,9 @@ def test_a_cleared_open_card_never_says_fixed_in_a_route_post():
     text = json.dumps(rows, ensure_ascii=False)
 
     # then
-    assert '\u2705' not in text and 'Fixed' not in text and text.count('\U0001F440') == 1 and 'Stopped firing, still open' in text
-    assert 'fixed' not in msg('routes.title_fixed', product='Skopax', label='SEO') and 'still open' in msg('routes.title_fixed', product='Skopax', label='SEO')
-    assert msg('reminder.calmed') == 'Stopped firing but still open.'
+    assert '\u2705' not in text and 'Fixed' not in text and text.count('\U0001F7E1') == 1 and 'Stopped firing, awaiting review' in text
+    assert 'fixed' not in msg('routes.title_fixed', product='Skopax', label='SEO') and 'awaiting review' in msg('routes.title_fixed', product='Skopax', label='SEO')
+    assert msg('reminder.calmed') == 'Stopped firing; the card is still awaiting review.'
 
 
 @pytest.mark.parametrize('lang', ['de', 'es', 'fr', 'tr'])

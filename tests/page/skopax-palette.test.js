@@ -113,15 +113,21 @@ async function ctrlKOpensTheSearchAndEscRestoresTheFocus() {
 
   //then
   assert.ok(taken && !pal.hidden, 'Ctrl+K opens it, from anywhere');
-  assert.strictEqual(doc.activeElement, q, 'and focuses the input');
+  assert.strictEqual(doc.activeElement, doc.getElementById('top-q'), 'and focuses the search field, whose text goes to the palette');
   assert.strictEqual(q.value, '');
 
   //when
-  const held = !key(w, q, 'Tab');
-  const heldBack = !key(w, q, 'Tab', {shiftKey: true});
+  const leaves = key(w, q, 'Tab');
+  const leftOpen = pal.hidden;
+  from.focus();
+  key(w, from, 'k', {ctrlKey: true});
+  const leavesBack = key(w, q, 'Tab', {shiftKey: true});
+  const leftBack = pal.hidden;
+  from.focus();
+  key(w, from, 'k', {ctrlKey: true});
 
   //then
-  assert.ok(held && heldBack && doc.activeElement === q, 'Tab is held inside');
+  assert.ok(leaves && leavesBack && leftOpen && leftBack, 'Tab and Shift+Tab close the dropdown and let the focus move on');
 
   //when
   const closed = !key(w, q, 'Escape');
@@ -135,7 +141,7 @@ async function ctrlKOpensTheSearchAndEscRestoresTheFocus() {
   const metaOpen = !pal.hidden;
   key(w, doc.getElementById('pal-q'), 'k', {metaKey: true});
   const toggled = pal.hidden;
-  doc.getElementById('search-btn').click();
+  doc.getElementById('top-q').click();
   const byButton = !pal.hidden;
   doc.getElementById('pal-scrim').click();
 
@@ -149,8 +155,8 @@ async function ctrlKOpensTheSearchAndEscRestoresTheFocus() {
 
   //then
   assert.ok(cyrillic && byCode && pal.hidden, 'the physical K key works on a non-Latin layout too');
-  assert.ok(byButton && pal.hidden, 'the sidebar search button opens it and a click outside closes it');
-  assert.strictEqual(doc.activeElement, doc.getElementById('search-btn'));
+  assert.ok(byButton && pal.hidden, 'the top search field opens it and a click outside closes it');
+  assert.strictEqual(doc.activeElement, doc.getElementById('top-q'));
   assert.deepStrictEqual(errors.concat(mac.errors), []);
   await close(); await mac.close();
   return 'Ctrl+K or Cmd+K open the search with the input focused, Tab stays inside, Esc closes it and gives the focus back; the search button and the scrim work too';
@@ -237,7 +243,7 @@ async function downMovesTheSelection() {
   doc.body.focus();
   q.blur();
   key(w, doc.body, 'ArrowDown');
-  const back = [selected(doc), doc.activeElement === q];
+  const back = [selected(doc), doc.activeElement === doc.getElementById('top-q')];
 
   //then
   assert.deepStrictEqual(kept, [true, true, true], 'a press on the box outside the input keeps the focus in the input');
@@ -509,6 +515,7 @@ function realSettings() {
   const groups = {};
   names[1].split(', ').forEach((n, i) => { groups[n] = names[2].split(',').map((x) => x.trim().replace(/^'|'$/g, ''))[i]; });
   groups.MCP = constant(tunables, 'MCP');
+  groups.INSTANCES = constant(tunables, 'INSTANCES');
   const table = [...features.matchAll(/Feature\('([a-z-]+)', '([a-z.-]+)', '([^']+)',\s*'([^']*)', '([a-z]+)'(?:, edition='([a-z]+)')?/g)].map((m) => ({id: m[1], key: m[2], label: m[3], help: m[4], icon: m[5], edition: m[6] || 'community'}));
   const block = tunables.slice(tunables.indexOf('SIGN_IN_ROLES = ('), tunables.indexOf('CONFIG_KEY'));
   const declared = (tunables.match(/^\s+(?:T|feature_tunable)\(/gm) || []).length;
@@ -519,8 +526,8 @@ function realSettings() {
   [...tagSet.matchAll(/(\w+): '([^']+)'/g)].forEach((m) => items.push(item('tags.' + constant(tags, m[1]) + '.rules', groups.TAGS, m[2])));
   const tagCount = (tagSet.match(/:/g) || []).length;
   const feats = table.map((f) => ({id: f.id, key: f.key, label: f.label, help: f.help, icon: f.icon, on: true, stored: true, locked: f.edition !== 'community', edition: f.edition, needs: [], restart: null, source: 'default', reason: null}));
-  const tabOf = (i) => i.group === groups.INV ? 'ai' : i.group === groups.SIGNIN || i.group === groups.MCP ? 'access' : i.group === groups.FEATURES || table.some((f) => f.key === i.key) ? 'features' : 'settings';
-  const metaOf = (i) => 'Admin \u00b7 ' + ({ai: 'Investigator', features: 'Features', access: 'Access & sign-in'}[tabOf(i)] || i.group);
+  const tabOf = (i) => i.group === groups.INV ? 'ai' : i.group === groups.INSTANCES ? 'workspaces' : i.group === groups.SIGNIN || i.group === groups.MCP ? 'access' : i.group === groups.FEATURES || table.some((f) => f.key === i.key) ? 'features' : 'settings';
+  const metaOf = (i) => 'Admin \u00b7 ' + ({ai: 'Investigator', features: 'Features', access: 'Access & sign-in', workspaces: 'Workspaces'}[tabOf(i)] || i.group);
   return {items, feats, groups, declared: declared + tagCount, tabOf, metaOf};
 }
 
@@ -603,7 +610,7 @@ async function aSettingPickOpensTheAdminTabWhereItsRowLives() {
 
   //then
   assert.ok(declared > 0 && items.length === declared, 'every built-in setting that tunables.py and tags.py declare is picked: ' + items.length + ' of ' + declared);
-  assert.deepStrictEqual(Object.keys(seen).sort(), ['access', 'ai', 'features', 'settings'], 'they land on General, Features, Investigator and Access & sign-in');
+  assert.deepStrictEqual(Object.keys(seen).sort(), ['access', 'ai', 'features', 'settings', 'workspaces'], 'they land on General, Workspaces, Features, Investigator and Access & sign-in');
   assert.strictEqual(picked.length, 10, 'the role settings and the seven MCP settings are among the picks: ' + picked.join(', '));
   assert.ok(mcpLanded, 'Cmd-K to an MCP setting lands on its row on the MCP card of Access & sign-in');
   assert.deepStrictEqual(named, ['features', 'ai', 'features', 'access', 'settings'], 'public read opens Features, an Investigator setting opens Investigator, an Other switches row opens Features, a sign-in setting opens Access & sign-in and a General setting opens General');

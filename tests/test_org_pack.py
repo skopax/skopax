@@ -320,8 +320,8 @@ def test_about_your_company_is_a_live_setting(store: Store):
         app.state.gate.check('x')
         saved = c.put(SETTINGS, json={'key': 'core.org-about', 'value': 'Shop team'}, headers=AUTH)
         app.state.gate.check('x')
-        long = c.put(SETTINGS, json={'key': 'core.org-about', 'value': 'x' * 301}, headers=AUTH)
-        fits = tunables.parse(app.state.runtime.live.known()['core.org-about'], 'x' * 300, settings())
+        long = c.put(SETTINGS, json={'key': 'core.org-about', 'value': 'x' * 2001}, headers=AUTH)
+        fits = tunables.parse(app.state.runtime.live.known()['core.org-about'], 'x' * 2000, settings())
         items = c.get(SETTINGS, headers=AUTH).json()['items']
     entry = next(i for i in items if i['key'] == 'core.org-about')
     boxes = {i['key']: i.get('limit') for i in items if i['kind'] in ('text', 'list', 'tagrules')}
@@ -329,9 +329,9 @@ def test_about_your_company_is_a_live_setting(store: Store):
     # then
     assert 'Shop team' not in fake.gate_requests[0]['system'] and 'About what Skopax watches: Shop team.' in fake.gate_requests[1]['system']
     assert saved.status_code == 200 and (saved.json()['item']['live'], saved.json()['item']['value']) == (True, 'Shop team')
-    assert (long.status_code, long.json()['detail']) == (422, 'About your company is longer than 300 characters')
-    assert fits == 'x' * 300 and tunables.TEXT_LIMITS['core.org-about'] == prompt.ORG_LIMIT
-    assert {k: entry[k] for k in ('group', 'label', 'kind', 'limit', 'lines', 'value')} == {'group': 'Investigator', 'label': 'About your company', 'kind': 'text', 'limit': 300, 'lines': 4, 'value': 'Shop team'}
-    assert entry['help'] == 'One or two sentences on what Skopax watches, used by the gate that screens Slack messages'
-    assert (boxes['general.timezone'], boxes['jira.projects'], boxes['core.org-about']) == (1000, 1000, 300)
-    assert {k: limit for k, limit in boxes.items() if limit not in (300, 1000)} == {'website.scan-prompt': SETTING_TEXT_MAX, 'sso.button-text': 40} and any(k.startswith('tags.') for k in boxes)
+    assert (long.status_code, long.json()['detail']) == (422, 'About your company is longer than 2000 characters')
+    assert fits == 'x' * 2000 and tunables.TEXT_LIMITS['core.org-about'] == prompt.ORG_LIMIT
+    assert {k: entry[k] for k in ('group', 'label', 'kind', 'limit', 'lines', 'value')} == {'group': 'Investigator', 'label': 'About your company', 'kind': 'text', 'limit': 2000, 'lines': 8, 'value': 'Shop team'}
+    assert entry['help'] == 'A few sentences about the company and what Skopax watches: products, main services, who uses them. Given to the investigator and the topic gate'
+    assert (boxes['general.timezone'], boxes['jira.projects'], boxes['core.org-about']) == (1000, 1000, 2000)
+    assert {k: limit for k, limit in boxes.items() if limit not in (2000, 1000)} == {'website.scan-prompt': SETTING_TEXT_MAX, 'sso.button-text': 40} and any(k.startswith('tags.') for k in boxes)

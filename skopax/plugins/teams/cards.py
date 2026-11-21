@@ -77,7 +77,7 @@ def business_rows(message: dict) -> list[dict]:
 
 
 def fixed_rows(message: dict) -> list[dict]:
-    return [text_block(f"\U0001F440 **{msg('routes.fixed')}:** {message.get('text') or ''}", separator=True), text_block(open_link(message), size='Small')]
+    return [text_block(f"\U0001F7E1 **{msg('routes.fixed')}:** {message.get('text') or ''}", separator=True), text_block(open_link(message), size='Small')]
 
 
 def body_of(message: dict) -> list[dict]:

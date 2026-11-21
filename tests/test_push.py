@@ -139,8 +139,8 @@ def test_a_failing_member_is_logged_and_the_others_still_get_the_dm(caplog):
     assert line == 'Skopax: CRIT a ERROR x'
     assert [c['channel'] for _, c in transport.calls] == ['U1', 'U2']
     assert [(r.levelname, r.getMessage()) for r in caplog.records] == [
-        ('WARNING', 'phone push DM to U1 failed: SlackError'),
-        ('INFO', 'phone push DM sent to U2 for log|a|ERROR|x'),
+        ('WARNING', 'Slack DM to U1 failed: SlackError'),
+        ('INFO', 'Slack DM sent to U2 for log|a|ERROR|x'),
     ]
 
 

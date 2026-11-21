@@ -128,7 +128,7 @@ async function warnRowOpensItsCards() {
   assert.strictEqual(doc.querySelectorAll('#anoms article.inc.linked').length, 1, 'one ring');
   const note = doc.getElementById('filter-note');
   assert.match(note.querySelector('.fn-cur').textContent, /^Showing catalog-service cards5$/, 'the filter line names the service and its card count');
-  assert.ok(doc.getElementById('back-svcs') && doc.getElementById('clear-f'), 'with Back to Services and Back to Open');
+  assert.ok(doc.getElementById('back-svcs') && doc.getElementById('clear-all') && !doc.getElementById('clear-f'), 'with Back to Services and Clear filters, which already goes back to Open');
 
   //when
   doc.getElementById('back-svcs').click();
@@ -258,7 +258,7 @@ async function severityChipsFilterTheOpenCards() {
   assert.deepStrictEqual(cards(doc), ['5xx|store/catalog-service', 'err|payments/orders-service'], 'Warning shows the open warning cards only');
   assert.strictEqual(sevItem('warn').getAttribute('aria-pressed'), 'true');
   assert.strictEqual(statusPressed(), null, 'Open is not pressed while a severity filters');
-  assert.match(doc.getElementById('filter-note').textContent, /^Showing Warning2Copy linkBack to Open ›/);
+  assert.match(doc.getElementById('filter-note').textContent, /^Showing Warning2Copy linkAllClear filters \u2715/);
 
   //when
   sevItem('warn').click();

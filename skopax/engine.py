@@ -287,15 +287,17 @@ def clearing_key(a: dict) -> str:
     return a.get('ranKey') or a.get('cluster') or a.get('src')
 
 
-def put_note(a: dict, text: str, t: str) -> None:
+def put_note(a: dict, text: str, t: str, by: str | None = None) -> None:
     a['note'] = {'text': text, 'at': t}
     a.pop('noteBy', None)
+    if by:
+        a['noteBy'] = by
 
 
 def expire(a: dict, t: str, note: str) -> None:
     a.update(status='cleared', clearedAt=t, expired=True)
     if not a.get('note'):
-        put_note(a, note, t)
+        put_note(a, note, t, 'system')
 
 
 ANY_CLUSTER = object()

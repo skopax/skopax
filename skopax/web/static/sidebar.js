@@ -17,7 +17,7 @@ var SIDE_ROWS = {
   mcp: ['Connect MCP', 'plug'],
   review: ['Review', 'check'],
   docs: ['Docs', 'book'],
-  prefs: ['Settings', 'gear']
+  prefs: ['Preferences', 'gear']
 };
 var SIDE_GROUPS = [
   {id: 'main', label: '', rows: ['anoms', 'reqs', 'chat', 'inv']},
@@ -29,9 +29,9 @@ var SIDE_GROUPS = [
 var SIDE_PINNED = ['prefs'];
 var SIDE_NEW = [];
 var SIDE_BLANK = ['chat', 'mcp', 'docs', 'prefs'];
-var ADMIN_TABS = ['settings', 'access', 'features', 'ai', 'changes'];
-var ADMIN_LABELS = {settings: 'General', access: 'Access & sign-in', features: 'Features', ai: 'Investigator', changes: 'Changes'};
-var ADMIN_ICONS = {settings: 'gear', access: 'lock', features: 'toggle', ai: 'spark', changes: 'history'};
+var ADMIN_TABS = ['settings', 'access', 'workspaces', 'features', 'ai', 'changes'];
+var ADMIN_LABELS = {settings: 'Settings', access: 'Access & sign-in', workspaces: 'Workspaces', features: 'Features', ai: 'Investigator', changes: 'Changes'};
+var ADMIN_ICONS = {settings: 'gear', access: 'lock', workspaces: 'server', features: 'toggle', ai: 'spark', changes: 'history'};
 var ADMIN_COUNTED = ['settings', 'access', 'features'];
 var ADMIN_KEY = 'skopax-admin-tab', ADMIN_HOME = 'settings';
 var SIDE_HOT = ['k-crit', 'k-warn', 'k-info', 'k-act', 'k-ok'];
@@ -79,7 +79,7 @@ function sideTop() {
   if (!slot || slot.firstChild) return slot;
   var box = el('div', 'inst'), menu = el('div', 'menu');
   box.id = 'inst';
-  var btn = el('button', 'inst-btn', '<span class="inst-tile" aria-hidden="true"></span><span class="inst-t"><span class="inst-k">Instance</span><span class="inst-name" data-no-tx></span></span>' + navIcon('updown'));
+  var btn = el('button', 'inst-btn', '<span class="inst-tile" aria-hidden="true"></span><span class="inst-t"><span class="inst-k">Workspace</span><span class="inst-name" data-no-tx></span></span>' + navIcon('updown'));
   btn.type = 'button';
   btn.id = 'inst-btn';
   btn.setAttribute('aria-haspopup', 'menu');
@@ -87,7 +87,7 @@ function sideTop() {
   btn.setAttribute('aria-controls', 'inst-menu');
   menu.id = 'inst-menu';
   menu.setAttribute('role', 'menu');
-  menu.setAttribute('aria-label', 'Switch instance');
+  menu.setAttribute('aria-label', 'Switch workspace');
   menu.hidden = true;
   box.appendChild(btn);
   box.appendChild(menu);
@@ -163,18 +163,26 @@ function sideFold(id, folded, keep) {
   if (keep) sideFoldSave(id, !folded);
   sideMarkFolds();
 }
+function sideUnread() {
+  var b = document.getElementById('nt-badge');
+  return b && !b.hidden ? b.firstChild.textContent : '';
+}
+function sideRowHot(t) {
+  if (t.id === 'tab-slack') return !!sideUnread();
+  return t.classList.contains('hot') && (t.classList.contains('k-crit') || t.classList.contains('k-warn'));
+}
 function sideMarkFolds() {
   document.querySelectorAll('#snav > .s-grp').forEach(function (box) {
     var btn = box.querySelector('.g-btn');
     if (!btn) return;
     var rows = [].filter.call(box.children, function (c) { return c.matches('a.tab') && !c.hidden; }), rail = sideRailOn && !sidePhone();
-    var hot = rows.filter(function (t) { return t.classList.contains('k-crit') || t.classList.contains('k-warn'); });
+    var hot = rows.filter(sideRowHot);
     var folded = box.classList.contains('folded'), sum = btn.querySelector('.g-sum'), k = hot.some(function (t) { return t.classList.contains('k-crit'); }) ? 'k-crit' : hot.length ? 'k-warn' : '';
     var text = folded ? String(hot.length || rows.length) : '';
     if (sum.textContent !== text) sum.textContent = text;
     var cls = 'g-sum' + (folded && k ? ' hot ' + k : '');
     if (sum.className !== cls) sum.className = cls;
-    var named = hot.map(function (t) { var n = (t.querySelector('.count') || {}).textContent; return t.dataset.label + (n ? ' ' + n : ''); }).join(', ');
+    var named = hot.map(function (t) { var n = t.id === 'tab-slack' ? sideUnread() : (t.querySelector('.count') || {}).textContent; return t.dataset.label + (n ? ' ' + n : ''); }).join(', ');
     if (rail) { btn.setAttribute('tabindex', '-1'); btn.setAttribute('aria-hidden', 'true'); } else { btn.removeAttribute('tabindex'); btn.removeAttribute('aria-hidden'); }
     if (folded) btn.title = btn.querySelector('.g-t').textContent + ' folded' + (named ? ': ' + named : '');
     else btn.removeAttribute('title');
@@ -335,7 +343,7 @@ function sideFoot(acct) {
     var list = items();
     if (list.length) list[last ? list.length - 1 : 0].focus();
   };
-  var pages = [{id: 'um-settings', label: 'Settings', icon: 'gear', run: function () { pickTab('prefs'); }},
+  var pages = [{id: 'um-settings', label: 'Preferences', icon: 'gear', run: function () { pickTab('prefs'); }},
     {id: 'um-admin', label: 'Admin', icon: 'shield', hidden: true, run: function (b) { pickTab(b.dataset.go || ADMIN_HOME); }}];
   pages.concat(acct.items || []).forEach(function (it) {
     var b = el('button', 'mi', navIcon(it.icon) + '<span></span>');
@@ -451,7 +459,9 @@ function sidePlugins(pages) {
     row.dataset.plugin = '1';
     var img = row.querySelector('img');
     if (img) img.setAttribute('src', p.icon);
-    sideGroupBox(p.group).appendChild(row);
+    var box = sideGroupBox(p.group), after = p.group === 'connect' ? document.getElementById('tab-integrations') : null;
+    if (after && after.parentNode === box) box.insertBefore(row, after.nextSibling);
+    else box.appendChild(row);
     var section = el('section', 'panel');
     section.id = 'panel-' + p.tab;
     section.hidden = true;

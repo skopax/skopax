@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from skopax import clock
 from skopax.app import create_app
 from skopax.contract import InstanceInfo, Tool
 from skopax.engine import iso
@@ -90,13 +89,12 @@ def test_website_identity_and_manifest():
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
         'website', 'Website', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.5', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url', '@browser-url', '*'], 'secrets': ['scan-headers'], 'agentReads': False}
-    assert manifest['uses'] == ['umami']
-    assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('browser', 300, 45, ['browser']), ('pagescan', 3600, 2700, ['pagescan']),
-                                                                                         ('pagescan-digest', 3600, 75, ['pagescan-digest'])]
+    assert manifest['uses'] == ['umami', 'browser']
+    assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('pagescan', 3600, 2700, ['pagescan']), ('pagescan-digest', 3600, 75, ['pagescan-digest'])]
     assert [t['name'] for t in manifest['tools']] == ['page', 'screenshot', 'page_scan']
     assert [(f['key'], f['kind'], f['required']) for f in manifest['fields']] == [
         ('url', 'url', True), ('hosts', 'text', False), ('login-hosts', 'text', False), ('login-paths', 'text', False), ('api-paths', 'text', False),
-        ('refused-paths', 'text', False), ('browser-url', 'url', False), ('description', 'text', False), ('umami', 'instance', False), ('scan-headers', 'secret', False),
+        ('refused-paths', 'text', False), ('browser', 'instance', False), ('browser-url', 'url', False), ('description', 'text', False), ('umami', 'instance', False), ('scan-headers', 'secret', False),
         ('tracking-params', 'text', False), ('kept-headers', 'text', False), ('scan-skip', 'text', False), ('user-agent', 'text', False), ('internal-subdomains', 'bool', False)]
     assert next(f for f in website.PLUGIN.fields if f.key == 'url').ui is True and next(f for f in website.PLUGIN.fields if f.key == 'umami').choices == ('umami',)
     assert website.PLUGIN.client is not None and website.PLUGIN.test is not None and website.PLUGIN.probe_targets is not None and website.PLUGIN.links is not None
@@ -106,7 +104,7 @@ def test_website_identity_and_manifest():
 def test_website_defaults_are_neutral():
     # then
     assert {f.key: f.default for f in website.PLUGIN.fields} == {'url': '', 'hosts': '', 'login-hosts': '', 'login-paths': '', 'api-paths': '', 'refused-paths': '',
-                                                                  'browser-url': '', 'description': '', 'umami': '', 'scan-headers': '', 'tracking-params': '', 'kept-headers': '', 'scan-skip': '',
+                                                                  'browser': '', 'browser-url': '', 'description': '', 'umami': '', 'scan-headers': '', 'tracking-params': '', 'kept-headers': '', 'scan-skip': '',
                                                                   'user-agent': '', 'internal-subdomains': 'false'}
     assert {s.key: s.default for s in website.PLUGIN.settings} == {'page-scan': 'false', 'scan-hours': '1', 'recheck-days': '7', 'pages': '50', 'extra': '', 'ignore': '',
                                                                   'model': 'claude-opus-5-5', 'digest-hour': '10', 'scan-prompt': ''}
@@ -197,8 +195,8 @@ def test_the_screenshot_and_page_scan_tools_are_offered_only_from_an_instance_wi
     offered = [d['name'] for d in PluginTools(bare).definitions()]
 
     # then
-    assert {t.name: t.needs_field for t in website.PLUGIN.tools} == {'page': '', 'screenshot': 'browser-url', 'page_scan': 'browser-url'}
-    off = {'state': 'off', 'reason': msg('tools.off.needs_field', field='Browser URL')}
+    assert {t.name: t.needs_field for t in website.PLUGIN.tools} == {'page': '', 'screenshot': 'browser', 'page_scan': 'browser'}
+    off = {'state': 'off', 'reason': msg('tools.off.needs_field', field='Headless browser')}
     assert held == {'page': {'state': 'on', 'reason': None}, 'screenshot': off, 'page_scan': off}
     assert offered == ['page']
 
@@ -246,72 +244,6 @@ def test_the_site_is_a_probe_target():
     assert website.PLUGIN.probe_targets(info) == [{'name': 'website-east', 'url': 'https://east.example.com/'}]
 
 
-def test_browser_check_writes_a_row_and_a_card_after_5_min(store: Store, chrome: FakeChrome):
-    # given
-    up = f'http://127.0.0.1:{chrome.port}'
-    with app_with(store, FakePages(), {'main': {'browser-url': up}}) as c:
-        sweeper = c.app.state.sweeper
-
-        # when
-        sweeper.run('website', 'browser', NOW)
-        answered = browser_rows(store)
-        store.db['instances'].update_one({'_id': 'website/main'}, {'$set': {'values.browser-url': DOWN_URL}})
-        c.app.state.runtime.refresh()
-        sweeper.run('website', 'browser', NOW + 120)
-        early = (browser_rows(store), dict(cards(store)))
-        sweeper.run('website', 'browser', NOW + 300)
-        late = (browser_rows(store), dict(cards(store)))
-        store.db['instances'].update_one({'_id': 'website/main'}, {'$set': {'values.browser-url': up}})
-        c.app.state.runtime.refresh()
-        sweeper.run('website', 'browser', NOW + 600)
-        back = (browser_rows(store), dict(cards(store)))
-
-    # then
-    assert answered == [{'name': 'browser', 'ok': True, 'version': 'Chrome/157.0.8103.15', 'lastSeen': iso(NOW), 'error': None, 'plugin': 'website'}]
-    assert early[0] == [{'name': 'browser', 'ok': False, 'version': 'Chrome/157.0.8103.15', 'lastSeen': iso(NOW), 'error': 'Unreachable', 'plugin': 'website'}]
-    assert 'browser-down|127.0.0.1' not in early[1]
-    down = late[1]['browser-down|127.0.0.1']
-    assert (down['status'], down['sev'], down['label'], down['src']) == ('open', 'warn', 'Screenshot browser not answering', 'browser')
-    assert late[0][0]['ok'] is False and late[0][0]['lastSeen'] == iso(NOW)
-    assert back[0][0]['ok'] is True and back[0][0]['lastSeen'] == iso(NOW + 600)
-    assert back[1]['browser-down|127.0.0.1']['status'] == 'cleared'
-    assert store.load()['sources']['browser'] == 'ok'
-
-
-def test_one_failed_read_after_an_answer_opens_no_card_and_the_second_does(store: Store, chrome: FakeChrome):
-    # given
-    up = f'http://127.0.0.1:{chrome.port}'
-    with app_with(store, FakePages(), {'main': {'browser-url': up}}) as c:
-        sweeper = c.app.state.sweeper
-        sweeper.run('website', 'browser', NOW)
-        store.db['instances'].update_one({'_id': 'website/main'}, {'$set': {'values.browser-url': DOWN_URL}})
-        c.app.state.runtime.refresh()
-
-        # when
-        sweeper.run('website', 'browser', NOW + 300)
-        first = dict(cards(store))
-        sweeper.run('website', 'browser', NOW + 600)
-        second = dict(cards(store))
-
-    # then
-    assert 'browser-down|127.0.0.1' not in first
-    assert second['browser-down|127.0.0.1']['status'] == 'open' and f'last answered at {clock.date(NOW)} {clock.label(NOW)}.' in second['browser-down|127.0.0.1']['what']
-
-
-def test_a_browser_card_never_starts_an_investigation():
-    # given
-    from skopax.investigator.select import eligible
-    card = website.down_card('browser', None) | {'status': 'open', 'firstSeen': iso(NOW - 60)}
-    other = card | {'key': 'err|shop/checkout-service', 'src': 'demo'}
-    history = [{'t': iso(NOW - 60), 'key': k, 'ev': 'new', 'sev': 'warn'} for k in (card['key'], other['key'])]
-
-    # when
-    picked = eligible({'anomalies': [card, other], 'history': history}, 'live', [], NOW, 5)
-
-    # then
-    assert [a['key'] for a in picked] == ['err|shop/checkout-service']
-
-
 def test_a_browser_url_that_is_not_plain_http_fails_the_connection_test(store: Store):
     # when
     with TestClient(create_app(settings(), store, transport=through(FakePages({HOME: ok_page()})))) as c:
@@ -319,101 +251,6 @@ def test_a_browser_url_that_is_not_plain_http_fails_the_connection_test(store: S
 
     # then
     assert (res['ok'], res['summary']) == (False, browser_kit.NOT_HTTP)
-
-
-def test_a_browser_that_never_answered_gets_its_card_at_the_second_failed_pass(store: Store):
-    # given
-    with app_with(store, FakePages(), {'main': {'browser-url': DOWN_URL}}) as c:
-        sweeper = c.app.state.sweeper
-
-        # when
-        sweeper.run('website', 'browser', NOW)
-        first = dict(cards(store))
-        sweeper.run('website', 'browser', NOW + 300)
-        second = dict(cards(store))
-
-    # then
-    assert 'browser-down|127.0.0.1' not in first
-    assert second['browser-down|127.0.0.1']['status'] == 'open' and '5 min' not in second['browser-down|127.0.0.1']['what']
-    assert 'not answered since it was set up' in second['browser-down|127.0.0.1']['what']
-    assert browser_rows(store) == [{'name': 'browser', 'ok': False, 'version': None, 'lastSeen': None, 'error': 'Unreachable', 'plugin': 'website'}]
-
-
-def test_the_browser_row_has_the_keys_the_nodes_panel_reads(store: Store, chrome: FakeChrome):
-    # given
-    with app_with(store, FakePages(), {'main': {'browser-url': f'http://127.0.0.1:{chrome.port}'}, 'east': {'browser-url': DOWN_URL}}) as c:
-
-        # when
-        c.app.state.sweeper.run('website', 'browser', NOW)
-
-    # then
-    rows = browser_rows(store)
-    assert [set(r) - {'plugin', 'cluster'} for r in rows] == [ROW_KEYS, ROW_KEYS]
-    assert [(r['name'], r['ok'], r.get('cluster')) for r in rows] == [('browser', True, None), ('browser', False, 'east')]
-    assert all(isinstance(r['lastSeen'], str) for r in rows if r['ok']) and rows[1]['error'] == 'Unreachable'
-
-
-def test_no_browser_url_no_check(store: Store):
-    # given
-    stale = {'key': 'browser-down|browser', 'sev': 'warn', 'status': 'open', 'svc': 'browser', 'label': 'Screenshot browser not answering', 'src': 'browser', 'now': 1,
-             'short': 'WARN browser Screenshot browser not answering', 'firstSeen': iso(NOW - 900), 'lastSeen': iso(NOW - 300)}
-    store.save({'initialized': True, 'anomalies': [stale], 'sources': {}, 'muted': [], 'sweptIso': iso(NOW - 300),
-                'browser': [{'name': 'browser', 'ok': False, 'version': None, 'lastSeen': None, 'error': 'Unreachable', 'plugin': 'website'}]}, None)
-    with app_with(store, FakePages(), {'main': {}}) as c:
-
-        # when
-        c.app.state.sweeper.run('website', 'browser', NOW)
-
-    # then
-    assert browser_rows(store) == []
-    assert cards(store)['browser-down|browser']['status'] == 'cleared'
-    assert store.load()['sources']['browser'] == 'ok \u00b7 no data'
-
-
-def test_a_refused_browser_read_raises_the_access_card_and_keeps_the_down_card(store: Store, chrome: FakeChrome):
-    # given
-    def refusing(method, url, headers, data, timeout):
-        raise HttpError(403, url)
-
-    up = f'http://127.0.0.1:{chrome.port}'
-    with app_with(store, FakePages(), {'main': {'browser-url': DOWN_URL}}) as c:
-        sweeper = c.app.state.sweeper
-        sweeper.run('website', 'browser', NOW)
-        sweeper.run('website', 'browser', NOW + 300)
-        c.app.state.runtime.transport = refusing
-
-        # when
-        sweeper.run('website', 'browser', NOW + 600)
-        refused = (dict(cards(store)), store.load()['sources']['browser'], browser_rows(store))
-        c.app.state.runtime.transport = through(FakePages())
-        store.db['instances'].update_one({'_id': 'website/main'}, {'$set': {'values.browser-url': up}})
-        c.app.state.runtime.refresh()
-        sweeper.run('website', 'browser', NOW + 900)
-        back = dict(cards(store))
-
-    # then
-    access = refused[0][website.ACCESS_KEY]
-    assert (access['status'], access['sev'], access['ranKey']) == ('open', 'warn', 'browser:access:browser')
-    assert access['label'] == 'Website cannot read browser: the browser service refused the request'
-    assert refused[0]['browser-down|127.0.0.1']['status'] == 'open'
-    assert refused[1] == 'ok \u00b7 no access to browser'
-    assert refused[2][0]['error'] == 'HttpError code 403' and refused[2][0]['ok'] is False
-    assert back[website.ACCESS_KEY]['status'] == 'cleared' and back['browser-down|127.0.0.1']['status'] == 'cleared'
-
-
-def test_website_second_instance_is_scoped(store: Store, chrome: FakeChrome):
-    # given
-    with app_with(store, FakePages(), {'main': {'browser-url': f'http://127.0.0.1:{chrome.port}'}, 'east': {'browser-url': DOWN_URL}}) as c:
-        sweeper = c.app.state.sweeper
-
-        # when
-        sweeper.run('website', 'browser', NOW)
-        sweeper.run('website', 'browser', NOW + 300)
-
-    # then
-    east = next(a for a in store.load()['anomalies'] if a.get('cluster') == 'east')
-    assert (east['cluster'], east['ranKey'], east['status']) == ('east', 'browser-east', 'open')
-    assert store.load()['sources']['browser-east'] == 'ok \u00b7 browser down' and store.load()['sources']['browser'] == 'ok'
 
 
 def shot_tool(images: list[dict]):
@@ -510,35 +347,6 @@ def test_a_tool_image_is_stored_and_shown_to_the_model(store: Store, chrome: Fak
     assert ended[0]['screenshots'] == shots
 
 
-def test_a_down_browser_says_so_in_its_status_on_every_pass_and_on_the_website_tile(store: Store):
-    # given
-    with app_with(store, FakePages(), {'main': {'browser-url': DOWN_URL}}) as c:
-        sweeper = c.app.state.sweeper
-
-        # when
-        sweeper.run('website', 'browser', NOW)
-        first = store.load()['sources']['browser']
-        sweeper.run('website', 'browser', NOW + 300)
-        second = store.load()['sources']['browser']
-        tile = next(t for t in c.get('/api/server', headers=AUTH).json()['plugins'] if t['id'] == 'website')
-
-    # then
-    assert first == second == 'ok \u00b7 browser down'
-    assert 'browser-down|127.0.0.1' in cards(store)
-    assert tile['instances'][0]['status'] == 'ok \u00b7 browser down'
-
-
-def test_a_website_without_a_browser_url_reads_no_data_in_the_ruled_form(store: Store):
-    # given
-    with app_with(store, FakePages(), {'main': {}}) as c:
-
-        # when
-        c.app.state.sweeper.run('website', 'browser', NOW)
-
-    # then
-    assert store.load()['sources']['browser'] == 'ok \u00b7 no data'
-
-
 def test_the_connection_test_sends_the_scan_headers_to_the_site_and_fails_on_a_bare_public_suffix(store: Store):
     # given
     pages = FakePages({HOME: ok_page()})
@@ -592,17 +400,3 @@ def test_the_connection_test_names_the_scan_headers_it_parsed_never_their_values
     assert fused['ok'] is False and 'another "Name:"' in fused['summary'] and 's3cret' not in json.dumps(fused)
     help_text = next(f for f in website.PLUGIN.fields if f.key == 'scan-headers').help
     assert 'separated by semicolons' in help_text and 'new line' not in help_text
-
-
-def test_admin_integrations_shows_the_browser_down_status_instead_of_healthy(store: Store):
-    # given
-    with app_with(store, FakePages(), {'main': {'browser-url': DOWN_URL}}) as c:
-        c.app.state.sweeper.run('website', 'browser', NOW)
-
-        # when
-        found = next(p for p in c.get('/api/admin/plugins', headers=AUTH).json()['plugins'] if p['id'] == 'website')
-
-    # then
-    health = found['health']
-    assert (health['state'], health['text']) == ('warn', 'browser down')
-    assert (found['health']['instances'][0]['state'], found['health']['instances'][0]['text']) == ('warn', 'browser down')

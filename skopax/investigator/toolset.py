@@ -97,7 +97,7 @@ def _gated(runtime) -> list[tuple]:
         for tool in plugin.tools:
             if not _reaches(runtime, plugin, tool, found):
                 continue
-            usable = [i for i in found if has_value(i, tool.needs_field)] if tool.needs_field else found
+            usable = [i for i in found if (tool.available(runtime, i) if tool.available is not None else has_value(i, tool.needs_field))] if tool.needs_field else found
             out.append((plugin, tool, usable, not tool.needs_field or (bool(usable) and _reaches(runtime, plugin, tool, usable))))
     return out
 

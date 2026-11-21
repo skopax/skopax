@@ -25,6 +25,10 @@ You need a MongoDB. Make the secret key once and keep it:
       -e SKOPAX_SECRET_KEY="$SKOPAX_SECRET_KEY" \
       skopax/skopax:{minor}
 
+For website screenshots and page scan (Website plug-in, optional) add a browser service next to it and set Browser URL on the Website instance to `http://skopax-browser:9222`:
+
+    docker run -d --name skopax-browser --network skopax --shm-size 1g chromedp/headless-shell:157.0.8103.15
+
 Then open http://localhost:8080. A Docker Compose file and all settings are in the [README](https://github.com/skopax/skopax#quickstart).
 
 ## Tags

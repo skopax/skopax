@@ -15,7 +15,7 @@ STAGING = 'https://staging.example.com'
 EU = 'https://eu.example.com/board'
 COLOURS = ('#e3a744', '#9a7ce3', '#5cbf80', '#f0857a', '#7eaaf2', '#c98500')
 SECRET_URL = 'https://u:p@private.example.com'
-HIDDEN = 'not shown: it breaks the Other instances rules'
+HIDDEN = 'not shown: it breaks the Other workspaces rules'
 
 
 def known(key: str):
@@ -48,21 +48,21 @@ def test_instance_links_are_validated():
             instance_links(raw)
         errors[case] = str(e.value)
     with pytest.raises(Invalid) as put:
-        parse(known('core.instance-links'), refused['userinfo'], settings())
+        parse(known('core.workspace-links'), refused['userinfo'], settings())
 
     # then
     assert parsed == [{'name': 'staging', 'url': STAGING}, {'name': 'eu cluster', 'url': EU}]
     assert instance_links('') == [] and instance_links(' , ') == []
-    assert parse(known('core.instance-links'), good, settings()) == good.strip(), 'a valid value is stored as typed'
+    assert parse(known('core.workspace-links'), good, settings()) == good.strip(), 'a valid value is stored as typed'
     assert errors == {
-        'eleven': 'Other instances, entry 11: at most 10 other instances can be listed',
-        'name': 'Other instances, entry 1: a name is 1 to 40 letters, digits, spaces, dots, dashes or underscores',
-        'scheme': 'Other instances, entry 2: the address must start with http:// or https:// and name a host',
-        'userinfo': 'Other instances, entry 1: the address must not hold a user name or password',
-        'repeat': 'Other instances, entry 2: the name is already used by an earlier entry',
-        'pair': 'Other instances, entry 1: write each entry as name=url',
-        'host': 'Other instances, entry 1: the address must start with http:// or https:// and name a host',
-        'long': 'Other instances, entry 1: a name is 1 to 40 letters, digits, spaces, dots, dashes or underscores',
+        'eleven': 'Other workspaces, entry 11: at most 10 other workspaces can be listed',
+        'name': 'Other workspaces, entry 1: a name is 1 to 40 letters, digits, spaces, dots, dashes or underscores',
+        'scheme': 'Other workspaces, entry 2: the address must start with http:// or https:// and name a host',
+        'userinfo': 'Other workspaces, entry 1: the address must not hold a user name or password',
+        'repeat': 'Other workspaces, entry 2: the name is already used by an earlier entry',
+        'pair': 'Other workspaces, entry 1: write each entry as name=url',
+        'host': 'Other workspaces, entry 1: the address must start with http:// or https:// and name a host',
+        'long': 'Other workspaces, entry 1: a name is 1 to 40 letters, digits, spaces, dots, dashes or underscores',
     }
     assert str(put.value) == errors['userinfo'], 'an admin PUT runs the same check'
     leaks = ('u:p', 'private', 'javascript', '<name>', 'example.com', 'Staging', 'n10')
@@ -71,8 +71,8 @@ def test_instance_links_are_validated():
 
 def test_me_lists_the_current_instance_and_its_links(store: Store):
     # given
-    env = load_settings(env={'SKOPAX_ENV_LABEL': 'production', 'SKOPAX_INSTANCE_LINKS': f'staging={STAGING}, eu={EU}'})
-    labelled = dataclasses.replace(settings(), env_label=env.env_label, instance_links=env.instance_links)
+    env = load_settings(env={'SKOPAX_ENV_LABEL': 'production', 'SKOPAX_WORKSPACE_LINKS': f'staging={STAGING}, eu={EU}'})
+    labelled = dataclasses.replace(settings(), env_label=env.env_label, workspace_links=env.workspace_links)
     hosted = dataclasses.replace(settings(), base_url='https://ops.example.com:8443/board')
     bare = dataclasses.replace(settings(), base_url='')
 
@@ -83,7 +83,7 @@ def test_me_lists_the_current_instance_and_its_links(store: Store):
             seen.append(c.get('/api/me').json()['instances'])
 
     # then
-    assert (env.env_label, env.instance_links) == ('production', f'staging={STAGING}, eu={EU}')
+    assert (env.env_label, env.workspace_links) == ('production', f'staging={STAGING}, eu={EU}')
     assert seen[0] == {'current': {'name': 'production', 'letter': 'P'},
                        'links': [{'name': 'staging', 'url': STAGING, 'letter': 'S', 'colour': colour('staging')}, {'name': 'eu', 'url': EU, 'letter': 'E', 'colour': colour('eu')}]}
     assert all(link['colour'] in COLOURS for link in seen[0]['links'])
@@ -95,57 +95,57 @@ def test_an_admin_sets_the_links_live_and_a_refused_value_is_never_echoed(store:
     # given
     with TestClient(create_app(settings(), store)) as c:
         # when
-        listed = [i for i in c.get('/api/admin/settings', headers=AUTH).json()['items'] if i['key'] == 'core.instance-links']
-        refused = c.put('/api/admin/settings', json={'key': 'core.instance-links', 'value': f'x={SECRET_URL}'}, headers=AUTH)
+        listed = [i for i in c.get('/api/admin/settings', headers=AUTH).json()['items'] if i['key'] == 'core.workspace-links']
+        refused = c.put('/api/admin/settings', json={'key': 'core.workspace-links', 'value': f'x={SECRET_URL}'}, headers=AUTH)
         after_refused = c.get('/api/me').json()['instances']['links']
-        saved = c.put('/api/admin/settings', json={'key': 'core.instance-links', 'value': f'staging={STAGING}'}, headers=AUTH)
+        saved = c.put('/api/admin/settings', json={'key': 'core.workspace-links', 'value': f'staging={STAGING}'}, headers=AUTH)
         after_saved = c.get('/api/me').json()['instances']['links']
 
     # then
-    assert [(i['group'], i['label'], i['kind'], i['live'], i['value']) for i in listed] == [('General', 'Other instances', 'text', True, '')]
+    assert [(i['group'], i['label'], i['kind'], i['live'], i['value']) for i in listed] == [('Workspaces', 'Other workspaces', 'text', True, '')]
     assert refused.status_code == 422
-    assert refused.json()['detail'] == 'Other instances, entry 1: the address must not hold a user name or password'
+    assert refused.json()['detail'] == 'Other workspaces, entry 1: the address must not hold a user name or password'
     assert 'u:p' not in refused.text and 'private' not in refused.text
     assert after_refused == []
-    assert store.db['tunable_changes'].count_documents({'key': 'core.instance-links'}) == 1, 'only the saved value is in the history'
+    assert store.db['tunable_changes'].count_documents({'key': 'core.workspace-links'}) == 1, 'only the saved value is in the history'
     assert saved.status_code == 200
     assert after_saved == [{'name': 'staging', 'url': STAGING, 'letter': 'S', 'colour': colour('staging')}], 'the switcher follows the setting without a restart'
 
 
 def test_a_bad_env_or_stored_value_lists_no_links_and_warns_once_with_the_type_only(store: Store, caplog):
     # given
-    from_env = dataclasses.replace(settings(), instance_links=f'x={SECRET_URL}')
-    good_env = dataclasses.replace(settings(), instance_links=f'staging={STAGING}')
+    from_env = dataclasses.replace(settings(), workspace_links=f'x={SECRET_URL}')
+    good_env = dataclasses.replace(settings(), workspace_links=f'staging={STAGING}')
 
     # when
     with caplog.at_level(logging.WARNING):
         with TestClient(create_app(from_env, store)) as c:
             first = c.get('/api/me')
             second = c.get('/api/me')
-        env_records = [r.getMessage() for r in caplog.records if 'instance' in r.getMessage()]
+        env_records = [r.getMessage() for r in caplog.records if 'workspace' in r.getMessage() or 'instance' in r.getMessage()]
         caplog.clear()
         with TestClient(create_app(good_env, store)) as c:
-            TunableStore(store.db).write('core.instance-links', f'x={SECRET_URL}', 'admin@example.com', None)
+            TunableStore(store.db).write('core.workspace-links', f'x={SECRET_URL}', 'admin@example.com', None)
             c.get('/api/admin/settings', headers=AUTH)
             stored = c.get('/api/me')
-        stored_records = [r.getMessage() for r in caplog.records if 'instance' in r.getMessage()]
+        stored_records = [r.getMessage() for r in caplog.records if 'workspace' in r.getMessage() or 'instance' in r.getMessage()]
 
     # then
     assert (first.status_code, second.status_code) == (200, 200)
     assert first.json()['instances']['links'] == [] == second.json()['instances']['links']
-    assert env_records == ['core.instance-links ignored, the instance switcher lists no other instances: Invalid'], 'one warning, with the type only'
+    assert env_records == ['core.workspace-links ignored, the workspace switcher lists no other workspaces: Invalid'], 'one warning, with the type only'
     assert stored.status_code == 200
     assert stored.json()['instances']['links'] == [{'name': 'staging', 'url': STAGING, 'letter': 'S', 'colour': colour('staging')}], 'a bad stored value is skipped and the configured one stays'
-    assert stored_records == ['admin setting core.instance-links skipped: Invalid']
+    assert stored_records == ['admin setting core.workspace-links skipped: Invalid']
     assert not [m for m in env_records + stored_records if 'u:p' in m or 'private' in m]
 
 
 def admin_row(c) -> dict:
-    return [i for i in c.get('/api/admin/settings', headers=AUTH).json()['items'] if i['key'] == 'core.instance-links'][0]
+    return [i for i in c.get('/api/admin/settings', headers=AUTH).json()['items'] if i['key'] == 'core.workspace-links'][0]
 
 
 def store_raw(store: Store, value: str) -> None:
-    store.db['tunables'].replace_one({'_id': 'core.instance-links'}, {'_id': 'core.instance-links', 'value': value, 'by': 'admin@example.com', 'at': '2026-11-15T01:00:00Z'}, upsert=True)
+    store.db['tunables'].replace_one({'_id': 'core.workspace-links'}, {'_id': 'core.workspace-links', 'value': value, 'by': 'admin@example.com', 'at': '2026-11-15T01:00:00Z'}, upsert=True)
     store.db['tunables_rev'].update_one({'_id': 'rev'}, {'$inc': {'n': 1}}, upsert=True)
 
 
@@ -156,14 +156,14 @@ def leaks(text: str) -> list[str]:
 def test_admin_never_returns_a_refused_env_value_and_names_its_layer(store: Store):
     # given
     rule = 'Entry 1: the address must not hold a user name or password.'
-    from_env = dataclasses.replace(settings(), instance_links=f'x={SECRET_URL}')
+    from_env = dataclasses.replace(settings(), workspace_links=f'x={SECRET_URL}')
 
     # when
     with TestClient(create_app(from_env, store)) as c:
         body = c.get('/api/admin/settings', headers=AUTH).text
         row = admin_row(c)
-        saved = c.put('/api/admin/settings', json={'key': 'core.instance-links', 'value': f'staging={STAGING}'}, headers=AUTH)
-        reset = c.delete('/api/admin/settings', params={'key': 'core.instance-links'}, headers=AUTH)
+        saved = c.put('/api/admin/settings', json={'key': 'core.workspace-links', 'value': f'staging={STAGING}'}, headers=AUTH)
+        reset = c.delete('/api/admin/settings', params={'key': 'core.workspace-links'}, headers=AUTH)
         history = c.get('/api/admin/history', headers=AUTH).text
     written = ' '.join(str(d) for name in ('tunable_changes', 'activity') for d in store.db[name].find({}))
 
@@ -178,14 +178,14 @@ def test_admin_never_returns_a_refused_env_value_and_names_its_layer(store: Stor
 
 def test_a_refused_stored_value_is_ignored_shown_as_a_note_and_never_returned(store: Store):
     # given
-    good_env = dataclasses.replace(settings(), instance_links=f'staging={STAGING}')
-    bad_env = dataclasses.replace(settings(), instance_links=f'x={SECRET_URL}')
+    good_env = dataclasses.replace(settings(), workspace_links=f'staging={STAGING}')
+    bad_env = dataclasses.replace(settings(), workspace_links=f'x={SECRET_URL}')
     rule = 'Entry 1: the address must not hold a user name or password.'
 
     # when
     with TestClient(create_app(good_env, store)) as c:
         store_raw(store, f'x={SECRET_URL}')
-        TunableStore(store.db).write_change('core.instance-links', f'y={SECRET_URL}', f'x={SECRET_URL}', 'admin@example.com')
+        TunableStore(store.db).write_change('core.workspace-links', f'y={SECRET_URL}', f'x={SECRET_URL}', 'admin@example.com')
         body = c.get('/api/admin/settings', headers=AUTH).text
         row = admin_row(c)
         links = c.get('/api/me').json()['instances']['links']
@@ -198,7 +198,7 @@ def test_a_refused_stored_value_is_ignored_shown_as_a_note_and_never_returned(st
     assert {k: row[k] for k in ('value', 'base', 'source', 'from', 'by', 'at', 'problem')} == {'value': f'staging={STAGING}', 'base': f'staging={STAGING}', 'source': 'config', 'from': 'environment',
                                                                                             'by': None, 'at': None, 'problem': 'The Admin value is not used. ' + rule}, 'no "set here" for a value that is not used'
     assert leaks(body) == []
-    change = [h for h in history if h['key'] == 'core.instance-links'][0]
+    change = [h for h in history if h['key'] == 'core.workspace-links'][0]
     assert (change['old'], change['new']) == (HIDDEN, HIDDEN), 'the history hides a refused value too'
     assert leaks(str(history)) == []
     assert {k: both[k] for k in ('value', 'base', 'source', 'problem')} == {'value': None, 'base': None, 'source': 'config',

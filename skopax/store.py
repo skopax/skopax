@@ -123,6 +123,8 @@ ACTION_MOVES_FROM = {
 }
 
 
+REDRAW_RUN = 'slack-redraw-run'
+
 class Conflict(Authored, Exception):
     def __init__(self, current: int):
         super().__init__(f'state is at rev {current}')
@@ -801,6 +803,13 @@ class Store:
             self.anomalies.update_one({'_id': doc['_id']}, {'$set': {'note': {'text': text, 'at': iso(utc_now())}} | ({'noteBy': 'pod'} if by == 'pod' else {}) | ({'cause': causes.recorded(cause, doc.get('firstSeen'))} if cause else {})}
                                       | ({'$unset': unset} if unset else {}))
             self.anomalies.update_one({'_id': doc['_id'], 'triage': {'$nin': kept}}, dived)
+            return rev
+
+    def drop_note(self, key: str) -> int:
+        doc = self._anomaly(key)
+        with self._locked():
+            rev, _ = self._claim(None)
+            self.anomalies.update_one({'_id': doc['_id']}, {'$unset': {'note': '', 'noteBy': ''}})
             return rev
 
     def triage(self, key: str, state: str | None, ticket: str | None = None, owner: str | None = None, by: str | None = None, at: str | None = None,
@@ -1853,6 +1862,29 @@ class Store:
         if self.counters.update_one({'_id': name}, {'$setOnInsert': {'startedAt': now, 'done': False}}, upsert=True).upserted_id is not None:
             return True
         return bool(self.counters.update_one({'_id': name, 'done': False, 'startedAt': {'$lt': stale_before}}, {'$set': {'startedAt': now}}).modified_count)
+
+    def muted_rules(self) -> list:
+        return list((self.meta.find_one({'_id': STATE_ID}, {'muted': 1}) or {}).get('muted') or [])
+
+    def redraw_claim(self, holder: str, stale_before: str) -> bool:
+        now = iso(utc_now())
+        free = {'$or': [{'running': {'$ne': True}}, {'heartbeat': {'$lt': stale_before}}]}
+        fresh = {'running': True, 'holder': holder, 'startedAt': now, 'heartbeat': now, 'total': 0, 'done': 0, 'skipped': 0}
+        try:
+            return bool(self.counters.update_one({'_id': REDRAW_RUN, **free}, {'$set': fresh, '$unset': {'result': '', 'doneAt': ''}}, upsert=True).matched_count
+                        or self.counters.find_one({'_id': REDRAW_RUN, 'holder': holder}) is not None)
+        except DuplicateKeyError:
+            return False
+
+    def redraw_progress(self, holder: str, **fields) -> bool:
+        return bool(self.counters.update_one({'_id': REDRAW_RUN, 'holder': holder, 'running': True}, {'$set': {**fields, 'heartbeat': iso(utc_now())}}).matched_count)
+
+    def redraw_finish(self, holder: str, **fields) -> bool:
+        return bool(self.counters.update_one({'_id': REDRAW_RUN, 'holder': holder}, {'$set': {**fields, 'running': False, 'doneAt': iso(utc_now())}}).matched_count)
+
+    def redraw_status(self) -> dict:
+        doc = self.counters.find_one({'_id': REDRAW_RUN}) or {}
+        return {k: v for k, v in doc.items() if k not in ('_id', 'holder')} or {'running': False}
 
     def finish_once(self, name: str) -> None:
         self.counters.update_one({'_id': name}, {'$set': {'done': True, 'doneAt': iso(utc_now())}})

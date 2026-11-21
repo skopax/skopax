@@ -5,6 +5,7 @@ import html
 import json
 import datetime as dt
 import logging
+import copy
 import math
 import os
 import re
@@ -28,7 +29,8 @@ from pymongo.errors import DuplicateKeyError, OperationFailure, PyMongoError
 from starlette.concurrency import run_in_threadpool
 
 from skopax.cardlink import card_url, chat_url
-from skopax.cardposts import CardPosts, drawn_sig
+from skopax.investigator.web import own_domains as web_own_domains
+from skopax.cardposts import CardPosts, REDRAW_MARK, drawn_sig
 from skopax.codehosts import CodeHosts
 from skopax.auth import LOGIN_COOKIE, LOGIN_SECONDS, SESSION_COOKIE, bearer_token, safe_next
 from skopax import actions as page_actions
@@ -55,6 +57,7 @@ from skopax.attach import Attacher
 from skopax.autosend import AutoSend, Fallback, PostNow, fresh as fresh_cards, kept as kept_text, waiting as auto_send_waiting
 from skopax.config import MCP_CLIENT_ID, ConfigurationError, Settings
 from skopax.contract import CodeHost, OrgPack, SourceDown
+from skopax import engine
 from skopax.engine import Applied, PassResult, apply, iso as epoch_iso, new_pushes
 from skopax.enrich import Enricher
 from skopax.investigator import JOB_OFFSET as INVESTIGATE_OFFSET, JOB_PERIOD as INVESTIGATE_PERIOD, Investigator, prompt, select
@@ -81,7 +84,7 @@ from skopax.users import EMAIL, IDP_SOURCES, LOCAL_AFTER, NAME_MAX, PASSWORD_MAX
 from skopax.settingsources import Follower, SourceSet, boot, labelled, merged
 from skopax.settingsources import core_knowledge_ids, core_setting_ids
 from skopax.tunables import SESSIONS_AFTER_KEY, SLACK_CHANNEL_KEY, SSO_SWITCH_KEY, Invalid as TunableInvalid, Live, TunableStore, View, apply as apply_tunables, parse as parse_tunable, plugin_tunables, stored as stored_text
-from skopax.tunables import instance_menu
+from skopax.tunables import KEY_ALIASES, current_instance, instance_menu
 from skopax.push import Pusher, push_users
 from skopax.redact import redact
 from skopax.scheduler import Job, Scheduler
@@ -101,7 +104,7 @@ from skopax import migrations
 from skopax.errkind import NoAccess, Refusal, kind, text_of
 from skopax.features import BY_ID as FEATURE_BY_ID, FEATURES, Features, Locked, off_text
 from skopax.integrationview import reader_row
-from skopax.instances import InstanceExists, InstanceMissing, Instances, InvalidInstance, PluginState, SourceOwned, Writer, checks_off
+from skopax.instances import InstanceExists, InstanceMissing, Instances, InvalidInstance, PluginState, SourceOwned, Writer, checks_off, ADMIN
 from skopax.registry import Registry, card_types_view, describe, locale_drops, standing_of
 from skopax.plugai import PluginAi
 from skopax.plugintools import PluginTools
@@ -191,6 +194,9 @@ ASK_WINDOW_S = 3600
 PAGE_ASK_SOURCES = ('page', 'api')
 ACCESS_KIND = 'access'
 ADMIN_KIND = 'admin'
+REDRAW_START_DELAY_S = 30
+REDRAW_MARK_STALE_S = 1800
+BROWSER_MOVE_MARK = 'browser-move'
 TEST_TIMEOUT_S = 15
 SUGGEST_TIMEOUT_S = 10
 CHECK_MS_MAX_S = 1800
@@ -500,9 +506,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     except ValueError as e:
         raise ConfigurationError(text_of(e)) from e
     db = store.db if store is not None else MongoClient(settings.mongo_uri, serverSelectionTimeoutMS=3000, tz_aware=True)[settings.mongo_db]
+    links_renamed = TunableStore(db).migrate_renamed()
     live = Live(settings, TunableStore(db), extra=lambda: tuple(t for p in runtime.active() for t in plugin_tunables(p)), values=merged(sources.current()), labels=labelled(sources.current()))
     base_settings = settings
     settings = View(live)
+    live.own_domains = lambda: web_own_domains(live.current().email_domains, runtime.org().get('email_domains'))
     actors.use_source(lambda: effective_model(settings.ai_provider, settings.investigate_model, 'card'))
 
     def watch_sso(current: Settings) -> None:
@@ -656,6 +664,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     if store is None:
         store = Store(db, history_days=settings.history_keep_days, investigate_days=settings.investigate_keep_days,
                       screenshot_days=settings.screenshot_keep_days)
+    if links_renamed:
+        store.add_activity('admin', 'system', msg('settings.renamed', label=msg('settings.links_label'), key='core.workspace-links'))
     store.self_deploy = settings.self_deploy
     store.row_links = runtime.row_links
     store.release_ignore = settings.release_ignore
@@ -682,7 +692,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     attacher = Attacher(store, slack, settings.slack_attach_screenshots, base_url)
     notices = Notices(store)
     versions = VersionCheck(store, transport, lambda: features.on('update-check'), clock=clock)
-    reminders = Reminders(store, slack, settings.slack_remind_hours, base_url)
+    reminders = Reminders(store, slack, settings.slack_remind_hours, base_url, mention=lambda email: slack_ids.mention(email), name_of=lambda email: slack_ids.name(email))
     slack_people = tagreport.SlackPeople(slack)
     slack_ids = tagreport.SlackIds(slack, on_scope=lambda missing: store.note_email_scope(missing, iso(utc_now())), flagged=lambda: store.email_scope() is not None)
 
@@ -1493,6 +1503,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             if caught_up is not None:
                 runtime.migrate = None
             await asyncio.to_thread(runtime.refresh)
+            try:
+                if await asyncio.to_thread(browser_upgrade):
+                    await asyncio.to_thread(runtime.refresh)
+            except Exception as e:
+                log.warning('%s', msg('integrations.browser_move_failed', error=kind(e), instance='-'))
             await asyncio.to_thread(aikey.refresh)
             await asyncio.to_thread(openai_key.refresh)
             await asyncio.to_thread(sso_secret.refresh)
@@ -1506,6 +1521,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         jobs = asyncio.create_task(scheduler.loop())
         ticking = asyncio.create_task(runtime.loop(instances.every))
         first_probe = asyncio.create_task(asyncio.to_thread(probe_at_start))
+
+        async def redraw_later() -> None:
+            await asyncio.sleep(REDRAW_START_DELAY_S)
+            await asyncio.to_thread(redraw_at_start)
+
+        redrawing = asyncio.create_task(redraw_later())
 
         async def version_at_start() -> None:
             await asyncio.sleep(VERSION_START_DELAY)
@@ -1541,7 +1562,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             async with mcp_manager.run():
                 yield
         finally:
-            running = [t for t in (task, jobs, ticking, following, keying, openai_keying, sso_keying, first_probe, first_version, deciding) if t is not None]
+            running = [t for t in (task, jobs, ticking, following, keying, openai_keying, sso_keying, first_probe, first_version, deciding, redrawing) if t is not None]
             for t in running:
                 t.cancel()
             await asyncio.gather(*running, return_exceptions=True)
@@ -2625,6 +2646,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise HTTPException(status.HTTP_409_CONFLICT, msg('sso.off_needs_local_admin'))
 
     def admin_change(key: str, value: str | None, by: str, bearer: bool = False) -> dict:
+        key = KEY_ALIASES.get(key, key)
         try:
             features.guard(key, value)
         except Locked as e:
@@ -2881,9 +2903,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return items
         return [i | {'problem': msg('tags.scope_missing')} if i.get('key') == tagreport.KEY else i for i in items]
 
+    def instance_name_view() -> dict:
+        label = (settings.env_label or '').strip()
+        return {'name': current_instance(settings), 'label': label, 'from': live.labels.get('core.env-label', 'environment') if label else ''}
+
     @app.get('/api/admin/settings')
     def get_admin_settings(by: Annotated[str, Depends(require_admin)]) -> dict:
-        return {'items': scope_marked(live.entries()), 'rev': live.tunables.rev(), 'refreshSeconds': live.every}
+        return {'items': scope_marked(live.entries()), 'rev': live.tunables.rev(), 'refreshSeconds': live.every, 'instance': instance_name_view()}
 
     def responsible_email(email: str) -> bool:
         domain = email.rpartition('@')[2]
@@ -3390,13 +3416,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if plugin_id == MCPTOOLS_ID:
             mcptools_routes.check_create(mcptools_deps, body.values, body.enabled)
         try:
-            made = instances.create(plugin_id, body.name, body.values, body.enabled, by, once_off(plugin, not instances.all(plugin_id), body.offChecks))
+            made = instances.create(plugin_id, body.name, only_browser(dict(body.values)) if plugin_id == 'website' else body.values, body.enabled, by, once_off(plugin, not instances.all(plugin_id), body.offChecks))
         except InstanceExists:
             raise HTTPException(status.HTTP_409_CONFLICT, msg('instances.exists', name=body.name)) from None
         except InvalidInstance as e:
             raise FieldRefused(e.field, e.args[0]) from None
         if plugin_id == MCPTOOLS_ID:
             mcptools_routes.after_create(mcptools_deps, made.name)
+        if plugin_id == 'website' and body.values.get('browser') == '':
+            mark_blank_browser(made.name, True)
         store.add_activity(ADMIN_KIND, by, msg('integrations.instance_created', plugin=plugin.name, instance=made.name))
         if made.enabled:
             store.add_activity(ADMIN_KIND, by, msg('integrations.instance_on', plugin=plugin.name, instance=made.name))
@@ -3420,6 +3448,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         try:
             off = once_off(plugin, before.primary, None if body.offChecks is None else checks_off(plugin, body.offChecks), before.off_checks)
             given = {k: v for k, v in (body.values or {}).items() if v is not None}
+            if plugin_id == 'website':
+                if 'browser' in given:
+                    mark_blank_browser(name, given['browser'] == '')
+                else:
+                    given = only_browser(given, before.values, blank_browser(name))
             if plugin_id == MCPTOOLS_ID:
                 given = mcptools_routes.patch_values(mcptools_deps, before, given)
             if given:
@@ -3464,6 +3497,131 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             out['notice'] = notice
         return out
 
+    def adopt_browser(url: str, by: str, prefer: str = '') -> tuple:
+        headless = plugin_usable('browser')
+        held = instances.all('browser')
+        same = next((i for i in held if str(i.values.get('url') or '').strip() == url), None)
+        if same is not None:
+            return same, False
+        taken = {i.name for i in held}
+        made = None
+        for chosen in [n for n in (prefer, 'headless', *(f'headless-{k}' for k in range(2, 100))) if n and n not in taken]:
+            try:
+                made = instances.create('browser', chosen, {'url': url}, True, by)
+                break
+            except InstanceExists:
+                continue
+            except InvalidInstance as e:
+                if e.field != 'name':
+                    raise
+        if made is None:
+            raise InvalidInstance('name', msg('integrations.browser_name_none'))
+        store.add_activity(ADMIN_KIND, by, msg('integrations.instance_created', plugin=headless.name, instance=made.name))
+        store.add_activity(ADMIN_KIND, by, msg('integrations.instance_on', plugin=headless.name, instance=made.name))
+        sweeper.revive('browser', made.name, checks=[c.id for c in watched(headless, made)])
+        nudge_jobs(headless)
+        return made, True
+
+    def tidy_browser_state(site_names: list[str]) -> None:
+        infos = [i.info() for i in instances.all('browser') if i.enabled and not i.problem]
+        valid = {(f"browser-down|{urlsplit(str(i.config.get('url') or '')).hostname or ''}" + ('' if i.primary else f'@{i.name}'), None if i.primary else i.name) for i in infos}
+        segments = {None if i.primary else i.name for i in infos}
+        for _ in range(5):
+            state = store.load()
+            before = copy.deepcopy(state)
+            at = iso(utc_now())
+            state['browser'] = [r for r in state.get('browser') or [] if not (isinstance(r, dict) and r.get('plugin') == 'website')] if 'browser' in state else state.get('browser')
+            if state.get('browser') is None:
+                state.pop('browser', None)
+            for table in ('sources', 'serverPasses'):
+                for name in site_names:
+                    (state.get(table) or {}).pop(f'browser-{name}', None)
+            for a in state.get('anomalies') or []:
+                if a.get('status') != 'open' or a.get('src') != 'browser':
+                    continue
+                segment = a.get('cluster') or None
+                key = str(a.get('key') or '')
+                if key.startswith('browser-down|'):
+                    live = (key, segment) in valid
+                elif key.startswith('access|-/website|browser'):
+                    live = segment in segments
+                else:
+                    continue
+                if live:
+                    continue
+                engine.expire(a, at, msg('integrations.browser_card_closed'))
+                state['history'] = [{'t': at, 'key': a['key'], 'ev': 'cleared', 'sev': a['sev'], 'text': a['short'], 'muted': bool(a.get('muted'))}] + state.get('history', [])
+            if state == before:
+                return
+            try:
+                store.save_state(state, before.get('rev', 0), before)
+                return
+            except Conflict:
+                continue
+
+    def browser_upgrade() -> bool:
+        if registry.get('website') is None or registry.get('browser') is None or plugin_found('browser').state != 'ok' or plugin_found('website').state != 'ok':
+            return False
+        if not store.begin_once(BROWSER_MOVE_MARK, iso(utc_now() - dt.timedelta(minutes=10))):
+            return False
+        changed = False
+        moved: list[str] = []
+        sites = sorted((s for s in instances.all('website') if s.enabled and not s.problem and str(s.values.get('browser-url') or '').strip()), key=lambda s: (not s.primary, s.name))
+        for site in sites:
+            try:
+                made, created = adopt_browser(str(site.values.get('browser-url')).strip(), SERVER_BY, site.name)
+                changed = changed or created
+                if site.source != ADMIN or 'browser-url' in site.owned:
+                    continue
+                instances.update('website', site.name, {'browser': made.name, 'browser-url': ''}, SERVER_BY)
+                store.add_activity(ADMIN_KIND, SERVER_BY, msg('integrations.browser_moved', browser=made.name, instance=site.name))
+                moved.append(site.name)
+                changed = True
+            except (SourceOwned, InvalidInstance, InstanceExists, InstanceMissing) as e:
+                log.warning('%s', msg('integrations.browser_move_failed', error=kind(e), instance=site.name))
+        try:
+            tidy_browser_state([i.name for i in instances.all('website')])
+        except Exception as e:
+            log.warning('%s', msg('integrations.browser_move_failed', error=kind(e), instance='-'))
+        store.finish_once(BROWSER_MOVE_MARK)
+        return changed
+
+    def blank_browser(name: str) -> bool:
+        return bool((instances.col.find_one({'_id': f'website/{name}'}) or {}).get('noBrowser'))
+
+    def mark_blank_browser(name: str, blank: bool) -> None:
+        instances.col.update_one({'_id': f'website/{name}'}, {'$set': {'noBrowser': True}} if blank else {'$unset': {'noBrowser': ''}})
+
+    def only_browser(values: dict, held: dict | None = None, blank: bool = False) -> dict:
+        if blank or 'browser' in values or str((held or {}).get('browser') or '').strip() or str(values.get('browser-url') or (held or {}).get('browser-url') or '').strip():
+            return values
+        found = instances.all('browser')
+        enabled = [i for i in found if i.enabled and not i.problem]
+        return {**values, 'browser': enabled[0].name} if len(enabled) == 1 and plugin_found('browser').state == 'ok' else values
+
+    @app.post('/api/admin/plugins/website/instances/{name}/move-browser')
+    def post_admin_move_browser(name: str, by: Annotated[str, Depends(require_admin)]) -> dict:
+        website = plugin_usable('website')
+        headless = plugin_usable('browser')
+        before = instances.fresh('website', name)
+        if before is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, msg('instances.unknown', name=name))
+        url = str(before.values.get('browser-url') or '').strip()
+        if not url:
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('integrations.move_browser_none', instance=name))
+        try:
+            made, created = adopt_browser(url, by, name)
+        except InvalidInstance as e:
+            raise FieldRefused(e.field, e.args[0]) from None
+        try:
+            instances.update('website', name, {'browser': made.name, 'browser-url': ''}, by)
+        except InvalidInstance as e:
+            raise FieldRefused(e.field, e.args[0]) from None
+        except SourceOwned as e:
+            raise HTTPException(status.HTTP_409_CONFLICT, e.args[0]) from None
+        store.add_activity(ADMIN_KIND, by, msg('integrations.instance_changed', plugin=website.name, instance=name, fields='browser, browser-url'))
+        return {'browser': made.name, 'created': created}
+
     @app.delete('/api/admin/plugins/{plugin_id}/instances/{name}', status_code=status.HTTP_204_NO_CONTENT)
     def delete_admin_instance(plugin_id: str, name: str, by: Annotated[str, Depends(require_admin)]) -> Response:
         plugin = plugin_loaded(plugin_id)
@@ -3485,6 +3643,31 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             mcptools_routes.after_delete(mcptools_deps, name)
         store.add_activity(ADMIN_KIND, by, msg('integrations.instance_deleted', plugin=plugin.name, instance=name))
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    def redrawn(by: str):
+        def done(result: dict) -> None:
+            if result.get('result') in ('done', 'slow'):
+                store.add_activity('slack', by, msg('slack.redrawn', count=result['redrawn']))
+        return done
+
+    def redraw_at_start() -> None:
+        try:
+            if not slack.enabled or not store.begin_once(REDRAW_MARK, iso(utc_now() - dt.timedelta(seconds=REDRAW_MARK_STALE_S))):
+                return
+            card_posts.redraw_start(on_done=lambda result: (redrawn('server')(result), store.finish_once(REDRAW_MARK) if result.get('result') == 'done' else None))
+        except Exception as e:
+            log.warning('the redraw of the old Slack posts did not start: %s', kind(e))
+
+    @app.get('/api/admin/slack-redraw')
+    def get_admin_slack_redraw(by: Annotated[str, Depends(require_admin)]) -> dict:
+        return card_posts.redraw_status()
+
+    @app.post('/api/admin/slack-redraw', status_code=status.HTTP_202_ACCEPTED)
+    def post_admin_slack_redraw(by: Annotated[str, Depends(require_admin)]) -> dict:
+        if not slack.enabled:
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('slack.redraw_off'))
+        started = card_posts.redraw_start(on_done=redrawn(by))
+        return {'started': started, **card_posts.redraw_status()}
 
     @app.post('/api/admin/plugins/{plugin_id}/test')
     def post_admin_plugin_test(plugin_id: str, body: PluginTestIn, by: Annotated[str, Depends(require_admin)]) -> dict:

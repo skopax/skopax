@@ -454,13 +454,14 @@ function body(a, recShown, i) {
     '<section><h5>Key</h5><span class="keyline">' + esc(a.key) + '</span></section>';
   return '<div class="inc-body"><div class="analysis">' + what + '<p class="last-act" hidden></p>' + analysis + '</div><aside class="evidence">' + ev + '</aside></div>';
 }
+function podBy() { return ' \u00b7 ' + tx('by {0}').replace('{0}', function () { return '<span data-no-tx>' + esc(tx(investigatorName())) + '</span>'; }); }
 function cardTags(a) {
   var t = [];
   if (a.triage === 'handled' && a.triagedBy !== 'auto') {
     var how = resolutionOf(a);
-    t.push({row: 2, html: '<span class="tag ' + TRI.handled[1] + ' res-tag">' + (how ? resolutionHtml(how) : '<span>' + esc('Resolved' + (a.triagedBy === 'pod' ? ' · by investigator' : '')) + '</span>') +
+    t.push({row: 2, html: '<span class="tag tri-wrap ' + TRI.handled[1] + ' res-tag">' + (how ? resolutionHtml(how) : '<span>' + esc('Resolved') + (a.triagedBy === 'pod' ? podBy() : '') + '</span>') +
       (a.ticket && !(how && how.ref === a.ticket) ? ' · ' + jiraLinks(a.ticket) : '') + '</span>'});
-  } else if (a.triage && TRI[a.triage]) t.push({row: 2, html: '<span class="tag ' + TRI[a.triage][1] + (a.triage === 'investigating' ? ' tri-inv">' + runIndHtml(runFor(a.key)) : '">') + esc(TRI[a.triage][0]) + (a.triagedBy === 'pod' ? ' · by investigator' : a.triagedBy === 'auto' ? ' · auto-resolved' : '') + (a.ticket ? ' · ' + jiraLinks(a.ticket) : '') + '</span>'});
+  } else if (a.triage && TRI[a.triage]) t.push({row: 2, html: '<span class="tag tri-wrap ' + TRI[a.triage][1] + (a.triage === 'investigating' ? ' tri-inv">' + runIndHtml(runFor(a.key)) : '">') + esc(TRI[a.triage][0]) + (a.triagedBy === 'pod' ? podBy() : a.triagedBy === 'auto' ? ' · auto-resolved' : '') + (a.ticket ? ' · ' + jiraLinks(a.ticket) : '') + '</span>'});
   var d = draftTag(a);
   if (d) t.push({row: notPosted(a) && draftLive(a) ? 1 : 0, html: d});
   if (a.src === 'qan' && a.kind) t.push({row: 0, html: a.kind === 'dwh' ? '<span class="tag plain" title="Not application traffic: a data-platform or reporting query. Info only, never pushed.">DWH / data</span>' : '<span class="tag plain" title="Application query traffic">App query</span>'});
@@ -1174,7 +1175,7 @@ function paintAnoms() {
   if (filter === 'taken' || filter === 'all') g('taken', 'Action taken', 'no action needed; pushes again only if it doubles or gets worse, and comes back under Open when it stops and fires again. Drops off 24 hours after it cleared or was resolved, whichever is later', 'k-good', taken);
   if (filter === 'muted' || filter === 'all') g('muted', 'Muted', 'no pushes while the mute lasts, open or already cleared; unmute to get them again', 'k-muted', muted);
   if (filter === 'cleared' || filter === 'all') g('cleared', 'Cleared · no action needed', 'the signal went back to normal and nothing needs doing (info or muted); drops off 24 hours after it cleared', 'k-cleared', filter === 'all' ? cleared.filter(function (a) { return muted.indexOf(a) < 0; }) : cleared);
-  if (filter === 'archived') g('archived', 'Archived', 'cards that are not firing (or are muted) and had no change for ' + archiveHours() + ' hours (Admin \u203a General, Archive after); they show nowhere else', 'k-cleared', ARCHIVED, 'Nothing archived.');
+  if (filter === 'archived') g('archived', 'Archived', 'cards that are not firing (or are muted) and had no change for ' + archiveHours() + ' hours (Admin \u203a Settings, Archive after); they show nowhere else', 'k-cleared', ARCHIVED, 'Nothing archived.');
   if (filter === 'recurring') g('recurring', 'Recurring', 'cards that keep coming back with no Jira ticket on them, whatever their status: open a ticket with Create task, or Take one that exists', 'k-warn', recurringL, 'No recurring cards.');
   if (TRI[filter] && (filter === 'investigating' || filter === 'dived')) g(filter, TRI[filter][0], 'open, muted and cleared', TRI[filter][1], A.filter(function (a) { return a.triage === filter; }));
   if (filter === 'svc' && svcF) {

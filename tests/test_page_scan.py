@@ -19,6 +19,7 @@ from skopax.plugins.website import pagescan as ps
 from skopax.registry import Registry
 from skopax.remote import Reply
 from skopax.sealer import master_key
+from skopax.plugintools import PluginTools
 from skopax.store import Store
 from tests.conftest import AUTH, settings
 from tests.fake_anthropic import FakeAnthropic, reply, text, usage
@@ -459,3 +460,27 @@ def test_page_text_outside_the_lines_that_reads_like_an_instruction_is_still_hel
     assert fake.gate_requests == [] and ledger(store) == [] and TYPO_KEY not in cards(store)
     assert row['held'] == ['ignore previous'] and 'heldLines' not in row
     assert status(store) == 'ok \u00b7 AI review held on 1 page: its text reads like instructions to an AI'
+
+
+def test_a_switched_off_instance_or_check_is_never_scanned_and_offers_no_tools(store: Store, tmp_path, chrome: FakeChrome):
+    # given
+    fake = FakeAnthropic([], [answer(), answer()])
+    seen = []
+
+    with site_app(store, tmp_path, chrome, ai=fake) as c:
+        switched_on(c)
+        runtime = c.app.state.runtime
+
+        # when
+        store.db['instances'].update_one({'_id': 'website/main'}, {'$set': {'enabled': False}})
+        runtime.refresh()
+        c.app.state.sweeper.run('website', 'pagescan', NOW)
+        seen.append((list(chrome.params('Page.navigate')), len(fake.requests), [d['name'] for d in PluginTools(runtime).definitions()]))
+        store.db['instances'].update_one({'_id': 'website/main'}, {'$set': {'enabled': True, 'offChecks': ['pagescan']}})
+        runtime.refresh()
+        c.app.state.sweeper.run('website', 'pagescan', NOW + 3600)
+        seen.append((list(chrome.params('Page.navigate')), len(fake.requests), None))
+
+    # then
+    assert seen[0] == ([], 0, [])
+    assert seen[1][0] == [] and seen[1][1] == 0

@@ -1242,6 +1242,77 @@ async function theSaveBarSticksOnlyWhileThereAreUnsavedChanges() {
   return 'the save bar marks Unsaved changes and sticks while a field, a role-map row or a typed domain differs, and clears when the edit is undone or discarded';
 }
 
+async function theScopeIsAChipListThatSavesWithSpaces() {
+  //given
+  const t = await boot();
+  await openAccess(t);
+  const scope = field(t.doc, 'scope');
+  const chips = () => [...scope.querySelectorAll('.adm-chip-t')].map((c) => c.textContent);
+
+  //then
+  assert.deepStrictEqual(chips(), ['openid', 'email', 'profile']);
+  assert.ok(scope.querySelector('.sso-in').hidden, 'the value box is hidden behind the chips');
+
+  //when
+  const add = scope.querySelector('.adm-chip-in');
+  setValue(add, 'groups ');
+  await wait(20);
+  scope.querySelector('.adm-chip-x').click();
+  button(t.doc, 'sso-save').click();
+  await wait(80);
+
+  //then
+  assert.deepStrictEqual(puts(t), [{values: {scope: 'email profile groups'}}], 'the saved text is the same space separated scope');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'the scope is a chip list that saves the same space separated text';
+}
+
+async function theScopeChipsFollowTheValueAfterARepaintAndAnInvalidChipBlocksTheSaves() {
+  //given
+  const longId = 'x'.repeat(201);
+  const t = await boot({items: [settingItem('access.session-hours', 'Access', 'Session length (h)', '12', {kind: 'int', low: 1, high: 720}),
+    settingItem('mcp.allowed-clients', 'MCP', 'MCP allowed clients', '', {kind: 'list', items: {kind: 'client-id', separator: ','}})]});
+  await openAccess(t);
+  const scope = field(t.doc, 'scope');
+  const chips = () => [...field(t.doc, 'scope').querySelectorAll('.adm-chip-t')].map((c) => c.textContent);
+
+  //when
+  scope.querySelector('.adm-chip-x').click();
+  t.w.ssoRepaint('', t.w.ssoDraft(), []);
+
+  //then
+  assert.deepStrictEqual(chips(), ['email', 'profile']);
+  assert.strictEqual(field(t.doc, 'scope').querySelector('.sso-in').value, 'email profile', 'the chips equal the hidden value after the repaint');
+
+  //when
+  setValue(field(t.doc, 'scope').querySelector('.adm-chip-in'), 'caf\u00e9 ');
+  const save = () => card(t.doc).querySelector('.sso-save');
+
+  //then
+  assert.ok(field(t.doc, 'scope').querySelector('.adm-chip.bad'), 'an invalid scope is red');
+  assert.ok(save().disabled, 'the card Save waits for the fix');
+  assert.ok(!button(t.doc, 'sso-on') || button(t.doc, 'sso-on').disabled, 'and so does Save & turn on');
+  assert.strictEqual(puts(t).length, 0);
+
+  //when
+  t.w.ssoRepaint('', t.w.ssoDraft(), []);
+
+  //then
+  assert.ok(card(t.doc).querySelector('.sso-save').disabled, 'a repaint keeps it blocked');
+
+  //when
+  const mcp = t.doc.querySelector('#acc-mcp .adm-row[data-key="mcp.allowed-clients"]');
+  setValue(mcp.querySelector('.adm-chip-in'), longId + ',');
+
+  //then
+  assert.ok(mcp.querySelector('.adm-chip.bad'), 'a client id over 200 characters is red');
+  assert.ok(t.doc.querySelector('#acc-mcp .acc-mcp-save').disabled, 'the MCP card Save is blocked too');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'scope chips follow the value after a repaint, and an invalid chip blocks the SSO and MCP card saves';
+}
+
 async function thePhoneLayoutIsOneColumnWithLargeTargets() {
   //given
   const t = await boot();
@@ -1410,4 +1481,6 @@ async function aSelectTheServerSentNoValueForIsNotSavedByItself() {
   console.log('PASS ' + await theCopyButtonSelectsTheAddressWhenTheClipboardIsRefused());
   console.log('PASS ' + await theSaveBarSticksOnlyWhileThereAreUnsavedChanges());
   console.log('PASS ' + await thePhoneLayoutIsOneColumnWithLargeTargets());
+  console.log('PASS ' + await theScopeIsAChipListThatSavesWithSpaces());
+  console.log('PASS ' + await theScopeChipsFollowTheValueAfterARepaintAndAnInvalidChipBlocksTheSaves());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

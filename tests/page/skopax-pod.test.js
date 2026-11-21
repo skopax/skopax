@@ -116,7 +116,10 @@ async function cardShowsTheShadowRun() {
   assert.match(sec.textContent, /Would have: triage handled/);
   assert.match(sec.textContent, /Planted-looking text: known noise/);
   assert.ok(podCard, 'the pod-handled card shows under All');
-  assert.match(podCard.textContent, / \u00b7 by investigator/);
+  assert.match(podCard.textContent, / \u00b7 by Investigator/, 'the pill names the investigator by its display label');
+  const pill = podCard.querySelector('.tag.tri-wrap');
+  assert.ok(pill && pill.querySelector('[data-no-tx]').textContent === 'Investigator', 'the label is its own untranslated element inside the wrapping pill');
+  assert.match([...doc.querySelectorAll('style')].map((x) => x.textContent).join('\n'), /\.tag\.tri-wrap \{[^}]*white-space: normal;[^}]*max-width: 100%;/, 'the pill wraps inside its row instead of running past it');
   const usd = doc.querySelector('#anoms article.inc .line .usd');
   assert.strictEqual(usd.textContent, '$0.62', 'the card line shows what the investigator spent on it');
   assert.strictEqual(usd.title, 'Investigator: 1 run, $0.62');

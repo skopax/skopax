@@ -516,16 +516,21 @@ function openFilterMenu() {
 function renderFilterNote(c) {
   var note = document.getElementById('filter-note');
   var f = c ? c.id : 'open', refocus = document.activeElement && document.activeElement.id === 'filter-menu';
-  note.className = 'filter-note ' + (c ? c.k : SEV[worst][1]) + (f !== 'open' || typeF ? ' on' : '');
+  note.className = 'filter-note ' + (c ? c.k : SEV[worst][1]) + (f !== 'open' || typeF || searchQ ? ' on' : '');
   note.title = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning'], [inprog.length, 'in progress'], [taken.length, 'action taken'], [muted.length, 'muted'], [cleared.length, 'cleared'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
   note.innerHTML = '<span class="fn-cur">Showing <b>' + esc(c ? c.label : 'Open') + '</b>' + (typeF ? ' · <b>' + esc(typeName(typeF)) + '</b>' : '') +
     '<span class="count">' + esc(typeF ? shownN : c ? c.n : openAll().length) + '</span></span>' +
     (f === 'svc' ? '<button class="xlink" type="button" id="back-svcs">← Back to Services</button>' : '') +
     (typeF ? '<button class="xlink" type="button" id="clear-type">Every type ›</button>' : '') +
     (f !== 'svc' && (f !== 'open' || typeF) ? '<button class="xlink copy-f" type="button" id="copy-f" title="Copies a link that opens Board with this filter' + (typeF ? ' and type' : '') + '">' + ICON_LINK + 'Copy link</button>' : '') +
-    (f !== 'open' ? '<button class="xlink" type="button" id="clear-f">Back to Open ›</button>' : '') +
+    (f !== 'open' && (typeF || searchQ) ? '<button class="xlink" type="button" id="clear-f">Back to Open ›</button>' : '') +
+    (f !== 'all' && (f !== 'open' || typeF || searchQ) ? '<button class="xlink fn-all" type="button" id="all-f">All</button>' : '') +
+    (f !== 'open' || typeF || searchQ ? '<button class="xlink fn-clear" type="button" id="clear-all">Clear filters \u2715</button>' : '') +
     '<button class="btn sec small with-icon fn-menu" type="button" id="filter-menu" aria-controls="tab-sub-anoms" title="Open the section menu at the anomaly filters"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>Filters</button>';
-  if (f !== 'open') document.getElementById('clear-f').addEventListener('click', function () { setFilter('open'); });
+  var back = document.getElementById('clear-f'), allf = document.getElementById('all-f'), clearAll = document.getElementById('clear-all');
+  if (back) back.addEventListener('click', function () { setFilter('open'); });
+  if (allf) allf.addEventListener('click', function () { setFilter('all'); });
+  if (clearAll) clearAll.addEventListener('click', clearBoardFilters);
   if (typeF) document.getElementById('clear-type').addEventListener('click', function () { setType(''); });
   var copyF = document.getElementById('copy-f');
   if (copyF) copyF.addEventListener('click', function () { copyUrl(location.origin + location.pathname + '#t=' + tabPath('anoms'), copyF); });
@@ -535,6 +540,19 @@ function renderFilterNote(c) {
   menu.addEventListener('click', openFilterMenu);
   if (refocus) menu.focus();
 }
+function clearBoardFilters() {
+  clearCardFilters();
+  setFilter('open');
+}
+function boardFiltersOn() { return filter !== 'open' || !!typeF || !!searchQ; }
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Escape' || e.defaultPrevented || curTab !== 'anoms' || !boardFiltersOn()) return;
+  var t = e.target, tag = t && t.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+  if (navOpen() || document.body.classList.contains('drawer-open') || (typeof DRAWER !== 'undefined' && DRAWER) || [].some.call(document.querySelectorAll('.modal, .pal-box, #cf-wrap, #int-wrap, [role="dialog"], [role="menu"]'), function (x) { return !x.closest('[hidden]'); })) return;
+  e.preventDefault();
+  clearBoardFilters();
+});
 function setFilter(f) {
   filter = f === 'stale' ? 'open' : f;
   var sub = document.getElementById('tab-sub-anoms'), had = sub && sub.contains(document.activeElement) ? document.activeElement.dataset : null;

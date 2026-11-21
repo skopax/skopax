@@ -19,7 +19,7 @@ from skopax.messages import msg
 from skopax.mcptools import KNOWLEDGE_SECTION
 from skopax.registry import Registry
 from skopax.store import iso, utc_now
-from skopax.tunables import CONFIG_KEY, STATIC
+from skopax.tunables import CONFIG_KEY, LINKS_KEY, OLD_LINKS_KEY, STATIC
 
 log = logging.getLogger('skopax.settingsources')
 
@@ -327,6 +327,7 @@ class Follower:
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
         known = self.live.known().values()
         core = {CONFIG_KEY.get(t.key, t.key): t for t in known if t.plugin is None}
+        core[OLD_LINKS_KEY] = core[LINKS_KEY]
         own = {t.key: t for t in known if t.plugin is not None}
         fields: set[str] = set()
         restart: list[str] = []

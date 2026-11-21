@@ -88,7 +88,7 @@ def test_the_plugin_declares_its_fields_and_host_capabilities():
     assert fields['via'].kind == 'text' and fields['via'].show_if == ('mode', 'agent')
     assert kubernetes.PLUGIN.capabilities.hosts == ('@url', 'kubernetes.default.svc') and kubernetes.PLUGIN.capabilities.secrets == ('token',)
     assert kubernetes.PLUGIN.tools[0].instance_input == 'cluster' and [(c.id, c.once) for c in kubernetes.PLUGIN.checks] == [('nodes', True)]
-    assert [(p.tab, p.script, p.label, p.group) for p in kubernetes.PLUGIN.panels] == [('nodes', 'panel.js', 'Nodes', 'observe')]
+    assert [(p.tab, p.script, p.label, p.group) for p in kubernetes.PLUGIN.panels] == [('nodes', 'panel.js', 'Nodes', 'connect')]
     assert set(AGENT_HOST_FIELDS) == set(fields)
 
 

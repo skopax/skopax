@@ -521,9 +521,9 @@ def stale_marked(key: str, sev: str = 'warn', src: str = 'prom', seen_h: float =
     return made
 
 
-def noted(a: dict, start: str) -> None:
+def noted(a: dict, start: str, by: str | None = None) -> None:
     assert a['note']['text'].startswith(start), a['note']
-    assert 'noteBy' not in a
+    assert a.get('noteBy', 'absent') == (by or 'absent')
 
 
 def test_a_stale_pod_mark_is_cleared_when_a_parent_pass_writes_the_note():
@@ -565,7 +565,7 @@ def test_a_stale_pod_mark_is_cleared_when_a_silent_check_closes_the_card():
     merge({'initialized': True, 'anomalies': [silent]}, [], {}, PASS_NOW)
 
     # then
-    noted(silent, 'Closed: not seen since')
+    noted(silent, 'Closed: not seen since', 'system')
 
 
 def test_a_stale_pod_mark_is_cleared_when_a_check_is_retired():
@@ -578,4 +578,4 @@ def test_a_stale_pod_mark_is_cleared_when_a_check_is_retired():
     retire({'anomalies': [open_card]}, {'retired-check'}, 'Closed: the check was retired', PASS_NOW)
 
     # then
-    noted(open_card, 'Closed: the check was retired')
+    noted(open_card, 'Closed: the check was retired', 'system')
