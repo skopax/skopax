@@ -63,6 +63,8 @@ def mute_kind(mute: dict | None) -> str | None:
 
 def drawn_sig(card: dict, mute: str | None, who: str = '') -> str:
     shown = [status_of(card, mute), card.get('sev'), card.get('owner') or '', sorted(t for t in tags.ids(card) if t in tags.all_tags()), card.get('firstSeen') or '', DRAW_VERSION, language(), stopped_ending(card), who]
+    if shown[0] == 'cleared':
+        shown.append('bar-short')
     return hashlib.sha1(json.dumps(shown, default=str).encode()).hexdigest()[:16]
 
 

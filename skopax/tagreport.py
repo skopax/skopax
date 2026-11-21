@@ -21,6 +21,7 @@ PERIOD = 300
 OFFSET = 45
 SHOWN = 3
 TAGS_MAX = BLOCK_LIMIT - 2
+NOBODY = 'nobody'
 TEXT_LIMIT = 3000
 NAME_LIMIT = 60
 FAILURE_TTL_S = 600
@@ -72,7 +73,7 @@ def missed(at: str, now: float) -> str | None:
     return clock.day(now)
 
 
-def board_open(cards: list[dict]) -> list[dict]:
+def board_cards(cards: list[dict], stopped: bool) -> list[dict]:
     by_key = {c.get('key'): c for c in cards}
 
     def grouped(a: dict) -> bool:
@@ -80,15 +81,27 @@ def board_open(cards: list[dict]) -> list[dict]:
         return bool(host) and (host.get('status') == 'open' or a.get('status') == 'cleared')
 
     def shown(a: dict) -> bool:
-        if a.get('muted') or a.get('triage') in STOPPED or grouped(a):
+        if a.get('muted') or (a.get('triage') in STOPPED) != stopped or grouped(a):
             return False
         return a.get('status') == 'open' or (a.get('status') == 'cleared' and a.get('sev') in QUIET_KEPT)
 
     return [a for a in cards if shown(a)]
 
 
+def board_open(cards: list[dict]) -> list[dict]:
+    return board_cards(cards, False)
+
+
+def board_taken(cards: list[dict]) -> list[dict]:
+    return [a for a in board_cards(cards, True) if a.get('triage') == 'progress']
+
+
 def board_link(base_url: str, tag: str) -> str:
     return f"{base_url.rstrip('/')}/#t=anoms/open/tag:{tag}"
+
+
+def open_link(base_url: str) -> str:
+    return f"{base_url.rstrip('/')}/#t=anoms/open"
 
 
 def link_text(text) -> str:
@@ -139,34 +152,60 @@ def card_line(a: dict, base_url: str, now: float) -> str:
                svc=esc(a.get('svc') or '-'), age=age(now - seen_at(a, now)))
 
 
+def split_counts(crit: int, warn: int) -> str:
+    return ', '.join(counted(kind, n) for kind, n in (('crit', crit), ('warn', warn)) if n)
+
+
 def build(cards: list[dict], owners: dict[str, list[str]], names: dict[str, str], mention: Callable[[str], str | None], base_url: str, now: float,
           labels: dict[str, str]) -> dict | None:
-    shown = [a for a in board_open(information.cards_only(cards)) if a.get('sev') in information.CARD_SEVS]
+    pool = information.cards_only(cards)
+    shown = [a for a in board_open(pool) if a.get('sev') in information.CARD_SEVS]
+    taken = [a for a in board_taken(pool) if a.get('sev') in information.CARD_SEVS]
+    held = {tag: emails for tag, emails in owners.items() if tag in labels and emails}
     rows = []
-    for tag, emails in owners.items():
-        if tag not in labels or not emails:
-            continue
+    for tag, emails in held.items():
         mine = sorted((a for a in shown if tag in tags.ids(a)), key=lambda a: (SEV_ORDER.get(a.get('sev'), 3), seen_at(a, now)))
-        if mine:
+        busy = sum(1 for a in taken if tag in tags.ids(a))
+        if mine or busy:
             crit = sum(1 for a in mine if a.get('sev') == 'crit')
-            rows.append((tag, emails, mine, crit))
-    if not rows:
+            rows.append((tag, emails, mine, crit, busy))
+    orphans = sorted((a for a in shown if not any(t in held for t in tags.ids(a))), key=lambda a: (SEV_ORDER.get(a.get('sev'), 3), seen_at(a, now)))
+    if not orphans and not any(r[2] for r in rows):
         return None
     rows.sort(key=lambda r: (-r[3], -len(r[2]), labels[r[0]].lower(), r[0]))
     head = msg('tagreport.head', date=clock.date(now, hm=False))
-    blocks, lines = [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': head}}], [head]
-    for tag, emails, mine, crit in rows[:TAGS_MAX]:
+    blocks, lines, closing = [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': head}}], [], None
+    room = TAGS_MAX - (1 if orphans else 0)
+    for tag, emails, mine, crit, busy in rows[:room]:
         link = board_link(base_url, tag)
-        line = msg('tagreport.tag', who=', '.join(person(e, names, mention) for e in emails), link=link, tag=link_text(labels[tag]),
-                   counts=counts(len(mine), crit, sum(1 for a in mine if a.get('sev') == 'warn')))
+        label = link_text(labels[tag])
+        progress = msg('tagreport.progress', n=busy) if busy else ''
+        if mine:
+            found = counts(len(mine), crit, sum(1 for a in mine if a.get('sev') == 'warn'))
+            line = msg('tagreport.tag', who=', '.join(person(e, names, mention) for e in emails), link=link, tag=label,
+                       counts=msg('tagreport.with_progress', counts=found, progress=progress) if busy else found)
+        else:
+            line = msg('tagreport.tag_quiet', link=link, tag=label, counts=progress)
         body = [line] + [card_line(a, base_url, now) for a in mine[:SHOWN]]
         if len(mine) > SHOWN:
             body.append(msg('tagreport.more', link=link, n=len(mine) - SHOWN))
         blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': cut('\n'.join(body), SECTION_LIMIT)}})
         lines.append(line)
-    if len(rows) > TAGS_MAX:
-        blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': msg('tagreport.more_tags', n=len(rows) - TAGS_MAX)}]})
-    return {'text': cut('\n'.join(lines), TEXT_LIMIT), 'blocks': blocks}
+    if len(rows) > room:
+        blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': msg('tagreport.more_tags', n=len(rows) - room)}]})
+    if orphans:
+        link = open_link(base_url)
+        crit = sum(1 for a in orphans if a.get('sev') == 'crit')
+        line = msg(f'tagreport.nobody.{"one" if len(orphans) == 1 else "many"}', link=link, n=len(orphans), parts=split_counts(crit, len(orphans) - crit))
+        body = [line] + [card_line(a, base_url, now) for a in orphans[:SHOWN]]
+        if len(orphans) > SHOWN:
+            body.append(msg('tagreport.more', link=link, n=len(orphans) - SHOWN))
+        blocks.append({'type': 'section', 'block_id': NOBODY, 'text': {'type': 'mrkdwn', 'text': cut('\n'.join(body), SECTION_LIMIT)}})
+        closing = line
+    tail = f'\n{closing}' if closing else ''
+    room_text = max(TEXT_LIMIT - len(head) - len(tail) - 1, 0)
+    text = head + '\n' + cut('\n'.join(lines), room_text) + tail if lines else head + tail
+    return {'text': text, 'blocks': blocks}
 
 
 class SlackIds:
@@ -417,7 +456,7 @@ class TagReport:
             self.store.drop_run(day)
             raise
         self.store.note_tag_report(now)
-        shown = sum(1 for b in message['blocks'] if b['type'] == 'section') - 1
+        shown = sum(1 for b in message['blocks'] if b['type'] == 'section' and b.get('block_id') != NOBODY) - 1
         self.store.add_activity('slack', 'server', f'Daily tag report posted \u00b7 {shown} tag{"" if shown == 1 else "s"}')
         log.info('daily tag report posted for %d tags', shown)
         return sent | {'tags': shown}

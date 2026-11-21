@@ -1,11 +1,13 @@
 import datetime as dt
 import json
 import logging
+import string
+from pathlib import Path
 
 import pytest
 
 from tests.fake_slack import FakePost, FakeSlackApi, fake_slack
-from skopax import clock, tagreport
+from skopax import clock, messages, tagreport
 from skopax.slack import Slack, SlackDown, SlackError
 from skopax.store import Store
 
@@ -53,8 +55,9 @@ def test_only_tags_with_responsibles_and_an_open_card_get_a_line_sorted_by_criti
     out = built(cards, owners, {ALICE: 'U0ALICE', BOB: 'U0BOB'})
 
     # then
-    lines = [b['text']['text'].split('\n')[0] for b in out['blocks'][1:]]
+    lines = [b['text']['text'].split('\n')[0] for b in out['blocks'][1:-1]]
     assert len(lines) == 2
+    assert out['blocks'][-1]['block_id'] == 'nobody'
     assert lines[0] == '<@U0BOB> \u00b7 *<https://skopax.example.com/#t=anoms/open/tag:data|Data>* \u00b7 1 open card: 1 critical'
     assert lines[1] == '<@U0ALICE> \u00b7 *<https://skopax.example.com/#t=anoms/open/tag:developer|Developer>* \u00b7 2 open cards: 2 warnings'
     assert '<@U0ALICE>' in out['text'] and '<@U0BOB>' in out['text']
@@ -123,7 +126,7 @@ def test_unmatched_users_are_named_in_plain_text_and_names_labels_and_services_a
 
 def test_nothing_is_built_when_no_tag_qualifies():
     # given
-    cards = [card('a', 'warn', ('developer',), muted=True), card('b', 'warn', ('seo',))]
+    cards = [card('a', 'warn', ('developer',), muted=True), card('b', 'warn', ('seo',), muted=True)]
 
     # when
     out = built(cards, {'developer': [ALICE], 'data': [BOB]})
@@ -474,7 +477,8 @@ def test_disabled_responsibles_are_left_out_and_a_tag_with_none_left_does_not_qu
 
     # then
     blocks = r.post.posted[0]['blocks']
-    assert len(blocks) == 2 and blocks[1]['text']['text'].split(' \u00b7 ')[0] == '<@U0ALICE>'
+    assert len(blocks) == 3 and blocks[1]['text']['text'].split(' \u00b7 ')[0] == '<@U0ALICE>'
+    assert blocks[2]['text']['text'].startswith('Nobody is responsible for')
 
 
 def test_a_tag_whose_only_responsible_has_no_skopax_account_keeps_its_line_named_by_the_local_part(store: Store):
@@ -645,3 +649,185 @@ def test_a_name_that_holds_an_address_is_never_shown(store: Store):
 
     # then
     assert r.post.posted[0]['blocks'][1]['text']['text'].split(' · ')[0] == 'dana.gray'
+
+
+OPEN_VIEW = 'https://skopax.example.com/#t=anoms/open'
+
+
+def block_lines(out: dict) -> list[str]:
+    return [b['text']['text'].split('\n')[0] for b in out['blocks'][1:] if b['type'] == 'section']
+
+
+def test_a_tag_line_shows_the_open_and_the_in_progress_counts():
+    # given
+    cards = [card('a', 'crit', num=1), card('b', 'warn', num=2), card('c', 'warn', num=3), card('t1', triage='progress', num=4), card('t2', triage='handled', num=5)]
+
+    # when
+    out = built(cards, {'developer': [ALICE]}, {ALICE: 'U0ALICE'})
+
+    # then
+    assert block_lines(out)[0] == '<@U0ALICE> \u00b7 *<https://skopax.example.com/#t=anoms/open/tag:developer|Developer>* \u00b7 3 open cards: 1 critical, 2 warnings \u00b7 1 in progress'
+    assert [line.split('|')[1].split('>')[0] for line in out['blocks'][1]['text']['text'].split('\n')[1:]] == ['#1', '#2', '#3']
+
+
+def test_a_tag_whose_cards_are_all_in_progress_is_listed_without_a_ping_while_another_tag_has_open_cards():
+    # given
+    cards = [card('t1', triage='progress', num=1), card('t2', triage='progress', num=2), card('o', 'warn', ('data',), num=3)]
+
+    # when
+    out = built(cards, {'developer': [ALICE], 'data': [BOB]}, {ALICE: 'U0ALICE', BOB: 'U0BOB'})
+
+    # then
+    lines = block_lines(out)
+    assert lines == ['<@U0BOB> \u00b7 *<https://skopax.example.com/#t=anoms/open/tag:data|Data>* \u00b7 1 open card: 1 warning',
+                     '*<https://skopax.example.com/#t=anoms/open/tag:developer|Developer>* \u00b7 2 in progress']
+    assert out['blocks'][2]['text']['text'] == lines[1]
+    assert '<@U0ALICE>' not in out['text']
+
+
+def test_muted_and_grouped_cards_are_not_counted_as_in_progress():
+    # given
+    cards = [card('t1', triage='progress', num=1), card('t2', triage='progress', muted=True, num=2), card('t3', triage='progress', parent='t1', num=3), card('o', num=4)]
+
+    # when
+    out = built(cards, {'developer': [ALICE]})
+
+    # then
+    assert block_lines(out)[0].endswith('1 open card: 1 warning \u00b7 1 in progress')
+
+
+def test_a_day_with_only_in_progress_cards_builds_nothing():
+    # given
+    cards = [card('t1', triage='progress', num=1), card('t2', triage='handled', tags=('data',), num=2)]
+
+    # when
+    out = built(cards, {'developer': [ALICE], 'data': [BOB]})
+
+    # then
+    assert out is None
+
+
+def test_a_tag_whose_only_card_is_handled_gets_no_line():
+    # given
+    cards = [card('h', triage='handled', num=1), card('o', 'warn', ('data',), num=2)]
+
+    # when
+    out = built(cards, {'developer': [ALICE], 'data': [BOB]})
+
+    # then
+    assert [line.split(' \u00b7 ')[1] for line in block_lines(out)] == ['*<https://skopax.example.com/#t=anoms/open/tag:data|Data>*']
+
+
+def test_the_plain_text_keeps_the_closing_line_and_cuts_tag_lines_first():
+    # given
+    labels = {f't{n}': f'Team {n} ' + 'x' * 40 for n in range(60)}
+    cards = [card(f'k{n}', 'warn', (f't{n}',), num=n + 1) for n in range(60)] + [card('bare', 'warn', tags=(), num=99)]
+
+    # when
+    out = tagreport.build(cards, {t: [ALICE] for t in labels}, NAMES, mentions({}), BASE, FRI_1000, labels)
+
+    # then
+    assert len(out['text']) <= 3000
+    assert out['text'].endswith(out['blocks'][-1]['text']['text'].split('\n')[0])
+
+
+def test_the_closing_line_counts_untagged_and_responsibleless_cards_without_a_mention():
+    # given
+    cards = [card('own', 'warn', num=1), card('bare', 'crit', tags=(), num=2), card('seo-only', 'warn', ('seo',), num=3), card('empty-owner', 'warn', ('infra',), num=4),
+             card('mixed', 'warn', ('seo', 'developer'), num=5)]
+
+    # when
+    out = built(cards, {'developer': [ALICE], 'seo': [], 'infra': []}, {ALICE: 'U0ALICE'})
+
+    # then
+    closing = out['blocks'][-1]['text']['text'].split('\n')
+    assert closing[0] == f'Nobody is responsible for <{OPEN_VIEW}|3 open cards> (1 critical, 2 warnings)'
+    assert [line.split('|')[1].split('>')[0] for line in closing[1:]] == ['#2', '#3', '#4']
+    assert '<@' not in out['blocks'][-1]['text']['text']
+    assert block_lines(out)[0].split(' \u00b7 ')[0] == '<@U0ALICE>'
+    assert out['text'].endswith(closing[0])
+
+
+def test_the_closing_line_leaves_out_muted_taken_and_grouped_cards_and_says_one_card_and_the_rest_as_more():
+    # given
+    cards = [card('muted', tags=(), muted=True, num=1), card('taken', tags=(), triage='progress', num=2), card('host', tags=(), num=3), card('child', tags=(), parent='host', num=4)]
+
+    # when
+    one = built(cards, {'developer': [ALICE]})
+    many = built([card(f'n{n}', 'warn', tags=(), hours=n + 1, num=10 + n) for n in range(5)] + [card('w', 'crit', tags=(), hours=0.2, num=30)], {'developer': [ALICE]})
+
+    # then
+    assert one['blocks'][-1]['text']['text'] == f'Nobody is responsible for <{OPEN_VIEW}|1 open card> (1 warning)\n' + one['blocks'][-1]['text']['text'].split('\n', 1)[1]
+    assert len(one['blocks']) == 2
+    lines = many['blocks'][-1]['text']['text'].split('\n')
+    assert lines[0] == f'Nobody is responsible for <{OPEN_VIEW}|6 open cards> (1 critical, 5 warnings)'
+    assert [line.split('|')[1].split('>')[0] for line in lines[1:4]] == ['#30', '#14', '#13']
+    assert lines[4] == f'<{OPEN_VIEW}|+3 more>'
+
+
+def test_a_report_with_only_in_progress_counts_and_no_open_card_posts_nothing(store: Store):
+    # given
+    open_cards(store, card('t1', triage='progress', num=1))
+    r = Reporter(store)
+
+    # when
+    out = r.report.run_once(FRI_1000)
+
+    # then
+    assert out is None and r.post.posted == []
+
+
+def test_a_report_with_only_a_closing_line_posts_and_counts_no_tag(store: Store):
+    # given
+    open_cards(store, card('bare', 'warn', tags=(), num=1))
+    r = Reporter(store)
+
+    # when
+    out = r.report.run_once(FRI_1000)
+
+    # then
+    assert out['tags'] == 0 and len(r.post.posted) == 1
+    assert 'Nobody is responsible for' in r.post.posted[0]['text']
+
+
+def test_the_closing_line_keeps_the_block_limit_with_many_tags():
+    # given
+    labels = {f't{n}': f'Team {n}' for n in range(60)}
+    cards = [card(f'k{n}', 'warn', (f't{n}',), num=n + 1) for n in range(60)] + [card('bare', 'warn', tags=(), num=99)]
+
+    # when
+    out = tagreport.build(cards, {t: [ALICE] for t in labels}, NAMES, mentions({}), BASE, FRI_1000, labels)
+
+    # then
+    assert len(out['blocks']) <= 50
+    assert out['blocks'][-1]['text']['text'].startswith('Nobody is responsible for')
+    assert out['blocks'][-2]['elements'][0]['text'] == '+13 more tags'
+
+
+def test_the_turkish_pack_words_the_counts_and_the_closing_line():
+    # given
+    pack = json.loads(Path(tagreport.__file__).parent.joinpath('locale', 'tr', 'messages.json').read_text(encoding='utf-8'))
+    messages.set_catalogs([('tr', {k: v for k, v in pack.items() if k.startswith('tagreport.')})])
+    cards = [card('a', 'crit', num=1), card('t1', triage='progress', num=2), card('t2', triage='progress', num=3), card('bare', 'crit', tags=(), num=4), card('bare2', 'warn', tags=(), num=5)]
+
+    # when
+    with messages.speaking('tr'):
+        out = built(cards, {'developer': [ALICE]}, {ALICE: 'U0ALICE'})
+
+    # then
+    assert block_lines(out)[0].endswith('1 a\u00e7\u0131k kart: 1 kritik \u00b7 2 i\u015flemde')
+    assert out['blocks'][-1]['text']['text'].split('\n')[0] == f'<{OPEN_VIEW}|2 a\u00e7\u0131k kart\u0131n> sorumlusu yok (1 kritik, 1 uyar\u0131)'
+
+
+def test_every_pack_words_the_new_lines_with_the_same_placeholders():
+    # given
+    keys = ['tagreport.progress', 'tagreport.with_progress', 'tagreport.tag_quiet', 'tagreport.nobody.one', 'tagreport.nobody.many']
+
+    # when
+    names = {k: {f[1] for f in string.Formatter().parse(messages.MESSAGES[k]) if f[1]} for k in keys}
+    packs = {lang: json.loads(Path(tagreport.__file__).parent.joinpath('locale', lang, 'messages.json').read_text(encoding='utf-8')) for lang in ('de', 'es', 'fr', 'tr')}
+
+    # then
+    for lang, pack in packs.items():
+        for k in keys:
+            assert {f[1] for f in string.Formatter().parse(pack[k]) if f[1]} == names[k], (lang, k)

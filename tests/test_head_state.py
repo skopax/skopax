@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -59,7 +60,7 @@ def test_a_resolved_head_on_a_reopened_taken_card_that_stopped_firing_is_replace
     # then
     sent = rewrites(posts.api)
     assert [head_of(u) for u in sent] == [f':large_yellow_circle: #20 stopped firing {DOT} Alice Smith is on it']
-    assert bar_of(sent[0])[0].startswith(f'Stopped firing {DOT} Alice Smith is on it {DOT} ')
+    assert bar_of(sent[0])[0].startswith(f'Stopped firing {DOT} Warning') and 'Alice' not in bar_of(sent[0])[0]
     assert stored_head(store)['kind'] == 'cleared' and stored_head(store)['at'] == '2026-11-11T07:00:00Z'
 
 
@@ -169,10 +170,13 @@ def test_a_stopped_card_reads_unassigned_assigned_or_taken():
     assert head_of(alone) == f':large_yellow_circle: #14 stopped firing {DOT} unassigned'
     assert head_of(assigned) == f':large_yellow_circle: #14 stopped firing {DOT} awaiting action {DOT} assigned to bob'
     assert head_of(taken) == f':large_yellow_circle: #14 stopped firing {DOT} Alice Smith is on it'
-    assert bar_of(alone)[0].startswith(f'Stopped firing {DOT} unassigned {DOT} Warning')
-    assert bar_of(assigned)[0].startswith(f'Stopped firing {DOT} awaiting action {DOT} assigned to bob {DOT} Warning')
-    assert bar_of(taken)[0].startswith(f'Stopped firing {DOT} Alice Smith is on it {DOT} Warning')
+    for message in (alone, assigned, taken):
+        assert bar_of(message)[0].startswith(f'Stopped firing {DOT} Warning')
+        assert 'unassigned' not in bar_of(message)[0] and 'awaiting' not in bar_of(message)[0] and 'Alice' not in bar_of(message)[0] and 'bob' not in bar_of(message)[0]
     assert 'Assignee' not in bar_of(assigned)[0] + bar_of(taken)[0]
+    assert json.dumps(alone['blocks']).count('unassigned') == 1
+    assert json.dumps(assigned['blocks']).count('awaiting action') == 1 and json.dumps(assigned['blocks']).count('assigned to bob') == 1
+    assert json.dumps(taken['blocks']).count('Alice Smith is on it') == 1
     assert alone['text'].startswith(f'Stopped firing {DOT} unassigned') and taken['text'].startswith(f'Stopped firing {DOT} Alice Smith is on it')
 
 
@@ -200,9 +204,9 @@ def test_the_event_variant_follows_the_same_three_endings():
     taken = bar_of(anomaly_message(card | {'owner': 'bob@example.com', 'triage': 'progress'}, LINK, 'server', head={'kind': 'cleared'}))[0]
 
     # then
-    assert alone.startswith(f'Stopped after the event {DOT} unassigned')
-    assert assigned.startswith(f'Stopped after the event {DOT} awaiting action {DOT} assigned to bob')
-    assert taken.startswith(f'Stopped after the event {DOT} bob is on it')
+    for bar in (alone, assigned, taken):
+        assert bar.startswith(f'Stopped after the event {DOT} Warning')
+        assert 'unassigned' not in bar and 'awaiting' not in bar and 'bob' not in bar
 
 
 def test_the_turkish_words_are_exact(speak):
@@ -220,9 +224,9 @@ def test_the_turkish_words_are_exact(speak):
     assert head_of(assigned) == ':large_yellow_circle: #14 sinyal durdu \u00b7 aksiyon bekleniyor \u00b7 atanan: bob'
     assert head_of(taken) == ':large_yellow_circle: #14 sinyal durdu \u00b7 Alice Smith ilgileniyor'
     assert head_of(nobody) == ':large_yellow_circle: #14 sinyal durdu \u00b7 biri ilgileniyor'
-    assert bar_of(alone)[0].startswith('Sinyal durdu \u00b7 atama bekleniyor \u00b7 ')
-    assert bar_of(assigned)[0].startswith('Sinyal durdu \u00b7 aksiyon bekleniyor \u00b7 atanan: bob \u00b7 ')
-    assert bar_of(taken)[0].startswith('Sinyal durdu \u00b7 Alice Smith ilgileniyor \u00b7 ')
+    for message in (alone, assigned, taken):
+        bar = bar_of(message)[0]
+        assert bar.startswith('Sinyal durdu \u00b7 ') and 'atama' not in bar and 'aksiyon' not in bar and 'bob' not in bar and 'Alice' not in bar and 'ilgileniyor' not in bar
 
 
 @pytest.mark.parametrize('lang,words', [
@@ -359,7 +363,7 @@ def test_who_is_resolved_once_per_draw():
     message = anomaly_message(CLEARED | {'owner': 'alice@example.com', 'triage': 'progress'}, LINK, 'server', head={'kind': 'cleared'}, name_of=counted)
 
     # then
-    assert calls == ['alice@example.com'] and 'Alice Smith' in head_of(message) and 'Alice Smith' in bar_of(message)[0] and 'Alice Smith' in message['text']
+    assert calls == ['alice@example.com'] and 'Alice Smith' in head_of(message) and 'Alice Smith' not in bar_of(message)[0] and 'Alice Smith' in message['text']
 
 
 @pytest.mark.parametrize('extra,mute,lead', [({'triage': 'handled'}, None, 'Resolved'), ({}, 'mute', 'Muted'), ({}, 'known', 'Known noise')])
@@ -428,7 +432,7 @@ def test_a_take_keeps_the_display_name_of_who_took_it_without_marking_it_assigne
     card = store.anomaly(KEY)
     message = anomaly_message(card, LINK, 'server', head={'kind': 'cleared'})
     assert (card['owner'], card['triage'], card['ownerName']) == ('alice@example.com', 'progress', 'Alice Smith') and 'assigned' not in card
-    assert head_of(message).endswith(f'#20 stopped firing {DOT} Alice Smith is on it') and bar_of(message)[0].startswith(f'Stopped firing {DOT} Alice Smith is on it')
+    assert head_of(message).endswith(f'#20 stopped firing {DOT} Alice Smith is on it') and bar_of(message)[0].startswith(f'Stopped firing {DOT} Warning')
 
 
 def test_create_task_keeps_the_display_name_of_who_created_it(store: Store):
@@ -503,3 +507,60 @@ def test_a_refused_slack_lookup_while_drawing_does_not_stop_later_lookups():
 
     # then
     assert (first, second) == ('', 'Alice Smith') and ids.slack.calls == 2
+
+
+def test_the_turkish_event_forms_keep_their_ending_in_the_head_only(speak):
+    # given
+    speak('tr')
+    card = CLEARED | {'cause': {'kind': 'event', 'what': 'deploy', 'firstSeen': CARD['firstSeen']}}
+
+    # when
+    alone = anomaly_message(card, LINK, 'server', head={'kind': 'cleared'})
+    taken = anomaly_message(card | {'owner': 'alice@example.com', 'triage': 'progress'}, LINK, 'server', head={'kind': 'cleared'}, name_of=name_of)
+
+    # then
+    for message in (alone, taken):
+        assert bar_of(message)[0].startswith('Olaydan sonra sinyal durdu \u00b7 ')
+        assert 'atama' not in bar_of(message)[0] and 'ilgileniyor' not in bar_of(message)[0] and 'Alice' not in bar_of(message)[0]
+    assert json.dumps(taken['blocks']).count('ilgileniyor') == 1
+
+
+def test_a_firing_taken_or_muted_card_keeps_its_bar():
+    # when
+    firing = bar_of(anomaly_message(CARD, LINK, 'server'))[0]
+    taken = bar_of(anomaly_message(CARD | {'owner': 'alice@example.com', 'triage': 'progress'}, LINK, 'server'))[0]
+    resolved = bar_of(anomaly_message(CLEARED | {'triage': 'handled'}, LINK, 'server', head={'kind': 'cleared'}))[0]
+
+    # then
+    assert firing.startswith(f'Open {DOT} Warning') and taken.startswith(f'In progress {DOT} Warning {DOT} Assignee ')
+    assert resolved.startswith(f'Resolved {DOT} Warning')
+
+
+def test_a_second_reconcile_of_a_stopped_post_sends_no_update(store: Store):
+    # given
+    posts = seed(store, {'kind': 'took', 'by': 'alice@example.com', 'at': OLD}, status='cleared', triage='progress', owner='alice@example.com')
+    posts.reconcile()
+    posts.run_batch()
+    first = len(rewrites(posts.api))
+
+    # when
+    posts.reconcile()
+    posts.run_batch()
+
+    # then
+    assert first == 1 and len(rewrites(posts.api)) == 1
+
+
+@pytest.mark.parametrize('lang,short,event', [
+    ('de', 'Nicht mehr aktiv', 'Nach dem Ereignis beendet'),
+    ('es', 'Dej\u00f3 de dispararse', 'Detenida tras el evento'),
+    ('fr', 'N\u2019\u00e9met plus', 'Arr\u00eat\u00e9e apr\u00e8s l\u2019\u00e9v\u00e9nement'),
+    ('tr', 'Sinyal durdu', 'Olaydan sonra sinyal durdu'),
+])
+def test_every_pack_carries_the_short_stopped_states_of_the_bar(lang, short, event):
+    # given
+    pack = locales.read(lang).messages
+
+    # then
+    assert (pack['slack.bar.stopped'], pack['slack.bar.event']) == (short, event)
+    assert pack['slack.status.cleared'].startswith(short + ' \u00b7 ') and pack['slack.status.event'].startswith(event + ' \u00b7 ')

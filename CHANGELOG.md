@@ -2,6 +2,24 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.4.9 (2026-11-21)
+
+A Slack post of a stopped card says its status once, and the daily tag report shows in-progress counts and the open cards nobody is responsible for.
+
+**Upgrade notes:**
+
+- Slack posts of cards that stopped firing are redrawn once after the upgrade, so their facts bar loses the repeated status. Other posts are not touched. Nothing new is posted.
+- The daily tag report now also posts on a day when the only open cards are ones nobody is responsible for (untagged, or tagged only with tags that have no responsibles), as a closing line without mentions.
+
+**Changed:**
+
+- Slack: for a card that stopped firing, the head keeps the full status with its ending ("stopped firing - awaiting action - assigned to Alice") and the facts bar shows only the short state ("Stopped firing" or "Stopped after the event") before severity and time.
+- Daily tag report: each tag line also says how many of its cards are in progress (taken), for example "3 open cards: 1 critical - 2 in progress"; a tag whose cards are all in progress is listed with that count and without mentioning its responsibles. The cards listed under a tag stay the open ones.
+
+**Added:**
+
+- Daily tag report: a closing line counts the open cards nobody is responsible for, with up to 3 of them (worst first) and a link to the Open view, without mentions. The plain-text version always keeps this line.
+
 ## 0.4.8 (2026-11-21)
 
 Slack card posts always match the card, a stopped card says who has it, and clearer investigator tool errors from the self-reviews.

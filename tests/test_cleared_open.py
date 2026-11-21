@@ -29,7 +29,7 @@ def test_a_cleared_card_is_still_open_and_never_wears_the_done_mark():
     # then
     assert head_of(cleared) == ':large_yellow_circle: #14 stopped firing \u00b7 unassigned'
     assert head_of(cleared_progress).startswith(':large_yellow_circle: ')
-    assert bar_of(cleared)[0].startswith('Stopped firing \u00b7 unassigned')
+    assert bar_of(cleared)[0].startswith('Stopped firing \u00b7 Warning') and 'unassigned' not in bar_of(cleared)[0]
     assert ':white_check_mark:' not in ''.join(texts(cleared)) and ':large_green_circle:' not in ''.join(texts(cleared))
     assert cleared['text'].startswith('Stopped firing \u00b7 unassigned')
 

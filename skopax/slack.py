@@ -652,6 +652,10 @@ def stopped_status(a: dict, parent: dict | None = None, who: str = '') -> str:
     return msg(base + ending, who=esc(who or msg('slack.someone'))) if ending else msg(base)
 
 
+def stopped_state(a: dict, parent: dict | None = None) -> str:
+    return msg('slack.bar.event' if causes.event(a, parents(parent)) else 'slack.bar.stopped')
+
+
 def head_text(a: dict, head: dict, mute: str | None = None, stopped: str = '') -> str:
     sev = a.get('sev', 'info')
     kind = head.get('kind')
@@ -706,11 +710,11 @@ def parents(parent: dict | None) -> dict:
     return {parent['key']: parent} if isinstance(parent, dict) and parent.get('key') else {}
 
 
-def facts_line(a: dict, mute: str | None, drafted_by: str = '', parent: dict | None = None, who: str = '') -> str:
+def facts_line(a: dict, mute: str | None, drafted_by: str = '', parent: dict | None = None) -> str:
     sev = a.get('sev', 'info')
     status = status_of(a, mute)
     stopped = status == 'cleared'
-    parts = [stopped_status(a, parent, who) if stopped else msg(f'slack.status.{status}'), sev_label(sev, esc(sev))]
+    parts = [stopped_state(a, parent) if stopped else msg(f'slack.status.{status}'), sev_label(sev, esc(sev))]
     if a.get('owner') and not (stopped and stopped_ending(a)):
         parts.append(msg('slack.bar.assignee', name=esc(actor(a['owner']))))
     named = [tags.label(t) for t in tags.ids(a) if t in tags.all_tags()]
@@ -783,7 +787,7 @@ def anomaly_message(a: dict, link: str, by: str, draft: str | None = None, butto
     if a.get('msg'):
         blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': f"`{esc(cut(a['msg'], SHORT_LIMIT).replace('`', "'"))}`"}]})
     drafted_by = sender(by, (a.get('slackDraft') or {}).get('by')) if draft and by == AUTO_BY else ''
-    bar = [facts_line(a, mute, drafted_by, parent, who), numbers_line(a), links_line(a.get('links')), shot_links(shots, base) if base else ''] + ([attribution_mark(attribution)] if attribution else [])
+    bar = [facts_line(a, mute, drafted_by, parent), numbers_line(a), links_line(a.get('links')), shot_links(shots, base) if base else ''] + ([attribution_mark(attribution)] if attribution else [])
     blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': t} for t in bar if t]})
     fallback = f"{(stopped_status(a, parent, who) if status == 'cleared' else msg(f'slack.status.{status}')) if cleared else sev_label(sev, sev)} \u00b7 {esc(a.get('svc', '?'))} / {esc(a.get('label', '?'))}" + (f" \u00b7 {esc(a['sub'])}" if a.get('sub') else '')
     return {'text': (f'{esc(summary)}\n' if summary else '') + esc_keep_mentions(draft) if draft else fallback, 'blocks': blocks}
