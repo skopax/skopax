@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from skopax import tags
 from skopax.actors import SYSTEM
 from skopax.cardlink import card_url, chat_url
-from skopax.engine import mute_for, parse_iso
+from skopax.engine import mute_for, parse_iso, window_text
 from skopax.errkind import kind as error_kind
 from skopax.slack import CALL_TIMEOUT_S, POST_ACTIONS, Slack, SlackDown, SlackError, anomaly_message, menu_kinds, status_of
 from skopax.store import NotFound, Store, glob_match, iso, utc_now
@@ -29,6 +29,20 @@ CHANNEL_GONE = ('channel_not_found', 'not_in_channel', 'is_archived')
 GONE_RETRY_S = 86400
 WORKER = 'slack-card-posts'
 MENU_LABEL = 'Take, Resolve and Known noise on the Slack post'
+
+
+def auto_head(row: dict):
+    hours = row.get('hours')
+    if not isinstance(hours, (int, float)) or isinstance(hours, bool) or hours <= 0:
+        return 'resolved'
+    span = window_text(int(hours), business=bool(row.get('businessTime')))
+    return {'kind': 'auto_first' if row.get('since') == 'first' else 'auto', 'span': span}
+
+
+def heads_of(head) -> dict | None:
+    if not head:
+        return None
+    return {'kind': head, 'by': SYSTEM} if isinstance(head, str) else head | {'by': SYSTEM}
 
 
 def mute_kind(mute: dict | None) -> str | None:
@@ -111,9 +125,9 @@ class CardPosts:
         if not applied:
             return
         heads = {e['key']: SWEPT_HEADS[e['ev']] for e in applied.events or [] if e.get('ev') in SWEPT_HEADS and e.get('key')}
-        heads |= {r['key']: 'resolved' for r in applied.resolved or [] if r.get('key')}
+        heads |= {r['key']: auto_head(r) for r in applied.resolved or [] if r.get('key')}
         if heads:
-            self._add(Job(lambda card, keys, mute: card['key'] in heads, lambda card: {'kind': heads[card['key']], 'by': SYSTEM} if heads.get(card['key']) else None))
+            self._add(Job(lambda card, keys, mute: card['key'] in heads, lambda card: heads_of(heads[card['key']])))
 
     def jira(self, rows) -> None:
         cards = {r['card'] for r in rows or [] if isinstance(r, dict) and r.get('card')}

@@ -55,6 +55,10 @@ def masked(out: object, secrets: list[str]) -> object:
     return fill(shape)
 
 
+def unwatched(field: str, asked: str) -> str:
+    return f'. "{asked}" is not configured, so it may be a {field} this install does not watch; do not use another one in its place without saying so in your answer'
+
+
 class PluginTools:
     def __init__(self, runtime: Runtime, timeout: float = TOOL_TIMEOUT_S):
         self.runtime = runtime
@@ -123,6 +127,8 @@ class PluginTools:
         entry = self._entry(name)
         field = entry[1].instance_input if entry is not None else None
         asked = args.get(field) if field and isinstance(args, dict) else None
+        if entry is not None and field and isinstance(asked, str) and asked not in [i.name for i in entry[2]] and text.startswith(f'{field} must be one of'):
+            text += unwatched(field, asked)
         return self._refuse(text, asked)
 
     def default_instance(self, name: str) -> str | None:
@@ -146,7 +152,7 @@ class PluginTools:
             raise ToolError(f"the default instance{f' {named.name}' if named is not None else ''} of {plugin.id} is not available; {field or 'instance'} must be one of {names}")
         chosen = next((i for i in found if i.name == asked), None) if isinstance(asked, str) else None
         if chosen is None:
-            raise self._refuse(f'{field} must be one of {names}', asked, True)
+            raise self._refuse(f'{field} must be one of {names}' + (unwatched(field, asked) if isinstance(asked, str) else ''), asked, True)
         return chosen
 
     def call(self, name: str, args: dict, now: float, rendered: bool = False, states: MutableMapping[str, RunState] | None = None) -> object:
@@ -167,8 +173,10 @@ class PluginTools:
             log.warning('%s', msg('plugintools.timed_out', tool=name, plugin=plugin.id, seconds=f'{self.timeout:g}'))
             raise ToolError(f'the {name} tool timed out after {self.timeout:g} s') from None
         except ReadError as e:
-            text = redact_text(e.message, ERROR_LIMIT)
-            raise self._refuse(text, None if instance is None else instance.name) from None
+            text = redact_text(e.message, getattr(e, 'room', None) or ERROR_LIMIT)
+            refused = self._refuse(text, None if instance is None else instance.name)
+            refused.room = getattr(e, 'room', None)
+            raise refused from None
         except Exception as e:
             said = refusal(e)
             if said is not None:

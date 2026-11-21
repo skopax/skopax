@@ -6,6 +6,7 @@ function histEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, func
 function histWho(by) {
   var s = String(by == null ? '' : by);
   if (!s) return 'system';
+  if (isInvestigatorBy(s) && s !== 'Claude') return investigatorName();
   if (s === 'Claude' || s === 'pod') return 'Investigator';
   if (s === 'server' || s === 'auto' || s === 'system') return 'system';
   if (typeof isTokenActor === 'function' && isTokenActor(s)) return tokenActorLabel(s, 'Investigator');

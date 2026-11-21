@@ -1,5 +1,6 @@
 import datetime as dt
 import re
+import time
 from collections.abc import Callable
 
 from skopax.contract import Context, Denied, Missing, ReadError, SourceDown, Tool, iso
@@ -7,6 +8,10 @@ from skopax.messages import msg
 from skopax.plugins.gitlab.client import PER_PAGE, PERMISSIONS, SEARCH_HITS, branch_of, find, similar_projects, target
 
 MAX_FILE_LINES = 400
+HINT_ROOM = 1600
+TREE_ENTRIES = 20
+TREE_STEPS = 6
+TREE_BUDGET_S = 10
 MR_STATES = ('opened', 'merged', 'closed', 'all')
 MR_ROWS = 20
 MR_SEARCH_LIMIT = 100
@@ -136,8 +141,31 @@ def bridge_row(b: dict) -> dict:
                     'child': compact({'id': child.get('id'), 'status': child.get('status'), 'url': child.get('web_url')}) or None})
 
 
-def no_file(a: dict, project: dict) -> ReadError:
-    return ReadError(404, msg('gitlab.no_file', path=req(a, 'path'), repo=req(a, 'repo'), ref=ref_of(a, project), permission=PERMISSIONS['code']))
+def nearby(gitlab, a: dict, project: dict) -> str:
+    ref = ref_of(a, project)
+    folder = req(a, 'path').strip('/')
+    end = time.monotonic() + TREE_BUDGET_S
+    for _ in range(TREE_STEPS):
+        if time.monotonic() > end:
+            return ''
+        try:
+            rows = gitlab.tree(project['id'], folder, ref, TREE_ENTRIES)
+        except Missing:
+            rows = []
+        except Exception:
+            return ''
+        if rows:
+            names = [(str(r.get('path') or r.get('name')) + ('/' if r.get('type') == 'tree' else '')) for r in rows[:TREE_ENTRIES] if isinstance(r, dict)]
+            return f" . the nearest existing directory is {folder or '(repository root)'} at {ref}, with: {', '.join(names)}"
+        if not folder:
+            return ''
+        folder = folder.rpartition('/')[0]
+    return ''
+
+
+def no_file(a: dict, project: dict, gitlab=None) -> ReadError:
+    text = msg('gitlab.no_file', path=req(a, 'path'), repo=req(a, 'repo'), ref=ref_of(a, project), permission=PERMISSIONS['code'])
+    return ReadError(404, text + (nearby(gitlab, a, project) if gitlab is not None else ''), HINT_ROOM)
 
 
 def read_file(gitlab, a: dict):
@@ -145,7 +173,7 @@ def read_file(gitlab, a: dict):
     try:
         lines = gitlab.file(project['id'], req(a, 'path'), ref_of(a, project)).splitlines()
     except Missing:
-        raise no_file(a, project) from None
+        raise no_file(a, project, gitlab) from None
     first, last = span(a.get('lines'), len(lines))
     return '\n'.join(f'{i}: {lines[i - 1]}' for i in range(first, min(last, len(lines)) + 1))
 
@@ -168,7 +196,7 @@ def blame(gitlab, a: dict):
     try:
         chunks = gitlab.blame(project['id'], req(a, 'path'), ref_of(a, project), first, last)
     except Missing:
-        raise no_file(a, project) from None
+        raise no_file(a, project, gitlab) from None
     for chunk in chunks:
         c = chunk.get('commit') or {}
         out.append({'sha': (c.get('id') or '')[:8], 'author': c.get('author_name'), 'date': (c.get('committed_date') or c.get('authored_date') or '')[:10],

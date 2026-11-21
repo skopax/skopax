@@ -86,7 +86,7 @@ function updateText(a) {
 }
 var AUTO_BY = 'auto · Claude draft';
 function autoSentBy(drafted) { var t = String(drafted == null ? '' : drafted), label = isTokenActor(t) && t !== 'token:bootstrap' ? tokenActorLabel(t, '') : ''; return (t === 'server' ? brandName() : label || 'Investigator') + ' \u00b7 auto-sent'; }
-function draftBy(by, drafted) { return isTokenActor(by) ? tokenActorLabel(by, 'Investigator') : !by || by === 'Claude' ? 'Investigator' : by === AUTO_BY ? autoSentBy(drafted) : String(by).split('@')[0]; }
+function draftBy(by, drafted) { return isTokenActor(by) ? tokenActorLabel(by, 'Investigator') : !by || isInvestigatorBy(by) ? investigatorName() : by === AUTO_BY ? autoSentBy(drafted) : String(by).split('@')[0]; }
 function autoArmed(x) {
   var s = x.autoSend, d = draftOf(x);
   return s && s.at && !s.holdBy && !s.claimedAt && d && s.draftAt === d.at && !draftSent(x) ? s : null;

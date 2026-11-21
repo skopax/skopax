@@ -5,7 +5,7 @@ function initActivity() {
   var seen = {}, items = [], newest = null, polling = false;
   function later(a, b) { return a.t < b.t ? 1 : a.t > b.t ? -1 : a.id < b.id ? 1 : a.id > b.id ? -1 : 0; }
   function row(it, child, last) {
-    var who = it.who === 'pod' ? 'investigator' : it.who, shown = it.who === SYSTEM_ACTOR ? brandName() : who;
+    var who = it.who === 'pod' ? 'investigator' : isInvestigatorBy(it.who) ? investigatorName() : it.who, shown = it.who === SYSTEM_ACTOR ? brandName() : who;
     var li = el('li', 'lv ' + esc(it.kind) + (it.error ? ' err' : '') + (child ? ' child' : ''));
     li.innerHTML = '<span class="lt">' + (child ? '<span class="tree" aria-hidden="true">' + (last ? '└' : '├') + '</span>' : esc(hm(it.t))) + '</span>' +
       '<span class="lx">' + (child ? '' : '<span class="lw ' + esc(who) + '">' + esc(shown) + '</span> ') + (it.kind === 'ask' ? linkify(it.text) : esc(it.text)) + shotsHtml({screenshots: it.screenshots, startedAt: it.t}) + '</span>';

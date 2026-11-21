@@ -145,7 +145,7 @@ def test_kube_tool_routes_by_cluster(store):
     assert sent == [('POST', '/api/kube', {'op': 'nodes', 'args': {}}, 30, 'Bearer east-token-0002'),
                     ('POST', '/api/kube', {'op': 'events', 'args': {'namespace': 'store'}}, 30, 'Bearer east-token-0002'),
                     ('POST', '/api/kube', {'op': 'previous_logs', 'args': {'namespace': 'store', 'pod': 'p-1', 'tail': 50}}, 30, 'Bearer east-token-0002')]
-    assert wrong == 'cluster must be one of local, east'
+    assert wrong.startswith('cluster must be one of local, east. "west" is not configured')
 
 
 def test_remote_agent_reads_through_a_relay(store):
@@ -613,7 +613,7 @@ def test_a_test_instance_is_guarded_on_the_path_the_model_uses(store):
 
     # then
     assert all(err and text.startswith(TEST_WAITING.split('{why}')[0]) for text, err in texts + [eu])
-    assert plain == ('cluster must be one of local, got "west"', True)
+    assert plain[1] and plain[0].startswith('cluster must be one of local, got "west". "west" is not configured')
 
 
 def test_a_read_refused_with_503_pushes_the_config_again_once_and_retries(store):

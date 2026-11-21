@@ -157,8 +157,8 @@ def test_a_card_without_a_cause_still_gets_back_to_normal_and_the_recurring_path
 
     # then
     texts = sorted(text for _, text in t.replies())
-    assert texts[0].startswith('\U0001F7E1 Alarm went quiet: *checkout-service / OOMKilled*')
-    assert texts[1].startswith('\U0001F7E2 Back to normal: *checkout-service / ERROR pattern*')
+    assert texts[1].startswith('\U0001F7E1 Alarm went quiet: *checkout-service / OOMKilled*')
+    assert texts[0].startswith('\U0001F440 Stopped firing, still open: *checkout-service / ERROR pattern*')
 
 
 def test_a_recurring_cause_gets_the_alarm_went_quiet_wording(store: Store):
@@ -182,7 +182,7 @@ def test_a_cause_from_an_earlier_episode_is_not_used(store: Store):
     notes(store, t).run_once(T + 16 * M)
 
     # then
-    assert t.replies()[0][1].startswith('\U0001F7E2 Back to normal:')
+    assert t.replies()[0][1].startswith('\U0001F440 Stopped firing, still open:')
 
 
 def test_slack_marks_in_what_stay_inert(store: Store):
@@ -351,7 +351,7 @@ def test_the_main_post_of_a_cleared_event_card_does_not_say_recovered():
     # then
     bar = lambda m: m['blocks'][-1]['elements'][0]['text']
     assert bar(event).startswith(msg('slack.status.event')) and event['text'].startswith(msg('slack.status.event'))
-    assert msg('slack.status.event') == 'Stopped after the event'
+    assert msg('slack.status.event') == 'Stopped after the event \u00b7 still open'
     assert bar(plain).startswith(msg('slack.status.cleared')) and plain['text'].startswith(msg('slack.cleared'))
     assert bar(old).startswith(msg('slack.status.cleared'))
 
@@ -513,7 +513,7 @@ def test_a_refire_after_the_reopen_window_starts_without_a_cause(store: Store):
 
     # then
     assert causes.own(card_) is None
-    assert replies[0][1].startswith('\U0001F7E2 Back to normal:')
+    assert replies[0][1].startswith('\U0001F440 Stopped firing, still open:')
 
 
 def test_an_event_card_with_a_plugin_note_says_stopped_after_the_event_and_carries_the_note(store: Store):

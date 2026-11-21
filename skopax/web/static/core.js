@@ -144,7 +144,7 @@ RES_VIA[SYSTEM_ACTOR] = 'via ' + brandName();
 var RES_BY = {pod: 'investigator', auto: 'auto-resolve', 'jira-links': 'Jira link sweep'};
 RES_BY[SYSTEM_ACTOR] = 'quality check';
 function resolutionOf(x) { var r = x && x.resolution; return r && RES_KINDS.some(function (k) { return k[0] === r.kind; }) ? r : null; }
-function resWho(by) { return RES_BY[by] || (isTokenActor(by) ? tokenActorLabel(by, 'Investigator') : !by || by === 'Claude' ? 'Investigator' : String(by).split('@')[0]); }
+function resWho(by) { return RES_BY[by] || (isTokenActor(by) ? tokenActorLabel(by, 'Investigator') : !by || isInvestigatorBy(by) ? investigatorName() : String(by).split('@')[0]); }
 function resRefHtml(ref) {
   var t = String(ref || '').trim(), n = /^#?(\d{1,7})$/.exec(t);
   if (n) return '<a href="/c/' + n[1] + '" title="Opens card #' + n[1] + '">#' + n[1] + '</a>';

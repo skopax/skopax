@@ -7,7 +7,7 @@ var COSTS_OP = null;
 var COSTS_LOCKED = false;
 var COSTS_DAYS = (function () { var d = parseInt(load('skopax-costs-days'), 10); return COST_RANGES.indexOf(d) >= 0 ? d : 7; })();
 var COST_SHOWN_BY = {'Claude (self-review)': 'AI (self-review)', 'Claude': 'the investigator'};
-function costBy(by) { return isTokenActor(by) ? tokenActorLabel(by, 'API calls') : COST_SHOWN_BY[by] || by; }
+function costBy(by) { return isTokenActor(by) ? tokenActorLabel(by, 'API calls') : COST_SHOWN_BY[by] || (isInvestigatorBy(by) ? investigatorName() : by); }
 function costLabel(list, id) { var x = list.filter(function (s) { return s.id === id; })[0]; return x ? x.label : id; }
 function costPct(v) { return v == null ? '–' : Math.round(v * 100) + ' %'; }
 function costUsd(v) { return v == null ? '–' : '$' + (v > 0 && v < 0.01 ? Number(v).toFixed(4) : Number(v).toFixed(2)); }

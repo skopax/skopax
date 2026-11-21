@@ -122,10 +122,10 @@ def test_taken_resolved_and_cleared_cards_change_the_headline_and_the_bar():
 
     # then
     assert [head_of(m) for m in (taken, resolved, cleared, reopened, assigned, known)] == [
-        ':large_orange_circle: alice took #14', ':white_check_mark: ci-bot resolved #14', ':white_check_mark: #14 cleared', ':large_orange_circle: #14 reopened',
-        ':large_orange_circle: alice assigned #14 to Bob Smith', ':large_orange_circle: alice marked #14 as known noise']
+        ':large_orange_circle: alice took #14', ':white_check_mark: ci-bot resolved #14', ':eyes: #14 stopped firing \u00b7 still open', ':large_orange_circle: #14 reopened',
+        ':large_orange_circle: alice assigned #14 to Bob Smith', ':white_check_mark: alice marked #14 as known noise']
     assert bar_of(taken)[0] == f'In progress \u00b7 Warning \u00b7 Assignee bob \u00b7 Tags: Developer \u00b7 {SINCE}'
-    assert [bar_of(m)[0].split(' \u00b7 ')[0] for m in (resolved, cleared, reopened, known)] == ['Resolved', 'Recovered', 'Open', 'Known noise']
+    assert [bar_of(m)[0].split(' \u00b7 ')[0] for m in (resolved, cleared, reopened, known)] == ['Resolved', 'Stopped firing', 'Open', 'Known noise']
     assert menu_of(taken) == [('Resolve', 'resolve:ask1', None), ('Known noise', 'known:ask1', None), ('Ask in chat', 'chat', CHAT)]
     assert menu_of(resolved) == [('Ask in chat', 'chat', CHAT)]
 
@@ -296,7 +296,7 @@ def test_a_sweep_that_clears_reopens_escalates_or_auto_resolves_a_card_rewrites_
     posts.run_batch()
 
     # then
-    assert [(u['ts'], head_of(u)) for u in rewrites(api)] == [(CARD_TS, ':white_check_mark: #14 cleared'), ('1792224000.000201', ':large_orange_circle: #15 reopened'),
+    assert [(u['ts'], head_of(u)) for u in rewrites(api)] == [(CARD_TS, ':eyes: #14 stopped firing \u00b7 still open'), ('1792224000.000201', ':large_orange_circle: #15 reopened'),
                                                              ('1792224000.000202', ':red_circle: Skopax opened a card \u00b7 Critical'),
                                                              ('1792224000.000203', ':white_check_mark: Skopax resolved #17')]
     assert bar_of(rewrites(api)[2])[0].startswith('Open \u00b7 Critical'), 'an escalation redraws the bar and keeps the headline'
@@ -358,7 +358,7 @@ def test_a_rewrite_keeps_the_summary_that_was_sent_after_known_noise_drops_the_d
     # then
     [update] = rewrites(api)
     assert 'slackDraft' not in store.anomaly(KEY)
-    assert head_of(update) == ':large_orange_circle: bootstrap marked #14 as known noise'
+    assert head_of(update) == ':white_check_mark: bootstrap marked #14 as known noise'
     assert update['blocks'][2]['text']['text'] == 'Checkout fails on retry.' and update['text'] == 'Checkout fails on retry.'
     assert bar_of(update)[0].startswith('Known noise \u00b7 Warning') and menu_of(update) == [('Ask in chat', 'chat', f'{BASE}/#t=chat/new/14')], 'a rewrite links through SKOPAX_BASE_URL'
 
@@ -467,7 +467,7 @@ def test_the_push_goes_out_before_any_rewrite_and_the_sweep_never_waits_for_one(
     # then
     assert 'U0AAA1111' in pushed, 'the critical push went out inside the sweep'
     assert order == ['returned', 'rewrite'], 'the sweep returned before the rewrite of the cleared card ran'
-    assert head_of(rewrites(api)[0]) == ':white_check_mark: #14 cleared'
+    assert head_of(rewrites(api)[0]) == ':eyes: #14 stopped firing \u00b7 still open'
 
 
 def test_a_page_glob_known_noise_answers_without_waiting_on_slack(store: Store):
@@ -491,7 +491,7 @@ def test_a_page_glob_known_noise_answers_without_waiting_on_slack(store: Store):
     # then
     assert res.status_code == 201 and res.json()['status'] == 'done'
     assert answered < 2 and held == 0, 'the page answered while every rewrite still waited on Slack'
-    assert sorted(head_of(u) for u in rewrites(api)) == [':large_orange_circle: bootstrap marked #14 as known noise', ':large_orange_circle: bootstrap marked #15 as known noise']
+    assert sorted(head_of(u) for u in rewrites(api)) == [':white_check_mark: bootstrap marked #14 as known noise', ':white_check_mark: bootstrap marked #15 as known noise']
 
 
 def test_a_rewrite_slack_did_not_answer_is_tried_once_more_on_the_next_batch(store: Store):

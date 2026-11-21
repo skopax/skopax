@@ -140,6 +140,9 @@ def check_password(password: str, stored: str) -> bool:
 DUMMY_HASH = hash_password(secrets.token_urlsafe(24))
 
 
+MCP_USE_EVERY_S = 60
+
+
 def stamp() -> str:
     return clock.stamp(time.time())
 
@@ -193,6 +196,14 @@ def link_state(held: dict, now: float) -> str | None:
     return state
 
 
+def mcp_mark(doc: dict, used: dict | None) -> dict | None:
+    if not used or not used.get('at'):
+        return None
+    login = doc.get('lastLogin')
+    unseen = not login or login == used.get('seed')
+    return {'at': used['at'], 'only': (None if unseen else False) if used.get('undecided') else unseen}
+
+
 def admin_row(doc: dict | None, now: float) -> dict | None:
     if doc is None:
         return None
@@ -237,6 +248,9 @@ def link_admits(doc: dict, login) -> bool:
 class Users:
     def __init__(self, db, now: Callable[[], float] = time.time):
         self.col = db['users']
+        self.mcp_use = db['mcp_use']
+        self.activity = db['activity']
+        self.actions = db['actions']
         self.now = now
 
     def ensure_indexes(self) -> None:
@@ -515,6 +529,55 @@ class Users:
 
     def touch_login(self, email: str) -> None:
         self.col.update_one({'_id': str(email or '').strip().lower()}, {'$set': {'lastLogin': stamp()}})
+
+    def stamp_first_login(self, email: str) -> bool:
+        done = self.col.update_one({'_id': str(email or '').strip().lower(), '$or': [{'lastLogin': None}, {'lastLogin': {'$exists': False}}]}, {'$set': {'lastLogin': clock.stamp(self.now())}})
+        return done.modified_count > 0
+
+    def page_evidence(self, email: str, name: str | None) -> bool:
+        who = [w for w in (email, name) if w]
+        page = {'requestedBy': {'$in': who}, 'via': {'$ne': 'mcp'}, 'source': {'$nin': ['mcp', 'slack']}}
+        if self.actions.find_one(page, {'_id': 1}) is not None:
+            return True
+        refused = msg('access.sso_not_added', email=email)
+        return self.activity.find_one({'kind': {'$in': ['access', 'admin']}, 'who': {'$in': who}, 'text': {'$ne': refused}}, {'_id': 1}) is not None
+
+    def mcp_evidence(self, email: str, name: str | None) -> bool:
+        who = [w for w in (email, name) if w]
+        return self.actions.find_one({'requestedBy': {'$in': who}, '$or': [{'via': 'mcp'}, {'source': 'mcp'}]}, {'_id': 1}) is not None
+
+    def first_seed(self, key: str, doc: dict, seeded: bool) -> dict:
+        login = doc.get('lastLogin')
+        if seeded:
+            return {'seed': login, 'undecided': False}
+        if not login or self.page_evidence(key, doc.get('name')):
+            return {'seed': None, 'undecided': False}
+        return {'seed': login, 'undecided': not self.mcp_evidence(key, doc.get('name'))}
+
+    def record_mcp(self, email: str, seeded: bool = False) -> None:
+        key = str(email or '').strip().lower()
+        at = self.now()
+        doc = self.col.find_one({'_id': key}, {'lastLogin': 1, 'name': 1}) or {}
+        first = self.mcp_use.find_one({'_id': key}, {'_id': 1}) is None
+        seed = self.first_seed(key, doc, seeded) if first or seeded else {}
+        stale = {'$or': [{'at': {'$lt': clock.stamp(at - MCP_USE_EVERY_S)}}, {'at': {'$exists': False}}]}
+        try:
+            self.mcp_use.find_one_and_update({'_id': key, **stale}, {'$set': {'at': clock.stamp(at), **seed}}, upsert=True)
+        except DuplicateKeyError:
+            if seed:
+                self.mcp_use.update_one({'_id': key, 'seed': None}, {'$set': seed})
+
+    def mcp_uses(self) -> dict[str, dict]:
+        return {d['_id']: d for d in self.mcp_use.find({'at': {'$exists': True}})}
+
+    def mcp_summary(self, days: int) -> dict:
+        since = clock.stamp(self.now() - days * 86400)
+        recent = list(self.mcp_use.find({'at': {'$gte': since}}, sort=[('at', -1)]))
+        who = None
+        if recent:
+            doc = self.col.find_one({'_id': recent[0]['_id']}, {'name': 1}) or {}
+            who = doc.get('name') or recent[0]['_id']
+        return {'people': len(recent), 'last': {'at': recent[0]['at'], 'by': who} if recent else None}
 
     def active_admins(self) -> int:
         return self.col.count_documents({'role': 'admin', 'disabled': False})

@@ -370,7 +370,7 @@ def test_the_safebrowsing_tool_needs_the_key_and_answers_per_url(store: Store):
     # then
     assert out['urls'] == [{'url': 'https://www.example.com/', 'flagged': False, 'threats': []}, {'url': flagged, 'flagged': True, 'threats': [SOCIAL]}]
     assert bad[1] and 'is not an http(s) address' in bad[0]
-    assert keyless_call == ('instance must be one of main, got "free"', True) and len(http.calls) == 2 and safe_browsing.PLUGIN.tools[0].per_run == 3
+    assert keyless_call[1] and keyless_call[0].startswith('instance must be one of main, got "free"') and len(http.calls) == 2 and safe_browsing.PLUGIN.tools[0].per_run == 3
     assert denied == (f'{NO_ACCESS} (HTTP 403)', True)
 
 

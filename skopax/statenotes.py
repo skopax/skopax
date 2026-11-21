@@ -9,7 +9,7 @@ from skopax.actions import DEFAULT_MUTE_HOURS
 from skopax.errkind import kind as error_kind
 from skopax.engine import mute_for, window_text
 from skopax.jiralinks import site_of
-from skopax.actors import SYSTEM, is_token, token_label
+from skopax.actors import POD_BY, SYSTEM, investigator_label, is_token, token_label
 from skopax.messages import msg
 from skopax.redact import redact
 from skopax.slack import Slack, cut_words, esc, reason_of
@@ -39,6 +39,8 @@ def who_of(by: str | None) -> str:
     by = str(by or '').strip()
     if by == SYSTEM:
         return brand.product()
+    if by == POD_BY:
+        return investigator_label()
     return token_label(by) if is_token(by) else 'Investigator' if not by or by == 'Claude' else by.split('@')[0]
 
 
