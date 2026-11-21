@@ -495,7 +495,7 @@ function renderFilters() {
     {id: 'progress', label: TRI.progress[0], k: TRI.progress[1], n: inprog.length, seg: 'anom-chips'},
     {id: 'taken', label: 'Action taken', k: 'k-good', n: taken.length, seg: 'anom-chips'},
     {id: 'muted', label: 'Muted', k: 'k-muted', n: muted.length, seg: 'anom-chips'},
-    {id: 'cleared', label: 'Cleared', k: 'k-cleared', n: cleared.length, seg: 'anom-chips'},
+    {id: 'cleared', label: 'Stopped firing', k: 'k-cleared', n: cleared.length, seg: 'anom-chips'},
     {id: 'investigating', label: 'Investigating', k: 'k-act', n: triCount('investigating'), seg: 'tri-chips'},
     {id: 'dived', label: 'Investigated', k: 'k-cleared', n: triCount('dived'), seg: 'tri-chips'},
     {id: 'crit', label: 'Critical', k: 'k-crit', n: openBySev('crit').length, seg: 'sev-chips', tip: 'open critical items (pushed)'},
@@ -517,7 +517,7 @@ function renderFilterNote(c) {
   var note = document.getElementById('filter-note');
   var f = c ? c.id : 'open', refocus = document.activeElement && document.activeElement.id === 'filter-menu';
   note.className = 'filter-note ' + (c ? c.k : SEV[worst][1]) + (f !== 'open' || typeF || searchQ ? ' on' : '');
-  note.title = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning'], [inprog.length, 'in progress'], [taken.length, 'action taken'], [muted.length, 'muted'], [cleared.length, 'cleared'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
+  note.title = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning'], [inprog.length, 'in progress'], [taken.length, 'action taken'], [muted.length, 'muted'], [cleared.length, 'stopped firing'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
   note.innerHTML = '<span class="fn-cur">Showing <b>' + esc(c ? c.label : 'Open') + '</b>' + (typeF ? ' · <b>' + esc(typeName(typeF)) + '</b>' : '') +
     '<span class="count">' + esc(typeF ? shownN : c ? c.n : openAll().length) + '</span></span>' +
     (f === 'svc' ? '<button class="xlink" type="button" id="back-svcs">← Back to Services</button>' : '') +

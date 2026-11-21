@@ -177,8 +177,9 @@
   "Choose…": "Elegir…",
   "Clear": "Limpiar",
   "Cleared": "Recuperada",
-  "Cleared {0} {M} {1}": "Recuperada {0} {M} {1}",
-  "Cleared · no action needed": "Recuperada · no requiere acción",
+  "Stopped firing · awaiting review {0} {M} {1}": "Dejó de dispararse · pendiente de revisión {0} {M} {1}",
+  "Stopped firing {0} {M} {1}": "Dejó de dispararse {0} {M} {1}",
+  "Stopped firing · no action needed": "Dejó de dispararse · no requiere acción",
   "Cleared, nobody acted": "Recuperada, nadie actuó",
   "Click again to confirm": "Haz clic otra vez para confirmar",
   "Clients": "Clientes",
@@ -858,6 +859,8 @@
   "Stop investigator": "Detener el investigador",
   "Stop this token working right away": "Hacer que este token deje de funcionar ya",
   "Stopped firing": "Dejó de dispararse",
+  "Stopped firing · awaiting review": "Dejó de dispararse · pendiente de revisión",
+  "stopped firing": "dejó de dispararse",
   "Stops new runs at once; a running one ends after its current turn": "Detiene las nuevas ejecuciones de inmediato; una en curso termina tras su turno actual",
   "Stops sign-in for this person; their sessions and API tokens stop within {0} seconds": "Bloquea el inicio de sesión de esta persona; sus sesiones y tokens de API dejan de funcionar en {0} segundos",
   "Succeeded": "Correcta",
@@ -871,6 +874,7 @@
   "Table": "Tabla",
   "Tags": "Etiquetas",
   "Take": "Tomar",
+  "Takes": "Tomadas",
   "Taken out of its group": "Sacada de su grupo",
   "Taken {0} {M} {1}": "Tomada {0} {M} {1}",
   "Teams route": "Ruta de Teams",
@@ -1411,8 +1415,12 @@
    "Publicar este texto en $1 ahora, como mensaje para $2; haz clic dos veces para confirmar"
   ],
   [
-   "^Cleared (\\d.*)$",
-   "Recuperada $1"
+   "^Stopped firing (\\d[^,]*)$",
+   "Dejó de dispararse $1"
+  ],
+  [
+   "^Stopped firing · awaiting review (\\d.*)$",
+   "Dejó de dispararse · pendiente de revisión $1"
   ],
   [
    "^Earlier: (.+)$",

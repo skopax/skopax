@@ -15,6 +15,7 @@ from skopax.runtime import Runtime
 log = logging.getLogger('skopax.plugintools')
 
 TOOL_TIMEOUT_S = 120
+ERROR_ROOM_MAX = 800
 FIELD = re.compile(r'\{field:([a-z][a-z0-9-]{0,30})\}')
 
 
@@ -57,6 +58,12 @@ def masked(out: object, secrets: list[str]) -> object:
 
 def unwatched(field: str, asked: str) -> str:
     return f'. "{asked}" is not configured, so it may be a {field} this install does not watch; do not use another one in its place without saying so in your answer'
+
+
+def error_room(room: object) -> int:
+    if not isinstance(room, int) or isinstance(room, bool) or room <= 0:
+        return ERROR_LIMIT
+    return min(room, ERROR_ROOM_MAX)
 
 
 class PluginTools:
@@ -173,9 +180,10 @@ class PluginTools:
             log.warning('%s', msg('plugintools.timed_out', tool=name, plugin=plugin.id, seconds=f'{self.timeout:g}'))
             raise ToolError(f'the {name} tool timed out after {self.timeout:g} s') from None
         except ReadError as e:
-            text = redact_text(e.message, getattr(e, 'room', None) or ERROR_LIMIT)
+            room = error_room(getattr(e, 'room', None))
+            text = redact_text(e.message, room)
             refused = self._refuse(text, None if instance is None else instance.name)
-            refused.room = getattr(e, 'room', None)
+            refused.room = room
             raise refused from None
         except Exception as e:
             said = refusal(e)

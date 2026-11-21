@@ -52,7 +52,7 @@ def nested(path, text) -> dict:
 
 
 def outbound() -> set[str]:
-    return {key for key in messages.MESSAGES if key.partition('.')[0] in messages.OUTBOUND}
+    return {key for key in messages.MESSAGES if messages.outbound(key)}
 
 
 def placeholder_problems(pack: Locale) -> list[str]:

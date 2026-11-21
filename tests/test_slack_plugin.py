@@ -401,7 +401,9 @@ def test_an_env_listener_opens_once_a_failed_first_load_recovers(store: Store, w
                                    operators_lookup=lambda email: False, slack_socket=factory)) as c:
             c.app.state.runtime.refresh()
             wait_for(lambda: bool(factory.made) and factory.made[0].connected.is_set(), seconds=5)
-            info = c.get('/api/server', headers=AUTH).json()['slack']
+            seen = []
+            wait_for(lambda: seen.append(c.get('/api/server', headers=AUTH).json()['slack']) or seen[-1]['socket'] is True, seconds=5)
+            info = seen[-1]
 
     # then
     assert failures == [] and factory.tokens == [APP] and info['socket'] is True

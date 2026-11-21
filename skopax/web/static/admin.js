@@ -782,7 +782,7 @@ function adminHistory() {
   };
   var rest = ADMIN_HIST.length - ADMIN_HIST_SHOW;
   return '<table class="adm-hist"><thead><tr><th>When</th><th>Who</th><th>Setting</th><th>Change</th><th></th></tr></thead><tbody>' + ADMIN_HIST.slice(0, ADMIN_HIST_SHOW).map(function (h) {
-    var name = h.access ? 'People and access' : h.route ? 'Teams route ' + h.key.slice(6) : h.source ? 'Agent ' + h.key.slice(7) : h.secret ? 'Secret ' + h.key : h.talk ? TALK_NAMES[h.key] || 'Small talk' : h.owners ? 'Responsibles of ' + tagLabelOf(h.tag) : label[h.key] || h.key;
+    var name = h.access ? 'People and access' : h.route ? 'Teams route ' + h.key.slice(6) : h.source ? 'Agent ' + h.key.slice(7) : h.secret ? 'Secret ' + h.key : h.talk ? TALK_NAMES[h.key] || 'Small talk' : h.owners ? 'Responsibles of ' + tagLabelOf(h.tag) : label[h.current || h.key] || h.key;
     var shownR = function (v) { return v == null ? '<span class="muted">' + (h.route || h.owners ? 'none' : h.source || h.secret ? 'not set' : 'config / default') + '</span>' : shown(v); };
     var change = h.access ? esc(h.text) : h.seen ? '<span class="muted">workflow link shown</span>' : shownR(h.old) + ' → ' + shownR(h.new);
     return '<tr><td>' + esc(dayhm(h.at)) + '</td><td>' + esc(draftBy(h.by)) + '</td><td title="' + esc(h.key) + '">' + esc(name) + '</td><td class="adm-ch">' + change + '</td>' +

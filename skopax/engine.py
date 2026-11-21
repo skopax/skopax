@@ -14,7 +14,7 @@ from skopax.actors import SYSTEM
 from skopax.businesstime import elapsed
 from skopax.errkind import kind as error_kind
 from skopax.jiralinks import ticket_pattern
-from skopax.messages import msg
+from skopax.messages import ENGLISH, msg, speaking
 from skopax.store import MUTED_PRESET, Conflict, Store, glob_match, mute_matches
 
 log = logging.getLogger('skopax.engine')
@@ -386,6 +386,11 @@ def window_text(hours: int, business: bool = False, words: str = '') -> str:
     return msg(words + ('hour' if hours == 1 else 'hours'), n=hours)
 
 
+def english_window(hours: int, business: bool = False) -> str:
+    with speaking(ENGLISH):
+        return window_text(hours, business=business)
+
+
 def business_mark(business: tzinfo | None) -> dict:
     return {'businessTime': True} if business is not None else {}
 
@@ -411,7 +416,7 @@ def auto_resolve_kinds(state: dict, now: float, windows: tuple, business: tzinfo
         first = parse_iso(a['firstSeen'])
         if elapsed(first, now, business) <= hours * 3600:
             continue
-        why = f"first seen {clock.date(first)}, nobody acted in {window_text(hours, business=business is not None)}"
+        why = f"first seen {clock.date(first)}, nobody acted in {english_window(hours, business is not None)}"
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
             put_note(a, f'Auto-resolved: {why}', t)
@@ -433,7 +438,7 @@ def auto_resolve(state: dict, now: float, hours: int, windows: tuple = (), by_se
         waited = window + (causes.EVENT_EXTRA_HOURS if event else 0)
         if elapsed(cleared, now, business) <= waited * 3600:
             continue
-        why = msg('engine.auto.event') if event else f"cleared {clock.date(cleared)}, nobody acted in {window_text(window, business=business is not None)}"
+        why = msg('engine.auto.event') if event else f"cleared {clock.date(cleared)}, nobody acted in {english_window(window, business is not None)}"
         a.update(triage='handled', triagedBy=AUTO_RESOLVED_BY, autoResolvedAt=t, resolution=auto_resolution(t))
         if not a.get('note'):
             put_note(a, why if event else f'Auto-resolved: {why}', t)

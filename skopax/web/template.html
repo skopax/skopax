@@ -259,8 +259,9 @@ body:not(.is-rail) .s-grp.folded > a.tab:not([aria-current="page"]):not(.k-crit)
 #top-find-btn { display: none; }
 .top-bell { position: relative; }
 .top-bell .b-num { position: absolute; top: -3px; right: -4px; min-width: 15px; height: 15px; padding: 0 3px; font-size: 9.5px; line-height: 15px; }
-.pal.drop { padding: 0; }
-.pal.drop .pal-scrim { background: transparent; }
+.pal.drop { padding: 0; pointer-events: none; }
+.pal.drop .pal-scrim, .pal.drop .pal-box { pointer-events: auto; }
+.pal.drop .pal-scrim { background: transparent; clip-path: polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, var(--hole-x) var(--hole-y), var(--hole-r) var(--hole-y), var(--hole-r) var(--hole-b), var(--hole-x) var(--hole-b), var(--hole-x) var(--hole-y)); }
 .pal.drop .pal-box { position: absolute; left: var(--drop-x); top: var(--drop-y); width: var(--drop-w); max-height: min(560px, calc(100vh - var(--drop-y) - 16px)); }
 .pal.drop .pal-in { display: none; }
 .crumb { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 0.85rem; color: var(--muted); }
@@ -1389,9 +1390,9 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
 .adm-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 6px; min-height: 40px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--raised); cursor: text; }
 .adm-chips:focus-within { outline: 2px solid var(--ring); outline-offset: 0; }
 .adm-chip-list { display: contents; list-style: none; margin: 0; padding: 0; }
-.adm-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 9px; max-width: 100%; font-size: 0.82rem; border: 1px solid var(--line-2); border-radius: 99px; background: var(--sunken); }
-.adm-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
-.adm-chip.bad { color: var(--crit); border-color: var(--crit); }
+.adm-chips .adm-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 9px; max-width: 100%; font-size: 0.82rem; border: 1px solid var(--line-2); border-radius: 99px; background: var(--sunken); }
+.adm-chips .adm-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.adm-chips .adm-chip.bad { color: var(--crit); border-color: var(--crit); }
 .adm-chip-t { overflow-wrap: anywhere; }
 .adm-chip-x { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; font: inherit; color: var(--muted); background: none; border: 0; border-radius: 50%; cursor: pointer; }
 .adm-chip-x:hover { color: var(--crit); background: var(--hover); }

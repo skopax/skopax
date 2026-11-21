@@ -6,14 +6,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from skopax import locales
 from skopax.chattext import TEXTS
-from skopax.messages import MESSAGES, OUTBOUND
+from skopax.messages import MESSAGES, outbound as sent_out
 from skopax.registry import DAYS, MONTHS
 
 REFERENCE = 'tr'
 
 
 def outbound() -> list[str]:
-    return [key for key in MESSAGES if key.partition('.')[0] in OUTBOUND]
+    return [key for key in MESSAGES if sent_out(key)]
 
 
 def source() -> dict:

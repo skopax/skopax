@@ -551,7 +551,7 @@ def sender(by: str, draft_by: str | None = None) -> str:
         if draft_by == SERVER_BY:
             return msg('slack.sender.server')
         label = token_label(draft_by, '') if is_token(draft_by) and draft_by != BOOTSTRAP_TOKEN else ''
-        return msg('slack.sender.token', label=label) if label else msg('slack.sender.auto')
+        return msg('slack.sender.token', label=label) if label else msg('slack.sender.auto', who=investigator_label())
     if by == POD_BY:
         return investigator_label()
     return token_label(by) if is_token(by) else by.split('@')[0]

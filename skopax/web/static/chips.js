@@ -1,6 +1,7 @@
 var CHIP_KINDS = {
   'email': {re: /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/, why: 'Not an e-mail address', hint: 'Type an e-mail address and press Enter or comma'},
   'host': {re: /^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i, strip: '.', why: 'Not a host name; *.example.com covers only subdomains', hint: 'Type a host name and press Enter or comma'},
+  'web-host': {re: /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i, why: 'Not a host name such as support.google.com; a host covers its subdomains', hint: 'Type a host name and press Enter or comma'},
   'domain': {re: /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i, why: 'Not a domain such as example.com', hint: 'Type a domain and press Enter or comma'},
   'slack-user-id': {re: /^[UW][A-Z0-9]{6,14}$/, why: 'Not a Slack user id such as U012ABCDE', hint: 'Type a Slack user id and press Enter or comma'},
   'client-id': {re: /^[^\s,]{1,200}$/, why: 'A client id has no spaces or commas', hint: 'Type a client id and press Enter or comma'},
@@ -18,11 +19,12 @@ function chipRule(spec) {
   }
   return kind.re ? {re: kind.re, strip: kind.strip || '', why: kind.why} : null;
 }
+function chipWord(spec, item) { return spec.minus ? String(item).toLowerCase() : item; }
 function chipProblem(spec, item) {
   var rule = chipRule(spec);
   if (!rule) return null;
-  if ((spec.keywords || []).indexOf(item) >= 0) return null;
-  var text = item;
+  if ((spec.keywords || []).indexOf(chipWord(spec, item)) >= 0) return null;
+  var text = spec.minus && item.charAt(0) === '-' ? item.slice(1) : item;
   while (rule.strip && text.length > 1 && text.charAt(text.length - 1) === rule.strip) text = text.slice(0, -1);
   return rule.re.test(text) ? null : rule.why;
 }
@@ -37,7 +39,7 @@ function admChipsGate(scope) {
   });
 }
 function chipItems(value, spec) {
-  var sep = spec.separator === ' ' ? /\s+/ : /\s*,\s*/;
+  var sep = spec.minus ? /[\s,]+/ : spec.separator === ' ' ? /\s+/ : /\s*,\s*/;
   return String(value || '').split(sep).map(function (s) { return s.trim(); }).filter(Boolean);
 }
 function chipText(items, spec) { return items.join(spec.separator === ' ' ? ' ' : ', '); }
@@ -92,8 +94,8 @@ function admChipsMount(value, spec, label) {
     if (held()) return;
     var words = spec.keywords || [], before = items.join('\n');
     parts.forEach(function (p) {
-      if (words.indexOf(p) >= 0) { items = [p]; return; }
-      items = items.filter(function (x) { return words.indexOf(x) < 0; });
+      if (words.indexOf(chipWord(spec, p)) >= 0) { items = [p]; return; }
+      items = items.filter(function (x) { return words.indexOf(chipWord(spec, x)) < 0; });
       if (items.map(function (x) { return x.toLowerCase(); }).indexOf(p.toLowerCase()) < 0) items.push(p);
     });
     if (items.join('\n') === before) return;

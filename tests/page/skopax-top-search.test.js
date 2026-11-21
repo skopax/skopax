@@ -163,6 +163,56 @@ async function clicksInsideTheFieldKeepTheDropdownAndOutsideClosesIt() {
   console.log('PASS a click inside the field keeps the dropdown and a click outside closes it');
 }
 
+const MANY = Array.from({length: 10}, (_, i) => card('log|svc-' + i + '|ERROR|m', {num: 30 + i, ticket: 'OPS-40' + String(i).padStart(2, '0')}));
+
+async function manyCompletionsStillLeaveTheJiraRowForTheTopMatch() {
+  //given
+  const t = await boot({cards: MANY, jira: 'https://jira.example.com'});
+
+  //when
+  await typeIn(t, 'ops-40');
+  const rows = sugg(t.doc);
+  const completions = rows.filter((x) => !/in Jira/.test(x));
+  const opens = rows.filter((x) => /in Jira/.test(x));
+
+  //then
+  assert.strictEqual(completions.length, 6, 'completion rows are capped at 6: ' + rows.join('|'));
+  assert.ok(opens.length >= 1 && rows.length <= 8, 'the group stays within 8 rows: ' + rows.join('|'));
+  assert.ok(opens.some((x) => x === 'Open ' + completions[0] + ' in Jira'), 'the top match keeps its Jira row: ' + rows.join('|'));
+  t.dom.window.close();
+  console.log('PASS completion rows are capped at 6 so the Jira row for the top match is kept');
+}
+
+async function theScrimLeavesAHoleOverTheFieldInDropMode() {
+  //given
+  const t = await boot();
+  const field = t.doc.getElementById('top-q'), box = t.doc.getElementById('top-find'), pal = t.doc.getElementById('pal');
+  box.getBoundingClientRect = () => ({left: 100, right: 400, top: 10, bottom: 44, width: 300, height: 34});
+  const css = require('fs').readFileSync(TEMPLATE, 'utf8');
+
+  //when
+  field.click();
+  const get = (n) => pal.style.getPropertyValue(n);
+
+  //then
+  assert.ok(pal.classList.contains('drop') && !pal.hidden);
+  assert.deepStrictEqual([get('--hole-x'), get('--hole-y'), get('--hole-r'), get('--hole-b')], ['100px', '10px', '400px', '44px'], 'the field rectangle is passed to the scrim');
+  assert.ok(/\.pal\.drop \.pal-scrim \{[^}]*clip-path: polygon\(evenodd,[^}]*var\(--hole-x\)[^}]*var\(--hole-b\)/.test(css), 'the drop scrim is clipped around the field so clicks reach the input');
+  assert.ok(/\.pal\.drop \{[^}]*pointer-events: none;/.test(css), 'the drop layer lets clicks through to the page');
+  assert.ok(/\.pal\.drop \.pal-scrim, \.pal\.drop \.pal-box \{ pointer-events: auto; \}/.test(css), 'while the scrim and the box still take them');
+  assert.strictEqual(t.doc.activeElement, field);
+  box.getBoundingClientRect = () => ({left: 150, right: 500, top: 12, bottom: 46, width: 350, height: 34});
+  t.w.dispatchEvent(new t.w.Event('resize'));
+  assert.deepStrictEqual([get('--hole-x'), get('--hole-y'), get('--hole-r'), get('--hole-b')], ['150px', '12px', '500px', '46px'], 'a resize while open moves the hole and the box');
+  assert.strictEqual(get('--drop-x'), '150px');
+  field.value = 'serv';
+  field.dispatchEvent(new t.w.Event('input', {bubbles: true}));
+  field.dispatchEvent(new t.w.MouseEvent('click', {bubbles: true}));
+  assert.ok(!pal.hidden && field.value === 'serv' && t.doc.activeElement === field, 'a click on the field keeps the dropdown, value and focus');
+  t.dom.window.close();
+  console.log('PASS the drop scrim leaves a hole over the field and a click there keeps the dropdown');
+}
+
 async function theSidebarHasNoSearchBoxButTheRailKeepsTheIcon() {
   //given
   const wide = await boot();
@@ -445,6 +495,7 @@ async function theTopBarNarrowsAndSwitchesToTheIconBelowTheWidthsItFits() {
   await clickTypingArrowAndTheShortcutOpenThePaletteAndTypingGoesToIt();
   await tabLeavesTheFieldAndTypingAgainAfterAPickShowsTheDropdown();
   await clicksInsideTheFieldKeepTheDropdownAndOutsideClosesIt();
+  await theScrimLeavesAHoleOverTheFieldInDropMode();
   await theSidebarHasNoSearchBoxButTheRailKeepsTheIcon();
   await thePhoneHasAnIconThatOpensTheModalPalette();
   await thePlaceholderTranslates();
@@ -453,6 +504,7 @@ async function theTopBarNarrowsAndSwitchesToTheIconBelowTheWidthsItFits() {
   await tabCompletesTheFieldToTheFullKeyAndEnterOpensTheCard();
   await noTicketMatchShowsNoSuggestions();
   await anOpenTicketRowOpensTheJiraLinkAndAUnsafeBaseGivesNone();
+  await manyCompletionsStillLeaveTheJiraRowForTheTopMatch();
   await theBellGoesToNotificationsWhenSignedInAndToLoginWhenSignedOut();
   await theTopBarNarrowsAndSwitchesToTheIconBelowTheWidthsItFits();
   await theBellIsInTheTopBarWithTheUnreadCountAndOpensNotifications();

@@ -349,9 +349,29 @@ async function aChoiceWithNamedValuesShowsTheNamesAndSavesTheValue() {
   console.log('PASS a choice setting with named values, such as Post at once from, shows Critical, Warning, Info and Off and saves crit, warn, info or off; a value from the old switch is tagged old switch and Reset clears it');
 }
 
+async function aHistoryRowOfTheOldWorkspacesKeyShowsTheNewLabel() {
+  //given
+  const links = {key: 'core.workspace-links', group: 'Workspaces', label: 'Other workspaces', help: 'x', kind: 'text', live: true, value: '', base: '', default: '', source: 'default', by: null, at: null, limit: 1000};
+  const hist = [{id: 'w2', seq: 2, key: 'core.workspace-links', old: null, new: 'eu=https://eu.example.com', by: 'dora.lane@example.com', at: iso(1)},
+    {id: 'w1', seq: 1, key: 'core.instance-links', current: 'core.workspace-links', old: null, new: 'staging=https://staging.example.com', by: 'dora.lane@example.com', at: iso(2)}];
+  const t = await boot(true, '#t=settings', hist, [links]);
+
+  //when
+  t.doc.getElementById('tab-changes').click();
+  await wait(60);
+
+  //then
+  const names = [...t.doc.querySelectorAll('#changes .adm-hist tbody tr')].map((r) => r.children[2].textContent);
+  assert.deepStrictEqual(names, ['Other workspaces', 'Other workspaces'], 'the old key is labelled with the new name');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS a history row stored under the old workspaces key shows the new label');
+}
+
 (async () => {
   await theAdminTabIsHiddenForEveryoneElse();
   await aChoiceWithNamedValuesShowsTheNamesAndSavesTheValue();
   await anAdminSeesTheSettingsByGroupAndSavesResetsAndReverts();
   await settingsStartFoldedAndChangesShowTenAtATime();
+  await aHistoryRowOfTheOldWorkspacesKeyShowsTheNewLabel();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

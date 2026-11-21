@@ -112,10 +112,12 @@ RELEASE_NAME_KEY = 'jira.release-name'
 LINKS_KEY = 'core.workspace-links'
 OLD_LINKS_KEY = 'core.instance-links'
 KEY_ALIASES = {OLD_LINKS_KEY: LINKS_KEY}
+RENAME_MARK = f'rename:{LINKS_KEY}'
 LINKS_MAX = 10
 ITEM_RULES = {
     'email': (r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '', ''),
     'host': (SKIP_ENTRY.pattern, 'i', '.'),
+    'web-host': (web_sites.DOMAIN.pattern, 'i', ''),
     'domain': (r'(?=.{1,253}$)(?!.*\.[0-9]+$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', 'i', ''),
     'slack-user-id': (r'[UW][A-Z0-9]{6,14}', '', ''),
     'client-id': (r'[^\s,]{1,200}', '', ''),
@@ -123,7 +125,7 @@ ITEM_RULES = {
     'channel': (r'[CG][A-Z0-9]{8,12}', '', ''),
     'scope': (r'[\x21-\x7e]{1,100}', '', ''),
 }
-ITEM_RULES_CHECKED = ('email', 'slack-user-id', 'client-id', 'project-key', 'channel', 'scope')
+ITEM_RULES_CHECKED = ('host', 'web-host', 'email', 'slack-user-id', 'client-id', 'project-key', 'channel', 'scope')
 LINK_NAME_MAX = 40
 LINK_NAME = re.compile(r'[A-Za-z0-9 ._-]{1,%d}' % LINK_NAME_MAX)
 LINK_COLOURS = ('#e3a744', '#9a7ce3', '#5cbf80', '#f0857a', '#7eaaf2', '#c98500')
@@ -131,7 +133,8 @@ GENERAL, ACCESS, SIGNIN, INV, SLACK, REVIEW, CARDS, JIRA, RULES, TAGS, FEATURES 
                                                                            'Monitor rules', 'Card tags', 'Features')
 INSTANCES = 'Workspaces'
 ITEM_SEPARATORS = {'scope': ' '}
-ITEM_KEYWORDS = {'channel': ('all', 'main')}
+ITEM_KEYWORDS = {'channel': ('all', 'main'), 'web-host': (web_sites.ANY,) + web_sites.OFF_WORDS}
+ITEM_MINUS = ('web-host',)
 LINK_RULES = ('count', 'pair', 'name', 'url', 'userinfo', 'repeat')
 MCP = 'MCP'
 GROUPS = (GENERAL, INSTANCES, ACCESS, SIGNIN, MCP, INV, SLACK, REVIEW, CARDS, JIRA, RULES, TAGS, FEATURES)
@@ -233,7 +236,7 @@ STATIC = (
     T('investigate.slack-max-tool-calls', 'investigate_slack_max_tool_calls', INV, 'Tool calls per Slack ask', 'Tool call budget of a Slack question', 'int', 3, 30),
     T('investigate.strict-tools', 'investigate_strict_tools', INV, 'Strict tool inputs', 'Ask the model for schema-exact write tool inputs', 'bool'),
     T('investigate.web-domains', 'investigate_web_domains', INV, 'Web sites',
-      'Your sites are added to the built-in list; write -host to leave one out; any lifts the limit; off turns web search and reading off. Host names are separated by commas, and a host covers its subdomains', 'text'),
+      'Your sites are added to the built-in list; write -host to leave one out; any lifts the limit; off turns web search and reading off. Host names are separated by commas, and a host covers its subdomains', 'text', items='web-host'),
     T('investigate.web-searches', 'investigate_web_searches', INV, 'Web searches per run', 'Web searches one run may make, $0.01 each; 0 turns search off', 'int', 0, 10),
     T('investigate.web-fetches', 'investigate_web_fetches', INV, 'Web pages per run', 'Web pages one run may read; 0 turns page reads off', 'int', 0, 10),
     T('screenshot.max-per-day', 'screenshot_max_per_day', INV, 'Screenshots per day', 'Screenshots plug-in tools may store per day, all runs together; it resets at local midnight', 'int', 0, 500),
@@ -475,6 +478,8 @@ def parse(t: Tunable, raw, base: Settings, loading: bool = False):
 def item_view(t: Tunable) -> dict:
     pattern, flags, strip = ITEM_RULES[t.items]
     out = {'kind': t.items, 'separator': ITEM_SEPARATORS.get(t.items, ','), 'pattern': pattern, 'flags': flags, 'strip': strip, 'why': msg(f'items.why.{t.items}')}
+    if t.items in ITEM_MINUS:
+        out['minus'] = True
     if t.items in ITEM_KEYWORDS:
         out['keywords'] = list(ITEM_KEYWORDS[t.items])
     return out
@@ -482,6 +487,8 @@ def item_view(t: Tunable) -> dict:
 
 def item_entries(t: Tunable, text: str) -> list[str]:
     sep = ITEM_SEPARATORS.get(t.items, ',')
+    if t.items in ITEM_MINUS:
+        return [p for p in re.split(r'[\s,]+', text) if p]
     return [p.strip() for p in (text.split() if sep == ' ' else text.split(',')) if p.strip()]
 
 
@@ -491,12 +498,14 @@ def check_items(t: Tunable, entries: list[str] | tuple[str, ...]) -> None:
     pattern, flags, strip = ITEM_RULES[t.items]
     rule = re.compile(pattern, re.IGNORECASE if 'i' in flags else 0)
     keywords = ITEM_KEYWORDS.get(t.items, ())
-    if keywords and any(e in keywords for e in entries) and len(entries) > 1:
-        raise Invalid(msg('items.exclusive', field=t.label))
+    word = (lambda e: e.lower()) if t.items in ITEM_MINUS else (lambda e: e)
+    if keywords and any(word(e) in keywords for e in entries) and len(entries) > 1:
+        raise Invalid(msg('items.exclusive' if t.items == 'channel' else f'items.exclusive.{t.items}', field=t.label))
     for n, entry in enumerate(entries, 1):
-        if entry in keywords:
+        if word(entry) in keywords:
             continue
-        if not rule.fullmatch(entry.rstrip(strip) if strip else entry):
+        bare = entry[1:] if t.items in ITEM_MINUS and entry.startswith('-') else entry
+        if not rule.fullmatch(bare.rstrip(strip) if strip else bare):
             raise Invalid(msg('items.invalid', field=t.label, entry=n, reason=msg(f'items.why.{t.items}')))
 
 
@@ -655,13 +664,20 @@ class TunableStore:
         if old.get('value') is not None:
             at = iso(utc_now())
             done = self.values.update_one({'_id': LINKS_KEY}, {'$setOnInsert': {'value': old['value'], 'by': 'system', 'at': at}}, upsert=True)
-            wrote = done.upserted_id is not None
+            if done.upserted_id is not None or self._unrecorded_copy(old['value']):
+                wrote = self.meta.update_one({'_id': RENAME_MARK}, {'$setOnInsert': {'at': at}}, upsert=True).upserted_id is not None
+                if wrote:
+                    self.write_change(LINKS_KEY, None, old['value'], 'system', renamed=OLD_LINKS_KEY)
         self.values.delete_one({'_id': OLD_LINKS_KEY})
-        if wrote:
-            self.write_change(LINKS_KEY, None, old['value'], 'system', renamed=OLD_LINKS_KEY)
-        else:
+        if not wrote:
             self.meta.find_one_and_update({'_id': REV_ID}, {'$inc': {'n': 1}}, upsert=True)
         return wrote
+
+    def _unrecorded_copy(self, value: str) -> bool:
+        held = self.values.find_one({'_id': LINKS_KEY})
+        if held is None or held.get('by') != 'system' or held.get('value') != value:
+            return False
+        return self.changes.find_one({'key': LINKS_KEY, 'renamed': OLD_LINKS_KEY}) is None
 
     def advance(self, key: str, value: str) -> None:
         found = self.values.find_one({'_id': key})
@@ -681,7 +697,7 @@ class TunableStore:
 
     def history(self, limit: int = 50) -> list[dict]:
         rows = [{k: v for k, v in d.items() if k != '_id'} | {'id': d['_id']} for d in self.changes.find({}).sort('seq', DESCENDING).limit(min(limit, HISTORY_LIMIT))]
-        return [r | {f: hide_refused(r.get('key'), r.get(f)) for f in ('old', 'new') if f in r} for r in rows]
+        return [r | {f: hide_refused(r.get('key'), r.get(f)) for f in ('old', 'new') if f in r} | ({'current': KEY_ALIASES[r['key']]} if r.get('key') in KEY_ALIASES else {}) for r in rows]
 
 
 class Live:

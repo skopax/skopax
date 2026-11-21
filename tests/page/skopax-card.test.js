@@ -252,7 +252,7 @@ async function theCardPageFollowsTheAttributionRule() {
   assert.strictEqual(slot.getAttribute('href'), null);
   slotted.w.close();
   assert.deepStrictEqual(missing.errors, []);
-  assert.strictEqual(missing.doc.getElementById('attribution').textContent, 'Skopax 0.4.6 \u00b7 skopax.io');
+  assert.strictEqual(missing.doc.getElementById('attribution').textContent, 'Skopax 0.4.7 \u00b7 skopax.io');
   assert.strictEqual(missing.doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
   hidden.w.close();
   missing.w.close();
@@ -327,11 +327,11 @@ async function aClearedNoteFromAPluginShowsAsTextOnTheCard() {
   const bare = await boot(22, () => plain);
 
   //then
-  const head = [...noted.doc.querySelectorAll('.tech-body h3')].find((h) => h.textContent.startsWith('Cleared'));
-  assert.strictEqual(head.textContent, 'Cleared \u00b7 Fixer <i>x</i> \u00b7 ' + short(STOPPED));
+  const head = [...noted.doc.querySelectorAll('.tech-body h3')].find((h) => h.textContent.startsWith('Stopped firing'));
+  assert.strictEqual(head.textContent, 'Stopped firing \u00b7 Fixer <i>x</i> \u00b7 ' + short(STOPPED));
   assert.strictEqual(head.nextElementSibling.textContent, 'Rolled back <b>now</b> to 1.4.2');
   assert.strictEqual(noted.doc.querySelector('.tech-body b'), null, 'plug-in text stays text');
-  assert.ok(![...bare.doc.querySelectorAll('.tech-body h3')].some((h) => h.textContent.startsWith('Cleared')));
+  assert.ok(![...bare.doc.querySelectorAll('.tech-body h3')].some((h) => h.textContent.startsWith('Stopped firing')));
   assert.deepStrictEqual(noted.errors.concat(bare.errors), []);
   noted.w.close(); bare.w.close();
   console.log('PASS a cleared note a plug-in wrote shows on the card as plain text with who wrote it and when');

@@ -40,7 +40,7 @@ GERMAN_CAPS = {'slackevents.ask_capped': 'Das Fragenlimit dieser Stunde ist erre
                'slackevents.user_capped': 'Du kannst hoechstens {cap} Fragen pro Stunde stellen; bitte gleich noch einmal versuchen.',
                'slackevents.small_talk_capped': 'Mein Plauderlimit fuer diese Stunde ist voll. Fragen zu Prod gehen weiter.'}
 GERMAN_SLACK = {'slack.known.title': 'Bekanntes Rauschen?', 'slack.known.ok': 'Bekanntes Rauschen', 'slack.label.take': 'Uebernehmen', 'slack.label.resolve': 'Erledigt',
-                'slack.label.known': 'Bekanntes Rauschen', 'slack.label.mute': 'Stumm {hours} h', 'slack.level.ok': 'ALLES GUT', 'slack.sender.auto': 'Ermittler \u00b7 automatisch gesendet',
+                'slack.label.known': 'Bekanntes Rauschen', 'slack.label.mute': 'Stumm {hours} h', 'slack.level.ok': 'ALLES GUT', 'slack.sender.auto': '{who} \u00b7 automatisch gesendet',
                 'reports.no_prometheus': 'keine Daten, die Prometheus-Instanz {instance} ist nicht da'}
 SLACK_TWINS = {'slackevents.feature_off': 'features.off', 'slackevents.not_ready': 'chat.not_ready', 'slackevents.needs.anthropic_key': 'features.needs.anthropic_key',
                'slackevents.needs.mode': 'features.needs.mode', 'tickets.jira_off': 'actions.jira_off'}
@@ -452,7 +452,7 @@ def test_slack_labels_follow_the_outbound_language_while_stored_labels_and_the_d
     assert next(p for m, p in api.calls if m == 'chat.update')['blocks'][-1]['elements'][0]['text'] == 'Stumm 6 h \u00b7 adam.baker@example.com'
     assert (confirm['title']['text'], confirm['confirm']['text']) == ('Bekanntes Rauschen?', 'Bekanntes Rauschen')
     assert labels == ['Uebernehmen', 'Erledigt', 'Bekanntes Rauschen']
-    assert (level_label('ok'), level_label('crit'), sender(AUTO_BY)) == ('ALLES GUT', 'CRITICAL', 'Ermittler \u00b7 automatisch gesendet')
+    assert (level_label('ok'), level_label('crit'), sender(AUTO_BY)) == ('ALLES GUT', 'CRITICAL', 'Claude investigator \u00b7 automatisch gesendet')
     assert flag == 'no data, the Prometheus instance east is not available' and 'reports' not in messages.OUTBOUND, 'the deploy flag is stored and shown on the page, so it stays English'
 
 

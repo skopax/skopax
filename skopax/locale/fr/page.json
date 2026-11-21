@@ -177,8 +177,9 @@
   "Choose…": "Choisir…",
   "Clear": "Effacer",
   "Cleared": "Rétablie",
-  "Cleared {0} {M} {1}": "Rétablie {0} {M} {1}",
-  "Cleared · no action needed": "Rétablie · aucune action requise",
+  "Stopped firing · awaiting review {0} {M} {1}": "N’émet plus · en attente de vérification {0} {M} {1}",
+  "Stopped firing {0} {M} {1}": "N’émet plus {0} {M} {1}",
+  "Stopped firing · no action needed": "N’émet plus · aucune action requise",
   "Cleared, nobody acted": "Rétablie, personne n'a agi",
   "Click again to confirm": "Cliquez à nouveau pour confirmer",
   "Clients": "Clients",
@@ -857,7 +858,9 @@
   "Steady": "Stable",
   "Stop investigator": "Arrêter l'enquêteur",
   "Stop this token working right away": "Désactiver ce jeton immédiatement",
-  "Stopped firing": "Ne se déclenche plus",
+  "Stopped firing": "N’émet plus",
+  "Stopped firing · awaiting review": "N’émet plus · en attente de vérification",
+  "stopped firing": "n’émet plus",
   "Stops new runs at once; a running one ends after its current turn": "Arrête immédiatement les nouvelles exécutions ; celle en cours se termine après son tour actuel",
   "Stops sign-in for this person; their sessions and API tokens stop within {0} seconds": "Bloque la connexion de cette personne ; ses sessions et jetons API cessent de fonctionner en {0} secondes",
   "Succeeded": "Réussi",
@@ -871,6 +874,7 @@
   "Table": "Tableau",
   "Tags": "Tags",
   "Take": "Prendre en charge",
+  "Takes": "Prises en charge",
   "Taken out of its group": "Retirée de son groupe",
   "Taken {0} {M} {1}": "Prise en charge {0} {M} {1}",
   "Teams route": "Route Teams",
@@ -1411,8 +1415,12 @@
    "Publier ce texte sur $1 maintenant, comme message pour $2 ; cliquez deux fois pour confirmer"
   ],
   [
-   "^Cleared (\\d.*)$",
-   "Rétablie $1"
+   "^Stopped firing (\\d[^,]*)$",
+   "N’émet plus $1"
+  ],
+  [
+   "^Stopped firing · awaiting review (\\d.*)$",
+   "N’émet plus · en attente de vérification $1"
   ],
   [
    "^Earlier: (.+)$",

@@ -14,6 +14,7 @@ log = logging.getLogger('skopax.messages')
 ENGLISH = 'en'
 LANG_TAG = re.compile(r'[a-z]{2,3}(-[A-Za-z0-9]{2,8})?')
 OUTBOUND = frozenset({'proposals', 'slack', 'slackevents', 'slackhealth', 'reminder', 'clear', 'autosend', 'notes', 'tickets', 'postdeploy', 'review', 'push', 'gate', 'assign', 'routes', 'pagescan', 'tagreport'})
+OUTBOUND_KEYS = frozenset({'engine.window.hour', 'engine.window.hours', 'engine.window.day', 'engine.window.days'})
 TEXT_MAX = 4000
 SHOWN_MAX = 80
 
@@ -81,7 +82,7 @@ MESSAGES: dict[str, str] = {
     'slack.level.crit': 'CRITICAL',
     'slack.level.warn': 'WARNING',
     'slack.level.info': 'INFO',
-    'slack.sender.auto': 'Investigator \u00b7 auto-sent',
+    'slack.sender.auto': '{who} \u00b7 auto-sent',
     'slack.sender.token': '{label} \u00b7 auto-sent',
     'slack.task.create': 'Create task',
     'slack.task.create_named': 'Create {name} task',
@@ -294,6 +295,13 @@ MESSAGES: dict[str, str] = {
     'slackevents.click.refused': 'Could not open the task: {reason}',
     'slackevents.click.opened': '<{url}|{key}> opened \u00b7 {login}',
     'slackevents.click.action_non_operator': 'Only {product} operators can act on cards.',
+    'slackevents.click.sign_in': 'Sign in to {product} once to get access: {url}',
+    'slackevents.click.sign_in_bare': 'Sign in to {product} once to get access.',
+    'slackevents.click.ask_admin': 'Ask an admin for operator access.',
+    'slackevents.click.ask_add': 'Ask an admin to add you to {product}.',
+    'slackevents.click.ask_access': 'Ask an admin for access.',
+    'slackevents.click.sign_in_then_ask': 'Sign in to {product} once, then ask an admin for operator access: {url}',
+    'slackevents.click.sign_in_then_ask_bare': 'Sign in to {product} once, then ask an admin for operator access.',
     'slackevents.click.applied': 'Already applied: {label} \u00b7 {login}',
     'slackevents.click.applying': 'Applying\u2026',
     'slackevents.click.action_refused': 'Could not act on the card: {reason}',
@@ -797,6 +805,8 @@ MESSAGES: dict[str, str] = {
     'settings.links_label': 'Other workspaces',
     'items.invalid': '{field}, entry {entry}: {reason}',
     'items.exclusive': '{field}: all and main stand alone, they cannot be mixed with channel ids or each other',
+    'items.exclusive.web-host': '{field}: any, off, none, false and no stand alone, they cannot be mixed with hosts or each other',
+    'items.why.web-host': 'not a host name such as support.google.com; a host covers its subdomains',
     'items.why.email': 'not an e-mail address',
     'items.why.host': 'not a host name; *.example.com covers only subdomains',
     'items.why.domain': 'not a domain such as example.com',
@@ -1324,6 +1334,10 @@ def refusal(lang, key, text) -> str | None:
     return None
 
 
+def outbound(key: str) -> bool:
+    return key.partition('.')[0] in OUTBOUND or key in OUTBOUND_KEYS
+
+
 def warn_once(lang, key, reason: str) -> None:
     with WARNED_GUARD:
         if (lang, key) in WARNED:
@@ -1388,7 +1402,7 @@ def reset() -> None:
 def msg(key: str, /, **values) -> str:
     english = MESSAGES[key]
     filled = {'product': brand.product()} | values
-    if key.partition('.')[0] in OUTBOUND:
+    if outbound(key):
         lang = language()
         text = HELD[0][0].get(lang, {}).get(key)
         if text is not None:

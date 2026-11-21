@@ -249,7 +249,7 @@ async function severityChipsFilterTheOpenCards() {
   const anoms = doc.getElementById('tab-anoms');
   assert.ok(anoms.classList.contains('hot') && anoms.classList.contains('k-crit'), 'the Anomalies tab takes the worst open severity');
   assert.strictEqual(anoms.title, '1 critical · 2 warning');
-  assert.strictEqual(doc.getElementById('filter-note').title, '1 critical · 2 warning · 1 muted · 1 cleared', 'the filter line tooltip keeps the counts');
+  assert.strictEqual(doc.getElementById('filter-note').title, '1 critical · 2 warning · 1 muted · 1 stopped firing', 'the filter line tooltip keeps the counts');
 
   //when
   sevItem('warn').click();
@@ -284,7 +284,7 @@ async function inProgressSplitsFromActionTaken() {
   const seg = (f) => statusGroup.querySelector('button[data-f="' + f + '"]');
 
   //then
-  assert.deepStrictEqual([...statusGroup.querySelectorAll('button:not(.child)')].map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['All 3', 'Open 1', 'In progress 1', 'Action taken 1', 'Muted 0', 'Cleared 0'], 'All first, the default; In progress is its own filter, after Open, before Action taken');
+  assert.deepStrictEqual([...statusGroup.querySelectorAll('button:not(.child)')].map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['All 3', 'Open 1', 'In progress 1', 'Action taken 1', 'Muted 0', 'Stopped firing 0'], 'All first, the default; In progress is its own filter, after Open, before Action taken');
   assert.match(doc.getElementById('filter-note').title, /1 in progress · 1 action taken/, 'the filter line tooltip counts the two buckets apart');
 
   //when

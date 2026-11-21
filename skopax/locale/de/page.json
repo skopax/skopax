@@ -177,8 +177,9 @@
   "Choose…": "Auswählen…",
   "Clear": "Leeren",
   "Cleared": "Abgeklungen",
-  "Cleared {0} {M} {1}": "Abgeklungen {0}. {M} {1}",
-  "Cleared · no action needed": "Abgeklungen · keine Maßnahme nötig",
+  "Stopped firing · awaiting review {0} {M} {1}": "Nicht mehr aktiv · Prüfung ausstehend {0}. {M} {1}",
+  "Stopped firing {0} {M} {1}": "Nicht mehr aktiv {0}. {M} {1}",
+  "Stopped firing · no action needed": "Nicht mehr aktiv · keine Maßnahme nötig",
   "Cleared, nobody acted": "Abgeklungen, niemand hat reagiert",
   "Click again to confirm": "Zum Bestätigen erneut klicken",
   "Clients": "Clients",
@@ -857,7 +858,9 @@
   "Steady": "Stabil",
   "Stop investigator": "Investigator stoppen",
   "Stop this token working right away": "Dieses Token sofort ungültig machen",
-  "Stopped firing": "Nicht mehr ausgelöst",
+  "Stopped firing": "Nicht mehr aktiv",
+  "Stopped firing · awaiting review": "Nicht mehr aktiv · Prüfung ausstehend",
+  "stopped firing": "nicht mehr aktiv",
   "Stops new runs at once; a running one ends after its current turn": "Stoppt neue Läufe sofort; ein laufender endet nach seinem aktuellen Schritt",
   "Stops sign-in for this person; their sessions and API tokens stop within {0} seconds": "Sperrt die Anmeldung dieser Person; ihre Sitzungen und API-Tokens enden innerhalb von {0} Sekunden",
   "Succeeded": "Erfolgreich",
@@ -871,6 +874,7 @@
   "Table": "Tabelle",
   "Tags": "Tags",
   "Take": "Übernehmen",
+  "Takes": "Übernommene",
   "Taken out of its group": "Aus der Gruppe genommen",
   "Taken {0} {M} {1}": "Übernommen {0}. {M} {1}",
   "Teams route": "Teams-Route",
@@ -1411,8 +1415,12 @@
    "Diesen Text jetzt in $1 posten, als Nachricht für $2; zum Bestätigen zweimal klicken"
   ],
   [
-   "^Cleared (\\d.*)$",
-   "Abgeklungen $1"
+   "^Stopped firing (\\d[^,]*)$",
+   "Nicht mehr aktiv $1"
+  ],
+  [
+   "^Stopped firing · awaiting review (\\d.*)$",
+   "Nicht mehr aktiv · Prüfung ausstehend $1"
   ],
   [
    "^Earlier: (.+)$",

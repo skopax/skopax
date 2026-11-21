@@ -1,6 +1,6 @@
 (function () {
   var COLOUR = /^#[0-9a-f]{6}$/i, FALLBACK = '#e3a744', CURRENT = '#3cc8f0', WEB = /^https?:\/\//i;
-  var GROUPS = ['Tickets', 'Cards', 'Services', 'Pages', 'Settings', 'Actions'], MAX = 8, FIRST_CARDS = 4, FIRST_PAGES = 6;
+  var GROUPS = ['Tickets', 'Cards', 'Services', 'Pages', 'Settings', 'Actions'], MAX = 8, TICKET_PICKS = 6, FIRST_CARDS = 4, FIRST_PAGES = 6;
   var FIND_TABS = ['settings'];
   var MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
   var KEY = MAC ? '\u2318K' : 'Ctrl K';
@@ -260,7 +260,7 @@
     if (!ws.length) res = all.filter(function (x) { return x.open; }).slice(0, FIRST_CARDS).concat(all.filter(function (x) { return x.kind === 'Pages'; }).slice(0, FIRST_PAGES));
     else {
       var found = ticketPicks(all, ws), taken = found.map(function (f) { return f.x; });
-      res = ticketRows(found, ws[0]).concat(ticketLinks(found), found.map(ticketCard), all.filter(function (x) { return taken.indexOf(x) < 0 && matches(x, ws); }));
+      res = ticketRows(found, ws[0]).slice(0, TICKET_PICKS).concat(ticketLinks(found), found.map(ticketCard), all.filter(function (x) { return taken.indexOf(x) < 0 && matches(x, ws); }));
     }
     items = [];
     list.innerHTML = '';
@@ -336,6 +336,10 @@
     pal.style.setProperty('--drop-x', Math.round(r.left) + 'px');
     pal.style.setProperty('--drop-y', Math.round(r.bottom + 6) + 'px');
     pal.style.setProperty('--drop-w', Math.round(Math.max(r.width, 420)) + 'px');
+    pal.style.setProperty('--hole-x', Math.round(r.left) + 'px');
+    pal.style.setProperty('--hole-y', Math.round(r.top) + 'px');
+    pal.style.setProperty('--hole-r', Math.round(r.right) + 'px');
+    pal.style.setProperty('--hole-b', Math.round(r.bottom) + 'px');
   }
   function palOpen(from) {
     if (!pal.hidden || modalOpen()) return;
@@ -439,6 +443,8 @@
   search.setAttribute('aria-label', 'Search (' + KEY + ')');
   search.setAttribute('aria-keyshortcuts', MAC ? 'Meta+K' : 'Control+K');
   pal.querySelector('.pal-in').insertAdjacentHTML('afterbegin', navIcon('search'));
+
+  window.addEventListener('resize', function () { if (!pal.hidden && pal.classList.contains('drop') && topbox) anchor(); });
 
   window.instRender = instRender;
   window.palOpen = palOpen;

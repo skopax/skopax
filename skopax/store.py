@@ -141,6 +141,9 @@ class ActionMoved(Authored, Exception):
         self.status = status
 
 
+TAG_COLORS_WARN_S = 60
+
+
 def utc_now() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
@@ -365,6 +368,7 @@ def _idle() -> dict:
 class Store:
     def __init__(self, db: Database, history_days: int = history.KEEP_DAYS, investigate_days: int = INVESTIGATION_KEEP_DAYS, screenshot_days: int = SCREENSHOT_KEEP_DAYS, self_deploy: str = '', release_ignore: tuple[str, ...] = (), row_links: Callable[[dict], dict] | None = None):
         self.db = db
+        self._colors_warned: float | None = None
         self.self_deploy = self_deploy
         self.row_links = row_links
         self.release_ignore = release_ignore
@@ -513,7 +517,10 @@ class Store:
         try:
             return {str(d['_id']): d['color'] for d in self.db['tag_colors'].find({}) if type(d.get('color')) is int and 0 <= d['color'] < TAG_HUES}
         except PyMongoError as e:
-            log.warning('tag colours not read, the tags show their default colours: %s', type(e).__name__)
+            now = time.monotonic()
+            if self._colors_warned is None or now - self._colors_warned >= TAG_COLORS_WARN_S:
+                self._colors_warned = now
+                log.warning('tag colours not read, the tags show their default colours: %s', type(e).__name__)
             return {}
 
     def set_tag_color(self, tag: str, color: int | None) -> None:

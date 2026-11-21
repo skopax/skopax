@@ -2,13 +2,42 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
-## 0.4.6 (2026-11-21)
+## 0.4.7 (2026-11-21)
 
-A clearer mark for cards that went quiet, old Slack posts redrawn, the headless browser as its own plug-in, a search box in the top bar with ticket completion, a notification bell, Admin > Workspaces and list editors for comma settings.
+The page uses the same words as Slack for cards that stopped firing, Slack posts follow look and language changes by themselves, refused Slack users are told how to get access, and fixes from the 0.4.6 reviews.
 
 **Upgrade notes:**
 
-- Slack and Teams: a card that stopped firing but is still open now shows :large_yellow_circle: "alert went quiet" (Turkish "Alarm sustu") instead of :eyes: "stopped firing - still open". The check mark still appears only when the card is closed.
+- Each tracked Slack post is redrawn once after the upgrade from 0.4.6, because posts now remember the draw version and language they were drawn with. Later look or language changes redraw them the same way. Nothing new is posted. The upkeep waits for the language packs, at most 2 minutes after start, and does not run while a manual redraw holds its lease.
+- The page calls a card that stopped firing what Slack calls it: "Stopped firing - awaiting review" (Turkish "Sinyal durdu - inceleme bekleniyor") while it waits for someone, and "Stopped firing" with the time when it is muted, taken, resolved or an information item.
+- Web sites for the investigator (`investigate.web-domains`) are now checked with the same host rule the investigator uses: wildcards (`*.example.com`) and one-word names (`localhost`) are refused when saved. `any`, `off`, `none`, `false` and `no` must stand alone.
+
+**Added:**
+
+- A Slack user whose card action is refused is told the way in: sign in once (then ask an admin when new sign-ins get the viewer role), ask an admin to add them when only added people may sign in, ask an admin for operator access, or ask an admin for access when roles come from a role map or the sign-in provider. A disabled account or an e-mail domain that is not allowed gets the plain refusal.
+- A plug-in ReadError can ask for up to 800 characters of room for its message (default 300); docs/extending.md documents both.
+- Web sites in Admin use the chip editor, including `-host` chips.
+
+**Changed:**
+
+- Auto-sent Slack posts and the page's draft line name the investigator as elsewhere ("Claude investigator - auto-sent" when a Claude model runs it).
+- The hours and days of auto-close windows and "Takes" are translated in every pack.
+- Search: ticket suggestions always keep the "Open in Jira" row for the best match, clicking inside the top search field places the caret, and the dropdown follows a window resize.
+- MCP card actions are stored once with their source.
+
+**Fixed:**
+
+- Old history rows of the workspaces setting show "Other workspaces"; an interrupted rename records its history line, written once, before the old setting is dropped.
+- The tag colours warning is logged at most once a minute while the database is down.
+- Two Slack tests that failed now and then are stable.
+
+## 0.4.6 (2026-11-21)
+
+A clearer mark for cards that stopped firing, old Slack posts redrawn, the headless browser as its own plug-in, a search box in the top bar with ticket completion, a notification bell, Admin > Workspaces and list editors for comma settings.
+
+**Upgrade notes:**
+
+- Slack and Teams: a card that stopped firing but is still open now shows :large_yellow_circle: "stopped firing - awaiting review" (Turkish "Sinyal durdu - inceleme bekleniyor") instead of :eyes: "stopped firing - still open". The check mark still appears only when the card is closed.
 - On the first start of 0.4.6, Skopax redraws its existing Slack card posts once in the background with today's head, marks and words (open cards first, at most 500, throttled to Slack's rate). It only edits posts it made; it never posts new messages or touches thread replies. Admins can run it again from Admin > Integrations > Slack > "Redraw Slack posts". One run at a time holds a lease in the database, also across several server copies.
 - The headless browser is now a plug-in of its own, "Headless browser" (Connect > Integrations), with its health on its card; it owns the browser-down and access cards (same card keys). A Website instance picks a browser instance; when exactly one exists it is picked by default. The older `browser-url` field on a Website instance keeps working and wins when set, and Admin offers a one-click move of it into a Headless browser instance.
 - Web sites for the investigator (`investigate.web-domains`) now add to the built-in list instead of replacing it; the built-in sites are shown, your own e-mail domains are included, and `-host` removes one. The list is capped at 100 hosts.
