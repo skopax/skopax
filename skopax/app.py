@@ -98,7 +98,7 @@ from skopax import tagreport
 from skopax.routes import TRIES, Echo, Refused as RouteRefused, Routes
 from skopax.models import RouteSendIn, SsoIn, SsoTestIn
 from skopax.statenotes import StateNotes, who_of
-from skopax.slack import anomaly_message, fix_hash, fix_message, AUTO_BY, same_person, built_link, cut, esc, esc_keep_mentions, menu_kinds, NoThread, opening, reason_of, recurring_line, report_message, Slack, SlackError
+from skopax.slack import stopped_who, anomaly_message, fix_hash, fix_message, AUTO_BY, same_person, built_link, cut, esc, esc_keep_mentions, menu_kinds, NoThread, opening, reason_of, recurring_line, report_message, Slack, SlackError
 from skopax.setup import BadCode, SetupDone, SetupGate, render_form
 from skopax import migrations
 from skopax.errkind import NoAccess, Refusal, kind, text_of
@@ -160,7 +160,7 @@ CHAT_PAGE = re.compile(r'/chat/(?:thread|share)/[A-Za-z0-9-]{1,64}/?')
 WEB = Path(__file__).parent / 'web'
 TEMPLATE = WEB / 'template.html'
 CARD_PAGE = WEB / 'card.html'
-CARD_FIELDS = ('num', 'key', 'svc', 'label', 'sub', 'sev', 'status', 'muted', 'triage', 'ticket', 'owner', 'assigned', 'firstSeen', 'lastSeen', 'clearedAt', 'what', 'note', 'business',
+CARD_FIELDS = ('num', 'key', 'svc', 'label', 'sub', 'sev', 'status', 'muted', 'triage', 'ticket', 'owner', 'ownerName', 'assigned', 'firstSeen', 'lastSeen', 'clearedAt', 'what', 'note', 'business',
                'tags', 'url', 'gone', 'now', 'd1', 'd7', 'unit', 'recommend', 'suspects', 'outcome', 'resolution', 'triagedBy', 'autoResolvedAt', 'clearNote')
 PLACEHOLDER = '/*__SKOPAX_DATA__*/'
 PLUGIN_SLOT = '<script type="text/plain" id="plugin-scripts"></script>'
@@ -696,7 +696,14 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     routes = Routes(store, runtime, settings, attribution=chat_attribution, base=lambda: base_url, autostart=True)
     enricher = Enricher(store, gitlab, jira, live_projects)
     notes = StateNotes(store, slack, settings.slack_state_notes, jira_site=jira_site)
-    card_posts = CardPosts(store, slack, base_url, menu_on=lambda: started_at_boot('slack-socket'))
+    def user_name(email: str) -> str:
+        known = str((users.get(email) or {}).get('name') or '').strip()
+        return known if known and '@' not in known else ''
+
+    def slack_name(email: str) -> str:
+        return user_name(email) or slack_ids.name_now(email)
+
+    card_posts = CardPosts(store, slack, base_url, menu_on=lambda: started_at_boot('slack-socket'), name_of=slack_name)
     attacher = Attacher(store, slack, settings.slack_attach_screenshots, base_url)
     notices = Notices(store)
     versions = VersionCheck(store, transport, lambda: features.on('update-check'), clock=clock)
@@ -762,9 +769,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         thread = card_thread(anomaly)
         buttons = card_posts.new_menu(key, by) if started_at_boot('slack-socket') else None
         head, mute = opening(by) | {'at': iso(utc_now())}, card_posts.mute_of(key)
+        who = stopped_who(anomaly, mute, slack_name)
         message = anomaly_message(anomaly, link, by, draft, buttons['id'] if buttons else None, chat_url(base_url or base, key, anomaly.get('num')), head=head,
                                   attribution=None if thread else slack.signature(), mute=mute, kinds=menu_kinds(anomaly, mute), shots=shots, base=base_url,
-                                  parent=parent_of(anomaly)) | ({'channel': thread['channel'], 'thread_ts': thread['ts']} if thread else {})
+                                  parent=parent_of(anomaly), who=who) | ({'channel': thread['channel'], 'thread_ts': thread['ts']} if thread else {})
         try:
             posted = slack.post(message, sign=False)
         except SlackError as e:
@@ -774,7 +782,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         sent = slack.linked(posted, thread['ts'] if thread else None)
         log.info('slack post for %s by %s, draft=%s, thread of %s', key, by, bool(draft), thread['key'] if thread else None)
         body = {'text': draft, **{k: v for k, v in kept_out.items() if k in ('headline', 'by') and v}} if draft else None
-        drawn = {'sig': drawn_sig(anomaly, mute), 'at': iso(utc_now())}
+        drawn = {'sig': drawn_sig(anomaly, mute, who), 'at': iso(utc_now())}
         post = {**sent, 'at': iso(utc_now()), 'by': by, 'draft': bool(draft), 'head': head, 'drawn': drawn, **({'body': body} if body else {}), **({'menu': buttons['id']} if buttons else {}),
                 **({'screenshots': shots} if shots else {})}
         if thread:
@@ -1010,7 +1018,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def apply_card_action(action: dict) -> str:
         before = notes.watch(action)
         seen = notices.watch(action)
-        result = page_actions.apply(store, action, jira, settings, notify=task_notice, extra_projects=plugin_projects())
+        result = page_actions.apply(store, action, jira, settings, notify=task_notice, extra_projects=plugin_projects(), name_of=user_name)
         notes.applied(action, before)
         notices.applied(action, seen)
         card_posts.after(action)

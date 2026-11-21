@@ -110,7 +110,7 @@ def looked_up(read: Callable[[], object], refused: list[str]) -> object:
 
 
 def create_task(store: Store, jira: object, settings, key: str, title: str | None, by: str, note: str, base_url: str, text: str | None = None, points: float | None = None,
-                project: str | None = None, epic: str | None = None, extra_projects: tuple[str, ...] = ()) -> tuple[str, str | None]:
+                project: str | None = None, epic: str | None = None, extra_projects: tuple[str, ...] = (), owner_name: str | None = None) -> tuple[str, str | None]:
     if not jira.enabled:
         raise JiraRefused(msg('actions.jira_off'))
     tech = settings.jira_tech_project
@@ -122,7 +122,7 @@ def create_task(store: Store, jira: object, settings, key: str, title: str | Non
     if parent and not ticket_pattern(()).fullmatch(parent):
         raise JiraRefused('the epic is a Jira key such as OPS-123')
     if project == tech:
-        return create_tech_task(store, jira, settings, key, title, by, note, base_url, text)
+        return create_tech_task(store, jira, settings, key, title, by, note, base_url, text, owner_name)
     if points is not None and points not in FIBONACCI:
         raise JiraRefused('story points must be one of 1, 2, 3, 5, 8, 13, 21')
     card = store.anomaly(key)
@@ -148,14 +148,14 @@ def create_task(store: Store, jira: object, settings, key: str, title: str | Non
     new_key = jira.create_issue(fields)
     if note:
         store.note(key, note)
-    store.triage(key, 'progress', ticket=new_key, owner=by)
+    store.triage(key, 'progress', ticket=new_key, owner=by, owner_name=owner_name)
     store.add_activity('jira', by, f'{new_key} created for {key}', key=key)
     log.info('jira task %s created for %s by %s (account %s)', new_key, key, by, account or 'not found')
     missing = None if account or users_refused else f'no Jira account found for {by}: assignee and Developer are empty, fill them in Jira (or map the login in jira.accounts)'
     return new_key, ' \u00b7 '.join([*refused, *([missing] if missing else [])]) or None
 
 
-def create_tech_task(store: Store, jira: object, settings, key: str, title: str | None, by: str, note: str, base_url: str, text: str | None) -> tuple[str, None]:
+def create_tech_task(store: Store, jira: object, settings, key: str, title: str | None, by: str, note: str, base_url: str, text: str | None, owner_name: str | None = None) -> tuple[str, None]:
     card = store.anomaly(key)
     summary = (title or '').strip()[:TITLE_LIMIT] or default_title(card, settings.jira_title_prefix)
     body = typed_description(card, text, card_link(key, base_url)) if (text or '').strip() else description(card, note, card_link(key, base_url))
@@ -165,7 +165,7 @@ def create_tech_task(store: Store, jira: object, settings, key: str, title: str 
     new_key = jira.create_issue(fields)
     if note:
         store.note(key, note)
-    store.triage(key, 'progress', ticket=new_key, owner=by)
+    store.triage(key, 'progress', ticket=new_key, owner=by, owner_name=owner_name)
     store.add_activity('jira', by, f'{new_key} created for {key}', key=key)
     log.info('jira %s task %s created for %s by %s', settings.jira_tech_project, new_key, key, by)
     return new_key, None

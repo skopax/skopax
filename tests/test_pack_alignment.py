@@ -13,7 +13,8 @@ LANGS = ('de', 'es', 'fr', 'tr')
 WINDOW = ('engine.window.hour', 'engine.window.hours', 'engine.window.day', 'engine.window.days')
 SHORT = {'de': 'Nicht mehr aktiv', 'es': 'Dej\u00f3 de dispararse', 'fr': 'N\u2019\u00e9met plus', 'tr': 'Sinyal durdu'}
 LOWER = {'de': 'nicht mehr aktiv', 'es': 'dej\u00f3 de dispararse', 'fr': 'n\u2019\u00e9met plus', 'tr': 'sinyal durdu'}
-LONG = 'Stopped firing \u00b7 awaiting review'
+LONG = 'Stopped firing \u00b7 unassigned'
+ASSIGNED = 'Stopped firing \u00b7 awaiting action \u00b7 assigned to'
 AUTO_SENT = {'de': 'automatisch gesendet', 'es': 'env\u00edo autom\u00e1tico', 'fr': 'envoi automatique', 'tr': 'otomatik g\u00f6nderildi'}
 
 
@@ -106,6 +107,9 @@ def test_every_pack_reads_a_stopped_card_with_its_own_slack_words_on_the_page(la
     assert pack.page[LONG + ' {0} {M} {1}'].startswith(long + ' ')
     assert pack.page['Stopped firing {0} {M} {1}'].startswith(short + ' ') and ('^Stopped firing (\\d[^,]*)$', short + ' $1') in pack.rules
     assert ('^' + LONG + ' (\\d.*)$', long + ' $1') in pack.rules
+    assigned = pack.messages['slack.status.cleared_assigned'].replace(' {who}', '')
+    assert pack.page[ASSIGNED] == assigned and assigned.startswith(short + ' \u00b7 ')
+    assert [rule[1] for rule in pack.rules if rule[0].startswith('^' + ASSIGNED + ' ')] == [assigned + (' $1 $2. $3 $4' if lang == 'de' else ' $1 $2 $3 $4')]
     assert pack.page['Stopped firing \u00b7 no action needed'].startswith(short + ' \u00b7 ')
     gone = ('Alert went quiet', 'Went quiet', 'Alert went quiet {0} {M} {1}', 'Went quiet \u00b7 no action needed', 'Cleared {0} {M} {1}', 'Cleared \u00b7 no action needed')
     assert [key for key in gone if key in pack.page] == []

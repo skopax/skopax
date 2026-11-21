@@ -1,3 +1,4 @@
+import difflib
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -8,7 +9,7 @@ from skopax.kit import access, connection
 from skopax.kit.promql import ranged
 from skopax.plugins.pmm.checks import (MONGO_RULE, PMM_RULE, QAN_ROWS, QAN_RULE, QAN_TOTALS, app_pattern, dashboard, evaluate_mongo, evaluate_pmm, evaluate_qan, links_for, mongo_pass,
                                        pmm_pass, qan_key, qan_pass, unsupported, users)
-from skopax.plugins.pmm.client import HOST_HEADER, KINDS, PERMISSIONS, SLUGS, Pmm, PmmError, client_for, lacks, pick
+from skopax.plugins.pmm.client import HOST_HEADER, KINDS, PERMISSIONS, SLUGS, Pmm, PmmError, client_for, lacks, missing_columns, pick
 
 ID = 'pmm'
 NO_DATA = 'ok \u00b7 no data'
@@ -25,6 +26,8 @@ SELECT_SQL = re.compile(r'\s*(select|with)\b', re.I)
 QAN_FUNCTIONS = ('format', 'input', 'executable', 'dictionary', 'generateRandom', 'loop', 'merge')
 QAN_FAMILIES = ('url', 'remote', 'cluster', 's3', 'gcs', 'oss', 'cosn', 'azure', 'file', 'hdfs', 'mysql', 'postgresql', 'mongodb', 'redis', 'sqlite', 'odbc', 'jdbc',
                 'hive', 'iceberg', 'deltaLake', 'hudi', 'paimon', 'arrowflight', 'ytsaurus')
+QAN_COLUMNS_SHOWN = 5
+QAN_HINT_ROOM = 800
 QAN_DENY = re.compile(r'\b(?:' + '|'.join(QAN_FUNCTIONS) + r')\s*\(|\b(?:' + '|'.join(QAN_FAMILIES) + r')\w*\s*\(|\b(?:from|join)\s+[\w.]+\s*\('
                       r'|\b(?:system|information_schema)\s*\.|\binto\s+outfile\b|\bsettings\b|--|/\*|#', re.I)
 NOT_SELECT = 'qan takes one ClickHouse SELECT (or WITH \u2026 SELECT) without semicolons'
@@ -331,8 +334,14 @@ def qan(ctx: Context, args: dict) -> object:
     try:
         return client.qan(sql, hours, ctx.now)
     except PmmError as e:
-        raise _tool_error(client, e) from None
-
+        refused = _tool_error(client, e)
+        named = [] if e.refused() else missing_columns(e.detail)
+    if not named:
+        raise refused
+    held = client.columns(ctx.now)
+    close = list(dict.fromkeys(n for c in named for n in difflib.get_close_matches(c, sorted(held), QAN_COLUMNS_SHOWN, 0.5)))[:QAN_COLUMNS_SHOWN]
+    hint = f" - pmm.metrics has no column {', '.join(named)}" + (f"; close columns: {', '.join(close)}" if close else '') + '; rewrite the query with existing columns'
+    raise ReadError(refused.status, refused.message + hint, QAN_HINT_ROOM)
 
 def links(card: dict, info: InstanceInfo) -> list[dict] | None:
     return links_for(card, _base(info))

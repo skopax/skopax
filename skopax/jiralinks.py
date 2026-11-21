@@ -110,7 +110,7 @@ class JiraLinks:
                 if card.get('triage') == 'progress' and card.get('ticket') == key:
                     continue
                 picked = card.get('owner') if card.get('assigned') else None
-                self.store.triage(card_key, 'progress', ticket=key, owner=None if picked else owner)
+                self.store.triage(card_key, 'progress', ticket=key, owner=None if picked else owner, owner_name=None if picked else owner)
                 shown = picked or owner
                 self.store.add_activity('jira', 'server', f'{key} → {card_key} In progress' + (f' · {shown}' if shown else ''), key=card_key)
                 if self.notes:

@@ -403,7 +403,7 @@ async function waitingAndInvestigatedAreTagsOnOpenCards() {
   assert.deepStrictEqual(order, [NEW, DIVED, LOOKING, WAIT], 'critical first, then the firing ones, the stopped one last');
   assert.deepStrictEqual(tags(DIVED), ['Investigated'], 'the investigation is a tag, not a column');
   assert.deepStrictEqual(tags(LOOKING), ['Investigating']);
-  assert.ok(tags(WAIT)[0].startsWith('Stopped firing \u00b7 awaiting review '), 'a stopped card says when it stopped');
+  assert.ok(tags(WAIT)[0].startsWith('Stopped firing \u00b7 unassigned '), 'a stopped card says when it stopped');
   assert.ok(tileOf(doc, WAIT).querySelector('.tile-foot .tag.k-crit').title.endsWith('nobody acted yet: waiting to be addressed'), 'and that it waits to be addressed');
   assert.deepStrictEqual(tags(NEW), ['Data']);
   assert.ok(colEl(doc, 'done').querySelector('.bcol-h svg.bcol-tick') && [...doc.querySelectorAll('.bcol-h svg.bcol-tick')].length === 1, 'only the Done column carries the green tick');

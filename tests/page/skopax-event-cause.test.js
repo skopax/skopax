@@ -69,14 +69,14 @@ async function theListAndItsPanelSayTheCardStoppedAfterTheEvent() {
 
   //then
   assert.match(rowTag(EVENT), /^Stopped after the event /, 'the event card reads Stopped after the event: ' + rowTag(EVENT));
-  assert.match(rowTag(PLAIN), /^Stopped firing \u00b7 awaiting review /, 'a card without a cause still reads Stopped firing \u00b7 awaiting review');
+  assert.match(rowTag(PLAIN), /^Stopped firing \u00b7 unassigned /, 'a card without a cause still reads Stopped firing \u00b7 unassigned');
   assert.strictEqual(row(KID), undefined, 'the merged child sits under its parent');
   assert.deepStrictEqual([...row(EVENT).querySelectorAll('.inc-more li .tag.plain')].map((t) => t.textContent), ['stopped after the event'], 'a merged child takes its parent cause');
-  assert.match(rowTag(OLDCAUSE), /^Stopped firing \u00b7 awaiting review /, 'a cause from an earlier episode does not count');
+  assert.match(rowTag(OLDCAUSE), /^Stopped firing \u00b7 unassigned /, 'a cause from an earlier episode does not count');
   assert.strictEqual(cause(EVENT), 'Cause: an event \u00b7 ' + WHAT);
   assert.strictEqual(cause(PLAIN), null);
   assert.strictEqual(cause(RECUR), 'Cause: recurring \u00b7 a leak in the image cache', 'a recurring cause shows too');
-  assert.match(rowTag(RECUR), /^Stopped firing \u00b7 awaiting review /, 'a recurring cause does not say it stopped after an event');
+  assert.match(rowTag(RECUR), /^Stopped firing \u00b7 unassigned /, 'a recurring cause does not say it stopped after an event');
   assert.strictEqual(cause(OLDCAUSE), null);
   assert.strictEqual(cause(CALM), 'Cause: an event \u00b7 <b>batch</b> job', 'the cause is text, never markup');
   assert.strictEqual(row(CALM).querySelector('.cause-line b'), null);
@@ -95,7 +95,7 @@ async function theBoardTileSaysTheCardStoppedAfterTheEvent() {
   //then
   assert.ok(tags(EVENT)[0].startsWith('Stopped after the event '), 'the waiting event tile: ' + tags(EVENT).join(' | '));
   assert.ok(tile(EVENT).querySelector('.tile-foot .tag.k-crit').title.startsWith('Stopped after the event ' ), 'its tip says so too');
-  assert.ok(tags(PLAIN)[0].startsWith('Stopped firing \u00b7 awaiting review '), 'a plain waiting tile still reads Stopped firing \u00b7 awaiting review');
+  assert.ok(tags(PLAIN)[0].startsWith('Stopped firing \u00b7 unassigned '), 'a plain waiting tile still reads Stopped firing \u00b7 unassigned');
   assert.deepStrictEqual(errors, []);
   w.close();
   console.log('PASS a waiting tile on the board reads Stopped after the event when the investigator tied it to one');

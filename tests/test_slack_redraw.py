@@ -37,7 +37,7 @@ def test_a_cleared_open_card_wears_the_yellow_mark_and_words_but_a_warning_stays
     closed = anomaly_message(CARD | {'status': 'cleared', 'triage': 'handled'}, LINK, 'server', head={'kind': 'resolved', 'by': 'alice@example.com'})
 
     # then
-    assert head_of(cleared) == ':large_yellow_circle: #14 stopped firing \u00b7 awaiting review'
+    assert head_of(cleared) == ':large_yellow_circle: #14 stopped firing \u00b7 unassigned'
     assert head_of(warn).startswith(':large_orange_circle:') and head_of(closed).startswith(':white_check_mark:')
     assert ':eyes:' not in head_of(cleared) and msg('slackevents.offer.take', name='alice').startswith('\U0001F440')
 
@@ -82,7 +82,7 @@ def test_the_redraw_is_idempotent_and_leaves_the_stored_head_alone(store: Store)
 
     # then
     sent = rewrites(api)
-    assert len(sent) == 2 and sent[0] == sent[1] and head_of(sent[0]) == ':large_yellow_circle: #20 stopped firing \u00b7 awaiting review'
+    assert len(sent) == 2 and sent[0] == sent[1] and head_of(sent[0]) == ':large_yellow_circle: #20 stopped firing \u00b7 unassigned'
     assert store.anomaly(KEYS['cleared'])['slackPost']['head']['at'] == OLD
 
 

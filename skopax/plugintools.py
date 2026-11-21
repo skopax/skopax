@@ -1,7 +1,7 @@
 import logging
 import re
 import threading
-from collections.abc import MutableMapping, Sequence
+from collections.abc import Collection, MutableMapping, Sequence
 
 from skopax.contract import Knowledge, Plugin, ReadError, RunState, Tool
 from skopax.instances import Instance
@@ -60,6 +60,11 @@ def unwatched(field: str, asked: str) -> str:
     return f'. "{asked}" is not configured, so it may be a {field} this install does not watch; do not use another one in its place without saying so in your answer'
 
 
+def related_names(asked: str, names: list[str]) -> list[str]:
+    low = asked.lower()
+    return [n for n in names if low in n.lower() or n.lower() in low]
+
+
 def error_room(room: object) -> int:
     if not isinstance(room, int) or isinstance(room, bool) or room <= 0:
         return ERROR_LIMIT
@@ -99,6 +104,20 @@ class PluginTools:
     def _primary(self, plugin: Plugin, found: list[Instance]) -> Instance | None:
         return primary_of(self.runtime, plugin, found)
 
+    def _others(self, among: Collection[str] | None) -> list[tuple[Plugin, Tool, list[Instance]]]:
+        return [e for e in self._offered() if among is None or e[1].name in among]
+
+    def _elsewhere(self, tool: Tool, field: str, asked: str, among: Collection[str] | None = None) -> list[str]:
+        return [other.name for _, other, found in self._others(among) if other.name != tool.name and other.instance_input == field and any(i.name == asked for i in found)]
+
+    def _not_here(self, tool: Tool, field: str, asked: str, names: list[str], among: Collection[str] | None = None) -> str:
+        owners = self._elsewhere(tool, field, asked, among)
+        if not owners:
+            return unwatched(field, asked)
+        close = related_names(asked, names)
+        return (f'. "{asked}" is an instance of {", ".join(owners)}, not of {tool.name}'
+                + (f'; did you mean {close[0]}?' if len(close) == 1 else f'; do not use another {field} in its place without saying so in your answer'))
+
     def _described(self, plugin: Plugin, text: str) -> str:
         if '{field:' not in text:
             return text
@@ -107,18 +126,23 @@ class PluginTools:
         values = primary.values if primary is not None else {}
         return FIELD.sub(lambda m: str(values.get(m.group(1)) or '') if m.group(1) in plain else '', text)
 
-    def _definition(self, plugin: Plugin, tool: Tool, found: list[Instance]) -> dict:
+    def _definition(self, plugin: Plugin, tool: Tool, found: list[Instance], offered: list[tuple[Plugin, Tool, list[Instance]]]) -> dict:
         schema = tool.input_schema
         if tool.instance_input and plugin.fields and found:
             named = self.runtime.instances.primary(plugin.id)
             usable = self._primary(plugin, found)
             note = f'Instance (default: {usable.name})' if usable is not None else f'Instance ({named.name} is not available, name one)' if named is not None else 'Instance'
-            pick = {'type': 'string', 'enum': [i.name for i in found], 'description': note}
+            names = [i.name for i in found]
+            others = [other.name for _, other, elsewhere in offered if other.name != tool.name and other.instance_input == tool.instance_input and any(i.name not in names for i in elsewhere)]
+            if others:
+                note += f"; {tool.name} takes only {', '.join(names)}, not the {tool.instance_input} names of {', '.join(others)}"
+            pick = {'type': 'string', 'enum': names, 'description': note}
             schema = {**schema, 'properties': {**(schema.get('properties') or {}), tool.instance_input: pick}}
         return {'name': tool.name, 'description': self._described(plugin, tool.description), 'input_schema': schema}
 
-    def definitions(self) -> list[dict]:
-        return [self._definition(*e) for e in self._offered()]
+    def definitions(self, among: Collection[str] | None = None) -> list[dict]:
+        others = self._others(among)
+        return [self._definition(*e, others) for e in self._offered()]
 
     def get(self, name: str) -> tuple[Plugin, Tool] | None:
         entry = self._entry(name)
@@ -130,12 +154,12 @@ class PluginTools:
             return BadInput(test_error(text) if isinstance(name, str) and test_cluster(name) else text)
         return ToolError(test_error(text) if isinstance(name, str) and test_cluster(name) else text)
 
-    def refuse_input(self, name: str, args: object, text: str) -> ToolError:
+    def refuse_input(self, name: str, args: object, text: str, among: Collection[str] | None = None) -> ToolError:
         entry = self._entry(name)
         field = entry[1].instance_input if entry is not None else None
         asked = args.get(field) if field and isinstance(args, dict) else None
         if entry is not None and field and isinstance(asked, str) and asked not in [i.name for i in entry[2]] and text.startswith(f'{field} must be one of'):
-            text += unwatched(field, asked)
+            text += self._not_here(entry[1], field, asked, [i.name for i in entry[2]], among)
         return self._refuse(text, asked)
 
     def default_instance(self, name: str) -> str | None:
@@ -145,7 +169,7 @@ class PluginTools:
         primary = self.runtime.instances.primary(entry[0].id)
         return None if primary is None else primary.name
 
-    def _instance(self, plugin: Plugin, tool: Tool, found: list[Instance], args: dict) -> Instance | None:
+    def _instance(self, plugin: Plugin, tool: Tool, found: list[Instance], args: dict, among: Collection[str] | None = None) -> Instance | None:
         if not plugin.fields:
             return None
         field = tool.instance_input
@@ -159,16 +183,16 @@ class PluginTools:
             raise ToolError(f"the default instance{f' {named.name}' if named is not None else ''} of {plugin.id} is not available; {field or 'instance'} must be one of {names}")
         chosen = next((i for i in found if i.name == asked), None) if isinstance(asked, str) else None
         if chosen is None:
-            raise self._refuse(f'{field} must be one of {names}' + (unwatched(field, asked) if isinstance(asked, str) else ''), asked, True)
+            raise self._refuse(f'{field} must be one of {names}' + (self._not_here(tool, field, asked, [i.name for i in found], among) if isinstance(asked, str) else ''), asked, True)
         return chosen
 
-    def call(self, name: str, args: dict, now: float, rendered: bool = False, states: MutableMapping[str, RunState] | None = None) -> object:
+    def call(self, name: str, args: dict, now: float, rendered: bool = False, states: MutableMapping[str, RunState] | None = None, among: Collection[str] | None = None) -> object:
         entry = self._entry(name)
         if entry is None:
             raise ToolError(f'no tool named {name}')
         plugin, tool, found = entry
         given = dict(args or {})
-        instance = self._instance(plugin, tool, found, given)
+        instance = self._instance(plugin, tool, found, given, among)
         try:
             out = self._bounded(tool.run, self.runtime.context(plugin, instance, now, run_state=None if states is None else states.setdefault(plugin.id, RunState())), given)
             if rendered and tool.scan and tool.kind == 'read':

@@ -85,13 +85,13 @@ class Assigner:
             raise Invalid('that is not an email address')
         before = self.store.anomaly(key)
         if not name:
-            rev, card = self.store.set_tagging(key, {'owner': None, 'assigned': None, 'handAssigned': True})
+            rev, card = self.store.set_tagging(key, {'owner': None, 'ownerName': None, 'assigned': None, 'handAssigned': True})
             self.store.add_activity('assign', by, f'assignee removed · {key}', key=key)
             self.notify(before, None, None, by)
             return {'rev': rev, 'owner': None, 'assigned': None, 'dm': None, 'thread': self.noted(key, None, by) if before.get('owner') else False}
         same = slug(before.get('owner')) == slug(name)
         assigned = {'by': by, 'at': iso(utc_now())} | ({'email': email} if email else {})
-        rev, card = self.store.set_tagging(key, {'owner': name, 'assigned': assigned, 'handAssigned': True})
+        rev, card = self.store.set_tagging(key, {'owner': name, 'ownerName': None, 'assigned': assigned, 'handAssigned': True})
         self.store.add_activity('assign', by, f'assigned to {name} · {key}', key=key)
         if not same:
             self.notify(before, name, email, by)

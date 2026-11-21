@@ -2,6 +2,33 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.4.8 (2026-11-21)
+
+Slack card posts always match the card, a stopped card says who has it, and clearer investigator tool errors from the self-reviews.
+
+**Upgrade notes:**
+
+- Every tracked Slack post is redrawn once after the upgrade (draw version 3). Nothing new is posted.
+- A card that stopped firing ends in one of three ways, in the Slack head, its facts bar and on the page: "stopped firing - unassigned" (Turkish "sinyal durdu - atama bekleniyor"), "stopped firing - awaiting action - assigned to Alice" ("aksiyon bekleniyor - atanan: Alice"), or "stopped firing - Alice is on it" once someone took it ("Alice ilgileniyor"). The "after the event" forms take the same endings. Muted, resolved and information cards keep the short form. "Awaiting review" is gone from posts, thread notes, reminders and Teams route posts.
+- Names are display names (the people list, then Slack), never e-mail addresses. Cards store the owner's display name when someone takes the card, creates a task or a Jira ticket sets the owner.
+
+**Fixed:**
+
+- A Slack post no longer keeps a head that no longer fits the card, such as "Skopax resolved #146" on a card that was reopened and is in progress. Every rewrite checks the head; a fresh head that does not fit falls back to the stored one when that still fits (so "alice resolved" stays), else to the head for the card's state.
+- A take written by the system names the owner instead of the product.
+- A failed Slack name lookup while drawing posts no longer stops later lookups.
+- Business route posts no longer say or imply that someone is looking into or fixing the problem: the investigator's text says what is happening for users and, when confirmed, whether the cause is ours, an outside provider's or not known yet. When the confirmed cause is at an outside provider and nothing of ours needs a change, the owning business team gets an action to contact the provider, with what to ask about.
+
+**Changed (investigator tools):**
+
+- An instance name of another tool offered in the run (such as a Kubernetes cluster given to promql) is refused with the names the tool takes and, when one name is close, "did you mean". The instance field says which names each tool takes.
+- esql: an unknown column lists up to 5 close columns. When today's daily index does not exist yet but its pattern does, the query is read once for the day before, and the answer says so; a mistyped index keeps the closest-pattern hint.
+- group: a refused parent lists the parents this run can use, and an unknown child is named.
+- card: a closed card answers by key or #number with its outcome, when it was cleared, and the open card it was merged into.
+- slack_update is offered only when a run card, its open parent, or a same-service twin (open, or posted in the last 6 h) has a main-channel post.
+- crashes: an app that is not set up is refused with the apps this install reads.
+- qan: a missing-column error names the column and up to 5 close existing columns, so the query can be rewritten.
+
 ## 0.4.7 (2026-11-21)
 
 The page uses the same words as Slack for cards that stopped firing, Slack posts follow look and language changes by themselves, refused Slack users are told how to get access, and fixes from the 0.4.6 reviews.

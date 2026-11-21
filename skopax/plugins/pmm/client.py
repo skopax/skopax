@@ -19,6 +19,10 @@ DENIED_TEXT = re.compile(r'not enough privileges|access denied|permission denied
 PERMISSIONS = {'data sources': 'the Admin role (or datasources:read) to list data sources', 'metrics': 'the Viewer role (query on the metrics data source)',
                'QAN': 'the Viewer role (query on the QAN data source)'}
 SLUGS = {'data sources': 'data-sources', 'metrics': 'metrics', 'QAN': 'qan'}
+COLUMNS: dict[tuple[str, str], tuple[float, frozenset[str]]] = {}
+COLUMNS_TTL_S = 3600
+COLUMNS_SQL = "SELECT name FROM system.columns WHERE database = 'pmm' AND table = 'metrics'"
+MISSING_COLUMNS = re.compile(r"Missing columns?: ((?:'[A-Za-z_][A-Za-z0-9_.]*'[\s,]*)+)|Unknown (?:expression (?:or function )?)?identifier:? [`']?([A-Za-z_][A-Za-z0-9_.]*)")
 HOST_HEADER = re.compile(r'[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?::\d{1,5})?')
 
 
@@ -183,6 +187,26 @@ class Pmm:
             cols = (f.get('data') or {}).get('values') or []
             rows += [dict(zip(names, r)) for r in zip(*cols)] if cols else []
         return rows
+
+    def columns(self, now: float, clock=time.monotonic) -> frozenset[str]:
+        try:
+            key = (self.url, self.uid('qan'))
+            held = COLUMNS.get(key)
+            if held and clock() - held[0] < COLUMNS_TTL_S:
+                return held[1]
+            names = frozenset(str(r.get('name')) for r in self.qan(COLUMNS_SQL, 1, now) if r.get('name'))
+        except PmmError:
+            return frozenset()
+        if names:
+            COLUMNS[key] = (clock(), names)
+        return names
+
+
+def missing_columns(text: str) -> list[str]:
+    found: list[str] = []
+    for many, one in MISSING_COLUMNS.findall(text or ''):
+        found += re.findall(r"'([A-Za-z_][A-Za-z0-9_.]*)'", many) if many else [one]
+    return list(dict.fromkeys(x.rstrip('.').rsplit('.', 1)[-1] for x in found if x.rstrip('.')))
 
 
 def client_for(info: InstanceInfo, transport: Transport, budget: float | None = None) -> Pmm:

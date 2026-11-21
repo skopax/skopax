@@ -468,7 +468,7 @@ function cardTags(a) {
   if (a.gone && a.status === 'open') t.push({row: 1, html: '<span class="tag k-warn page-gone" title="' + esc(goneText(a)) + '">Page gone · ' + esc(a.gone.status) + '</span>'});
   if ((a.teamsPosts || []).length) t.push({row: 0, html: teamsTag(a.teamsPosts)});
   if (a.muted) t.push({row: 3, html: '<span class="tag k-muted">Muted</span>'});
-  if (a.status === 'cleared') t.push({row: 4, html: '<span class="tag k-cleared">' + clearedWord(a) + ' ' + esc(daytime(a.clearedAt)) + '</span>'});
+  if (a.status === 'cleared') t.push({row: 4, html: '<span class="tag k-cleared">' + esc(clearedWord(a) + ' ' + daytime(a.clearedAt)) + '</span>'});
   if ((KIDS[a.key] || []).length) t.push({row: 0, html: '<span class="tag plain">+' + KIDS[a.key].length + ' merged</span>'});
   if (a.sevSet && a.sevSet.sev) t.push({row: 0, html: '<span class="tag plain sev-hand" title="' + esc('Severity set by hand by ' + draftBy(a.sevSet.by) + ' ' + dayhm(a.sevSet.at) + '; the signal says ' + (SEV[a.sevAuto || a.sevSet.auto] || SEV.info)[0] + '. Change severity › Back to the signal undoes it') + '">Severity by hand</span>'});
   var lead = t.filter(function (x) { return x.row; }).sort(function (x, y) { return x.row - y.row; })[0];
@@ -479,8 +479,14 @@ function recurringTag(a) {
   var tip = 'Fired ' + a.recurringCount + ' times in the last ' + (a.recurringDays || 7) + ' days (this one included) and no Jira ticket owns it; the investigator is asked to recommend one. Create task opens it.';
   return '<span class="tag k-warn recurring" title="' + esc(tip) + '">Recurring ×' + esc(a.recurringCount) + '</span>';
 }
-function clearedWord(a, short) { return eventCause(a) ? 'Stopped after the event' : short || !awaitingReview(a) ? 'Stopped firing' : 'Stopped firing \u00b7 awaiting review'; }
-function awaitingReview(a) { return a.status === 'cleared' && !a.muted && !done(a) && (a.sev === 'warn' || a.sev === 'crit'); }
+function clearedWord(a, short) {
+  var base = eventCause(a) ? 'Stopped after the event' : 'Stopped firing';
+  if (short || !stoppedLong(a)) return base;
+  if (a.triage === 'progress') return base + ' \u00b7 ' + (a.owner ? stoppedWho(a) : 'someone') + ' is on it';
+  return a.owner ? base + ' \u00b7 awaiting action \u00b7 assigned to ' + stoppedWho(a) : base + ' \u00b7 unassigned';
+}
+function stoppedLong(a) { return a.status === 'cleared' && !a.muted && a.triage !== 'handled' && (a.sev === 'warn' || a.sev === 'crit'); }
+function stoppedWho(a) { return a.ownerName || (a.assigned && a.assigned.name) || ownerName(a.owner); }
 function causeHtml(a) {
   var c = causeOf(a);
   return c ? '<p class="rec-line cause-line">Cause: ' + (c.kind === 'event' ? 'an event' : 'recurring') + ' \u00b7 <span data-no-tx>' + esc(c.what) + '</span></p>' : '';

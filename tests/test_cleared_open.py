@@ -18,7 +18,7 @@ from skopax.store import Store
 from tests.test_ai_provider import on_openai, settings as base_settings
 
 LOCALES = Path(__file__).parent.parent / 'skopax' / 'locale'
-NEW_KEYS = ('slack.head.cleared', 'slack.status.cleared', 'slack.status.event', 'slack.cleared', 'slack.head.auto', 'slack.head.auto_first', 'slack.actor.investigator', 'clear.cleared', 'clear.plugin_note')
+NEW_KEYS = ('slack.head.cleared', 'slack.status.cleared', 'slack.status.event', 'slack.head.cleared_assigned', 'slack.head.cleared_taken', 'slack.status.cleared_assigned', 'slack.status.cleared_taken', 'slack.status.event_assigned', 'slack.status.event_taken', 'slack.someone', 'slack.head.auto', 'slack.head.auto_first', 'slack.actor.investigator', 'clear.cleared', 'clear.plugin_note')
 
 
 def test_a_cleared_card_is_still_open_and_never_wears_the_done_mark():
@@ -27,11 +27,11 @@ def test_a_cleared_card_is_still_open_and_never_wears_the_done_mark():
     cleared_progress = anomaly_message(CARD | {'status': 'cleared', 'triage': 'progress'}, LINK, 'server', head={'kind': 'took', 'by': 'alice@example.com'})
 
     # then
-    assert head_of(cleared) == ':large_yellow_circle: #14 stopped firing \u00b7 awaiting review'
+    assert head_of(cleared) == ':large_yellow_circle: #14 stopped firing \u00b7 unassigned'
     assert head_of(cleared_progress).startswith(':large_yellow_circle: ')
-    assert bar_of(cleared)[0].startswith('Stopped firing \u00b7 awaiting review')
+    assert bar_of(cleared)[0].startswith('Stopped firing \u00b7 unassigned')
     assert ':white_check_mark:' not in ''.join(texts(cleared)) and ':large_green_circle:' not in ''.join(texts(cleared))
-    assert cleared['text'].startswith('Stopped firing \u00b7 awaiting review')
+    assert cleared['text'].startswith('Stopped firing \u00b7 unassigned')
 
 
 def test_only_a_closed_card_wears_the_done_mark():
@@ -61,7 +61,7 @@ def test_an_event_stop_says_it_is_still_open_in_the_bar_and_the_notification_tex
     message = anomaly_message(event, LINK, 'server', head={'kind': 'cleared'})
 
     # then
-    assert 'awaiting review' in msg('slack.status.event') and 'awaiting review' in msg('slack.cleared')
+    assert msg('slack.status.event') == 'Stopped after the event \u00b7 unassigned'
     assert ':white_check_mark:' not in head_of(message)
 
 
@@ -99,18 +99,18 @@ def test_every_pack_translates_the_new_texts_and_no_pack_calls_a_cleared_card_re
     assert '\U0001F7E2' not in pack['clear.cleared'] and '\U0001F7E2' not in pack['clear.plugin_note']
 
 
-def test_the_turkish_texts_say_the_signal_stopped_and_a_review_is_awaited():
+def test_the_turkish_texts_say_the_signal_stopped_and_who_has_it():
     # given
     pack = json.loads((LOCALES / 'tr' / 'messages.json').read_text(encoding='utf-8'))
 
     # then
-    assert pack['slack.head.cleared'] == '{card} sinyal durdu \u00b7 inceleme bekleniyor'
-    assert pack['slack.status.cleared'] == pack['slack.cleared'] == 'Sinyal durdu \u00b7 inceleme bekleniyor'
-    assert pack['routes.fixed'] == 'Sinyal durdu, inceleme bekleniyor'
-    assert pack['routes.title_fixed'] == '{product} \u00b7 {label} \u00b7 sinyal durdu, inceleme bekleniyor'
-    assert pack['reminder.calmed'] == 'Sinyal durdu, kart h\u00e2l\u00e2 inceleme bekliyor.'
-    assert pack['clear.cleared'].startswith('\U0001F7E1 Sinyal durdu, inceleme bekleniyor: ') and pack['clear.plugin_note'].startswith('\U0001F7E1 Sinyal durdu, inceleme bekleniyor: ')
-    assert pack['slack.status.event'] == 'Olaydan sonra sinyal durdu \u00b7 inceleme bekleniyor'
+    assert pack['slack.head.cleared'] == '{card} sinyal durdu \u00b7 atama bekleniyor'
+    assert pack['slack.status.cleared'] == 'Sinyal durdu \u00b7 atama bekleniyor'
+    assert pack['routes.fixed'] == 'Sinyal durdu'
+    assert pack['routes.title_fixed'] == '{product} \u00b7 {label} \u00b7 sinyal durdu'
+    assert pack['reminder.calmed'] == 'Sinyal durdu ama kart hen\u00fcz i\u015faretlenmedi.'
+    assert pack['clear.cleared'].startswith('\U0001F7E1 Sinyal durdu: ') and pack['clear.plugin_note'].startswith('\U0001F7E1 Sinyal durdu: ')
+    assert pack['slack.status.event'] == 'Olaydan sonra sinyal durdu \u00b7 atama bekleniyor'
     assert pack['slackevents.offer.take'].startswith('\U0001F440')
 
 
@@ -195,9 +195,9 @@ def test_a_cleared_open_card_never_says_fixed_in_a_route_post():
     text = json.dumps(rows, ensure_ascii=False)
 
     # then
-    assert '\u2705' not in text and 'Fixed' not in text and text.count('\U0001F7E1') == 1 and 'Stopped firing, awaiting review' in text
-    assert 'fixed' not in msg('routes.title_fixed', product='Skopax', label='SEO') and 'awaiting review' in msg('routes.title_fixed', product='Skopax', label='SEO')
-    assert msg('reminder.calmed') == 'Stopped firing; the card is still awaiting review.'
+    assert '\u2705' not in text and 'Fixed' not in text and text.count('\U0001F7E1') == 1 and 'Stopped firing' in text
+    assert 'fixed' not in msg('routes.title_fixed', product='Skopax', label='SEO') and msg('routes.title_fixed', product='Skopax', label='SEO') == 'Skopax \u00b7 SEO \u00b7 stopped firing'
+    assert msg('reminder.calmed') == 'Stopped firing but the card is not marked yet.'
 
 
 @pytest.mark.parametrize('lang', ['de', 'es', 'fr', 'tr'])

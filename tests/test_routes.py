@@ -378,3 +378,15 @@ def test_a_pass_delivers_its_pushed_and_tagged_cards(store: Store, tmp_path):
     # then
     assert [u for u, _ in t.calls] == [TECH, MARKETING]
     assert [(p['route'], p['plugin']) for p in store.anomaly(KEY)['teamsPosts']] == [('tech', 'teams'), ('eng', 'teams')]
+
+
+def test_the_business_rules_never_let_the_investigator_say_someone_is_fixing_it():
+    # given
+    from pathlib import Path
+    import skopax.investigator as inv
+    rules = (Path(inv.__file__).parent / 'process.md').read_text()
+
+    # then
+    assert 'while engineering fixes it' not in rules
+    assert 'Never say or imply that someone is looking into it, working on it or fixing it' in rules
+    assert 'recommend that they contact the provider and say what to ask about' in rules

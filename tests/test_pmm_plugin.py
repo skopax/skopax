@@ -18,6 +18,7 @@ from skopax.kit import connection
 from skopax.messages import msg
 from skopax.plugins import pmm
 from skopax.plugins.pmm import checks
+from skopax.plugins.pmm import client as pmm_client
 from skopax.plugins.pmm.client import Pmm, PmmError
 from skopax.plugintools import PluginTools
 from skopax.registry import BUILTIN, Registry, describe
@@ -47,6 +48,14 @@ EAST_PG = ('pg-east-1',)
 EAST_MG = ('mongo-east-1',)
 NO_CHECK_TIME = 0x200000
 REFUSED_TLS = ('check_hostname', 'CERT_NONE', 'verify_flags', 'verify_mode', 'SSLContext', 'create_default_context', '_create_unverified_context')
+
+
+
+@pytest.fixture(autouse=True)
+def fresh_qan_columns():
+    getattr(pmm_client, 'COLUMNS', {}).clear()
+    yield
+    getattr(pmm_client, 'COLUMNS', {}).clear()
 
 
 def metrics_path(base: str = URL, uid: str = METRICS_UID) -> str:

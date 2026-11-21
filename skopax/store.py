@@ -562,7 +562,7 @@ class Store:
             return None
         with self._locked():
             rev, _ = self._claim(None)
-            done = self.anomalies.update_one(wanted, {'$set': {'owner': owner, 'assigned': assigned, 'autoAssigned': mark}}).modified_count == 1
+            done = self.anomalies.update_one(wanted, {'$set': {'owner': owner, 'assigned': assigned, 'autoAssigned': mark}, '$unset': {'ownerName': ''}}).modified_count == 1
         return rev if done else None
 
     def rename_tag_auto(self, old: str, new: str) -> None:
@@ -820,7 +820,7 @@ class Store:
             return rev
 
     def triage(self, key: str, state: str | None, ticket: str | None = None, owner: str | None = None, by: str | None = None, at: str | None = None,
-               resolution: dict | None = None) -> int:
+               resolution: dict | None = None, owner_name: str | None = None) -> int:
         if state is not None and state not in TRIAGE_STATES:
             raise ValueError(f'unknown triage state {state}')
         doc = self._anomaly(key)
@@ -842,6 +842,10 @@ class Store:
                 unsets[field] = ''
         if owner is not None:
             unsets['assigned'] = ''
+        if owner and owner_name:
+            sets['ownerName'] = owner_name
+        elif owner is not None:
+            unsets['ownerName'] = ''
         if by == 'pod' and state:
             sets['triagedBy'] = 'pod'
         else:
