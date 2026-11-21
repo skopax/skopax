@@ -12,7 +12,7 @@ from urllib.parse import quote, urlencode, urlsplit
 from skopax import brand, causes, clock
 from skopax.cardlink import card_url
 from skopax.errkind import Authored, kind as error_kind
-from skopax.actors import BOOTSTRAP_TOKEN, SYSTEM, is_token, token_label
+from skopax.actors import BOOTSTRAP_TOKEN, POD_BY, SYSTEM, investigator_label, is_token, token_label
 from skopax.messages import fold, msg
 from skopax.actions import DEFAULT_MUTE_HOURS
 from skopax.config import RELEASE_NAME, RELEASE_PLACEHOLDER, release_problem
@@ -88,6 +88,7 @@ SCOPE_ERRORS = ('missing_scope', 'not_allowed_token_type')
 SCOPE_NAME = re.compile(r'[a-z][a-z0-9.:_,-]{0,200}')
 MACHINE_BY = frozenset({SYSTEM, SERVER_BY, 'pod', 'auto', AUTO_BY, ''})
 HEAD_KINDS = ('took', 'resolved', 'cleared', 'reopened', 'known', 'muted', 'unassigned')
+OPEN_MARK = ':eyes:'
 
 
 class SlackError(Authored, Exception):
@@ -551,6 +552,8 @@ def sender(by: str, draft_by: str | None = None) -> str:
             return msg('slack.sender.server')
         label = token_label(draft_by, '') if is_token(draft_by) and draft_by != BOOTSTRAP_TOKEN else ''
         return msg('slack.sender.token', label=label) if label else msg('slack.sender.auto')
+    if by == POD_BY:
+        return investigator_label()
     return token_label(by) if is_token(by) else by.split('@')[0]
 
 
@@ -599,6 +602,8 @@ def plain(text: str, limit: int = 75) -> dict:
 
 def actor(by) -> str:
     text = str(by or '').strip()
+    if text == POD_BY:
+        return investigator_label()
     if is_token(text):
         return token_label(text)
     if text in MACHINE_BY:
@@ -614,7 +619,7 @@ def card_ref(a: dict) -> str:
     return f"#{a['num']}" if a.get('num') else f"{a.get('svc') or '-'} / {a.get('label') or '?'}"
 
 
-def head_text(a: dict, head: dict) -> str:
+def head_text(a: dict, head: dict, mute: str | None = None) -> str:
     sev = a.get('sev', 'info')
     kind = head.get('kind')
     who, ref, level = esc(actor(head.get('by'))), esc(card_ref(a)), sev_label(sev, esc(sev))
@@ -622,12 +627,19 @@ def head_text(a: dict, head: dict) -> str:
         text = msg('slack.head.shared', who=who, sev=level)
     elif kind == 'assigned':
         text = msg('slack.head.assigned', who=who, card=ref, name=esc(actor(head.get('name'))))
+    elif kind in ('auto', 'auto_first'):
+        text = msg(f'slack.head.{kind}', card=ref, span=esc(str(head.get('span') or '')))
     elif kind in HEAD_KINDS:
         text = msg(f'slack.head.{kind}', who=who, card=ref)
     else:
         text = msg('slack.head.opened', sev=level)
-    done = a.get('status') == 'cleared' or a.get('triage') == 'handled'
-    return f"{DONE if done else EMOJI.get(sev, ':white_circle:')} {text}"
+    if a.get('triage') == 'handled' or mute == 'known':
+        mark = DONE
+    elif a.get('status') == 'cleared':
+        mark = OPEN_MARK
+    else:
+        mark = EMOJI.get(sev, ':white_circle:')
+    return f"{mark} {text}"
 
 
 def status_of(a: dict, mute: str | None) -> str:
@@ -721,7 +733,7 @@ def anomaly_message(a: dict, link: str, by: str, draft: str | None = None, butto
                     parent: dict | None = None) -> dict:
     sev = a.get('sev', 'info')
     cleared = a.get('status') == 'cleared'
-    top = {'type': 'section', 'text': {'type': 'mrkdwn', 'text': head_text(a, head or opening(by))}}
+    top = {'type': 'section', 'text': {'type': 'mrkdwn', 'text': head_text(a, head or opening(by), mute)}}
     menu = card_menu(buttons, kinds, chat)
     if menu:
         top['accessory'] = menu

@@ -247,12 +247,12 @@ def test_message_for_a_cleared_latency_item_by_a_person():
     message = anomaly_message(item, 'https://w/#a=x', 'oscar.green@example.com')
 
     # then
-    assert message['text'] == 'Recovered · reports-service / p95 · GET /x'
+    assert message['text'] == 'Stopped firing \u00b7 still open · reports-service / p95 · GET /x'
     blocks = message['blocks']
     assert [b['type'] for b in blocks] == ['section', 'section', 'context']
-    assert blocks[0]['text']['text'] == ':white_check_mark: oscar.green shared a card \u00b7 Info'
+    assert blocks[0]['text']['text'] == ':eyes: oscar.green shared a card \u00b7 Info'
     assert blocks[1]['text']['text'] == '*<https://w/#a=x|reports-service / p95 \u00b7 GET /x>*'
-    assert [e['text'] for e in blocks[2]['elements']] == ['Recovered \u00b7 Info \u00b7 since 13 Oct 08:18 UTC', 'Now *1.7 s* \u00b7 yesterday 326 ms']
+    assert [e['text'] for e in blocks[2]['elements']] == ['Stopped firing \u00b7 still open \u00b7 Info \u00b7 since 13 Oct 08:18 UTC', 'Now *1.7 s* \u00b7 yesterday 326 ms']
 
 
 def test_message_with_a_draft_puts_it_under_the_title_and_keeps_the_rest_of_the_plain_message():
@@ -453,7 +453,7 @@ def test_a_draft_headline_leads_the_body_and_the_notification():
     # then
     assert with_headline['blocks'][2]['text']['text'] == '*After the release: catalog-service failed to start*\nThe new pod went down 5 times.'
     assert with_headline['text'] == 'After the release: catalog-service failed to start\nThe new pod went down 5 times.', 'the notification opens with the headline'
-    assert [m['blocks'][0]['text']['text'] for m in (with_headline, plain)] == [':white_check_mark: Skopax opened a card \u00b7 Critical'] * 2, 'the who-did-what line stays the header'
+    assert [m['blocks'][0]['text']['text'] for m in (with_headline, plain)] == [':eyes: Skopax opened a card \u00b7 Critical'] * 2, 'the who-did-what line stays the header'
     assert plain['blocks'][1]['text']['text'] == '*<https://skopax.example.com/c/172|#172 catalog-service / container restarts>*' and plain['blocks'][2]['text']['text'] == 'x'
 
 

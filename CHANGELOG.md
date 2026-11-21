@@ -2,6 +2,31 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.4.5 (2026-11-21)
+
+A card that stopped firing never looks closed, the investigator is named as such, clearer investigator tools, and the single sign-on page shows whether MCP is connected and who uses it.
+
+**Upgrade notes:**
+
+- Slack and Teams: a card that stopped firing but is still open now shows :eyes: "stopped firing - still open" instead of :white_check_mark: / "cleared" / "back to normal". The check mark appears only when the card is closed: resolved by a person, closed by the auto-resolve timer (the post says so, e.g. "closed automatically: stopped firing for 6 business hours"), or marked known noise (known noise now shows the check mark instead of the severity circle).
+- The investigator is shown as "Claude investigator" when a Claude model runs it, else "Investigator", everywhere people see who did something (Slack, card history, notes, costs, MCP), instead of "Claude (pod)". Stored values are unchanged.
+- MCP use is recorded separately from page sign-ins: an MCP sign-in sets "last sign-in" only for a person who has none. The first start builds a new index on actions (requested by, time).
+- People who used MCP before this release are labelled once from what the server already has: page actions or page chat questions give "Page and MCP", only MCP-made actions give "MCP only", and no evidence gives "Uses MCP" until their next page sign-in.
+- A plug-in tool called with an instance name that is not configured (for example a cluster this install does not watch) is refused with the valid names and a warning not to use another one in its place.
+
+**Added:**
+
+- Admin > Access & sign-in > Single sign-on: an MCP status line (connected with people in the last 7 days and the last sign-in, set up with no one connected yet, or not set up with the missing piece) and the MCP setup values, marked when they are built-in defaults.
+- The People list marks "MCP only", "Page and MCP" or "Uses MCP", with the last MCP use.
+
+**Changed:**
+
+- Investigator tools answer more helpfully: group names the patterns given, the ones held and the slots left; esql suggests the closest existing index patterns for an unknown index and retries once on the last day when Elasticsearch cannot serve the whole range (and says so); gitlab_file and gitlab_blame list the nearest existing folder for a wrong path; kube previous_logs falls back to the current log, marked as such, for a container that never restarted; slack_update on a card with no Slack post says what to do instead.
+
+**Fixed:**
+
+- The "back to normal" thread notes and reminders no longer suggest a card is fixed while it is still open.
+
 ## 0.4.4 (2026-11-20)
 
 Slack posts that go out directly, a History tab on every card, soft tag colours, a toast when a change hides a card from your filter, and an MCP server that says which version it runs.

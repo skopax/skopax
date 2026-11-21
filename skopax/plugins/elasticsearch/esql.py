@@ -3,7 +3,7 @@ import re
 from collections.abc import Mapping
 
 from skopax.contract import Context, Field, ReadError, send
-from skopax.kit.elastic import CLUSTERS, FALLBACK, REJECTED, Elastic, ElasticError, client_for, index_of, log_fields, refused_text, sources_of
+from skopax.kit.elastic import CLUSTERS, FALLBACK, REJECTED, Elastic, ElasticError, client_for, closest_patterns, index_of, log_fields, refused_text, sources_of
 
 FROM = re.compile(r'^\s*FROM\s+([^|]+)', re.I)
 TIME_BOUND = re.compile(r'@timestamp`?\s*(>=|>|<=|<)', re.I)
@@ -14,6 +14,7 @@ LAST_DAY = 'NOW() - 1 day'
 NARROW_HINT = 'narrow the time range or the index'
 MAX_INDICES = 3
 ANSWER_MAX = 300
+HINT_ROOM = 1600
 ROWS = 1000
 QUERY_LIMIT = 8000
 TIMEOUT_S = 75
@@ -24,6 +25,8 @@ AGENT_CLUSTERS = {'logs': 'logging', 'apm': 'apm'}
 AGENT_REFUSED = 502
 SLOW = ('ES|QL HTTP 504: the query ran past the time limit of the gateway in front of Elasticsearch. Name fewer indices without a star, shorten the @timestamp range, '
         'filter on a keyword field before any LIKE "*...*", or count one day at a time')
+RANGE_KINDS = ('search_phase_execution_exception', 'too_many_buckets_exception', 'no_shard_available_action_exception')
+RANGE_NOTE = 'the full range failed; this answer covers the last day (NOW() - 1 day to now); ask for the earlier days one at a time'
 LAST_DAY_NOTE = ('the full time range timed out, so this answer covers only the last day (NOW() - 1 day to now); ask for the earlier days one at a time')
 DESCRIPTION = ('ES|QL query on Elasticsearch, read only. cluster logs (the default) reads the log cluster, whose logs are in {field:log-index}; '
                'cluster apm reads the APM cluster: {field:apm-index}, logs-apm.error-* and metrics-apm.*. '
@@ -118,14 +121,30 @@ def run_esql(ctx: Context, args: dict) -> object:
             raise ReadError(e.status if e.status in REJECTED else 403, refused_text(e.status, sources_of(query))) from None
         first = answer(e.text, e.status, config)
         status = e.status if 400 <= e.status <= 599 else 502
-        narrowed = last_day(query) if e.status == 504 or e.timed_out else None
+        if e.missing:
+            raise ReadError(status, first + missing_hint(es, query), HINT_ROOM) from None
+        slow = e.status == 504 or e.timed_out
+        unserved = not slow and unserved_range(e)
+        narrowed = last_day(query) if slow or unserved else None
         if narrowed is None:
-            raise ReadError(status, first + (f' - {NARROW_HINT}' if e.status == 504 or e.timed_out else '')) from None
+            raise ReadError(status, first + (f' - {NARROW_HINT}' if slow or unserved else '')) from None
     try:
         rows = es.query(narrowed, timeout=QUERY_S)
     except ElasticError as again:
         raise ReadError(status, f'{first} - the retry on the last day failed too: {answer(again.text, again.status, config)}') from None
-    return {'note': LAST_DAY_NOTE, 'rows': rows}
+    return {'note': RANGE_NOTE if unserved else LAST_DAY_NOTE, 'rows': rows}
+
+
+def unserved_range(e: ElasticError) -> bool:
+    return e.status in (400, 503) and not e.unknown and e.code in RANGE_KINDS
+
+
+def missing_hint(es: Elastic, query: str) -> str:
+    sources = sources_of(query)
+    close = closest_patterns(sources, es.index_patterns()) if sources else []
+    if not close:
+        return ''
+    return f" - no index matches {', '.join(sources[:MAX_INDICES])}; closest existing patterns: {', '.join(close)}"
 
 
 def agent_sources(config: Mapping[str, str]) -> list[str]:

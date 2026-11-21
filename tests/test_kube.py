@@ -310,20 +310,52 @@ def test_previous_logs_keep_the_crash_end_mask_credentials_and_go_through_redact
     assert all(len(line) <= 2_100 for line in text.splitlines())
 
 
-def test_a_pod_that_never_restarted_says_it_has_no_previous_logs_and_points_at_esql(tmp_path):
+NEVER = HttpFailed(400, 'previous terminated container "java" in pod "catalog-service-7d9f8b6c5-x2b4k" not found')
+
+
+def previous_or_current(current: bytes, previous=NEVER):
+    return lambda query: previous if query.get('previous') == ['true'] else current
+
+
+def test_a_pod_that_never_restarted_falls_back_once_to_its_current_logs_and_says_so(tmp_path):
     # given
-    k, _ = kube(tmp_path, {LOG: HttpFailed(400, 'previous terminated container "java" in pod "catalog-service-7d9f8b6c5-x2b4k" not found')})
+    k, api = kube(tmp_path, {LOG: previous_or_current(b'boot ok\nlistening on 8080')})
+
+    # when
+    named = k.previous_logs('store', 'catalog-service-7d9f8b6c5-x2b4k', 'java', 50)
+    unnamed = k.previous_logs('store', 'catalog-service-7d9f8b6c5-x2b4k', None, 50)
+
+    # then
+    assert named.splitlines()[0].startswith('no previous run: container java never restarted, so these are its current logs')
+    assert 'its container never restarted' in unnamed.splitlines()[0]
+    assert named.endswith('boot ok\nlistening on 8080')
+    assert [c[1].get('previous') for c in api.calls] == [['true'], None, ['true'], None]
+    assert api.calls[1][1]['tailLines'] == ['50'] and api.calls[1][1]['container'] == ['java']
+
+
+def test_the_current_log_fallback_is_masked_like_any_log(tmp_path):
+    # given
+    k, _ = kube(tmp_path, {LOG: previous_or_current(b'login failed for adam.baker@example.com with Bearer abcdefghijklmnop')})
+
+    # when
+    text = k.previous_logs('store', 'catalog-service-7d9f8b6c5-x2b4k', 'java', 50)
+
+    # then
+    assert 'adam.baker@example.com' not in text and 'abcdefghijklmnop' not in text
+
+
+def test_when_the_current_log_cannot_be_read_either_the_never_restarted_error_stays(tmp_path):
+    # given
+    k, api = kube(tmp_path, {LOG: previous_or_current(HttpFailed(400, 'container "java" in pod "p" is waiting to start: ContainerCreating'))})
 
     # when
     with pytest.raises(KubeError) as named:
         k.previous_logs('store', 'catalog-service-7d9f8b6c5-x2b4k', 'java', 50)
-    with pytest.raises(KubeError) as unnamed:
-        k.previous_logs('store', 'catalog-service-7d9f8b6c5-x2b4k', None, 50)
 
     # then
-    assert str(named.value) == ('catalog-service-7d9f8b6c5-x2b4k has no previous logs: container java never restarted, so there is no earlier run to read; '
-                                'read its current logs with esql')
-    assert 'its container never restarted' in str(unnamed.value) and 'HTTP' not in str(unnamed.value)
+    assert str(named.value) == ('catalog-service-7d9f8b6c5-x2b4k has no previous logs: container java never restarted, so there is no earlier run to read, '
+                                'and its current logs could not be read either')
+    assert len(api.calls) == 2
 
 
 def test_a_json_status_answer_to_a_log_request_is_read_as_the_api_message(tmp_path):
@@ -344,7 +376,7 @@ def test_a_json_status_answer_to_a_log_request_is_read_as_the_api_message(tmp_pa
         k.previous_logs('observability', 'cloudflare-exporter-5d8c7b9f6-k4m2p', 'app', 10)
 
     # then
-    assert calls == ['text/plain, application/json']
+    assert calls == ['text/plain, application/json', 'text/plain, application/json']
     assert 'never restarted' in str(e.value) and '406' not in str(e.value)
 
 

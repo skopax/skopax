@@ -18,6 +18,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from skopax import __version__, brand, information
+from skopax.actors import shown
 from skopax.assign import Invalid as AssignInvalid, slug
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import off_text
@@ -454,7 +455,7 @@ class Tools:
             lines.append(f"merged: {card_ref(m)} · {m.get('sev') or '?'} · {title_of(m)} · {m.get('status')}")
         last = v.get('last')
         if last:
-            lines.append(f"last action: {last.get('type')} · {last.get('status')} · by {last.get('requestedBy') or '?'} at {last.get('requestedAt') or '?'}" + (f" · {clip(last['result'], 200)}" if last.get('result') else ''))
+            lines.append(f"last action: {last.get('type')} · {last.get('status')} · by {shown(last.get('requestedBy')) or '?'} at {last.get('requestedAt') or '?'}" + (f" · {clip(last['result'], 200)}" if last.get('result') else ''))
         if runs and runs.get('latest'):
             r = runs['latest']
             lines.append(f"latest investigation: {r.get('id')} · {r.get('trigger')} · {r.get('outcome')} · {r.get('startedAt')} · ${float(r.get('usd') or 0):.2f} ({runs.get('n')} runs on this card in 30 days)")
@@ -485,7 +486,7 @@ class Tools:
             lines.append('cards: ' + ', '.join(f'{k} ({card_url(self.site(), k, self.num_of(k))})' for k in r['keys']))
         ask = r.get('ask') or {}
         if ask.get('text'):
-            lines.append(f"question by {ask.get('by')}: {clip(ask['text'], 600)}")
+            lines.append(f"question by {shown(ask.get('by'))}: {clip(ask['text'], 600)}")
         if calls:
             names: dict[str, int] = {}
             for c in calls:
@@ -514,7 +515,7 @@ class Tools:
         queue = b.get('waiting') or []
         lines.append(f"queue: {len(queue)} waiting" if queue else 'queue: empty')
         for w in queue[:10]:
-            lines.append(f"- {w.get('type')} · {w.get('text') or ''} · by {w.get('by') or 'private'} · {w.get('why')}")
+            lines.append(f"- {w.get('type')} · {w.get('text') or ''} · by {shown(w.get('by')) or 'private'} · {w.get('why')}")
         for r in (b.get('recent') or [])[:5]:
             lines.append(f"recent: {r.get('id')} · {r.get('trigger')} · {r.get('outcome')} · {', '.join(r.get('keys') or []) or '-'} · {r.get('startedAt')}")
         return '\n'.join(lines)
@@ -576,7 +577,7 @@ class Tools:
         for r in rows:
             where = f"{self.site()}/{r['link'].lstrip('/')}" if r.get('link') else self.link(r) if r.get('key') else ''
             lines.append(f"- {'unread · ' if not r.get('read') else ''}{NOTICE_LABELS.get(r.get('kind'), r.get('kind'))}" + (f" · #{r['num']}" if r.get('num') else '') +
-                         (f" {clip(r.get('title'), 120)}" if r.get('title') else '') + (f" · {r['note']}" if r.get('note') else '') + f" · by {r.get('by') or '?'} · {r.get('t')}" +
+                         (f" {clip(r.get('title'), 120)}" if r.get('title') else '') + (f" · {r['note']}" if r.get('note') else '') + f" · by {shown(r.get('by')) or '?'} · {r.get('t')}" +
                          (f" · {where}" if where else ''))
         return '\n'.join(lines)
 
@@ -589,7 +590,7 @@ class Tools:
     def chat_text(self, chat: dict, only_last: bool = False) -> str:
         msgs = chat.get('messages') or []
         head = f"Chat {chat.get('id')} · {clip(chat.get('title'), 120)}" + (' (private to you)' if chat.get('mine', True) and not chat.get('shared') else ' (shared by link)' if chat.get('shared') else '') + \
-               (f" · by {chat['by']}" if chat.get('by') and not chat.get('mine', True) else '')
+               (f" · by {shown(chat['by'])}" if chat.get('by') and not chat.get('mine', True) else '')
         lines = [head] + ([f"link: {self.chat_link(chat.get('id'))}"] if chat.get('mine', True) else [])
         for i, m in enumerate(msgs[-1:] if only_last else msgs, start=len(msgs) if only_last else 1):
             lines.append(f"\n[{i}] question: {clip(m.get('text'), 600)}")

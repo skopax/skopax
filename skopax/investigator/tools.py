@@ -14,7 +14,7 @@ from bson import Binary
 from pymongo.errors import PyMongoError
 
 from skopax import brand, causes, clock, drafts, history, information, tags
-from skopax.actors import SYSTEM
+from skopax.actors import POD_BY, SYSTEM
 from skopax.engine import iso as epoch_iso, parse_iso, sibling_stem
 from skopax.config import Settings
 from skopax.contract import CodeHost, Knowledge, Missing, RunState, SourceDown
@@ -42,7 +42,6 @@ INPUT_LIMIT = 2_000
 ERROR_LIMIT = 300
 NO_TOOL = 'no tool named {name}'
 MAX_FILE_LINES = 400
-POD_BY = 'Claude (pod)'
 JIRA_FIELDS = ('summary', 'status', 'assignee', 'fixVersions', 'created')
 SOURCE_TOOLS = tuple(name for name, spec in CORE.items() if spec.scan)
 RUN_CALLS = {name: spec.per_run for name, spec in CORE.items() if spec.per_run is not None}
@@ -253,6 +252,7 @@ WRITE_TOOLS = [
                                            'It goes out at once while Slack auto-send is on (the answer says when it was not posted: auto-send off, or this run read planted text and the card keeps it for a person). On a card the server already posted with its numbers (a critical card is posted at once; others after the numbers fallback) the text goes in as a reply in that post\'s thread. '
                                            'Refused on a card merged into an open parent (post on the parent), on a card already posted or with a post waiting, '
                                            'and when an open card of the same service was posted in the last 6 h at the same or a higher severity (reply there with slack_update instead). '
+                                           'After it, never slack_update the same card in this run: the post is on its way and has no thread yet. '
                                            "screenshots: ids from this run's `screenshot` calls; the post links them and puts the images in its thread, so the text needs no screenshot link. "
                                            f'headline: a short title, in English unless a Language line says otherwise, of at most {POST_HEADLINE_LIMIT} characters that says what kind of event this is, so a reader knows at a glance '
                                            '("After the release: checkout-service does not start", "Payment provider slow: payments delayed", "Config missing: app.checkout-timeout"); it leads the post above the card name, or opens the thread reply in bold.',
@@ -267,8 +267,8 @@ WRITE_TOOLS = [
     {'name': 'slack_send', 'description': 'Send the slack_draft text of this run now, after triage moved the card to progress or handled in this run (the automatic post skips those cards). '
                                           'When the post already went out, it answers with the post time and sends nothing. Refused before that triage, or when the text on the card changed.',
      'input_schema': schema({'key': STR}, ['key'])},
-    {'name': 'slack_update', 'description': f'Reply in the main-channel thread of a posted card (1-3 lines, at most {DRAFT_LIMIT:,} characters; links and mentions as in slack_draft). '
-                                            "Takes a card of this run or the posted open card of the same service. screenshots: ids from this run's `screenshot` calls, linked in the reply and put as images in the card's thread. "
+    {'name': 'slack_update', 'description': f'Reply in the main-channel thread of a card that already has a post (1-3 lines, at most {DRAFT_LIMIT:,} characters; links and mentions as in slack_draft). '
+                                            "Takes a card of this run or the posted open card of the same service. A card never posted, or whose post from slack_draft is still on its way, has no thread: use slack_draft to post it, not slack_update. screenshots: ids from this run's `screenshot` calls, linked in the reply and put as images in the card's thread. "
                                             'In a page ask, only when the asker asks you to post, update or tell the thread; the reply ends with who asked.',
      'input_schema': schema({'key': STR, 'text': STR, 'screenshots': SHOTS}, ['key', 'text'])},
     {'name': 'slack_tell', 'description': 'Page asks only, and only when the asker tells you to tell, notify, ping or ask a named person something: posts that person a message in the main channel with a Slack mention. '
@@ -354,7 +354,7 @@ def literal_length(signal: str, tail: str) -> int:
     return max(len(p.strip()) for p in tail.split('*'))
 
 
-def absorb_problem(pattern: str, keys: list[str]) -> str | None:
+def absorb_problem(pattern: str, keys: list[str], given: list[str] | None = None, slots: int | None = None) -> str | None:
     signal, _, rest = pattern.split('*', 1)[0].partition('|')
     service, bar, _ = rest.partition('|')
     if not signal.strip() or not service.strip() or ('*' in pattern and not bar):
@@ -363,8 +363,11 @@ def absorb_problem(pattern: str, keys: list[str]) -> str | None:
         return (f'absorb pattern too broad: with a * it needs a literal part of at least {ABSORB_TEXT_MIN} characters naming the message or a label, after the level of a log key '
                 f'or the alert name of an alert key, like log|checkout-service|ERROR|*gateway timeout* ({pattern})')
     if not any(glob_match(pattern, k) for k in keys):
+        seen = ''
+        if given is not None:
+            seen = f"patterns given: {' ; '.join(redact_text(x, ABSORB_KEY_CUT) for x in given[:ABSORB_MAX])} . slots left: {slots} of {ABSORB_MAX}. "
         return (f'absorb pattern matches no card of this group: a pattern only carries this incident on, so it must match the parent or one of its children ({pattern}). '
-                f'the group holds: {group_keys(keys)}')
+                f'{seen}the group holds: {group_keys(keys)}')
     return None
 
 
@@ -1674,9 +1677,13 @@ class Toolbox:
             raise ToolError(f'no absorb on a handled parent: a card that fires later, a critical one too, would go under it out of sight; group the open cards without absorb ({parent})')
         held = host.get('absorb') or []
         if len(set(held) | set(absorb)) > ABSORB_MAX:
-            raise ToolError(f'{parent} holds {len(held)} absorb pattern{"" if len(held) == 1 else "s"} already; at most {ABSORB_MAX} in all, so keep the narrowest ones')
+            fresh = [x for x in absorb if x not in held]
+            refusal = ToolError(f'{parent} holds {len(held)} absorb pattern{"" if len(held) == 1 else "s"} already ({" ; ".join(redact_text(x, ABSORB_KEY_CUT) for x in held)}); at most {ABSORB_MAX} in all, so keep the narrowest ones. '
+                                f'slots left: {max(ABSORB_MAX - len(held), 0)}, you gave {len(fresh)} new; send at most that many new patterns, or patterns the parent holds already (those use no slot)')
+            refusal.room = ABSORB_ERROR_ROOM
+            raise refusal
         members = [parent] + children + [x['key'] for k in [parent] + children for x in self._open_children(k)]
-        problem = next((p for p in (absorb_problem(x, members) for x in absorb) if p), None)
+        problem = next((p for p in (absorb_problem(x, members, absorb, max(ABSORB_MAX - len(held), 0)) for x in absorb) if p), None)
         if problem:
             refused = ToolError(problem)
             refused.room = ABSORB_ERROR_ROOM
@@ -1891,6 +1898,22 @@ class Toolbox:
         saved = self._write('slack_tell', key or 'channel', f'{name} <{email}>: {text}', post)
         return saved + ''.join(f'; {x}' for x in told if x)
 
+    @staticmethod
+    def _post_on_its_way(card: dict) -> bool:
+        auto = card.get('autoSend') or {}
+        return bool((card.get('slackDraft') and auto.get('at') and not (auto.get('failedAt') and auto.get('claimedAt'))) or auto.get('holdBy'))
+
+    def _no_post_reason(self, key: str, card: dict) -> str:
+        head = 'this card has no main-channel message to reply to yet'
+        parent = card.get('parent')
+        if parent and parent != key and self._card(parent).get('status') == 'open':
+            return f'{head}: it is merged into {parent}, so its post is on the parent card; reply there with slack_update'
+        if key in self.drafted or self._post_on_its_way(card):
+            return f'{head}: its post is on its way (not in Slack yet), so there is nothing to update; your slack_draft text is the post, and a reply can follow once it is posted'
+        if self.ask:
+            return f'{head}: it was never posted to the main channel, so there is nothing to update'
+        return f'{head}: it was never posted to the main channel, so there is no thread. Post it with slack_draft (the findings go in the post itself), or leave it alone'
+
     def _t_slack_update(self, a: dict):
         if self.ask and not self.asker:
             raise ToolError("no slack_update from this ask; a main-channel reply comes from the pod's own run, an operator's page ask or the page")
@@ -1898,7 +1921,7 @@ class Toolbox:
         key = req(a, 'key')
         card = self._own_or_twin(key)
         if not (card.get('slackPost') or {}).get('ts'):
-            raise ToolError('this card has no main-channel message to reply to')
+            raise ToolError(self._no_post_reason(key, card))
         text = str(a.get('text') or '').strip()
         problem = draft_problem(text, self.link_hosts, self.code_rule())
         if problem:

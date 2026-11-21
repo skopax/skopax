@@ -335,13 +335,18 @@ class Kube:
         ns, name = checked(NAMESPACE, namespace, 'namespace'), checked(NAME, pod, 'pod')
         box = checked(CONTAINER, container_name, 'container') if container_name else None
         lines_wanted = max(1, min(int(tail or LOG_TAIL_MAX), LOG_TAIL_MAX))
+        path, said = f'/api/v1/namespaces/{ns}/pods/{quote(name)}/log', ''
         try:
-            text = self.get(f'/api/v1/namespaces/{ns}/pods/{quote(name)}/log', {'previous': 'true', 'tailLines': lines_wanted, 'container': box}, text=True)
+            text = self.get(path, {'previous': 'true', 'tailLines': lines_wanted, 'container': box}, text=True)
         except KubeError as e:
-            if e.code == 400 and NO_PREVIOUS in e.reason:
-                raise KubeError(f"{name} has no previous logs: {f'container {box}' if box else 'its container'} never restarted, so there is no earlier run to read; "
-                                'read its current logs with esql', 400) from None
-            raise
+            if not (e.code == 400 and NO_PREVIOUS in e.reason):
+                raise
+            who = f'container {box}' if box else 'its container'
+            try:
+                text = self.get(path, {'tailLines': lines_wanted, 'container': box}, text=True)
+            except KubeError:
+                raise KubeError(f'{name} has no previous logs: {who} never restarted, so there is no earlier run to read, and its current logs could not be read either', 400) from None
+            said = f'no previous run: {who} never restarted, so these are its current logs\n'
         lines = clean_lines(text.splitlines()[-lines_wanted:], LOG_LINE_LIMIT)
         kept, size = [], 0
         for line in reversed(lines):
@@ -351,7 +356,7 @@ class Kube:
             kept.append(line)
         kept.reverse()
         cut = len(lines) - len(kept)
-        return (f'[{cut} earlier lines cut to stay under {LOG_CHARS} characters]\n' if cut else '') + '\n'.join(kept)
+        return said + (f'[{cut} earlier lines cut to stay under {LOG_CHARS} characters]\n' if cut else '') + '\n'.join(kept)
 
     def nodes(self) -> list[dict]:
         body = self.get('/api/v1/nodes', {'limit': LIST_LIMIT})

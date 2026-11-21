@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from typing import Callable
 
 from skopax import brand
-from skopax.actors import SYSTEM, is_token, token_label
+from skopax.actors import POD_BY, SYSTEM, investigator_label, is_token, token_label
 from skopax.errkind import Refusal
 from skopax.redact import redact
 
@@ -86,6 +86,8 @@ def note_text(note) -> str | None:
 
 def who_text(by) -> str:
     by = str(by or '').strip()
+    if by == POD_BY:
+        return investigator_label()
     if by in MACHINE_BY:
         return MACHINE_BY[by]
     return token_label(by) if is_token(by) else 'Investigator' if not by or by == 'Claude' else by.split('@')[0]

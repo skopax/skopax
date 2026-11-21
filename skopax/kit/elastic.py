@@ -1,4 +1,5 @@
 import datetime as dt
+import difflib
 import json
 import re
 import time
@@ -33,6 +34,13 @@ KEY_MIN = 8
 COLUMN_MAX = 100
 COLUMNS_MAX = 10
 KIBANA_TIME = re.compile(r'\?(start|end)\b')
+PATTERNS: dict[str, tuple[float, list[str]]] = {}
+PATTERNS_TTL = 300
+PATTERNS_FAILED_TTL = 60
+PATTERNS_TIMEOUT = 10
+PATTERNS_SHOWN = 10
+PATTERNS_CLOSE = 0.5
+DATED = re.compile(r'\d{4}[.\-]\d{2}[.\-]\d{2}|-\d{6}$')
 
 
 class ElasticError(ReadError):
@@ -118,6 +126,24 @@ class Elastic:
         names = [c.get('name') if isinstance(c, dict) else None for c in body.get('columns') or []]
         return [n for n in names if isinstance(n, str)], [dict(zip(names, row)) for row in body.get('values') or [] if isinstance(row, list)]
 
+    def index_patterns(self, timeout: float = PATTERNS_TIMEOUT, clock: Callable[[], float] = time.monotonic) -> list[str]:
+        held = PATTERNS.get(self.url)
+        if held and clock() - held[0] < (PATTERNS_TTL if held[1] else PATTERNS_FAILED_TTL):
+            return held[1]
+        try:
+            body = call(self.transport, 'GET', f'{self.url}/_resolve/index/*', self.headers(), timeout=timeout).body
+        except (HttpError, Unreachable):
+            PATTERNS[self.url] = (clock(), [])
+            return []
+        names: list[str] = []
+        for part in ('indices', 'data_streams', 'aliases'):
+            for row in (body.get(part) if isinstance(body, dict) else None) or []:
+                if isinstance(row, dict) and isinstance(row.get('name'), str):
+                    names.append(re.sub(r'\*{2,}', '*', DATED.sub('*', row['name'])))
+        found = list(dict.fromkeys(names))
+        PATTERNS[self.url] = (clock(), found)
+        return found
+
     def shards(self, index: str, timeout: float = TEST_TIMEOUT) -> int:
         try:
             body = call(self.transport, 'POST', f"{self.url}/{urllib.parse.quote(','.join(indices_of(index)), safe='*,:')}/_search", self.headers(), {'size': 0}, timeout=timeout).body
@@ -183,6 +209,11 @@ def refusal(es: object, e: ElasticError, indices: tuple[str, ...], budget: Budge
         return bool(es.unreadable(indices, left))
     except ElasticError as again:
         return again.denied and bool(es.api_key)
+
+
+def closest_patterns(sources: tuple[str, ...], names: list[str], count: int = PATTERNS_SHOWN) -> list[str]:
+    scored = sorted(((max(difflib.SequenceMatcher(None, src, name).ratio() for src in sources), name) for name in names), key=lambda x: (-x[0], x[1]))
+    return [name for ratio, name in scored if ratio >= PATTERNS_CLOSE][:count]
 
 
 def indices_of(source: str) -> tuple[str, ...]:

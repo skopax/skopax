@@ -47,3 +47,44 @@ def test_a_matching_absorb_pattern_still_groups_as_before(store: Store):
     # then
     assert not failed, out
     assert store.anomaly(TRACKHUB)['parent'] == PARENT
+
+
+def test_the_no_match_refusal_names_the_patterns_given_and_the_slots_left(store: Store):
+    # given
+    held = ['log|reports-service|ERROR|*held one*', 'log|reports-service|ERROR|*held two*']
+    b = box(seeded(store, absorb=held), keys=(TRACKHUB,))
+
+    # when
+    out, failed = b.call('group', {'parent': PARENT, 'children': [TRACKHUB], 'absorb': [MISS]})
+
+    # then
+    assert failed and 'matches no card of this group' in out, out
+    assert MISS in out and 'patterns given' in out, out
+    assert 'slots left: 3' in out, out
+    assert all(k in out for k in (PARENT, TRACKHUB)), out
+
+
+def test_the_limit_refusal_names_the_held_patterns_and_the_slots_left(store: Store):
+    # given
+    held = [f'log|reports-service|ERROR|*TrackHub {n}*' for n in range(4)]
+    b = box(seeded(store, absorb=held), keys=(TRACKHUB, SOAP))
+
+    # when
+    out, failed = b.call('group', {'parent': PARENT, 'children': [TRACKHUB, SOAP], 'absorb': ['log|reports-service|ERROR|*TrackHub*', SOAP]})
+
+    # then
+    assert failed and 'at most 5' in out, out
+    assert 'slots left: 1' in out and 'gave 2 new' in out, out
+    assert all(h in out for h in held), out
+
+
+def test_a_pattern_the_parent_already_holds_does_not_use_a_slot(store: Store):
+    # given
+    held = ['log|reports-service|ERROR|*TrackHub request*'] + [f'log|reports-service|ERROR|*TrackHub {n}*' for n in range(4)]
+    b = box(seeded(store, absorb=held), keys=(TRACKHUB,))
+
+    # when
+    out, failed = b.call('group', {'parent': PARENT, 'children': [TRACKHUB], 'absorb': [held[0]]})
+
+    # then
+    assert not failed, out

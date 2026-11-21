@@ -1,18 +1,20 @@
 var SYSTEM_ACTOR = 'system';
 var BRAND = (function () {
-  var out = {name: 'Skopax', slug: 'skopax', version: '0.4.4'};
+  var out = {name: 'Skopax', slug: 'skopax', version: '0.4.5'};
   try {
     var d = JSON.parse(document.getElementById('brand-data').textContent);
     if (d && d.name) out = d;
   } catch (e) {}
   if (out.attribution === null) return out;
   if (!out.attribution || !out.attribution.text) {
-    var v = out.version || '0.4.4';
+    var v = out.version || '0.4.5';
     out.attribution = {text: out.name === 'Skopax' ? 'Skopax ' + v + ' \u00b7 skopax.io' : out.name + ' \u00b7 powered by Skopax ' + v, href: 'https://skopax.io'};
   }
   return out;
 })();
 function brandName() { return BRAND.name; }
+function investigatorName() { return BRAND.investigator || 'Investigator'; }
+function isInvestigatorBy(by) { return by === 'Claude' || (!!BRAND.podBy && by === BRAND.podBy); }
 function brandSlug() { return BRAND.slug || 'skopax'; }
 function applyBrand() {
   var home = document.querySelector('h1 a.home'), top = document.querySelector('a.brand'), full = document.getElementById('full'), at = document.getElementById('attribution');

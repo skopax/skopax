@@ -6,7 +6,7 @@ from pymongo.errors import PyMongoError
 
 from skopax.assign import slug
 from skopax import brand
-from skopax.actors import SYSTEM, is_token, token_label
+from skopax.actors import POD_BY, SYSTEM, investigator_label, is_token, token_label
 from skopax.errkind import kind as error_kind
 from skopax.store import NotFound, Store, glob_match
 
@@ -48,6 +48,8 @@ def who_text(by) -> str:
     by = str(by or '').strip()
     if is_token(by):
         return token_label(by)
+    if by == POD_BY:
+        return investigator_label()
     if by in WHO:
         return WHO[by]
     if by in PRODUCT_ACTORS or by.startswith('auto'):

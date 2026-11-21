@@ -179,7 +179,9 @@ class SignIn:
         try:
             existing = self.users.get(email)
             if existing is not None and existing.get('source') != 'sso':
-                return McpUser(name=email, sub=sub, email=email, role=self.mcp_linked(existing, text_claim(claims, 'iss'), sub, email))
+                linked = self.mcp_linked(existing, text_claim(claims, 'iss'), sub, email)
+                self.mcp_used(email)
+                return McpUser(name=email, sub=sub, email=email, role=linked)
             if existing is not None and existing.get('disabled'):
                 raise Refused('disabled')
             if unopened(existing) and not owns(claims, email):
@@ -196,6 +198,7 @@ class SignIn:
                 kept = self.last_role(existing, e)
             except Invalid as e:
                 raise Refused('resolver') from e
+            fresh = existing is None
             stored = existing if existing is not None else self.users.insert_sso(email, name, self.settings.sso_default_role)
             if stored is not None and stored.get('source') != 'sso':
                 raise Refused('local-account')
@@ -203,13 +206,21 @@ class SignIn:
                 raise Refused('disabled')
             if unopened(stored):
                 stored = self.mcp_opened(claims, email)
+                fresh = True
             if kept is None and resolved is not None:
                 self.users.stamp_resolved(email, resolved, self.clock())
-            self.users.touch_login(email)
+            wrote = self.users.stamp_first_login(email)
+            self.mcp_used(email, fresh or wrote)
         except PyMongoError as e:
             raise Refused('database') from e
         role = kept if kept is not None else choose(resolved=resolved, mapped=mapped, admin_set=admin_set_of(stored), default=self.settings.sso_default_role)[0]
         return McpUser(name=email, sub=sub, email=email, role=role)
+
+    def mcp_used(self, email: str, seeded: bool = False) -> None:
+        try:
+            self.users.record_mcp(email, seeded)
+        except PyMongoError as e:
+            log.warning('%s', f'The MCP use record could not be written ({type(e).__name__}); MCP access goes on')
 
     def mcp_opened(self, claims: dict, email: str) -> dict:
         if not owns(claims, email):

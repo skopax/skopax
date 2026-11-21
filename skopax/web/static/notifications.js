@@ -59,7 +59,7 @@ function ntItem(n) {
   b.innerHTML = '<span class="nt-dot" aria-hidden="true"></span><span class="nt-body"><span class="nt-head"><span class="tag ' + (NT_TONE[n.kind] || 'plain') + '">' + esc(NT_LABELS[n.kind] || n.kind) + '</span>' +
     (fresh ? '<span class="sr">Unread</span>' : '') + '<span class="nt-when">' + esc(ago(n.t)) + '</span></span>' +
     (what ? '<span class="nt-what" data-no-tx>' + esc(what) + '</span>' : '') + (n.note ? '<span class="nt-note" data-no-tx>' + esc(n.note) + '</span>' : '') +
-    '<span class="nt-by" data-no-tx>' + esc(n.by || '') + '</span></span>';
+    '<span class="nt-by" data-no-tx>' + esc(isInvestigatorBy(n.by) ? investigatorName() : n.by || '') + '</span></span>';
   b.addEventListener('click', function () { ntGo(n); });
   li.appendChild(b);
   return li;

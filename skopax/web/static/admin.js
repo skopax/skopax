@@ -1681,6 +1681,7 @@ function accMethods(u) {
     var only = accText('span', 'tag plain acc-badge acc-sso-only', 'SSO only');
     only.title = 'Signs in with SSO and has no password';
     box.appendChild(only);
+    accMcpBadge(box, u);
     return box;
   }
   box.appendChild(accText('span', 'tag plain acc-badge acc-pw-badge', 'Password'));
@@ -1689,7 +1690,16 @@ function accMethods(u) {
     both.title = 'Also signs in with SSO';
     box.appendChild(both);
   }
+  accMcpBadge(box, u);
   return box;
+}
+function accMcpBadge(box, u) {
+  if (!u.mcp || !u.mcp.at) return;
+  var kind = u.mcp.only === null ? 'uses' : u.mcp.only ? 'only' : 'both';
+  var b = accText('span', 'tag plain acc-badge acc-mcp-badge', {uses: 'Uses MCP', only: 'MCP only', both: 'Page and MCP'}[kind]);
+  b.title = {uses: 'Uses MCP; no use of the page seen yet', only: 'Never signed in on the page', both: 'Signs in on the page and over MCP'}[kind];
+  b.dataset.mcp = kind;
+  box.appendChild(b);
 }
 async function accPatch(u, body, msg, revert, said) {
   accMsg(msg, 'Saving\u2026', false);
@@ -1775,7 +1785,16 @@ function accUserRow(u) {
   var fresh = u.source === 'sso' && u.opened === false, seen = accRel(u.lastLogin);
   var lastIn = accText('span', 'acc-last' + (fresh ? ' acc-not-yet' : seen ? '' : ' muted'), seen || 'Not signed in yet');
   if (seen) lastIn.title = dayhm(u.lastLogin);
-  accCell(tr, lastIn);
+  var lastCell = accCell(tr, lastIn);
+  if (u.mcp && u.mcp.at && accRel(u.mcp.at)) {
+    var viaMcp = accText('span', 'acc-mcp-use muted', '');
+    viaMcp.appendChild(accText('span', null, 'MCP'));
+    var useAt = accText('span', 'acc-mcp-use-at', accRel(u.mcp.at));
+    useAt.title = dayhm(u.mcp.at);
+    viaMcp.appendChild(document.createTextNode(' '));
+    viaMcp.appendChild(useAt);
+    lastCell.appendChild(viaMcp);
+  }
   var off = document.createElement('input');
   off.type = 'checkbox';
   off.className = 'acc-off';
@@ -2240,7 +2259,7 @@ function ssoView(r) {
   return {enabled: r.enabled === true, active: r.active === true, problem: ssoText(r.problem), redirectUri: ssoText(r.redirectUri),
     provider: {ok: p.ok !== false, since: ssoText(p.since), error: ssoText(p.error)}, values: r.values && typeof r.values === 'object' ? r.values : {},
     bases: r.bases && typeof r.bases === 'object' ? r.bases : {}, switch: ssoLayer(r.switch), secretNote: ssoText(r.secretNote),
-    secret: {set: s.set === true, from: ssoText(s.from) || null, unreadable: s.unreadable === true}, inUse: ssoInUse(r.roleMapInUse), mcpBase: ssoText(r.mcpBase),
+    secret: {set: s.set === true, from: ssoText(s.from) || null, unreadable: s.unreadable === true}, inUse: ssoInUse(r.roleMapInUse), mcpBase: ssoText(r.mcpBase), mcp: mcpClean(r.mcp),
     icon: ssoIconView(r.icon), button: ssoButtonView(r.button)};
 }
 function ssoIconView(v) {
@@ -2966,6 +2985,8 @@ function renderMcpRows(saved) {
     head.appendChild(accText('h3', null, 'MCP sign-in'));
     if (state[0]) head.appendChild(accText('span', 'tag ' + state[1] + ' acc-mcp-pill', state[0]));
     s.appendChild(head);
+    var live = mcpStatusBlock();
+    if (live) s.appendChild(live);
     s.appendChild(accText('p', 'acc-mcp-method', 'Method: access tokens from the identity provider (OAuth), checked against the settings below'));
     s.appendChild(accText('p', 'adm-help acc-mcp-note', 'MCP signs people in through the identity provider, so it needs single sign-on set up and on, and the MCP server switch on in Features' +
       (SSO && !SSO.active ? '. Single sign-on is not on, so MCP is off.' : '.')));
@@ -3003,6 +3024,64 @@ async function mcpSave(b, said) {
   var failed = await accSaveFields(edits), now = document.querySelector('#acc-mcp .acc-mcp-msg'), again = document.querySelector('#acc-mcp .acc-mcp-save');
   if (now) ssoNote(now, failed.length ? accNotSaved(failed) : 'Saved', failed.length > 0);
   if (again) { again.disabled = false; again.focus(); }
+}
+var MCP_MISSING = {sso: 'Single sign-on is not on', 'switch': 'The MCP server switch is off', issuer: 'No issuer is known: set the MCP issuer or the single sign-on issuer'};
+var MCP_PILLS = {connected: ['Connected', 'k-ok'], waiting: ['Waiting', 'k-info'], 'not-set-up': ['Not set up', 'plain']};
+function mcpClean(m) {
+  if (!m || typeof m !== 'object') return null;
+  var values = {};
+  ['client-id', 'audience', 'issuer'].forEach(function (k) {
+    var e = m.values && m.values[k];
+    if (e && typeof e === 'object' && typeof e.value === 'string' && e.value) values[k] = {value: e.value, default: e.default === true};
+  });
+  var last = m.last && typeof m.last === 'object' && typeof m.last.at === 'string' ? {at: m.last.at, by: ssoText(m.last.by)} : null;
+  return {state: MCP_PILLS[m.state] ? m.state : 'not-set-up', missing: ssoText(m.missing), ssoOn: m.ssoOn === true, on: m.on === true, mounted: m.mounted === true,
+    days: Number(m.days) > 0 ? Number(m.days) : 7, people: Number(m.people) > 0 ? Math.floor(Number(m.people)) : 0, last: last, values: values};
+}
+function mcpStatusBlock() {
+  var m = SSO && SSO.mcp;
+  if (!m || typeof m !== 'object') return null;
+  var pill = MCP_PILLS[m.state] || MCP_PILLS['not-set-up'], box = accText('div', 'acc-mcp-status'), line = accText('p', 'acc-mcp-line');
+  box.dataset.state = m.state;
+  box.appendChild(accText('span', 'tag ' + pill[1] + ' acc-mcp-conn', pill[0]));
+  if (m.state === 'connected') {
+    var n = Number(m.people) || 0, days = Number(m.days) || 7;
+    line.appendChild(accText('span', 'acc-mcp-people', n + (n === 1 ? ' person in the last ' : ' people in the last ') + days + ' days'));
+    if (m.last && m.last.at) {
+      line.appendChild(accText('span', 'acc-mcp-last-l', 'Last sign-in'));
+      var at = accText('span', 'acc-mcp-last-at', dayhmZone(m.last.at));
+      at.title = m.last.at;
+      line.appendChild(at);
+      if (m.last.by) {
+        line.appendChild(accText('span', 'acc-mcp-last-by-l', 'Signed in by'));
+        line.appendChild(accText('span', 'acc-mcp-last-by', m.last.by));
+      }
+    }
+  } else if (m.state === 'waiting') {
+    line.appendChild(accText('span', 'acc-mcp-people', 'Set up, no one has connected yet'));
+  } else {
+    line.appendChild(accText('span', 'acc-mcp-people', MCP_MISSING[m.missing] || 'Not set up'));
+  }
+  box.appendChild(line);
+  var set = accText('dl', 'acc-mcp-set');
+  var item = function (label, value, code, isDefault) {
+    var row = accText('div', 'acc-mcp-set-i');
+    if (label) row.appendChild(accText('dt', null, label));
+    var dd = accText('dd', null, '');
+    dd.appendChild(accText(code ? 'code' : 'span', null, value));
+    if (isDefault) dd.appendChild(accText('span', 'tag plain acc-mcp-def', 'built-in default'));
+    row.appendChild(dd);
+    set.appendChild(row);
+  };
+  item('', m.ssoOn ? 'Single sign-on is on' : 'Single sign-on is off');
+  item('', m.on && m.mounted ? 'The MCP endpoint is mounted' : 'The MCP endpoint is switched off');
+  var v = m.values || {};
+  [['MCP client ID', 'client-id'], ['MCP audience', 'audience'], ['MCP issuer', 'issuer']].forEach(function (x) {
+    var e = v[x[1]];
+    if (e && e.value) item(x[0], e.value, true, e.default === true);
+  });
+  box.appendChild(set);
+  return box;
 }
 function mcpSwitch() {
   var i = adminItems().filter(function (x) { return x.key === MCP_SWITCH; })[0];

@@ -44,6 +44,7 @@ from skopax.mcptools import routes as mcptools_routes
 from skopax.mcptools.bridge import ToolBridge, asker_role
 from skopax.mcptools.catalog import Catalog as McpCatalog
 from skopax.mcptools.oauth import McpOAuth
+from skopax import actors
 from skopax.actors import BOOTSTRAP_TOKEN as BOOTSTRAP, is_token
 from skopax.apitokens import Actor, ApiTokens, TokenNameError, UnknownToken
 from skopax.messages import msg
@@ -52,7 +53,7 @@ from skopax.operators import OperatorUnknown, Operators
 from skopax.postdeploy import JOB_OFFSET as POSTDEPLOY_OFFSET, JOB_PERIOD as POSTDEPLOY_PERIOD, SERVER_BY, PostDeploy
 from skopax.attach import Attacher
 from skopax.autosend import AutoSend, Fallback, PostNow, fresh as fresh_cards, kept as kept_text, waiting as auto_send_waiting
-from skopax.config import ConfigurationError, Settings
+from skopax.config import MCP_CLIENT_ID, ConfigurationError, Settings
 from skopax.contract import CodeHost, OrgPack, SourceDown
 from skopax.engine import Applied, PassResult, apply, iso as epoch_iso, new_pushes
 from skopax.enrich import Enricher
@@ -76,7 +77,7 @@ from skopax.slacklink import SlackLink
 from skopax.kit.promql import Prometheus, client_for
 from skopax.kit.promql import CHECK as PROMETHEUS_CHECK, ID as PROMETHEUS_ID
 from skopax.tickets import PROJECT_KEY, projects_of
-from skopax.users import EMAIL, IDP_SOURCES, LOCAL_AFTER, NAME_MAX, PASSWORD_MAX, PASSWORD_MIN, ROLES, IdpManaged, InvalidUser, ChangeReverted, ChangeUnsure, LastAdmin, LINK_PENDING_S, NoPasswordAdmin, UserExists, Users, admin_row, clean_email, clean_name, clean_password, clean_role, cut_admits, leaves_admin, link_admits
+from skopax.users import EMAIL, IDP_SOURCES, LOCAL_AFTER, NAME_MAX, PASSWORD_MAX, PASSWORD_MIN, ROLES, IdpManaged, InvalidUser, ChangeReverted, ChangeUnsure, LastAdmin, LINK_PENDING_S, NoPasswordAdmin, UserExists, Users, admin_row, mcp_mark, clean_email, clean_name, clean_password, clean_role, cut_admits, leaves_admin, link_admits
 from skopax.settingsources import Follower, SourceSet, boot, labelled, merged
 from skopax.settingsources import core_knowledge_ids, core_setting_ids
 from skopax.tunables import SESSIONS_AFTER_KEY, SLACK_CHANNEL_KEY, SSO_SWITCH_KEY, Invalid as TunableInvalid, Live, TunableStore, View, apply as apply_tunables, parse as parse_tunable, plugin_tunables, stored as stored_text
@@ -238,6 +239,9 @@ def load_icons() -> dict[str, tuple[bytes, str]]:
 
 
 ICONS = load_icons()
+
+
+MCP_DAYS = 7
 
 
 def load_sso_icons() -> dict[str, bytes]:
@@ -499,6 +503,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     live = Live(settings, TunableStore(db), extra=lambda: tuple(t for p in runtime.active() for t in plugin_tunables(p)), values=merged(sources.current()), labels=labelled(sources.current()))
     base_settings = settings
     settings = View(live)
+    actors.use_source(lambda: effective_model(settings.ai_provider, settings.investigate_model, 'card'))
 
     def watch_sso(current: Settings) -> None:
         if not current.sso_on:
@@ -2656,7 +2661,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     @app.get('/api/admin/users')
     def get_admin_users(by: Annotated[str, Depends(require_admin)]) -> list[dict]:
         now = clock()
-        return [admin_row(doc, now) for doc in users.list()]
+        used = users.mcp_uses()
+        return [admin_row(doc, now) | {'mcp': mcp_mark(doc, used.get(doc['_id']))} for doc in users.list()]
 
     @app.post('/api/admin/users', status_code=status.HTTP_201_CREATED)
     def post_admin_user(body: UserIn, by: Annotated[str, Depends(require_admin)]) -> dict:
@@ -2992,6 +2998,17 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def sso_layer(t, entry: dict) -> str:
         return live.label_of(t) if entry['default'] is None or entry['base'] != entry['default'] else 'default'
 
+    def mcp_status(sso_on: bool) -> dict:
+        on = bool(features.on('mcp'))
+        explicit = {'client-id': (settings.mcp_client_id or '').strip() not in ('', MCP_CLIENT_ID), 'audience': bool((settings.mcp_audience or '').strip()),
+                    'issuer': bool((settings.mcp_issuer or '').strip())}
+        values = {'client-id': mcp_auth.client_id(), 'audience': mcp_auth.audiences()[0], 'issuer': mcp_auth.issuer()}
+        missing = 'sso' if not sso_on else 'switch' if not on else 'issuer' if not values['issuer'] else None
+        seen = users.mcp_summary(MCP_DAYS)
+        state = 'not-set-up' if missing else 'connected' if seen['people'] else 'waiting'
+        return {'state': state, 'missing': missing, 'ssoOn': sso_on, 'on': on, 'mounted': True, 'days': MCP_DAYS,
+                'values': {k: {'value': v, 'default': not explicit[k]} for k, v in values.items()}, **seen}
+
     def sso_view() -> dict:
         live.refresh(force=True)
         config = signon.config()
@@ -3008,6 +3025,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 'switch': {'value': held['value'], 'source': held['source'], 'from': held.get('from'), 'base': sso_layer(switch_t, held), 'baseValue': bool(live.base.sso_on)},
                 'roleMapInUse': [] if (settings.sso_role_map or '').strip() else [{'value': value, 'role': role} for value, role in role_map(settings)],
                 'mcpBase': mcp_auth.base_url.rstrip('/'),
+                'mcp': mcp_status(config.active),
                 'icon': sso_icon.status(),
                 'button': {'defaultText': msg('login.sso'), 'textMax': ssobutton.TEXT_MAX, 'iconMax': SSO_ICON_MAX, 'marks': ssobutton.rules(), 'branded': ssobutton.branded()},
                 'secretNote': msg('sso.secret_unreadable_note') if secret['unreadable'] and not secret['set'] else None}

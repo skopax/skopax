@@ -65,7 +65,7 @@ def test_a_tool_that_needs_a_field_is_offered_only_through_instances_that_have_i
     assert defs['scoped_echo']['input_schema']['properties']['instance']['enum'] == ['b']
     assert sorted(defs['scoped_plain']['input_schema']['properties']['instance']['enum']) == ['a', 'b']
     assert chosen == {'from': 'b'} and calls == ['b']
-    assert refused.text == 'instance must be one of b'
+    assert refused.text.startswith('instance must be one of b')
     assert ToolSet(runtime).status('scoped_echo', None) == {'state': 'on', 'reason': None}
 
 

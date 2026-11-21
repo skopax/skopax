@@ -383,10 +383,11 @@ class AgentRead:
 
 
 class ReadError(Exception):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, room: int | None = None):
         super().__init__(message)
         self.status = status
         self.message = message
+        self.room = room
 
 
 class Planted(ReadError):

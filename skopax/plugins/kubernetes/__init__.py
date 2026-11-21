@@ -23,7 +23,7 @@ DESCRIPTION = ('Read-only Kubernetes API of a cluster, for what Prometheus canno
                f'op events: the namespace\'s events of the last since_minutes (default {SINCE_MINUTES}; Kubernetes keeps about 1 h), only for object when given '
                '(a deployment name also matches its ReplicaSets and pods): FailedScheduling, Unhealthy probes, BackOff, Killing; '
                'op rollout (deployment): replicas, conditions and ReplicaSet revisions with images and age; '
-               f'op previous_logs (pod, container): the last tail lines (default {TAIL}, max {LOG_TAIL_MAX}) of the container\'s previous, crashed run (a container that never restarted has none). '
+               f'op previous_logs (pod, container): the last tail lines (default {TAIL}, max {LOG_TAIL_MAX}) of the container\'s previous, crashed run (a container that never restarted has none: you get its current logs, marked as such). '
                'op nodes (no namespace): every node with Ready and since when, pressure (memory, disk, PID, network), cordoned, taints, roles and kubelet version, problem nodes first; '
                'op node (name, no namespace): its conditions with reasons, capacity, the pods on it by namespace with the ones not ready, and its events of the last hour (NodeNotReady, eviction, OOM); '
                'op daemonset (name): desired, current, ready, updated, unavailable and misscheduled pods, conditions, node selector and tolerations, and each pod with its node. '

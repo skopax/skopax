@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from skopax import __version__
+from skopax.actors import POD_BY, investigator_label
 
 log = logging.getLogger('skopax.brand')
 
@@ -118,7 +119,7 @@ def footer_html(element_id: str | None = 'attribution') -> str:
 
 
 def page_info() -> dict:
-    return {'name': _current, 'slug': mcp_slug(_current), 'version': display_version(), 'attribution': attribution_line()}
+    return {'name': _current, 'slug': mcp_slug(_current), 'version': display_version(), 'attribution': attribution_line(), 'investigator': investigator_label(), 'podBy': POD_BY}
 
 
 def chat_brand() -> dict:

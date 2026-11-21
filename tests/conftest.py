@@ -177,3 +177,11 @@ def state(*anomalies: dict, swept: str = '2026-10-10T09:04:00Z') -> dict:
 def no_google_retry_pause(monkeypatch):
     from skopax.kit import google
     monkeypatch.setattr(google, 'RETRY_PAUSE', 0)
+
+
+@pytest.fixture(autouse=True)
+def default_investigator_label():
+    from skopax import actors
+    kept = actors._source[0]
+    yield
+    actors._source[0] = kept

@@ -15,7 +15,7 @@ from pymongo.errors import BulkWriteError, DuplicateKeyError, OperationFailure, 
 from pymongo.results import UpdateResult
 
 from skopax import causes, history, information
-from skopax.actors import is_token
+from skopax.actors import POD_BY, is_token
 from skopax.errkind import Authored, kind as error_kind
 from skopax.tags import FIELDS as TAG_FIELDS
 
@@ -174,7 +174,7 @@ def draft_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
-AUTO_SEND_BY = ('server', 'Claude (pod)')
+AUTO_SEND_BY = ('server', POD_BY)
 
 
 def auto_sender(by) -> bool:
@@ -400,6 +400,7 @@ class Store:
         self.activity.create_index([('t', DESCENDING), ('_id', DESCENDING)])
         self.activity.create_index([('key', ASCENDING), ('t', DESCENDING)], sparse=True)
         self.actions.create_index([('target', ASCENDING), ('requestedAt', DESCENDING)])
+        self.actions.create_index([('requestedBy', ASCENDING), ('requestedAt', DESCENDING)])
         self.anomalies.create_index([('pos', ASCENDING)])
         self.card_ids.create_index('n', unique=True)
         self.actions.create_index([('status', ASCENDING), ('requestedAt', ASCENDING)])

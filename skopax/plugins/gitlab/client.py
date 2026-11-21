@@ -234,6 +234,20 @@ class GitLab:
         body = self._get(f'/projects/{self._pid(repo)}/repository/files/{quote(path, safe="")}', ref=ref).body or {}
         return base64.b64decode(body.get('content') or '').decode('utf-8', 'replace')
 
+    def tree(self, repo, path: str, ref: str, limit: int) -> list[dict]:
+        url = f'/projects/{self._pid(repo)}/repository/tree'
+        params = {'ref': ref, 'per_page': limit} | ({'path': path} if path else {})
+        try:
+            return remote.call(self.transport, 'GET', f'{self.api}{url}?{urlencode(params)}', {'PRIVATE-TOKEN': self.token}, timeout=30).body or []
+        except HttpError as e:
+            if e.code == 404:
+                raise Missing(url) from None
+            if e.code in DENIED:
+                raise Denied(denied_text('code', e.code), 'code', PERMISSIONS['code']) from None
+            raise SourceDown(f'GitLab HTTP {e.code}') from None
+        except Unreachable:
+            raise SourceDown(msg('enrich.unreachable', source='GitLab')) from None
+
     def blame(self, repo, path: str, ref: str, first: int, last: int) -> list[dict]:
         params = {'ref': ref, 'range[start]': first, 'range[end]': last}
         return self._get(f'/projects/{self._pid(repo)}/repository/files/{quote(path, safe="")}/blame', **params).body or []
