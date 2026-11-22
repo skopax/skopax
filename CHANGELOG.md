@@ -2,7 +2,18 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.4.12 (2026-11-22)
+
+The 0.4.11 changes, published as an image. 0.4.11 was tagged but its image was never published: the release scan found two High findings in libc6 from the base image.
+
+**Upgrade notes:**
+
+- Coming from 0.4.10, read the 0.4.11 notes below: they all apply.
+- The image still carries libc6 2.41-12+deb13u4 from the distroless base, which has two High findings (CVE-2026-19499, CVE-2026-5435) fixed in Debian 2.41-12+deb13u5. They are listed in .grype.yaml until 2026-12-06; the next release bumps the base once distroless ships the fix.
+
 ## 0.4.11 (2026-11-22)
+
+Tagged but not published as an image; these changes ship in 0.4.12.
 
 A cleanup release: the investigator is called Investigator everywhere, a password change signs out your other sessions, Slack echo posts say which card they are, grouped cards name their parent, and many small fixes across Slack, the board, Admin and the plug-ins. CI runs the page checks in parallel.
 

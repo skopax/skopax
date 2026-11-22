@@ -1,1 +1,9 @@
-ignore: []
+ignore:
+  - vulnerability: CVE-2026-19499
+    package:
+      name: libc6
+    reason: fixed in Debian 2.41-12+deb13u5 but the distroless cc-debian13 base still ships deb13u4; drop and bump the base pin when it rebuilds (review-by 2026-12-06)
+  - vulnerability: CVE-2026-5435
+    package:
+      name: libc6
+    reason: fixed in Debian 2.41-12+deb13u5 but the distroless cc-debian13 base still ships deb13u4; drop and bump the base pin when it rebuilds (review-by 2026-12-06)
