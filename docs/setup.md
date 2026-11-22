@@ -127,6 +127,8 @@ Microsoft turns off SMTP sign-in with a password for every tenant by default fro
 2. In Skopax, set Host to the MX host of your domain, such as `example-com.mail.protection.outlook.com`, Port `25`, Security `starttls`, and leave Username and Password empty. Set From to an address of your own domain, such as `alerts@example.com`.
 3. Choose Test connection. If mails are then refused for the sender, the connector does not see the IP address Skopax sends from.
 
+Many cloud providers block outgoing port 25 by default (Google Cloud always does; AWS and Azure often do until you ask). Before you set up the connector, check that a Skopax pod can open a TCP connection to the MX host on port 25, for example with `nc -vz example-com.mail.protection.outlook.com 25`. When the port is blocked, Test connection says only "Could not connect", however the connector is set up.
+
 To mail a Teams channel, open Get email address on the channel in Teams and, under its advanced settings, allow mail from your own domain; otherwise Teams drops the mail without an answer.
 
 ## Deploys and deploy reports
