@@ -99,7 +99,7 @@ def test_an_email_instance_is_a_route_with_its_recipients_tags_keys_and_lowest_s
     target = hashlib.sha256(f'{ALICE} {BOB}'.encode()).hexdigest()[:16]
     assert found == [Route('email/ops', 'ops', 'email', 'ops', frozenset({'seo', 'developer'}), (), target, ('log|checkout-*|*',), 'crit')]
     assert Registry.of(*PLUGINS).get('email').state == 'ok'
-    assert (email_route.PLUGIN.name, email_route.PLUGIN.category, email_route.PLUGIN.outbound.mentions_field) == ('Email', 'chat', None)
+    assert (email_route.PLUGIN.name, email_route.PLUGIN.category, email_route.PLUGIN.outbound.mentions_field) == ('Email route', 'chat', None)
     assert {f.key for f in email_route.PLUGIN.fields} >= {'recipients', 'tags', 'keys', 'min-sev'} and not email_route.PLUGIN.capabilities.secrets
 
 
@@ -219,7 +219,7 @@ def test_a_refused_mail_is_not_tried_again_and_the_tile_says_why(store: Store):
     [row] = store.route_retries()
     assert row['gaveUp'] is True and row['tries'] == 1
     assert routes.failure('email', 'ops') == 'error: ops: The mail server refused: 550 5.1.1 no such user'
-    assert routes.gave_up() == [{'id': 'email/ops', 'plugin': 'Email', 'route': 'ops', 'count': 1, 'reason': 'The mail server refused: 550 5.1.1 no such user', 'tries': 1}]
+    assert routes.gave_up() == [{'id': 'email/ops', 'plugin': 'Email route', 'route': 'ops', 'count': 1, 'reason': 'The mail server refused: 550 5.1.1 no such user', 'tries': 1}]
 
 
 def test_one_refused_address_is_skipped_and_the_others_still_get_every_card(store: Store):
@@ -564,4 +564,17 @@ def test_one_recipient_and_one_try_read_in_the_singular(store: Store):
 
     # then
     assert 'goes to 1 recipient, one mail' in tested['summary']
-    assert msg('routes.gave_up_one', plugin='Email', route='ops', count=1, reason='x').count('after 1 failed try ') == 1
+    assert msg('routes.gave_up_one', plugin='Email route', route='ops', count=1, reason='x').count('after 1 failed try ') == 1
+
+
+def test_the_email_route_and_the_mail_server_read_as_two_different_things():
+    # when
+    route, server = email_route.PLUGIN, mail_server.PLUGIN
+    settings = [s.label for s in route.settings]
+
+    # then
+    assert (route.id, route.name, server.name) == ('email', 'Email route', 'Mail server')
+    assert route.description == 'A route that mails chosen cards to a list of addresses, like a Teams route. Add one per list; it sends through the Mail server.'
+    assert server.description == 'The connection to your SMTP server. Set it up once; Email routes and personal notification mail send through it.'
+    assert route.description != server.description
+    assert settings == ['Email route repeat days', 'Email route lowest severity', 'Email route fixed mails']

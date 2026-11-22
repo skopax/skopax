@@ -116,7 +116,7 @@ Test connection against a stored instance reuses its saved secrets. If you chang
 Skopax sends email in two ways, both through one Mail server integration: an Email route mails cards to a list, and each person can have their own notifications mailed to them. Nothing is mailed until a Mail server is set up.
 
 1. **Connect the mail server.** Open Connect > Integrations, choose "+ Add integration" > Mail server, and fill in Host, Port, Security and From (see [Mail server](plugins.md#mail-server) for every field). Choose Test connection, then Save & turn on. Test connection signs in and checks the server answers; it does not send a mail.
-2. **Mail cards to a list.** Choose "+ Add integration" > Email. Fill in Recipients with 1 to 50 addresses and pick the cards with Card tags, Card keys or both, such as the tag `developer` with Lowest severity Warning. Each address gets a mail of its own. The address of a Microsoft Teams channel works too: the card then shows as a post in that channel (see [Email](plugins.md#email)).
+2. **Mail cards to a list.** Choose "+ Add integration" > Email route. Fill in Recipients with 1 to 50 addresses and pick the cards with Card tags, Card keys or both, such as the tag `developer` with Lowest severity Warning. Each address gets a mail of its own. The address of a Microsoft Teams channel works too: the card then shows as a post in that channel (see [Email route](plugins.md#email-route)).
 3. **Mail your own notifications.** Each person opens Preferences > Email, switches on Email me my notifications and picks the kinds (see [The page](#the-page)). It is off for everyone until they switch it on, and mail goes only to the address of their own account.
 
 ### Microsoft 365

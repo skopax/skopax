@@ -17,6 +17,12 @@ function state() {
     services: [], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
 }
 
+function withHeld(st) {
+  const a = st.anomalies[0];
+  a.slackDraft = {text: 'ERROR lines went up.', by: 'Claude', at: iso(5)};
+  a.autoSend = {at: iso(30), draftAt: a.slackDraft.at, draftHash: 'x', claimedAt: iso(1), failedAt: iso(1), retries: 3, error: 'channel_not_found'};
+  return st;
+}
 function rows(total, unread) {
   const kinds = ['assigned', 'resolved', 'answer', 'fired'];
   return Array.from({length: total}, (_, i) => {
@@ -43,7 +49,7 @@ async function boot(opts) {
   srv.count = () => srv.list.filter((n) => !n.read).length;
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
-  const dom = new JSDOM(pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state())).replace(SLOT, () => (o.lang && o.pack ? served(o.lang) : '')), {
+  const dom = new JSDOM(pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(o.held ? withHeld(state()) : state())).replace(SLOT, () => (o.lang && o.pack ? served(o.lang) : '')), {
     url: 'https://skopax.example.com/' + (o.hash || '#t=anoms/all'), runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
       w.scrollTo = () => {};
@@ -111,7 +117,6 @@ async function theRowCountsUnreadAndThePanelListsNewestFirst() {
   assert.strictEqual(w.NT_POLL_MS, 30000, 'the count is polled every 30 s');
   const sec = doc.getElementById('nt-sec');
   assert.ok(shown(sec) && sec.querySelector('h3').textContent === 'For you', 'the panel opens on For you');
-  assert.ok(sec.compareDocumentPosition(doc.getElementById('slackq')) & w.Node.DOCUMENT_POSITION_FOLLOWING, 'For you sits above the not-posted list');
   assert.strictEqual(items.length, 4);
   assert.deepStrictEqual(items.map((i) => i.classList.contains('unread')), [true, true, false, false], 'unread ones stand out');
   assert.deepStrictEqual(items.map((i) => !!i.querySelector('.sr')), [true, true, false, false]);
@@ -265,7 +270,7 @@ async function guestsSeeNoFeedAndAnotherLanguageKeepsCardTitles() {
   //then
   assert.ok(!shown(guest.doc.getElementById('nt-sec')), 'no For you without a login');
   assert.ok(!shown(badge(guest.doc)), 'and no badge');
-  assert.ok(shown(guest.doc.getElementById('panel-slack')) && guest.doc.querySelector('#slackq'), 'the not-posted list still shows');
+  assert.ok(shown(guest.doc.getElementById('panel-slack')) && !guest.doc.querySelector('#panel-slack #slackq'), 'the page shows and has no Slack tables');
   assert.deepStrictEqual(posts(guest.calls), []);
   assert.strictEqual(de.doc.querySelector('#nt-list .nt-what').textContent, '#14 checkout-service / ERROR lines', 'card titles stay as they are');
   assert.deepStrictEqual(guest.errors.concat(de.errors), []);
@@ -331,19 +336,40 @@ async function aSignedOutBoardNeverAsksForTheCount() {
   return 'a signed-out board never asks for the notification count';
 }
 
-async function theDraftsTableIsUnchanged() {
+async function theNotificationsPageShowsOnlyNotifications() {
   //given
-  const {w, doc, errors} = await boot({hash: '#t=slack'});
-  const panel = doc.getElementById('panel-slack');
+  const signed = await boot({hash: '#t=slack'});
+  const guest = await boot({guest: true, hash: '#t=slack'});
+  const panel = signed.doc.getElementById('panel-slack');
 
   //then
-  assert.deepStrictEqual([...panel.querySelectorAll('h3')].map((h) => h.textContent), ['For you', 'Not posted to Slack', 'Posted to Slack in the last 24 hours']);
-  assert.deepStrictEqual([...doc.querySelectorAll('#slackq thead th')].map((t) => t.textContent), ['What', 'Text', 'Status', 'Actions']);
-  assert.deepStrictEqual([...doc.querySelectorAll('#slack-sent thead th')].map((t) => t.textContent), ['Posted', 'What', 'By', 'Message']);
-  assert.ok(/^The investigator posts to Slack itself/.test(panel.querySelector('#sq-h + .panel-note').textContent), 'the note follows its heading');
-  assert.deepStrictEqual(errors, []);
-  w.close();
-  return 'the not-posted table and the posted list keep their columns under their own heading';
+  assert.deepStrictEqual([...panel.querySelectorAll('h3')].map((h) => h.textContent), ['For you']);
+  assert.ok(!panel.querySelector('#slackq, #slack-sent, #sq-h'), 'no Slack tables on the Notifications page');
+  assert.ok(signed.doc.querySelector('#panel-acts #slackq') && signed.doc.querySelector('#panel-acts #slack-sent'), 'they sit on the Activity page');
+  assert.strictEqual(panel.querySelectorAll('#nt-list .nt-item').length, 4, 'the notifications are still listed');
+  assert.ok(signed.doc.getElementById('nt-read-all') && signed.doc.getElementById('nt-more'), 'Mark all read and Show more stay');
+  assert.ok(!shown(signed.doc.getElementById('nt-none')), 'no empty line while the list shows');
+  assert.ok(!shown(guest.doc.getElementById('nt-sec')) && shown(guest.doc.getElementById('nt-none')), 'a signed-out viewer gets a short empty line, not a blank page');
+  assert.deepStrictEqual(signed.errors.concat(guest.errors), []);
+  signed.w.close(); guest.w.close();
+  return 'the Notifications page holds only the notification list, and says so when there is none to show';
+}
+
+async function aHeldPostCountsOnActivityNotOnNotifications() {
+  //given
+  const held = await boot({hash: '#t=acts', held: true});
+  const none = await boot({hash: '#t=acts'});
+
+  //then
+  assert.ok(/1 not posted/.test(held.doc.getElementById('count-acts').textContent), 'Activity carries the count: ' + held.doc.getElementById('count-acts').textContent);
+  assert.ok(/1 not posted/.test(held.doc.getElementById('tab-acts').title), 'and its tooltip');
+  assert.strictEqual(held.doc.getElementById('count-slack').textContent, '', 'Notifications carries no held-post count');
+  assert.ok(!/not posted/.test(held.doc.getElementById('tab-slack').title), 'nor in its tooltip');
+  assert.strictEqual(held.doc.querySelectorAll('#panel-acts #slackq tbody tr:not(.empty)').length, 1, 'the held post is listed on Activity');
+  assert.ok(!/not posted/.test(none.doc.getElementById('count-acts').textContent), 'no count without a held post');
+  assert.deepStrictEqual(held.errors.concat(none.errors), []);
+  held.w.close(); none.w.close();
+  return 'one held post shows its count on Activity and not on Notifications';
 }
 
 (async () => {
@@ -356,5 +382,6 @@ async function theDraftsTableIsUnchanged() {
   console.log('PASS ' + await guestsSeeNoFeedAndAnotherLanguageKeepsCardTitles());
   console.log('PASS ' + await anAutoResolveShowsWhyUnderTheTitleInEnglishAndTurkish());
   console.log('PASS ' + await aSignedOutBoardNeverAsksForTheCount());
-  console.log('PASS ' + await theDraftsTableIsUnchanged());
+  console.log('PASS ' + await theNotificationsPageShowsOnlyNotifications());
+  console.log('PASS ' + await aHeldPostCountsOnActivityNotOnNotifications());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

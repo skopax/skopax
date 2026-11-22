@@ -75,7 +75,7 @@ The example carries a copy of the Apache License 2.0. `license-files = ["LICENSE
 
 Skopax is not published to a package index; only its images are. A plug-in in a repository of its own runs its tests against a clone of Skopax at the release it targets, next to the plug-in's folder. From the plug-in's folder:
 
-    git clone --branch v0.5.0 https://github.com/skopax/skopax ../skopax
+    git clone --branch v0.5.1 https://github.com/skopax/skopax ../skopax
     (cd ../skopax && uv sync --frozen)
     PYTHONPATH=../skopax:. ../skopax/.venv/bin/python -m pytest -q tests
 
@@ -87,7 +87,7 @@ The Skopax image is distroless, so it has no `pip` and no shell. Install the plu
 
 ```dockerfile
 ARG BASE_IMAGE=ghcr.io/skopax/skopax
-ARG SKOPAX_VERSION=0.5.0
+ARG SKOPAX_VERSION=0.5.1
 
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS build
 
@@ -102,7 +102,7 @@ COPY --from=build /plugins /usr/local/lib/python3.15/site-packages/
 ```
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.5.0 -t skopax-hello examples/hello-plugin
+docker build --build-arg SKOPAX_VERSION=0.5.1 -t skopax-hello examples/hello-plugin
 ```
 
 - `BASE_IMAGE` (default `ghcr.io/skopax/skopax`) names the Skopax image to build on, for example a mirror or your own registry. `SKOPAX_VERSION` (default: the current release) picks its tag.
@@ -306,10 +306,10 @@ A tool may return a picture for the model: a dict with `image` (`media_type` `im
 
 ### Outbound
 
-`Plugin.outbound = Outbound(post, tags_field='tags', mentions_field='mentions', link_field=None, keys_field=None, sev_field=None, target_field=None, ready=None)` makes each instance of the plug-in a route, as Teams and Email do. The fields name the instance fields core reads: card tags, mentions (e-mail addresses) and card key patterns, each a text field, the address posts go to (any field), and the route's lowest severity (a choice within `info`, `warn` and `crit`). A plug-in whose `outbound` breaks this is not loaded.
+`Plugin.outbound = Outbound(post, tags_field='tags', mentions_field='mentions', link_field=None, keys_field=None, sev_field=None, target_field=None, ready=None)` makes each instance of the plug-in a route, as Teams and Email route do. The fields name the instance fields core reads: card tags, mentions (e-mail addresses) and card key patterns, each a text field, the address posts go to (any field), and the route's lowest severity (a choice within `info`, `warn` and `crit`). A plug-in whose `outbound` breaks this is not loaded.
 
-- `link_field` names an https web link, such as a webhook; a route whose link is not one is skipped. A route that posts somewhere else names that field as `target_field` instead, a text field such as Email's recipients: core then needs it filled, and compares its words in lower case and in any order. A plug-in sets one of the two, never both.
-- `ready(ctx)` answers None when the route can post, or a sentence saying what it needs. While it answers a sentence the route is skipped and its instance shows the sentence as an error in Connect > Integrations; Email uses it to say it needs the Mail server integration.
+- `link_field` names an https web link, such as a webhook; a route whose link is not one is skipped. A route that posts somewhere else names that field as `target_field` instead, a text field such as the Email route's recipients: core then needs it filled, and compares its words in lower case and in any order. A plug-in sets one of the two, never both.
+- `ready(ctx)` answers None when the route can post, or a sentence saying what it needs. While it answers a sentence the route is skipped and its instance shows the sentence as an error in Connect > Integrations; The Email route uses it to say it needs the Mail server integration.
 
 - Core picks what to post and when. `post(ctx, message)` sends one message and answers `{'ok': True}`, or `{'ok': False, 'status': <HTTP status>}`. Either answer may carry `reason`, a plain sentence that core shows for the route in place of `HTTP <status>`: on a success it says what still went wrong, such as an address that was refused. A failed answer with `'retry': False` is not tried again: core gives up on that card for the route at once. A failed answer with `'progress': True` says the post got part of the way, such as some of a list mailed: core tries it again at the next delivery and counts no try, so the plug-in must make progress on every such answer. The message holds `kind` (`action`, `info`, `fixed`, `card` or `test`), `title`, `text`, `why`, `lines`, `link`, `chat`, `page`, `board`, `mentions`, `card`, `cards`, `more`, `kids`, `teams`, `urgent` and `attribution` (the "powered by" line as `text` and `href`, or none).
 - `lines` come in the order core gives, with core's labels in the outbound language: for `action` the why first, then Recommended; for `info`, Info first, then the why. Render them in that order, so every chat tool leads with the same words.

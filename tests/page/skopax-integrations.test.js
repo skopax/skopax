@@ -2369,6 +2369,29 @@ async function anOldBrowserUrlShowsTheMoveHintAndTheButtonMovesIt() {
   console.log('PASS Integrations: an old Browser URL shows the move hint with a Move button, and nothing once a browser is picked');
 }
 
+async function anAgentInstanceShowsItsOwnGreenHealthWithTheAgeAndADownOneShowsItsError() {
+  //given
+  const cat = catalog();
+  const acme = cat.plugins[0];
+  acme.instances.push(instance('west'));
+  acme.health.instances = [{name: 'main', state: 'ok', text: 'Healthy', at: iso(2)}, {name: 'east', state: 'ok', text: 'Healthy', at: iso(3)},
+    {name: 'west', state: 'error', text: 'agent unreachable (timed out)', at: iso(3)}];
+  const t = await boot({catalog: cat});
+  await open(t);
+
+  //when
+  openInstance(t, 'acme', 'east');
+  const east = [inPanel(t.doc, '.int-ihealth .int-dot').className, inPanel(t.doc, '.int-ihealth').textContent];
+  itab(t.doc, 'west').click();
+  const west = [inPanel(t.doc, '.int-ihealth .int-dot').className, inPanel(t.doc, '.int-ihealth').textContent];
+
+  //then
+  assert.deepStrictEqual(east, ['int-dot ok', 'Healthy ' + DOT + ' 3 min ago']);
+  assert.deepStrictEqual(west, ['int-dot error', 'agent unreachable (timed out)']);
+  t.w.close();
+  console.log('PASS Integrations: an agent instance shows a green dot with its age and a down one shows its error');
+}
+
 (async () => {
   await theTilesShowEveryConnectedPluginWithItsStateHealthAndIcon();
   await aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin();
@@ -2445,4 +2468,5 @@ async function anOldBrowserUrlShowsTheMoveHintAndTheButtonMovesIt() {
   await aCustomKnowledgePluginCarriesTheBadgeInItsGroupAndABrokenOneHasNone();
   await theHeadlessBrowserHasItsOwnTileWithItsStatusAndAWebsiteFormPicksTheOnlyOne();
   await anOldBrowserUrlShowsTheMoveHintAndTheButtonMovesIt();
+  await anAgentInstanceShowsItsOwnGreenHealthWithTheAgeAndADownOneShowsItsError();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

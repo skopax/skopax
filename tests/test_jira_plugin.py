@@ -624,14 +624,6 @@ def test_a_refused_create_names_the_create_issues_permission(code, key):
     assert refused.value.text == msg(key, status=code) and 'Create issues' in refused.value.text
 
 
-def test_the_jira_icon_monogram_uses_the_same_case_as_the_other_word_monograms():
-    # when
-    text = (Path(jira.__file__).parent / 'icon.svg').read_text(encoding='utf-8')
-
-    # then
-    assert '>Ji</text>' in text
-
-
 def test_the_jira_tile_forgets_the_link_pass_once_jira_links_is_switched_off(store: Store):
     # given
     answer = {'search': HttpError(403, SEARCH)}

@@ -1356,10 +1356,11 @@ async function initActions() {
     });
     var pending = all.filter(function (x) { return x.status === 'requested'; });
     var working = all.filter(function (x) { return x.status === 'processing'; });
-    document.getElementById('count-acts').textContent = pending.length + working.length ? (pending.length + working.length) + ' open' : String(all.length);
+    document.getElementById('count-acts').dataset.base = pending.length + working.length ? (pending.length + working.length) + ' open' : String(all.length);
     var actTab = document.getElementById('tab-acts');
     actTab.className = 'tab k-act' + (pending.length + working.length ? ' hot' : '');
-    actTab.title = pending.length + working.length ? pending.length + ' queued, ' + working.length + ' in progress' : 'nothing queued';
+    actTab.dataset.base = pending.length + working.length ? pending.length + ' queued, ' + working.length + ' in progress' : 'nothing queued';
+    if (typeof actsHeldMark === 'function') actsHeldMark();
     strip.hidden = !(pending.length || working.length);
     strip.innerHTML = '';
     strip.appendChild(el('div', 'queue-head', '<span class="t"><b>' + pending.length + ' queued</b>' + (working.length ? ', ' + working.length + ' in progress' : '') + '</span><span class="muted">the investigator and the server jobs pick these up within about two minutes</span>'));

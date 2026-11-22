@@ -2731,7 +2731,20 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <ul class="nt-list" id="nt-list"></ul>
       <button type="button" class="btn sec small nt-more" id="nt-more" hidden>Show more</button>
     </section>
-    <h3 class="sub-h first" id="sq-h">Not posted to Slack</h3>
+    <p class="panel-note" id="nt-none" hidden>Nothing yet. Cards assigned to you and what happens on them show up here.</p>
+  </section>
+
+  <section class="panel" id="panel-acts" hidden>
+    <h3 class="sub-h first">Investigator</h3>
+    <div class="pod-ctl" id="pod-ctl"></div>
+    <details class="hist" id="hist-runs" open><summary class="chev">Investigator runs <span class="count" id="hist-runs-n"></span></summary>
+    <ul class="q-list q-rows" id="pod-list"><li class="muted">Loading investigations&hellip;</li></ul>
+    </details>
+    <details class="hist" id="hist-acts"><summary class="chev">Actions <span class="count" id="hist-acts-n"></span></summary>
+    <p class="panel-note" id="q-hint"></p>
+    <ul class="q-list q-rows" id="q-list"><li class="muted">Loading actions&hellip;</li></ul>
+    </details>
+    <h3 class="sub-h" id="sq-h">Not posted to Slack</h3>
     <p class="panel-note"><span>The investigator posts to Slack itself while Slack auto-send is on. These posts did not go out: the run read suspicious text, or Slack refused the post after its retries. Read the text, then post it with Send now or open its card or report with View.</span></p>
     <div class="box">
       <table id="slackq">
@@ -2746,18 +2759,6 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
         <tbody></tbody>
       </table>
     </div>
-  </section>
-
-  <section class="panel" id="panel-acts" hidden>
-    <h3 class="sub-h first">Investigator</h3>
-    <div class="pod-ctl" id="pod-ctl"></div>
-    <details class="hist" id="hist-runs" open><summary class="chev">Investigator runs <span class="count" id="hist-runs-n"></span></summary>
-    <ul class="q-list q-rows" id="pod-list"><li class="muted">Loading investigations&hellip;</li></ul>
-    </details>
-    <details class="hist" id="hist-acts"><summary class="chev">Actions <span class="count" id="hist-acts-n"></span></summary>
-    <p class="panel-note" id="q-hint"></p>
-    <ul class="q-list q-rows" id="q-list"><li class="muted">Loading actions&hellip;</li></ul>
-    </details>
   </section>
 
   <section class="panel" id="panel-costs" hidden>

@@ -130,3 +130,20 @@ def test_mode_and_severity_choices_read_as_words(path, key, labels):
 
     # then
     assert dict(found) == labels
+
+
+@pytest.mark.parametrize('path', BUILTIN)
+def test_every_built_in_plugin_icon_is_a_static_64_square_svg_with_a_drawn_glyph(path):
+    # given
+    svg = (package_of(path) / 'icon.svg').read_text(encoding='utf-8')
+    lowered = svg.lower()
+
+    # then
+    assert 'viewbox="0 0 64 64"' in lowered
+    assert '<text' not in lowered
+    assert '<script' not in lowered
+    assert 'http://' not in lowered.replace('xmlns="http://www.w3.org/2000/svg"', '')
+    assert 'https://' not in lowered
+    assert 'href' not in lowered
+    assert any(shape in lowered.split('/>', 1)[1] for shape in ('<path', '<circle', '<rect', '<line', '<polyline'))
+    assert len(svg.encode('utf-8')) < 2048

@@ -26,8 +26,15 @@ function sqWhat(r) {
 function sqSender(by, drafted) { return by === AUTO_BY ? draftBy(by, drafted) : isTokenActor(by) ? tokenActorLabel(by, 'Investigator') + ' (on request)' : !by || isInvestigatorBy(by) ? investigatorName() + ' (on request)' : String(by).split('@')[0]; }
 function sqFirstLine(t) { return String(t).split('\n').filter(function (l) { return l.trim(); })[0] || ''; }
 function slackTabState() {
-  var rows = sqDrafts();
-  return [rows.length || '–', rows.length ? 'k-warn' : 'k-info', false, rows.length ? rows.length + ' not posted' : 'nothing waiting'];
+  return ['', 'k-info', false, ''];
+}
+function actsHeldMark() {
+  var c = document.getElementById('count-acts'), tab = document.getElementById('tab-acts');
+  if (!c || !tab) return;
+  if (c.dataset.base === undefined) { c.dataset.base = c.textContent; tab.dataset.base = tab.title; }
+  var n = sqDrafts().length;
+  c.textContent = c.dataset.base + (n ? ' \u00b7 ' + n + ' not posted' : '');
+  tab.title = tab.dataset.base + (n ? (tab.dataset.base ? ' \u00b7 ' : '') + n + ' not posted' : '');
 }
 function renderSlackSent() {
   var tb = document.querySelector('#slack-sent tbody');
@@ -59,5 +66,6 @@ function renderSlackQ() {
     tb.appendChild(tr);
   });
   renderSlackSent();
+  actsHeldMark();
   if (slackActs) slackActs(tb);
 }

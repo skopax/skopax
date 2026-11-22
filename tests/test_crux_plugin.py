@@ -476,11 +476,10 @@ def test_a_card_uses_an_before_a_metric_read_with_a_vowel_sound():
 
 def test_the_crux_icon_is_told_apart_from_the_crashlytics_one():
     # given
-    import re
     from skopax.plugins import crashlytics
 
     # when
-    mono = [re.search(r'>([^<]+)</text>', (Path(p.__file__).parent / 'icon.svg').read_text(encoding='utf-8')).group(1) for p in (crux, crashlytics)]
+    glyphs = [(Path(p.__file__).parent / 'icon.svg').read_text(encoding='utf-8').split('<g ', 1)[1] for p in (crux, crashlytics)]
 
     # then
-    assert mono == ['UX', 'Cr']
+    assert glyphs[0] != glyphs[1]

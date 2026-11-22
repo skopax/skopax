@@ -127,7 +127,7 @@ SOFTWARE.
 
 ## Plug-in marks
 
-Each plug-in's `icon.svg` is a two-letter monogram drawn for Skopax; no third-party source.
+Each built-in plug-in's `icon.svg` (and each example plug-in's) draws a generic glyph from Lucide (ISC; lucide-static 1.66.0, Copyright (c) 2026 Lucide Icons and Contributors, licence text under Lucide above), scaled 1.5 times into a 64-unit rounded square. The glyph names no vendor and carries no brand logo. The Email route and Mail server icons are drawn for Skopax; no third-party source.
 
 ## Sign-in button marks
 
