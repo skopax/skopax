@@ -261,7 +261,7 @@ def test_the_activity_line_names_the_instance_and_never_the_address(store, monke
     rows = list(store.activity.find())
     line = next(r for r in rows if r['text'] == msg('integrations.test_mail_sent', instance='mail'))
     assert line['who'] == ADMIN_EMAIL
-    assert not any(ADMIN_EMAIL in r['text'] or 'example.com' in r['text'] for r in rows if 'Test mail' in r['text'])
+    assert [r['text'] for r in rows if 'Test mail' in r['text'] and '@' in r['text']] == []
 
 
 def test_a_refusal_that_echoes_the_address_is_masked_in_the_answer(store, monkeypatch, caplog):
