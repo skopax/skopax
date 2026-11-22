@@ -1128,7 +1128,7 @@ function intFail(form, e, fallback) {
   else intSay(form.querySelector('.int-form-msg'), e && e.detail ? e.detail : fallback, true);
 }
 function intBusy(form, on) {
-  form.querySelectorAll('button').forEach(function (b) { b.disabled = on; });
+  form.querySelectorAll('button').forEach(function (b) { b.disabled = on || b.dataset.off === '1'; });
 }
 function intOffChecks(form) {
   return [].filter.call(form.querySelectorAll('.int-check'), function (c) { return !c.checked; }).map(function (c) { return c.dataset.check; });
@@ -1159,6 +1159,11 @@ function intFormHtml(p, inst) {
   }
   if (adv) h += '<details class="int-adv"' + (open ? ' open' : '') + '><summary class="int-adv-h">Advanced</summary><div class="int-adv-b">' + adv + '</div></details>';
   h += '<div class="int-foot"><p class="int-result" role="status" hidden></p><span class="adm-msg int-form-msg" role="status"></span><div class="int-foot-row"><div class="int-test-row"><button type="button" class="btn sec small int-test">Test connection</button>';
+  if (p.id === 'mail-server' && !intRO()) {
+    var mailable = !!inst && inst.enabled && p.enabled && !inst.problem;
+    h += '<button type="button" class="btn sec small int-mail-test"' + (mailable ? '' : ' disabled data-off="1"') + '>Send test mail</button>';
+    if (!mailable) h += '<span class="adm-help int-mail-hint">Save and turn on this Mail server to send a test mail</span>';
+  }
   if (inst && inst.source === 'admin') h += '<button type="button" class="btn sec small int-del">Delete</button>';
   h += '</div><div class="int-acts int-foot-acts">';
   if (!inst) h += '<button type="button" class="btn sec small int-cancel">Cancel</button>';
@@ -1232,6 +1237,26 @@ function intForm(slot, p, inst) {
       result.hidden = true;
       result.textContent = '';
       intFail(form, e, 'The test could not run');
+    }
+    intBusy(form, false);
+    intGiveBack(pressed);
+  });
+  var mailTest = form.querySelector('.int-mail-test');
+  if (mailTest && inst) mailTest.addEventListener('click', async function () {
+    var pressed = document.activeElement;
+    intSay(form.querySelector('.int-form-msg'), '', false);
+    intHold(pressed);
+    intBusy(form, true);
+    result.textContent = 'Sending\u2026';
+    result.className = 'int-result';
+    result.hidden = false;
+    try {
+      var r = await adminApi('POST', intBase(p) + '/instances/' + encodeURIComponent(inst.name) + '/test-mail');
+      intSay(result, (r.ok ? '\u2713 ' : '') + r.text, !r.ok);
+    } catch (e) {
+      result.hidden = true;
+      result.textContent = '';
+      intFail(form, e, 'The test mail could not be sent');
     }
     intBusy(form, false);
     intGiveBack(pressed);

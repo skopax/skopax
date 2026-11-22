@@ -100,7 +100,8 @@ from skopax.versioncheck import OFFSET_S as VERSION_OFFSET, PERIOD_S as VERSION_
 from skopax.reminders import Reminders
 from skopax import tagreport
 from skopax.routes import TRIES, Echo, Refused as RouteRefused, Routes
-from skopax.models import NoticeMailIn, RouteSendIn, SsoIn, SsoTestIn
+from skopax.models import NoticeMailIn, RouteSendIn, SsoIn, SsoTestIn, TestMailIn
+from skopax.mailtrial import MailTrials, PER_HOUR as TRIALS_PER_HOUR
 from skopax.statenotes import StateNotes, who_of
 from skopax.slack import stopped_who, thread_why, anomaly_message, fix_hash, fix_message, AUTO_BY, same_person, built_link, cut, esc, esc_keep_mentions, link_addresses, menu_kinds, NoThread, opening, public_hosts, reason_of, recurring_line, report_message, Slack, SlackError, SECTION_LIMIT
 from skopax.setup import BadCode, SetupDone, SetupGate, render_form
@@ -720,6 +721,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     card_posts = CardPosts(store, slack, base_url, menu_on=lambda: started_at_boot('slack-socket'), name_of=slack_name, plugin_name=runtime.plugin_name, check=post_check, hosts=site_hosts)
     attacher = Attacher(store, slack, settings.slack_attach_screenshots, base_url)
     notice_mail = NoticeMail(store, lambda: mail_out.mailer(runtime), base_url=base_url)
+    mail_trials = MailTrials(db, clock=clock)
     notices = Notices(store, mail=notice_mail)
     versions = VersionCheck(store, transport, lambda: features.on('update-check'), clock=clock)
     reminders = Reminders(store, slack, settings.slack_remind_hours, base_url, mention=lambda email: slack_ids.mention(email), name_of=lambda email: slack_ids.name(email))
@@ -1581,6 +1583,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             throttle.ensure_indexes()
             live.tunables.ensure_indexes()
             notice_mail.ensure_indexes()
+            mail_trials.ensure_indexes()
             get_sessions()
             first_run()
             try:
@@ -3796,6 +3799,34 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise HTTPException(status.HTTP_409_CONFLICT, e.args[0]) from None
         store.add_activity(ADMIN_KIND, by, msg('integrations.instance_changed', plugin=website.name, instance=name, fields='browser, browser-url'))
         return {'browser': made.name, 'created': created}
+
+    @app.post('/api/admin/plugins/mail-server/instances/{name}/test-mail')
+    def post_admin_test_mail(name: str, request: Request, by: Annotated[str, Depends(require_admin)], body: TestMailIn | None = None) -> dict:
+        plugin = plugin_usable(mail_out.PLUGIN_ID)
+        held = instances.fresh(plugin.id, name)
+        if held is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, msg('instances.unknown', name=name))
+        if held.problem:
+            raise HTTPException(status.HTTP_409_CONFLICT, held.problem)
+        if not held.enabled or not plugin_state.enabled(plugin.id):
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('mailserver.test_off', instance=name))
+        creator = request.state.actor.creator
+        person = users.get(creator) if creator != BOOTSTRAP else None
+        address = str((person or {}).get('email') or '')
+        if not address or person.get('disabled'):
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('mailserver.test_no_person'))
+        if not mail_trials.reserve(address):
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg('mailserver.test_limit', max=TRIALS_PER_HOUR))
+        subject, text, html = mail_out.trial_mail(name, time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(clock())))
+        try:
+            reply = mail_out.Mailer(held.info().config).send_answered([address], subject, text, html, kind=mail_out.TRIAL_KIND)
+        except (mail_out.MailDown, mail_out.MailRefused) as e:
+            store.add_activity(ADMIN_KIND, by, msg('integrations.test_mail_failed', instance=name))
+            return {'ok': False, 'text': noticemail.scrub(e.text, address)}
+        store.add_activity(ADMIN_KIND, by, msg('integrations.test_mail_sent', instance=name))
+        if not reply:
+            return {'ok': True, 'text': msg('mailserver.test_sent_plain', address=noticemail.masked(address))}
+        return {'ok': True, 'text': msg('mailserver.test_sent', address=noticemail.masked(address), reply=noticemail.scrub(reply, address))}
 
     @app.delete('/api/admin/plugins/{plugin_id}/instances/{name}', status_code=status.HTTP_204_NO_CONTENT)
     def delete_admin_instance(plugin_id: str, name: str, by: Annotated[str, Depends(require_admin)]) -> Response:

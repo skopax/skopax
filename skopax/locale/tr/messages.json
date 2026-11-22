@@ -349,5 +349,11 @@
  "mail.notice.more_one": "1 bildirim daha",
  "mail.notice.more_body": "Bu saat i\u00e7inde e-postayla g\u00f6nderilenden daha fazla bildirim geldi. Hepsi Bildirimler sayfan\u0131zda.",
  "mail.notice.open_inbox": "Bildirimlerinizi {product} i\u00e7inde a\u00e7\u0131n",
- "mail.notice.open": "{product} i\u00e7inde a\u00e7\u0131n"
+ "mail.notice.open": "{product} i\u00e7inde a\u00e7\u0131n",
+ "mail.test.subject": "[{product}] Test e-postas\u0131",
+ "mail.test.head": "Posta sunucusu testi",
+ "mail.test.title": "Test e-postas\u0131",
+ "mail.test.line": "{product} posta sunucusu e-posta teslim edebiliyor: bu test e-postas\u0131 size ula\u015ft\u0131.",
+ "mail.test.instance": "Posta sunucusu \u00f6rne\u011fi: {instance}",
+ "mail.test.at": "G\u00f6nderildi: {at}"
 }

@@ -2,6 +2,25 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.3 (2026-11-22)
+
+Send a real test mail through the Mail server, a wider card drawer, proper dialogs for passwords and names on Admin > Access with a password generator, and an Untagged quick filter.
+
+**Added:**
+
+- Send test mail on the Mail server integration: one real mail to the admin who presses it, through that instance's settings, with the server's own answer (accepted, or the refusal and its reason). Only to the signed-in person's own address, at most 5 an hour, and each try is on the Activity page without the address. A green Test connection alone does not prove delivery; the setup steps now end with Send test mail.
+- Expand and Shrink on the card drawer: the drawer widens to 1400 px for a bigger view, and the choice is remembered in this browser. Hidden on narrow screens.
+- A Generate button for passwords in Reset password, Set a password and Add person: 20 random characters from the browser's secure random source, without look-alike characters, with Copy.
+- Untagged in the Tags group of the board's quick filters, as in the sidebar.
+
+**Changed:**
+
+- Reset password, Set a password and Edit name on Admin > Access open a dialog with a labelled field, the rules and the server's answer, instead of a small form in the row. Change role left the row menu; the role list in the table changes roles.
+
+**Fixed:**
+
+- A mail server refusal that repeats a recipient address no longer writes the full address to the log; it is masked as a***@example.com for every mail Skopax sends.
+
 ## 0.5.2 (2026-11-22)
 
 Two fixes: a race that could crash an investigator run, and held Slack posts that stand out again.

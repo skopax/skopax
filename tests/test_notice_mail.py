@@ -569,6 +569,24 @@ def test_a_reply_that_echoes_the_address_is_masked_in_logs_and_on_the_notice(sto
     assert store.db['notice_mail'].find_one({'state': 'refused'})['why'].lower().count(ALICE) == 0
 
 
+def test_the_shared_mail_log_masks_an_echoed_address_in_any_case(store: Store, monkeypatch, caplog):
+    # given
+    faked(monkeypatch, send=smtplib.SMTPRecipientsRefused({ALICE: (550, b'5.1.1 <Alice@Example.COM>: Recipient address rejected')}))
+    people(store, alice={'on': True, 'kinds': ['assigned']})
+    notices, sender = wired(store, Clock())
+    board(store, anomaly(CARD, num=14))
+    assign(notices)
+
+    # when
+    with caplog.at_level(logging.INFO, logger='skopax.mail'):
+        sender.run_once()
+
+    # then
+    lines = [r.getMessage() for r in caplog.records if r.name == 'skopax.mail']
+    assert lines and any('a***@example.com' in line for line in lines)
+    assert not any(ALICE in line.lower() for line in lines)
+
+
 def test_the_bell_api_never_shows_the_mail_address_fields(store: Store, monkeypatch):
     # given
     faked(monkeypatch)

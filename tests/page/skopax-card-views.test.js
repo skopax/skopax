@@ -96,7 +96,7 @@ async function assigneeAndTagChipsFilterTheBoardTogetherAndALinkKeepsThem() {
   const reload = await boot('#t=anoms/all/' + encodeURIComponent('who:u:alice+tag:data'), {'skopax-card-view': 'board'});
 
   //then
-  assert.deepStrictEqual(listed, ['tag:data 1', 'who:me 1', 'who:none 3', 'who:u:alice 1', 'who:u:carol.diaz 1'], 'the tags in use on their own row on top, then Me, Unassigned and each person with cards');
+  assert.deepStrictEqual(listed, ['tag:data 1', 'tag:- 4', 'who:me 1', 'who:none 3', 'who:u:alice 1', 'who:u:carol.diaz 1'], 'the tags in use on their own row on top, ending with Untagged, then Me, Unassigned and each person with cards');
   assert.deepStrictEqual([...doc.querySelectorAll('#card-qf .qf-g')].map((g) => g.getAttribute('aria-label')), ['Tags', 'Assignee'], 'two rows, Tags first');
   assert.deepStrictEqual(colors, [true, true, true, 'Me'], 'each tag has its own colour on the chip, the tile and the side menu; Mine reads Me');
   assert.deepStrictEqual(nina, [NEW]);

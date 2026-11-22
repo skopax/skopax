@@ -1312,7 +1312,7 @@ var ACCESS_EXPIRY = [['', 'Never'], ['7', '7 days'], ['30', '30 days'], ['90', '
 var ACCESS_LAST_ADMIN = 'The last admin keeps the admin role and stays enabled: make someone else an admin first';
 var ACCESS_LAST_PW_ADMIN = 'The last active admin with a password keeps it, so there is a way in when SSO fails: give another admin a password first';
 var ACCESS_LAST_PW_ROLE = 'The last active admin with a password stays an enabled admin, so there is a way in when SSO fails: give another admin a password first';
-var ACCESS_ADD_ID = 'acc-add-user', ACCESS_ADD_FIELDS = ['email', 'name', 'role', 'sso', 'password'], ACCESS_NEED_PW = 'Enter a password of ' + ACCESS_PW_MIN + '-' + ACCESS_PW_MAX + ' characters';
+var ACCESS_ADD_ID = 'acc-add-user', ACCESS_ADD_FIELDS = ['email', 'name', 'role', 'sso', 'password'], ACCESS_SET_PW_NOTE = 'Give this person a password: they become a local account, and their SSO link waits 7 days for the next SSO sign-in', ACCESS_NEED_PW = 'Enter a password of ' + ACCESS_PW_MIN + '-' + ACCESS_PW_MAX + ' characters';
 function accText(tag, cls, text) {
   var e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -1765,7 +1765,7 @@ function accMcpBadge(box, u) {
   b.dataset.mcp = kind;
   box.appendChild(b);
 }
-async function accPatch(u, body, msg, revert, said) {
+async function accPatch(u, body, msg, revert, said, onFail) {
   accMsg(msg, 'Saving\u2026', false);
   try {
     var saved = await adminApi('PATCH', '/api/admin/users/' + encodeURIComponent(u.email), body);
@@ -1777,6 +1777,11 @@ async function accPatch(u, body, msg, revert, said) {
     return saved || {};
   } catch (e) {
     if (revert) revert();
+    if (onFail) {
+      accNote(accLive(msg, accRowMsg('user', u.email)), '');
+      onFail(accError(e, 'Not saved, try again'));
+      return null;
+    }
     accNote(accLive(msg, accRowMsg('user', u.email)), accError(e, 'Not saved, try again'), true);
     return null;
   }
@@ -1786,36 +1791,173 @@ function accRenamed(email, name) {
   accApply(function (a) { a.users = a.users.map(function (x) { return x.email === email ? Object.assign({}, x, {name: name}) : x; }); });
   renderAccess();
 }
-function accNameForm(u, msg, menu) {
-  var form = accText('span', 'acc-name-form'), input = accInput('name', 'text', 120, 'Name of ' + u.email);
-  var save = accText('button', 'btn small acc-name-save', 'Save'), cancel = accText('button', 'btn sec small acc-name-cancel', 'Cancel');
-  form.hidden = true;
-  input.className = 'acc-name-in';
-  input.required = false;
-  input.autocomplete = 'off';
-  save.type = 'button';
-  cancel.type = 'button';
-  form.appendChild(input);
-  form.appendChild(save);
-  form.appendChild(cancel);
-  var close = function () { form.hidden = true; accMsg(msg, ''); var b = menu.querySelector('.acc-menu-b'); if (b) b.focus(); };
-  var go = async function () {
-    if (save.disabled) return;
-    save.disabled = true;
-    input.readOnly = true;
-    var name = input.value.trim(), saved = await accPatch(u, {name: name}, msg, null, 'Name saved');
-    save.disabled = false;
-    input.readOnly = false;
-    if (saved && typeof window.__skopaxRenamed === 'function') window.__skopaxRenamed(u.email, saved.name || name);
-  };
-  save.addEventListener('click', go);
-  cancel.addEventListener('click', close);
-  input.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); go(); }
-    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+var ACCESS_PW_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789-_.!@#%+=';
+function accGenPassword() {
+  var n = ACCESS_PW_ALPHABET.length, len = Math.min(Math.max(20, ACCESS_PW_MIN), ACCESS_PW_MAX), limit = Math.floor(4294967296 / n) * n, out = '', buf = new Uint32Array(1);
+  while (out.length < len) {
+    crypto.getRandomValues(buf);
+    if (buf[0] < limit) out += ACCESS_PW_ALPHABET.charAt(buf[0] % n);
+  }
+  return out;
+}
+function accEyeSet(eye, input, on) {
+  input.type = on ? 'text' : 'password';
+  eye.setAttribute('aria-pressed', String(on));
+  eye.setAttribute('aria-label', (on ? 'Hide' : 'Show') + ' password');
+  eye.textContent = on ? 'Hide' : 'Show';
+}
+function accGenWire(input, gen, copy, eye) {
+  var timer = null;
+  gen.addEventListener('click', function () {
+    input.value = accGenPassword();
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+    if (eye) accEyeSet(eye, input, true); else input.type = 'text';
+    clearTimeout(timer);
+    copy.textContent = 'Copy';
+    copy.hidden = false;
+    input.focus();
   });
-  form.open = function () { input.value = u.name || ''; form.hidden = false; input.focus(); input.select(); };
-  return form;
+  input.addEventListener('input', function () { if (!input.value) copy.hidden = true; });
+  copy.addEventListener('click', async function () {
+    var done = false;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try { await navigator.clipboard.writeText(input.value); done = true; } catch (e) { done = false; }
+    }
+    if (!done) { input.select(); return; }
+    copy.textContent = 'Copied';
+    clearTimeout(timer);
+    timer = setTimeout(function () { copy.textContent = 'Copy'; }, 2500);
+  });
+}
+function accMenuBtn(email) {
+  var m = accRowMsg('user', email), row = m && m.closest('tr');
+  return row ? row.querySelector('.acc-menu-b') : null;
+}
+function accDialogClose() {
+  var d = document.getElementById('acc-dlg-wrap');
+  if (d) d.remove();
+}
+function accDialog(cfg) {
+  accDialogClose();
+  var wrap = accText('div', 'modal-wrap acc-dlg-wrap'), panel = accText('form', 'modal acc-dlg');
+  wrap.id = 'acc-dlg-wrap';
+  panel.id = 'acc-dlg';
+  panel.noValidate = true;
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'true');
+  panel.setAttribute('aria-labelledby', 'acc-dlg-title');
+  var h = accText('h2', null, '');
+  h.id = 'acc-dlg-title';
+  h.appendChild(accText('span', null, cfg.lead));
+  h.appendChild(document.createTextNode(' '));
+  h.appendChild(accText('span', 'acc-dlg-who', cfg.who));
+  panel.appendChild(h);
+  if (cfg.sub) panel.appendChild(accText('p', 'acc-dlg-sub', cfg.sub));
+  var input = document.createElement('input');
+  input.id = 'acc-dlg-in';
+  input.name = cfg.field;
+  input.type = cfg.secret ? 'password' : 'text';
+  input.maxLength = cfg.max;
+  input.autocomplete = cfg.secret ? 'new-password' : 'off';
+  input.spellcheck = false;
+  input.value = cfg.value || '';
+  var lab = accText('label', 'acc-dlg-lab', cfg.label);
+  lab.htmlFor = input.id;
+  panel.appendChild(lab);
+  var row = accText('div', 'acc-dlg-row'), eye = null;
+  row.appendChild(input);
+  if (cfg.secret) {
+    eye = accText('button', 'btn sec small acc-dlg-eye', 'Show');
+    eye.type = 'button';
+    eye.setAttribute('aria-pressed', 'false');
+    eye.setAttribute('aria-controls', input.id);
+    eye.setAttribute('aria-label', 'Show password');
+    row.appendChild(eye);
+  }
+  panel.appendChild(row);
+  var gen = null, copy = null;
+  if (cfg.secret) {
+    var tools = accText('div', 'acc-dlg-gen');
+    gen = accText('button', 'btn sec small acc-dlg-generate', 'Generate');
+    copy = accText('button', 'btn sec small acc-dlg-copy', 'Copy');
+    gen.type = 'button';
+    copy.type = 'button';
+    copy.hidden = true;
+    tools.appendChild(gen);
+    tools.appendChild(copy);
+    panel.appendChild(tools);
+    accGenWire(input, gen, copy, eye);
+  }
+  var hint = accText('p', 'acc-dlg-hint', cfg.hint);
+  hint.id = 'acc-dlg-hint';
+  panel.appendChild(hint);
+  var err = accText('p', 'ask-err acc-dlg-err', '');
+  err.id = 'acc-dlg-err';
+  err.setAttribute('role', 'alert');
+  err.hidden = true;
+  input.setAttribute('aria-describedby', 'acc-dlg-hint acc-dlg-err');
+  panel.appendChild(err);
+  if (cfg.note) panel.appendChild(accText('p', 'acc-dlg-note', cfg.note));
+  var acts = accText('div', 'modal-acts'), cancel = accText('button', 'btn sec acc-dlg-cancel', 'Cancel'), go = accText('button', 'btn acc-dlg-go', cfg.go);
+  cancel.type = 'button';
+  go.type = 'button';
+  acts.appendChild(cancel);
+  acts.appendChild(go);
+  panel.appendChild(acts);
+  wrap.appendChild(panel);
+  var back = function () { var b = accMenuBtn(cfg.email); if (b) b.focus(); };
+  var close = function () { accDialogClose(); back(); };
+  var say = function (text) { err.textContent = text || ''; err.hidden = !text; input.setAttribute('aria-invalid', text ? 'true' : 'false'); };
+  var busy = false;
+  var submit = async function () {
+    if (busy) return;
+    var value = cfg.trim ? input.value.trim() : input.value, bad = cfg.check ? cfg.check(value) : '';
+    if (bad) { say(bad); input.focus(); return; }
+    busy = true;
+    go.disabled = true;
+    input.readOnly = true;
+    say('');
+    var ok = await cfg.run(value, say);
+    busy = false;
+    if (ok) { accDialogClose(); back(); return; }
+    go.disabled = false;
+    input.readOnly = false;
+    if (panel.isConnected) input.focus();
+  };
+  go.addEventListener('click', submit);
+  cancel.addEventListener('click', close);
+  panel.addEventListener('submit', function (e) { e.preventDefault(); });
+  wrap.addEventListener('click', function (e) { if (e.target === wrap) close(); });
+  input.addEventListener('input', function () { if (!err.hidden) say(''); });
+  if (eye) eye.addEventListener('click', function () { accEyeSet(eye, input, eye.getAttribute('aria-pressed') !== 'true'); });
+  panel.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+    if (e.key === 'Enter' && e.target === input) { e.preventDefault(); submit(); return; }
+    if (e.key !== 'Tab') return;
+    var all = [].filter.call(panel.querySelectorAll('input, button'), function (x) { return !x.disabled; }), first = all[0], last = all[all.length - 1];
+    if (!first) return;
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  document.body.appendChild(wrap);
+  input.focus();
+  if (!cfg.secret) input.select();
+}
+function accNameDialog(u, msg) {
+  accDialog({lead: 'Edit name for', who: u.email, email: u.email, field: 'name', label: 'Name', max: 120, value: u.name || '', trim: true, hint: '1-120 characters', go: 'Save',
+    run: async function (name, say) {
+      var saved = await accPatch(u, {name: name}, msg, null, 'Name saved', say);
+      if (saved && typeof window.__skopaxRenamed === 'function') window.__skopaxRenamed(u.email, saved.name || name);
+      return !!saved;
+    }});
+}
+function accPasswordDialog(u, msg) {
+  var sso = u.source === 'sso';
+  accDialog({lead: sso ? 'Set a password for' : 'Reset password for', who: u.name || u.email, sub: u.email, email: u.email, field: 'password', secret: true, label: 'New password', max: ACCESS_PW_MAX,
+    hint: ACCESS_PW_MIN + '-' + ACCESS_PW_MAX + ' characters', go: 'Set password',
+    note: sso ? ACCESS_SET_PW_NOTE : 'Their other password sessions end. API tokens and SSO sessions are not touched.',
+    check: function (v) { return v ? '' : ACCESS_NEED_PW; },
+    run: async function (pw, say) { return !!(await accPatch(u, {password: pw}, msg, null, 'Password set', say)); }});
 }
 function accUserRow(u) {
   var tr = accText('tr', 'acc-user' + (u.disabled ? ' off' : ''));
@@ -1876,37 +2018,19 @@ function accUserRow(u) {
   else linkCell.appendChild(accText('span', 'muted acc-link-none', '\u2013'));
   sel.addEventListener('change', function () { accPatch(u, {role: sel.value}, msg, function () { sel.value = u.role; off.checked = !!u.disabled; }, 'Role set to ' + sel.value); });
   off.addEventListener('change', function () { accPatch(u, {disabled: off.checked}, msg, function () { sel.value = u.role; off.checked = !!u.disabled; }, off.checked ? 'Disabled' : 'Enabled'); });
-  var form = accText('span', 'acc-pw-form');
-  form.hidden = true;
-  var pw = accInput('password', 'password', 256, 'New password for ' + u.email);
-  pw.className = 'acc-pw';
-  pw.required = false;
-  var save = accText('button', 'btn small acc-pw-save', 'Set');
-  save.type = 'button';
-  var cancel = accText('button', 'btn sec small acc-pw-cancel', 'Cancel');
-  cancel.type = 'button';
-  form.appendChild(pw);
-  form.appendChild(save);
-  form.appendChild(cancel);
-  var naming = null, ask = accSsoOnlyForm(u, msg);
-  var showPw = function () { naming.hidden = true; ask.hidden = true; form.hidden = !form.hidden; if (!form.hidden) pw.focus(); };
-  var items = [{cls: 'acc-mi-name', text: 'Edit name', run: function () { form.hidden = true; ask.hidden = true; naming.open(); }},
-    {cls: 'acc-mi-role', text: 'Change role', off: sel.disabled, title: sel.disabled ? sel.title : '', run: function () { sel.focus(); }}];
+  var ask = accSsoOnlyForm(u, msg);
+  var showPw = function () { ask.hidden = true; accPasswordDialog(u, msg); };
+  var items = [{cls: 'acc-mi-name', text: 'Edit name', run: function () { ask.hidden = true; accNameDialog(u, msg); }}];
   if (u.source !== 'sso') items.push({cls: 'acc-reset', text: 'Reset password', run: showPw});
-  if (u.source === 'sso') items.push({cls: 'acc-setpw', text: 'Set a password', title: 'Give this person a password: they become a local account, and their SSO link waits 7 days for the next SSO sign-in', run: showPw});
-  if (u.source === 'local' && accSsoOn()) items.push({cls: 'acc-mi-ssoonly', text: 'Make SSO only', off: lastPw, title: lastPw ? ACCESS_LAST_PW_ADMIN : 'Removes the password; this person signs in with SSO only', run: function () { naming.hidden = true; form.hidden = true; ask.open(); }});
+  if (u.source === 'sso') items.push({cls: 'acc-setpw', text: 'Set a password', title: ACCESS_SET_PW_NOTE, run: showPw});
+  if (u.source === 'local' && accSsoOn()) items.push({cls: 'acc-mi-ssoonly', text: 'Make SSO only', off: lastPw, title: lastPw ? ACCESS_LAST_PW_ADMIN : 'Removes the password; this person signs in with SSO only', run: function () { ask.open(); }});
   items.push({cls: 'acc-mi-off' + (u.disabled ? '' : ' acc-mi-danger'), text: u.disabled ? 'Enable sign-in' : 'Disable sign-in', off: !!kept, title: kept || (u.disabled ? '' : 'Stops sign-in for this person; their sessions and API tokens stop within 30 seconds'),
     run: function () { off.checked = !off.checked; off.dispatchEvent(new Event('change', {bubbles: true})); }});
   var menu = accMenu(u, items);
-  naming = accNameForm(u, msg, menu);
   ctl.appendChild(menu);
-  ctl.appendChild(naming);
-  ctl.appendChild(form);
   ask.menu = menu;
   ctl.appendChild(ask);
   ctl.appendChild(msg);
-  cancel.addEventListener('click', function () { form.hidden = true; pw.value = ''; accMsg(msg, ''); });
-  save.addEventListener('click', function () { accPatch(u, {password: pw.value}, msg, null, u.source === 'sso' ? 'Password set' : 'Password reset'); });
   return tr;
 }
 function accSsoOnlyForm(u, msg) {
@@ -1972,7 +2096,8 @@ function accAddHtml(sso) {
     (sso ? accAddField('sso', 'Signs in with SSO', false, '<button type="button" id="acc-new-sso" class="int-switch int-tog" role="switch" aria-checked="true" aria-labelledby="acc-new-sso-l"' + described('sso') + '></button>',
       'The first SSO sign-in with this email, verified by your provider, opens this account') : '') +
     accAddField('password', 'Password', true, '<div class="int-sec-row"><input id="acc-new-password" class="int-in" name="password" type="password" maxlength="' + ACCESS_PW_MAX + '" autocomplete="new-password"' + described('password') + '>' +
-      '<button type="button" class="int-eye" aria-pressed="false" aria-controls="acc-new-password" aria-label="Show password">Show</button></div>', '') +
+      '<button type="button" class="int-eye" aria-pressed="false" aria-controls="acc-new-password" aria-label="Show password">Show</button></div>' +
+      '<div class="acc-dlg-gen"><button type="button" class="btn sec small acc-gen">Generate</button><button type="button" class="btn sec small acc-copy" hidden>Copy</button></div>', '') +
     '<div class="int-foot"><span class="adm-msg int-form-msg" role="status"></span><div class="int-foot-row"><div class="int-acts int-foot-acts">' +
     '<button type="button" class="btn sec small acc-add-cancel">Cancel</button><button type="submit" class="btn small acc-add-go">Add person</button></div></div></div>';
 }
@@ -2077,13 +2202,9 @@ function accAddWire(f) {
   });
   accAddWireSso(f);
   var eye = f.querySelector('.int-eye'), pw = f.querySelector('[name=password]');
-  eye.addEventListener('click', function () {
-    var on = eye.getAttribute('aria-pressed') !== 'true';
-    pw.type = on ? 'text' : 'password';
-    eye.setAttribute('aria-pressed', String(on));
-    eye.setAttribute('aria-label', (on ? 'Hide' : 'Show') + ' password');
-    eye.textContent = on ? 'Hide' : 'Show';
-  });
+  eye.addEventListener('click', function () { accEyeSet(eye, pw, eye.getAttribute('aria-pressed') !== 'true'); });
+  accGenWire(pw, f.querySelector('.acc-gen'), f.querySelector('.acc-copy'), eye);
+
   f.addEventListener('input', function (e) {
     var w = e.target.closest('.int-field');
     if (w) accAddMark(f, w.dataset.key, '');

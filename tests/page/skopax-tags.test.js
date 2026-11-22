@@ -272,8 +272,40 @@ async function anUntaggedEntryEndsTheTagRowAndFiltersCardsWithNoTag() {
   console.log('PASS an Untagged entry ends the Tags row, counts and filters the cards with no tag, toggles off, and round-trips through the link');
 }
 
+async function theQuickFilterTagsGroupEndsWithAnUntaggedChip() {
+  //given
+  const {w, doc, errors} = await boot();
+  const chip = () => doc.querySelector('#card-qf [data-type="tag:-"]');
+
+  //then
+  assert.ok(chip(), 'the quick filters offer Untagged');
+  assert.strictEqual(chip().firstChild.textContent, 'Untagged');
+  assert.strictEqual(chip().querySelector('.count').textContent, '1');
+  assert.strictEqual(chip().parentNode.lastElementChild, chip(), 'the last chip of the Tags group');
+  assert.strictEqual(chip().getAttribute('aria-pressed'), 'false');
+
+  //when
+  chip().click();
+  await wait(20);
+
+  //then
+  assert.deepStrictEqual(shown(doc), [PLAIN]);
+  assert.strictEqual(chip().getAttribute('aria-pressed'), 'true');
+
+  //when
+  chip().click();
+  await wait(20);
+
+  //then
+  assert.deepStrictEqual(shown(doc).sort(), [LOG, PLAIN, TYPO].sort());
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS the quick filters Tags group ends with an Untagged chip that filters the cards with no tag and toggles off');
+}
+
 (async () => {
   await anUntaggedEntryEndsTheTagRowAndFiltersCardsWithNoTag();
+  await theQuickFilterTagsGroupEndsWithAnUntaggedChip();
   await cardsShowTheirBusinessTagsAndTheTagRowFiltersThem();
   await theDeveloperTagShowsOnTheCardNeedsNoSentenceAndItsRouteShowsOnlyOnTaggedCards();
   await anOperatorTagsAndWritesTheSentenceAndOnlyTaggedCardsOfferTheBusinessChannel();

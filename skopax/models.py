@@ -368,6 +368,10 @@ class PluginTestIn(BaseModel):
     offChecks: list[CheckId] | None = Field(default=None, max_length=64)
 
 
+class TestMailIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
 class FieldSuggestIn(BaseModel):
     model_config = ConfigDict(extra='forbid')
     name: str | None = Field(default=None, max_length=20)

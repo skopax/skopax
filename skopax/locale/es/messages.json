@@ -349,5 +349,11 @@
  "mail.notice.more_one": "1 notificaci\u00f3n m\u00e1s",
  "mail.notice.more_body": "En esta hora llegaron m\u00e1s notificaciones de las que se env\u00edan por correo. Est\u00e1n todas en su p\u00e1gina de Notificaciones.",
  "mail.notice.open_inbox": "Abrir sus notificaciones en {product}",
- "mail.notice.open": "Abrir en {product}"
+ "mail.notice.open": "Abrir en {product}",
+ "mail.test.subject": "[{product}] Correo de prueba",
+ "mail.test.head": "Prueba del servidor de correo",
+ "mail.test.title": "Correo de prueba",
+ "mail.test.line": "El servidor de correo de {product} puede entregar correo: este correo de prueba le ha llegado.",
+ "mail.test.instance": "Instancia del servidor de correo: {instance}",
+ "mail.test.at": "Enviado: {at}"
 }

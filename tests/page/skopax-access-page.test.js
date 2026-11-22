@@ -261,7 +261,7 @@ async function theLastAdminKeepsRoleAndSignInWithTheReason() {
   assert.deepStrictEqual([sel.disabled, sel.title, off.disabled, off.title], [true, LAST_ADMIN, true, LAST_ADMIN]);
   assert.deepStrictEqual([alice.querySelector('.acc-last-admin').textContent, alice.querySelector('.acc-last-admin').title], ['Last admin', LAST_ADMIN]);
   const items = [...alice.querySelectorAll('.acc-menu [role=menuitem]')].map((m) => [m.textContent, m.disabled, m.title]);
-  assert.deepStrictEqual(items, [['Edit name', false, ''], ['Change role', true, LAST_ADMIN], ['Reset password', false, ''],
+  assert.deepStrictEqual(items, [['Edit name', false, ''], ['Reset password', false, ''],
     ['Make SSO only', true, 'The last active admin with a password keeps it, so there is a way in when SSO fails: give another admin a password first'], ['Disable sign-in', true, LAST_ADMIN]]);
   assert.ok(!frank.querySelector('select.acc-role').disabled && !frank.querySelector('.acc-last-admin'), 'a disabled admin does not count and is not the last admin');
 
@@ -291,7 +291,7 @@ async function theLastPasswordAdminKeepsRoleAndSignInWithTheReason() {
   assert.deepStrictEqual([sel.disabled, sel.title, off.disabled, off.title], [true, LAST_PW_ADMIN, true, LAST_PW_ADMIN]);
   assert.strictEqual(alice.querySelector('.acc-last-admin'), null, 'with two enabled admins nobody is the last admin');
   const items = [...alice.querySelectorAll('.acc-menu [role=menuitem]')].map((m) => [m.textContent, m.disabled, m.title]);
-  assert.deepStrictEqual(items.filter((i) => ['Change role', 'Disable sign-in'].includes(i[0])), [['Change role', true, LAST_PW_ADMIN], ['Disable sign-in', true, LAST_PW_ADMIN]]);
+  assert.deepStrictEqual(items.filter((i) => ['Change role', 'Disable sign-in'].includes(i[0])), [['Disable sign-in', true, LAST_PW_ADMIN]]);
   assert.ok(!bob.querySelector('select.acc-role').disabled && !bob.querySelector('input.acc-off').disabled, 'the admin without a password can still be changed');
   assert.deepStrictEqual(t.errors, []);
   t.close();
@@ -335,17 +335,16 @@ async function theRowMenuWorksByKeyboard() {
   const closed = [chloe.querySelector('.acc-menu').hidden, t.doc.activeElement === menuB];
   menuB.click();
   key(t.doc.activeElement, 'ArrowDown');
-  key(t.doc.activeElement, 'ArrowDown');
   t.doc.activeElement.click();
-  const pw = chloe.querySelector('input.acc-pw');
+  const pw = t.doc.querySelector('#acc-dlg input[name=password]');
 
   //then
   assert.deepStrictEqual(opened, ['true', 'Edit name']);
-  assert.strictEqual(second, 'Change role');
+  assert.strictEqual(second, 'Reset password');
   assert.deepStrictEqual(closed, [true, true], 'Escape closes the menu and gives focus back');
-  assert.ok(!chloe.querySelector('.acc-pw-form').hidden && t.doc.activeElement === pw, 'Reset password opens the password field');
-  assert.deepStrictEqual([...rowOf(t.doc, 'dana@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Change role', 'Set a password', 'Disable sign-in']);
-  assert.deepStrictEqual([...rowOf(t.doc, 'erin@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Change role', 'Reset password', 'Make SSO only', 'Enable sign-in']);
+  assert.ok(pw && t.doc.activeElement === pw, 'Reset password opens the dialog with the field focused');
+  assert.deepStrictEqual([...rowOf(t.doc, 'dana@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Set a password', 'Disable sign-in']);
+  assert.deepStrictEqual([...rowOf(t.doc, 'erin@example.com').querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent), ['Edit name', 'Reset password', 'Make SSO only', 'Enable sign-in']);
   assert.deepStrictEqual([rowOf(t.doc, 'chloe@example.com').querySelector('.acc-mi-off').classList.contains('acc-mi-danger'), rowOf(t.doc, 'erin@example.com').querySelector('.acc-mi-off').classList.contains('acc-mi-danger')],
     [true, false], 'Disable is a danger action, Enable is not');
 
@@ -931,15 +930,19 @@ async function anAdminRenamesAPersonFromTheRow() {
 
   //when
   chloe.querySelector('.acc-mi-name').click();
-  const input = chloe.querySelector('input.acc-name-in');
-  const opened = [!chloe.querySelector('.acc-name-form').hidden, t.doc.activeElement === input, input.value, input.maxLength];
+  const dlg = t.doc.getElementById('acc-dlg'), input = dlg.querySelector('input[name=name]');
+  const hint = dlg.querySelector('.acc-dlg-hint').textContent;
+  assert.strictEqual(hint, '1-120 characters');
+  assert.ok(!/email|@|empty/i.test(hint), 'the hint does not promise the email-prefix rule of Add person');
+  const opened = [dlg.getAttribute('role'), dlg.getAttribute('aria-modal'), dlg.querySelector('h2').textContent, !!dlg.querySelector('label[for=' + input.id + ']'), t.doc.activeElement === input, input.value, input.maxLength];
   setValue(input, '  Chloe D.  ');
-  chloe.querySelector('.acc-name-save').click();
+  dlg.querySelector('.acc-dlg-go').click();
   await wait(100);
 
   //then
   assert.strictEqual(items[0], 'Edit name');
-  assert.deepStrictEqual(opened, [true, true, 'Chlo' + E_ACUTE + ' Durand', 120]);
+  assert.deepStrictEqual(opened, ['dialog', 'true', 'Edit name for chloe@example.com', true, true, 'Chlo' + E_ACUTE + ' Durand', 120]);
+  assert.ok(!t.doc.getElementById('acc-dlg'), 'the dialog closes after a save');
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PATCH').map((c) => [c[1], c[2]]), [['/api/admin/users/chloe%40example.com', {name: 'Chloe D.'}]]);
   assert.strictEqual(rowOf(t.doc, 'chloe@example.com').querySelector('.acc-name').textContent, 'Chloe D.');
   assert.strictEqual(rowOf(t.doc, 'chloe@example.com').querySelector('.adm-msg').textContent, 'Name saved');
@@ -950,22 +953,22 @@ async function anAdminRenamesAPersonFromTheRow() {
 
   //when
   again.querySelector('.acc-mi-name').click();
-  setValue(again.querySelector('input.acc-name-in'), ' ');
-  key(again.querySelector('input.acc-name-in'), 'Enter');
+  setValue(t.doc.querySelector('#acc-dlg input[name=name]'), ' ');
+  key(t.doc.querySelector('#acc-dlg input[name=name]'), 'Enter');
   await wait(100);
 
   //then
-  assert.strictEqual(again.querySelector('.adm-msg').textContent, 'A name is 1 to 120 characters.');
-  assert.ok(!again.querySelector('.acc-name-form').hidden, 'a refused name keeps the field open');
+  assert.strictEqual(t.doc.querySelector('#acc-dlg .acc-dlg-err').textContent, 'A name is 1 to 120 characters.');
+  assert.ok(!t.doc.querySelector('#acc-dlg .acc-dlg-err').hidden && t.doc.getElementById('acc-dlg'), 'a refused name shows inline and keeps the dialog open');
 
   //when
-  key(again.querySelector('input.acc-name-in'), 'Escape');
+  key(t.doc.querySelector('#acc-dlg input[name=name]'), 'Escape');
 
   //then
-  assert.ok(again.querySelector('.acc-name-form').hidden && t.doc.activeElement === again.querySelector('.acc-menu-b'), 'Escape closes the field and gives focus back to the menu');
+  assert.ok(!t.doc.getElementById('acc-dlg') && t.doc.activeElement === rowOf(t.doc, 'chloe@example.com').querySelector('.acc-menu-b'), 'Escape closes the dialog and gives focus back to the menu button');
   assert.deepStrictEqual(t.errors, []);
   t.close();
-  return 'an admin renames a person from the row menu with an inline field that saves on Enter, shows a refusal and closes on Escape';
+  return 'an admin renames a person from the row menu in a dialog that saves on Enter, shows a refusal inline and closes on Escape';
 }
 
 async function renamingYourselfAsAdminUpdatesTheSidebar() {
@@ -976,8 +979,8 @@ async function renamingYourselfAsAdminUpdatesTheSidebar() {
 
   //when
   alice.querySelector('.acc-mi-name').click();
-  setValue(alice.querySelector('input.acc-name-in'), 'Zoe Admin');
-  alice.querySelector('.acc-name-save').click();
+  setValue(t.doc.querySelector('#acc-dlg input[name=name]'), 'Zoe Admin');
+  t.doc.querySelector('#acc-dlg .acc-dlg-go').click();
   await wait(100);
 
   //then
@@ -1048,14 +1051,15 @@ async function aSecondSaveWaitsForTheFirst() {
   t.flags.hook = (method) => method === 'PATCH' ? new Promise((r) => { release = r; }).then(() => null) : null;
   const chloe = rowOf(t.doc, 'chloe@example.com');
   chloe.querySelector('.acc-mi-name').click();
-  setValue(chloe.querySelector('input.acc-name-in'), 'Chloe D.');
+  const dlg = t.doc.getElementById('acc-dlg'), field = dlg.querySelector('input[name=name]');
+  setValue(field, 'Chloe D.');
 
   //when
-  chloe.querySelector('.acc-name-save').click();
+  dlg.querySelector('.acc-dlg-go').click();
   await wait(20);
-  const held = [chloe.querySelector('.acc-name-save').disabled, chloe.querySelector('input.acc-name-in').readOnly];
-  chloe.querySelector('.acc-name-save').click();
-  key(chloe.querySelector('input.acc-name-in'), 'Enter');
+  const held = [dlg.querySelector('.acc-dlg-go').disabled, field.readOnly];
+  dlg.querySelector('.acc-dlg-go').click();
+  key(field, 'Enter');
   await wait(20);
   release();
   await wait(100);
@@ -1088,17 +1092,364 @@ async function aHostileNameIsShownAsText() {
   rowOf(t.doc, 'chloe@example.com').querySelector('.acc-mi-name').click();
 
   //then
-  assert.strictEqual(rowOf(t.doc, 'chloe@example.com').querySelector('input.acc-name-in').value, EVIL);
+  assert.strictEqual(t.doc.querySelector('#acc-dlg input[name=name]').value, EVIL);
   assert.strictEqual(t.doc.querySelectorAll('#access img').length, 0);
   assert.deepStrictEqual(t.errors, []);
   t.close();
-  return 'a name with markup in it shows as text in the sidebar, the People list, the row field and the dialog';
+  return 'a name with markup in it shows as text in the sidebar, the People list and both name dialogs';
+}
+
+const SET_NOTE = 'Give this person a password: they become a local account, and their SSO link waits 7 days for the next SSO sign-in';
+const RESET_NOTE = 'Their other password sessions end. API tokens and SSO sessions are not touched.';
+
+async function theRowMenuHasNoChangeRole() {
+  //given
+  const t = await boot();
+
+  //then
+  for (const e of ['alice@example.com', 'bob@example.com', 'chloe@example.com', 'dana@example.com', 'erin@example.com']) {
+    const labels = [...rowOf(t.doc, e).querySelectorAll('.acc-menu [role=menuitem]')].map((m) => m.textContent);
+    assert.ok(!labels.includes('Change role') && !rowOf(t.doc, e).querySelector('.acc-mi-role'), 'no Change role for ' + e);
+    assert.ok(rowOf(t.doc, e).querySelector('select.acc-role'), 'the role select stays in the row');
+  }
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'the row menu has no Change role and the role select stays in the row';
+}
+
+async function resetPasswordOpensAProperDialog() {
+  //given
+  const t = await boot();
+  const chloe = rowOf(t.doc, 'chloe@example.com'), btn = chloe.querySelector('.acc-menu-b');
+
+  //when
+  chloe.querySelector('.acc-reset').click();
+  const dlg = t.doc.getElementById('acc-dlg'), field = dlg.querySelector('input[name=password]');
+
+  //then
+  assert.deepStrictEqual([dlg.getAttribute('role'), dlg.getAttribute('aria-modal'), !!t.doc.getElementById(dlg.getAttribute('aria-labelledby'))], ['dialog', 'true', true]);
+  assert.strictEqual(dlg.querySelector('h2').textContent, 'Reset password for Chlo' + E_ACUTE + ' Durand');
+  assert.strictEqual(dlg.querySelector('.acc-dlg-sub').textContent, 'chloe@example.com');
+  assert.strictEqual(dlg.querySelector('label[for=' + field.id + ']').textContent, 'New password');
+  assert.deepStrictEqual([field.type, field.autocomplete, field.maxLength, t.doc.activeElement === field], ['password', 'new-password', 256, true]);
+  assert.strictEqual(dlg.querySelector('.acc-dlg-hint').textContent, '12-256 characters');
+  assert.ok(field.getAttribute('aria-describedby').split(' ').includes(dlg.querySelector('.acc-dlg-hint').id));
+  assert.strictEqual(dlg.querySelector('.acc-dlg-note').textContent, RESET_NOTE);
+  assert.deepStrictEqual([dlg.querySelector('.acc-dlg-go').textContent, dlg.querySelector('.acc-dlg-cancel').textContent], ['Set password', 'Cancel']);
+  assert.ok(dlg.querySelector('.acc-dlg-err').hidden);
+  assert.strictEqual(chloe.querySelector('input.acc-pw'), null, 'the cramped inline field is gone');
+
+  //when
+  const eye = dlg.querySelector('.acc-dlg-eye');
+  eye.click();
+  const shown = [field.type, eye.getAttribute('aria-pressed'), eye.textContent];
+  eye.click();
+
+  //then
+  assert.deepStrictEqual(shown, ['text', 'true', 'Hide']);
+  assert.deepStrictEqual([field.type, eye.getAttribute('aria-pressed'), eye.textContent], ['password', 'false', 'Show']);
+  assert.ok(btn.isConnected);
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'Reset password opens a labelled modal dialog with the person, rules, the effect note, a show toggle, Set password and Cancel';
+}
+
+async function submittingTheResetDialogSendsTheSameRequestAndSaysPasswordSet() {
+  //given
+  const t = await boot();
+  rowOf(t.doc, 'chloe@example.com').querySelector('.acc-reset').click();
+
+  //when
+  setValue(t.doc.querySelector('#acc-dlg input[name=password]'), 'a-long-enough-password');
+  key(t.doc.querySelector('#acc-dlg input[name=password]'), 'Enter');
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PATCH').map((c) => [c[1], c[2]]), [['/api/admin/users/chloe%40example.com', {password: 'a-long-enough-password'}]]);
+  assert.ok(!t.doc.getElementById('acc-dlg'), 'the dialog closes');
+  assert.strictEqual(rowOf(t.doc, 'chloe@example.com').querySelector('.adm-msg').textContent, 'Password set');
+  assert.strictEqual(t.doc.activeElement, rowOf(t.doc, 'chloe@example.com').querySelector('.acc-menu-b'), 'focus goes back to the row menu button');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'submitting the reset dialog sends the same PATCH, closes it, says Password set on the row and returns focus to the menu button';
+}
+
+async function aRefusedPasswordShowsInlineAndKeepsTheDialogOpen() {
+  //given
+  const t = await boot();
+  t.flags.hook = (method, p, body, h) => method === 'PATCH' ? h.bad(422, 'A password is 12 to 256 characters.', 'password') : null;
+  rowOf(t.doc, 'chloe@example.com').querySelector('.acc-reset').click();
+
+  //when
+  setValue(t.doc.querySelector('#acc-dlg input[name=password]'), 'short');
+  t.doc.querySelector('#acc-dlg .acc-dlg-go').click();
+  await wait(100);
+
+  //then
+  const err = t.doc.querySelector('#acc-dlg .acc-dlg-err');
+  assert.deepStrictEqual([err.hidden, err.textContent, err.getAttribute('role')], [false, 'A password is 12 to 256 characters.', 'alert']);
+  assert.ok(!t.doc.querySelector('#acc-dlg .acc-dlg-go').disabled && !t.doc.querySelector('#acc-dlg input[name=password]').readOnly, 'the dialog can be used again');
+  assert.strictEqual(t.doc.querySelector('#acc-dlg input[name=password]').value, 'short');
+  assert.strictEqual(rowOf(t.doc, 'chloe@example.com').querySelector('.adm-msg').textContent, '', 'the row stays quiet');
+
+  //when
+  setValue(t.doc.querySelector('#acc-dlg input[name=password]'), 'a-long-enough-password');
+
+  //then
+  assert.ok(t.doc.querySelector('#acc-dlg .acc-dlg-err').hidden, 'typing clears the refusal');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'a refused password shows the server text inline and keeps the dialog open';
+}
+
+async function anEmptyPasswordIsNotSent() {
+  //given
+  const t = await boot();
+  rowOf(t.doc, 'chloe@example.com').querySelector('.acc-reset').click();
+
+  //when
+  t.doc.querySelector('#acc-dlg .acc-dlg-go').click();
+  await wait(60);
+
+  //then
+  assert.strictEqual(t.calls.filter((c) => c[0] === 'PATCH').length, 0);
+  assert.strictEqual(t.doc.querySelector('#acc-dlg .acc-dlg-err').textContent, 'Enter a password of 12-256 characters');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'an empty password is refused in the dialog without a request';
+}
+
+async function escapeAndCancelCloseTheDialogAndGiveFocusBack() {
+  //given
+  const t = await boot();
+  const btn = () => rowOf(t.doc, 'chloe@example.com').querySelector('.acc-menu-b');
+  rowOf(t.doc, 'chloe@example.com').querySelector('.acc-reset').click();
+
+  //when
+  key(t.doc.querySelector('#acc-dlg input[name=password]'), 'Escape');
+
+  //then
+  assert.ok(!t.doc.getElementById('acc-dlg'));
+  assert.strictEqual(t.doc.activeElement, btn());
+
+  //when
+  rowOf(t.doc, 'chloe@example.com').querySelector('.acc-reset').click();
+  t.doc.querySelector('#acc-dlg .acc-dlg-cancel').click();
+
+  //then
+  assert.ok(!t.doc.getElementById('acc-dlg'));
+  assert.strictEqual(t.doc.activeElement, btn());
+  assert.strictEqual(t.calls.filter((c) => c[0] === 'PATCH').length, 0);
+
+  //when
+  rowOf(t.doc, 'chloe@example.com').querySelector('.acc-reset').click();
+  const f = t.doc.querySelector('#acc-dlg input[name=password]'), last = t.doc.querySelector('#acc-dlg .acc-dlg-go');
+  last.focus();
+  const tab = new t.w.KeyboardEvent('keydown', {key: 'Tab', bubbles: true, cancelable: true});
+  last.dispatchEvent(tab);
+
+  //then
+  assert.ok(tab.defaultPrevented && t.doc.activeElement === f, 'Tab from the last control wraps to the first');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'Escape and Cancel close the dialog, give focus back to the menu button, and Tab stays inside the dialog';
+}
+
+async function clickingTheBackdropClosesTheDialogLikeCancel() {
+  //given
+  const t = await boot();
+  rowOf(t.doc, 'chloe@example.com').querySelector('.acc-reset').click();
+
+  //when
+  t.doc.querySelector('#acc-dlg input[name=password]').dispatchEvent(new t.w.MouseEvent('click', {bubbles: true}));
+
+  //then
+  assert.ok(t.doc.getElementById('acc-dlg'), 'a click inside the dialog keeps it open');
+
+  //when
+  t.doc.getElementById('acc-dlg-wrap').dispatchEvent(new t.w.MouseEvent('click', {bubbles: true}));
+
+  //then
+  assert.ok(!t.doc.getElementById('acc-dlg'));
+  assert.strictEqual(t.doc.activeElement, rowOf(t.doc, 'chloe@example.com').querySelector('.acc-menu-b'));
+  assert.strictEqual(t.calls.filter((c) => c[0] === 'PATCH').length, 0);
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'a click on the backdrop closes the dialog and returns focus like Cancel';
+}
+
+const GEN_SET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789-_.!@#%+=';
+const GEN_OK = {test: (v) => typeof v === 'string' && v.length === 20 && [...v].every((c) => GEN_SET.includes(c))};
+
+async function generateFillsAShownPasswordCopiesItAndSendsIt() {
+  //given
+  const t = await boot();
+  const wrote = [];
+  Object.defineProperty(t.w.navigator, 'clipboard', {value: {writeText: async (v) => { wrote.push(v); }}, configurable: true});
+  rowOf(t.doc, 'chloe@example.com').querySelector('.acc-reset').click();
+  const dlg = t.doc.getElementById('acc-dlg'), field = dlg.querySelector('input[name=password]'), gen = dlg.querySelector('.acc-dlg-generate'), copy = dlg.querySelector('.acc-dlg-copy');
+  const before = [gen.textContent, copy.hidden];
+
+  //when
+  gen.click();
+  const first = field.value;
+  gen.click();
+  const second = field.value;
+
+  //then
+  assert.strictEqual(t.w.ACCESS_PW_ALPHABET, GEN_SET);
+  assert.deepStrictEqual(before, ['Generate', true]);
+  assert.ok(GEN_OK.test(first) && GEN_OK.test(second), 'length 20 and only the alphabet: ' + first);
+  assert.notStrictEqual(first, second, 'two clicks give different values');
+  assert.deepStrictEqual([field.type, dlg.querySelector('.acc-dlg-eye').getAttribute('aria-pressed'), dlg.querySelector('.acc-dlg-eye').textContent], ['text', 'true', 'Hide']);
+  assert.ok(!copy.hidden && copy.textContent === 'Copy');
+
+  //when
+  copy.click();
+  await wait(30);
+
+  //then
+  assert.deepStrictEqual(wrote, [second]);
+  assert.strictEqual(copy.textContent, 'Copied');
+
+  //when
+  dlg.querySelector('.acc-dlg-go').click();
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PATCH').map((c) => c[2]), [{password: second}]);
+  assert.ok(!t.doc.getElementById('acc-dlg'));
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'Generate fills a 20-character password from the safe alphabet, shows it, Copy writes it to the clipboard and Set password sends it';
+}
+
+async function theGeneratorDrawsFromCryptoWithRejectionSampling() {
+  //given
+  const t = await boot();
+  const n = GEN_SET.length, limit = Math.floor(4294967296 / n) * n;
+  const mathRandom = t.w.Math.random;
+  t.w.Math.random = () => { throw new Error('Math.random is not allowed'); };
+  let calls = 0, plan = [];
+  Object.defineProperty(t.w.crypto, 'getRandomValues', {value: (buf) => { calls += 1; buf[0] = plan.length ? plan.shift() : 0; return buf; }, configurable: true});
+
+  //when
+  plan = [];
+  const zeros = t.w.accGenPassword();
+  const zeroCalls = calls;
+  calls = 0;
+  plan = [limit, 0];
+  const skipped = t.w.accGenPassword();
+  const skippedCalls = calls;
+  calls = 0;
+  plan = [limit - 1];
+  const edge = t.w.accGenPassword();
+
+  //then
+  assert.strictEqual(zeros, GEN_SET[0].repeat(20));
+  assert.strictEqual(zeroCalls, 20, 'one draw per character');
+  assert.strictEqual(skipped, GEN_SET[0].repeat(20), 'a draw at the limit is skipped');
+  assert.strictEqual(skippedCalls, 21, 'the skipped draw cost one more call');
+  assert.strictEqual(edge[0], GEN_SET[(limit - 1) % n], 'the last value below the limit is used');
+  t.w.Math.random = mathRandom;
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'the generator draws only from crypto.getRandomValues and skips draws at or above the rejection limit';
+}
+
+async function copyHidesAgainWhenTheFieldIsCleared() {
+  //given
+  const t = await boot();
+  rowOf(t.doc, 'chloe@example.com').querySelector('.acc-reset').click();
+  const dlg = t.doc.getElementById('acc-dlg'), field = dlg.querySelector('input[name=password]'), copy = dlg.querySelector('.acc-dlg-copy');
+  dlg.querySelector('.acc-dlg-generate').click();
+  const shown = !copy.hidden;
+
+  //when
+  setValue(field, '');
+
+  //then
+  assert.ok(shown && copy.hidden, 'Copy goes away with the password');
+
+  //when
+  setValue(field, 'typed-by-hand-1234');
+
+  //then
+  assert.ok(copy.hidden, 'a typed password has no Copy until Generate');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'Copy hides again when the field is cleared';
+}
+
+async function copyWithoutTheClipboardSelectsTheText() {
+  //given
+  const t = await boot();
+  Object.defineProperty(t.w.navigator, 'clipboard', {value: undefined, configurable: true});
+  rowOf(t.doc, 'chloe@example.com').querySelector('.acc-reset').click();
+  const dlg = t.doc.getElementById('acc-dlg'), field = dlg.querySelector('input[name=password]');
+  let selected = 0;
+  field.select = () => { selected += 1; };
+
+  //when
+  dlg.querySelector('.acc-dlg-generate').click();
+  dlg.querySelector('.acc-dlg-copy').click();
+  await wait(30);
+
+  //then
+  assert.strictEqual(selected, 1);
+  assert.strictEqual(dlg.querySelector('.acc-dlg-copy').textContent, 'Copy');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'without the Clipboard API, Copy selects the text instead';
+}
+
+async function setAPasswordForAnSsoPersonHasItsOwnTitleAndNote() {
+  //given
+  const t = await boot();
+
+  //when
+  rowOf(t.doc, 'dana@example.com').querySelector('.acc-setpw').click();
+  const dlg = t.doc.getElementById('acc-dlg');
+
+  //then
+  assert.strictEqual(dlg.querySelector('h2').textContent, 'Set a password for Dana Diaz');
+  assert.strictEqual(dlg.querySelector('.acc-dlg-sub').textContent, 'dana@example.com');
+  assert.strictEqual(dlg.querySelector('.acc-dlg-note').textContent, SET_NOTE);
+  assert.strictEqual(dlg.querySelector('.acc-dlg-go').textContent, 'Set password');
+
+  //when
+  setValue(dlg.querySelector('input[name=password]'), 'a-long-enough-password');
+  dlg.querySelector('.acc-dlg-go').click();
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PATCH').map((c) => [c[1], c[2]]), [['/api/admin/users/dana%40example.com', {password: 'a-long-enough-password'}]]);
+  assert.strictEqual(rowOf(t.doc, 'dana@example.com').querySelector('.adm-msg').textContent, 'Password set');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'Set a password for an SSO person has its own title and the SSO link note, and sends the same PATCH';
+}
+
+async function aHostileNameInTheResetTitleIsText() {
+  //given
+  const users = people().map((u) => u.email === 'chloe@example.com' ? Object.assign({}, u, {name: EVIL}) : u);
+  const t = await boot({users});
+
+  //when
+  rowOf(t.doc, 'chloe@example.com').querySelector('.acc-reset').click();
+
+  //then
+  assert.strictEqual(t.doc.querySelector('#acc-dlg h2').textContent, 'Reset password for ' + EVIL);
+  assert.strictEqual(t.doc.querySelectorAll('#acc-dlg img').length, 0);
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'a name with markup shows as text in the dialog title';
 }
 
 (async () => {
   const cases = [theSectionsComeInOrderWithANavThatCountsAndFlags, peopleShowAvatarMethodsAndLastSignIn, searchAndRoleFilterNarrowThePeople, theLastAdminKeepsRoleAndSignInWithTheReason, theLastPasswordAdminKeepsRoleAndSignInWithTheReason, aRowMenuStaysOpenWhileItsButtonIsInView,
     theRowMenuWorksByKeyboard, focusStaysOnTheControlAfterASaveRedraws, tokensShowExpiryChipsAndCreateWithAnExpiry, revokeAsksFirst, eachSectionLoadsAndFailsOnItsOwn, chipsEditTheAllowedDomains, aDomainTypedButNotAddedIsSavedAndSurvivesARepaint, theMcpAndLastKnownRoleFieldsSaveWithTheirCard, aRefusedRoleFieldOnTheSsoCardKeepsItsReason,
     theCardGroupsItsFieldsAndShowsItsStatus, thePreviewFollowsUnsavedEdits, unsavedButtonEditsSurviveASaveOfAnotherField, theCompanyIconUploadsAndRemoves, anUploadedIconPicksCompanyAndRemoveGoesBackToAuto,
-    theSectionsAreTabsThatShowOnePanelAtATime, theTabsMoveWithTheArrowKeys, aLinkOpensTheNamedTab, theTabsStayOnNarrowScreens, anAdminRenamesAPersonFromTheRow, renamingYourselfAsAdminUpdatesTheSidebar, aPersonRenamesThemselvesFromTheUserMenu, aSecondSaveWaitsForTheFirst, aHostileNameIsShownAsText];
+    theSectionsAreTabsThatShowOnePanelAtATime, theTabsMoveWithTheArrowKeys, aLinkOpensTheNamedTab, theTabsStayOnNarrowScreens, anAdminRenamesAPersonFromTheRow, renamingYourselfAsAdminUpdatesTheSidebar, aPersonRenamesThemselvesFromTheUserMenu, aSecondSaveWaitsForTheFirst, aHostileNameIsShownAsText, theRowMenuHasNoChangeRole, resetPasswordOpensAProperDialog, submittingTheResetDialogSendsTheSameRequestAndSaysPasswordSet, aRefusedPasswordShowsInlineAndKeepsTheDialogOpen, anEmptyPasswordIsNotSent, escapeAndCancelCloseTheDialogAndGiveFocusBack, clickingTheBackdropClosesTheDialogLikeCancel, generateFillsAShownPasswordCopiesItAndSendsIt, theGeneratorDrawsFromCryptoWithRejectionSampling, copyHidesAgainWhenTheFieldIsCleared, copyWithoutTheClipboardSelectsTheText, setAPasswordForAnSsoPersonHasItsOwnTitleAndNote, aHostileNameInTheResetTitleIsText];
   for (const c of cases) console.log('PASS ' + await c());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

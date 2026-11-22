@@ -941,6 +941,8 @@ function renderQuick() {
   Object.keys(TAG_NAMES).filter(function (id) { return n[id] || hasF('tag:' + id); }).forEach(function (id) {
     tg.appendChild(chip('tag:' + id, esc(tagName(id)), n[id] || 0, 'cards tagged ' + tagName(id), tagClass(id)));
   });
+  var bare = base.filter(function (a) { return !tagIds(a).length; }).length;
+  if (Object.keys(TAG_NAMES).length && (bare || hasF(UNTAGGED_F))) tg.appendChild(chip(UNTAGGED_F, 'Untagged', bare, 'cards with no tag'));
   if (tg.children.length > 1) box.append(tg);
   box.append(who);
 }
@@ -1045,6 +1047,15 @@ function boardSearchHint() {
   var panel = document.getElementById('panel-anoms');
   if (panel && window.MutationObserver) new MutationObserver(function () { if (!panel.hidden) boardSync(false); }).observe(panel, {attributes: true, attributeFilter: ['hidden']});
 })();
+var DRAWER_WIDE_KEY = 'skopax.drawer.wide';
+function drawerWide(wrap, on) {
+  var b = wrap.querySelector('.cd-expand'), label = on ? 'Shrink' : 'Expand', hint = on ? 'Shrink the card to the narrow view' : 'Expand the card to the wide view';
+  wrap.classList.toggle('wide', on);
+  b.textContent = label;
+  b.setAttribute('aria-label', hint);
+  b.title = hint;
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
 function drawerNode(root) { return [].filter.call(root.children, function (c) { return c.classList.contains('card-drawer'); })[0] || null; }
 function openDrawer(key, quiet) {
   var a = CARDS.filter(function (x) { return x.key === key; })[0], root = document.getElementById('anoms');
@@ -1060,12 +1071,18 @@ function openDrawer(key, quiet) {
   wrap.setAttribute('aria-modal', 'true');
   wrap.setAttribute('aria-label', svcName(a) + ' / ' + a.label);
   wrap.innerHTML = '<div class="cd-backdrop"></div><div class="cd-panel"><div class="cd-bar"><span class="cd-t">' + (a.num ? 'Card #' + esc(a.num) : 'Card') + '</span>' +
-    (a.num ? '<a class="cd-link" href="/c/' + esc(a.num) + '" target="_blank" rel="noopener">Open alone ↗</a>' : '') + '<button type="button" class="btn sec small cd-close">Close</button></div></div>';
+    (a.num ? '<a class="cd-link" href="/c/' + esc(a.num) + '" target="_blank" rel="noopener">Open alone ↗</a>' : '') + '<button type="button" class="btn sec small cd-expand"></button><button type="button" class="btn sec small cd-close">Close</button></div></div>';
   var card = anomCard(a, CARDS.indexOf(a));
   wrap.querySelector('.cd-panel').appendChild(card);
   root.appendChild(wrap);
   cardOpen(card, true);
   root.querySelectorAll('.tile').forEach(function (t) { t.classList.toggle('on', t.dataset.key === key); });
+  drawerWide(wrap, load(DRAWER_WIDE_KEY) === '1');
+  wrap.querySelector('.cd-expand').addEventListener('click', function () {
+    var on = !wrap.classList.contains('wide');
+    drawerWide(wrap, on);
+    save(DRAWER_WIDE_KEY, on ? '1' : '0');
+  });
   wrap.querySelector('.cd-backdrop').addEventListener('click', closeDrawer);
   wrap.querySelector('.cd-close').addEventListener('click', closeDrawer);
   wrap.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.stopPropagation(); closeDrawer(); } });
