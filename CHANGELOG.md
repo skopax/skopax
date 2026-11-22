@@ -2,6 +2,26 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.1 (2026-11-22)
+
+Clearer Integrations and Notifications pages: integrations get icons instead of letters, Kubernetes agent instances show their health, the email integrations read as two different things, and the Notifications page lists only notifications.
+
+**Upgrade notes:**
+
+- The Email plug-in is now named Email route; its id `email`, its stored instances and its settings keys are unchanged. Its setting labels read Email route repeat days, Email route lowest severity and Email route fixed mails.
+- The Not posted to Slack list and the Slack posts of the last 24 hours moved from the Notifications page to the Activity page, and the "N not posted" count moved with them.
+
+**Changed:**
+
+- The Notifications page lists only your notifications, and says so when there are none.
+- Built-in and example integrations show a simple picture (Lucide icons, ISC) on their tile instead of two letters. No brand logos are used.
+- Email route and Mail server have descriptions that say what each one is: the Mail server is the connection to your SMTP server, set up once; an Email route mails chosen cards to a list, like a Teams route.
+
+**Fixed:**
+
+- Kubernetes agent instances on Connect > Integrations show their own health from the primary's heartbeat: Healthy with its age, a warning, or the error. After a failed heartbeat they show when the agent was last seen instead of a fresh time.
+- Two page checks could fail on a millisecond tick (board tiles and stopped labels of event cards).
+
 ## 0.5.0 (2026-11-22)
 
 Email: a Mail server integration, Email routes that mail cards to a list, and personal notification mail, off until each person turns it on. The Assigned note in a card's Slack thread mentions the assignee, and the investigator's own websites come from a setting of their own instead of sign-in email domains.

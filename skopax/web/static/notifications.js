@@ -21,6 +21,8 @@ function ntShow(on) {
   NT.on = on;
   var sec = document.getElementById('nt-sec');
   if (sec) sec.hidden = !on;
+  var none = document.getElementById('nt-none');
+  if (none) none.hidden = on;
   if (!on) ntBadge(0);
 }
 function ntBadge(n) {

@@ -231,7 +231,7 @@ async function failedAndSkippedPostsSaySo() {
   const state = stateAt(5, 'Orders have returned errors since 18:40.');
   state.anomalies[0].autoSend = {at: iso(30), draftAt: state.anomalies[0].slackDraft.at, draftHash: 'x', claimedAt: iso(1), failedAt: iso(1), retries: 3, error: 'Slack refused the message (channel_not_found)'};
   state.anomalies[1].slackSkipped = {at: iso(2)};
-  const serve = {rev: 5, state, reports: [], hash: '#t=slack'};
+  const serve = {rev: 5, state, reports: [], hash: '#t=acts'};
 
   //when
   const {doc, errors, dom} = await boot(serve);
@@ -243,7 +243,7 @@ async function failedAndSkippedPostsSaySo() {
   const r = rows(doc);
   assert.deepStrictEqual(r.map((tr) => cells(tr)[2]), ['Slack post failed: Slack refused the message (channel_not_found)'], 'the Slack tab lists the post that did not go out');
   assert.deepStrictEqual([...r[0].querySelectorAll('.sq-acts button')].map((b) => b.textContent.trim()), ['Send now', 'View']);
-  assert.strictEqual(doc.getElementById('count-slack').textContent, '1');
+  assert.ok(/1 not posted/.test(doc.getElementById('count-acts').textContent), 'the Activity row counts the held post');
   assert.ok(!navigated(errors), errors.join(' | '));
   dom.window.close();
   return 'a post that failed after its retries reads Slack post failed: <code>, one skipped with auto-send off reads Not posted: auto-send is off, and the Slack tab lists the failed one with Send now and View';
@@ -255,7 +255,7 @@ async function germanPackCoversTheNotPostedLinesAndTheSlackTab() {
   state.anomalies[0].slackDraft.notAutoSent = 'planted text in the esql answer (ignore previous)';
   state.anomalies[1].slackDraft = {text: 'Cart 5xx went up.', by: 'Claude', at: iso(4)};
   state.anomalies[1].autoSend = {at: iso(30), draftAt: state.anomalies[1].slackDraft.at, draftHash: 'x', claimedAt: iso(1), failedAt: iso(1), retries: 3, error: 'channel_not_found'};
-  const serve = {rev: 5, state, reports: [], hash: '#t=slack', lang: 'de'};
+  const serve = {rev: 5, state, reports: [], hash: '#t=acts', lang: 'de'};
 
   //when
   const {doc, errors, dom} = await boot(serve);
@@ -265,7 +265,7 @@ async function germanPackCoversTheNotPostedLinesAndTheSlackTab() {
   await wait(50);
 
   //then
-  const panel = doc.getElementById('panel-slack');
+  const panel = doc.getElementById('panel-acts');
   assert.strictEqual(doc.getElementById('sq-h').textContent, 'Nicht in Slack gepostet');
   assert.ok(!/The investigator posts to Slack itself/.test(panel.querySelector('#sq-h + .panel-note').textContent), 'the note is translated');
   assert.deepStrictEqual([...doc.querySelectorAll('#slackq thead th')].map((t) => t.textContent), ['Was', 'Text', 'Status', 'Aktionen']);

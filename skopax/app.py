@@ -41,6 +41,7 @@ from skopax.kube import Kube
 from skopax import locales as core_locales
 from skopax import mcpserver
 from skopax import mutemarks
+from skopax import sections
 from skopax.mcpauth import McpAuth
 from skopax.mcptools import PLUGIN_ID as MCPTOOLS_ID
 from skopax.mcptools import routes as mcptools_routes
@@ -107,7 +108,7 @@ from skopax import migrations
 from skopax.errkind import NoAccess, Refusal, kind, text_of
 from skopax.features import BY_ID as FEATURE_BY_ID, FEATURES, Features, Locked, off_text
 from skopax.integrationview import reader_row
-from skopax.instances import InstanceExists, InstanceMissing, Instances, InvalidInstance, PluginState, SourceOwned, Writer, checks_off, ADMIN
+from skopax.instances import AGENT_PLUGIN as KUBE_ID, InstanceExists, InstanceMissing, Instances, InvalidInstance, PluginState, SourceOwned, Writer, checks_off, ADMIN
 from skopax.registry import Registry, card_types_view, describe, locale_drops, standing_of
 from skopax.plugai import PluginAi
 from skopax.plugintools import PluginTools
@@ -1366,13 +1367,14 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 continue
             names = [pass_name(check, i.info() if i is not None else None) for check in plugin.checks for i in (found or [None]) if check in watched(plugin, i)]
             infos = [i.info() for i in found] if found else [None]
+            beats = kube_rows(plugin) if plugin.id == KUBE_ID else None
             instances_out = []
             for i, inf in zip(found or [None], infos):
                 checks = watched(plugin, i)
                 first = checks[0] if checks else None
                 if i is None and first is None:
                     continue
-                health = instance_health(plugin, i, passes, True) if i is not None else pass_health(checks, None, passes)
+                health = instance_health(plugin, i, passes, True, beats) if i is not None else pass_health(checks, None, passes)
                 instances_out.append({'name': i.name if i is not None else None, 'primary': i.primary if i is not None else True,
                                       'pass': pass_name(first, inf) if first else None, 'status': instance_status(checks, inf, passes),
                                       'state': health['state'], 'text': health['text']})
@@ -1412,7 +1414,31 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return {'state': 'warn', 'text': msg('integrations.health.no_access'), 'at': at}
         return {'state': 'error', 'text': status, 'at': at}
 
-    def instance_health(plugin, inst, passes: dict, on: bool) -> dict:
+    def kube_rows(plugin) -> list[dict]:
+        beat = next((c for c in plugin.checks if c.once), None)
+        if beat is None or not beat.sections:
+            return []
+        stored = sections.stored_rows({beat.sections[0]: store.state_section(beat.sections[0])}, beat.sections[0])
+        return [r for r in stored if isinstance(r, dict) and sections.plugin_of(r) == plugin.id and not r.get('cluster')]
+
+    def kube_agent_health(plugin, inst, passes: dict, rows: list[dict]) -> dict | None:
+        primary = next((i for i in instances.all(plugin.id) if i.primary), None)
+        beat = next((c for c in plugin.checks if c.once), None)
+        if primary is None or beat is None or not primary.enabled or beat.id in primary.off_checks:
+            return None
+        run = passes.get(beat.id) or {}
+        mine = next((r for r in rows if r.get('name') == inst.name), None)
+        if mine is None:
+            return {'state': 'pending', 'text': msg('integrations.health.pending'), 'at': None} if (inst.values.get('mode') or 'agent') == 'agent' else None
+        fresh = isinstance(run.get('status'), str) and passed(run['status']) and isinstance(run.get('at'), str)
+        at = run['at'] if fresh else mine.get('lastSeen')
+        if mine.get('status') == 'NotReady':
+            return {'state': 'error', 'text': mine.get('error') or msg('kubernetes.nodes.no_answer'), 'at': at}
+        if mine.get('clusterError'):
+            return {'state': 'warn', 'text': mine['clusterError'], 'at': at}
+        return {'state': 'ok', 'text': msg('integrations.health.ok'), 'at': at}
+
+    def instance_health(plugin, inst, passes: dict, on: bool, beats: list[dict] | None = None) -> dict:
         checks = watched(plugin, inst)
         if not on or not inst.enabled:
             found = {'state': 'off', 'text': msg('integrations.health.off'), 'at': None}
@@ -1424,6 +1450,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             found = {'state': 'error', 'text': failed, 'at': None}
         elif plugin.id == 'jira' and inst.primary and (linked := jira_links_health(passes)):
             found = linked
+        elif plugin.id == KUBE_ID and not inst.primary and (agent := kube_agent_health(plugin, inst, passes, kube_rows(plugin) if beats is None else beats)):
+            found = agent
         elif plugin.id == MCPTOOLS_ID:
             found = {**mcptools_routes.health(mcptools_deps, inst), 'at': None}
         elif not checks and any(owned(c, inst) for c in plugin.checks):
@@ -1434,7 +1462,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     def plugin_health(plugin, found, passes: dict) -> dict:
         on = any(p.id == plugin.id for p in runtime.active())
-        rows = [instance_health(plugin, i, passes, on) for i in found]
+        beats = kube_rows(plugin) if plugin.id == KUBE_ID else None
+        rows = [instance_health(plugin, i, passes, on, beats) for i in found]
         live = [r for r in rows if r['state'] != 'off']
         bad = [r for r in live if r['state'] == 'error'] or [r for r in live if r['state'] == 'warn']
         fine = [r for r in live if r['state'] == 'ok']

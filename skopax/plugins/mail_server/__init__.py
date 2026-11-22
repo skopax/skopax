@@ -18,7 +18,7 @@ def test(ctx: Context) -> TestResult:
 
 PLUGIN = Plugin(
     id=ID, name='Mail server', version='0.1.0', category='chat',
-    description="Sends email through the organisation's SMTP server, for the mail that other parts of Skopax send.", icon='icon.svg',
+    description="The connection to your SMTP server. Set it up once; Email routes and personal notification mail send through it.", icon='icon.svg',
     author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community', capabilities=Capabilities(hosts=(), secrets=('password',)),
     max_instances=1,
     fields=(Field('host', 'Host', 'text', required=True, check=mail.host_problem, group='connection', help='The host name or IP address of the SMTP server, such as smtp.example.com.'),

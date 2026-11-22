@@ -1343,7 +1343,7 @@ MESSAGES: dict[str, str] = {
     'mailserver.header': 'A mail subject or address holds a line break, so the mail was not sent',
     'mailserver.recipients': 'A mail goes to 1 to {max} addresses, not {count}',
     'mailserver.kind': 'A mail kind is 1 to 40 letters, digits, dots, dashes or underscores',
-    'email.no_server': 'Needs the Mail server integration: add it in Connect > Integrations and turn it on, then Email can send',
+    'email.no_server': 'Needs the Mail server integration: add it in Connect > Integrations and turn it on, then Email routes can send',
     'email.recipients': 'Give 1 to {max} email addresses, separated by commas or spaces, such as alice@example.com, ops@example.com',
     'email.recipient': '{address} is not an email address; give plain addresses such as alice@example.com, without a name',
     'email.partial': '{sent} of {total} mails sent within the time a post gets; the rest follow at the next delivery, or when the card is sent again',

@@ -93,7 +93,7 @@ def test_sharepoint_identity_manifest_and_setup():
     assert [(k.id, k.inline) for k in sharepoint.PLUGIN.knowledge] == [('sharepoint', True)] and len(sharepoint.PLUGIN.knowledge[0].text) <= 2000
     assert setup is not None and len(setup.steps) >= 5 and setup.docs.startswith('https://learn.microsoft.com/')
     assert any('Sites.Selected' in s for s in setup.steps) and any('Files.Read.All' in s and 'Sites.Read.All' in s for s in setup.steps)
-    assert '>SP</text>' in (sharepoint.HOME / sharepoint.PLUGIN.icon).read_text(encoding='utf-8')
+    assert '<g ' in (sharepoint.HOME / sharepoint.PLUGIN.icon).read_text(encoding='utf-8')
 
 
 def test_fields_are_checked_with_clear_messages():

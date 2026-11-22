@@ -19,7 +19,7 @@ from skopax.store import Store
 KEY = 'log|checkout-service|ERROR|boom'
 TS = '1792224000.000200'
 NOTE = 'The checkout link in the campaign points to a removed page. Visitors land on a 404 and leave. The old path was dropped in the last release.'
-PLUGINS = {'teams': 'Microsoft Teams', 'email': 'Email'}
+PLUGINS = {'teams': 'Microsoft Teams', 'email': 'Email route'}
 
 
 def seed(store: Store, post: dict | None = None, **extra) -> CardPosts:
@@ -128,7 +128,7 @@ def test_the_recommendation_and_the_routes_that_delivered_follow_the_summary(sto
 
     # then
     lines = body_of(sent[0]).split('\n')
-    assert lines[2:] == ['Recommended: Marketing should update the ad link.', 'Notified: Marketing, SEO (Microsoft Teams); Ops (Email)']
+    assert lines[2:] == ['Recommended: Marketing should update the ad link.', 'Notified: Marketing, SEO (Microsoft Teams); Ops (Email route)']
     assert 'Notified' not in stored_body(store)['text']
 
 

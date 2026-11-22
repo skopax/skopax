@@ -167,7 +167,7 @@ def test_mcp_tools_identity_and_defaults_are_neutral():
     assert {k for k, f in fields.items() if f.show_if == ('auth', 'oauth')} == {'oauth-scopes', 'oauth-client-id', 'oauth-client-secret'}
     assert (plugin.checks, plugin.tools, plugin.test, plugin.env_instances, plugin.knowledge) == ((), (), None, None, ())
     assert plugin.settings == (Setting('allow-local-http', 'Allow plain http to this machine', 'Lets a connection use http://localhost; for local testing only', 'bool', 'false'),)
-    assert '>MC</text>' in (HOME / plugin.icon).read_text(encoding='utf-8')
+    assert '<g ' in (HOME / plugin.icon).read_text(encoding='utf-8')
 
 
 def test_the_presets_file_is_valid_data():
