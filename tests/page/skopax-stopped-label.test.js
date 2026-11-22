@@ -13,11 +13,12 @@ const WORDS = {en: ['Stopped firing \u00b7 unassigned', 'Stopped firing', 'stopp
   'Sinyal durdu \u00b7 Alice Smith ilgileniyor', 'Olaydan sonra sinyal durdu \u00b7 carol.jones ilgileniyor']};
 
 function cards() {
+  const began = iso(72);
   return [card(WAITING, {num: 31, status: 'cleared', clearedAt: iso(20), firstSeen: iso(90)}), card(CALM, {num: 32, sev: 'info', status: 'cleared', clearedAt: iso(40), firstSeen: iso(80)}),
     card(KID, {num: 33, status: 'cleared', clearedAt: iso(25), firstSeen: iso(85), parent: WAITING}),
     card(TAKEN, {num: 34, status: 'cleared', clearedAt: iso(30), firstSeen: iso(70), triage: 'progress', triagedAt: iso(30), owner: 'alice@example.com', ownerName: 'Alice Smith'}),
     card(ASSIGNED, {num: 35, status: 'cleared', clearedAt: iso(35), firstSeen: iso(75), owner: 'bob.smith@example.com', assigned: {name: 'Bob Smith', by: 'alice@example.com'}}),
-    card(EVENT_TAKEN, {num: 36, status: 'cleared', clearedAt: iso(32), firstSeen: iso(72), triage: 'progress', owner: 'carol.jones@example.com', cause: {kind: 'event', what: 'the push send', firstSeen: iso(72)}})];
+    card(EVENT_TAKEN, {num: 36, status: 'cleared', clearedAt: iso(32), firstSeen: began, triage: 'progress', owner: 'carol.jones@example.com', cause: {kind: 'event', what: 'the push send', firstSeen: began}})];
 }
 
 function timed(text, words) {
