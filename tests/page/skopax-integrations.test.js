@@ -1595,7 +1595,7 @@ async function theKnowledgeBadgeReadsOffForASwitchedOffSourceAndNeedsSetupOnlyFo
   broken.plugins.filter((x) => x.id === 'sharepoint')[0].state = 'broken';
   const errored = knowCatalog();
   errored.plugins.filter((x) => x.id === 'sharepoint')[0].health = health('error', 'Down', iso(2), ROW_ERR);
-  errored.plugins.filter((x) => x.id === 'mcp-tools')[0].health = health('error', 'Down', iso(2), ROW_ERR);
+  errored.plugins.filter((x) => x.id === 'mcp-tools')[0].health = health('error', 'Down', iso(2), [{name: 'drive', state: 'error', text: 'Down'}]);
   const warned = knowCatalog();
   warned.plugins.filter((x) => x.id === 'sharepoint')[0].health = health('warn', 'Slow', iso(2), ROW_WARN);
   warned.plugins.filter((x) => x.id === 'github')[0].health = health('warn', 'Slow', iso(2));
@@ -1622,6 +1622,26 @@ async function theKnowledgeBadgeReadsOffForASwitchedOffSourceAndNeedsSetupOnlyFo
   assert.deepStrictEqual(badgedIds(o.doc), ['sharepoint', 'github', 'mcp-tools'], 'a source that is off or needs setup is still a knowledge tile');
   runs.forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
   console.log('PASS Integrations: the Knowledge badge reads off for a switched-off source (MCP too) and needs setup only for an empty field, a broken plug-in or an instance error');
+}
+
+async function anMcpErrorCountsForKnowledgeOnlyOnAnInstanceWithKnowledgeOn() {
+  //given
+  const quiet = knowCatalog(), loud = knowCatalog();
+  for (const c of [quiet, loud]) c.plugins.filter((x) => x.id === 'mcp-tools')[0].instances.push(instance('tickets', {values: {url: 'https://tickets.example.com', knowledge: 'false'}}));
+  quiet.plugins.filter((x) => x.id === 'mcp-tools')[0].health = health('error', 'Down', iso(2), [{name: 'drive', state: 'ok', text: 'Healthy'}, {name: 'tickets', state: 'error', text: 'Down'}]);
+  loud.plugins.filter((x) => x.id === 'mcp-tools')[0].health = health('error', 'Down', iso(2), [{name: 'drive', state: 'error', text: 'Down'}, {name: 'tickets', state: 'ok', text: 'Healthy'}]);
+  const runs = [];
+  for (const c of [quiet, loud]) {
+    const t = await boot({catalog: c});
+    await open(t);
+    runs.push(t);
+  }
+
+  //then
+  assert.deepStrictEqual(badgeRead(runs[0].doc, 'mcp-tools').slice(0, 3), ['Knowledge', 'on', 'info'], 'an error on a server that is no knowledge source keeps the plain badge');
+  assert.deepStrictEqual(badgeRead(runs[1].doc, 'mcp-tools').slice(0, 3), ['Knowledge needs setup', 'setup', 'warn'], 'an error on the knowledge server asks for setup');
+  runs.forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
+  console.log('PASS Integrations: an MCP error counts against the Knowledge badge only on an instance with Knowledge source on');
 }
 
 async function theKnowledgeBadgeAndItsTooltipsTranslateWithAPackAndTheFieldNameFillsTheTemplate() {
@@ -2417,6 +2437,7 @@ async function anOldBrowserUrlShowsTheMoveHintAndTheButtonMovesIt() {
   await thePanelShowsTheSetupGuideOpenWithoutInstancesAndClosedWithOne();
   await thereIsNoKnowledgeGroupAndEveryKnowledgeTileSitsOnceInItsCategoryWithABadge();
   await theKnowledgeBadgeReadsOffForASwitchedOffSourceAndNeedsSetupOnlyForAKnowledgeProblem();
+  await anMcpErrorCountsForKnowledgeOnlyOnAnInstanceWithKnowledgeOn();
   await theKnowledgeBadgeAndItsTooltipsTranslateWithAPackAndTheFieldNameFillsTheTemplate();
   await withoutCustomTilesThereAreNoGroupsAndTheKnowledgeChipListsOnlyBadgedTiles();
   await theKnowledgeChipFiltersWithSearchCountsEachTileOnceAndFollowsAll();

@@ -166,7 +166,7 @@ function renderInstances(saved, focusKind, focusAt) {
   nameLine.appendChild(nm);
   if (info.label) nameLine.appendChild(el('span', 'tag plain', esc(info.from || 'environment')));
   me.appendChild(nameLine);
-  me.appendChild(accText('p', 'adm-help', info.label ? 'Set by SKOPAX_ENV_LABEL in the service configuration; this page shows it and does not change it.' : 'Named after its address. Set SKOPAX_ENV_LABEL in the service configuration to give it a name.'));
+  me.appendChild(accText('p', 'adm-help', info.label ? 'Set by SKOPAX_WORKSPACE_LABEL in the service configuration; this page shows it and does not change it.' : 'Named after its address. Set SKOPAX_WORKSPACE_LABEL in the service configuration to give it a name.'));
   card.appendChild(me);
   var wrap = el('div', 'adm-row ws-list' + (item.source === 'admin' ? ' set' : ''));
   wrap.dataset.key = INST_KEY;

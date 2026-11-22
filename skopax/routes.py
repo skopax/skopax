@@ -13,11 +13,11 @@ from skopax import information, tags
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
 from skopax.cardlink import card_url, chat_url
 from skopax.contract import ECHO_FIELD
-from skopax.engine import iso as epoch_iso, parse_iso
+from skopax.engine import iso as epoch_iso, parent_name, parse_iso
 from skopax.errkind import Authored, kind
 from skopax.kit.links import sendable
 from skopax.messages import msg
-from skopax.slack import ENTITY_CUT, SLACK_MARKS, cut, esc
+from skopax.slack import ENTITY_CUT, SLACK_MARKS, cut, esc, thread_why
 from skopax.store import NotFound
 
 log = logging.getLogger('skopax.routes')
@@ -63,6 +63,14 @@ class Refused(Authored, Exception):
     def __init__(self, status: int, text: str):
         super().__init__(text)
         self.status = status
+
+
+def joined(*parts: dict[str, list[str]]) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for part in parts:
+        for route_id, keys in part.items():
+            out[route_id] = list(dict.fromkeys(out.get(route_id, []) + list(keys)))
+    return out
 
 
 def grouped(card: dict, by_key: dict | None) -> bool:
@@ -294,6 +302,19 @@ class Routes:
             items.append(msg('routes.echo_item', route=self.inert(e.get('route')), plugin=self.inert(e.get('plugin')), tags=suffix))
         return ENTITY_CUT.sub('\u2026', cut(msg('routes.echo_line', routes='; '.join(items)), ECHO_LINE_MAX))
 
+    def placed_text(self, card: dict, post: dict, text: str) -> str:
+        host_key = str(post.get('threadOf') or '')
+        if not host_key and not post.get('digest'):
+            return text
+        name = f"<{card_url(self._base(), card['key'], card.get('num'))}|{self.inert(parent_name(card)).replace('|', '\u01c0')}>"
+        try:
+            host = self.store.anomaly(host_key) if host_key else None
+        except Exception as e:
+            log.info('the card %s that holds the thread of %s was not read for the Slack echo: %s', host_key, card['key'], kind(e))
+            host = None
+        why = thread_why(card, host, host_key, post.get('threadWhy')) if host_key else ''
+        return msg('routes.echo_placed', card=name, why=why, line=text) if why else msg('routes.echo_named', card=name, line=text)
+
     def _pend(self, sent: dict[str, list[str]], live: list[Route], now: float) -> None:
         if self.echo is None or not sent:
             return
@@ -397,7 +418,7 @@ class Routes:
         fresh = self.store.route_echo_name(key, post['ts'], ids)
         if not fresh:
             return
-        text = self.echo_text(fresh)
+        text = self.placed_text(card, post, self.echo_text(fresh))
         try:
             self._bound.call(('echo', key), lambda: echo.say(post, text), self.timeout)
         except Exception as e:
@@ -819,7 +840,7 @@ class Routes:
             if not live:
                 return 0
             records = self._records(now)
-            sent = self._again(live, by, now, records) | (self.push(list(pushed), by=by, now=now, live=live, records=records) if pushed else {}) | self.tagged(list(changed), by, now, live, records)
+            sent = joined(self._again(live, by, now, records), self.push(list(pushed), by=by, now=now, live=live, records=records) if pushed else {}, self.tagged(list(changed), by, now, live, records))
             self._pend(sent, live, now)
         except Exception as e:
             log.warning('route delivery skipped: %s', kind(e))

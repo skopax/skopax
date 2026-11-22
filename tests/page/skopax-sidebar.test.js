@@ -507,7 +507,7 @@ async function theChatRowFollowsTheChatAndItsSwitch() {
 
 async function theTopBarHoldsTheCrumbAndTheLastCheck() {
   //given
-  const {dom, doc, errors} = await boot({hash: '#t=anoms', me: {envLabel: 'STAGING'}});
+  const {dom, doc, errors} = await boot({hash: '#t=anoms', me: {workspaceLabel: 'STAGING'}});
   const top = doc.querySelector('#content > header.top');
 
   //then

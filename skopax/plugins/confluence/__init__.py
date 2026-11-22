@@ -98,5 +98,5 @@ PLUGIN = Plugin(
         'In URL give your Atlassian Cloud address, such as https://example.atlassian.net. In Spaces list the space keys the tool may read, such as ENG, OPS.',
         'Choose Test connection. It names any listed space the account cannot see.',
     ), docs='https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/', docs_label='Atlassian: manage API tokens'),
-    company_knowledge='always',
+    company_knowledge='spaces',
 )

@@ -237,6 +237,31 @@ async function severityChangesFromTheCardAndAHandSetOneSaysSo() {
   return 'Change severity offers Critical, Warning and Info (plus Back to the signal once set by hand), and a hand-set card carries a Severity by hand tag naming who and the signal\'s own severity';
 }
 
+async function movingAnInFlightCardToInformationSaysItStaysOnTheBoardUntilItIsDone() {
+  //given
+  const {w, doc, errors, posted} = await boot('#t=anoms/all');
+  const inc = (key) => [...doc.querySelectorAll('#anoms article.inc')].find((c) => c.dataset.key === key);
+  const toasts = () => [...doc.querySelectorAll('#toasts .toast .toast-t')].map((t) => t.textContent);
+  const info = (key) => [...inc(key).querySelectorAll('.sev-pick')].find((b) => b.dataset.sev === 'info');
+
+  //when
+  info(WAIT).click();
+  await wait(80);
+  const calm = toasts();
+  info(NEW).click();
+  await wait(80);
+  const said = toasts();
+
+  //then
+  assert.deepStrictEqual(calm, [], 'a card nobody works on just leaves the board: no notice');
+  assert.strictEqual(said.length, 1);
+  assert.ok(/^#153 stays on the board while it has an owner, a ticket or work in progress; it moves to Information when none of those remain$/.test(said[0]), 'the notice says it stays on the board and will move: ' + said[0]);
+  assert.deepStrictEqual(posted.map((b) => [b.type, b.key, b.sev]), [['severity', WAIT, 'info'], ['severity', NEW, 'info']]);
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  return 'Move to Information on a card someone works on says it stays on the board until the work is done';
+}
+
 async function tilesAndRowsTitleACardByItsMessageOrItsBusinessSentence() {
   //given
   const {w, doc, errors} = await boot('#t=anoms/all', {'skopax-card-view': 'board'});
@@ -448,6 +473,7 @@ async function aDropAnywhereInAColumnMovesTheCardAndTheColumnsFillTheBoard() {
   console.log('PASS ' + await guestsCannotDragAndARefusedMoveSaysWhy());
   console.log('PASS ' + await jiraCreateAndLinkShowAsTextButtonsOutsideTheFoldedActions());
   console.log('PASS ' + await severityChangesFromTheCardAndAHandSetOneSaysSo());
+  console.log('PASS ' + await movingAnInFlightCardToInformationSaysItStaysOnTheBoardUntilItIsDone());
   console.log('PASS ' + await tilesAndRowsTitleACardByItsMessageOrItsBusinessSentence());
   console.log('PASS ' + await aCardWithNoChangeFor48HoursMovesToArchivedAndShowsNowhereElse());
   console.log('PASS ' + await theListHasColumnsAndARowStillOpensForDetails());

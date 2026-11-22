@@ -19,6 +19,7 @@ SLACK_POST_SEVS = ('crit', 'warn', 'off')
 SLACK_POST_SEV = 'warn'
 CRIT_NOW_TOLD = 'slack.crit-now'
 INFO_DAYS_TOLD = 'core.info-auto-close-days'
+ENV_LABEL_TOLD = 'core.env-label'
 TOLD: set[str] = set()
 
 PLACEHOLDER = re.compile(r'\$\{([^}:]+)(?::([^}]*))?}')
@@ -240,7 +241,7 @@ class Settings:
     mcp_wait_seconds: int = MCP_WAIT_SECONDS
     mcp_dive_cap: int = MCP_DIVE_CAP
     base_url: str = ''
-    env_label: str = ''
+    workspace_label: str = ''
     workspace_links: str = ''
     timezone: str = 'UTC'
     language: str = 'en'
@@ -500,6 +501,13 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         TOLD.add(INFO_DAYS_TOLD)
         log.warning('core.info-auto-close-days is deprecated and ignored: information items are never closed, they end when their signal stops')
 
+    workspace_label = get('core.workspace-label', 'SKOPAX_WORKSPACE_LABEL', '').strip()
+    old_label = '' if workspace_label else get('core.env-label', 'SKOPAX_ENV_LABEL', '').strip()
+    if old_label and ENV_LABEL_TOLD not in TOLD:
+        TOLD.add(ENV_LABEL_TOLD)
+        log.warning('SKOPAX_ENV_LABEL (core.env-label) is deprecated: use SKOPAX_WORKSPACE_LABEL (core.workspace-label)')
+    workspace_label = workspace_label or old_label
+
     default_role = get('sso.default-role', 'SSO_DEFAULT_ROLE', 'viewer').strip() or 'viewer'
     if default_role not in DEFAULT_ROLES:
         raise ConfigurationError(msg('config.default_role_invalid', value=repr(default_role)))
@@ -677,7 +685,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         mcp_wait_seconds=bounded('mcp.wait-seconds', get('mcp.wait-seconds', 'MCP_WAIT_SECONDS', str(MCP_WAIT_SECONDS)).strip() or str(MCP_WAIT_SECONDS), 0, 55, MCP_WAIT_SECONDS),
         mcp_dive_cap=bounded('mcp.dive-cap', get('mcp.dive-cap', 'MCP_DIVE_CAP', str(MCP_DIVE_CAP)).strip() or str(MCP_DIVE_CAP), 0, 50, MCP_DIVE_CAP),
         base_url=get('core.base-url', 'SKOPAX_BASE_URL', '').strip(),
-        env_label=get('core.env-label', 'SKOPAX_ENV_LABEL', '').strip(),
+        workspace_label=workspace_label,
         workspace_links=get('core.workspace-links', 'SKOPAX_WORKSPACE_LINKS', '').strip() or get('core.instance-links', 'SKOPAX_INSTANCE_LINKS', '').strip(),
         timezone=get('core.timezone', 'SKOPAX_TIMEZONE', 'UTC').strip() or 'UTC',
         language=get('core.language', 'SKOPAX_LANGUAGE', 'en').strip() or 'en',

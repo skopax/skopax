@@ -154,9 +154,26 @@ async function theNewestReleaseStaysOpenAcrossARefresh() {
   return 'the newest release keeps the open state the reader gave it when a refresh rebuilds the list';
 }
 
+async function everyReviewTextHasAKeyInEachPack() {
+  //given
+  const fs = require('fs'), path = require('path');
+  const root = path.join(path.dirname(TEMPLATE), '..');
+  const source = fs.readFileSync(path.join(root, 'web', 'static', 'review.js'), 'utf8');
+  const texts = ['No self-review yet. The AI writes one each morning.', 'The self-review is unavailable right now.'];
+
+  //then
+  texts.forEach((t) => assert.ok(source.indexOf(t) >= 0, 'review.js says: ' + t));
+  ['de', 'es', 'fr', 'tr'].forEach((lang) => {
+    const page = JSON.parse(fs.readFileSync(path.join(root, 'locale', lang, 'page.json'), 'utf8')).page;
+    texts.forEach((t) => assert.ok(page[t], lang + ' translates: ' + t));
+    assert.ok(!('No self-review yet. A Claude session writes one each morning.' in page), lang + ' has no orphan key');
+  });
+  return 'the self-review texts have their keys in every pack and no orphan stays';
+}
+
 (async () => {
   for (const t of [linksKeepTheirBalancedParentheses,
-    anUnconfirmedStopDisarmsAndAConfirmSendsWhatTheButtonSaid, anInvestigatorRepaintKeepsTheTextTypedInACardForm, theNewestReleaseStaysOpenAcrossARefresh]) {
+    anUnconfirmedStopDisarmsAndAConfirmSendsWhatTheButtonSaid, anInvestigatorRepaintKeepsTheTextTypedInACardForm, theNewestReleaseStaysOpenAcrossARefresh, everyReviewTextHasAKeyInEachPack]) {
     console.log('PASS ' + await t());
   }
 })().catch((e) => { console.error('FAIL', e); process.exit(1); });

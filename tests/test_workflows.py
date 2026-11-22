@@ -26,7 +26,7 @@ DIGEST = re.compile(r'[^\s@]+@sha256:[0-9a-f]{64}')
 LOCAL_CALLS = {'./.github/workflows/ci.yml'}
 READ_ONLY = {'contents': 'read'}
 PERMISSIONS = {
-    **{('ci.yml', job): READ_ONLY for job in ('tests', 'pages', 'licences', 'secrets')},
+    **{('ci.yml', job): READ_ONLY for job in ('tests', 'page-suites', 'pages', 'licences', 'secrets')},
     ('pr.yml', 'title'): READ_ONLY,
     ('pr.yml', 'dco'): READ_ONLY,
     ('image.yml', 'ci'): READ_ONLY,
@@ -37,7 +37,8 @@ PERMISSIONS = {
     ('scan.yml', 'scan'): {'contents': 'read', 'packages': 'read', 'security-events': 'write', 'issues': 'write'},
     ('image.yml', 'promote'): {'contents': 'read', 'packages': 'write'},
 }
-CI_JOBS = {'tests', 'pages', 'licences', 'secrets'}
+CI_JOBS = {'tests', 'page-suites', 'pages', 'licences', 'secrets'}
+PAGE_SHARDS = 4
 IMAGE_JOBS = {'ci', 'version', 'build', 'layer-smoke', 'scan', 'promote'}
 NEEDS = {'version': {'ci'}, 'build': {'version'}, 'layer-smoke': {'version', 'build'}, 'scan': {'version', 'build'},
          'promote': {'version', 'build', 'layer-smoke', 'scan'}}
@@ -311,11 +312,20 @@ def tree_command_problems(ci: dict, texts: dict[str, str]) -> list[str]:
         problems.append('tests does not check the lock against pyproject.toml before the sync')
     if not any('uv run --frozen pytest' in r and '-n auto' in r for r in runs(ci, 'tests')):
         problems.append('tests does not run uv run --frozen pytest -n auto')
-    if not any(s.get('run') == 'npm ci' and s.get('working-directory') == 'tests/page' for s in steps(ci, 'pages')):
-        problems.append('pages does not run npm ci in tests/page')
-    zones = sorted(s.get('env', {}).get('SKOPAX_TEST_TZ', '') for s in steps(ci, 'pages') if s.get('run') == PAGE_SUITES)
-    if zones != ['Asia/Tokyo', 'UTC']:
-        problems.append(f'page suites run in {zones}')
+    if not any(s.get('run') == 'npm ci' and s.get('working-directory') == 'tests/page' for s in steps(ci, 'page-suites')):
+        problems.append('page-suites does not run npm ci in tests/page')
+    matrix = jobs['page-suites'].get('strategy', {}).get('matrix', {})
+    if sorted(matrix.get('zone', [])) != ['Asia/Tokyo', 'UTC'] or sorted(matrix.get('shard', [])) != list(range(1, PAGE_SHARDS + 1)):
+        problems.append(f'page suites run in {matrix}')
+    if jobs['page-suites'].get('strategy', {}).get('fail-fast') is not False:
+        problems.append('a failed page shard cancels the others')
+    page_runs = [s for s in steps(ci, 'page-suites') if s.get('run') == PAGE_SUITES]
+    if len(page_runs) != 1 or page_runs[0].get('env') != {'SKOPAX_TEST_TZ': '${{ matrix.zone }}', 'SKOPAX_TEST_SHARD': '${{ matrix.shard }}/' + str(PAGE_SHARDS)}:
+        problems.append(f'page suites run with {[s.get("env") for s in page_runs]}')
+    final = jobs['pages']
+    if needs_of(final) != {'page-suites'} or final.get('if') != '${{ always() }}' or [s.get('run') for s in final.get('steps', [])] != ['test "$SHARDS" = success'] \
+            or final['steps'][0].get('env') != {'SHARDS': '${{ needs.page-suites.result }}'}:
+        problems.append('pages does not report whether every page shard passed')
     if not any(f'-m tools.licences check --site {SITE} --out' in r for r in runs(ci, 'licences')):
         problems.append('licences does not check the synced venv')
     secrets_job = jobs['secrets']
@@ -730,7 +740,7 @@ def test_ci_uses_the_tool_versions_the_tree_pins():
     assert floor and node_versions == {engines.get('node', '22.' + floor[1])}
     assert pythons == {'uv python install 3.15'}
     assert {j for j in ci['jobs'] if uses(ci, 'astral-sh/setup-uv', j)} == {'tests', 'licences'}
-    assert {j for j in ci['jobs'] if uses(ci, 'actions/setup-node', j)} == {'tests', 'pages'}
+    assert {j for j in ci['jobs'] if uses(ci, 'actions/setup-node', j)} == {'tests', 'page-suites'}
 
 
 def test_the_image_job_builds_amd64_and_arm64_with_labels_and_runs_the_layer_smoke():

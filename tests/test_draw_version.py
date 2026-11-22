@@ -281,3 +281,20 @@ def test_stopped_posts_drawn_with_the_old_signature_are_redrawn_once_and_a_firin
     assert (first, second) == (2, 0)
     assert sorted(u['ts'] for u in rewrites(api)) == sorted([TS[1], LONE_TS])
     assert new_posts(api, post) == []
+
+
+def test_the_packs_count_as_loaded_only_once_the_post_language_is_set(store: Store, monkeypatch):
+    # given
+    seed(store)
+    slack, _, _ = fake_slack()
+    app = create_app(settings(), store, slack=slack)
+    app.state.card_posts.redraw_start = lambda **kw: True
+    seen, known = [], messages.languages
+    monkeypatch.setattr(messages, 'languages', lambda: seen.append(app.state.redraw_at_start()) or known())
+
+    # when
+    app.state.runtime.refresh()
+
+    # then
+    assert seen == [False], 'a post signed before the language is chosen would use the old one'
+    assert app.state.redraw_at_start() is True

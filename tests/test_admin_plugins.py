@@ -1086,6 +1086,7 @@ def test_health_reads_only_the_checks_an_instance_runs(store):
         c.app.state.instances.clock = lambda: NOW
         add(c, 'main', True)
         add(c, 'east', True, values=EAST)
+        c.app.state.instances.refresh()
         both_ran(c, NOW)
 
         # when

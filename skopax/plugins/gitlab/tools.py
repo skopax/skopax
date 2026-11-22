@@ -70,8 +70,10 @@ def project_of(gitlab, repo: str) -> dict:
     path, name = target(gitlab, repo)
     group = getattr(gitlab, 'group', '')
     near = similar_projects(gitlab, name)
-    raise ReadError(404, f'no single GitLab project named {name} under {group or "the configured group"}' + ('' if '/' in path else '; give its full path, like ops/deploy/helm-charts')
-                    + (f"; close paths: {', '.join(near)}" if near else '; it may be a folder inside a repo, such as ops/deploy/manifests or ops/deploy/helm-charts, so try gitlab_search'))
+    where = group or msg('gitlab.hint.configured_group')
+    full_path = '' if '/' in path else msg('gitlab.hint.full_path')
+    tail = msg('gitlab.hint.close_paths', paths=', '.join(near)) if near else msg('gitlab.hint.folder')
+    raise ReadError(404, msg('gitlab.no_project', name=name, group=where) + full_path + tail)
 
 
 def utc_iso(value) -> str | None:
@@ -156,7 +158,7 @@ def nearby(gitlab, a: dict, project: dict) -> str:
             return ''
         if rows:
             names = [(str(r.get('path') or r.get('name')) + ('/' if r.get('type') == 'tree' else '')) for r in rows[:TREE_ENTRIES] if isinstance(r, dict)]
-            return f" . the nearest existing directory is {folder or '(repository root)'} at {ref}, with: {', '.join(names)}"
+            return msg('gitlab.hint.nearby', folder=folder or msg('gitlab.hint.root'), ref=ref, names=', '.join(names))
         if not folder:
             return ''
         folder = folder.rpartition('/')[0]

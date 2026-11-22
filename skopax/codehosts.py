@@ -7,6 +7,14 @@ from skopax.messages import msg
 
 TAG = 'codeHost'
 DOWN_S = 60.0
+DEFAULT_NAME = 'GitLab'
+
+
+def name_of(host) -> str:
+    try:
+        return str(host.name) or DEFAULT_NAME
+    except Exception:
+        return DEFAULT_NAME
 
 
 class Undecided(SourceDown):
@@ -25,6 +33,11 @@ class CodeHosts:
     @property
     def enabled(self) -> bool:
         return bool(self._on())
+
+    @property
+    def name(self) -> str:
+        names = list(dict.fromkeys(name_of(self.hosts[i]) for i in self._on()))
+        return ' or '.join(names) or DEFAULT_NAME
 
     def _lone(self) -> CodeHost | None:
         on = self._on()

@@ -2,6 +2,48 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.4.11 (2026-11-22)
+
+A cleanup release: the investigator is called Investigator everywhere, a password change signs out your other sessions, Slack echo posts say which card they are, grouped cards name their parent, and many small fixes across Slack, the board, Admin and the plug-ins. CI runs the page checks in parallel.
+
+**Upgrade notes:**
+
+- The investigator is named "Investigator" (translated with the outbound language) on the page, in Slack and in history, whatever model it runs on. Before, a Claude model showed as "Claude investigator".
+- Resetting or changing a password ends that person's other password sessions. The session that changed its own password stays signed in; SSO sessions and API tokens are not touched. Sessions from before the upgrade keep working until the next password change.
+- `SKOPAX_ENV_LABEL` (setting key `core.env-label`) is now `SKOPAX_WORKSPACE_LABEL` (`core.workspace-label`). The old name still works and logs a deprecation line once; the new name wins when both are set. `/api/me` returns `workspaceLabel` instead of `envLabel`.
+
+**Changed:**
+
+- Notes, activity and history lines of a grouped card name the parent as "#N service / label" instead of its internal key (the key is kept only when the parent has left the page).
+- A card post placed in another card's Slack thread says why it is there ("Grouped under #N ...", "Same service as ...", "Same namespace as ..."), and an echo line in a shared thread starts with the card's own linked name.
+- SSO letter marks use two letters where providers shared a letter (Google, GitLab, Okta, OneLogin, Auth0, authentik).
+- Admin > Web sites warns when a -host names a site that is not on the built-in list.
+- CI runs the page checks as eight parallel jobs (two time zones, four shards each) behind the same required pages check.
+- Docs: one "Set it up" format in the plug-in guide, the SonarQube gate source, the page-scan cut-off wording, and the order in which core and plug-in page-text rules apply.
+
+**Fixed:**
+
+- Slack reminders @mention the assignee again after a failed Slack lookup: a failure in the daily tag report no longer stops mentions outside that report, a refused lookup is tried again after 10 minutes, and while Slack cannot be asked the last known user id is used.
+- Slack name lookups no longer repeat every pass when Slack refuses them (for example a missing users:read.email scope); a refusal is held for 10 minutes and logged once.
+- The daily tag report is tried again later the same day when Slack clearly never got the post (connection refused, name lookup failed, rate limited); when Slack may have taken it, the day is skipped as before, so it is never posted twice.
+- Route posts retried in the same pass as new pushes are all counted and echoed to Slack; a plug-in digest post marks its cards while it goes out, so a route echo cannot post them a second time.
+- A Slack post is never written in the old language right after the language packs load.
+- When the Slack redraw lease cannot be read, the card-post check skips that pass and logs it.
+- A post-at-once card keeps its "Card posted to Slack at once" activity line when the auto-send worker sends it first. Admin > Tags reads the people list once.
+- Board: dragging follows the same busy rule as the tile buttons, and a busy card refuses a drop.
+- Information: muted information can be unmuted; Move to Information on a card someone works on says it stays on the board until then; History no longer shows past closed rows of a key that is information now.
+- History: failed and cancelled actions are translated, "Assigned to name" has no colon, and "Before that" lines read in sentence case in English.
+- Releases names the code host that was not read (GitHub, GitLab or "the code host") instead of always GitLab; deploy notes, code-link errors and the Enricher log do the same.
+- The self-review texts translate again in de, es, fr and tr.
+- The Name and Change password dialogs keep keyboard focus inside; Esc closes them and focus returns.
+- Admin > Access locks Change role and Disable for the last enabled admin with a password, with the reason as tooltip.
+- A database error while saving the identity provider's display name no longer refuses an SSO sign-in. A password set on an SSO account is hashed once. SSO link and SSO-only refusals name their field.
+- The people search text no longer shows in HTTP access logs. Saving a setting at the value already in use adds no activity line. Access row menus stay open while the page scrolls.
+- Confluence with no Spaces shows "Knowledge needs setup", and an MCP server error affects the Knowledge badge only when that server is a knowledge source.
+- GitHub: an unknown repository name is remembered for a minute, and github_docs reads a file once.
+- ES|QL reads of daily indices named with the local date retry the day before around local midnight.
+- Actions recorded under a display name two people share, or made with a token, no longer count as page use.
+
 ## 0.4.10 (2026-11-21)
 
 Calmer board tiles and a searchable Group picker, assigned cards that wait for their person, Slack posts that carry the investigator's summary and safe links, a fix for a save that could get stuck, and failure toasts on every failed action.

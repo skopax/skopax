@@ -501,7 +501,6 @@
   "Name, searched in Jira": "Nom, recherché dans Jira",
   "Needs a new sign-in": "Nouvelle connexion requise",
   "Needs attention": "Requiert de l'attention",
-  "Needs setup": "À configurer",
   "Never": "Jamais",
   "New": "Nouveau",
   "New cards": "Nouvelles cartes",
@@ -551,7 +550,7 @@
   "No result text.": "Aucun texte de résultat.",
   "No runs in this range.": "Aucune exécution sur cette période.",
   "No runs yet.": "Aucune exécution pour l'instant.",
-  "No self-review yet. A Claude session writes one each morning.": "Pas encore d'auto-évaluation. Une session Claude en rédige une chaque matin.",
+  "No self-review yet. The AI writes one each morning.": "Pas encore d'auto-évaluation. Une session Claude en rédige une chaque matin.",
   "No service Kafka timers yet.": "Aucun timer Kafka de service pour l'instant.",
   "No service Redis timings yet.": "Aucune mesure Redis de service pour l'instant.",
   "No services in this view.": "Aucun service dans cette vue.",
@@ -994,7 +993,6 @@
   "What the investigator is told": "Ce qui est dit à l'enquêteur",
   "When": "Quand",
   "Who": "Qui",
-  "Who can sign in": "Qui peut se connecter",
   "Who can sign in and how: people and their roles, single sign-on, API tokens and MCP sign-in. Roles are viewer, operator and admin.": "Qui peut se connecter et comment : les personnes et leurs rôles, l'authentification unique, les jetons API et la connexion MCP. Les rôles sont viewer, operator et admin.",
   "Why it is resolved": "Pourquoi c'est résolu",
   "Why this is expected (optional)": "Pourquoi c'est attendu (facultatif)",
@@ -1206,6 +1204,7 @@
   "Set a password": "Définir un mot de passe",
   "Give this person a password: they become a local account, and their SSO link waits {0} days for the next SSO sign-in": "Donne un mot de passe à cette personne : elle devient un compte local, et son lien SSO attend {0} jours la prochaine connexion SSO",
   "The last active admin with a password keeps it, so there is a way in when SSO fails: give another admin a password first": "Le dernier admin actif avec un mot de passe le garde, pour qu’il reste un moyen d’entrer si le SSO tombe en panne : donnez d’abord un mot de passe à un autre admin",
+  "The last active admin with a password stays an enabled admin, so there is a way in when SSO fails: give another admin a password first": "Le dernier admin actif avec un mot de passe reste un admin actif, pour qu’il reste un moyen d’entrer si le SSO tombe en panne : donnez d’abord un mot de passe à un autre admin",
   "Information": "Informations",
   "Move to Information": "Déplacer vers Informations",
   "Still firing": "Toujours actif",
@@ -1350,8 +1349,8 @@
   "Other workspaces of Skopax, such as staging, that the switcher at the top of the sidebar opens; they share nothing with this one.": "Les autres espaces de travail de Skopax, comme staging, que le sélecteur en haut de la barre latérale ouvre ; ils ne partagent rien avec celui-ci.",
   "This workspace": "Cet espace de travail",
   "Other workspaces": "Autres espaces de travail",
-  "Set by SKOPAX_ENV_LABEL in the service configuration; this page shows it and does not change it.": "Défini par SKOPAX_ENV_LABEL dans la configuration du service ; cette page l'affiche sans le modifier.",
-  "Named after its address. Set SKOPAX_ENV_LABEL in the service configuration to give it a name.": "Nommé d'après son adresse. Définissez SKOPAX_ENV_LABEL dans la configuration du service pour lui donner un nom.",
+  "Set by SKOPAX_WORKSPACE_LABEL in the service configuration; this page shows it and does not change it.": "Défini par SKOPAX_WORKSPACE_LABEL dans la configuration du service ; cette page l'affiche sans le modifier.",
+  "Named after its address. Set SKOPAX_WORKSPACE_LABEL in the service configuration to give it a name.": "Nommé d'après son adresse. Définissez SKOPAX_WORKSPACE_LABEL dans la configuration du service pour lui donner un nom.",
   "No other workspaces yet": "Aucun autre espace de travail pour l'instant",
   "+ Add workspace": "+ Ajouter un espace de travail",
   "Open workspace": "Ouvrir l'espace de travail",
@@ -1386,7 +1385,35 @@
   "Drop the list saved here and go back to the configured list": "Abandonner la liste enregistrée ici et revenir à la liste configurée",
   "Drop the list saved here and go back to the default": "Abandonner la liste enregistrée ici et revenir à la valeur par défaut",
   "Stopped after the event; nobody opened a task": "Arrêtée après l'événement ; personne n'a ouvert de tâche",
-  "Its parent was handled and has left the page": "Carte parente traitée et retirée de la page"
+  "Its parent was handled and has left the page": "Carte parente traitée et retirée de la page",
+  "Start progress failed": "Échec : passer En cours",
+  "Start progress cancelled": "Annulé : passer En cours",
+  "Resolve failed": "Échec : résoudre",
+  "Resolve cancelled": "Annulé : résoudre",
+  "Create task failed": "Échec : créer une tâche",
+  "Create task cancelled": "Annulé : créer une tâche",
+  "Link ticket failed": "Échec : lier le ticket",
+  "Link ticket cancelled": "Annulé : lier le ticket",
+  "Mute failed": "Échec : mettre en sourdine",
+  "Mute cancelled": "Annulé : mettre en sourdine",
+  "Unmute failed": "Échec : réactiver",
+  "Unmute cancelled": "Annulé : réactiver",
+  "Mark as known noise failed": "Échec : marquer comme bruit connu",
+  "Mark as known noise cancelled": "Annulé : marquer comme bruit connu",
+  "Reopen failed": "Échec : rouvrir",
+  "Reopen cancelled": "Annulé : rouvrir",
+  "Investigate failed": "Échec : enquêter",
+  "Investigate cancelled": "Annulé : enquêter",
+  "Group failed": "Échec : grouper",
+  "Group cancelled": "Annulé : grouper",
+  "Change severity failed": "Échec : changer la gravité",
+  "Change severity cancelled": "Annulé : changer la gravité",
+  "Ask the investigator failed": "Échec : demander à l’enquêteur",
+  "Ask the investigator cancelled": "Annulé : demander à l’enquêteur",
+  "Lifts the mute: this item shows as firing again": "Lève la sourdine : cet élément s’affiche de nouveau comme actif",
+  "not read: the code host is off": "Non lu : l’hôte de code est désactivé",
+  "not read from the code host": "Non lu depuis l’hôte de code",
+  "not read from the code host yet": "Pas encore lu depuis l’hôte de code"
  },
  "rules": [
   [
@@ -1804,6 +1831,18 @@
   [
    "^(.+) moved to (.+) · hidden by the current filter$",
    "$1 déplacée vers $2 · masquée par le filtre actuel"
+  ],
+  [
+   "^(.+) stays on the board while it has an owner, a ticket or work in progress; it moves to Information when none of those remain$",
+   "$1 reste sur le tableau tant qu’il a un responsable, un ticket ou un travail en cours ; il passe dans Informations quand plus rien de cela ne subsiste"
+  ],
+  [
+   "^not read from (.+) yet$",
+   "Pas encore lu depuis $1"
+  ],
+  [
+   "^not read from (.+)$",
+   "Non lu depuis $1"
   ]
  ],
  "months": {

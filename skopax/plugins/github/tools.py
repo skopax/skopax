@@ -345,7 +345,7 @@ def docs(github, a: dict):
         raise ReadError(403, msg('github.docs_outside', path=path[:200], folder=folder or repo['full']))
     try:
         body = github.raw_file(repo, path, repo['branch'])
-        text = github.file(repo, path, repo['branch'])
+        text = github.decoded(body, path)
     except Missing:
         raise ReadError(404, msg('github.no_file', path=path, repo=repo['name'], ref=repo['branch'], permission=PERMISSIONS['code'])) from None
     cut = len(text) > DOCS_TEXT_LIMIT

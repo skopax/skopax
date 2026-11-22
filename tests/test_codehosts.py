@@ -251,3 +251,41 @@ def test_a_code_link_of_the_investigator_points_at_github_when_only_github_serve
     # then
     assert link['url'] == f'{CART_WEB}/blob/{FULL}/src/a.py#L2-L3'
     assert link['by'][0]['url'] == f'{CART_WEB}/commit/{"d" * 40}' and link['by'][0]['name'] == 'Adam'
+
+
+def test_the_hosts_are_named_by_the_ones_that_serve():
+    # given
+    gl, gh = gitlab_host(), github_host()
+
+    # then
+    assert CodeHosts((Off(), gh)).name == 'GitHub'
+    assert CodeHosts((gl, Off())).name == 'GitLab'
+    assert CodeHosts((gl, gh)).name == 'GitLab or GitHub'
+    assert CodeHosts((Off(), Off())).name == 'GitLab'
+
+
+def test_the_enricher_notes_name_github_when_only_github_serves(store: Store):
+    # given
+    store.add_deploys([deploy('search-service')])
+    hosts = CodeHosts((Off(), github_host()))
+    enricher = Enricher(store, hosts, SimpleNamespace(enabled=False))
+
+    # when
+    enricher.sweep()
+    note = store.deploys_since('2000-01-01T00:00:00Z')[0].get('ticketsNote')
+
+    # then
+    assert note == 'no GitHub project with the service name in a subgroup of the group'
+
+
+def test_the_investigator_code_link_errors_name_github_when_only_github_serves():
+    # given
+    from skopax.investigator.tools import ToolError, code_link
+    hosts = CodeHosts((Off(), github_host()))
+
+    # when
+    with pytest.raises(ToolError) as raised:
+        code_link(hosts, {'repo': 'nowhere-service', 'path': 'src/a.py', 'lines': '2-3', 'what': 'here'}, '')
+
+    # then
+    assert 'no single GitHub project named nowhere-service' in str(raised.value) and 'GitLab' not in str(raised.value)

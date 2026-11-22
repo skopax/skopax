@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from skopax import history
+from skopax import clock, history
 from skopax.contract import Capabilities, Field, ReadError, Tool
 from skopax.kit import elastic
 from skopax.plugins import prometheus
@@ -166,6 +166,55 @@ def test_today_s_daily_index_that_is_not_created_yet_is_read_once_for_yesterday_
     # then
     assert es_sent(http) == ['FROM app-logs-2026.11.21 | STATS n = COUNT(*)', 'FROM app-logs-2026.11.20 | STATS n = COUNT(*)']
     assert out['rows'] == [{'n': 7}] and 'app-logs-2026.11.21 does not exist yet' in out['note'] and 'app-logs-2026.11.20' in out['note'], out
+
+
+@pytest.fixture
+def local_zone():
+    def use(name: str) -> None:
+        clock.set_zone(name)
+    yield use
+    clock.set_zone('UTC')
+
+
+def test_a_local_date_daily_index_ahead_of_utc_is_retried_for_the_local_yesterday(local_zone):
+    # given
+    local_zone('Asia/Tokyo')
+    late = dt.datetime(2026, 11, 21, 20, 0, tzinfo=dt.timezone.utc).timestamp()
+    http = es_scripted(not_found('app-logs-2026.11.22'), ROWS)
+
+    # when
+    out = run_esql(es_ctx(http, late), {'query': 'FROM app-logs-2026.11.22 | STATS n = COUNT(*)'})
+
+    # then
+    assert es_sent(http) == ['FROM app-logs-2026.11.22 | STATS n = COUNT(*)', 'FROM app-logs-2026.11.21 | STATS n = COUNT(*)']
+    assert out['rows'] == [{'n': 7}] and 'app-logs-2026.11.22 does not exist yet' in out['note']
+
+
+def test_a_local_date_daily_index_behind_utc_is_retried_in_the_first_hour_after_local_midnight(local_zone):
+    # given
+    local_zone('America/New_York')
+    after_midnight = dt.datetime(2026, 11, 21, 5, 30, tzinfo=dt.timezone.utc).timestamp()
+    http = es_scripted(not_found('app-logs-2026.11.21'), ROWS)
+
+    # when
+    out = run_esql(es_ctx(http, after_midnight), {'query': 'FROM app-logs-2026.11.21 | STATS n = COUNT(*)'})
+
+    # then
+    assert es_sent(http) == ['FROM app-logs-2026.11.21 | STATS n = COUNT(*)', 'FROM app-logs-2026.11.20 | STATS n = COUNT(*)']
+    assert out['rows'] == [{'n': 7}]
+
+
+def test_a_date_that_is_neither_the_utc_nor_the_local_today_is_not_retried(local_zone):
+    # given
+    local_zone('Asia/Tokyo')
+    http = es_scripted(not_found('app-logs-2026.11.23'), ROWS)
+
+    # when
+    with pytest.raises(ReadError):
+        run_esql(es_ctx(http), {'query': 'FROM app-logs-2026.11.23 | STATS n = COUNT(*)'})
+
+    # then
+    assert len(es_sent(http)) == 1
 
 
 def test_a_failed_retry_on_yesterday_keeps_the_closest_index_hint():

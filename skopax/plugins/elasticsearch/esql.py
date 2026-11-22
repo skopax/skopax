@@ -3,6 +3,8 @@ import difflib
 import re
 from collections.abc import Mapping
 
+from skopax import clock
+from skopax.messages import msg
 from skopax.contract import Context, Field, ReadError, send
 from skopax.kit.elastic import CLUSTERS, DATED, FALLBACK, REJECTED, Elastic, ElasticError, client_for, closest_patterns, index_of, log_fields, refused_text, sources_of
 
@@ -12,7 +14,6 @@ UPPER_BOUND = re.compile(r'@timestamp`?\s*(<=|<)', re.I)
 LOWER_BOUND = re.compile(r'(@timestamp`?\s*(?:>=|>)\s*)(?:NOW\(\)\s*-\s*(\d+)\s*(minutes?|hours?|days?|weeks?)\b|"([^"]+)")', re.I)
 UNIT_HOURS = {'minute': 1 / 60, 'hour': 1, 'day': 24, 'week': 168}
 LAST_DAY = 'NOW() - 1 day'
-NARROW_HINT = 'narrow the time range or the index'
 MAX_INDICES = 3
 COLUMNS_SHOWN = 5
 COLUMNS_CLOSE = 0.5
@@ -29,11 +30,7 @@ QUERY_S = 55
 KEYS = (r'elastic\.(logging|apm)-(url|api-key)',)
 AGENT_CLUSTERS = {'logs': 'logging', 'apm': 'apm'}
 AGENT_REFUSED = 502
-SLOW = ('ES|QL HTTP 504: the query ran past the time limit of the gateway in front of Elasticsearch. Name fewer indices without a star, shorten the @timestamp range, '
-        'filter on a keyword field before any LIKE "*...*", or count one day at a time')
 RANGE_KINDS = ('search_phase_execution_exception', 'too_many_buckets_exception', 'no_shard_available_action_exception')
-RANGE_NOTE = 'the full range failed; this answer covers the last day (NOW() - 1 day to now); ask for the earlier days one at a time'
-LAST_DAY_NOTE = ('the full time range timed out, so this answer covers only the last day (NOW() - 1 day to now); ask for the earlier days one at a time')
 DESCRIPTION = ('ES|QL query on Elasticsearch, read only. cluster logs (the default) reads the log cluster, whose logs are in {field:log-index}; '
                'cluster apm reads the APM cluster: {field:apm-index}, logs-apm.error-* and metrics-apm.*. '
                'Daily index names follow UTC dates, so never write a dated index name: use the pattern above with a wildcard and a WHERE on @timestamp. '
@@ -52,19 +49,19 @@ AGENT_FIELDS = (Field('elastic.logging-url', 'Logs Elasticsearch URL', 'url', he
 
 def hints(config: Mapping[str, str]) -> tuple[tuple[re.Pattern, str], ...]:
     named = log_fields(config)
-    fields = f"the level in {named['level']}, the service in {named['service']}"
-    return ((re.compile(r"mismatched input '(first|last)'", re.I), 'first and last are reserved words: name the column oldest / newest'),
-            (re.compile(r'No matches found for pattern'), f"a KEEP or DROP pattern matched no column: name only columns the index has (the log line is {named['message']}, {fields})"),
-            (re.compile(r'index_not_found_exception|no such index', re.I),
-             f"daily index names follow UTC dates and today's may not exist yet: use the pattern with a * and a @timestamp bound, logs {index_of(config, 'logs')}, APM {index_of(config, 'apm')}"),
-            (re.compile(r'Unknown index'), f"that index does not exist, or the API key cannot read it: logs are in {index_of(config, 'logs')}, APM in {index_of(config, 'apm')}"),
-            (re.compile(r'is \[text\] so second argument must'), 'that field is text: compare it with a quoted string ("404") or use its .keyword field'),
-            (re.compile(r'Unknown column \[(log|log\.message|msg|text|line|log_message)\]'), f"the log line is in {named['message']} ({fields})"))
+    fields = msg('esql.hint.fields', level=named['level'], service=named['service'])
+    indices = {'logs': index_of(config, 'logs'), 'apm': index_of(config, 'apm')}
+    return ((re.compile(r"mismatched input '(first|last)'", re.I), msg('esql.hint.reserved')),
+            (re.compile(r'No matches found for pattern'), msg('esql.hint.keep_drop', message=named['message'], fields=fields)),
+            (re.compile(r'index_not_found_exception|no such index', re.I), msg('esql.hint.index_missing', **indices)),
+            (re.compile(r'Unknown index'), msg('esql.hint.unknown_index', **indices)),
+            (re.compile(r'is \[text\] so second argument must'), msg('esql.hint.text_field')),
+            (re.compile(r'Unknown column \[(log|log\.message|msg|text|line|log_message)\]'), msg('esql.hint.log_column', message=named['message'], fields=fields)))
 
 
 def answer(text: str, status: int, config: Mapping[str, str]) -> str:
     if status == 504:
-        return SLOW
+        return msg('esql.slow')
     tail = ''.join(f' - {hint}' for pattern, hint in hints(config) if pattern.search(text))
     return text[:max(0, ANSWER_MAX - len(tail))] + tail
 
@@ -138,12 +135,12 @@ def run_esql(ctx: Context, args: dict) -> object:
         unserved = not slow and unserved_range(e)
         narrowed = last_day(query) if slow or unserved else None
         if narrowed is None:
-            raise ReadError(status, first + (f' - {NARROW_HINT}' if slow or unserved else '')) from None
+            raise ReadError(status, first + (f" - {msg('esql.narrow')}" if slow or unserved else '')) from None
     try:
         rows = es.query(narrowed, timeout=QUERY_S)
     except ElasticError as again:
-        raise ReadError(status, f'{first} - the retry on the last day failed too: {answer(again.text, again.status, config)}') from None
-    return {'note': RANGE_NOTE if unserved else LAST_DAY_NOTE, 'rows': rows}
+        raise ReadError(status, msg('esql.retry_last_day', first=first, again=answer(again.text, again.status, config))) from None
+    return {'note': msg('esql.range_note' if unserved else 'esql.last_day_note'), 'rows': rows}
 
 
 def missing_names(detail: str) -> set[str]:
@@ -154,14 +151,14 @@ def yesterday(query: str, now: float, missing: set[str], es: Elastic) -> str | N
     m = FROM.match(query)
     if not m:
         return None
-    today = dt.datetime.fromtimestamp(now, dt.timezone.utc).date()
-    stamped = [x for x in sources_of(query) if x in missing and any(found_day(d) == today for d in DAY_STAMP.finditer(x))]
+    todays = {dt.datetime.fromtimestamp(now, dt.timezone.utc).date(), clock.local(now).date()}
+    stamped = [x for x in sources_of(query) if x in missing and any(found_day(d) in todays for d in DAY_STAMP.finditer(x))]
     if not stamped or len(stamped) != len(missing) or any(re.sub(r'\*{2,}', '*', DATED.sub('*', x)) not in es.index_patterns() for x in stamped):
         return None
 
     def back(found: re.Match) -> str:
         day = found_day(found)
-        if day != today:
+        if day not in todays:
             return found.group(0)
         sep = found.group(2)
         return (day - dt.timedelta(days=1)).strftime(f'%Y{sep}%m{sep}%d')
@@ -183,9 +180,9 @@ def day_before(es: Elastic, query: str, earlier: str, status: int, first: str, c
     try:
         rows = es.query(earlier, timeout=QUERY_S)
     except ElasticError as again:
-        raise ReadError(status, f'{first} - the retry on the day before failed too: {answer(again.text, again.status, config)}{missing_hint(es, query)}', HINT_ROOM) from None
+        raise ReadError(status, msg('esql.retry_day_before', first=first, again=answer(again.text, again.status, config), hint=missing_hint(es, query)), HINT_ROOM) from None
     named, used = ', '.join(sources_of(query)), ', '.join(sources_of(earlier))
-    return {'note': f"{named} does not exist yet (today's daily index is made with its first log line), so this answer reads the day before: {used}", 'rows': rows}
+    return {'note': msg('esql.day_before_note', named=named, used=used), 'rows': rows}
 
 
 def column_hint(es: Elastic, query: str, unknown: tuple[str, ...]) -> str:
@@ -198,7 +195,7 @@ def column_hint(es: Elastic, query: str, unknown: tuple[str, ...]) -> str:
         return ''
     scored = sorted(((max(difflib.SequenceMatcher(None, u, n).ratio() for u in unknown), n) for n in names if n not in unknown), key=lambda x: (-x[0], x[1]))
     close = [n for ratio, n in scored if ratio >= COLUMNS_CLOSE][:COLUMNS_SHOWN]
-    return f" - closest columns of {', '.join(sources)}: {', '.join(close)}" if close else ''
+    return msg('esql.closest_columns', sources=', '.join(sources), columns=', '.join(close)) if close else ''
 
 
 def unserved_range(e: ElasticError) -> bool:
@@ -210,7 +207,7 @@ def missing_hint(es: Elastic, query: str) -> str:
     close = closest_patterns(sources, es.index_patterns()) if sources else []
     if not close:
         return ''
-    return f" - no index matches {', '.join(sources[:MAX_INDICES])}; closest existing patterns: {', '.join(close)}"
+    return msg('esql.no_index', sources=', '.join(sources[:MAX_INDICES]), patterns=', '.join(close))
 
 
 def agent_sources(config: Mapping[str, str]) -> list[str]:

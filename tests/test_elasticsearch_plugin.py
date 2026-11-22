@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from skopax import remote, selfreview
+from skopax.messages import msg
 from skopax.app import create_app
 from skopax.agent import RemoteAgent
 from skopax.contract import InstanceInfo, ReadError
@@ -899,7 +900,7 @@ def test_the_esql_refusal_suggests_a_bounded_query_the_check_accepts(store: Stor
     # then
     assert err and suggested.startswith('FROM app-*-logs-* | WHERE @timestamp')
     reads.check_scope(suggested + ' | STATS c = COUNT(*)', 'app-*-logs-*')
-    assert '*' not in reads.SLOW.split(':', 1)[1].replace('"*...*"', '')
+    assert '*' not in msg('esql.slow').split(':', 1)[1].replace('"*...*"', '')
 
 
 def test_read_tools_take_markup_like_text_as_it_is(store: Store):

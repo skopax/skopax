@@ -306,3 +306,60 @@ def test_a_missing_seed_follows_a_login_the_server_wrote_inside_the_minute(store
 
     # then
     assert store.db['mcp_use'].find_one({'_id': BOB})['seed'] == '2031-01-01T00:00:00Z'
+
+
+def two_namesakes(store: Store) -> Users:
+    users = Users(store.db)
+    users.upsert_sso(BOB, 'Sam Stone', 'viewer')
+    users.upsert_sso(CAROL, 'Sam Stone', 'viewer')
+    return users
+
+
+def test_actions_recorded_under_a_shared_display_name_are_evidence_for_nobody(store: Store):
+    # given
+    users = two_namesakes(store)
+    store.add_action({'type': 'take', 'key': 'k1', 'target': 'k1', 'requestedBy': 'Sam Stone', 'label': 'Take'})
+    store.add_action({'type': 'take', 'key': 'k2', 'target': 'k2', 'requestedBy': 'Sam Stone', 'via': 'mcp', 'label': 'Take via MCP'})
+
+    # when
+    page = (users.page_evidence(BOB, 'Sam Stone'), users.page_evidence(CAROL, 'Sam Stone'))
+    mcp = (users.mcp_evidence(BOB, 'Sam Stone'), users.mcp_evidence(CAROL, 'Sam Stone'))
+
+    # then
+    assert page == (False, False)
+    assert mcp == (False, False)
+
+
+def test_actions_recorded_under_the_login_belong_to_that_person_only_even_with_a_shared_name(store: Store):
+    # given
+    users = two_namesakes(store)
+    store.add_action({'type': 'take', 'key': 'k1', 'target': 'k1', 'requestedBy': BOB, 'label': 'Take'})
+    store.add_action({'type': 'take', 'key': 'k2', 'target': 'k2', 'requestedBy': CAROL, 'via': 'mcp', 'label': 'Take via MCP'})
+
+    # when
+    page = (users.page_evidence(BOB, 'Sam Stone'), users.page_evidence(CAROL, 'Sam Stone'))
+    mcp = (users.mcp_evidence(BOB, 'Sam Stone'), users.mcp_evidence(CAROL, 'Sam Stone'))
+
+    # then
+    assert page == (True, False)
+    assert mcp == (False, True)
+
+
+def test_a_display_name_that_only_one_person_has_still_finds_older_actions(store: Store):
+    # given
+    users = Users(store.db)
+    users.upsert_sso(BOB, 'Bob Stone', 'viewer')
+    store.add_action({'type': 'take', 'key': 'k1', 'target': 'k1', 'requestedBy': 'Bob Stone', 'label': 'Take'})
+
+    # then
+    assert users.page_evidence(BOB, 'Bob Stone') is True
+
+
+def test_an_action_made_with_an_api_token_is_not_page_evidence_for_the_person_who_made_the_token(store: Store):
+    # given
+    users = Users(store.db)
+    users.upsert_sso(BOB, 'token:ci', 'viewer')
+    store.add_action({'type': 'take', 'key': 'k1', 'target': 'k1', 'requestedBy': 'token:ci', 'label': 'Take'})
+
+    # then
+    assert users.page_evidence(BOB, 'token:ci') is False

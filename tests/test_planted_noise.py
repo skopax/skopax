@@ -537,7 +537,7 @@ def test_a_stale_pod_mark_is_cleared_when_a_parent_pass_writes_the_note():
     follow_parents({'anomalies': [child, parent]}, PASS_NOW)
 
     # then
-    noted(child, 'Auto-resolved: its parent 5xx|ns/a was marked no action needed')
+    noted(child, 'Auto-resolved: its parent ns/a / label was marked no action needed')
     assert parent['noteBy'] == 'pod' and parent['note']['text'] == 'owned'
 
 

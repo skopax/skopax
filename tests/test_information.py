@@ -138,7 +138,7 @@ def test_information_is_never_auto_closed_and_the_old_setting_logs_its_deprecati
 
 @pytest.mark.parametrize('body', [
     {'type': 'take'}, {'type': 'resolve'}, {'type': 'mute', 'hours': 1}, {'type': 'known'}, {'type': 'dive'},
-    {'type': 'link', 'ticket': 'OPS-123'}, {'type': 'ticket', 'title': 't'}, {'type': 'reopen'}, {'type': 'unmute'},
+    {'type': 'link', 'ticket': 'OPS-123'}, {'type': 'ticket', 'title': 't'}, {'type': 'reopen'},
 ])
 def test_card_actions_refuse_an_information_item(store: Store, body):
     # given
@@ -151,7 +151,55 @@ def test_card_actions_refuse_an_information_item(store: Store, body):
     # then
     assert res.status_code == 409
     assert res.json()['detail'] == msg('cards.information_item', key=INFO)
+    assert 'Unmute' in res.json()['detail']
     assert store.anomaly(INFO).get('triage') is None
+
+
+def test_information_rows_carry_the_muted_flag_only_when_muted():
+    # given
+    items = [info_item('log|a|INFO|loud'), info_item('log|b|INFO|quiet', muted='noise')]
+
+    # when
+    rows = {r['key']: r for r in information.rows(items, NOW)}
+
+    # then
+    assert 'muted' not in rows['log|a|INFO|loud']
+    assert rows['log|b|INFO|quiet']['muted'] is True
+
+
+def test_a_muted_information_item_can_be_unmuted_and_nothing_else_opens_up(store: Store):
+    # given
+    seen(store, info_item())
+    store.mute(INFO, 'noise', None, 'known')
+
+    # when
+    with TestClient(create_app(settings(), store)) as c:
+        before = c.get('/api/state').json()['information'][0]
+        res = c.post('/api/actions', json={'type': 'unmute', 'key': INFO}, headers=AUTH)
+        refused = c.post('/api/actions', json={'type': 'known', 'key': INFO}, headers=AUTH)
+        after = c.get('/api/state').json()['information'][0]
+
+    # then
+    assert before['muted'] is True
+    assert res.status_code == 201
+    assert not store.anomaly(INFO).get('muted')
+    assert 'muted' not in after
+    assert refused.status_code == 409
+
+
+def test_a_card_that_became_information_keeps_no_closed_row_in_the_history_list(store: Store):
+    # given
+    was = info_item(firstSeen='2026-11-19T08:00:00Z')
+    seen(store, was)
+    store.card_history.insert_one({'_id': 'old-card', 'key': INFO, 'firstSeen': '2026-11-10T08:00:00Z', 'lastSeen': '2026-11-10T09:00:00Z', 'svc': 'shop', 'label': 'INFO lines', 'outcome': 'cleared'})
+    store.card_history.insert_one({'_id': 'other-card', 'key': WARN, 'firstSeen': '2026-11-10T08:00:00Z', 'lastSeen': '2026-11-10T09:00:00Z', 'svc': 'checkout-service', 'label': 'WARN lines', 'outcome': 'cleared'})
+
+    # when
+    rows, total = store.closed_cards('2026-11-01T00:00:00Z', '2026-11-20T00:00:00Z')
+
+    # then
+    assert [r['key'] for r in rows] == [WARN]
+    assert total == 1
 
 
 def test_assign_tags_business_and_posts_refuse_an_information_item(store: Store):
@@ -565,7 +613,8 @@ def test_an_owned_info_card_is_not_held_as_critical_under_a_handled_parent(store
     grouped = actions.apply(store, {'type': 'group', 'key': INFO, 'parent': WARN, 'requestedBy': 'alice@example.com'})
 
     # then
-    assert grouped == f'grouped under {WARN}', 'an info card someone owns is not critical'
+    shown = store.anomaly(WARN)
+    assert grouped == 'grouped under ' + (f"#{shown['num']} " if shown.get('num') else '') + f"{shown['svc']} / {shown['label']}", 'an info card someone owns is not critical'
 
 
 def test_the_investigator_triage_and_group_ignore_information_children(store: Store):

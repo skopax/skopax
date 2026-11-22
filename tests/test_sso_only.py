@@ -183,7 +183,7 @@ def test_make_sso_only_is_refused_outside_the_allowed_domains(store: Store):
     res = sso_only(client)
 
     # then
-    assert (res.status_code, res.json()['detail']) == (422, msg('access.sso_only_domain'))
+    assert (res.status_code, res.json()) == (422, {'detail': msg('access.sso_only_domain'), 'field': 'ssoOnly'})
     assert raw(store, ALICE) == before
 
 

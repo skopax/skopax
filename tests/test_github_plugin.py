@@ -150,6 +150,42 @@ def test_a_repo_is_found_by_name_or_full_name_under_the_owner_only():
     assert gh.similar('checkout') == ['acme/checkout-service']
 
 
+def test_an_unknown_repo_name_is_asked_once_per_window_and_asked_again_after_it():
+    # given
+    http = github_http()
+    now = [1000.0]
+    gh = GitHub(TOKEN, http, owner='acme', clock=lambda: now[0])
+    ghost = f'{API}/repos/acme/ghost-service'
+
+    # when
+    first = [gh.repo('ghost-service') for _ in range(3)]
+    inside = len(http.hits(ghost))
+    now[0] += 61
+    again = gh.repo('ghost-service')
+
+    # then
+    assert first == [None, None, None] and again is None
+    assert inside == 1
+    assert len(http.hits(ghost)) == 2
+
+
+def test_a_repo_that_appears_after_a_miss_is_found_when_the_window_ends():
+    # given
+    answers = []
+    http = github_http({('GET', f'{API}/repos/acme/late-service'): lambda q, b: answers.pop(0)})
+    answers += [HttpError(404, f'{API}/repos/acme/late-service'), repo_json('late-service', 400)]
+    now = [1000.0]
+    gh = GitHub(TOKEN, http, owner='acme', clock=lambda: now[0])
+
+    # when
+    before = gh.repo('late-service')
+    now[0] += 61
+    after = gh.repo('late-service')
+
+    # then
+    assert before is None and after['full'] == 'acme/late-service'
+
+
 def test_the_repo_listing_follows_link_pages_on_the_api_host_only():
     # given
     url = f'{API}/user/repos'
@@ -517,6 +553,20 @@ def test_the_docs_tool_reads_only_the_docs_folder_and_masks_secrets():
     assert all(e.status == 403 for e in outside) and off.status == 403
 
 
+def test_the_docs_tool_reads_a_file_with_one_request():
+    # given
+    page = f'{API}/repos/acme/handbook/contents/runbooks/cart.md'
+    http = FakeHttp({('GET', f'{API}/user/repos'): [repo_json('handbook', 5)], ('GET', page): content_json('runbooks/cart.md', '# Cart\nRestart it.')})
+    gh = client(http, docs='acme/handbook/runbooks')
+
+    # when
+    read = run_tool(gh, 'github_docs', op='read', path='runbooks/cart.md')
+
+    # then
+    assert 'Restart it.' in read['text']
+    assert len(http.hits(page)) == 1
+
+
 def test_the_github_tools_are_offered_only_while_github_serves_and_name_the_owner():
     # given
     store = kit_store()
@@ -635,6 +685,7 @@ def test_enrichment_reads_a_deploy_through_github_alone(store: Store):
     # then
     assert added.status_code == 201, added.text
     assert done['gitlab'] == 1 and me['gitlab'] is True
+    assert me['codeHost'] == 'GitHub', 'the page is told which code host serves'
     assert d['imageBy']['url'] == f'{CART_WEB}/commit/{FULL}' and d['imageBy']['compare'] == f'{CART_WEB}/compare/1a1a1a1a...{FULL}'
     assert d['imageBy']['names'] == ['Nina', 'Adam'] and d['imageBy']['commits'] == 2
 

@@ -17,7 +17,7 @@ from skopax.errkind import kind as error_kind
 from skopax.investigator.tools import DRAFT_LIMIT, POST_HEADLINE_LIMIT, draft_problem, post_headline
 from skopax.messages import language, msg
 from skopax.postdeploy import NUMBERS_BY, SERVER_BY
-from skopax.slack import CALL_TIMEOUT_S, POST_ACTIONS, Slack, SlackDown, SlackError, SlackSlowed, anomaly_message, cut_words, menu_kinds, status_of, stopped_ending, stopped_who
+from skopax.slack import CALL_TIMEOUT_S, POST_ACTIONS, Slack, SlackDown, SlackError, SlackSlowed, anomaly_message, cut_words, menu_kinds, status_of, stopped_ending, stopped_who, thread_why
 from skopax.store import NotFound, Store, glob_match, iso, utc_now
 
 log = logging.getLogger('skopax.cardposts')
@@ -41,6 +41,7 @@ REDRAW_CAP = 500
 REDRAW_GAP_S = 1.2
 REDRAW_TRIES = 3
 REDRAW_STALE_S = 300
+LEASE_WARN_S = 300
 CLOSED_KINDS = ('resolved', 'known', 'auto', 'auto_first')
 SERVER_BODIES = (SERVER_BY, NUMBERS_BY)
 SUMMARY_SENTENCES = 2
@@ -253,6 +254,7 @@ class CardPosts:
         self._tl = threading.local()
         self.pause = pause
         self.name_of = name_of
+        self._lease_warned: float | None = None
         self.plugin_name = plugin_name
         self.check = check
 
@@ -295,8 +297,15 @@ class CardPosts:
     def redrawing(self) -> bool:
         try:
             run = self.store.redraw_status()
+        except Exception as e:
+            now = self.timer()
+            if self._lease_warned is None or now - self._lease_warned >= LEASE_WARN_S:
+                self._lease_warned = now
+                log.warning('card posts not checked this pass, the Slack redraw lease could not be read: %s', error_kind(e))
+            return True
+        try:
             return bool(run.get('running')) and parse_iso(str(run.get('heartbeat') or '')) > self.clock() - REDRAW_STALE_S
-        except Exception:
+        except (TypeError, ValueError):
             return False
 
     def reconcile(self) -> None:
@@ -445,8 +454,11 @@ class CardPosts:
     def _parent(self, card: dict) -> dict | None:
         if not card.get('parent') or card['parent'] == card.get('key'):
             return None
+        return self._card(card['parent'])
+
+    def _card(self, key: str) -> dict | None:
         try:
-            return self.store.anomaly(card['parent'])
+            return self.store.anomaly(key)
         except NotFound:
             return None
 
@@ -473,9 +485,10 @@ class CardPosts:
         shown = card | {'slackDraft': {k: v for k, v in body.items() if k in ('text', 'headline', 'by')}} if draft else card
         try:
             menu, kinds = self._menu(card, ask_of(post), mute)
+            placed = thread_why(card, self._card(post['threadOf']), post['threadOf'], post.get('threadWhy')) if threaded else ''
             message = anomaly_message(shown, card_url(self.base, key, card.get('num')), post.get('by') or SYSTEM, draft, menu, chat_url(self.base, key, card.get('num')),
                                       head=head or post['head'], attribution=None if threaded else self.slack.signature(), mute=mute, kinds=kinds, shots=post.get('screenshots'), base=self.base,
-                                      parent=self._parent(card), who=who, hosts=self.hosts())
+                                      parent=self._parent(card), who=who, hosts=self.hosts(), placed=placed)
             self.slack.update(post['channel'], ts, message['text'], message['blocks'])
         except SlackDown as e:
             self._tl.slow = e.wait if isinstance(e, SlackSlowed) else 0.0

@@ -385,3 +385,23 @@ def test_a_responsibles_row_saved_with_addresses_reads_back_by_name(store: Store
 
     # then
     assert (row['old'], row['new']) == ('Nina White, dana.gray', None)
+
+
+def test_the_tag_list_reads_the_people_once_however_many_tags_have_responsibles(store: Store, monkeypatch):
+    # given
+    store.save(state(), None)
+    people(store)
+    store.set_tag_owners('developer', [NINA])
+    store.set_tag_owners('seo', [NINA, ADMIN_EMAIL])
+    admin = signed_in(store)
+    reads = []
+    listing = Users.list
+    monkeypatch.setattr(Users, 'list', lambda self: reads.append(1) or listing(self))
+
+    # when
+    listed = admin.get('/api/admin/tags').json()
+
+    # then
+    seo = next(t for t in listed['tags'] if t['id'] == 'seo')
+    assert [r['name'] for r in seo['responsibles']] == ['Nina White', 'Admin']
+    assert len(reads) == 1, f'the people were listed {len(reads)} times'

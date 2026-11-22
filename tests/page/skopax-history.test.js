@@ -537,7 +537,7 @@ async function anActionFromBeforeTheCardFiredAgainIsMarkedEarlier() {
   //then
   assert.strictEqual(stat.textContent, '', 'a resolve from the last round is not repeated in the head');
   assert.strictEqual(last.querySelector('.la-h').textContent, 'Reopened ' + w.dayhm(back.firstSeen) + ' \u00b7 fired again');
-  assert.ok(last.querySelector('.la-before').textContent.startsWith('Before that: Resolved ' + w.dayhm(old.doneAt) + ' by dora.lane (No action needed)'), last.textContent);
+  assert.ok(last.querySelector('.la-before').textContent.startsWith('Before that: resolved ' + w.dayhm(old.doneAt) + ' by dora.lane (No action needed)'), last.textContent);
   assert.strictEqual(last.querySelector('.st').className, 'st s-other', 'and it is grey, not green');
   assert.deepStrictEqual(errors, []);
   close(dom);

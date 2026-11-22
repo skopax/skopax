@@ -190,7 +190,7 @@ async function theLogoAndTitleOpenTheMainPage() {
 async function theEnvironmentLabelNamesTheInstanceInTheSwitcher() {
   //given
   const plain = await boot('', {instances: {current: {name: 'skopax.example.com', letter: 'S'}, links: []}});
-  const labelled = await boot('', {envLabel: 'STAGING', instances: {current: {name: 'STAGING', letter: 'S'}, links: []}});
+  const labelled = await boot('', {workspaceLabel: 'STAGING', instances: {current: {name: 'STAGING', letter: 'S'}, links: []}});
   const name = (x) => x.doc.querySelector('#side-top #inst-btn .inst-name').textContent;
 
   //then

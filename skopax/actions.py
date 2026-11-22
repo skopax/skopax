@@ -6,6 +6,7 @@ from skopax import history, information, tickets
 from skopax import clock
 from skopax.contract import Refused as ClientRefused
 from skopax.enrich import SourceDown
+from skopax.engine import parent_name
 from skopax.errkind import Authored, kind as error_kind, text_of
 from skopax.jiralinks import ticket_pattern
 from skopax.messages import msg
@@ -14,7 +15,7 @@ from skopax.actors import is_token, token_label
 from skopax.store import NotFound, Store, iso, utc_now
 
 log = logging.getLogger('skopax.actions')
-ANY_RECORD = frozenset({'severity', 'assess', 'postdeploy'})
+ANY_RECORD = frozenset({'severity', 'assess', 'postdeploy', 'unmute'})
 INSTANT = frozenset({'mute', 'unmute', 'reopen', 'link', 'severity', 'known', 'resolve', 'take', 'group', 'ticket'})
 DEFAULT_MUTE_HOURS = 24
 RESULT_WHY = 160
@@ -189,5 +190,5 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
         if host.get('triage') == 'handled' and kid.get('triage') != 'handled':
             raise Refused(f'{parent} is already resolved (Action taken), so {key} would disappear from Open under it; pick an open card as the parent')
         store.group(parent, [key])
-        return f'grouped under {parent}'
+        return f"grouped under {parent_name(host) if host else parent}"
     raise ValueError(f'{kind} is not an instant action')

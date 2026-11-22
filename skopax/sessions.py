@@ -85,9 +85,9 @@ class Sessions:
             return None
         return payload
 
-    def issue(self, name: str, role: str, source: str) -> str:
+    def issue(self, name: str, role: str, source: str, gen: str | None = None) -> str:
         now = int(self.clock())
-        return self.seal({'name': name, 'role': role, 'src': source, 'login': now, 'iat': now}, self.idle_seconds, SESSION_KIND)
+        return self.seal({'name': name, 'role': role, 'src': source, 'login': now, 'iat': now} | ({'pg': gen} if gen else {}), self.idle_seconds, SESSION_KIND)
 
     def renew(self, cookie: str | None) -> tuple[str, int] | None:
         payload = self.unseal(cookie, SESSION_KIND)

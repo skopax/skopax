@@ -265,6 +265,10 @@ function intKnowing(p) {
 var INT_KNOW_TIP = 'Knowledge source: the investigator searches and cites it';
 function intKnowErr(p) {
   var rows = intList(p.health && p.health.instances);
+  if (p.id === INT_MCP && rows.length) {
+    var known = intList(p.instances).filter(function (i) { return !!i && !!i.values && String(i.values.knowledge) === 'true'; }).map(function (i) { return i.name; });
+    return rows.some(function (r) { return !!r && r.state === 'error' && known.indexOf(r.name) >= 0; });
+  }
   return rows.length ? rows.some(function (r) { return !!r && r.state === 'error'; }) : !!p.health && p.health.state === 'error';
 }
 function intKnowState(p) {

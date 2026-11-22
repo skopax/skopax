@@ -174,7 +174,7 @@ def test_core_version_range_is_checked():
 
     # then
     assert loaded.state == 'incompatible'
-    assert skopax.__version__ == '0.4.10' and '0.4.10' in loaded.reason and '>=9' in loaded.reason
+    assert skopax.__version__ == '0.4.11' and '0.4.11' in loaded.reason and '>=9' in loaded.reason
     assert [p.id for p in reg.usable()] == ['demo']
 
 
@@ -484,7 +484,7 @@ def test_jira_and_github_are_secondary_knowledge_sources_and_the_pure_ones_are_n
     shown = {p.id: (registry.describe(p)['companyKnowledge'], registry.describe(p)['knowledgeAlso']) for p in (jira.PLUGIN, github.PLUGIN, confluence.PLUGIN, sharepoint.PLUGIN)}
 
     # then
-    assert shown == {'jira': ('always', True), 'github': ('docs', True), 'confluence': ('always', False), 'sharepoint': ('always', False)}
+    assert shown == {'jira': ('always', True), 'github': ('docs', True), 'confluence': ('spaces', False), 'sharepoint': ('always', False)}
     assert all(solo(p).state == 'ok' for p in (jira.PLUGIN, github.PLUGIN))
 
 

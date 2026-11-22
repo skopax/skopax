@@ -9,7 +9,7 @@ from skopax.cardlink import card_url
 from skopax.engine import parse_iso
 from skopax.errkind import kind as error_kind
 from skopax.messages import fold, msg
-from skopax.slack import BLOCK_LIMIT, EMOJI, SCOPE_ERRORS, SECTION_LIMIT, SlackDown, SlackError, cut, esc
+from skopax.slack import BLOCK_LIMIT, EMOJI, SCOPE_ERRORS, SECTION_LIMIT, SlackDown, SlackError, cut, esc, never_sent
 from skopax.store import Store
 
 log = logging.getLogger('skopax.tagreport')
@@ -217,9 +217,10 @@ class SlackIds:
         self.on_scope = on_scope
         self.flagged = flagged
         self._held: dict[str, tuple[float, str | None, str]] = {}
+        self._failed: dict[str, float] = {}
+        self._failures_told: set[str] = set()
         self._missing = False
         self._down_until = -FAILURE_TTL_S
-        self._stopped = False
         self._recheck = False
         self._told = False
 
@@ -227,9 +228,10 @@ class SlackIds:
     def missing(self) -> bool:
         return self._missing
 
-    def start(self) -> None:
-        self._stopped = False
+    def start(self) -> Callable[[str], str | None]:
         self._recheck = self._stored()
+        stopped = [False]
+        return lambda email: self._mention(email, stopped)
 
     def _stored(self) -> bool:
         try:
@@ -239,30 +241,52 @@ class SlackIds:
             return False
 
     def mention(self, email: str) -> str | None:
+        return self._mention(email, None)
+
+    def _waiting(self, email: str) -> bool:
+        now = self.clock()
+        failed = self._failed.get(email)
+        return now < self._down_until or (failed is not None and now - failed < FAILURE_TTL_S)
+
+    def _mention(self, email: str, stopped: list[bool] | None) -> str | None:
         email = str(email or '').strip().lower()
         if not email:
             return None
         held = self._held.get(email)
-        fresh = held is not None and self.clock() - held[0] < self.ttl
-        cached = held[1] if fresh else None
-        if fresh and not self._recheck:
-            return cached
-        if self._stopped:
-            return cached
+        last = held[1] if held else None
+        if held is not None and self.clock() - held[0] < self.ttl and not self._recheck:
+            return last
+        if stopped is not None and stopped[0]:
+            return last
+        if stopped is None and self._waiting(email):
+            return last
         try:
             user = self.slack.user_by_email(email)
         except SlackError as e:
-            self._stopped = True
-            if e.code in SCOPE_ERRORS:
-                self._scope(True)
-            else:
-                log.warning('Slack user lookups stopped for this report, responsibles are named without a ping: %s', e.code or error_kind(e))
-            return cached
+            self._failed_mention(e, email, stopped)
+            return last
+        self._failed.pop(email, None)
         found = f"<@{user['id']}>" if user else None
         self._held[email] = (self.clock(), found, str((user or {}).get('name') or '').strip())
         self._recheck = False
         self._scope(False)
         return found
+
+    def _failed_mention(self, e: SlackError, email: str, stopped: list[bool] | None) -> None:
+        code = e.code or error_kind(e)
+        if stopped is not None:
+            stopped[0] = True
+        elif isinstance(e, SlackDown):
+            self._down_until = self.clock() + FAILURE_TTL_S
+        else:
+            self._failed[email] = self.clock()
+        if e.code in SCOPE_ERRORS:
+            self._scope(True)
+        elif stopped is not None:
+            log.warning('Slack user lookups stopped for this report, responsibles are named without a ping: %s', code)
+        elif code not in self._failures_told:
+            self._failures_told.add(code)
+            log.warning('a Slack mention lookup failed, the last known id or the name is used for %d s before the next try: %s', FAILURE_TTL_S, code)
 
     def name_now(self, email: str) -> str:
         email = str(email or '').strip().lower()
@@ -271,12 +295,21 @@ class SlackIds:
         held = self._held.get(email)
         if held is not None and self.clock() - held[0] < self.ttl:
             return held[2]
+        failed = self._failed.get(email)
+        if failed is not None and self.clock() - failed < FAILURE_TTL_S:
+            return held[2] if held else ''
         try:
             user = self.slack.user_by_email(email)
         except SlackDown:
             return held[2] if held else ''
-        except SlackError:
+        except SlackError as e:
+            self._failed[email] = self.clock()
+            code = e.code or error_kind(e)
+            if code not in self._failures_told:
+                self._failures_told.add(code)
+                log.warning('Slack refused a name lookup for a card post, names wait %d s before the next try: %s', FAILURE_TTL_S, code)
             return held[2] if held else ''
+        self._failed.pop(email, None)
         self._held[email] = (self.clock(), f"<@{user['id']}>" if user else None, str((user or {}).get('name') or '').strip())
         return self._held[email][2]
 
@@ -435,9 +468,9 @@ class TagReport:
         if not self.store.claim_run(day):
             return None
         try:
-            self.ids.start()
+            mention = self.ids.start()
             held = self.held()
-            message = build(self.store.load().get('anomalies') or [], held, self.named(held), self.ids.mention, self.base_url, now, self.labels())
+            message = build(self.store.load().get('anomalies') or [], held, self.named(held), mention, self.base_url, now, self.labels())
         except Exception:
             self.store.drop_run(day)
             raise
@@ -447,7 +480,11 @@ class TagReport:
         try:
             sent = self.slack.post(message)
         except SlackDown as e:
-            log.warning('daily tag report: Slack did not answer the post, so it may have gone out; it is not sent again today (%s)', error_kind(e))
+            if never_sent(e):
+                self.store.drop_run(day)
+                log.warning('daily tag report: the post did not reach Slack, it is tried again on the next pass while the window is open (%s)', error_kind(e))
+            else:
+                log.warning('daily tag report: Slack did not answer the post, so it may have gone out; it is not sent again today (%s)', error_kind(e))
             return None
         except SlackError as e:
             if e.code in GONE_CHANNEL:

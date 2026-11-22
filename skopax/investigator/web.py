@@ -46,14 +46,25 @@ def built_in(own: tuple[str, ...] = ()) -> tuple[str, ...]:
     return tuple(dict.fromkeys(tuple(own) + DOMAINS))
 
 
+def wanted_of(value: str) -> list[str]:
+    return [d for d in re.split(r'[\s,]+', str(value or '').strip().lower()) if d]
+
+
+def unknown_removed(value: str, own: tuple[str, ...] = ()) -> list[str]:
+    wanted = wanted_of(value)
+    base = built_in(own)
+    kept = {d for d in wanted if not d.startswith('-') and DOMAIN.fullmatch(d)}
+    return [d[1:] for d in wanted if d.startswith('-') and d[1:] not in base and d[1:] not in kept]
+
+
 def domains_of(value: str, own: tuple[str, ...] = ()) -> tuple[str, ...]:
-    wanted = [d for d in re.split(r'[\s,]+', value.strip().lower()) if d]
+    wanted = wanted_of(value)
     base = built_in(own)
     added = [d for d in wanted if not d.startswith('-')]
     removed = [d[1:] for d in wanted if d.startswith('-')]
     kept = tuple(dict.fromkeys(d for d in added if DOMAIN.fullmatch(d)))
     dropped = [d for d in added if not DOMAIN.fullmatch(d)]
-    unknown = [d for d in removed if d not in base and d not in kept]
+    unknown = unknown_removed(value, own)
     if dropped or unknown:
         log.warning('investigate.web-domains: %s left out, only plain host names such as support.google.com work, and -host only removes a built-in site',
                     ', '.join(dropped + ['-' + d for d in unknown]))

@@ -126,3 +126,23 @@ def test_a_failed_index_list_read_is_not_repeated_within_a_minute():
 
     # then
     assert len(http.hits(RESOLVE)) == 1
+
+
+def test_a_failed_index_list_read_is_not_repeated_inside_its_cache_window_and_is_tried_again_after_it():
+    # given
+    http = FakeHttp({('GET', RESOLVE): HttpError(500, RESOLVE, 'boom')})
+    es = elastic.Elastic(ES_URL, 'key', http)
+    now = [100.0]
+
+    # when
+    first = es.index_patterns(clock=lambda: now[0])
+    now[0] += elastic.PATTERNS_FAILED_TTL - 1
+    inside = es.index_patterns(clock=lambda: now[0])
+    hits_inside = len(http.hits(RESOLVE))
+    now[0] += 2
+    after = es.index_patterns(clock=lambda: now[0])
+
+    # then
+    assert (first, inside, after) == ([], [], [])
+    assert hits_inside == 1
+    assert len(http.hits(RESOLVE)) == 2

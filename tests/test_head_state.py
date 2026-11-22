@@ -485,28 +485,53 @@ def test_an_assign_or_unassign_clears_the_display_name_a_take_left(store: Store)
 
 
 class RefusingSlack:
-    def __init__(self):
+    def __init__(self, code='ratelimited_other', refusals=1):
         self.enabled = True
         self.calls = 0
+        self.code = code
+        self.refusals = refusals
 
     def user_by_email(self, email):
         self.calls += 1
-        if self.calls == 1:
+        if self.calls <= self.refusals:
             from skopax.slack import SlackError
-            raise SlackError('refused', code='ratelimited_other')
+            raise SlackError('refused', code=self.code)
         return {'id': 'U1', 'name': 'Alice Smith'}
 
 
-def test_a_refused_slack_lookup_while_drawing_does_not_stop_later_lookups():
+def test_a_refused_slack_lookup_while_drawing_is_held_for_a_while_then_tried_again():
     # given
-    ids = SlackIds(RefusingSlack())
+    from skopax.tagreport import FAILURE_TTL_S
+    now = [0.0]
+    ids = SlackIds(RefusingSlack(), clock=lambda: now[0])
 
     # when
     first = ids.name_now('alice@example.com')
-    second = ids.name_now('alice@example.com')
+    held = ids.name_now('alice@example.com')
+    now[0] = FAILURE_TTL_S + 1
+    later = ids.name_now('alice@example.com')
 
     # then
-    assert (first, second) == ('', 'Alice Smith') and ids.slack.calls == 2
+    assert (first, held, later) == ('', '', 'Alice Smith') and ids.slack.calls == 2
+
+
+def test_a_missing_email_scope_is_not_looked_up_again_on_every_pass_and_is_logged_once(caplog):
+    # given
+    import logging
+    now = [0.0]
+    ids = SlackIds(RefusingSlack('missing_scope', refusals=99), clock=lambda: now[0])
+    caplog.set_level(logging.WARNING, 'skopax.tagreport')
+
+    # when
+    names = []
+    for second in range(0, 300, 30):
+        now[0] = float(second)
+        names.append(ids.name_now('alice@example.com'))
+        names.append(ids.name_now('bob@example.com'))
+
+    # then
+    assert set(names) == {''} and ids.slack.calls == 2, 'one lookup per address for the whole while'
+    assert len([m for m in caplog.messages if 'missing_scope' in m]) == 1
 
 
 def test_the_turkish_event_forms_keep_their_ending_in_the_head_only(speak):
@@ -564,3 +589,35 @@ def test_every_pack_carries_the_short_stopped_states_of_the_bar(lang, short, eve
     # then
     assert (pack['slack.bar.stopped'], pack['slack.bar.event']) == (short, event)
     assert pack['slack.status.cleared'].startswith(short + ' \u00b7 ') and pack['slack.status.event'].startswith(event + ' \u00b7 ')
+
+
+def test_the_reason_a_card_sits_in_another_cards_thread_speaks_the_post_language(speak):
+    # given
+    speak('tr')
+    host = CARD | {'key': 'log|checkout-service|ERROR|first', 'num': 3}
+    child = CARD | {'parent': host['key']}
+
+    # when
+    from skopax.slack import thread_why
+    grouped = thread_why(child, host, host['key'])
+    gone = thread_why(CARD, None, host['key'], 'svc')
+
+    # then
+    assert grouped == f"#3 {CARD['svc']} / {CARD['label']} alt\u0131nda grupland\u0131"
+    assert gone == f"{host['key']} ile ayn\u0131 servis"
+
+
+def test_a_card_taken_out_of_its_group_no_longer_says_grouped_and_an_unknown_reason_says_nothing():
+    # given
+    from skopax.slack import thread_why
+    host = CARD | {'key': 'log|checkout-service|ERROR|first', 'num': 3}
+    elsewhere = host | {'svc': 'cart-service', 'ns': 'cart'}
+    alone = CARD | {'svc': 'search-service', 'ns': 'search'}
+
+    # when
+    ungrouped = thread_why(CARD, host, host['key'], 'parent')
+    unknown = thread_why(alone, elsewhere, host['key'])
+
+    # then
+    assert ungrouped == f"Same service as #3 {CARD['svc']} / {CARD['label']}"
+    assert unknown == ''

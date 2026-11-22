@@ -46,11 +46,22 @@ jobs:
         env:
           PROMETHEUS_IMAGE: prom/prometheus:v3.1.0@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218
 
-  pages:
+  page-suites:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        zone:
+          - UTC
+          - Asia/Tokyo
+        shard:
+          - 1
+          - 2
+          - 3
+          - 4
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -61,14 +72,24 @@ jobs:
           package-manager-cache: false
       - run: npm ci
         working-directory: tests/page
-      - name: Page suites in UTC
+      - name: Page suites
         run: node tests/page/run.js
         env:
-          SKOPAX_TEST_TZ: UTC
-      - name: Page suites in Asia/Tokyo
-        run: node tests/page/run.js
+          SKOPAX_TEST_TZ: ${{ matrix.zone }}
+          SKOPAX_TEST_SHARD: ${{ matrix.shard }}/4
+
+  pages:
+    needs: page-suites
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Every page shard passed
+        run: test "$SHARDS" = success
         env:
-          SKOPAX_TEST_TZ: Asia/Tokyo
+          SHARDS: ${{ needs.page-suites.result }}
 
   licences:
     runs-on: ubuntu-24.04

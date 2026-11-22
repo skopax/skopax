@@ -9,6 +9,7 @@ const DAY = 1440;
 const EVIL = '<img src=x onerror=alert(1)>"\'';
 const E_ACUTE = String.fromCharCode(0xe9);
 const LAST_ADMIN = 'The last admin keeps the admin role and stays enabled: make someone else an admin first';
+const LAST_PW_ADMIN = 'The last active admin with a password stays an enabled admin, so there is a way in when SSO fails: give another admin a password first';
 const RULES = [
   {id: 'google', hosts: ['accounts.google.com'], suffixes: [], labels: [], paths: []},
   {id: 'microsoft', hosts: ['login.microsoftonline.com', 'sts.windows.net'], suffixes: [], labels: [], paths: []},
@@ -276,6 +277,48 @@ async function theLastAdminKeepsRoleAndSignInWithTheReason() {
   assert.deepStrictEqual(t.errors, []);
   t.close();
   return 'the last enabled admin has the role, Disabled and the menu items locked with the reason, and a second admin unlocks them';
+}
+
+async function theLastPasswordAdminKeepsRoleAndSignInWithTheReason() {
+  //given
+  const users = people().filter((u) => u.email !== 'frank@example.com');
+  users[1] = Object.assign({}, users[1], {role: 'admin', roleFrom: 'admin'});
+  const t = await boot({users});
+  const alice = rowOf(t.doc, 'alice@example.com'), bob = rowOf(t.doc, 'bob@example.com');
+
+  //then
+  const sel = alice.querySelector('select.acc-role'), off = alice.querySelector('input.acc-off');
+  assert.deepStrictEqual([sel.disabled, sel.title, off.disabled, off.title], [true, LAST_PW_ADMIN, true, LAST_PW_ADMIN]);
+  assert.strictEqual(alice.querySelector('.acc-last-admin'), null, 'with two enabled admins nobody is the last admin');
+  const items = [...alice.querySelectorAll('.acc-menu [role=menuitem]')].map((m) => [m.textContent, m.disabled, m.title]);
+  assert.deepStrictEqual(items.filter((i) => ['Change role', 'Disable sign-in'].includes(i[0])), [['Change role', true, LAST_PW_ADMIN], ['Disable sign-in', true, LAST_PW_ADMIN]]);
+  assert.ok(!bob.querySelector('select.acc-role').disabled && !bob.querySelector('input.acc-off').disabled, 'the admin without a password can still be changed');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'the last enabled admin with a password has the role, Disabled and the menu items locked with the reason while another admin signs in with SSO only';
+}
+
+async function aRowMenuStaysOpenWhileItsButtonIsInView() {
+  //given
+  const t = await boot();
+  const chloe = rowOf(t.doc, 'chloe@example.com'), menuB = chloe.querySelector('.acc-menu-b'), menu = chloe.querySelector('.acc-menu');
+  const scroll = () => t.doc.dispatchEvent(new t.w.Event('scroll', {bubbles: false}));
+
+  //when
+  menuB.click();
+  menuB.getBoundingClientRect = () => ({top: 200, bottom: 230, left: 10, right: 40, width: 30, height: 30});
+  scroll();
+  const kept = menu.hidden;
+  menuB.getBoundingClientRect = () => ({top: -60, bottom: -30, left: 10, right: 40, width: 30, height: 30});
+  scroll();
+
+  //then
+  assert.strictEqual(kept, false, 'a scroll that leaves the button in view keeps the menu open');
+  assert.strictEqual(menu.hidden, true, 'once the button scrolls out of view the menu closes');
+  assert.strictEqual(menuB.getAttribute('aria-expanded'), 'false');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  return 'a row menu stays open while the page scrolls with its button in view, and closes once the button leaves the view';
 }
 
 async function theRowMenuWorksByKeyboard() {
@@ -1053,7 +1096,7 @@ async function aHostileNameIsShownAsText() {
 }
 
 (async () => {
-  const cases = [theSectionsComeInOrderWithANavThatCountsAndFlags, peopleShowAvatarMethodsAndLastSignIn, searchAndRoleFilterNarrowThePeople, theLastAdminKeepsRoleAndSignInWithTheReason,
+  const cases = [theSectionsComeInOrderWithANavThatCountsAndFlags, peopleShowAvatarMethodsAndLastSignIn, searchAndRoleFilterNarrowThePeople, theLastAdminKeepsRoleAndSignInWithTheReason, theLastPasswordAdminKeepsRoleAndSignInWithTheReason, aRowMenuStaysOpenWhileItsButtonIsInView,
     theRowMenuWorksByKeyboard, focusStaysOnTheControlAfterASaveRedraws, tokensShowExpiryChipsAndCreateWithAnExpiry, revokeAsksFirst, eachSectionLoadsAndFailsOnItsOwn, chipsEditTheAllowedDomains, aDomainTypedButNotAddedIsSavedAndSurvivesARepaint, theMcpAndLastKnownRoleFieldsSaveWithTheirCard, aRefusedRoleFieldOnTheSsoCardKeepsItsReason,
     theCardGroupsItsFieldsAndShowsItsStatus, thePreviewFollowsUnsavedEdits, unsavedButtonEditsSurviveASaveOfAnotherField, theCompanyIconUploadsAndRemoves, anUploadedIconPicksCompanyAndRemoveGoesBackToAuto,
     theSectionsAreTabsThatShowOnePanelAtATime, theTabsMoveWithTheArrowKeys, aLinkOpensTheNamedTab, theTabsStayOnNarrowScreens, anAdminRenamesAPersonFromTheRow, renamingYourselfAsAdminUpdatesTheSidebar, aPersonRenamesThemselvesFromTheUserMenu, aSecondSaveWaitsForTheFirst, aHostileNameIsShownAsText];

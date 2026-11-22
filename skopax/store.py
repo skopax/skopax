@@ -1134,8 +1134,10 @@ class Store:
         return out
 
     def closed_cards(self, start: str, end: str, text: str | None = None, outcome: str | None = None, page: int = 0, size: int = 50) -> tuple[list[dict], int]:
-        live = [history.doc_id(d['_id'], d['firstSeen']) for d in self.anomalies.find({'firstSeen': {'$exists': True}}, {'firstSeen': 1}) if d.get('firstSeen')]
-        query: dict = {'lastSeen': {'$gte': start, '$lte': end}, '_id': {'$nin': live}}
+        docs_now = list(self.anomalies.find({'firstSeen': {'$exists': True}}, {'firstSeen': 1, 'sev': 1, 'owner': 1, 'assigned': 1, 'ticket': 1, 'triage': 1, 'triagedBy': 1}))
+        live = [history.doc_id(d['_id'], d['firstSeen']) for d in docs_now if d.get('firstSeen')]
+        info_keys = [d['_id'] for d in docs_now if information.is_item(d)]
+        query: dict = {'lastSeen': {'$gte': start, '$lte': end}, '_id': {'$nin': live}, 'key': {'$nin': info_keys}}
         if outcome:
             query['outcome'] = outcome
         text = (text or '').strip()[:history.TEXT_QUERY_LIMIT]
@@ -1550,10 +1552,10 @@ class Store:
             self.anomalies.update_one({'_id': doc['_id']}, draft_update(draft, auto))
             return {'slackDraft': draft, 'autoSend': auto}
 
-    def fallback_slack_draft(self, key: str, text: str, by: str, fired_at: str, now: dt.datetime, skip_triage: tuple[str, ...]) -> dict | None:
+    def fallback_slack_draft(self, key: str, text: str, by: str, fired_at: str, now: dt.datetime, skip_triage: tuple[str, ...], at_once: bool = False) -> dict | None:
         draft = {'text': text, 'by': by, 'at': iso(now)}
         auto = auto_send(draft, now)
-        fallback = {'at': draft['at'], 'firedAt': fired_at}
+        fallback = {'at': draft['at'], 'firedAt': fired_at} | ({'atOnce': True} if at_once else {})
         replaceable = [{'slackDraft': None}, {'slackDraft.notAutoSent': {'$exists': True}}, {'autoSend': None},
                        {'autoSend.failedAt': {'$exists': True}, 'autoSend.claimedAt': {'$exists': True}}]
         query = {'_id': key, '$or': replaceable, 'slackPost.at': {'$exists': False}, 'autoSend.holdBy': {'$exists': False}, 'slackFallback.firedAt': {'$ne': fired_at},
@@ -2318,12 +2320,12 @@ class Store:
     def related_post(self, card: dict, since: str) -> dict | None:
         roots = {'slackPost.ts': {'$exists': True}, 'slackPost.threadOf': {'$exists': False}, 'slackPost.digest': {'$ne': True}, 'slackPost.at': {'$gte': since},
                  '_id': {'$ne': card.get('key')}, 'triage': {'$ne': 'handled'}, 'muted': None}
-        tries = [{'_id': card['parent']}] if card.get('parent') and card['parent'] != card.get('key') else []
-        tries += [{field: card[field]} for field in ('svc', 'ns') if card.get(field) not in (None, '', '-', '?')]
-        for t in tries:
+        tries = [('parent', {'_id': card['parent']})] if card.get('parent') and card['parent'] != card.get('key') else []
+        tries += [(field, {field: card[field]}) for field in ('svc', 'ns') if card.get(field) not in (None, '', '-', '?')]
+        for why, t in tries:
             doc = self.anomalies.find_one(roots | t, {'slackPost': 1}, sort=[('slackPost.at', DESCENDING)])
             if doc:
-                return {'key': doc['_id'], 'channel': doc['slackPost'].get('channel'), 'ts': doc['slackPost']['ts']}
+                return {'key': doc['_id'], 'channel': doc['slackPost'].get('channel'), 'ts': doc['slackPost']['ts'], 'why': why}
         return None
 
     def report_day_thread(self, start: str, end: str, exclude: str) -> dict | None:

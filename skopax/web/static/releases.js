@@ -319,8 +319,9 @@ function initReports() {
     return out;
   }
   function unread(x) {
-    if (!ME_GITLAB) return 'not read: GitLab is off';
-    return Date.now() - Date.parse(x.at || '') < GITLAB_READ_MS ? 'not read from GitLab yet' : 'not read from GitLab';
+    if (!ME_GITLAB) return 'not read: the code host is off';
+    var host = ME_CODE_HOST || 'the code host';
+    return Date.now() - Date.parse(x.at || '') < GITLAB_READ_MS ? 'not read from ' + host + ' yet' : 'not read from ' + host;
   }
   function depTable(g) {
     var tb = g.deps.map(function (x) {
@@ -455,7 +456,7 @@ function initReports() {
     lastAt = Date.now();
     var n = ++seq, u = urls();
     var fresh = await Promise.all([fetchBody(u[0], 0), fetchBody(u[1], 1)]);
-    var key = days + '\n' + repLimit + '\n' + ME_GITLAB + '\n' + bodies.join('\n');
+    var key = days + '\n' + repLimit + '\n' + ME_GITLAB + '\n' + ME_CODE_HOST + '\n' + bodies.join('\n');
     if ((key !== last || (flipAt && Date.now() >= flipAt)) && !repBox.querySelector('[data-confirm]')) {
       last = key;
       render(bodies[0] == null ? null : JSON.parse(bodies[0]), bodies[1] == null ? null : JSON.parse(bodies[1]), fresh[0]);

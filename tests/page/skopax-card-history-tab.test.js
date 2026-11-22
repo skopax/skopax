@@ -102,8 +102,64 @@ async function historyRowsAreTranslatedButTheirDataStaysAsWritten() {
   console.log('PASS history rows are translated while tag names, results and people stay as written');
 }
 
+async function failedAndCancelledActionsReadInTheReadersLanguage() {
+  //given
+  const c = card(KEY, {num: 12, firstSeen: T(300)});
+  const data = {actions: [
+    {id: 'f1', type: 'resolve', target: KEY, status: 'failed', requestedBy: 'bob@example.com', requestedAt: T(60), failedAt: T(60), result: 'Jira refused it'},
+    {id: 'f2', type: 'mute', target: KEY, status: 'cancelled', requestedBy: 'bob@example.com', requestedAt: T(50), cancelledAt: T(50)},
+    {id: 'f3', type: 'take', target: KEY, status: 'failed', requestedBy: 'bob@example.com', requestedAt: T(40), failedAt: T(40)}], activity: []};
+  const en = await boot([c], {history: data});
+  const labels = (x) => [...x.doc.querySelectorAll('.cd-hist li .h-l')].map((l) => l.textContent);
+  expand(article(en.doc, KEY));
+  article(en.doc, KEY).querySelector('.cd-tab[data-tab="history"]').click();
+  await until(() => en.doc.querySelector('.cd-hist li'));
+  const english = labels(en);
+  const de = await boot([c], {history: data, lang: 'de'});
+  expand(article(de.doc, KEY));
+  article(de.doc, KEY).querySelector('.cd-tab[data-tab="history"]').click();
+  await until(() => de.doc.querySelector('.cd-hist li'));
+  await wait(30);
+  const german = labels(de);
+  const tr = await boot([c], {history: data, lang: 'tr'});
+  expand(article(tr.doc, KEY));
+  article(tr.doc, KEY).querySelector('.cd-tab[data-tab="history"]').click();
+  await until(() => tr.doc.querySelector('.cd-hist li'));
+  await wait(30);
+  const turkish = labels(tr);
+
+  //then
+  assert.deepStrictEqual(english.slice(0, 3), ['Start progress failed', 'Mute cancelled', 'Resolve failed']);
+  assert.deepStrictEqual(german.slice(0, 3), ['Bearbeitung beginnen fehlgeschlagen', 'Stummschalten abgebrochen', 'L\u00f6sen fehlgeschlagen']);
+  assert.deepStrictEqual(turkish.slice(0, 3), ['\u0130\u015fe ba\u015flama ba\u015far\u0131s\u0131z', 'Sessize alma iptal edildi', '\u00c7\u00f6zme ba\u015far\u0131s\u0131z']);
+  assert.deepStrictEqual([en.errors, de.errors, tr.errors], [[], [], []]);
+  en.w.close(); de.w.close(); tr.w.close();
+  console.log('PASS failed and cancelled actions read in the reader\'s language');
+}
+
+async function anAssignmentRowReadsAssignedToNameWithNoColon() {
+  //given
+  const c = card(KEY, {num: 12, firstSeen: T(300), owner: 'nina.white@example.com', assigned: {by: 'alice@example.com', at: T(100)}});
+  const {w, doc, errors} = await boot([c], {history: {actions: [], activity: []}});
+  const a = () => article(doc, KEY);
+  expand(a());
+
+  //when
+  a().querySelector('.cd-tab[data-tab="history"]').click();
+  await until(() => a().querySelector('.cd-hist li'));
+  const row = [...a().querySelectorAll('.cd-hist li .h-what')].find((x) => /Assigned/.test(x.textContent));
+  const rows = JSON.parse(JSON.stringify(w.cardHistoryRows(c, {actions: [], activity: []}, [])));
+
+  //then
+  assert.strictEqual(row.textContent.replace(/\s+alice$/, ''), 'Assigned to nina.white');
+  assert.ok(rows.some((r) => r.what === 'Assigned to nina.white'), 'the row text has no colon: ' + rows.map((r) => r.what).join('|'));
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS an assignment row reads Assigned to name, with no colon');
+}
+
 (async () => {
-  for (const t of [historyRowsComeNewestFirstWithWhoWhenAndOldToNew, historyRowsAreTranslatedButTheirDataStaysAsWritten, theDetailsAndHistoryTabsSwitchByClickAndKeyboardAndStayAcrossARepaint]) {
+  for (const t of [failedAndCancelledActionsReadInTheReadersLanguage, anAssignmentRowReadsAssignedToNameWithNoColon, historyRowsComeNewestFirstWithWhoWhenAndOldToNew, historyRowsAreTranslatedButTheirDataStaysAsWritten, theDetailsAndHistoryTabsSwitchByClickAndKeyboardAndStayAcrossARepaint]) {
     try { await t(); } catch (e) { console.error('FAIL ' + t.name + ': ' + e.message.replace(/\x1b\[[0-9;]*m/g, '').split('\n').slice(0, 30).join(' | ')); process.exitCode = 1; }
   }
   process.exit(process.exitCode || 0);

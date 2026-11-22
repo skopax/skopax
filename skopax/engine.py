@@ -367,11 +367,12 @@ def follow_parents(state: dict, now: float) -> list[dict]:
         if triage == 'handled':
             a['autoResolvedAt'] = t
             a['resolution'] = auto_resolution(t)
+        named = pk if p is None else parent_name(p)
         if triage == 'progress':
             ticket = f" ({p['ticket']})" if p is not None and p.get('ticket') else ''
-            head, why = 'In progress with its parent', f'{pk}{ticket}'
+            head, why = 'In progress with its parent', f'{named}{ticket}'
         else:
-            head, why = 'Auto-resolved', f'its parent {pk} was ' + ('handled and has left the page' if p is None else 'marked no action needed')
+            head, why = 'Auto-resolved', f'its parent {named} was ' + ('handled and has left the page' if p is None else 'marked no action needed')
         if not a.get('note'):
             put_note(a, f'{head}: {why}', t)
         row = {'key': a['key'], 'text': f"{head.lower()} {a.get('svc')} {a.get('label')} \u00b7 {why}", 'since': 'parent'}
@@ -379,10 +380,14 @@ def follow_parents(state: dict, now: float) -> list[dict]:
     return out
 
 
+def parent_name(p: dict) -> str:
+    return ' '.join(f"{'#' + str(p['num']) + ' ' if p.get('num') else ''}{p.get('svc') or '-'} / {p.get('label') or '?'}".split())
+
+
 def parent_reason(p: dict | None) -> str:
     if p is None:
         return PARENT_GONE
-    name = ' '.join(f"{'#' + str(p['num']) + ' ' if p.get('num') else ''}{p.get('svc') or '-'} / {p.get('label') or '?'}".split())
+    name = parent_name(p)
     room = REASON_LIMIT - len(PARENT_HEAD) - len(PARENT_MARKED)
     return PARENT_HEAD + (name if len(name) <= room else name[:room - 1].rstrip() + '\u2026') + PARENT_MARKED
 
@@ -681,9 +686,10 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
         for r in resolved:
             store.add_activity('auto', SYSTEM, r['text'], key=r['key'])
             log.info('%s', r['text'])
+        hosts = {a['key']: a for a in state['anomalies']}
         for key, host in twins:
-            store.add_activity('auto', SYSTEM, msg('engine.grouped.twin', key=key, host=host), key=key)
+            store.add_activity('auto', SYSTEM, msg('engine.grouped.twin', key=key, host=parent_name(hosts[host]) if host in hosts else host), key=key)
         for key, host in siblings:
-            store.add_activity('auto', SYSTEM, msg('engine.grouped.sibling', key=key, host=host), key=key)
+            store.add_activity('auto', SYSTEM, msg('engine.grouped.sibling', key=key, host=parent_name(hosts[host]) if host in hosts else host), key=key)
         return Applied(rev, events, push, resolved, state['anomalies'], first)
     raise Conflict(store.rev()['rev'])

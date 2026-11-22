@@ -75,7 +75,7 @@ The example carries a copy of the Apache License 2.0. `license-files = ["LICENSE
 
 Skopax is not published to a package index; only its images are. A plug-in in a repository of its own runs its tests against a clone of Skopax at the release it targets, next to the plug-in's folder. From the plug-in's folder:
 
-    git clone --branch v0.4.10 https://github.com/skopax/skopax ../skopax
+    git clone --branch v0.4.11 https://github.com/skopax/skopax ../skopax
     (cd ../skopax && uv sync --frozen)
     PYTHONPATH=../skopax:. ../skopax/.venv/bin/python -m pytest -q tests
 
@@ -87,7 +87,7 @@ The Skopax image is distroless, so it has no `pip` and no shell. Install the plu
 
 ```dockerfile
 ARG BASE_IMAGE=ghcr.io/skopax/skopax
-ARG SKOPAX_VERSION=0.4.10
+ARG SKOPAX_VERSION=0.4.11
 
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS build
 
@@ -102,7 +102,7 @@ COPY --from=build /plugins /usr/local/lib/python3.15/site-packages/
 ```
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.4.10 -t skopax-hello examples/hello-plugin
+docker build --build-arg SKOPAX_VERSION=0.4.11 -t skopax-hello examples/hello-plugin
 ```
 
 - `BASE_IMAGE` (default `ghcr.io/skopax/skopax`) names the Skopax image to build on, for example a mirror or your own registry. `SKOPAX_VERSION` (default: the current release) picks its tag.
@@ -376,4 +376,4 @@ Chat texts also follow these rules:
 - **Shown as text.** Pack texts in chat messages and steps are escaped for Markdown and collapsed to one line, and so are the values Skopax fills into them. Button labels, starter labels and the thread name keep the text as written.
 - **Placeholders.** A chat text holds the same placeholders as its English text: for example `not_ready` has `{needs}`, `feature_off` has `{feature}` and `refused_failed` has `{reason}`. A pack text whose placeholders differ does not match the English text, so it is left out with a warning that names the key, and that text shows in English.
 
-The page loads the built-in packs first, as `/static/i18n-<lang>.js`, then one script per plug-in and language, `/plugins/<id>/i18n-<lang>.js`, and the packs of several plug-ins merge in load order. The parts other than `page` arrive under the reserved keys `@rules`, `@months`, `@days`, `@tails` and `@th`, so the script of a pack with `page` texts only is a flat map of English texts to their translations. For each text the page tries, in order: a header translation, the exact text, a known text with a tail, the text's shape (numbers as `{0}`, `{1}` and so on, month names as `{M}`, day names as `{D}`), and then the first rule that matches. A rule the browser rejects is skipped with one console warning.
+The page loads the built-in packs first, as `/static/i18n-<lang>.js`, then one script per plug-in and language, `/plugins/<id>/i18n-<lang>.js`, and the packs of several plug-ins merge in load order. The parts other than `page` arrive under the reserved keys `@rules`, `@months`, `@days`, `@tails` and `@th`, so the script of a pack with `page` texts only is a flat map of English texts to their translations. For each text the page tries, in order: a header translation, the exact text, a known text with a tail, the text's shape (numbers as `{0}`, `{1}` and so on, month names as `{M}`, day names as `{D}`), and then the first rule that matches. A rule the browser rejects is skipped with one console warning. Because a rule is tried last, a core exact, tail or shape match beats a plug-in rule for the same text (exact, then tail, then shape, then rules).

@@ -71,7 +71,7 @@ def test_claudes_crit_draft_arms_at_once_and_the_job_posts_it_on_its_next_run(st
     assert len(transport.calls) == 1
     payload = transport.calls[0][1]
     assert payload['text'].startswith('web-bff showed')
-    assert [b for b in payload['blocks'] if b['type'] == 'context'][-1]['elements'][0]['text'].endswith(' \u00b7 Claude investigator \u00b7 auto-sent'), 'a draft by the core token reads as the investigator'
+    assert [b for b in payload['blocks'] if b['type'] == 'context'][-1]['elements'][0]['text'].endswith(' \u00b7 Investigator \u00b7 auto-sent'), 'a draft by the core token reads as the investigator'
     assert [(a['type'], a['status'], a['requestedBy'], a['draft']) for a in listed] == [('slack', 'done', AUTO_BY, True)]
     assert store.anomaly(KEY)['slackPost']['by'] == AUTO_BY
 
@@ -301,8 +301,8 @@ def test_claudes_report_draft_always_arms_and_the_job_posts_it(store: Store):
     assert listed[0]['slackPost']['draft'] is True
 
 
-@pytest.mark.parametrize('by, footer', [('server', 'Skopax \u00b7 auto-sent'), ('Claude (pod)', 'Claude investigator \u00b7 auto-sent'), ('token', 'Claude investigator \u00b7 auto-sent'),
-                                        ('token:bootstrap', 'Claude investigator \u00b7 auto-sent'), ('token:release-bot', 'release-bot \u00b7 auto-sent')])
+@pytest.mark.parametrize('by, footer', [('server', 'Skopax \u00b7 auto-sent'), ('Claude (pod)', 'Investigator \u00b7 auto-sent'), ('token', 'Investigator \u00b7 auto-sent'),
+                                        ('token:bootstrap', 'Investigator \u00b7 auto-sent'), ('token:release-bot', 'release-bot \u00b7 auto-sent')])
 def test_a_report_draft_posts_with_the_footer_of_who_drafted_it(store: Store, by: str, footer: str):
     # given
     transport = FakeSlack()
@@ -758,3 +758,29 @@ def test_the_app_promises_an_investigation_only_while_the_investigator_runs_live
     assert warn.endswith(msg('autosend.post_now.warn_last')) is investigated
     if not investigated:
         assert crit.endswith('.') and msg('autosend.crit_now.last') not in crit and msg('autosend.post_now.warn_last') not in warn
+
+
+def test_a_post_at_once_the_worker_claims_first_still_says_so_once(store: Store, monkeypatch):
+    # given
+    from skopax.autosend import AutoSend
+    store.save(state(crit_card(KEY)), None)
+    sent = []
+    worker = AutoSend(store, sent.append, lambda report_id: None)
+    drafted = store.fallback_slack_draft
+
+    def raced(*args, **kwargs):
+        saved = drafted(*args, **kwargs)
+        worker.run_once()
+        return saved
+
+    monkeypatch.setattr(store, 'fallback_slack_draft', raced)
+    cards = store.load()['anomalies']
+
+    # when
+    posted = PostNow(store, sent.append, lambda: 'crit').run(cards, cards, utc_now().timestamp())
+
+    # then
+    texts = [r['text'] for r in store.list_activity(None, 20) if r.get('key') == KEY or KEY in r['text']]
+    assert sent == [KEY] and posted == []
+    assert texts.count(f'Card posted to Slack at once with its numbers \u00b7 {KEY}') == 1, texts
+    assert not any(t.startswith('Slack post sent') for t in texts), texts

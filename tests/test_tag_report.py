@@ -1,14 +1,18 @@
 import datetime as dt
 import json
 import logging
+import socket
 import string
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pytest
 
 from tests.fake_slack import FakePost, FakeSlackApi, fake_slack
 from skopax import clock, messages, tagreport
-from skopax.slack import Slack, SlackDown, SlackError
+from skopax.reminders import person
+from skopax.slack import Slack, SlackDown, SlackError, slowed
 from skopax.store import Store
 
 BASE = 'https://skopax.example.com'
@@ -169,7 +173,7 @@ def test_the_report_is_due_only_in_the_two_hours_after_the_time_on_business_days
 
 
 class Reporter:
-    def __init__(self, store: Store, owners=None, at='10:00', on=True, autosend=True, emails=None, slack=None, names=None, left_out=None):
+    def __init__(self, store: Store, owners=None, at='10:00', on=True, autosend=True, emails=None, slack=None, names=None, left_out=None, ids_clock=None):
         self.slack, self.post, self.api = slack or fake_slack(emails=emails or {'U0ALICE': ALICE})
         self.flags = []
 
@@ -177,7 +181,8 @@ class Reporter:
             self.flags.append(missing)
             store.note_email_scope(missing, iso(FRI_1000))
 
-        self.ids = tagreport.SlackIds(self.slack, on_scope=noted, flagged=lambda: store.email_scope() is not None)
+        timing = {'clock': ids_clock} if ids_clock is not None else {}
+        self.ids = tagreport.SlackIds(self.slack, on_scope=noted, flagged=lambda: store.email_scope() is not None, **timing)
         self.at, self.on, self.autosend = at, on, autosend
         self.owners = {'developer': [ALICE]} if owners is None else owners
         self.names = dict(NAMES) if names is None else names
@@ -333,12 +338,12 @@ def test_a_slack_outage_stops_lookups_for_that_report_is_not_cached_and_a_blank_
     ids = tagreport.SlackIds(slack)
 
     # when
-    down = ids.mention(ALICE)
-    stopped = ids.mention(ALICE)
+    run = ids.start()
+    down = run(ALICE)
+    stopped = run(ALICE)
     api.fail = set()
-    ids.start()
-    up = ids.mention(ALICE)
-    blank = ids.mention('')
+    up = ids.start()(ALICE)
+    blank = ids.start()('')
 
     # then
     assert (down, stopped, up, blank) == (None, None, '<@U0ALICE>', None)
@@ -393,8 +398,7 @@ def test_the_scope_flag_is_logged_once_across_reports(store: Store, caplog):
 
     # when
     for _ in range(3):
-        ids.start()
-        ids.mention(ALICE)
+        ids.start()(ALICE)
 
     # then
     assert ids.missing is True
@@ -419,14 +423,87 @@ def test_a_slack_down_lookup_does_not_set_the_scope_flag_and_cached_ids_still_me
 
     # when
     api.down = True
-    ids.start()
-    down = ids.mention(BOB)
-    cached = ids.mention(ALICE)
+    run = ids.start()
+    down = run(BOB)
+    cached = run(ALICE)
 
     # then
     assert (known, down, cached) == ('<@U0ALICE>', None, '<@U0ALICE>')
     assert flags == [] and ids.missing is False
     assert api.methods().count('users.lookupByEmail') == 2
+
+
+def test_a_failed_lookup_in_a_report_run_does_not_stop_reminder_mentions_outside_the_run(store: Store):
+    # given
+    now = [0.0]
+    open_cards(store, card('a', num=1), card('b', 'warn', ('data',), num=2))
+    r = Reporter(store, owners={'developer': [ALICE], 'data': [BOB]}, emails={'U0ALICE': ALICE, 'U0BOB': BOB}, ids_clock=lambda: now[0])
+    known = r.ids.mention(ALICE)
+    now[0] = tagreport.LOOKUP_TTL_S + 1
+    r.api.fail = {'users.lookupByEmail'}
+
+    # when
+    out = r.report.run_once(FRI_1000)
+    r.api.fail = set()
+    reminder = person(ALICE, r.ids.mention, r.ids.name)
+
+    # then
+    assert known == '<@U0ALICE>' and out is not None
+    assert reminder == '<@U0ALICE>', 'a failure inside the report run does not silence mentions outside it'
+
+
+def test_the_report_still_stops_lookups_within_its_own_run_after_one_failure(store: Store):
+    # given
+    open_cards(store, card('a', num=1), card('b', 'warn', ('data',), num=2))
+    r = Reporter(store, owners={'developer': [ALICE], 'data': [BOB]}, emails={'U0ALICE': ALICE, 'U0BOB': BOB})
+    r.api.fail = {'users.lookupByEmail'}
+
+    # when
+    out = r.report.run_once(FRI_1000)
+
+    # then
+    assert out is not None and '<@' not in json.dumps(r.post.posted[0]['blocks'])
+    assert r.api.methods().count('users.lookupByEmail') == 1, 'one failed lookup stops the others in the same report'
+
+
+def test_a_stale_cached_id_still_mentions_while_slack_is_down():
+    # given
+    now = [0.0]
+    api = DownApi(emails={'U0ALICE': ALICE})
+    api.down = False
+    ids = tagreport.SlackIds(Slack('xoxb-test', '#ops', FakePost(), api), clock=lambda: now[0])
+    ids.mention(ALICE)
+    now[0] = tagreport.LOOKUP_TTL_S + 1
+    api.down = True
+
+    # when
+    first = person(ALICE, ids.mention, ids.name)
+    again = ids.mention(ALICE)
+
+    # then
+    assert (first, again) == ('<@U0ALICE>', '<@U0ALICE>'), 'a Slack user id does not change, so the last known one is used'
+    assert api.methods().count('users.lookupByEmail') == 2, 'a down Slack is not asked again at once'
+
+
+def test_a_person_never_found_reads_as_a_name_and_a_refused_lookup_outside_a_report_is_tried_again_later():
+    # given
+    now = [0.0]
+    slack, _, api = fake_slack(emails={'U0ALICE': ALICE})
+    api.fail = {'users.lookupByEmail'}
+    ids = tagreport.SlackIds(slack, clock=lambda: now[0])
+
+    # when
+    first = person(BOB, ids.mention, lambda email: 'Bob Reed')
+    held = ids.mention(BOB)
+    looked = api.methods().count('users.lookupByEmail')
+    api.fail = set()
+    now[0] = tagreport.FAILURE_TTL_S + 1
+    later = ids.mention(ALICE)
+
+    # then
+    assert (first, held) == ('Bob Reed', None)
+    assert looked == 1, 'a refused address waits before the next try'
+    assert later == '<@U0ALICE>', 'lookups outside a report never stop for good'
 
 
 def test_a_flag_set_by_another_replica_is_cleared_by_a_real_lookup_even_when_this_replica_has_the_id_cached(store: Store):
@@ -510,19 +587,29 @@ def test_an_outside_responsible_known_to_slack_without_a_ping_is_named_by_the_sl
     assert r.post.posted[0]['blocks'][1]['text']['text'].split(' \u00b7 ')[0] == 'Dana Gray'
 
 
-def test_a_post_slack_did_not_answer_may_have_gone_out_so_the_day_is_not_tried_again(store: Store, caplog):
+def down_because(cause: BaseException) -> SlackDown:
+    e = SlackDown('Slack did not answer')
+    e.__cause__ = cause
+    return e
+
+
+@pytest.mark.parametrize('failure', [down_because(urllib.error.URLError(ConnectionRefusedError(61, 'refused'))), down_because(urllib.error.URLError(socket.gaierror(8, 'no such host'))),
+                                     down_because(ConnectionRefusedError(61, 'refused')), slowed(5)])
+def test_a_post_that_never_reached_slack_is_tried_again_on_the_next_pass_of_the_same_day_and_then_holds(store: Store, failure):
     # given
     open_cards(store, card('a', num=1))
-    slack = fake_slack(emails={'U0ALICE': ALICE}, post_fail=SlackDown('Slack did not answer'))
+    slack = fake_slack(emails={'U0ALICE': ALICE}, post_fail=failure)
     r = Reporter(store, slack=slack)
 
     # when
     first = r.report.run_once(FRI_1000)
     r.post.fail = False
-    again = r.report.run_once(FRI_1130)
+    again = r.report.run_once(FRI_1000 + tagreport.PERIOD)
+    later = r.report.run_once(FRI_1130)
 
     # then
-    assert (first, again) == (None, None) and r.post.posted == [] and len(r.post.calls) == 1
+    assert first is None and again is not None and later is None
+    assert len(r.post.posted) == 1 and len(r.post.calls) == 2
 
 
 @pytest.mark.parametrize('code', ['not_in_channel', 'channel_not_found', 'is_archived'])
@@ -831,3 +918,54 @@ def test_every_pack_words_the_new_lines_with_the_same_placeholders():
     for lang, pack in packs.items():
         for k in keys:
             assert {f[1] for f in string.Formatter().parse(pack[k]) if f[1]} == names[k], (lang, k)
+
+
+def test_a_missing_email_scope_on_a_background_check_pauses_lookups_caches_no_miss_and_resumes_later(caplog):
+    # given
+    now = [0.0]
+    api = ScopeApi(emails={'U0ALICE': ALICE, 'U0BOB': BOB})
+    ids = tagreport.SlackIds(Slack('xoxb-test', '#ops', FakePost(), api), clock=lambda: now[0])
+    caplog.set_level(logging.WARNING, 'skopax.tagreport')
+
+    # when
+    ids.check_all([ALICE, BOB])
+    paused, held = api.methods().count('users.lookupByEmail'), ids.peek(ALICE)
+    ids.check_all([ALICE, BOB])
+    api.refuse = False
+    now[0] = tagreport.FAILURE_TTL_S + 1
+    ids.check_all([ALICE, BOB])
+
+    # then
+    assert paused == 1 and held == 'unchecked' and api.methods().count('users.lookupByEmail') == 3
+    assert (ids.peek(ALICE), ids.peek(BOB)) == ('found', 'found')
+    assert len([m for m in caplog.messages if 'missing_scope' in m]) == 1
+
+
+@pytest.mark.parametrize('failure', [down_because(urllib.error.URLError(TimeoutError('timed out'))), down_because(TimeoutError('timed out')), down_because(ConnectionResetError(54, 'reset')),
+                                     SlackDown('Slack did not answer')])
+def test_a_post_that_may_have_reached_slack_is_not_tried_again_that_day(store: Store, failure):
+    # given
+    open_cards(store, card('a', num=1))
+    slack = fake_slack(emails={'U0ALICE': ALICE}, post_fail=failure)
+    r = Reporter(store, slack=slack)
+
+    # when
+    first = r.report.run_once(FRI_1000)
+    r.post.fail = False
+    again = r.report.run_once(FRI_1000 + tagreport.PERIOD)
+    later = r.report.run_once(FRI_1130)
+
+    # then
+    assert (first, again, later) == (None, None, None) and r.post.posted == [] and len(r.post.calls) == 1
+
+
+def test_a_refused_connection_from_the_real_client_counts_as_never_sent():
+    # given
+    from skopax.slack import _answer, never_sent
+
+    # when
+    with pytest.raises(SlackDown) as caught:
+        _answer(urllib.request.Request('http://127.0.0.1:1/api/chat.postMessage', data=b'{}'))
+
+    # then
+    assert never_sent(caught.value) is True

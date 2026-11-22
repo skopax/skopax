@@ -52,6 +52,8 @@ def short_text(a: dict) -> str:
 def row(a: dict) -> dict:
     firing = a.get('status') == 'open'
     out = {k: a[k] for k in ROW_FIELDS if a.get(k) not in (None, '')} | {'text': short_text(a), 'firing': firing}
+    if a.get('muted'):
+        out['muted'] = True
     if not firing:
         out['endedAt'] = a.get('clearedAt')
     moved = moved_by_hand(a)

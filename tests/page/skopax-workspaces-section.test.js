@@ -33,6 +33,31 @@ async function instancesAreTheirOwnAdminSectionWithTheDeploymentNameAndTheListRo
   console.log('PASS Other workspaces is its own Admin section with the workspace name and the list as rows');
 }
 
+async function theWorkspaceNameHelpNamesTheWorkspaceLabelVariable() {
+  //given
+  const named = await boot(TEMPLATE, '#t=workspaces', [links()]);
+  const bare = await boot(TEMPLATE, '#t=workspaces', [links()], {instance: {name: 'shop.example.com', label: '', from: ''}});
+
+  //when
+  const help = (doc) => doc.querySelector('#workspaces .ws-me .adm-help').textContent;
+
+  //then
+  assert.strictEqual(help(named.doc), 'Set by SKOPAX_WORKSPACE_LABEL in the service configuration; this page shows it and does not change it.');
+  assert.strictEqual(help(bare.doc), 'Named after its address. Set SKOPAX_WORKSPACE_LABEL in the service configuration to give it a name.');
+  for (const lang of ['de', 'es', 'fr', 'tr']) {
+    const texts = pack(TEMPLATE, lang);
+    const found = Object.entries(texts).filter(([k]) => k.includes('_LABEL in the service configuration'));
+    assert.strictEqual(found.length, 2, lang + ' carries both help texts');
+    for (const [en, said] of found) {
+      assert.ok(en.includes('SKOPAX_WORKSPACE_LABEL') && said.includes('SKOPAX_WORKSPACE_LABEL') && !said.includes('SKOPAX_ENV_LABEL'), lang + ': ' + said);
+    }
+  }
+  assert.deepStrictEqual([...named.errors, ...bare.errors], []);
+  named.w.close();
+  bare.w.close();
+  console.log('PASS the workspace name help names SKOPAX_WORKSPACE_LABEL in every language');
+}
+
 async function addingValidatingReorderingAndRemovingRowsSendsTheSameNameEqualsUrlText() {
   //given
   const {w, doc, errors, calls} = await boot(TEMPLATE, '#t=workspaces', [links({value: 'staging=' + STAGING, base: 'staging=' + STAGING, source: 'config', from: 'environment'})]);
@@ -247,7 +272,7 @@ async function theSectionIsTranslatedAndKeyboardReachable() {
 }
 
 (async () => {
-  const tests = [instancesAreTheirOwnAdminSectionWithTheDeploymentNameAndTheListRows, addingValidatingReorderingAndRemovingRowsSendsTheSameNameEqualsUrlText, moreThanTenInstancesIsRefusedAndAddStops, aCommaOnlyListIsNotUnsavedAtLoadAndTheCountRuleStopsTheEleventhRow, aRevertFromChangesRefreshesTheDraftAndRemovingTheLastRowFocusesAdd, theLimitsTheResetTitleAndTheAtMostSentenceReadInGerman,
+  const tests = [instancesAreTheirOwnAdminSectionWithTheDeploymentNameAndTheListRows, theWorkspaceNameHelpNamesTheWorkspaceLabelVariable, addingValidatingReorderingAndRemovingRowsSendsTheSameNameEqualsUrlText, moreThanTenInstancesIsRefusedAndAddStops, aCommaOnlyListIsNotUnsavedAtLoadAndTheCountRuleStopsTheEleventhRow, aRevertFromChangesRefreshesTheDraftAndRemovingTheLastRowFocusesAdd, theLimitsTheResetTitleAndTheAtMostSentenceReadInGerman,
     aListFromTheServiceConfigurationIsEditableDirectlyAndNamesItsRealSource, resetGoesBackToTheConfigurationList, aRefusedSaveShowsTheServerReasonAndKeepsTheRows, theSectionIsTranslatedAndKeyboardReachable];
   for (const t of tests) {
     try { await t(); } catch (e) { console.log('FAIL ' + (e && e.message ? e.message : e)); console.log(e && e.stack); process.exitCode = 1; return; }

@@ -1304,6 +1304,7 @@ var ACCESS_USER_HEADS = ['Person', 'Role', 'Sign-in', 'Last sign-in', 'Disabled'
 var ACCESS_EXPIRY = [['', 'Never'], ['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['365', '1 year']];
 var ACCESS_LAST_ADMIN = 'The last admin keeps the admin role and stays enabled: make someone else an admin first';
 var ACCESS_LAST_PW_ADMIN = 'The last active admin with a password keeps it, so there is a way in when SSO fails: give another admin a password first';
+var ACCESS_LAST_PW_ROLE = 'The last active admin with a password stays an enabled admin, so there is a way in when SSO fails: give another admin a password first';
 var ACCESS_ADD_ID = 'acc-add-user', ACCESS_ADD_FIELDS = ['email', 'name', 'role', 'sso', 'password'], ACCESS_NEED_PW = 'Enter a password of ' + ACCESS_PW_MIN + '-' + ACCESS_PW_MAX + ' characters';
 function accText(tag, cls, text) {
   var e = document.createElement(tag);
@@ -1460,7 +1461,7 @@ function accShell(box) {
   if (!ACCESS_MENU_WIRED) {
     ACCESS_MENU_WIRED = true;
     document.addEventListener('click', function (e) { if (!e.target.closest || !e.target.closest('.acc-menu-w')) accMenuClose(null, false); });
-    window.addEventListener('scroll', function () { accMenuClose(null, false); }, true);
+    window.addEventListener('scroll', accMenuFollow, true);
     window.addEventListener('resize', function () { accMenuClose(null, false); });
   }
 }
@@ -1673,6 +1674,14 @@ function accMenuClose(except, back) {
     if (b) { b.setAttribute('aria-expanded', 'false'); if (back) b.focus(); }
   });
 }
+function accMenuFollow() {
+  [].forEach.call(document.querySelectorAll('#access .acc-menu:not([hidden])'), function (m) {
+    var b = m.parentNode.querySelector('.acc-menu-b'), r = b && b.getBoundingClientRect();
+    if (r && r.bottom > 0 && r.top < window.innerHeight) { accMenuPlace(b, m); return; }
+    m.hidden = true;
+    if (b) b.setAttribute('aria-expanded', 'false');
+  });
+}
 function accMenuPlace(b, m) {
   var r = b.getBoundingClientRect(), h = m.offsetHeight || 0, w = m.offsetWidth || 0, cw = document.documentElement.clientWidth, room = window.innerHeight - r.bottom;
   m.style.position = 'fixed';
@@ -1814,15 +1823,16 @@ function accUserRow(u) {
   who.appendChild(names);
   accCell(tr, who);
   var sel = accRoleSelect(u.role, 'acc-role acc-chip acc-chip-' + (ACCESS_ROLES.indexOf(u.role) >= 0 ? u.role : 'viewer')), idp = ACCESS_IDP.indexOf(u.roleFrom) >= 0, last = accLastAdmin(u);
+  var lastPw = accLastPwAdmin(u), kept = last ? ACCESS_LAST_ADMIN : lastPw ? ACCESS_LAST_PW_ROLE : '';
   sel.setAttribute('aria-label', 'Role of ' + u.email);
   var roleCell = accCell(tr, sel);
   if (idp) {
     sel.disabled = true;
     sel.title = 'Set by the sign-in provider or a role plug-in at each sign-in';
     roleCell.appendChild(accText('span', 'tag plain acc-idp', 'from sign-in provider'));
-  } else if (last) {
+  } else if (kept) {
     sel.disabled = true;
-    sel.title = ACCESS_LAST_ADMIN;
+    sel.title = kept;
   }
   if (last) {
     var lone = accText('span', 'tag plain acc-last-admin', 'Last admin');
@@ -1848,7 +1858,7 @@ function accUserRow(u) {
   off.className = 'acc-off';
   off.checked = !!u.disabled;
   off.setAttribute('aria-label', 'Disabled: ' + u.email);
-  if (last) { off.disabled = true; off.title = ACCESS_LAST_ADMIN; }
+  if (kept) { off.disabled = true; off.title = kept; }
   accCell(tr, off);
   var linkCell = accCell(tr, null);
   var ctl = accCell(tr, null);
@@ -1877,9 +1887,8 @@ function accUserRow(u) {
     {cls: 'acc-mi-role', text: 'Change role', off: sel.disabled, title: sel.disabled ? sel.title : '', run: function () { sel.focus(); }}];
   if (u.source !== 'sso') items.push({cls: 'acc-reset', text: 'Reset password', run: showPw});
   if (u.source === 'sso') items.push({cls: 'acc-setpw', text: 'Set a password', title: 'Give this person a password: they become a local account, and their SSO link waits 7 days for the next SSO sign-in', run: showPw});
-  var lastPw = accLastPwAdmin(u);
   if (u.source === 'local' && accSsoOn()) items.push({cls: 'acc-mi-ssoonly', text: 'Make SSO only', off: lastPw, title: lastPw ? ACCESS_LAST_PW_ADMIN : 'Removes the password; this person signs in with SSO only', run: function () { naming.hidden = true; form.hidden = true; ask.open(); }});
-  items.push({cls: 'acc-mi-off' + (u.disabled ? '' : ' acc-mi-danger'), text: u.disabled ? 'Enable sign-in' : 'Disable sign-in', off: last, title: last ? ACCESS_LAST_ADMIN : u.disabled ? '' : 'Stops sign-in for this person; their sessions and API tokens stop within 30 seconds',
+  items.push({cls: 'acc-mi-off' + (u.disabled ? '' : ' acc-mi-danger'), text: u.disabled ? 'Enable sign-in' : 'Disable sign-in', off: !!kept, title: kept || (u.disabled ? '' : 'Stops sign-in for this person; their sessions and API tokens stop within 30 seconds'),
     run: function () { off.checked = !off.checked; off.dispatchEvent(new Event('change', {bubbles: true})); }});
   var menu = accMenu(u, items);
   naming = accNameForm(u, msg, menu);

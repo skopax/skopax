@@ -487,6 +487,7 @@ async function bootLinked(o) {
   const dom = new JSDOM(html, {
     url: 'https://skopax.dev.example.com/' + (o.hash || ''), runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
+      if (o.i18n) { w.SKOPAX_I18N = o.i18n; w.document.cookie = 'skopax_lang=' + Object.keys(o.i18n)[0] + '; path=/'; }
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () { w.__scrolledTo = this.id; };
       Object.defineProperty(w.navigator, 'clipboard', {configurable: true, value: {writeText: async (t) => { copied.push(t); }}});
@@ -1257,7 +1258,7 @@ async function aDeployGitlabNeverReadSaysSoAndAHiddenIssueAndAnUnreadReleaseSear
   const box = [...doc.querySelectorAll('.drep-body > details.rep')].filter((d) => /^Released issues/.test(d.querySelector('summary').textContent))[0];
 
   //then
-  assert.strictEqual(cell('cart-service').textContent, 'not read: GitLab is off', 'no commit was read, so it never says none');
+  assert.strictEqual(cell('cart-service').textContent, 'not read: the code host is off', 'no commit was read, so it never says none');
   assert.ok(cell('basket-service').textContent.endsWith('releases: ' + hidden));
   assert.strictEqual(box.querySelector('summary').textContent, 'Released issues \u00b7 not read', 'a refused search never reads as 0');
   assert.deepStrictEqual(errors, []);
@@ -1312,17 +1313,37 @@ async function aDeployNotReadSaysYetOnlyWhileGitlabServesAndTheDeployIsInsideThe
   //given
   const daysAgo = (d) => new Date(Date.now() - d * 86400000).toISOString();
   const deploys = [dep('n1', 'shop', 'cart-service', '7e7e7e7e', '8f8f8f8f', daysAgo(1)), dep('n2', 'shop', 'basket-service', '7e7e7e7e', '8f8f8f8f', daysAgo(10))];
-  const on = await bootLinked({me: {loginEnabled: false, gitlab: true}, deploys, reports: []});
+  const on = await bootLinked({me: {loginEnabled: false, gitlab: true, codeHost: 'GitHub'}, deploys, reports: []});
+  const unnamed = await bootLinked({me: {loginEnabled: false, gitlab: true}, deploys, reports: []});
   const off = await bootLinked({me: {loginEnabled: false, gitlab: false}, deploys, reports: []});
   const cell = (doc, svc) => [...doc.querySelectorAll('.rel-deps tbody tr')].filter((tr) => tr.querySelector('b').textContent === svc)[0].lastElementChild.textContent;
 
   //then
-  assert.deepStrictEqual([cell(on.doc, 'cart-service'), cell(on.doc, 'basket-service')], ['not read from GitLab yet', 'not read from GitLab'], 'only a deploy inside the 7-day read window still waits for a read');
-  assert.deepStrictEqual([cell(off.doc, 'cart-service'), cell(off.doc, 'basket-service')], ['not read: GitLab is off', 'not read: GitLab is off']);
-  assert.deepStrictEqual(on.errors.concat(off.errors), []);
+  assert.deepStrictEqual([cell(on.doc, 'cart-service'), cell(on.doc, 'basket-service')], ['not read from GitHub yet', 'not read from GitHub'], 'the host the server reports is named, and only a deploy inside the 7-day read window still waits for a read');
+  assert.deepStrictEqual([cell(unnamed.doc, 'cart-service'), cell(unnamed.doc, 'basket-service')], ['not read from the code host yet', 'not read from the code host'], 'an unknown host is called the code host');
+  assert.deepStrictEqual([cell(off.doc, 'cart-service'), cell(off.doc, 'basket-service')], ['not read: the code host is off', 'not read: the code host is off']);
+  assert.deepStrictEqual(on.errors.concat(off.errors, unnamed.errors), []);
+  unnamed.dom.window.close();
   on.dom.window.close();
   off.dom.window.close();
   console.log('PASS a deploy GitLab has not read says yet only while GitLab serves and the deploy is inside the read window; otherwise it says why no read comes');
+}
+
+async function aTurkishPageTranslatesTheCodeHostNote() {
+  //given
+  const fs = require('fs'), path = require('path');
+  const raw = JSON.parse(fs.readFileSync(path.join(path.dirname(TEMPLATE), '..', 'locale', 'tr', 'page.json'), 'utf8'));
+  const pack = Object.assign({}, raw.page, {'@rules': raw.rules, '@months': raw.months, '@days': raw.days, '@tails': raw.tails, '@th': raw.headers});
+  const daysAgo = (d) => new Date(Date.now() - d * 86400000).toISOString();
+  const deploys = [dep('n1', 'shop', 'cart-service', '7e7e7e7e', '8f8f8f8f', daysAgo(1)), dep('n2', 'shop', 'basket-service', '7e7e7e7e', '8f8f8f8f', daysAgo(10))];
+  const named = await bootLinked({me: {loginEnabled: false, gitlab: true, codeHost: 'GitHub'}, deploys, reports: [], i18n: {tr: pack}});
+  const cell = (doc, svc) => [...doc.querySelectorAll('.rel-deps tbody tr')].filter((tr) => tr.querySelector('b').textContent === svc)[0].lastElementChild.textContent;
+
+  //then
+  assert.deepStrictEqual([cell(named.doc, 'cart-service'), cell(named.doc, 'basket-service')], ['GitHub \u00fczerinden hen\u00fcz okunmad\u0131', 'GitHub \u00fczerinden okunmad\u0131']);
+  assert.deepStrictEqual(named.errors, []);
+  named.dom.window.close();
+  console.log('PASS a Turkish page translates the code host note, naming the host');
 }
 
 async function aRowLogsLinkSitsWithItsSignals() {
@@ -1424,6 +1445,7 @@ async function pluginReleasesAreKnownByTheirKind() {
   await aRefusedEnrichmentShowsInsteadOfNoTickets();
   await aDeployGitlabNeverReadSaysSoAndAHiddenIssueAndAnUnreadReleaseSearchAreNamed();
   await aDeployNotReadSaysYetOnlyWhileGitlabServesAndTheDeployIsInsideTheReadWindow();
+  await aTurkishPageTranslatesTheCodeHostNote();
   await aRowLogsLinkSitsWithItsSignals();
   await aFlagOfASecondInstanceOpensThatInstancesCard();
   await pluginReleasesAreKnownByTheirKind();
