@@ -26,7 +26,7 @@ from skopax.registry import Registry
 from skopax.runtime import RunContext, Runtime
 from skopax.scheduler import Job, Scheduler
 from skopax.sealer import master_key
-from skopax.store import Store
+from skopax.store import Conflict, Store
 from skopax.sweeps import RETIRED_KEEP_S, Reads, Sweeper, scope
 from tests.conftest import settings
 from tests.plugin_kit import add_instance, no_loop
@@ -1448,8 +1448,14 @@ def running_registry(store, tmp_path):
 
 
 def seed_retired(store, entries):
-    loaded = store.load()
-    store.save_state(dict(loaded, retired=entries), loaded['rev'])
+    for _ in range(20):
+        loaded = store.load()
+        try:
+            store.save_state(dict(loaded, retired=entries), loaded['rev'])
+            return
+        except Conflict:
+            continue
+    raise AssertionError('the tombstones were never seeded: the state kept changing')
 
 
 def test_old_tombstones_are_pruned_by_a_run_and_by_a_retire(store, tmp_path):
@@ -2071,15 +2077,21 @@ def test_a_check_retire_needs_an_instance(store, tmp_path):
 
 
 def strip_leftovers(store, keep: str) -> None:
-    state = store.load()
-    if keep != 'pass':
-        for table in ('sources', 'serverPasses'):
-            state[table].pop('pulse-east', None)
-    if keep != 'card':
-        state['anomalies'] = [a for a in state['anomalies'] if a['key'] != pair_key('pulse', 'east')]
-    if keep != 'rows':
-        state['routes'] = [r for r in state['routes'] if r.get('cluster') != 'east']
-    store.save_state(state, state['rev'])
+    for _ in range(20):
+        state = store.load()
+        if keep != 'pass':
+            for table in ('sources', 'serverPasses'):
+                state[table].pop('pulse-east', None)
+        if keep != 'card':
+            state['anomalies'] = [a for a in state['anomalies'] if a['key'] != pair_key('pulse', 'east')]
+        if keep != 'rows':
+            state['routes'] = [r for r in state['routes'] if r.get('cluster') != 'east']
+        try:
+            store.save_state(state, state['rev'])
+            return
+        except Conflict:
+            continue
+    raise AssertionError('the leftovers were never stripped: the state kept changing')
 
 
 @pytest.mark.parametrize('keep', ['pass', 'card', 'rows'])
