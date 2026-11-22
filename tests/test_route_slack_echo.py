@@ -1020,3 +1020,56 @@ def test_a_slack_post_that_was_not_recorded_counts_as_a_failure_for_the_backoff(
 
     # then
     assert len(slack_t.calls) == 1 and store.anomaly(KEY)['routeEcho']['fails'] == 1
+
+
+HOST = 'log|checkout-service|ERROR|first'
+PLACED = {'channel': 'C123', 'ts': '1791900000.000001', 'replyTs': '1791900000.000009', 'threadOf': HOST, 'at': AT}
+
+
+def test_a_line_in_another_cards_thread_names_its_own_card_and_why_it_is_there(store: Store):
+    # given
+    seed(store, open_card(HOST, num=3, slackPost=THREAD), seo_info(num=5, slackPost=PLACED))
+    fake = Fake(store)
+    routes = echoing(store, fake, route('seo', SEO, tags='seo'), core=True)
+
+    # when
+    routes.deliver([store.anomaly(KEY)], NOW, [store.anomaly(KEY)])
+
+    # then
+    assert fake.said == [(PLACED, '<https://skopax.example.com/c/5|#5 checkout-service / ERROR lines> \u00b7 Same service as #3 checkout-service / ERROR lines: '
+                                  'Sent to seo on Microsoft Teams (tag: seo)')]
+
+
+def test_a_line_in_a_shared_digest_thread_names_its_own_card(store: Store):
+    # given
+    digest = THREAD | {'digest': True}
+    seed(store, open_card(HOST, num=3, slackPost=digest), seo_info(num=5, slackPost=digest))
+    fake = Fake(store)
+    routes = echoing(store, fake, route('seo', SEO, tags='seo'), core=True)
+
+    # when
+    routes.deliver([store.anomaly(KEY)], NOW, [store.anomaly(KEY)])
+
+    # then
+    assert fake.said == [(digest, '<https://skopax.example.com/c/5|#5 checkout-service / ERROR lines>: Sent to seo on Microsoft Teams (tag: seo)')]
+
+
+def test_a_host_card_that_cannot_be_read_still_leaves_a_named_line(store: Store, monkeypatch):
+    # given
+    seed(store, open_card(HOST, num=3, slackPost=THREAD), seo_info(num=5, slackPost=PLACED))
+    fake = Fake(store)
+    routes = echoing(store, fake, route('seo', SEO, tags='seo'), core=True)
+    read = store.anomaly
+
+    def flaky(key):
+        if key == HOST:
+            raise PyMongoError('mongo is down')
+        return read(key)
+
+    monkeypatch.setattr(store, 'anomaly', flaky)
+
+    # when
+    routes.deliver([read(KEY)], NOW, [read(KEY)])
+
+    # then
+    assert fake.said == [(PLACED, '<https://skopax.example.com/c/5|#5 checkout-service / ERROR lines>: Sent to seo on Microsoft Teams (tag: seo)')]

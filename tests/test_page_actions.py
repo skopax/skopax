@@ -185,13 +185,15 @@ def test_group_merges_under_an_open_card_and_refuses_flips_merged_parents_and_a_
     missing = group(KEY, 'log|nope|ERROR|x')
 
     # then
-    assert (ok['status'], ok['result']) == ('done', f'grouped under {KEY}') and card(client, OTHER)['parent'] == KEY
+    host = card(client, KEY)
+    named = (f"#{host['num']} " if host.get('num') else '') + f"{host['svc']} / {host['label']}"
+    assert (ok['status'], ok['result']) == ('done', f'grouped under {named}') and card(client, OTHER)['parent'] == KEY and KEY not in ok['result']
     assert (flip['status'], flip['result']) == ('failed', f'{OTHER} is already merged under {KEY}; that grouping stands')
     assert (under_child['status'], under_child['result']) == ('failed', f'{OTHER} is itself merged under {KEY}; group under {KEY} instead')
     assert (crit_under_handled['status'], crit_under_handled['result']) == ('failed', f'{handled} is handled and {crit} is critical; a critical card stays open for a human, also under a parent')
     assert (gone['status'], gone['result']) == ('failed', f'{cleared} already stopped and {KEY} is still open; pick an open card as the parent')
     stopped = group(cleared, KEY)
-    assert (stopped['status'], stopped['result']) == ('done', f'grouped under {KEY}') and card(client, cleared)['parent'] == KEY, 'a card that stopped firing can still be merged under an open one'
+    assert (stopped['status'], stopped['result']) == ('done', f'grouped under {named}') and card(client, cleared)['parent'] == KEY, 'a card that stopped firing can still be merged under an open one'
     assert (itself['status'], itself['result']) == ('failed', 'pick another card as the parent')
     assert (missing['status'], missing['result']) == ('failed', 'no anomaly with key log|nope|ERROR|x')
     assert 'parent' not in card(client, KEY) and 'parent' not in card(client, crit)

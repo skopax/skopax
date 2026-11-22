@@ -24,6 +24,8 @@ SEARCH_HITS = 20
 MAX_PAGES = 30
 COMPARE_PAGES = 10
 REPOS_TTL_S = 3600
+UNKNOWN_TTL_S = 60
+UNKNOWN_MAX = 500
 DENIED = (401, 403)
 MOVED = (301, 302, 307, 308)
 RATE_PAUSE_S = 60
@@ -121,6 +123,8 @@ def split_name(owner: str, repo: str) -> tuple[str, str] | None:
 
 
 class GitHub:
+    name = 'GitHub'
+
     def __init__(self, token: str, transport: Transport = remote.send, owner: str = '', base: str = GITHUB_URL, clock=time.monotonic, wall=time.time, docs: str = ''):
         self.token = token
         self.owner = str(owner or '').strip().strip('/')
@@ -133,6 +137,7 @@ class GitHub:
         self.docs = str(docs or '').strip().strip('/')
         self._repos: dict[str, dict] = {}
         self._loaded = None
+        self._unknown: dict[str, float] = {}
         self._paused = 0.0
         self._wait = 0
         self._kind: str | None = None
@@ -229,6 +234,7 @@ class GitHub:
                 if row:
                     found[row['name'].lower()] = row
             self._repos, self._loaded = found, self.clock()
+            self._unknown.clear()
         return list(self._repos.values())
 
     def repo(self, name_or_path: str) -> dict | None:
@@ -239,9 +245,16 @@ class GitHub:
         known = self._repos.get(parts[1].lower())
         if known:
             return known
+        key = parts[1].lower()
+        missed = self._unknown.get(key)
+        if missed is not None and self.clock() - missed < UNKNOWN_TTL_S:
+            return None
         try:
             body = self._get(f'/repos/{quote(parts[0], safe="")}/{quote(parts[1], safe="")}', 'repositories').body
         except Missing:
+            if len(self._unknown) >= UNKNOWN_MAX:
+                self._unknown.clear()
+            self._unknown[key] = self.clock()
             return None
         return self._row(body) if isinstance(body, dict) else None
 
@@ -294,7 +307,9 @@ class GitHub:
         return body
 
     def file(self, repo, path: str, ref: str) -> str:
-        body = self.raw_file(repo, path, ref)
+        return self.decoded(self.raw_file(repo, path, ref), path)
+
+    def decoded(self, body: dict, path: str) -> str:
         if body.get('encoding') != 'base64':
             raise SourceDown(msg('github.file_large', path=path))
         return base64.b64decode(body.get('content') or '').decode('utf-8', 'replace')

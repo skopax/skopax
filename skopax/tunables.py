@@ -571,7 +571,7 @@ def link_colour(name: str) -> str:
 
 
 def current_instance(settings: Settings) -> str:
-    label = (settings.env_label or '').strip()
+    label = (settings.workspace_label or '').strip()
     if label:
         return label
     try:
@@ -864,6 +864,9 @@ class Live:
             own = tuple(self.own_domains())
             out['builtIn'] = list(web_sites.built_in(own))
             out['ownDomains'] = list(own)
+            unknown = web_sites.unknown_removed(out['value'], own)
+            if unknown and not out.get('problem'):
+                out['problem'] = msg('items.minus_unknown.web-host', field=t.label, hosts=', '.join('-' + d for d in unknown))
         if t.kind == 'tagrules':
             out['pluginTerms'] = list(tags.plugin_rules().get(t.part, ()))
         if t.kind in TEXT_BOXES:

@@ -1,5 +1,7 @@
 var HIST_ACTS = {take: 'Started progress', resolve: 'Resolved', ticket: 'Ticket created', link: 'Ticket linked', mute: 'Muted', unmute: 'Unmuted', known: 'Marked known noise', reopen: 'Reopened',
   dive: 'Investigation queued', group: 'Grouped', severity: 'Severity changed', ask: 'Asked the investigator'};
+var HIST_TRIED = {take: 'Start progress', resolve: 'Resolve', ticket: 'Create task', link: 'Link ticket', mute: 'Mute', unmute: 'Unmute', known: 'Mark as known noise', reopen: 'Reopen',
+  dive: 'Investigate', group: 'Group', severity: 'Change severity', ask: 'Ask the investigator'};
 var HIST_SEV = {crit: 'Critical', warn: 'Warning', info: 'Info'};
 var HIST_CUT = 160;
 function svcReal(v) { v = String(v == null ? '' : v).trim(); return v === '-' ? '' : v; }
@@ -30,7 +32,7 @@ function cardHistoryRows(c, data, runs, names) {
   var rows = [], key = c.key || '', acts = (data.actions || []).slice(), log = data.activity || [];
   function add(at, who, label, data, extra) {
     if (!at || !(label || data)) return;
-    rows.push(Object.assign({at: at, who: who, label: label ? histTx(label) : '', data: data || '', what: label && data ? label + ': ' + data : label || data}, extra || {}));
+    rows.push(Object.assign({at: at, who: who, label: label ? histTx(label) : '', data: data || '', what: label && data ? label + (extra && extra.bare ? ' ' : ': ') + data : label || data}, extra || {}));
   }
   function plain(text) {
     var t = String(text || ''), tail = ' \u00b7 ' + key;
@@ -44,7 +46,7 @@ function cardHistoryRows(c, data, runs, names) {
   acts.forEach(function (x) {
     if (!HIST_ACTS[x.type] || ['done', 'failed', 'cancelled'].indexOf(x.status) < 0) return;
     var at = x.doneAt || x.failedAt || x.cancelledAt || x.requestedAt, who = histWho(x.requestedBy);
-    if (x.status !== 'done') { add(at, who, HIST_ACTS[x.type] + (x.status === 'failed' ? ' failed' : ' cancelled'), x.result ? histCut(x.result) : '', {kind: 'action'}); return; }
+    if (x.status !== 'done') { add(at, who, HIST_TRIED[x.type] + (x.status === 'failed' ? ' failed' : ' cancelled'), x.result ? histCut(x.result) : '', {kind: 'action'}); return; }
     if (x.type === 'severity') {
       var to = HIST_SEV[x.sev] || (/\(([A-Za-z]+)\)$/.exec(x.result || '') || [])[1] || x.sev || '';
       var from = sevNow || (/the signal says ([A-Za-z]+)/.exec(x.result || '') || [])[1] || '';
@@ -67,7 +69,7 @@ function cardHistoryRows(c, data, runs, names) {
   });
   var b = c.business;
   if (b && b.text && b.at && said.indexOf('tags:business sentence saved') < 0) add(b.at, b.by === 'rule' ? 'rule' : histWho(b.by), 'Business note written', '', {kind: 'tags'});
-  if (c.assigned && c.assigned.at && !assignLogged) add(c.assigned.at, histWho(c.assigned.by), 'Assigned to', String(c.owner || '').split('@')[0], {kind: 'assign'});
+  if (c.assigned && c.assigned.at && !assignLogged) add(c.assigned.at, histWho(c.assigned.by), 'Assigned to', String(c.owner || '').split('@')[0], {kind: 'assign', bare: true});
   if (c.sevSet && c.sevSet.at && !acts.some(function (x) { return x.type === 'severity'; })) add(c.sevSet.at, histWho(c.sevSet.by), 'Severity changed', '', {kind: 'severity', from: histTx(HIST_SEV[c.sevSet.auto] || ''), to: histTx(HIST_SEV[c.sevSet.sev] || c.sevSet.sev)});
   var p = c.slackPost;
   if (p && p.at) add(p.at, histWho(p.by), 'Posted to Slack', '', {kind: 'slack', href: p.permalink && /^https:\/\//.test(p.permalink) ? p.permalink : ''});
@@ -84,7 +86,7 @@ function cardHistoryHtml(rows, when, state) {
   return note + '<ol class="h-rows">' + rows.map(function (r) {
     var chg = r.to ? ' <span class="h-chg">' + (r.from ? '<span class="h-old">' + histEsc(r.from) + '</span> \u2192 ' : '') + '<span class="h-new">' + histEsc(r.to) + '</span></span>' : '';
     var link = r.href ? ' <a class="h-link" href="' + histEsc(r.href) + '" target="_blank" rel="noopener">' + (r.kind === 'run' ? 'Run record' : 'Open') + ' \u2197</a>' : '';
-    return '<li class="h-' + histEsc(r.kind || 'row') + '"><time datetime="' + histEsc(r.at) + '" title="' + histEsc(r.at) + '">' + histEsc(when(r.at)) + '</time><span class="h-body"><span class="h-what">' + (r.label ? '<span class="h-l">' + histEsc(r.label) + '</span>' + (r.data ? ': ' : '') : '') +
+    return '<li class="h-' + histEsc(r.kind || 'row') + '"><time datetime="' + histEsc(r.at) + '" title="' + histEsc(r.at) + '">' + histEsc(when(r.at)) + '</time><span class="h-body"><span class="h-what">' + (r.label ? '<span class="h-l">' + histEsc(r.label) + '</span>' + (r.data ? (r.bare ? ' ' : ': ') : '') : '') +
       (r.data ? '<span data-no-tx>' + histEsc(r.data) + '</span>' : '') + '</span>' + chg +
       ' <span class="h-who"' + (HIST_FIXED[r.who] ? '' : ' data-no-tx') + '>' + histEsc(r.who) + '</span>' + link + '</span></li>';
   }).join('') + '</ol>';

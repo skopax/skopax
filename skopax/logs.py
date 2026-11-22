@@ -10,7 +10,7 @@ from pathlib import Path
 
 LEVELS = {'WARNING': 'WARN', 'CRITICAL': 'FATAL'}
 QUIET_PATHS = ('/actuator/health',)
-HIDDEN_QUERIES = ('/api/admin/mcp-tools/oauth/callback', '/authorized')
+HIDDEN_QUERIES = ('/api/admin/mcp-tools/oauth/callback', '/authorized', '/api/admin/people')
 LIBRARY = 'mcp'
 QUIET_LIBRARIES = (LIBRARY, 'httpx', 'httpcore', 'pymongo', 'urllib3', 'anthropic', 'openai')
 HIDDEN = 'message hidden'

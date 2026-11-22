@@ -703,6 +703,9 @@ var TILE_MOVES = [
 var TILE_TICKET = tileSvg('<rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>');
 var TILE_BUSY = {};
 function tileBusy(key) { return !!(TILE_BUSY[key] || (window.__cardBusy && window.__cardBusy(key))); }
+function tileDraggable(key) { return !(window.__boardLock ? window.__boardLock() : 'Log in to move cards') && !tileBusy(key); }
+window.__tileBusy = tileBusy;
+window.__tileDraggable = tileDraggable;
 function tileActs(a, lock, who) {
   var moves = lock ? [] : TILE_MOVES.filter(function (m) { return moveSteps(a, m[0]); });
   var busy = tileBusy(a.key);
@@ -731,13 +734,12 @@ function tileMove(a, t) {
   Promise.resolve(dropOn(a, move)).catch(function () {}).then(function () {
     delete TILE_BUSY[key];
     t.removeAttribute('aria-busy');
-    var busy = !!(window.__cardBusy && window.__cardBusy(key));
+    var busy = tileBusy(key);
     var now = [].filter.call(document.querySelectorAll('#anoms .tile'), function (x) { return x.dataset.key === key; })[0];
-    var lock = window.__boardLock ? window.__boardLock() : 'Log in to move cards';
     [row, now && now.querySelector('.tile-acts')].forEach(function (r) {
       if (r) r.querySelectorAll('.ta-b[data-move]').forEach(function (b) { b.removeAttribute('aria-busy'); b.disabled = busy; });
     });
-    if (now) now.draggable = !lock && !busy;
+    if (now) now.draggable = tileDraggable(key);
     var lost = !document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected || document.activeElement === t;
     if (!lost || !now) return;
     var back = now.querySelector('.ta-b[data-move="' + move + '"]:not(:disabled)') || now.querySelector('.tile-open');
@@ -748,7 +750,7 @@ function tile(a) {
   var b = el('div', 'tile ' + (SEV[a.sev] || SEV.info)[1]);
   b.dataset.key = a.key;
   var lock = window.__boardLock ? window.__boardLock() : 'Log in to move cards';
-  b.draggable = !lock && !tileBusy(a.key);
+  b.draggable = tileDraggable(a.key);
   var where = a.cluster && !svcFromCluster(a) ? ' \u00b7 instance ' + a.cluster : '';
   b.title = svcName(a) + ' / ' + a.label + where + (a.num ? ' \u00b7 #' + a.num : '') + ' \u00b7 opens the card' + (lock ? '' : '; drag it to another column to change its status');
   var who = a.owner ? '<span class="tile-asg" role="img" aria-label="' + esc('Assignee: ' + ownerName(a.owner)) + '" title="' + esc('Assigned to ' + a.owner) + '">' + esc(ownerName(a.owner).split(/[._-]/).map(function (p) { return p.charAt(0); }).join('').slice(0, 2).toUpperCase()) + '</span>' : '';
@@ -899,7 +901,7 @@ function wireDrop(col) {
     e.preventDefault();
     var a = DRAG;
     dragDone();
-    if (a) dropOn(a, col.dataset.col);
+    if (a && !tileBusy(a.key)) dropOn(a, col.dataset.col);
   });
 }
 var QF_PEOPLE = 8;
@@ -1109,6 +1111,23 @@ function toastBox() {
   box.setAttribute('aria-live', 'polite');
   document.body.appendChild(box);
   return box;
+}
+function cardInFlight(a) {
+  return !!(a.owner || a.assigned || a.ticket || (['progress', 'handled'].indexOf(a.triage) >= 0 && ['pod', 'auto'].indexOf(a.triagedBy) < 0));
+}
+function noticeToast(text) {
+  var box = toastBox();
+  var t = el('div', 'toast', '<span class="toast-t"></span><span class="toast-acts"><button type="button" class="toast-x" aria-label="Dismiss" title="Dismiss">\u00d7</button></span>');
+  t.querySelector('.toast-t').textContent = text;
+  var timer = setTimeout(function () { t.remove(); }, TOAST_MS);
+  t.querySelector('.toast-x').addEventListener('click', function () { clearTimeout(timer); t.remove(); });
+  box.appendChild(t);
+  while (box.children.length > TOAST_MAX) box.firstChild.remove();
+  return t;
+}
+function stayToast(a) {
+  var name = a.num ? '#' + a.num : svcName(a) + ' / ' + a.label;
+  return noticeToast(name + ' stays on the board while it has an owner, a ticket or work in progress; it moves to Information when none of those remain');
 }
 function hiddenToast(key) {
   var a = CARDS.filter(function (x) { return x.key === key; })[0], box = toastBox();

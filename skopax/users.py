@@ -11,6 +11,7 @@ from pymongo import ASCENDING, ReturnDocument
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from skopax import clock
+from skopax.actors import is_token
 from skopax.errkind import Authored, kind as error_kind
 from skopax.messages import msg
 
@@ -26,6 +27,7 @@ IDP_NAMES = ('default', 'idp')
 RESOLVED_AT = 'resolvedAtTs'
 LOCAL_AFTER = 'localAfterTs'
 SSO_AFTER = 'ssoAfterTs'
+PW_GEN = 'pwGen'
 
 SCRYPT_N = 2 ** 14
 SCRYPT_R = 8
@@ -127,6 +129,10 @@ def scrypt_parts(stored: str) -> tuple[bytes, bytes] | None:
         return None
 
 
+def new_password(password: str) -> dict:
+    return {'pw': hash_password(clean_password(password)), PW_GEN: secrets.token_urlsafe(9)}
+
+
 def check_password(password: str, stored: str) -> bool:
     parts = scrypt_parts(stored)
     salt, expected = parts or scrypt_parts(DUMMY_HASH)
@@ -214,7 +220,7 @@ def admin_row(doc: dict | None, now: float) -> dict | None:
     since = held.get('atTs') if waiting else None
     expires = clock.stamp(since + LINK_PENDING_S) if isinstance(since, (int, float)) and not isinstance(since, bool) else None
     shown = {'state': state, 'boundAt': held.get('boundAt'), 'allowedAt': allowed, 'expiresAt': expires} if isinstance(held, dict) else None
-    return {k: v for k, v in doc.items() if k not in ('pw', 'ssoLink')} | {'ssoLink': shown, 'nameFrom': name_from(doc)}
+    return {k: v for k, v in doc.items() if k not in ('pw', 'ssoLink', PW_GEN)} | {'ssoLink': shown, 'nameFrom': name_from(doc)}
 
 
 def password_admin(doc: dict | None) -> bool:
@@ -296,7 +302,7 @@ class Users:
         if held is None:
             return None
         owned = {'roleFrom': 'admin', 'adminRole': held['role']} if held.get('roleFrom') in IDP_SOURCES and held.get('role') in ROLES else {}
-        change = {'source': 'local', 'pw': hash_password(clean_password(password))} | owned | ({'ssoLink': self.pending_link(by)} if link else {}) | (fields or {})
+        change = {'source': 'local'} | new_password(password) | owned | ({'ssoLink': self.pending_link(by)} if link else {}) | (fields or {})
         unchanged = {'source': 'sso'} | {name: held[name] if name in held else {'$exists': False} for name in ROLE_FIELDS}
         before = self.guarded_update(key, change, ('opened',), only=unchanged)
         return self.get(key) if before is not None else None
@@ -402,7 +408,7 @@ class Users:
         if disabled is not None:
             fields['disabled'] = bool(disabled)
         if password is not None:
-            fields['pw'] = hash_password(clean_password(password))
+            fields |= new_password(password)
         return fields, ()
 
     def set_role(self, email: str, role: str) -> None:
@@ -412,8 +418,10 @@ class Users:
     def set_disabled(self, email: str, disabled: bool) -> None:
         self.update(email, {'disabled': bool(disabled)})
 
-    def set_password(self, email: str, password: str) -> None:
-        self.update(email, {'pw': hash_password(clean_password(password))})
+    def set_password(self, email: str, password: str) -> str:
+        fields = new_password(password)
+        self.update(email, fields)
+        return fields[PW_GEN]
 
     def list(self) -> list[dict]:
         return [public(d) for d in self.col.find().sort('_id', ASCENDING)]
@@ -436,11 +444,17 @@ class Users:
                 raise Unopened(key) from e
             if not found.get('disabled'):
                 self.col.update_one(only, seen)
-                self.idp_name(key, label)
+                self.idp_name_kept(key, label)
                 return self.get(key)
             return found
-        self.idp_name(key, label)
+        self.idp_name_kept(key, label)
         return self.get(key)
+
+    def idp_name_kept(self, email: str, name: str) -> None:
+        try:
+            self.idp_name(email, name)
+        except PyMongoError as e:
+            log.warning('%s', f'The name from the identity provider was not saved for {email} ({type(e).__name__}); the sign-in goes on')
 
     def insert_sso(self, email: str, name: str, default_role: str) -> dict | None:
         key = clean_email(email)
@@ -534,8 +548,15 @@ class Users:
         done = self.col.update_one({'_id': str(email or '').strip().lower(), '$or': [{'lastLogin': None}, {'lastLogin': {'$exists': False}}]}, {'$set': {'lastLogin': clock.stamp(self.now())}})
         return done.modified_count > 0
 
+    def actor_ids(self, email: str, name: str | None) -> list[str]:
+        who = [email] if email else []
+        shown = str(name or '').strip()
+        if shown and shown != email and not is_token(shown) and self.col.count_documents({'name': shown}, limit=2) < 2:
+            who.append(shown)
+        return who
+
     def page_evidence(self, email: str, name: str | None) -> bool:
-        who = [w for w in (email, name) if w]
+        who = self.actor_ids(email, name)
         page = {'requestedBy': {'$in': who}, 'via': {'$ne': 'mcp'}, 'source': {'$nin': ['mcp', 'slack']}}
         if self.actions.find_one(page, {'_id': 1}) is not None:
             return True
@@ -543,7 +564,7 @@ class Users:
         return self.activity.find_one({'kind': {'$in': ['access', 'admin']}, 'who': {'$in': who}, 'text': {'$ne': refused}}, {'_id': 1}) is not None
 
     def mcp_evidence(self, email: str, name: str | None) -> bool:
-        who = [w for w in (email, name) if w]
+        who = self.actor_ids(email, name)
         return self.actions.find_one({'requestedBy': {'$in': who}, '$or': [{'via': 'mcp'}, {'source': 'mcp'}]}, {'_id': 1}) is not None
 
     def first_seed(self, key: str, doc: dict, seeded: bool) -> dict:

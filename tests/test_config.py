@@ -23,7 +23,7 @@ ENV = ('MONGO_URI', 'MONGO_DB', 'SKOPAX_TOKEN', 'TICK_RETENTION_DAYS', 'VAULT_ON
        'INVESTIGATE_MAX_TOOL_CALLS', 'SLACK_APP_TOKEN', 'SLACK_LISTEN', 'SLACK_ASK_CAP', 'SLACK_OPERATOR_CACHE_SECONDS',
        'ROLES_URL', 'ROLES_CLIENT_ID', 'ROLES_CLIENT_SECRET', 'ROLES_CHANNEL', 'ROLES_SCOPE', 'INVESTIGATE_GATE_MODEL',
        'INVESTIGATE_SLACK_MODEL', 'INVESTIGATE_SLACK_EFFORT', 'INVESTIGATE_SLACK_MAX_TOOL_CALLS', 'SKOPAX_AUTO_RESOLVE_DAYS', 'SKOPAX_AUTO_RESOLVE_HOURS', 'SKOPAX_AUTO_RESOLVE_HOURS_CRIT', 'SKOPAX_AUTO_RESOLVE_HOURS_WARN', 'SKOPAX_INFO_AUTO_CLOSE_DAYS',
-       'INVESTIGATE_STRICT_TOOLS', 'SSO_SESSION_IDLE_HOURS', 'SSO_SESSION_MAX_DAYS', 'JIRA_TITLE_PREFIX', 'SKOPAX_ENV_LABEL', 'SLACK_POST_SEV', 'SLACK_CRIT_NOW')
+       'INVESTIGATE_STRICT_TOOLS', 'SSO_SESSION_IDLE_HOURS', 'SSO_SESSION_MAX_DAYS', 'JIRA_TITLE_PREFIX', 'SKOPAX_ENV_LABEL', 'SKOPAX_WORKSPACE_LABEL', 'SLACK_POST_SEV', 'SLACK_CRIT_NOW')
 
 
 @pytest.fixture(autouse=True)
@@ -529,16 +529,38 @@ def test_new_fields_read_their_env_names():
     assert s.alert_twins == ('HighErrorRate', 'HighHttp5xxRatio') and s.release_ignore == ('shop/cron', 'platform/tools')
 
 
-def test_the_title_prefix_and_the_environment_label_default_to_empty_and_read_their_env_names():
+def test_the_title_prefix_and_the_workspace_label_default_to_empty_and_read_their_env_names():
     # given
     blank = load_settings(env={})
 
     # when
-    s = load_settings(env={'JIRA_TITLE_PREFIX': 'OPS: ', 'SKOPAX_ENV_LABEL': ' PROD '})
+    s = load_settings(env={'JIRA_TITLE_PREFIX': 'OPS: ', 'SKOPAX_WORKSPACE_LABEL': ' PROD '})
 
     # then
-    assert (blank.jira_title_prefix, blank.env_label) == ('', '')
-    assert (s.jira_title_prefix, s.env_label) == ('OPS: ', 'PROD'), 'the prefix keeps its trailing space'
+    assert (blank.jira_title_prefix, blank.workspace_label) == ('', '')
+    assert (s.jira_title_prefix, s.workspace_label) == ('OPS: ', 'PROD'), 'the prefix keeps its trailing space'
+
+
+def test_the_workspace_label_reads_its_new_names_the_old_ones_still_work_and_the_new_one_wins(monkeypatch, caplog):
+    # given
+    from skopax import config
+    monkeypatch.setattr(config, 'TOLD', set())
+    caplog.set_level(logging.WARNING, logger='skopax.config')
+
+    # when
+    new = load_settings(env={'SKOPAX_WORKSPACE_LABEL': ' production '})
+    quiet = list(caplog.messages)
+    old = load_settings(env={'SKOPAX_ENV_LABEL': 'staging'})
+    again = load_settings(env={'SKOPAX_ENV_LABEL': 'staging'})
+    both = load_settings(env={'SKOPAX_ENV_LABEL': 'staging', 'SKOPAX_WORKSPACE_LABEL': 'production'})
+    old_key = load_settings(lambda: {'core.env-label': 'eu'}, env={})
+    new_key = load_settings(lambda: {'core.env-label': 'eu', 'core.workspace-label': 'asia'}, env={})
+
+    # then
+    assert [s.workspace_label for s in (new, old, again, both, old_key, new_key)] == ['production', 'staging', 'staging', 'production', 'eu', 'asia']
+    assert quiet == [], 'the new name logs nothing'
+    assert caplog.messages == ['SKOPAX_ENV_LABEL (core.env-label) is deprecated: use SKOPAX_WORKSPACE_LABEL (core.workspace-label)'], 'the old name is told once'
+    assert {'SKOPAX_WORKSPACE_LABEL', 'SKOPAX_ENV_LABEL'} <= settings_env_names()
 
 
 def test_fetch_seam_still_layers_under_env():

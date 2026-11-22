@@ -6,11 +6,22 @@ function infoSource(r) {
 function infoFiring() { return (Array.isArray(D.information) ? D.information : []).filter(function (r) { return r.firing; }); }
 function infoRow(r) {
   var li = el('li', 'info-row ' + (r.firing ? 'k-info' : 'k-cleared'));
-  var when = r.firing ? '<span class="tag k-info">Still firing</span>' : '<span class="tag k-cleared">Ended ' + esc(dayhm(r.endedAt)) + '</span>';
+  var mute = r.muted ? ' <span class="tag k-cleared">Muted</span>' : '';
+  var when = (r.firing ? '<span class="tag k-info">Still firing</span>' : '<span class="tag k-cleared">Ended ' + esc(dayhm(r.endedAt)) + '</span>') + mute;
   var meta = [infoSource(r), r.firstSeen ? 'First seen ' + dayhm(r.firstSeen) : '', r.lastSeen ? 'Last seen ' + dayhm(r.lastSeen) : ''].filter(Boolean);
   li.innerHTML = '<div class="info-head"><span class="svc" data-no-tx>' + esc(r.svc || '-') + '</span><b class="info-label" data-no-tx>' + esc(r.label || '') + '</b>' + when + '</div>' +
     (r.text ? '<p class="info-text" data-no-tx>' + esc(r.text) + '</p>' : '') +
     '<p class="info-meta">' + meta.map(function (m) { return '<span>' + esc(m) + '</span>'; }).join(' \u00b7 ') + '</p>';
+  if (r.muted) {
+    var quiet = el('p', 'info-muted');
+    var un = el('button', 'btn sec small op-btn info-unmute');
+    un.type = 'button';
+    un.textContent = 'Unmute';
+    un.dataset.tip = un.title = 'Lifts the mute: this item shows as firing again';
+    un.addEventListener('click', function () { infoUnmute(r, un); });
+    quiet.appendChild(un);
+    li.appendChild(quiet);
+  }
   if (r.moved) {
     var hand = el('p', 'info-moved');
     hand.appendChild(el('span', null, esc('Moved to Information by ' + draftBy(r.moved.by) + (r.moved.at ? ' ' + dayhm(r.moved.at) : ''))));
@@ -24,6 +35,17 @@ function infoRow(r) {
     li.appendChild(hand);
   }
   return li;
+}
+async function infoUnmute(r, b) {
+  if (b.getAttribute('aria-disabled') === 'true' || typeof window.__skopaxApi !== 'function') return;
+  b.disabled = true;
+  try {
+    await window.__skopaxApi('POST', '/api/actions', {type: 'unmute', key: r.key, target: r.key, label: 'Unmute ' + (r.svc || '-') + ' / ' + (r.label || '?')});
+    if (window.__skopaxPoll) window.__skopaxPoll();
+  } catch (e) {
+    b.disabled = false;
+    if (!e || (e.code !== 401 && e.code !== 403)) b.textContent = e && e.detail ? e.detail : 'Not saved, try again';
+  }
 }
 async function infoBack(r, b) {
   if (b.getAttribute('aria-disabled') === 'true' || typeof window.__skopaxApi !== 'function') return;

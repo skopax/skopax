@@ -1,9 +1,11 @@
 import base64
 import binascii
+import contextlib
 import datetime as dt
 import logging
 import time
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from urllib.parse import quote
 
 import bson
@@ -244,8 +246,10 @@ def posted(card: dict) -> bool:
 
 
 class Outputs:
-    def __init__(self, store, slack, attacher, base_url: str, cap: Callable[[], int], clock: Callable[[], float] = time.time, auto: Callable[[], bool] = lambda: True):
+    def __init__(self, store, slack, attacher, base_url: str, cap: Callable[[], int], clock: Callable[[], float] = time.time, auto: Callable[[], bool] = lambda: True,
+                 posting: Callable[[list[str]], AbstractContextManager] = lambda keys: contextlib.nullcontext()):
         self.store = store
+        self.posting = posting
         self.slack = slack
         self.attacher = attacher
         self.base = base_url.rstrip('/')
@@ -393,21 +397,22 @@ class Outputs:
 
     def _top(self, plugin: Plugin, item: dict, keys: list[str], cards: dict[str, dict], keymap: dict[str, str], now: float) -> dict | None:
         label = cut_words(flat(item['title']), LABEL_MAX) or plugin.name
-        try:
-            sent = self.slack.linked(self.slack.post({'text': self.render(item, keys, cards, keymap)}))
-        except SlackError as e:
-            log.warning('the digest post of %s failed: %s', plugin.id, kind(e))
-            self.store.add_action({'type': DIGEST, 'target': f'{DIGEST}:{plugin.id}', 'label': label, 'requestedBy': SERVER_BY, 'plugin': plugin.id}, 'failed', f'not sent: {kind(e)}')
-            return None
-        mark = {**sent, 'at': iso(now), 'by': SERVER_BY, 'digest': True}
-        marked = 0
-        for key in keys:
+        with self.posting(keys):
             try:
-                self.store.slack_posted(key, mark)
-                marked += 1
-            except (NotFound, Conflict, PyMongoError) as e:
-                log.warning('the digest post of %s went out but %s was not marked posted: %s', plugin.id, key, kind(e))
-            cards[key]['slackPost'] = mark
+                sent = self.slack.linked(self.slack.post({'text': self.render(item, keys, cards, keymap)}))
+            except SlackError as e:
+                log.warning('the digest post of %s failed: %s', plugin.id, kind(e))
+                self.store.add_action({'type': DIGEST, 'target': f'{DIGEST}:{plugin.id}', 'label': label, 'requestedBy': SERVER_BY, 'plugin': plugin.id}, 'failed', f'not sent: {kind(e)}')
+                return None
+            mark = {**sent, 'at': iso(now), 'by': SERVER_BY, 'digest': True}
+            marked = 0
+            for key in keys:
+                try:
+                    self.store.slack_posted(key, mark)
+                    marked += 1
+                except (NotFound, Conflict, PyMongoError) as e:
+                    log.warning('the digest post of %s went out but %s was not marked posted: %s', plugin.id, key, kind(e))
+                cards[key]['slackPost'] = mark
         self.store.add_action({'type': DIGEST, 'target': f"{DIGEST}:{sent.get('ts')}", 'label': label, 'requestedBy': SERVER_BY, 'plugin': plugin.id, 'slack': sent}, 'done',
                               f"posted to {self.slack.channel} \u00b7 {counted(marked, 'card', 'cards')}")
         return sent

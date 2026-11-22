@@ -39,7 +39,12 @@ const SHIFT_MS = noonShift();
 
 async function main() {
   const only = process.argv.slice(2);
-  const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.test.js') && (!only.length || only.some((o) => f.includes(o)))).sort();
+  const shard = /^([1-9]\d*)\/([1-9]\d*)$/.exec(process.env.SKOPAX_TEST_SHARD || '1/1');
+  if (!shard || Number(shard[1]) > Number(shard[2])) {
+    console.log('FAIL SKOPAX_TEST_SHARD must look like 2/4');
+    process.exit(1);
+  }
+  const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.test.js') && (!only.length || only.some((o) => f.includes(o)))).sort().filter((f, i) => i % Number(shard[2]) === Number(shard[1]) - 1);
   const queue = files.slice();
   const results = [];
   await Promise.all(Array.from({length: PARALLEL}, async () => {

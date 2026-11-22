@@ -452,7 +452,7 @@ def test_slack_labels_follow_the_outbound_language_while_stored_labels_and_the_d
     assert next(p for m, p in api.calls if m == 'chat.update')['blocks'][-1]['elements'][0]['text'] == 'Stumm 6 h \u00b7 adam.baker@example.com'
     assert (confirm['title']['text'], confirm['confirm']['text']) == ('Bekanntes Rauschen?', 'Bekanntes Rauschen')
     assert labels == ['Uebernehmen', 'Erledigt', 'Bekanntes Rauschen']
-    assert (level_label('ok'), level_label('crit'), sender(AUTO_BY)) == ('ALLES GUT', 'CRITICAL', 'Claude investigator \u00b7 automatisch gesendet')
+    assert (level_label('ok'), level_label('crit'), sender(AUTO_BY)) == ('ALLES GUT', 'CRITICAL', 'Investigator \u00b7 automatisch gesendet')
     assert flag == 'no data, the Prometheus instance east is not available' and 'reports' not in messages.OUTBOUND, 'the deploy flag is stored and shown on the page, so it stays English'
 
 

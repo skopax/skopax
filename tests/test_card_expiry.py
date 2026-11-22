@@ -74,7 +74,8 @@ def test_cleared_children_follow_a_handled_parent_and_a_parent_that_left_the_pag
     assert by['err|ns/a']['triage'] == 'handled' and by['err|ns/a']['triagedBy'] == AUTO_RESOLVED_BY and by['err|ns/a']['autoResolvedAt'] == iso(NOW)
     assert by['out-err|ns/gone']['triage'] == 'handled' and by['out-err|ns/gone']['note']['text'] == 'Auto-resolved: its parent 5xx|ns/gone was handled and has left the page'
     assert by['err|ns/b']['triage'] == 'progress' and by['err|ns/b']['ticket'] == 'OPS-1' and 'autoResolvedAt' not in by['err|ns/b']
-    assert by['err|ns/b']['note']['text'] == 'In progress with its parent: 5xx|ns/b (OPS-1)' and [x['text'] for x in out if x['key'] == 'err|ns/b'] == ['in progress with its parent ns/b label · 5xx|ns/b (OPS-1)']
+    assert by['err|ns/b']['note']['text'] == 'In progress with its parent: ns/b / label (OPS-1)' and [x['text'] for x in out if x['key'] == 'err|ns/b'] == ['in progress with its parent ns/b label \u00b7 ns/b / label (OPS-1)']
+    assert by['err|ns/a']['note']['text'] == 'Auto-resolved: its parent ns/a / label was marked no action needed'
     assert by['err|ns/c'].get('triage') is None, 'a parent still waiting keeps its children waiting with it'
     assert by['err|ns/e']['triage'] == 'handled', 'a child the investigator only looked at (dived) follows its parent too'
     assert by['err|ns/d'].get('triage') is None and by['err|ns/f']['triage'] == 'investigating' and by['err|ns/g']['triagedBy'] == 'oscar', 'open children, a run in flight and a human outcome are left alone'

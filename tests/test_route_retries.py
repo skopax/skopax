@@ -401,3 +401,20 @@ def test_every_worker_batch_not_finished_at_stop_is_kept_as_a_retry(store: Store
     # then
     assert kept == 2 and sorted(r['key'] for r in store.route_retries()) == ['log|a|ERROR|a', 'log|a|ERROR|b'], 'the batch in flight and the one waiting behind it are both kept'
     assert len(t.calls) == 2, 'a batch taken over by the stop is not posted after it'
+
+
+def test_a_retried_card_and_a_new_push_to_the_same_route_in_one_pass_are_both_counted(store: Store):
+    # given
+    t = Gone(403)
+    routes = routes_of(store, t, route('tech', TECH, keys='log|*'), old=False)
+    store.save(state(open_card('log|a|ERROR|one'), open_card('log|a|ERROR|two')), None)
+    one, two = store.load()['anomalies']
+    routes.deliver([], NOW, pushed=[one])
+    t.down = False
+
+    # when
+    sent = routes.deliver([], NOW + 30, pushed=[two])
+
+    # then
+    assert sent == 2, 'the retry of one and the push of two both went to teams/tech'
+    assert [r['key'] for r in store.route_retries()] == []

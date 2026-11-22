@@ -343,3 +343,27 @@ def test_the_admin_redraw_is_for_admins_only(store: Store):
 
         # then
         assert anonymous.status_code in (401, 403) and status.status_code in (401, 403)
+
+
+def test_reconcile_skips_its_pass_and_says_so_once_while_the_redraw_lease_cannot_be_read(store: Store, monkeypatch, caplog):
+    # given
+    import logging
+    from pymongo.errors import ServerSelectionTimeoutError
+    seed(store, cleared={'status': 'cleared'})
+    slack, _, api = fake_slack()
+    posts = posts_of(store, slack, pause=lambda s: None)
+
+    def down():
+        raise ServerSelectionTimeoutError('mongo is down')
+
+    monkeypatch.setattr(store, 'redraw_status', down)
+    caplog.set_level(logging.WARNING, 'skopax.cardposts')
+
+    # when
+    for _ in range(3):
+        posts.reconcile()
+        posts.run_batch()
+
+    # then
+    assert rewrites(api) == [], 'no pass runs while the lease is unknown'
+    assert len([m for m in caplog.messages if 'redraw lease' in m]) == 1

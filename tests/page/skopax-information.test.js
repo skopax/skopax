@@ -91,6 +91,27 @@ async function aHandMoveShowsWhoMovedItAndBackToTheBoardClearsTheHandSeverity() 
   return 'a hand move names who moved it and when, and Back to the board sets the severity back to the signal';
 }
 
+async function aMutedItemShowsMutedAndUnmuteSendsTheUnmute() {
+  //given
+  const muted = [Object.assign({}, ROWS[0], {muted: true}), ROWS[2]];
+  const {w, doc, errors, posts} = await boot(muted, true);
+  const li = rows(doc)[0];
+
+  //when
+  const tag = [...li.querySelectorAll('.tag')].map((t) => t.textContent);
+  const buttons = [...doc.querySelectorAll('#info-list button')].map((b) => b.textContent);
+  li.querySelector('button.info-unmute').click();
+  await wait(50);
+
+  //then
+  assert.ok(tag.indexOf('Muted') >= 0, 'a muted item says so');
+  assert.deepStrictEqual(buttons, ['Unmute'], 'only the muted item has a button');
+  assert.deepStrictEqual(posts.map((p) => [p.type, p.key, p.target]), [['unmute', 'log|shop|INFO|new', 'log|shop|INFO|new']]);
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  return 'a muted information item shows Muted and Unmute sends the unmute';
+}
+
 async function aViewerSeesTheButtonLockedAndItSendsNothing() {
   //given
   const {w, doc, errors, posts} = await boot(ROWS, false);
@@ -126,6 +147,6 @@ async function theBoardHasNoInfoFilterAndAnEmptyPageSaysSo() {
 }
 
 (async () => {
-  for (const t of [informationPageListsItemsReadOnlyWithoutNumbersAndCountsTheFiringOnes, aHandMoveShowsWhoMovedItAndBackToTheBoardClearsTheHandSeverity,
+  for (const t of [informationPageListsItemsReadOnlyWithoutNumbersAndCountsTheFiringOnes, aHandMoveShowsWhoMovedItAndBackToTheBoardClearsTheHandSeverity, aMutedItemShowsMutedAndUnmuteSendsTheUnmute,
     aViewerSeesTheButtonLockedAndItSendsNothing, theBoardHasNoInfoFilterAndAnEmptyPageSaysSo]) console.log('PASS ' + await t());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

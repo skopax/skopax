@@ -16,8 +16,9 @@ async function initActions() {
     var s = STATUS[a.status] || [String(a.status), 's-other'], d = DID[a.type];
     return !d || a.status === 'requested' ? s[0] : a.status === 'done' ? d[1] : a.status === 'processing' ? d[2] : d[0] + ' ' + s[0].toLowerCase();
   }
-  function badge(a, text, t, cls) {
+  function badge(a, text, t, cls, sentence) {
     var s = STATUS[a.status] || [String(a.status), 's-other'];
+    if (sentence && !txLang()) text = text.charAt(0).toLowerCase() + text.slice(1);
     return '<span class="st ' + (cls || s[1]) + '"' + (t ? ' data-tip="' + esc(t) + '" title="' + esc(t) + '"' : '') + '>' + esc(text) + '</span>';
   }
   function muteEnd(a) {
@@ -40,7 +41,7 @@ async function initActions() {
   }
   function lastLine(a, card) {
     var at = dayhm(when(a));
-    if (card && earlier(a, card)) return '<span class="la-h">Reopened ' + esc(dayhm(card.firstSeen)) + ' \u00b7 fired again</span> <span class="la-before"><span>Before that:</span> ' + badge(a, named(a) + (at ? ' ' + at : ''), label(a), 's-other') +
+    if (card && earlier(a, card)) return '<span class="la-h">Reopened ' + esc(dayhm(card.firstSeen)) + ' \u00b7 fired again</span> <span class="la-before"><span>Before that:</span> ' + badge(a, named(a) + (at ? ' ' + at : ''), label(a), 's-other', true) +
       ' by ' + esc(draftBy(a.requestedBy)) + (a.result ? ' (' + linkify(a.result) + ')' : '') + '</span>';
     return '<span class="la-h">Last action:</span> ' + badge(a, named(a) + (at ? ' ' + at : ''), label(a), '') + ' by ' + esc(draftBy(a.requestedBy)) + (a.result ? ' \u00b7 ' + linkify(a.result) : '');
   }
@@ -61,7 +62,7 @@ async function initActions() {
   }
   function gate() {
     var why = lockReason(), loginWhy = loginReason();
-    document.querySelectorAll('#anoms .tile').forEach(function (t) { t.draggable = !why && !(window.__cardBusy && window.__cardBusy(t.dataset.key)) && !t.querySelector('.ta-b[aria-busy]'); });
+    document.querySelectorAll('#anoms .tile').forEach(function (t) { t.draggable = window.__tileDraggable(t.dataset.key); });
     document.querySelectorAll('#anoms .acts button.btn:not(.free), #anoms .notif button.btn, .op-btn, .op-in').forEach(function (b) {
       var r = (b.classList.contains('admin-only') ? adminReason() : b.classList.contains('login-ok') ? loginWhy : why) || (b.classList.contains('slack-btn') && !me.slack ? 'Slack is not set up on this service yet: an admin connects it in Connect \u203a Integrations \u203a Slack' : '') || (b.classList.contains('jira-btn') && !me.jira ? 'Jira is not set up on this service yet: an admin adds it under Connect \u203a Integrations' : '');
       if (b.tagName === 'INPUT') b.readOnly = !!r;
@@ -148,6 +149,17 @@ async function initActions() {
     me.name = name;
     account();
   };
+  function dialogKeys(d, close) {
+    d.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') { close(); return; }
+      if (ev.key !== 'Tab') return;
+      var all = [].filter.call(d.querySelectorAll('input, button'), function (x) { return !x.disabled; });
+      var first = all[0], last = all[all.length - 1];
+      if (!first) return;
+      if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+    });
+  }
   function openNameDialog(opener) {
     accountNote('');
     var d = document.getElementById('name-dialog');
@@ -165,7 +177,7 @@ async function initActions() {
     var say = function (t, bad) { msg.textContent = t; msg.className = 'adm-msg name-msg' + (bad ? ' bad' : ''); };
     input.value = String(me.name || '').trim() || me.user || '';
     d.querySelector('.name-cancel').addEventListener('click', close);
-    d.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') close(); });
+    dialogKeys(d, close);
     form.addEventListener('submit', async function (ev) {
       ev.preventDefault();
       go.disabled = true;
@@ -206,7 +218,7 @@ async function initActions() {
     var close = function () { d.remove(); if (opener && document.body.contains(opener)) opener.focus(); };
     var say = function (t, bad) { msg.textContent = t; msg.className = 'adm-msg pw-msg' + (bad ? ' bad' : ''); };
     d.querySelector('.pw-cancel').addEventListener('click', close);
-    d.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') close(); });
+    dialogKeys(d, close);
     form.addEventListener('submit', async function (ev) {
       ev.preventDefault();
       var f = form.elements;
@@ -258,9 +270,9 @@ async function initActions() {
     if (!r.ok) { var detail = null; try { detail = (await r.json()).detail; } catch (e) {} if (method !== 'GET') failToast((typeof detail === 'string' && detail ? detail : 'not saved') + ' (' + r.status + ')'); throw {code: r.status, detail: typeof detail === 'string' ? detail : null}; }
     return r.json();
   }
-  async function queue(a, b) {
+  async function queue(a, b, done) {
     b.disabled = true;
-    try { await api('POST', '/api/actions', a); await refresh(); if (window.__skopaxPoll) window.__skopaxPoll(); } catch (e) { b.disabled = false; if (!e || (e.code !== 401 && e.code !== 403)) b.textContent = e && e.code === 409 && e.detail ? e.detail : 'Not saved, try again'; }
+    try { await api('POST', '/api/actions', a); await refresh(); if (window.__skopaxPoll) window.__skopaxPoll(); if (done) done(); } catch (e) { b.disabled = false; if (!e || (e.code !== 401 && e.code !== 403)) b.textContent = e && e.code === 409 && e.detail ? e.detail : 'Not saved, try again'; }
   }
   async function cancel(x, b) {
     b.disabled = true;
@@ -745,7 +757,7 @@ async function initActions() {
       if (o[0] === 'auto') b.title = 'The signal says ' + (SEV[auto] || SEV.info)[0];
       b.addEventListener('click', function () {
         if (o[0] === a.sev && o[0] !== 'auto' && !a.sevSet) { form.hidden = true; return; }
-        queue({type: 'severity', target: a.key, key: a.key, sev: o[0], label: (o[0] === 'auto' ? 'Severity back to the signal: ' : o[0] === 'info' ? 'Moved to Information: ' : 'Severity ' + o[1] + ': ') + name}, b);
+        queue({type: 'severity', target: a.key, key: a.key, sev: o[0], label: (o[0] === 'auto' ? 'Severity back to the signal: ' : o[0] === 'info' ? 'Moved to Information: ' : 'Severity ' + o[1] + ': ') + name}, b, o[0] === 'info' && cardInFlight(a) ? function () { stayToast(a); } : null);
       });
       form.appendChild(b);
     });
@@ -1316,9 +1328,9 @@ async function initActions() {
     all.forEach(function (x) { if (!latest[x.target] || latest[x.target].requestedAt < x.requestedAt) latest[x.target] = x; });
     LATEST = latest;
     document.querySelectorAll('#anoms .tile').forEach(function (t) {
-      var busy = cardBusy(t.dataset.key);
-      t.querySelectorAll('.tile-acts .ta-b[data-move]').forEach(function (b) { if (!b.hasAttribute('aria-busy')) b.disabled = busy || !!t.querySelector('.ta-b[aria-busy]'); });
-      t.draggable = !lockReason() && !busy && !t.querySelector('.ta-b[aria-busy]');
+      var busy = window.__tileBusy(t.dataset.key);
+      t.querySelectorAll('.tile-acts .ta-b[data-move]').forEach(function (b) { if (!b.hasAttribute('aria-busy')) b.disabled = busy; });
+      t.draggable = window.__tileDraggable(t.dataset.key);
     });
     renderPdc(latest.postdeploy);
     document.querySelectorAll('.rep-acts .reassess-btn').forEach(function (b) { reassessState(b, b.closest('.rep-acts').__rep); });
@@ -1379,9 +1391,10 @@ async function initActions() {
   if (autoBefore !== ME_FEATURES['slack-autosend']) { bumpRender(); renderAnoms(); }
   ME_OFF = me.featureOff && typeof me.featureOff === 'object' ? me.featureOff : {};
   ME_CHAT = !!me.chat;
-  var gitlabBefore = ME_GITLAB;
+  var gitlabBefore = ME_GITLAB, hostBefore = ME_CODE_HOST;
   ME_GITLAB = !!me.gitlab;
-  if (ME_GITLAB !== gitlabBefore && reports) reports.refresh();
+  ME_CODE_HOST = typeof me.codeHost === 'string' ? me.codeHost : '';
+  if ((ME_GITLAB !== gitlabBefore || ME_CODE_HOST !== hostBefore) && reports) reports.refresh();
   var channelBefore = ME_CHANNEL;
   ME_CHANNEL = me.slackChannel || '';
   if (ME_CHANNEL !== channelBefore && typeof loadRequests === 'function') loadRequests();

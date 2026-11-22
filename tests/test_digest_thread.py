@@ -81,3 +81,33 @@ def test_a_card_that_opens_after_a_digest_on_a_host_the_digest_named_is_never_th
 
     # then
     assert found is None
+
+
+def test_the_cards_of_a_digest_post_count_as_on_their_way_while_it_goes_out(store: Store, tmp_path):
+    # given
+    chrome = FakeChrome({CHAIRS: Site(probe=probe('Garden Chiars order now')), TABLES: Site(probe=probe('Garden Tabels order now'))})
+    fake = FakeAnthropic([], [answer(typo('Garden Chiars', 'Garden Chairs')), answer(typo('Garden Tabels', 'Garden Tables'))])
+    slack, _, _ = fake_slack()
+    at = clock.midnight(NOW) + 12 * 3600
+    seen = []
+    try:
+        with site_app(store, tmp_path, chrome, ai=fake, slack=slack) as c:
+            switched_on(c, f'{CHAIRS}, {TABLES}', digest_hour='0')
+            c.app.state.sweeper.run('website', 'pagescan', at)
+            sending = slack.transport
+            ready = c.app.state.routes.echo.ready
+
+            def watched(token, payload):
+                seen.append(('during', ready(store.anomaly(CHAIRS_KEY))))
+                return sending(token, payload)
+
+            slack.transport = watched
+            # when
+            c.app.state.sweeper.run('website', 'pagescan-digest', at + 60)
+            seen.append(('after', ready(store.anomaly(CHAIRS_KEY))))
+    finally:
+        chrome.close()
+
+    # then
+    assert seen[0] == ('during', False), seen
+    assert seen[-1] == ('after', True), seen

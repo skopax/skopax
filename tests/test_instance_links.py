@@ -71,8 +71,8 @@ def test_instance_links_are_validated():
 
 def test_me_lists_the_current_instance_and_its_links(store: Store):
     # given
-    env = load_settings(env={'SKOPAX_ENV_LABEL': 'production', 'SKOPAX_WORKSPACE_LINKS': f'staging={STAGING}, eu={EU}'})
-    labelled = dataclasses.replace(settings(), env_label=env.env_label, workspace_links=env.workspace_links)
+    env = load_settings(env={'SKOPAX_WORKSPACE_LABEL': 'production', 'SKOPAX_WORKSPACE_LINKS': f'staging={STAGING}, eu={EU}'})
+    labelled = dataclasses.replace(settings(), workspace_label=env.workspace_label, workspace_links=env.workspace_links)
     hosted = dataclasses.replace(settings(), base_url='https://ops.example.com:8443/board')
     bare = dataclasses.replace(settings(), base_url='')
 
@@ -83,7 +83,7 @@ def test_me_lists_the_current_instance_and_its_links(store: Store):
             seen.append(c.get('/api/me').json()['instances'])
 
     # then
-    assert (env.env_label, env.workspace_links) == ('production', f'staging={STAGING}, eu={EU}')
+    assert (env.workspace_label, env.workspace_links) == ('production', f'staging={STAGING}, eu={EU}')
     assert seen[0] == {'current': {'name': 'production', 'letter': 'P'},
                        'links': [{'name': 'staging', 'url': STAGING, 'letter': 'S', 'colour': colour('staging')}, {'name': 'eu', 'url': EU, 'letter': 'E', 'colour': colour('eu')}]}
     assert all(link['colour'] in COLOURS for link in seen[0]['links'])

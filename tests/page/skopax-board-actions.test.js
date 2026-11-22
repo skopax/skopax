@@ -271,6 +271,45 @@ async function aTileRedrawnMidMoveLooksBusyAndCannotBeDragged() {
   return 'a tile redrawn while its move runs looks busy and cannot be dragged, and is usable again when the move ends';
 }
 
+async function aDropOnACardThatBecameBusyMidDragSendsNothing() {
+  //given
+  const {w, doc, errors, posts} = await boot();
+  const col = doc.querySelector('#anoms .bcol[data-col="progress"]');
+
+  //when
+  tileOf(doc, OPEN).dispatchEvent(new w.Event('dragstart', {bubbles: true}));
+  w.__cardBusy = (k) => k === OPEN;
+  col.dispatchEvent(new w.Event('dragover', {bubbles: true, cancelable: true}));
+  col.dispatchEvent(new w.Event('drop', {bubbles: true, cancelable: true}));
+  await wait(60);
+
+  //then
+  assert.deepStrictEqual(posts, [], 'a card that got an action queued while it was dragged is not moved by the drop');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  return 'a drop on a card that became busy mid-drag sends nothing';
+}
+
+async function theDraggableRuleIsOneFunctionTheGateAndTheTileShare() {
+  //given
+  const {w, doc, errors} = await boot();
+
+  //when
+  w.TILE_BUSY[OPEN] = 'progress';
+  w.__skopaxGate();
+  const mid = [tileOf(doc, OPEN).draggable, tileOf(doc, PROG).draggable, w.__tileDraggable(OPEN), w.__tileDraggable(PROG)];
+  delete w.TILE_BUSY[OPEN];
+  w.__skopaxGate();
+  const after = [tileOf(doc, OPEN).draggable, w.__tileDraggable(OPEN)];
+
+  //then
+  assert.deepStrictEqual(mid, [false, true, false, true], 'a tile mid-move is not draggable after a gate pass either');
+  assert.deepStrictEqual(after, [true, true]);
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  return 'the gate and the tile use one draggable rule';
+}
+
 function theTileOverlayLetsDragsThrough() {
   //given
   const css = fs.readFileSync(TEMPLATE, 'utf8');
@@ -315,6 +354,8 @@ function theTileRowAndTheDrawerGroupsHaveTheirStyles() {
   console.log('PASS ' + await aCardWithAQueuedActionHasItsTileMovesDisabled());
   console.log('PASS ' + await aBusyCardCannotBeDragged());
   console.log('PASS ' + await aTileRedrawnMidMoveLooksBusyAndCannotBeDragged());
+  console.log('PASS ' + await aDropOnACardThatBecameBusyMidDragSendsNothing());
+  console.log('PASS ' + await theDraggableRuleIsOneFunctionTheGateAndTheTileShare());
   console.log('PASS ' + theTileOverlayLetsDragsThrough());
   console.log('PASS ' + await aViewerOnlyGetsTheLinksOnATile());
   console.log('PASS ' + theTileRowAndTheDrawerGroupsHaveTheirStyles());

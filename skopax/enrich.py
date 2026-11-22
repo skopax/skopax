@@ -4,7 +4,7 @@ import logging
 import re
 from collections.abc import Callable
 
-from skopax.codehosts import Undecided
+from skopax.codehosts import Undecided, name_of
 from skopax.contract import CodeHost, Missing, Refused, SourceDown
 from skopax.errkind import NoAccess, kind as error_kind, text_of
 from skopax.jiralinks import listed, ticket_finder
@@ -17,8 +17,8 @@ IMAGE_SHA = re.compile(r'[0-9a-f]{7,40}')
 IMAGE_COMMIT = re.compile(r'[0-9a-f]{8,40}')
 MAX_NAMES = 10
 ENRICH_DAYS = 7
-NO_PROJECT = 'no GitLab project with the service name in a subgroup of the group'
-NOT_IN_GITLAB = 'image commits not in GitLab, or not visible to the token'
+NO_PROJECT = 'no {host} project with the service name in a subgroup of the group'
+NOT_IN_HOST = 'image commits not in {host}, or not visible to the token'
 NOT_A_COMMIT = 'tag is not a commit'
 LOCAL_UNKNOWN = ('no local clone', 'image commits not in the clone')
 NO_TICKETS = {'$or': [{'tickets': {'$exists': False}}, {'tickets': {'$size': 0}}]}
@@ -153,7 +153,7 @@ class Enricher:
         project = self.gitlab.repo(d['svc'])
         path = str((project or {}).get('path') or '')
         if project is None or '/' not in path or path.rsplit('/', 1)[-1] != d['svc']:
-            self._note(d, NO_PROJECT)
+            self._note(d, NO_PROJECT.format(host=name_of(self.gitlab)))
         else:
             try:
                 self._git_project(d, project)
@@ -174,7 +174,7 @@ class Enricher:
             else:
                 keys = range_tickets(self.gitlab, project, d['fromImage'], d['toImage'], listed(self.projects))
                 if keys is None:
-                    self._note(d, NOT_IN_GITLAB)
+                    self._note(d, NOT_IN_HOST.format(host=name_of(self.gitlab)))
                 elif keys:
                     self.store.update_deploy(d['id'], NO_TICKETS, {'$set': {'tickets': keys}, '$unset': {'ticketsNote': ''}})
                 else:
@@ -191,10 +191,10 @@ class Enricher:
             self._gitlab_off = False
         elif not self._gitlab_off:
             self._gitlab_off = True
-            log.info('deploy enrichment through GitLab is skipped while GitLab is off')
+            log.info('deploy enrichment through %s is skipped while %s is off', name_of(self.gitlab), name_of(self.gitlab))
 
     def _refused(self, docs: list[dict], e: NoAccess) -> None:
-        log.warning('deploy enrichment through GitLab refused for %s: the token lacks %s', e.part, e.permission)
+        log.warning('deploy enrichment through %s refused for %s: the token lacks %s', name_of(self.gitlab), e.part, e.permission)
         for d in docs:
             if self.needs_gitlab(d):
                 self.store.update_deploy(d['id'], {}, {'$set': {'enriched.refused': text_of(e)}})
@@ -213,7 +213,7 @@ class Enricher:
                 log.info('deploy enrichment left one deploy for a later sweep: %s', e.text)
             except ProjectRefused as e:
                 done['errors'].append(e.text)
-                log.warning('deploy enrichment through GitLab refused for %s of one project: the token lacks %s', e.part, e.permission)
+                log.warning('deploy enrichment through %s refused for %s of one project: the token lacks %s', name_of(self.gitlab), e.part, e.permission)
                 self.store.update_deploy(d['id'], {}, {'$set': {'enriched.refused': e.text}})
             except NoAccess as e:
                 done['errors'].append(text_of(e))
@@ -221,7 +221,7 @@ class Enricher:
                 break
             except SourceDown as e:
                 done['errors'].append(e.text)
-                log.warning('deploy enrichment through GitLab stopped: %s', error_kind(e))
+                log.warning('deploy enrichment through %s stopped: %s', name_of(self.gitlab), error_kind(e))
                 break
         wanted = [d for d in self.store.deploys_by_keys([(d['ns'], d['svc'], d['toImage']) for d in docs]) if self.needs_jira(d)]
         keys = sorted({k for d in wanted for k in d['tickets']})

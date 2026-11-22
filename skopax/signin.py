@@ -167,8 +167,11 @@ class SignIn:
         stored = self.users.linked_login(email, iss, sub)
         if stored is None:
             raise Refused('local-account')
-        if self.users.idp_name(email, display_name(claims, email)):
-            stored = self.users.get(email) or stored
+        try:
+            if self.users.idp_name(email, display_name(claims, email)):
+                stored = self.users.get(email) or stored
+        except PyMongoError as e:
+            log.warning('%s', f'The name from the identity provider was not saved for {email} ({type(e).__name__}); the sign-in goes on')
         return stored
 
     def mcp(self, claims: dict, issuer: str) -> McpUser:

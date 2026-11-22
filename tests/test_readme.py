@@ -183,7 +183,7 @@ def test_the_mcp_section_states_the_wave_rules():
 def test_the_web_section_states_the_wave_rules():
     # then
     for said in ('It needs a Headless browser (or the older `browser-url`). Without the Anthropic key', 'only that site\'s hosts are opened', '`slack.attach-screenshots`', 'Separate headers with semicolons',
-                 '`internal-subdomains`', 'can still be reached by panning', 'is held back from the model', 'CONNECT tunnel to the checked address', 'the check is best-effort', 'must be an `http://` URL', 'no proxy sits in front of the browser service', 'its pictures are not sent', 'a day after it'):
+                 '`internal-subdomains`', 'can be reached by panning', 'is held back from the model', 'CONNECT tunnel to the checked address', 'the check is best-effort', 'must be an `http://` URL', 'no proxy sits in front of the browser service', 'its pictures are not sent', 'a day after it'):
         assert said in read('docs/plugins.md'), said
     assert 'It needs `browser-url`, the Anthropic key and the AI investigator switched on' not in all_docs()
 
@@ -654,7 +654,7 @@ def test_the_development_page_matches_the_workflows_the_dockerfile_and_the_gitle
 
     # then
     assert len(uv) == 1 and f'uv {min(uv)}' in flat
-    assert len(node) == 1 and f'`pages`: Node {min(node)}, ' in flat
+    assert len(node) == 1 and f'`page-suites`: Node {min(node)} in ' in flat
     major, contributing = min(node).split('.')[0], ' '.join(read('CONTRIBUTING.md').split())
     assert all(f'Node.js {major} ({min(node)}.' in text for text in (flat, contributing))
     assert f'gitleaks {ci["jobs"]["secrets"]["env"]["GITLEAKS_VERSION"]}' in flat

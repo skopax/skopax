@@ -79,6 +79,11 @@ def waiting(x: dict) -> bool:
     return on_its_way(x)
 
 
+def said_at_once(store: Store, key: str) -> None:
+    store.add_activity('slack', SERVER_BY, f'Card posted to Slack at once with its numbers \u00b7 {key}', key=key)
+    log.info('card %s posted to Slack at once', key)
+
+
 class AutoSend:
     def __init__(self, store: Store, send_anomaly: Callable[[str], dict], send_report: Callable[[str], dict], interval: float = INTERVAL_SECONDS, on: Callable[[], bool] = lambda: True,
                  ready: Callable[[], bool] = lambda: True):
@@ -126,6 +131,10 @@ class AutoSend:
             log.warning('Slack post on %s failed: %s', key, error_kind(e))
             self.store.anomaly_auto_send_failed(key, failure_of(e))
             return 0
+        fallback = a.get('slackFallback') or {}
+        if fallback.get('atOnce') and fallback.get('at') == draft.get('at'):
+            said_at_once(self.store, key)
+            return 1
         log.info('Slack post sent on %s', key)
         self.store.add_activity('slack', 'auto', f'Slack post sent \u00b7 {key}', key=key)
         return 1
@@ -376,7 +385,7 @@ class PostNow:
         for a in due:
             fired_at = a.get('pushedAt') or a.get('firstSeen') or epoch_iso(now)
             last = self.last_line(a, investigating)
-            saved = self.store.fallback_slack_draft(a['key'], fallback_text(a, fired_at, last), SERVER_BY, fired_at, dt.datetime.fromtimestamp(now, dt.timezone.utc), STOPPED_TRIAGE)
+            saved = self.store.fallback_slack_draft(a['key'], fallback_text(a, fired_at, last), SERVER_BY, fired_at, dt.datetime.fromtimestamp(now, dt.timezone.utc), STOPPED_TRIAGE, at_once=True)
             if saved is None or self.store.claim_anomaly_auto_send(a['key'], saved['slackDraft'], iso(utc_now())) is None:
                 continue
             try:
@@ -386,6 +395,5 @@ class PostNow:
                 self.store.anomaly_auto_send_failed(a['key'], failure_of(e))
                 continue
             posted.append(a['key'])
-            self.store.add_activity('slack', SERVER_BY, f"Card posted to Slack at once with its numbers \u00b7 {a['key']}", key=a['key'])
-            log.info('card %s posted to Slack at once', a['key'])
+            said_at_once(self.store, a['key'])
         return posted

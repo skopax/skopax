@@ -120,29 +120,20 @@ def test_the_cleared_thread_notes_carry_no_green_mark():
     assert 'Back to normal' not in MESSAGES['clear.cleared']
 
 
-@pytest.fixture(autouse=True)
-def investigator_model():
-    yield
-    actors.use_model('claude-opus-5-5')
-
-
 def test_the_investigator_actor_never_shows_a_pod_label():
     # given
     stored = actors.POD_BY
 
     # when
-    actors.use_model('claude-opus-5-5')
-    claude = actors.shown(stored)
-    actors.use_model('gpt-6.2-astra')
-    other = actors.shown(stored)
+    shown = actors.shown(stored)
 
     # then
     assert stored == 'Claude (pod)'
-    assert (claude, other) == ('Claude investigator', 'Investigator')
+    assert shown == 'Investigator'
     assert actors.shown('alice@example.com') == 'alice@example.com'
 
 
-def test_the_label_follows_the_live_provider_and_model_without_a_restart(store: Store):
+def test_the_label_is_investigator_for_every_provider_and_model(store: Store):
     # given
     c = TestClient(create_app(dataclasses.replace(base_settings(), anthropic_api_key='test-anthropic-key', openai_api_key='test-key', investigate_mode='shadow'), store))
     before = (actors.investigator_label(), brand.page_info()['investigator'], brand.page_info()['podBy'])
@@ -156,9 +147,9 @@ def test_the_label_follows_the_live_provider_and_model_without_a_restart(store: 
 
     # then
     assert put.status_code == 200 and back.status_code == 200
-    assert before == ('Claude investigator', 'Claude investigator', 'Claude (pod)')
+    assert before == ('Investigator', 'Investigator', 'Claude (pod)')
     assert after == ('Investigator', 'Investigator')
-    assert actors.investigator_label() == 'Claude investigator'
+    assert actors.investigator_label() == 'Investigator'
 
 
 def test_openai_with_a_claude_model_set_still_reads_investigator(store: Store):
@@ -174,7 +165,7 @@ def test_a_card_shared_by_the_investigator_names_it_and_not_the_pod():
     message = anomaly_message(CARD, LINK, actors.POD_BY, head={'kind': 'shared', 'by': actors.POD_BY})
 
     # then
-    assert '(pod)' not in ' '.join(texts(message)) and head_of(message).startswith(':large_orange_circle: Claude investigator shared a card')
+    assert '(pod)' not in ' '.join(texts(message)) and head_of(message).startswith(':large_orange_circle: Investigator shared a card')
 
 
 def test_history_notices_and_mcp_texts_show_the_investigator_label():

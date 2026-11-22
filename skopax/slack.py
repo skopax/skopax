@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import re
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -16,6 +17,7 @@ from skopax.actors import BOOTSTRAP_TOKEN, POD_BY, SYSTEM, investigator_label, i
 from skopax.messages import fold, msg
 from skopax.actions import DEFAULT_MUTE_HOURS
 from skopax.config import RELEASE_NAME, RELEASE_PLACEHOLDER, release_problem
+from skopax.engine import parent_name
 from skopax.postdeploy import SERVER_BY
 from skopax.redact import redact, redact_lines
 from skopax import drafts, history, information, tags
@@ -140,6 +142,15 @@ class SlackSlowed(SlackDown):
     def __init__(self, wait: float):
         super().__init__('Slack asked to slow down', code=RATE_LIMITED)
         self.wait = wait
+
+
+def never_sent(e: BaseException) -> bool:
+    if isinstance(e, SlackSlowed):
+        return True
+    cause = e.__cause__
+    if isinstance(cause, urllib.error.URLError) and not isinstance(cause, urllib.error.HTTPError):
+        cause = cause.reason
+    return isinstance(cause, (ConnectionRefusedError, socket.gaierror))
 
 
 def slowed(after) -> SlackSlowed:
@@ -901,9 +912,21 @@ def attribution_mark(line: dict) -> str:
     return f"<{line['href']}|{esc(line['text'])}>"
 
 
+def thread_why(card: dict, host: dict | None, host_key: str, why: str | None = None) -> str:
+    grouped = bool(host_key) and host_key == card.get('parent')
+    if grouped:
+        why = 'parent'
+    elif why not in ('svc', 'ns'):
+        same = [f for f in ('svc', 'ns') if host is not None and card.get(f) not in (None, '', '-', '?') and host.get(f) == card.get(f)]
+        why = same[0] if same else None
+    if why is None:
+        return ''
+    return msg(f'slack.thread.{why}', host=esc(parent_name(host) if host is not None else host_key))
+
+
 def anomaly_message(a: dict, link: str, by: str, draft: str | None = None, buttons: str | None = None, chat: str | None = None, *, head: dict | None = None,
                     attribution: dict | None = None, mute: str | None = None, kinds: tuple[str, ...] = POST_ACTIONS, shots: list | None = None, base: str = '',
-                    parent: dict | None = None, name_of: Callable[[str], str] | None = None, who: str | None = None, hosts: tuple[str, ...] = ()) -> dict:
+                    parent: dict | None = None, name_of: Callable[[str], str] | None = None, who: str | None = None, hosts: tuple[str, ...] = (), placed: str = '') -> dict:
     sev = a.get('sev', 'info')
     cleared = a.get('status') == 'cleared'
     status = status_of(a, mute)
@@ -914,6 +937,8 @@ def anomaly_message(a: dict, link: str, by: str, draft: str | None = None, butto
         top['accessory'] = menu
     title = (f"#{a['num']} " if a.get('num') else '') + f"{a.get('svc', '?')} / {a.get('label', '?')}" + (f" \u00b7 {a['sub']}" if a.get('sub') else '')
     blocks = [top, {'type': 'section', 'text': {'type': 'mrkdwn', 'text': f'*<{link}|{esc(title)}>*'}}]
+    if placed:
+        blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': placed}]})
     summary = str((a.get('slackDraft') or {}).get('headline') or '').strip() if draft else ''
     lead = f'*{esc(summary)}*\n' if summary else ''
     said = link_addresses(esc_keep_mentions(draft), hosts, SECTION_LIMIT - len(lead)) if draft else ''

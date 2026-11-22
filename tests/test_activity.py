@@ -14,7 +14,7 @@ from skopax.investigator import Investigator
 from skopax.investigator.tools import Effects
 from skopax.sessions import Sessions, session_secret
 from skopax.store import ACTIVITY_TEXT_LIMIT, Store
-from skopax.users import Users
+from skopax.users import PW_GEN, Users
 
 NOW = 1_792_224_000.0
 KEY = 'log|a|ERROR|x'
@@ -128,7 +128,7 @@ def test_access_changes_in_the_stream_are_shown_to_admins_only(store: Store):
     users.set_password(ADMIN_EMAIL, 'admin-long-password-1')
     sealer = Sessions(session_secret(store.db, settings()), 3600, 7200)
     viewer = {'Cookie': f"{SESSION_COOKIE}={sealer.issue('carol@example.com', 'viewer', 'local')}"}
-    admin = {'Cookie': f"{SESSION_COOKIE}={sealer.issue(ADMIN_EMAIL, 'admin', 'local')}"}
+    admin = {'Cookie': f"{SESSION_COOKIE}={sealer.issue(ADMIN_EMAIL, 'admin', 'local', users.get(ADMIN_EMAIL).get(PW_GEN))}"}
     with TestClient(create_app(settings(public_read=True), store), base_url='https://testserver') as c:
         c.post('/api/admin/users', json={'email': 'dana@example.com', 'name': 'Dana', 'role': 'admin', 'password': 'correct horse battery'}, headers=AUTH)
         c.patch('/api/admin/users/dana@example.com', json={'disabled': True}, headers=AUTH)

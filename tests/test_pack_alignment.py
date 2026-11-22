@@ -1,7 +1,7 @@
 import pytest
 
 from tests.test_engine import NOW, waiting
-from skopax import actors, locales, messages
+from skopax import locales, messages
 from skopax.cardposts import auto_head
 from skopax.engine import auto_resolve, window_text
 from skopax.slack import AUTO_BY, sender
@@ -15,19 +15,13 @@ SHORT = {'de': 'Nicht mehr aktiv', 'es': 'Dej\u00f3 de dispararse', 'fr': 'N\u20
 LOWER = {'de': 'nicht mehr aktiv', 'es': 'dej\u00f3 de dispararse', 'fr': 'n\u2019\u00e9met plus', 'tr': 'sinyal durdu'}
 LONG = 'Stopped firing \u00b7 unassigned'
 ASSIGNED = 'Stopped firing \u00b7 awaiting action \u00b7 assigned to'
+INVESTIGATOR = {'de': 'Investigator', 'es': 'Investigador', 'fr': 'Enqu\u00eateur', 'tr': 'Investigator'}
 AUTO_SENT = {'de': 'automatisch gesendet', 'es': 'env\u00edo autom\u00e1tico', 'fr': 'envoi automatique', 'tr': 'otomatik g\u00f6nderildi'}
 
 
 def speak(lang: str) -> None:
     messages.set_catalogs([(pack.lang, dict(pack.messages)) for pack in locales.packs()])
     messages.use_language(lambda: lang)
-
-
-@pytest.fixture
-def model(monkeypatch):
-    def use(name: str) -> None:
-        monkeypatch.setattr(actors, '_source', [lambda: name])
-    return use
 
 
 @pytest.mark.parametrize('lang', LANGS)
@@ -116,37 +110,22 @@ def test_every_pack_reads_a_stopped_card_with_its_own_slack_words_on_the_page(la
     assert [rule for rule in pack.rules if rule[0] in ('^Cleared (\\d.*)$', '^Alert went quiet (\\d.*)$')] == []
 
 
-def test_the_auto_sent_line_names_the_claude_investigator_when_claude_runs_it(model):
-    # given
-    model('claude-sonnet-4-5')
-
+def test_the_auto_sent_line_names_the_investigator_for_every_model():
     # when
-    claude = [sender(AUTO_BY, by) for by in (None, 'Claude (pod)', 'token', 'token:bootstrap')]
+    named = [sender(AUTO_BY, by) for by in (None, 'Claude (pod)', 'token', 'token:bootstrap')]
 
     # then
-    assert claude == ['Claude investigator \u00b7 auto-sent'] * 4
+    assert named == ['Investigator \u00b7 auto-sent'] * 4
     assert sender(AUTO_BY, 'token:release-bot') == 'release-bot \u00b7 auto-sent'
 
 
-def test_the_auto_sent_line_says_investigator_for_another_model(model):
-    # given
-    model('gpt-5')
-
-    # when
-    got = sender(AUTO_BY, None)
-
-    # then
-    assert got == 'Investigator \u00b7 auto-sent'
-
-
 @pytest.mark.parametrize('lang', LANGS)
-def test_every_pack_names_the_investigator_on_the_auto_sent_line(lang, model):
+def test_every_pack_names_the_investigator_on_the_auto_sent_line(lang):
     # given
-    model('claude-opus-4')
     speak(lang)
 
     # when
     got = sender(AUTO_BY, None)
 
     # then
-    assert got == f'Claude investigator \u00b7 {AUTO_SENT[lang]}'
+    assert got == f'{INVESTIGATOR[lang]} \u00b7 {AUTO_SENT[lang]}'

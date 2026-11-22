@@ -133,6 +133,22 @@ async function longUnbrokenTextWrapsInsideTheMiddleColumn() {
   console.log('PASS long unbroken text wraps inside the middle column and the draft buttons wrap');
 }
 
+async function aRefiredCardKeepsItsCapitalInAnotherLanguage() {
+  //given
+  const old = {id: 'old-1', type: 'resolve', key: TECH, target: TECH, label: 'Resolve checkout-service', status: 'done', requestedAt: iso(3 * 1440 + 1), doneAt: iso(3 * 1440), requestedBy: 'dora.lane@example.com', result: 'Fixed'};
+  const {w, doc, errors} = await boot([card(TECH, {firstSeen: iso(30)})], {actions: [old], lang: 'de'});
+  await until(() => !article(doc, TECH).querySelector('.last-act').hidden);
+  expand(article(doc, TECH));
+
+  //then
+  const text = article(doc, TECH).querySelector('.la-before .st').textContent;
+  assert.ok(/^[A-Z\u00c0-\u00de]/.test(text), 'the translated word is left as the pack writes it: ' + text);
+  assert.ok(text.indexOf('Resolved') < 0, 'and it is translated: ' + text);
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS a re-fired card leaves a translated Before that word as the pack writes it');
+}
+
 async function aRefiredCardLeadsWithReopenedAndNamesTheOldEventOnce() {
   //given
   const fired = iso(30);
@@ -143,7 +159,8 @@ async function aRefiredCardLeadsWithReopenedAndNamesTheOldEventOnce() {
   const a = article(doc, TECH), last = a.querySelector('.last-act');
   //then
   assert.strictEqual(last.querySelector('.la-h').textContent, 'Reopened ' + w.dayhm(fired) + ' \u00b7 fired again');
-  assert.strictEqual(last.querySelector('.la-before').textContent, 'Before that: Resolved ' + w.dayhm(old.doneAt) + ' by dora.lane (Fixed)');
+  assert.strictEqual(last.querySelector('.la-before').textContent, 'Before that: resolved ' + w.dayhm(old.doneAt) + ' by dora.lane (Fixed)');
+  assert.ok(!/class="st-t"|la-before \.st-t/.test(last.innerHTML + [...doc.querySelectorAll('style')].map((x) => x.textContent).join('')), 'the sentence case is in the English text, not a CSS trick');
   assert.strictEqual(a.querySelector('.acts .stat').textContent, '', 'the head no longer repeats the same event as Earlier');
   assert.ok(!a.textContent.includes('Earlier:'));
   assert.deepStrictEqual(errors, []);
@@ -254,7 +271,7 @@ module.exports = {boot, BIZ, PLAIN, card, iso, wait, until, article, expand, TAG
 if (require.main === module) {
   (async () => {
     for (const t of [theBusinessNoteIsItsOwnRowNamedForTheTeam, taggingABusinessTeamShowsTheButtonWithoutARepaint, aLongCodeRowStacksTheExplanationUnderTheLink,
-      longUnbrokenTextWrapsInsideTheMiddleColumn, aRefiredCardLeadsWithReopenedAndNamesTheOldEventOnce,
+      longUnbrokenTextWrapsInsideTheMiddleColumn, aRefiredCardLeadsWithReopenedAndNamesTheOldEventOnce, aRefiredCardKeepsItsCapitalInAnotherLanguage,
       aChangeThatHidesTheCardShowsAToastWithViewAndClear, aChangeThatKeepsTheCardVisibleShowsNoToast, toastsStackAtMostThreeAndPauseWhileHovered, clearFilterAlsoDropsTheSearchSoTheCardShowsAgain]) {
       try { await t(); } catch (e) { console.error('FAIL ' + t.name + ': ' + e.message.split('\n').slice(0, 8).join(' | ')); process.exitCode = 1; }
     }

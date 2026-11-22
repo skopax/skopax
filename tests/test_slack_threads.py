@@ -82,3 +82,31 @@ def test_sending_a_posted_card_again_stays_where_it_was_first_sent(store: Store)
 
     # then
     assert [c.get('thread_ts') for c in t.calls] == [None, None, None]
+
+
+def placed_lines(message: dict) -> list[str]:
+    return [e['text'] for b in message.get('blocks') or [] if b.get('type') == 'context' for e in b.get('elements') or []
+            if e.get('text', '').startswith(('Grouped under ', 'Same service as ', 'Same namespace as '))]
+
+
+def test_a_card_posted_into_another_cards_thread_says_why_it_is_there_and_keeps_it_when_redrawn(store: Store):
+    # given
+    seed(store)
+    t, api = Transport(), FakeSlackApi()
+    with client_with(store, t, api=api) as client:
+        send(client, PARENT)
+
+        # when
+        send(client, CHILD)
+        send(client, ALERT)
+        send(client, ELSEWHERE)
+        client.app.state.card_posts.redraw()
+
+    # then
+    host = store.anomaly(PARENT)
+    name = (f"#{host['num']} " if host.get('num') else '') + f"{host['svc']} / {host['label']}"
+    assert [placed_lines(c) for c in t.calls] == [[], [f'Grouped under {name}'], [f'Same namespace as {name}'], []]
+    redrawn = {p['ts']: placed_lines(p) for m, p in api.calls if m == 'chat.update'}
+    assert redrawn['1791900000.000002'] == [f'Grouped under {name}'] and redrawn['1791900000.000003'] == [f'Same namespace as {name}']
+    assert redrawn['1791900000.000001'] == [] and redrawn['1791900000.000004'] == []
+    assert store.anomaly(ALERT)['slackPost']['threadWhy'] == 'ns'

@@ -57,7 +57,7 @@ def test_other_instances_is_its_own_section_and_card_not_part_of_general(store: 
 
 def test_the_instances_entry_carries_the_rules_and_the_deployment_name(store: Store):
     # given
-    env = dataclasses.replace(settings(), env_label='production')
+    env = dataclasses.replace(settings(), workspace_label='production')
 
     # when
     with TestClient(create_app(env, store)) as c:
@@ -424,3 +424,26 @@ def test_the_rename_line_is_written_before_the_old_key_goes(store: Store):
     # then
     assert seen == [True]
     assert store.db['tunables'].find_one({'_id': 'core.instance-links'}) is None
+
+
+def test_the_workspace_name_from_a_settings_file_names_the_file_under_the_new_or_the_old_key(store: Store, tmp_path):
+    # given
+    from skopax.kube import Kube
+    from skopax.registry import Registry
+    from skopax.settingsources import FILE_ENV, boot
+    new = tmp_path / 'new.yaml'
+    new.write_text('settings:\n  core.workspace-label: production\n', encoding='utf-8')
+    old = tmp_path / 'old.yaml'
+    old.write_text('settings:\n  core.env-label: staging\n', encoding='utf-8')
+
+    # when
+    seen = []
+    for path in (new, old):
+        b = boot({FILE_ENV: str(path)}, Registry.of())
+        named = dataclasses.replace(settings(), workspace_label=b.settings.workspace_label)
+        with TestClient(create_app(named, store, registry=b.registry, sources=b.source_set(), kube=Kube(root=tmp_path))) as c:
+            seen.append(c.get('/api/admin/settings', headers=AUTH).json()['instance'])
+
+    # then
+    assert [(i['name'], i['label']) for i in seen] == [('production', 'production'), ('staging', 'staging')]
+    assert all(i['from'] and i['from'] != 'environment' for i in seen), seen

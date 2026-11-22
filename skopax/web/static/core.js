@@ -65,7 +65,7 @@ var UNTAGGED_F = 'tag:-';
 function isTagF(t) { return String(t).startsWith('tag:'); }
 var ME_USER = '';
 var ME_CHANNEL = '';
-var ME_FEATURES = {}, ME_OFF = {}, ME_CHAT = false, ME_GITLAB = false;
+var ME_FEATURES = {}, ME_OFF = {}, ME_CHAT = false, ME_GITLAB = false, ME_CODE_HOST = '';
 var WHO_NAMES = {'who:any': 'Assigned', 'who:me': 'Assigned to me', 'who:none': 'Unassigned'};
 var WHO_CHIPS = {'who:any': 'Assigned', 'who:me': 'Me', 'who:none': 'Unassigned'};
 var FOLD_LETTERS = {'\u0131': 'i', '\u0142': 'l', '\u00f8': 'o', '\u0111': 'd', '\u00f0': 'd', '\u00fe': 'th', '\u00df': 'ss', '\u00e6': 'ae', '\u0153': 'oe', '\u0127': 'h'};

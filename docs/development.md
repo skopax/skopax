@@ -70,7 +70,7 @@ The page suites run the page's scripts in jsdom, from `tests/page`:
     (cd tests/page && npm ci)
     node tests/page/run.js
 
-`run.js` runs every `*.test.js` file, at most 4 at a time, and prints one line per suite. Give it part of a file name to run only the matching suites, for example `node tests/page/run.js skopax-sidebar`. The page clock follows `SKOPAX_TEST_TZ` (default `UTC`); CI runs the suites in `UTC` and in `Asia/Tokyo`:
+`run.js` runs every `*.test.js` file, at most 4 at a time, and prints one line per suite. `SKOPAX_TEST_SHARD=2/4` runs only the second of four equal parts of the sorted file list. Give it part of a file name to run only the matching suites, for example `node tests/page/run.js skopax-sidebar`. The page clock follows `SKOPAX_TEST_TZ` (default `UTC`); CI runs the suites in `UTC` and in `Asia/Tokyo`:
 
     SKOPAX_TEST_TZ=Asia/Tokyo node tests/page/run.js
 
@@ -86,9 +86,10 @@ Both the Python tests and the page suites must pass before a pull request.
 
 The workflows are in `.github/workflows/`. Every action is pinned by a full commit SHA, and every workflow starts from `permissions: {}`, so each job asks only for what it uses.
 
-- **ci** (`ci.yml`) runs on every pull request, forks included, on every push to `main`, and as a reusable workflow called by `image`. It has read-only permissions and uses no secrets. A newer push to the same pull request cancels the older run; runs on `main` and tag runs are never cancelled. It runs four jobs:
+- **ci** (`ci.yml`) runs on every pull request, forks included, on every push to `main`, and as a reusable workflow called by `image`. It has read-only permissions and uses no secrets. A newer push to the same pull request cancels the older run; runs on `main` and tag runs are never cancelled. It runs five jobs:
   - `tests`: Python 3.15 through uv 0.13.8, then `uv lock --check` (it fails when `uv.lock` no longer matches `pyproject.toml`), `uv sync --frozen` and `uv run --frozen pytest -q -n auto`; then `uv run --frozen python -m tests.presets_promtool "$RUNNER_TEMP/presets"` writes a `promtool test rules` file that runs every custom check preset on the test data of the example plug-ins, and `docker run --rm -v "$RUNNER_TEMP/presets:/work:ro" -w /work --entrypoint promtool "$PROMETHEUS_IMAGE" test rules presets-test.yml` runs it with promtool from `prom/prometheus:v3.1.0`, the image `docker-compose.yml` uses.
-  - `pages`: Node 22.22, `npm ci` in `tests/page`, then `node tests/page/run.js` once with `SKOPAX_TEST_TZ=UTC` and once with `SKOPAX_TEST_TZ=Asia/Tokyo`.
+  - `page-suites`: Node 22.22 in eight parallel jobs, one per time zone (`UTC`, `Asia/Tokyo`) and quarter of the page suites. Each runs `npm ci` in `tests/page`, then `node tests/page/run.js` with `SKOPAX_TEST_TZ` set to its zone and `SKOPAX_TEST_SHARD` set to `1/4` to `4/4`.
+  - `pages`: the single required check. It waits for every `page-suites` job and fails unless all eight passed.
   - `licences`: `uv sync --frozen --no-dev`, then `python -m tools.licences check --site .venv/lib/python3.15/site-packages --out <tmp>`. It fails and names any dependency whose licence is not allowed (see [The licence gate](#the-licence-gate)).
   - `secrets`: gitleaks 8.30.1 (archive checksum-verified) over the full git history, with `.gitleaks.toml`. That file extends the default rules. It allowlists only ten named fake values, each in its own test fixture file and for one rule, plus, for those same three rules, the Python bytecode that pytest writes under `tests/__pycache__/` (git never tracks it, so only a scan of a working tree sees it); any other secret in those files is still reported.
 - **image** (`image.yml`) runs only when a `v*` tag is pushed. It first runs the whole `ci` workflow as a reusable workflow, without secrets, so a tag never builds an image without passing tests. Then it runs five jobs, in order:

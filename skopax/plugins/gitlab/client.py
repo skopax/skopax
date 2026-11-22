@@ -101,6 +101,8 @@ def similar_projects(gitlab, name: str, limit: int = 5) -> list[str]:
 
 
 class GitLab:
+    name = 'GitLab'
+
     def __init__(self, token: str, transport: Transport = remote.send, clock=time.monotonic, group: str = '', base: str = GITLAB_URL):
         self.token = token
         self.group = group

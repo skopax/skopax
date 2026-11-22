@@ -55,3 +55,20 @@ def test_the_app_groups_the_alert_twins_named_in_settings(store: Store):
     # then
     assert store.anomaly(twin['key'])['parent'] == host['key']
     assert 'parent' not in store.anomaly(other['key'])
+
+
+def test_the_grouping_line_names_the_host_by_its_number_service_and_label(store: Store):
+    # given
+    host = anomaly('prom', 'err', 'shop', 'checkout-service', '', 'warn', 50, 0, 0, '', 'ERROR logs', 'errors')
+    twin = anomaly('alert', 'alert', 'shop', '-', 'HighErrorRate', 'warn', 1, None, None, '', 'HighErrorRate', 'firing') | {'key': 'alert|HighErrorRate|namespace=shop'}
+    store.save_state({'anomalies': [], 'initialized': True}, None)
+
+    # when
+    with TestClient(create_app(dataclasses.replace(settings(), alert_twins=TWINS), store)) as c:
+        c.app.state.server_apply([PassResult('prom', True, 'ok', [host, twin], {}, ('prom', 'alert'))], NOW, None)
+
+    # then
+    num = store.anomaly(host['key'])['num']
+    lines = [a['text'] for a in store.list_activity(None, 50) if a['text'].startswith('grouped ')]
+    assert len(lines) == 1 and f"under #{num} checkout-service / ERROR logs:" in lines[0], lines
+    assert host['key'] not in lines[0]

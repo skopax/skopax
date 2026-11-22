@@ -15,7 +15,7 @@ import threading
 import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Annotated, Callable, Mapping
 from urllib.parse import parse_qs, quote, urlsplit
@@ -81,7 +81,7 @@ from skopax.slacklink import SlackLink
 from skopax.kit.promql import Prometheus, client_for
 from skopax.kit.promql import CHECK as PROMETHEUS_CHECK, ID as PROMETHEUS_ID
 from skopax.tickets import PROJECT_KEY, projects_of
-from skopax.users import EMAIL, IDP_SOURCES, LOCAL_AFTER, NAME_MAX, PASSWORD_MAX, PASSWORD_MIN, ROLES, IdpManaged, InvalidUser, ChangeReverted, ChangeUnsure, LastAdmin, LINK_PENDING_S, NoPasswordAdmin, UserExists, Users, admin_row, mcp_mark, clean_email, clean_name, clean_password, clean_role, cut_admits, leaves_admin, link_admits
+from skopax.users import EMAIL, IDP_SOURCES, LOCAL_AFTER, PW_GEN, NAME_MAX, PASSWORD_MAX, PASSWORD_MIN, ROLES, IdpManaged, InvalidUser, ChangeReverted, ChangeUnsure, LastAdmin, LINK_PENDING_S, NoPasswordAdmin, UserExists, Users, admin_row, mcp_mark, clean_email, clean_name, clean_password, clean_role, cut_admits, leaves_admin, link_admits
 from skopax.settingsources import Follower, SourceSet, boot, labelled, merged
 from skopax.settingsources import core_knowledge_ids, core_setting_ids
 from skopax.tunables import SESSIONS_AFTER_KEY, SLACK_CHANNEL_KEY, SSO_SWITCH_KEY, Invalid as TunableInvalid, Live, TunableStore, View, apply as apply_tunables, parse as parse_tunable, plugin_tunables, stored as stored_text
@@ -99,7 +99,7 @@ from skopax import tagreport
 from skopax.routes import TRIES, Echo, Refused as RouteRefused, Routes
 from skopax.models import RouteSendIn, SsoIn, SsoTestIn
 from skopax.statenotes import StateNotes, who_of
-from skopax.slack import stopped_who, anomaly_message, fix_hash, fix_message, AUTO_BY, same_person, built_link, cut, esc, esc_keep_mentions, link_addresses, menu_kinds, NoThread, opening, public_hosts, reason_of, recurring_line, report_message, Slack, SlackError, SECTION_LIMIT
+from skopax.slack import stopped_who, thread_why, anomaly_message, fix_hash, fix_message, AUTO_BY, same_person, built_link, cut, esc, esc_keep_mentions, link_addresses, menu_kinds, NoThread, opening, public_hosts, reason_of, recurring_line, report_message, Slack, SlackError, SECTION_LIMIT
 from skopax.setup import BadCode, SetupDone, SetupGate, render_form
 from skopax import migrations
 from skopax.errkind import NoAccess, Refusal, kind, text_of
@@ -514,7 +514,6 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     base_settings = settings
     settings = View(live)
     live.own_domains = lambda: web_own_domains(live.current().email_domains, runtime.org().get('email_domains'))
-    actors.use_source(lambda: effective_model(settings.ai_provider, settings.investigate_model, 'card'))
 
     def watch_sso(current: Settings) -> None:
         if not current.sso_on:
@@ -630,7 +629,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     sso_icon = SsoIcon(db)
     setup_gate = SetupGate(db, users)
     sessions_box: list[Sessions] = []
-    user_cache: dict[str, tuple[float, dict | None]] = {}
+    user_cache: dict[str, tuple] = {}
     retry_after = {'key': 0.0, 'user': 0.0}
     probing = {'key': threading.Lock()}
     user_probes: dict[str, threading.Lock] = {}
@@ -763,6 +762,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     operators = Operators(operators_lookup or slack_operator, slack, settings)
 
+    def card_of(key: str) -> dict | None:
+        try:
+            return store.anomaly(key)
+        except NotFound:
+            return None
+
     def parent_of(card: dict) -> dict | None:
         if not card.get('parent') or card['parent'] == card.get('key'):
             return None
@@ -782,9 +787,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         buttons = card_posts.new_menu(key, by) if started_at_boot('slack-socket') else None
         head, mute = opening(by) | {'at': iso(utc_now())}, card_posts.mute_of(key)
         who = stopped_who(anomaly, mute, slack_name)
+        placed = thread_why(anomaly, card_of(thread['key']), thread['key'], thread.get('why')) if thread else ''
         message = anomaly_message(anomaly, link, by, draft, buttons['id'] if buttons else None, chat_url(base_url or base, key, anomaly.get('num')), head=head,
                                   attribution=None if thread else slack.signature(), mute=mute, kinds=menu_kinds(anomaly, mute), shots=shots, base=base_url,
-                                  parent=parent_of(anomaly), who=who, hosts=site_hosts()) | ({'channel': thread['channel'], 'thread_ts': thread['ts']} if thread else {})
+                                  parent=parent_of(anomaly), who=who, hosts=site_hosts(), placed=placed) | ({'channel': thread['channel'], 'thread_ts': thread['ts']} if thread else {})
         try:
             posted = slack.post(message, sign=False)
         except SlackError as e:
@@ -798,7 +804,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         post = {**sent, 'at': iso(utc_now()), 'by': by, 'draft': bool(draft), 'head': head, 'drawn': drawn, **({'body': body} if body else {}), **({'menu': buttons['id']} if buttons else {}),
                 **({'screenshots': shots} if shots else {})}
         if thread:
-            post |= {'ts': thread['ts'], 'replyTs': sent.get('ts'), 'threadOf': thread['key']}
+            post |= {'ts': thread['ts'], 'replyTs': sent.get('ts'), 'threadOf': thread['key'], **({'threadWhy': thread['why']} if thread.get('why') else {})}
         try:
             store.slack_posted(key, post)
         except (PyMongoError, NotFound, Conflict) as e:
@@ -825,6 +831,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return post_anomaly_to_slack(key, by, base, skip_kept)
         finally:
             posting.discard(key)
+
+    @contextmanager
+    def posting_cards(keys: list[str]):
+        mine = [k for k in dict.fromkeys(keys) if k not in posting]
+        posting.update(mine)
+        try:
+            yield
+        finally:
+            posting.difference_update(mine)
 
     def echo_ready(card: dict) -> bool:
         return bool(slack.enabled and features.on('slack-autosend') and not card.get('muted') and auto.live(card) and not auto_send_waiting(card) and card.get('key') not in posting)
@@ -1276,7 +1291,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except Exception as e:
             log.warning('%s', msg('probe.start_failed', error=kind(e)))
 
-    sweeper = Sweeper(runtime, store, server_apply, enrich=enrich_keys, outputs=Outputs(store, slack, attacher, base_url, lambda: settings.screenshot_max_per_day, auto=lambda: features.on('slack-autosend')))
+    sweeper = Sweeper(runtime, store, server_apply, enrich=enrich_keys, outputs=Outputs(store, slack, attacher, base_url, lambda: settings.screenshot_max_per_day, auto=lambda: features.on('slack-autosend'), posting=posting_cards))
     custom_checks = CustomChecks(store, runtime, server_apply)
 
     def refresh_languages() -> None:
@@ -1285,11 +1300,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         locales = core + added
         trees = core_locales.chainlit_trees(core, added)
         messages.set_catalogs([(locale.lang, locale.messages) for locale in locales])
+        outbound_language()
         languages_loaded[0] = True
         set_chat_texts([(locale.lang, locale.chat) for locale in locales], trees)
         chatui.set_translations(trees)
         writing[0] = {locale.lang: locale.writing for locale in locales if locale.writing}
-        outbound_language()
 
     def outbound_language() -> None:
         lang = settings.language
@@ -1758,7 +1773,28 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 if not paused:
                     log.warning('user lookup failed, treating the request as signed out: %s', kind(e))
                 return None
-            user_cache[name] = (now + USER_CACHE_SECONDS, found)
+            user_cache[name] = (now + USER_CACHE_SECONDS, found, False)
+            return found
+
+    def recheck_user(name: str) -> dict | None:
+        with user_probes_guard:
+            probe = user_probes.setdefault(name, threading.Lock())
+        with probe:
+            now = clock()
+            cached = cached_user(name, now)
+            held = cached[1] if cached is not None else None
+            if (cached is not None and cached[2]) or now < retry_after['user']:
+                return held
+            try:
+                found = users.get(name)
+            except PyMongoError as e:
+                with failure_guard:
+                    paused = clock() < retry_after['user']
+                    retry_after['user'] = clock() + FAILURE_PAUSE_SECONDS
+                if not paused:
+                    log.warning('user lookup failed, treating the request as signed out: %s', kind(e))
+                return held
+            user_cache[name] = (now + USER_CACHE_SECONDS, found, True)
             return found
 
     def sso_session_ok(payload: dict) -> bool:
@@ -1777,11 +1813,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if name and payload.get('src') == 'sso' and not sso_session_ok(payload):
             return None
         doc = stored_user(name) if name else None
+        if doc is not None and payload.get('src') != 'sso' and payload.get('pg') != doc.get(PW_GEN):
+            doc = recheck_user(name)
         if doc is None or doc.get('disabled'):
             return None
         if payload.get('src') == 'sso' and doc.get('source') != 'sso' and not link_admits(doc, payload.get('login')):
             return None
         if not cut_admits(doc, payload.get('src'), payload.get('login')):
+            return None
+        if payload.get('src') != 'sso' and payload.get('pg') != doc.get(PW_GEN):
             return None
         return User(name=name, role=doc['role'], source=doc.get('source', 'local'))
 
@@ -2145,7 +2185,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         user_cache.pop(found['email'], None)
         log.info('local login by %s, role=%s', found['email'], found['role'])
         resp = RedirectResponse(safe_next(fields['next']), status_code=status.HTTP_303_SEE_OTHER)
-        set_session(resp, sessions.issue(found['email'], found['role'], 'local'), sessions.idle_seconds)
+        set_session(resp, sessions.issue(found['email'], found['role'], 'local', found.get(PW_GEN)), sessions.idle_seconds)
         return resp
 
     @app.post('/login', response_model=None)
@@ -2273,7 +2313,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             log.warning('setup failures not cleared: %s', kind(e))
         log.info('first admin created: %s', admin['email'])
         resp = RedirectResponse('/', status_code=status.HTTP_303_SEE_OTHER)
-        set_session(resp, sessions.issue(admin['email'], 'admin', 'local'), sessions.idle_seconds)
+        set_session(resp, sessions.issue(admin['email'], 'admin', 'local', admin.get(PW_GEN)), sessions.idle_seconds)
         return resp
 
     @app.post('/setup', response_model=None)
@@ -2324,7 +2364,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             if found is None:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, msg('password.error'))
             try:
-                users.set_password(user.name, body.new)
+                gen = users.set_password(user.name, body.new)
             except InvalidUser:
                 throttle.release(held)
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, msg('password.error')) from None
@@ -2335,8 +2375,23 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except PyMongoError as e:
             log.warning('password could not be changed: %s', kind(e))
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, msg('login.failed')) from None
+        user_cache.pop(user.name, None)
         log.info('password changed by %s', user.name)
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        resp = Response(status_code=status.HTTP_204_NO_CONTENT)
+        keep_password_session(request, resp, user.name, gen, user.name)
+        return resp
+
+    def keep_password_session(request: Request, resp: Response, email: str, gen: str | None, by: str) -> None:
+        sessions = get_sessions()
+        if not gen or not sessions or by != email:
+            return
+        user = current_user(request)
+        payload = sessions.unseal(request.cookies.get(SESSION_COOKIE), SESSION_KIND)
+        if user is None or user.name != email or not payload or payload.get('src') == 'sso':
+            return
+        doc = stored_user(email)
+        if doc is not None and not doc.get('disabled'):
+            set_session(resp, sessions.issue(email, doc['role'], 'local', gen), sessions.idle_seconds)
 
     @app.patch('/api/me')
     def rename_me(request: Request, body: NameIn, authorization: Annotated[str | None, Header()] = None) -> dict:
@@ -2376,7 +2431,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             'jira': jira.enabled,
             'jiraUrl': jira_site() if jira.enabled else '',
             'gitlab': gitlab.enabled,
-            'envLabel': settings.env_label,
+            'codeHost': ' and '.join(n for n, h in zip(('GitLab', 'GitHub'), gitlab.hosts) if h.enabled),
+            'workspaceLabel': settings.workspace_label,
             'task': {'project': settings.jira_project, 'projects': list(dict.fromkeys([*projects_of(settings), *(k for k in plugin_projects() if PROJECT_KEY.fullmatch(k) and k != settings.jira_tech_project)])), 'parent': settings.jira_parent, 'points': settings.jira_points, 'techProject': settings.jira_tech_project, 'techAssignee': bool(settings.jira_tech_assignee), 'titlePrefix': settings.jira_title_prefix},
             'slack': slack.enabled,
             'slackChannel': slack.channel,
@@ -2720,9 +2776,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if key.startswith(('sso.', 'mcp.')):
             mcp_auth.clear()
         cut = lambda v: v if len(v) <= 80 else v[:79] + '…'
-        if key.startswith('sso.'):
+        if change['before'] != change['after'] and key.startswith('sso.'):
             store.add_activity(ACCESS_KIND, by, msg('sso.setting_changed', label=change['label'], key=key, before=cut(change['before'] or '\u2013'), after=cut(change['after'] or '\u2013')))
-        else:
+        elif change['before'] != change['after']:
             store.add_activity('admin', by, f"{change['label']} ({key}): {cut(change['before'] or '\u2013')} \u2192 {cut(change['after'] or '\u2013')}" + ('' if entry['live'] else ' \u00b7 applies after a restart'))
         log.info('admin setting %s %s by %s', key, 'reset' if value is None else 'set', by)
         return {'item': entry, 'change': change}
@@ -2769,7 +2825,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def checked_patch(key: str, body: UserPatch, current: dict) -> None:
         to_local = body.password is not None and current.get('source') == 'sso'
         if body.ssoLink is not None and current.get('source') != 'local' and not to_local:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_link_local_only'))
+            raise FieldRefused('ssoLink', msg('access.sso_link_local_only'))
         try:
             fields, _ = users.prepare_change(body.role, body.disabled, None, current)
             if body.password is not None and not to_local:
@@ -2818,7 +2874,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if not signon.active():
             raise HTTPException(status.HTTP_409_CONFLICT, msg('access.sso_only_off'))
         if not sso_domain_allowed(key):
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('access.sso_only_domain'))
+            raise FieldRefused('ssoOnly', msg('access.sso_only_domain'))
         try:
             made = users.make_sso_only(key)
         except NoPasswordAdmin:
@@ -2837,7 +2893,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         return admin_row(made, clock())
 
     @app.patch('/api/admin/users/{email}')
-    def patch_admin_user(email: str, body: UserPatch, by: Annotated[str, Depends(require_admin)]) -> dict:
+    def patch_admin_user(email: str, body: UserPatch, request: Request, response: Response, by: Annotated[str, Depends(require_admin)]) -> dict:
         key = email.strip().lower()
         current = users.get(key)
         if current is None:
@@ -2845,8 +2901,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if body.ssoOnly is not None:
             return make_sso_only(key, body, current, by)
         checked_patch(key, body, current)
+        to_local = body.password is not None and current.get('source') == 'sso'
         try:
-            fields, unset = users.prepare_change(body.role, body.disabled, body.password, current)
+            fields, unset = users.prepare_change(body.role, body.disabled, None if to_local else body.password, current)
         except InvalidUser as e:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, e.text) from e
         except IdpManaged:
@@ -2857,13 +2914,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 body = body.model_copy(update={'name': None})
             else:
                 fields |= {'name': name, 'nameFrom': 'admin'}
-        if body.password is not None and current.get('source') == 'sso':
-            fields.pop('pw', None)
+        if to_local:
             current = sso_to_local(key, body, fields, by, current.get('roleFrom'))
             log_change(key, body.model_copy(update={'password': None}), by)
             fields = {}
         if fields:
             change_user(key, fields, unset, body, by)
+            keep_password_session(request, response, key, fields.get(PW_GEN), by)
         if body.ssoLink is not None:
             change_link(key, body.ssoLink, current.get('ssoLink'), by)
         return admin_row(users.get(key), clock())
@@ -2943,7 +3000,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     def scope_warning() -> dict | None:
-        return store.email_scope() if tag_report.wanted else None
+        found = store.email_scope()
+        return found if found is not None and tag_report.wanted else None
 
     def scope_marked(items: list[dict]) -> list[dict]:
         if scope_warning() is None:
@@ -2951,8 +3009,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         return [i | {'problem': msg('tags.scope_missing')} if i.get('key') == tagreport.KEY else i for i in items]
 
     def instance_name_view() -> dict:
-        label = (settings.env_label or '').strip()
-        return {'name': current_instance(settings), 'label': label, 'from': live.labels.get('core.env-label', 'environment') if label else ''}
+        label = (settings.workspace_label or '').strip()
+        source = live.labels.get('core.workspace-label') or live.labels.get('core.env-label', 'environment')
+        return {'name': current_instance(settings), 'label': label, 'from': source if label else ''}
 
     @app.get('/api/admin/settings')
     def get_admin_settings(by: Annotated[str, Depends(require_admin)]) -> dict:
@@ -2968,14 +3027,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def owner_name(email: str, everyone: dict[str, str]) -> str:
         return next((n for n in (everyone.get(email), slack_ids.name(email)) if n and '@' not in n), email.split('@')[0])
 
-    def owner_rows(emails: list[str], named: dict[str, str]) -> list[dict]:
-        everyone = all_people()
+    def owner_rows(emails: list[str], named: dict[str, str], everyone: dict[str, str] | None = None) -> list[dict]:
+        everyone = all_people() if everyone is None else everyone
         return [{'email': e, 'name': owner_name(e, everyone), 'slack': slack_ids.peek(e)} | ({} if e in named or e not in everyone else {'stale': True}) for e in emails]
 
-    def tag_view(tag: str, label: str, held: dict[str, list[str]], named: dict[str, str], off: set[str] | None = None, colors: dict[str, int] | None = None) -> dict:
+    def tag_view(tag: str, label: str, held: dict[str, list[str]], named: dict[str, str], off: set[str] | None = None, colors: dict[str, int] | None = None,
+                 everyone: dict[str, str] | None = None) -> dict:
         off = store.tag_auto_off() if off is None else off
         colors = store.tag_colors() if colors is None else colors
-        return {'id': tag, 'label': label, 'responsibles': owner_rows(held.get(tag, []), named), 'autoAssign': tag not in off, 'autoReady': auto_assign.ready(tag, held, named), 'color': colors.get(tag)}
+        return {'id': tag, 'label': label, 'responsibles': owner_rows(held.get(tag, []), named, everyone), 'autoAssign': tag not in off, 'autoReady': auto_assign.ready(tag, held, named), 'color': colors.get(tag)}
 
     def tag_info() -> list[dict]:
         colors = store.tag_colors()
@@ -2990,11 +3050,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/admin/tags')
     def get_admin_tags(by: Annotated[str, Depends(require_admin)]) -> dict:
-        listed = users.list()
-        named = active_people()
+        listed = [u for u in users.list() if u and u.get('email')]
+        everyone = {u['email']: u.get('name') or '' for u in listed}
+        named = {u['email']: u.get('name') or '' for u in listed if not u.get('disabled')}
         held = store.tag_owners()
         off, colors = store.tag_auto_off(), store.tag_colors()
-        return {'tags': [tag_view(tag, label, held, named, off, colors) for tag, label in tags.all_tags().items()], 'canEdit': True,
+        return {'tags': [tag_view(tag, label, held, named, off, colors, everyone) for tag, label in tags.all_tags().items()], 'canEdit': True,
                 'users': [{'email': u['email'], 'name': u.get('name') or u['email'].split('@')[0], 'disabled': bool(u.get('disabled'))} for u in listed if u and u.get('email')],
                 'reportAt': settings.tag_report_at, 'emailScopeMissing': scope_warning() is not None}
 

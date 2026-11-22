@@ -17,6 +17,7 @@ from skopax import brand, causes, clock, drafts, history, information, tags
 from skopax.actors import POD_BY, SYSTEM
 from skopax.engine import iso as epoch_iso, parse_iso, sibling_stem
 from skopax.config import Settings
+from skopax.codehosts import name_of
 from skopax.contract import CodeHost, Knowledge, Missing, RunState, SourceDown
 from skopax.enrich import adf_text
 from skopax.errkind import Authored, kind as error_kind, text_of
@@ -401,7 +402,7 @@ def commit_of(host: CodeHost, project: dict, name: str, ref: str) -> str:
     try:
         return host.commit(project, ref)['id']
     except Missing:
-        raise ToolError(f'GitLab found no {ref} in {name}') from None
+        raise ToolError(f'{name_of(host)} found no {ref} in {name}') from None
 
 
 def repo_of(host: CodeHost, repo: str) -> dict:
@@ -411,7 +412,7 @@ def repo_of(host: CodeHost, repo: str) -> dict:
     path = str(repo).strip().strip('/')
     name = path.split('/')[-1]
     near = host.similar(name)
-    raise ToolError(f'no single GitLab project named {name}' + ('' if '/' in path else '; give its full path, like ops/deploy/helm-charts')
+    raise ToolError(f'no single {name_of(host)} project named {name}' + ('' if '/' in path else '; give its full path, like ops/deploy/helm-charts')
                     + (f"; close paths: {', '.join(near)}" if near else '; it may be a folder inside a repo, such as ops/deploy/manifests or ops/deploy/helm-charts, so search the code first'))
 
 
