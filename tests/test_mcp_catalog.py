@@ -153,7 +153,7 @@ def test_mcp_tools_identity_and_defaults_are_neutral():
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (loaded.state, loaded.reason) == ('ok', None) and 'skopax.plugins.mcp_tools' in BUILTIN
     assert (plugin.id, plugin.name, plugin.category, plugin.version, plugin.author, plugin.licence, plugin.core, plugin.edition) == \
-        ('mcp-tools', 'MCP server', 'other', '0.1.0', 'Skopax', 'Apache-2.0', '>=0.1,<0.5', 'community')
+        ('mcp-tools', 'MCP server', 'other', '0.1.0', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
     assert plugin.description == 'Adds the tools of an outside MCP server to the investigator and the chat, and can search one folder of company documents'
     assert (plugin.capabilities.hosts, plugin.capabilities.secrets, plugin.max_instances) == (('@url',), ('header-value', 'oauth-client-secret'), 20)
     assert {f.key: f.default for f in plugin.fields} == {'url': '', 'preset': '', 'auth': 'none', 'header-name': 'Authorization', 'header-value': '', 'oauth-scopes': '', 'oauth-client-id': '',

@@ -36,6 +36,7 @@ MODEL_ROLES = {'investigate.model': 'card', 'investigate.slack-model': 'slack', 
 OFF_WITH = {OPENAI: {'investigate.web-fetches': 'ai.off_openai', 'investigate.gate-effort': 'ai.off_openai_gate_effort'}}
 CHAT_CALLS_KEY = 'chat.max-tool-calls'
 WEB_DOMAINS_KEY = 'investigate.web-domains'
+OWN_SITES_KEY = 'core.own-sites'
 EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
 SEVS = ('info', 'warn', 'crit')
 REFRESH_S = 15
@@ -118,6 +119,7 @@ ITEM_RULES = {
     'email': (r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '', ''),
     'host': (SKIP_ENTRY.pattern, 'i', '.'),
     'web-host': (web_sites.DOMAIN.pattern, 'i', ''),
+    'own-site': (web_sites.DOMAIN.pattern, 'i', ''),
     'domain': (r'(?=.{1,253}$)(?!.*\.[0-9]+$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', 'i', ''),
     'slack-user-id': (r'[UW][A-Z0-9]{6,14}', '', ''),
     'client-id': (r'[^\s,]{1,200}', '', ''),
@@ -125,7 +127,7 @@ ITEM_RULES = {
     'channel': (r'[CG][A-Z0-9]{8,12}', '', ''),
     'scope': (r'[\x21-\x7e]{1,100}', '', ''),
 }
-ITEM_RULES_CHECKED = ('host', 'web-host', 'email', 'slack-user-id', 'client-id', 'project-key', 'channel', 'scope')
+ITEM_RULES_CHECKED = ('host', 'web-host', 'own-site', 'email', 'slack-user-id', 'client-id', 'project-key', 'channel', 'scope')
 LINK_NAME_MAX = 40
 LINK_NAME = re.compile(r'[A-Za-z0-9 ._-]{1,%d}' % LINK_NAME_MAX)
 LINK_COLOURS = ('#e3a744', '#9a7ce3', '#5cbf80', '#f0857a', '#7eaaf2', '#c98500')
@@ -135,6 +137,7 @@ INSTANCES = 'Workspaces'
 ITEM_SEPARATORS = {'scope': ' '}
 ITEM_KEYWORDS = {'channel': ('all', 'main'), 'web-host': (web_sites.ANY,) + web_sites.OFF_WORDS}
 ITEM_MINUS = ('web-host',)
+ITEM_LOOSE = ('own-site',)
 LINK_RULES = ('count', 'pair', 'name', 'url', 'userinfo', 'repeat')
 MCP = 'MCP'
 GROUPS = (GENERAL, INSTANCES, ACCESS, SIGNIN, MCP, INV, SLACK, REVIEW, CARDS, JIRA, RULES, TAGS, FEATURES)
@@ -235,6 +238,9 @@ STATIC = (
     T('investigate.assess-max-tool-calls', 'investigate_assess_max_tool_calls', INV, 'Tool calls per assessment', 'Tool call budget of a deploy-report assessment', 'int', 5, 40),
     T('investigate.slack-max-tool-calls', 'investigate_slack_max_tool_calls', INV, 'Tool calls per Slack ask', 'Tool call budget of a Slack question', 'int', 3, 30),
     T('investigate.strict-tools', 'investigate_strict_tools', INV, 'Strict tool inputs', 'Ask the model for schema-exact write tool inputs', 'bool'),
+    T(OWN_SITES_KEY, 'own_sites', INV, 'Your websites',
+      'The sites of your company the investigator may read and search, such as example.com. Host names are separated by commas, without https:// or a path, and a host covers its subdomains. '
+      'Empty uses the sites of the Website integrations', 'list', items='own-site'),
     T('investigate.web-domains', 'investigate_web_domains', INV, 'Web sites',
       'Your sites are added to the built-in list; write -host to leave one out; any lifts the limit; off turns web search and reading off. Host names are separated by commas, and a host covers its subdomains', 'text', items='web-host'),
     T('investigate.web-searches', 'investigate_web_searches', INV, 'Web searches per run', 'Web searches one run may make, $0.01 each; 0 turns search off', 'int', 0, 10),
@@ -449,7 +455,7 @@ def parse(t: Tunable, raw, base: Settings, loading: bool = False):
         kept = {k: v for k, v in sorted(given.items()) if v != t.defaults[k]}
         return json.dumps(kept, separators=(',', ':')) if kept else ''
     if t.kind == 'list':
-        entries = tuple(p.strip() for p in text.split(',') if p.strip())
+        entries = tuple(item_entries(t, text)) if t.items in ITEM_LOOSE else tuple(p.strip() for p in text.split(',') if p.strip())
         bad = [p for p in entries if t.key == CERT_SKIP_KEY and not skip_entry_ok(p)]
         if bad:
             raise Invalid(msg('certs.skip_invalid', entry=bad[0][:SKIP_SHOWN]))
@@ -480,6 +486,8 @@ def item_view(t: Tunable) -> dict:
     out = {'kind': t.items, 'separator': ITEM_SEPARATORS.get(t.items, ','), 'pattern': pattern, 'flags': flags, 'strip': strip, 'why': msg(f'items.why.{t.items}')}
     if t.items in ITEM_MINUS:
         out['minus'] = True
+    if t.items in ITEM_LOOSE:
+        out['loose'] = True
     if t.items in ITEM_KEYWORDS:
         out['keywords'] = list(ITEM_KEYWORDS[t.items])
     return out
@@ -487,7 +495,7 @@ def item_view(t: Tunable) -> dict:
 
 def item_entries(t: Tunable, text: str) -> list[str]:
     sep = ITEM_SEPARATORS.get(t.items, ',')
-    if t.items in ITEM_MINUS:
+    if t.items in ITEM_MINUS + ITEM_LOOSE:
         return [p for p in re.split(r'[\s,]+', text) if p]
     return [p.strip() for p in (text.split() if sep == ' ' else text.split(',')) if p.strip()]
 
@@ -714,7 +722,7 @@ class Live:
         self._warned: dict[tuple[str, int], str] = {}
         self._told: set[str] = set()
         self._current = base
-        self.own_domains: Callable[[], tuple[str, ...]] = lambda: web_sites.own_domains(self.current().email_domains)
+        self.own_sites: Callable[[], tuple[tuple[str, ...], str]] = lambda: web_sites.own_sites_of(self.current().own_sites)
         self._rev: int | None = None
         self._checked: float | None = None
         self._lock = threading.Lock()
@@ -861,12 +869,16 @@ class Live:
         if t.low is not None:
             out.update(low=t.low, high=t.high)
         if t.key == WEB_DOMAINS_KEY:
-            own = tuple(self.own_domains())
+            own = tuple(self.own_sites()[0])
             out['builtIn'] = list(web_sites.built_in(own))
             out['ownDomains'] = list(own)
             unknown = web_sites.unknown_removed(out['value'], own)
             if unknown and not out.get('problem'):
                 out['problem'] = msg('items.minus_unknown.web-host', field=t.label, hosts=', '.join('-' + d for d in unknown))
+        if t.key == OWN_SITES_KEY:
+            hosts, source = self.own_sites()
+            out['ownHosts'] = list(hosts)
+            out['ownFrom'] = source
         if t.kind == 'tagrules':
             out['pluginTerms'] = list(tags.plugin_rules().get(t.part, ()))
         if t.kind in TEXT_BOXES:

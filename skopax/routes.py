@@ -50,6 +50,7 @@ ECHO_WAIT_S = 300.0
 ECHO_WAIT_MAX_S = 21600.0
 ECHO_TRIES = 5
 MD_LINK = re.compile(r'\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\(([^)]*)\)')
+REASON_MAX = 300
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,14 @@ class Echo:
     post: Callable[[str], dict | None]
     say: Callable[[dict, str], None]
     ready: Callable[[dict], bool] = lambda card: True
+
+
+class Final(str):
+    pass
+
+
+class Waiting(str):
+    pass
 
 
 class Refused(Authored, Exception):
@@ -113,6 +122,18 @@ def held(records: dict, route_id: str, link: str | None, key: str, now: float) -
 
 def link_of(raw: str) -> str:
     return hashlib.sha256(raw.strip().encode()).hexdigest()[:LINK_HASH]
+
+
+def target_of(raw: object) -> str:
+    return ' '.join(sorted(set(str(raw or '').lower().replace(',', ' ').split())))
+
+
+def reason_of(answer: dict) -> str | None:
+    given = answer.get('reason')
+    if not isinstance(given, str):
+        return None
+    text = ''.join(ch for ch in ' '.join(given.split()) if ch.isprintable())[:REASON_MAX]
+    return text or None
 
 
 def base_id(route_id: str) -> str:
@@ -220,6 +241,11 @@ def route_of(plugin, item) -> Parsed:
         if not sendable(raw):
             return Parsed(None, msg('integrations.route_link'), (), 0)
         link = link_of(raw)
+    elif hook.target_field:
+        target = target_of(values.get(hook.target_field))
+        if not target:
+            return Parsed(None, msg('integrations.route_target'), (), 0)
+        link = link_of(target)
     known = tags.all_tags()
     wanted = list(dict.fromkeys(tag_id(t) for t in split(values.get(hook.tags_field))))
     unknown = tuple(t for t in wanted if t not in known)
@@ -495,14 +521,17 @@ class Routes:
         except Exception as e:
             return self._failed(route, kind(e))
         if isinstance(answer, dict) and answer.get('ok') is True:
-            self._outcome(route, None)
+            self._outcome(route, reason_of(answer))
             return None
         status = answer.get('status') if isinstance(answer, dict) else None
-        return self._failed(route, f'HTTP {status}' if isinstance(status, int) and not isinstance(status, bool) and status > 0 else 'no usable answer')
+        reason = (reason_of(answer) if isinstance(answer, dict) else None) or (f'HTTP {status}' if isinstance(status, int) and not isinstance(status, bool) and status > 0 else 'no usable answer')
+        if isinstance(answer, dict) and answer.get('retry') is False:
+            return self._failed(route, Final(reason))
+        return self._failed(route, Waiting(reason) if isinstance(answer, dict) and answer.get('progress') is True else reason)
 
     def _failed(self, route: Route, reason: str) -> str:
         log.warning('route %s post failed: %s', route.id, reason)
-        self._outcome(route, reason)
+        self._outcome(route, str(reason))
         return reason
 
     def _outcome(self, route: Route, reason: str | None) -> None:
@@ -530,8 +559,8 @@ class Routes:
     def _missed(self, records: dict, route_id: str, link: str | None, key: str, reason: str, now: float) -> None:
         row = records.get((route_id, key))
         tries = (int(row.get('tries') or 0) if row and row.get('link') == link else 0) + 1
-        gave_up = tries >= TRIES
-        self._save(records, {'route': route_id, 'key': key, 'link': link, 'tries': tries, 'due': now + wait_after(tries), 'reason': reason, 'at': epoch_iso(now), 'gaveUp': gave_up})
+        gave_up = tries >= TRIES or isinstance(reason, Final)
+        self._save(records, {'route': route_id, 'key': key, 'link': link, 'tries': tries, 'due': now + wait_after(tries), 'reason': str(reason), 'at': epoch_iso(now), 'gaveUp': gave_up})
         if gave_up:
             log.warning('route %s gave up on %s after %d tries: %s', route_id, key, tries, reason)
 
@@ -568,8 +597,9 @@ class Routes:
             route = live.get(base_id(str(row.get('route') or '')))
             if route is None or not row.get('gaveUp') or row.get('link') != route.link:
                 continue
-            item = out.setdefault(route.id, {'id': route.id, 'plugin': self.runtime.plugin_name(route.plugin), 'route': route.name, 'count': 0, 'reason': ''})
+            item = out.setdefault(route.id, {'id': route.id, 'plugin': self.runtime.plugin_name(route.plugin), 'route': route.name, 'count': 0, 'reason': '', 'tries': 0})
             item['count'] += 1
+            item['tries'] = max(item['tries'], int(row.get('tries') or 0))
             item['reason'] = str(row.get('reason') or '')
         return list(out.values())
 
@@ -703,7 +733,9 @@ class Routes:
                 continue
             for card, post, r in mine:
                 self.unclaim(card, post)
-                if failed not in NOT_TRIED:
+                if isinstance(failed, Waiting):
+                    self._waits(records, r.id + suffix, r.link, a['key'], now, str(failed))
+                elif failed not in NOT_TRIED:
                     self._missed(records, r.id + suffix, r.link, a['key'], failed, now)
         if posted:
             self._changed()
@@ -779,8 +811,8 @@ class Routes:
         if records is None or failed == GONE:
             return
         for a in cards:
-            if failed == BUSY:
-                self._waits(records, route.id, route.link, a['key'], now)
+            if failed == BUSY or isinstance(failed, Waiting):
+                self._waits(records, route.id, route.link, a['key'], now, str(failed))
             else:
                 self._missed(records, route.id, route.link, a['key'], failed, now)
 

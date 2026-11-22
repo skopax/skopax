@@ -14,6 +14,9 @@ LEVELS = frozenset({'debug', 'info', 'warning', 'error', 'critical', 'exception'
 SELF_NAMES = frozenset({'self', 'cls'})
 AUTHORED_BASE = ('skopax.errkind', 'Authored')
 ALLOWED = {
+    'skopax/mail.py Mailer._mapped: builds MailDown from text in MailDown(text)': (2, "the text is msg('mailserver.refused') around the SMTP server's own reply code and words: reply_of drops the password, joins the whitespace, keeps printable characters only and cuts it to 160 characters"),
+    'skopax/mail.py Mailer._mapped: builds MailRefused from text in MailRefused(text)': (1, "the same SMTP reply text as the MailDown branch above, for a 5xx answer; reply_of drops the password, keeps printable characters only and cuts it to 160 characters"),
+    'skopax/mail.py Mailer._mapped: builds MailRefused from text in MailRefused(text, recipient=True)': (1, "the same SMTP reply text for a 5xx refusal of one recipient; reply_of drops the password, keeps printable characters only and cuts it to 160 characters"),
     'skopax/slack.py slowed: builds SlackSlowed from after in SlackSlowed(min(max(float(after), 1.0), RATE_WAIT_MAX_S))': (1, 'after is the Retry-After header of a Slack 429, parsed to a number of seconds and bounded; no exception text is used'),
     'skopax/slack.py Slack.post: str(e) in str(e)': (1, 'compares the Slack error code with channel_not_found to pick the fallback channel; the text is neither kept nor shown'),
     'skopax/slack.py Slack.react: str(e) in str(e)': (1, 'compares the Slack error code with already_reacted; the text is neither kept nor shown'),

@@ -69,7 +69,7 @@ def test_vwo_identity_and_manifest():
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert 'skopax.plugins.vwo' in BUILTIN and (loaded.state, loaded.reason) == ('ok', None)
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'vwo', 'VWO', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.5', 'community')
+        'vwo', 'VWO', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
     assert manifest['capabilities'] == {'hosts': ['app.wingify.com'], 'secrets': ['api-token'], 'agentReads': False}
     assert manifest['uses'] == [] and manifest['maxInstances'] is None and manifest['rules'] == [] and [s['key'] for s in manifest['settings']] == ['auto-resolve-hours'] and manifest['panels'] == []
     assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('wingify', 300, 225, ['wingify']), ('wingify-verdict', 3600, 1560, ['wingify-verdict'])]

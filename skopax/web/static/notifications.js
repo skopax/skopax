@@ -128,8 +128,63 @@ async function ntGo(n) {
   if (to.charAt(0) === '#') location.hash = to.slice(1);
   else if (to) location.href = to;
 }
+var NT_MAIL = {doc: null, timer: null};
+function ntMailNote(text) {
+  var n = document.getElementById('pf-mail-note');
+  if (!n) return;
+  clearTimeout(NT_MAIL.timer);
+  n.textContent = text;
+  n.className = 'acct-note' + (text ? ' bad' : '');
+  if (text) NT_MAIL.timer = setTimeout(function () { ntMailNote(''); }, 6000);
+}
+function ntMailRender() {
+  var sec = document.getElementById('pf-mail'), d = NT_MAIL.doc;
+  if (!sec) return;
+  sec.hidden = !d;
+  if (!d) return;
+  var on = document.getElementById('pf-mail-on'), row = document.getElementById('pf-mail-kinds'), box = row.querySelector('.pf-kinds');
+  on.checked = !!d.on;
+  on.disabled = !d.ready && !d.on;
+  on.onchange = function () { ntMailSave({on: on.checked, kinds: d.kinds && d.kinds.length ? d.kinds : d.all}); };
+  document.getElementById('pf-mail-to').textContent = d.email || '';
+  document.getElementById('pf-mail-none').hidden = !!d.ready;
+  row.hidden = !d.on;
+  box.textContent = '';
+  (d.all || []).forEach(function (k) {
+    var label = document.createElement('label'), box1 = document.createElement('input'), text = document.createElement('span');
+    box1.type = 'checkbox';
+    box1.value = k;
+    box1.checked = (d.kinds || []).indexOf(k) >= 0;
+    box1.disabled = !d.ready;
+    box1.onchange = function () {
+      var picked = [].slice.call(box.querySelectorAll('input:checked')).map(function (c) { return c.value; });
+      ntMailSave({on: true, kinds: picked});
+    };
+    text.textContent = NT_LABELS[k] || k;
+    label.appendChild(box1);
+    label.appendChild(text);
+    box.appendChild(label);
+  });
+}
+async function ntMailSave(next) {
+  ntMailNote('');
+  try {
+    NT_MAIL.doc = await ntApi('PUT', '/api/me/notice-mail', next);
+  } catch (e) {
+    ntMailNote('Not saved, try again');
+  }
+  ntMailRender();
+}
+async function ntMail(on) {
+  NT_MAIL.doc = null;
+  if (on) {
+    try { NT_MAIL.doc = await ntApi('GET', '/api/me/notice-mail'); } catch (e) { NT_MAIL.doc = null; }
+  }
+  ntMailRender();
+}
 function ntSignedIn(on) {
   NT.signed = !!on;
+  ntMail(!!on);
   if (!NT.ready) return;
   if (on) ntCount(); else ntShow(false);
 }

@@ -26,6 +26,8 @@ function histFirst(t) { return String(t || '').split('\n').map(function (x) { re
 var HIST_FIXED = {Investigator: 1, system: 1, signal: 1, rule: 1};
 function histTx(t) { return typeof tx === 'function' ? tx(t) : t; }
 function histLabel(id, names) { return (names && names[id]) || (typeof tagName === 'function' ? tagName(id) : id); }
+var ROUTE_POSTED = {teams: ['Posted to Teams', 'Sent to Teams'], email: ['Sent by email', 'Sent by email']};
+function routePosted(plugin) { var p = plugin || 'teams'; return ROUTE_POSTED[p] || ['Posted to ' + p, 'Sent to ' + p]; }
 function cardHistoryRows(c, data, runs, names) {
   c = c || {};
   data = data || {};
@@ -73,7 +75,7 @@ function cardHistoryRows(c, data, runs, names) {
   if (c.sevSet && c.sevSet.at && !acts.some(function (x) { return x.type === 'severity'; })) add(c.sevSet.at, histWho(c.sevSet.by), 'Severity changed', '', {kind: 'severity', from: histTx(HIST_SEV[c.sevSet.auto] || ''), to: histTx(HIST_SEV[c.sevSet.sev] || c.sevSet.sev)});
   var p = c.slackPost;
   if (p && p.at) add(p.at, histWho(p.by), 'Posted to Slack', '', {kind: 'slack', href: p.permalink && /^https:\/\//.test(p.permalink) ? p.permalink : ''});
-  (c.teamsPosts || []).forEach(function (t) { add(t.at, histWho(t.by), 'Posted to Teams', histLabel(t.route, names), {kind: 'teams'}); });
+  (c.teamsPosts || []).forEach(function (t) { add(t.at, histWho(t.by), routePosted(t.plugin)[0], histLabel(t.route, names), {kind: 'teams'}); });
   if (c.clearedAt) add(c.clearedAt, 'signal', 'Stopped firing', '', {kind: 'signal'});
   var again = acts.some(function (x) { return (x.doneAt || x.requestedAt || '') < (c.firstSeen || ''); }) || !!(c.seenBefore && c.seenBefore.count);
   if (c.firstSeen) add(c.firstSeen, 'signal', again ? 'Fired again' : 'Fired', '', {kind: 'signal'});

@@ -340,8 +340,8 @@ function adminBuiltIn(i, row) {
     var out = adminLeftOut(input ? input.value : i.value);
     list.textContent = '';
     all.forEach(function (h, n) {
-      var chip = accText('span', 'adm-chip' + (own.indexOf(h) >= 0 ? ' own' : '') + (out.indexOf(h) >= 0 ? ' removed' : ''), own.indexOf(h) >= 0 ? h + ' \u00b7 ' + tx('your domain') : h);
-      chip.title = out.indexOf(h) >= 0 ? tx('Left out by -{0}').replace('{0}', h) : own.indexOf(h) >= 0 ? tx('Your domain (from sign-in e-mail domains)') : '';
+      var chip = accText('span', 'adm-chip' + (own.indexOf(h) >= 0 ? ' own' : '') + (out.indexOf(h) >= 0 ? ' removed' : ''), own.indexOf(h) >= 0 ? h + ' \u00b7 ' + tx('your website') : h);
+      chip.title = out.indexOf(h) >= 0 ? tx('Left out by -{0}').replace('{0}', h) : own.indexOf(h) >= 0 ? tx('One of your websites') : '';
       chip.hidden = !open && n >= BUILT_SHOWN;
       list.appendChild(chip);
     });
@@ -355,6 +355,12 @@ function adminBuiltIn(i, row) {
   host.appendChild(box);
   paint();
 }
+function adminOwnFrom(i, row) {
+  var note = accText('p', 'adm-help adm-own-from', ''), hosts = (i.ownHosts || []).join(', ');
+  note.textContent = i.ownFrom === 'setting' ? tx('In use: the sites set here') : i.ownFrom === 'website' ? tx('In use: from the Website integration ({0})').replace('{0}', hosts) : tx('In use: none yet. Set Your websites or add a Website integration');
+  note.dataset.from = i.ownFrom;
+  (row.querySelector('.adm-c') || row).appendChild(note);
+}
 function adminRow(i, card) {
   var row = el('div', 'adm-row' + (i.source === 'admin' ? ' set' : '') + (card ? ' adm-field' : ''));
   row.dataset.key = i.key;
@@ -366,6 +372,7 @@ function adminRow(i, card) {
     (i.source === 'admin' ? '<button type="button" class="btn sec small adm-reset" title="' + esc('Drop the value set here and go back to ' + (i.base ? i.base : 'the default')) + '">Reset</button>' : '') +
     '<span class="adm-msg" role="status"></span></div></div>';
   if (i.builtIn && i.builtIn.length) adminBuiltIn(i, row);
+  if (i.ownFrom) adminOwnFrom(i, row);
   var chipIn = i.items && i.kind !== 'rules' ? row.querySelector('.adm-in') : null;
   if (chipIn && chipIn.tagName === 'INPUT') admChipsMount(chipIn, i.items, i.label);
   if (i.problem) {

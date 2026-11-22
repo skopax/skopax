@@ -1389,7 +1389,7 @@ class Store:
         except PyMongoError:
             pass
 
-    def add_notices(self, rows: list[dict], same_s: dict[str, int], now: dt.datetime | None = None) -> int:
+    def add_notices(self, rows: list[dict], same_s: dict[str, int], now: dt.datetime | None = None, saved: list[dict] | None = None) -> int:
         now = now or utc_now()
         fresh = []
         for row in rows:
@@ -1401,6 +1401,8 @@ class Store:
             fresh.append({'_id': new_id(), 'at': now, 't': iso(now), 'read': False, **row})
         if fresh:
             self.notices.insert_many(fresh)
+            if saved is not None:
+                saved.extend(fresh)
         return len(fresh)
 
     def notices_of(self, user: str, limit: int, before: str | None = None) -> list[dict]:
@@ -1410,7 +1412,7 @@ class Store:
             if edge is None:
                 return []
             query['$or'] = [{'at': {'$lt': edge['at']}}, {'at': edge['at'], '_id': {'$lt': before}}]
-        return [{k: v for k, v in _with_id(d).items() if k not in ('at', 'user')} for d in self.notices.find(query, sort=[('at', DESCENDING), ('_id', DESCENDING)], limit=min(limit, NOTICE_PAGE_MAX))]
+        return [{k: v for k, v in _with_id(d).items() if k not in ('at', 'user', 'to', 'named')} for d in self.notices.find(query, sort=[('at', DESCENDING), ('_id', DESCENDING)], limit=min(limit, NOTICE_PAGE_MAX))]
 
     def unread_notices(self, user: str) -> int:
         return self.notices.count_documents({'user': user, 'read': False})

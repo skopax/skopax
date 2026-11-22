@@ -7,7 +7,7 @@ from tests.fake_slack import FakeSlackApi
 from tests.test_engine import item, stored
 from tests.test_jiralinks import FakeJira, issue
 from tests.test_slack import FakeSlack
-from skopax import engine
+from skopax import engine, locales, messages, tagreport
 from skopax.app import create_app
 from skopax.assign import Assigner, slug
 from skopax.investigator import prompt
@@ -213,3 +213,122 @@ def test_slug_folds_letters_like_the_page():
     # then
     assert slug('\u0141ukasz \u00d8stergaard') == 'lukasz.ostergaard'
     assert slug('\u0141ukasz Stra\u00dfer') == 'lukasz.strasser'
+
+
+POST = {'channel': 'C1', 'ts': '1794300000.000100', 'at': '2026-11-10T09:00:00Z', 'by': 'pod'}
+
+
+def threaded_assign(store: Store, emails: dict, names: dict | None = None, ids: tagreport.SlackIds | None = None, fail: set | None = None):
+    t = FakeSlack()
+    store.save({**state(anomaly(KEY, num=14, slackPost=POST)), 'initialized': True}, None)
+    api = FakeSlackApi(emails, fail=fail)
+    api.names.update(names or {})
+    slack = Slack('xoxb-test', '#ops', t, api)
+    ids = ids or tagreport.SlackIds(slack)
+    notes = StateNotes(store, slack, mention=ids.mention, name_of=ids.name)
+    return Assigner(store, slack, settings(), BASE, notes), t, api, ids
+
+
+def note_texts(t: FakeSlack) -> list[str]:
+    return [p['text'] for _, p in t.calls if p.get('thread_ts')]
+
+
+def test_the_assigned_note_mentions_the_assignee_and_keeps_the_assigner_plain(store: Store):
+    # given
+    a, t, _, _ = threaded_assign(store, {'U1': NINA}, {'U1': 'Alice Smith'})
+
+    # when
+    a.assign(KEY, 'Alice Smith', NINA, PAUL)
+
+    # then
+    assert note_texts(t) == ['\U0001F464 Assigned: <@U1> \u00b7 assigned by paul.stone']
+    assert store.anomaly(KEY)['slackPost']['stateNote']['text'] == '\U0001F464 Assigned: Alice Smith \u00b7 assigned by paul.stone'
+
+
+def test_the_assigned_note_names_the_person_when_slack_has_no_such_user(store: Store):
+    # given
+    a, t, _, _ = threaded_assign(store, {})
+
+    # when
+    a.assign(KEY, 'Zoe <Hart>', 'zoe.hart@example.com', PAUL)
+
+    # then
+    assert note_texts(t) == ['\U0001F464 Assigned: Zoe &lt;Hart&gt; \u00b7 assigned by paul.stone']
+
+
+def test_the_assigned_note_uses_the_last_known_id_while_slack_is_down(store: Store):
+    # given
+    now = [0.0]
+    t0 = FakeSlack()
+    api = FakeSlackApi({'U1': NINA})
+    ids = tagreport.SlackIds(Slack('xoxb-test', '#ops', t0, api), ttl=10, clock=lambda: now[0])
+    assert ids.mention(NINA) == '<@U1>'
+    a, t, _, _ = threaded_assign(store, {'U1': NINA}, ids=ids)
+    api.fail.add('users.lookupByEmail')
+    now[0] = 100.0
+
+    # when
+    a.assign(KEY, 'Alice Smith', NINA, PAUL)
+
+    # then
+    assert note_texts(t) == ['\U0001F464 Assigned: <@U1> \u00b7 assigned by paul.stone']
+
+
+def test_a_lookup_failure_never_blocks_the_assigned_note(store: Store):
+    # given
+    a, t, _, _ = threaded_assign(store, {'U1': NINA}, fail={'users.lookupByEmail'})
+
+    # when
+    done = a.assign(KEY, 'Alice Smith', NINA, PAUL)
+
+    # then
+    assert done['thread'] is True and note_texts(t) == ['\U0001F464 Assigned: Alice Smith \u00b7 assigned by paul.stone']
+
+
+def test_the_assigner_is_never_mentioned_even_when_slack_knows_them(store: Store):
+    # given
+    a, t, _, _ = threaded_assign(store, {'U1': NINA, 'U2': PAUL}, {'U1': 'Alice Smith', 'U2': 'Paul Stone'})
+
+    # when
+    a.assign(KEY, 'Alice Smith', NINA, PAUL)
+
+    # then
+    [text] = note_texts(t)
+    assert '<@U2>' not in text and 'assigned by paul.stone' in text and '<@U1>' in text
+
+
+def test_a_guessed_address_is_mentioned_only_when_the_slack_name_matches(store: Store):
+    # given
+    a, t, _, _ = threaded_assign(store, {'U1': NINA}, {'U1': 'Someone Else'})
+
+    # when
+    a.assign(KEY, 'Alice Smith', None, PAUL)
+
+    # then
+    assert note_texts(t) == ['\U0001F464 Assigned: Alice Smith \u00b7 assigned by paul.stone']
+
+
+def test_the_unassigned_note_has_no_mention(store: Store):
+    # given
+    a, t, _, _ = threaded_assign(store, {'U1': NINA}, {'U1': 'Alice Smith'})
+    a.assign(KEY, 'Alice Smith', NINA, PAUL)
+
+    # when
+    a.assign(KEY, None, None, PAUL)
+
+    # then
+    assert note_texts(t)[-1] == '\U0001F464 Unassigned: paul.stone'
+
+
+def test_the_translated_assigned_note_keeps_working_with_the_mention(store: Store):
+    # given
+    pack = next(locale for locale in locales.packs() if locale.lang == 'tr')
+    messages.set_catalogs([('tr', pack.messages)])
+    a, t, _, _ = threaded_assign(store, {'U1': NINA}, {'U1': 'Alice Smith'})
+
+    # when
+    with messages.speaking('tr'):
+        a.assign(KEY, 'Alice Smith', NINA, PAUL)
+
+    # then
+    assert note_texts(t) == [pack.messages['notes.state.assigned'].format(name='<@U1>') + pack.messages['notes.state.assigned_by'].format(who='paul.stone')]

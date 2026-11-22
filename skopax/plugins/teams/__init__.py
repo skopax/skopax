@@ -52,7 +52,7 @@ def test(ctx: Context) -> TestResult:
 PLUGIN = Plugin(
     id=ID, name='Microsoft Teams', version='0.1.0', category='chat',
     description='Posts the cards a route takes to a Microsoft Teams channel through the Workflows URL configured for it.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.5', edition='community', capabilities=Capabilities(hosts=(), secrets=('webhook',)),
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community', capabilities=Capabilities(hosts=(), secrets=('webhook',)),
     fields=(Field('webhook', 'Webhook', 'secret', required=True, help='The https address Teams Workflows gives for posting to the channel; it is kept secret.'),
             Field('tags', 'Card tags', 'text', help='Comma list of card tags this route takes, such as seo, developer. A route needs card tags or card keys.'),
             Field('mentions', 'Mentions', 'text', help='Comma list of email addresses mentioned in each post.'),

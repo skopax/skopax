@@ -132,6 +132,7 @@ class Sources:
     link_hosts: Callable[[], tuple[str, ...]] | None = None
     org: Callable[[], dict] | None = None
     bridge: object = None
+    own_sites: Callable[[], tuple[str, ...]] | None = None
 
 
 class Unbridged:

@@ -36,6 +36,7 @@ SSO_CLIENT_AUTH = ('auto', 'post', 'basic')
 SSO_BUTTON_ICONS = ('auto', 'company', 'none')
 SSO_BUTTON_TEXT_MAX = 40
 SSO_NEW_ACCOUNTS = ('anyone', 'added-only')
+OWN_SITE = re.compile(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}')
 DOMAIN = re.compile(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', re.IGNORECASE)
 RELEASE_NAME = '{project} {yyyy}-{mm}-{dd}'
 RELEASE_PLACEHOLDER = re.compile(r'\{([^{}]*)\}')
@@ -248,6 +249,7 @@ class Settings:
     org_about: str = ''
     link_hosts: tuple[str, ...] = ()
     email_domains: tuple[str, ...] = ()
+    own_sites: tuple[str, ...] = ()
     self_project: str = ''
     self_log_index: str = ''
     self_deploy: str = ''
@@ -271,6 +273,13 @@ class Settings:
 
 def csv_of(raw: str) -> tuple[str, ...]:
     return tuple(p for p in (part.strip() for part in (raw or '').split(',')) if p)
+
+
+def own_sites_of(raw: str) -> tuple[str, ...]:
+    entries = tuple(dict.fromkeys(p.lower() for p in re.split(r'[\s,]+', raw or '') if p))
+    for wrong in (p for p in entries if not OWN_SITE.fullmatch(p)):
+        log.warning(msg('config.own_sites_invalid', entry=repr(wrong[:80])))
+    return tuple(p for p in entries if OWN_SITE.fullmatch(p))
 
 
 def bad_domains(entries: tuple[str, ...]) -> list[str]:
@@ -692,6 +701,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         org_about=org_about,
         link_hosts=csv_of(get('core.link-hosts', 'SKOPAX_LINK_HOSTS', '')),
         email_domains=csv_of(get('core.email-domains', 'SKOPAX_EMAIL_DOMAINS', '')),
+        own_sites=own_sites_of(get('core.own-sites', 'SKOPAX_OWN_SITES', '')),
         self_project=get('core.self-project', 'SKOPAX_SELF_PROJECT', '').strip(),
         self_log_index=get('core.self-log-index', 'SKOPAX_SELF_LOG_INDEX', '').strip(),
         self_deploy=get('core.self-deploy', 'SKOPAX_SELF_DEPLOY', '').strip(),

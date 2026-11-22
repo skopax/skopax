@@ -63,7 +63,7 @@ def test(ctx: Context) -> TestResult:
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='other',
     description='Preview, not yet tried on a live tenant. Searches and reads one SharePoint or OneDrive folder of company knowledge, such as runbooks, postmortems and design notes, read only and cited with links.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.2,<0.5', edition='community',
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.2,<0.6', edition='community',
     capabilities=Capabilities(hosts=('@site', LOGIN_HOST, GRAPH_HOST), secrets=('client-secret',)),
     client=make_client, max_instances=MAX_INSTANCES,
     fields=(Field('tenant-id', TENANT, 'text', required=True, check=guid_problem(TENANT),

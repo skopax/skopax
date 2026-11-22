@@ -424,3 +424,31 @@ def test_the_background_messages_finish_when_the_app_stops(store: Store):
     # then
     assert told == ['log|a']
     assert threads == []
+
+
+def test_an_auto_assigned_person_gets_the_assigned_notice_and_the_mail_they_opted_into(store: Store, monkeypatch):
+    # given
+    from tests.mail_kit import CONFIG, faked
+    from skopax import mail
+    from skopax.mail import Mailer
+    smtp = faked(monkeypatch)
+    monkeypatch.setattr(mail, 'mailer', lambda runtime: Mailer(CONFIG))
+    team(store)
+    Users(store.db).update(NINA, {'mailNotices': {'on': True, 'kinds': ['assigned']}})
+    store.set_tag_owners('developer', [NINA, OSCAR])
+    store.save(state(card('log|a'), card('log|b')), None)
+
+    # when
+    with TestClient(create_app(settings(), store)) as c:
+        jobs = inline(c.app)
+        done = c.app.state.auto_assign.sweep(store.load()['anomalies'])
+        run(jobs)
+
+    # then
+    assert done == ['log|a', 'log|b']
+    nina = [n for n in store.notices_of('nina.white', 10) if n['kind'] == 'assigned']
+    oscar = [n for n in store.notices_of('oscar.green', 10) if n['kind'] == 'assigned']
+    assert [n['key'] for n in nina] == ['log|a'] and [n['key'] for n in oscar] == ['log|b']
+    assert smtp.made == [], 'nothing is sent inside the pass'
+    queued = list(store.db['notice_mail'].find({}, {'email': 1, 'kind': 1, '_id': 0}))
+    assert queued == [{'email': NINA, 'kind': 'assigned'}]

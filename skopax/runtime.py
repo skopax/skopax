@@ -29,7 +29,7 @@ from skopax.redact import SlowRules, redact_text
 from skopax.instances import (ADMIN, AGENT_PLUGIN, REFRESH_S, Instance, InstanceMissing, Instances, InvalidInstance, PluginState, address_owners, agent_fields, checks_off, effective_fields,
                               hub_problem, merged_values, moved_addresses, validate, visible)
 from skopax.registry import Registry, field_view, problem
-from skopax.routes import Route, route_of
+from skopax.routes import Parsed, Route, route_of
 from skopax.sections import plugin_of, stored_rows
 from skopax.remote import Transport
 
@@ -1170,7 +1170,7 @@ class Runtime:
             if plugin.outbound is None:
                 continue
             for item in items:
-                parsed = route_of(plugin, item)
+                parsed = self._route(plugin, item)
                 if parsed.unknown:
                     self._warn(('route-tags', plugin.id, item.name, parsed.unknown), 'plug-in %s: route %s takes %s, which no card can carry; the tags are %s',
                                plugin.id, item.name, ', '.join(parsed.unknown), ', '.join(tags.all_tags()))
@@ -1183,8 +1183,18 @@ class Runtime:
                 out.append(parsed.route)
         return sorted(out, key=lambda r: (r.plugin, r.instance))
 
+    def _route(self, plugin: Plugin, item: Instance) -> Parsed:
+        parsed = route_of(plugin, item)
+        if parsed.route is None or plugin.outbound.ready is None:
+            return parsed
+        try:
+            problem = plugin.outbound.ready(self.context(plugin, item, time.time()))
+        except Exception as e:
+            problem = kind(e)
+        return parsed if problem is None else dataclasses.replace(parsed, route=None, problem=str(problem))
+
     def route_problem(self, plugin: Plugin, item: Instance) -> str | None:
-        return None if plugin.outbound is None else route_of(plugin, item).problem
+        return None if plugin.outbound is None else self._route(plugin, item).problem
 
     def locales(self) -> list[tuple[str, Locale]]:
         return [(plugin.id, locale) for plugin in self._plugins() for locale in self._valid(plugin, 'locales')]

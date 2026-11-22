@@ -1,8 +1,10 @@
 import logging
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from skopax.ai import FETCH_TYPE, SEARCH_TYPE
+from skopax.kit.web import host_list, host_of, under
 
 log = logging.getLogger('skopax.investigator.web')
 
@@ -13,6 +15,8 @@ FETCH_TOKENS = 20_000
 OFF_WORDS = ('off', 'none', 'false', 'no')
 ANY = 'any'
 MAX_SITES = 100
+OWN_SETTING, OWN_WEBSITE, OWN_NONE = 'setting', 'website', 'none'
+WEBSITE_PLUGIN = 'website'
 DOMAIN = re.compile(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}')
 DOMAINS = ('support.google.com', 'developers.google.com', 'firebase.google.com', 'cloud.google.com', 'status.cloud.google.com', 'blog.google',
            'developer.apple.com', 'developer.android.com', 'developers.cloudflare.com', 'cloudflarestatus.com',
@@ -40,6 +44,22 @@ class Web:
 def own_domains(*groups) -> tuple[str, ...]:
     found = [str(d).strip().lower() for group in groups for d in (group or ())]
     return tuple(dict.fromkeys(d for d in found if DOMAIN.fullmatch(d)))
+
+
+def website_hosts(values: Iterable[Mapping[str, str]]) -> tuple[str, ...]:
+    found = []
+    for config in values:
+        logins = tuple(host_list(config.get('login-hosts')))
+        found += [h for h in (host_of(config.get('url') or ''), *host_list(config.get('hosts'))) if h and not under(h, logins)]
+    return own_domains(found)
+
+
+def own_sites_of(setting, website_values: Iterable[Mapping[str, str]] = ()) -> tuple[tuple[str, ...], str]:
+    own = own_domains(setting)
+    if own:
+        return own, OWN_SETTING
+    fallback = website_hosts(website_values)
+    return (fallback, OWN_WEBSITE) if fallback else ((), OWN_NONE)
 
 
 def built_in(own: tuple[str, ...] = ()) -> tuple[str, ...]:

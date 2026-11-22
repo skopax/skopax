@@ -83,7 +83,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='marketing', description='A/B tests that start, stop or change, and the results VWO itself decided on, read from the VWO API.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.5', edition='community',
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community',
     capabilities=Capabilities(hosts=('app.wingify.com',), secrets=('api-token',)),
     fields=(Field('api-token', 'API token', 'secret', required=True, help=f'A VWO API token. {PERMISSION} is enough: nothing is ever changed.'),
             Field('account-id', 'Account id', 'text', default='current', help='The VWO account number, or current for the account the token belongs to.')),

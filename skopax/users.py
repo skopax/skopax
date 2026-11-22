@@ -220,7 +220,7 @@ def admin_row(doc: dict | None, now: float) -> dict | None:
     since = held.get('atTs') if waiting else None
     expires = clock.stamp(since + LINK_PENDING_S) if isinstance(since, (int, float)) and not isinstance(since, bool) else None
     shown = {'state': state, 'boundAt': held.get('boundAt'), 'allowedAt': allowed, 'expiresAt': expires} if isinstance(held, dict) else None
-    return {k: v for k, v in doc.items() if k not in ('pw', 'ssoLink', PW_GEN)} | {'ssoLink': shown, 'nameFrom': name_from(doc)}
+    return {k: v for k, v in doc.items() if k not in ('pw', 'ssoLink', PW_GEN, 'mailNotices')} | {'ssoLink': shown, 'nameFrom': name_from(doc)}
 
 
 def password_admin(doc: dict | None) -> bool:
