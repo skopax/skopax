@@ -367,6 +367,8 @@ async function aHeldPostCountsOnActivityNotOnNotifications() {
   assert.ok(!/not posted/.test(held.doc.getElementById('tab-slack').title), 'nor in its tooltip');
   assert.strictEqual(held.doc.querySelectorAll('#panel-acts #slackq tbody tr:not(.empty)').length, 1, 'the held post is listed on Activity');
   assert.ok(!/not posted/.test(none.doc.getElementById('count-acts').textContent), 'no count without a held post');
+  assert.ok(held.doc.getElementById('tab-acts').classList.contains('k-warn'), 'a held post turns Activity to the warning colour: ' + held.doc.getElementById('tab-acts').className);
+  assert.ok(!none.doc.getElementById('tab-acts').classList.contains('k-warn'), 'no warning colour without a held post');
   assert.deepStrictEqual(held.errors.concat(none.errors), []);
   held.w.close(); none.w.close();
   return 'one held post shows its count on Activity and not on Notifications';

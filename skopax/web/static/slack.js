@@ -35,6 +35,8 @@ function actsHeldMark() {
   var n = sqDrafts().length;
   c.textContent = c.dataset.base + (n ? ' \u00b7 ' + n + ' not posted' : '');
   tab.title = tab.dataset.base + (n ? (tab.dataset.base ? ' \u00b7 ' : '') + n + ' not posted' : '');
+  tab.classList.toggle('k-warn', n > 0);
+  tab.classList.toggle('k-act', n === 0);
 }
 function renderSlackSent() {
   var tb = document.querySelector('#slack-sent tbody');
