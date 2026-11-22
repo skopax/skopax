@@ -151,8 +151,9 @@ class Investigator:
         return self.box.get()
 
     def own_domains(self) -> tuple[str, ...]:
-        org = self.sources.org() if self.sources.org is not None else {}
-        return own_web_domains(self.settings.email_domains, (org or {}).get('email_domains'))
+        if self.sources.own_sites is not None:
+            return own_web_domains(self.sources.own_sites())
+        return own_web_domains(self.settings.own_sites)
 
     @property
     def chat_effort(self) -> str:

@@ -364,6 +364,8 @@ class Outbound:
     link_field: str | None = None
     keys_field: str | None = None
     sev_field: str | None = None
+    target_field: str | None = None
+    ready: Callable[['Context'], str | None] | None = None
 
 
 ECHO_FIELD = 'slack-echo'

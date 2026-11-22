@@ -175,7 +175,7 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 PLUGIN = Plugin(
     id=ID, name='Argo CD', version='0.1.0', category='infrastructure', description='Argo CD applications that stay out of sync or unhealthy, read from the Argo CD API or the cluster.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.5', edition='community',
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community',
     capabilities=Capabilities(hosts=('@url', 'kubernetes.default.svc'), secrets=('token',)),
     fields=(Field('mode', 'Mode', 'choice', required=True, default='api', choices=('api', 'in-cluster'), choice_labels={'api': 'Argo CD API', 'in-cluster': 'This cluster'},
                   help='Read through the Argo CD API with a token, or read the Application objects of the cluster this service runs in.'),

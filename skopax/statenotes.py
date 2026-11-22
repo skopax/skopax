@@ -12,7 +12,7 @@ from skopax.jiralinks import site_of
 from skopax.actors import POD_BY, SYSTEM, investigator_label, is_token, token_label
 from skopax.messages import msg
 from skopax.redact import redact
-from skopax.slack import Slack, cut_words, esc, reason_of
+from skopax.slack import Slack, cut_words, esc, reason_of, same_person
 from skopax.store import Store, glob_match, iso, utc_now
 
 log = logging.getLogger('skopax.statenotes')
@@ -91,8 +91,8 @@ def auto_event_text(hours: int, business: bool = False) -> str:
     return msg('notes.state.auto_event', span=note_span(hours, business))
 
 
-def assigned_text(name: str, who: str) -> str:
-    return msg('notes.state.assigned', name=esc(name)) + (msg('notes.state.assigned_by', who=esc(who)) if who and who != name else '')
+def assigned_text(name: str, who: str, mention: str | None = None) -> str:
+    return msg('notes.state.assigned', name=mention or esc(name)) + (msg('notes.state.assigned_by', who=esc(who)) if who and who != name else '')
 
 
 def unassigned_text(who: str) -> str:
@@ -147,8 +147,11 @@ def merged(card: dict, by_key: dict) -> bool:
 
 
 class StateNotes:
-    def __init__(self, store: Store, slack: Slack, flag: bool = True, clock: Callable[[], float] = time.time, jira_site: str | Callable[[], str] = ''):
+    def __init__(self, store: Store, slack: Slack, flag: bool = True, clock: Callable[[], float] = time.time, jira_site: str | Callable[[], str] = '',
+                 mention: Callable[[str], str | None] = lambda email: None, name_of: Callable[[str], str] = lambda email: ''):
         self.store = store
+        self.mention = mention
+        self.name_of = name_of
         self.jira_site = jira_site
         self.slack = slack
         self.flag = flag
@@ -207,13 +210,30 @@ class StateNotes:
     def jira_closed(self, key: str, ticket: str, status: str) -> None:
         self._note(key, 'handled', closed_text(ticket, status, self.jira_url))
 
-    def assigned(self, key: str, name: str | None, by: str) -> bool:
+    def assigned(self, key: str, name: str | None, by: str, email: str | None = None, sure: bool = True) -> bool:
         who = who_of(by)
         card = self._card(key)
         if card is None:
             return False
-        self._send(card, 'assigned', assigned_text(who_of(name), who) if name else unassigned_text(who), who)
+        if not name:
+            self._send(card, 'assigned', unassigned_text(who), who)
+            return True
+        shown_name = who_of(name)
+        flat = assigned_text(shown_name, who)
+        self._send(card, 'assigned', assigned_text(shown_name, who, self._mention(name, email, sure)), who, flat)
         return True
+
+    def _mention(self, name: str, email: str | None, sure: bool) -> str | None:
+        if not email:
+            return None
+        try:
+            found = self.mention(email)
+            if found and not sure and not same_person(name, self.name_of(email)):
+                return None
+            return found
+        except Exception as e:
+            log.warning('the assignee mention for %s was skipped: %s', email, error_kind(e))
+            return None
 
     def jira_linked(self, key: str, ticket: str, owner: str | None) -> None:
         self._note(key, 'progress', progress_text(shown(owner or SYSTEM), ticket, self.jira_url), owner or SYSTEM)
@@ -261,10 +281,12 @@ class StateNotes:
             return msg('notes.state.reopened', who=esc(who), card=esc(f"#{card['num']}" if card.get('num') else card_name(card)))
         return muted_text(who, action.get('hours') or DEFAULT_MUTE_HOURS)
 
-    def _send(self, card: dict, kind: str, text: str, who: str) -> None:
+    def _send(self, card: dict, kind: str, text: str, who: str, flat: str | None = None) -> None:
         key, post = card['key'], card['slackPost']
+        flat = text if flat is None else flat
         if self._shared(card):
-            text = f'*{esc(card_name(card))}* · {text}'
+            head = f'*{esc(card_name(card))}* \u00b7 '
+            text, flat = head + text, head + flat
         try:
             sent = self.slack.post({'channel': post['channel'], 'thread_ts': post['ts'], 'text': text})
         except Exception as e:
@@ -272,7 +294,7 @@ class StateNotes:
             self.store.add_activity('slack', 'server', f'status note not sent \u00b7 {key} \u00b7 {reason_of(e)}', key=key)
             return
         sent = self.slack.linked(sent, post['ts'])
-        note = {'state': kind, 'text': plain(text), 'at': iso(utc_now()), 'by': who, 'ts': sent.get('ts'), **({'permalink': sent['permalink']} if sent.get('permalink') else {})}
+        note = {'state': kind, 'text': plain(flat), 'at': iso(utc_now()), 'by': who, 'ts': sent.get('ts'), **({'permalink': sent['permalink']} if sent.get('permalink') else {})}
         try:
             self.store.slack_state_noted(key, post['ts'], note)
         except Exception as e:

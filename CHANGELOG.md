@@ -2,6 +2,29 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.0 (2026-11-22)
+
+Email: a Mail server integration, Email routes that mail cards to a list, and personal notification mail, off until each person turns it on. The Assigned note in a card's Slack thread mentions the assignee, and the investigator's own websites come from a setting of their own instead of sign-in email domains.
+
+**Upgrade notes:**
+
+- A plug-in of your own whose `core` range ends at `<0.5` is listed as incompatible and does not load on 0.5.0. Widen it to `<0.6`; the plug-in contract only gained optional fields, so nothing else needs to change. The built-in and example plug-ins now declare `<0.6`.
+- Sign-in email domains no longer count as your websites. Set Your websites in Admin > Investigator > Web (`core.own-sites`, `SKOPAX_OWN_SITES`), or rely on the sites of your Website integrations, which are used when it is empty. Sign-in is not affected. A value with a scheme, path or port in `SKOPAX_OWN_SITES` stops the start with a message that names it.
+- Nothing is mailed until an admin adds a Mail server integration. Personal notification mail stays off for every person until they turn it on.
+
+**Added:**
+
+- Mail server plug-in (Connect > Integrations): sends email through your SMTP server with STARTTLS, TLS, or plain text to a private address only. Test connection signs in and says in plain words what failed, without sending a mail. One instance per install. See [Set up email](docs/setup.md#set-up-email), which also covers Microsoft 365.
+- A shared mail sender for core and plug-ins (`skopax.mail`): one layout for card mails in plain text and HTML that reads the same in light and dark mail clients, in the outbound language, with auto-generated headers and header-injection and address checks.
+- Email plug-in: each instance is a route that mails the cards it takes to a list of up to 50 addresses, one mail per address, with the same card tags, card keys, lowest severity, repeat days, retries and Slack echo as Teams routes. A refused sign-in at the mail server is tried again later instead of costing one sign-in per address. The card page says "Sent by email" for these posts.
+- Personal notification mail: each person can turn on "Email me my notifications" in Preferences > Email and pick the kinds. Mail goes only to the address of their own account, at most 20 an hour and then one summary, is tried again for up to 24 hours while the mail server is down, and is sent once across pods.
+- Your websites (`core.own-sites`, `SKOPAX_OWN_SITES`) in Admin > Investigator > Web: the sites of your company the investigator may read and search, as host names. The row says which source is in use.
+
+**Changed:**
+
+- The Assigned note in a card's Slack thread mentions the assignee, by their Slack id or by name when Slack has no match; the person who assigned stays plain text.
+- Route plug-ins may name a target that is not a link (`Outbound.target_field`), say when they cannot post yet (`Outbound.ready`), and answer a `reason`, `retry: False` and `progress: True`. A refused post is then given up at once instead of after six tries, and the notice says how many tries were made.
+
 ## 0.4.12 (2026-11-22)
 
 The 0.4.11 changes, published as an image. 0.4.11 was tagged but its image was never published: the release scan found two High findings in libc6 from the base image.

@@ -2,6 +2,7 @@ var CHIP_KINDS = {
   'email': {re: /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/, why: 'Not an e-mail address', hint: 'Type an e-mail address and press Enter or comma'},
   'host': {re: /^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i, strip: '.', why: 'Not a host name; *.example.com covers only subdomains', hint: 'Type a host name and press Enter or comma'},
   'web-host': {re: /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i, why: 'Not a host name such as support.google.com; a host covers its subdomains', hint: 'Type a host name and press Enter or comma'},
+  'own-site': {re: /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i, why: 'Not a host name such as example.com; leave out https://, any path and any port', hint: 'Type a host name and press Enter or comma'},
   'domain': {re: /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i, why: 'Not a domain such as example.com', hint: 'Type a domain and press Enter or comma'},
   'slack-user-id': {re: /^[UW][A-Z0-9]{6,14}$/, why: 'Not a Slack user id such as U012ABCDE', hint: 'Type a Slack user id and press Enter or comma'},
   'client-id': {re: /^[^\s,]{1,200}$/, why: 'A client id has no spaces or commas', hint: 'Type a client id and press Enter or comma'},
@@ -39,7 +40,7 @@ function admChipsGate(scope) {
   });
 }
 function chipItems(value, spec) {
-  var sep = spec.minus ? /[\s,]+/ : spec.separator === ' ' ? /\s+/ : /\s*,\s*/;
+  var sep = spec.minus || spec.loose ? /[\s,]+/ : spec.separator === ' ' ? /\s+/ : /\s*,\s*/;
   return String(value || '').split(sep).map(function (s) { return s.trim(); }).filter(Boolean);
 }
 function chipText(items, spec) { return items.join(spec.separator === ' ' ? ' ' : ', '); }

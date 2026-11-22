@@ -14,6 +14,8 @@ The sidebar groups the pages. Board, Requests, Chat and Investigator come first.
 
 Each page has its own link, such as `#t=anoms` for the Board, which opens that page from a bookmark or a Slack message. The Board opens on the Open filter: `#t=anoms` and `#t=anoms/open` show the open cards, and `#t=anoms/all` shows every card. Copy link on a filtered Board writes the filter into the link, leaving it out only for Open.
 
+The Notifications page (the bell in the top bar) lists what happened on the cards you hold and on your chat answers: assigned to you, in progress, resolved, auto-resolved, fired again, reminders and the other kinds it names. Preferences > Email lets each signed-in person get these by email too. The switch Email me my notifications is off by default; once it is on, a checkbox per notification kind, named as on the Notifications page, picks which kinds are mailed. The mail goes to the address of your account, shown read-only, for SSO and local accounts alike, and never to a disabled account. Without an enabled [Mail server](plugins.md#mail-server) the switch is disabled and the section says your admin has not set one up. Each person sets only their own choice (`GET` and `PUT /api/me/notice-mail`, signed-in session only, no API token); admins cannot change it for someone else. The mails go out from a background job within about a minute, never from the request that made the notification, in the outbound language, one mail per notification with the card, its link and a footer that says why it came and links Preferences. At most 20 go to a person in each clock hour; the rest are held and one mail, "N more notifications", goes out when the hour ends. A mail server that is down is retried with a growing wait for up to 24 hours, then the mail is dropped with a log line. A mail the server refuses for that address is dropped; when the server refuses every mail, for example a failed sign-in, the mails wait and are retried the same way. A mail goes only to the exact address of the account the notification is for: when only a short name is known and two accounts share it, or the card names its person only by display name, no mail is sent. With several pods each mail is sent once.
+
 The Chat page answers questions about prod from the connected integrations, such as metrics and logs, and names what it read. It needs Chat on in [Feature switches](#feature-switches).
 
 <picture>
@@ -108,6 +110,24 @@ A workspace here means a whole deployment, such as a staging copy; it is not a p
 The first card appears within a minute. `PROMETHEUS_URL` in the environment adds the same instance without an Admin step.
 
 Test connection against a stored instance reuses its saved secrets. If you change the URL first, the test asks you to enter the secret again, because stored secrets are not sent to a new address.
+
+## Set up email
+
+Skopax sends email in two ways, both through one Mail server integration: an Email route mails cards to a list, and each person can have their own notifications mailed to them. Nothing is mailed until a Mail server is set up.
+
+1. **Connect the mail server.** Open Connect > Integrations, choose "+ Add integration" > Mail server, and fill in Host, Port, Security and From (see [Mail server](plugins.md#mail-server) for every field). Choose Test connection, then Save & turn on. Test connection signs in and checks the server answers; it does not send a mail.
+2. **Mail cards to a list.** Choose "+ Add integration" > Email. Fill in Recipients with 1 to 50 addresses and pick the cards with Card tags, Card keys or both, such as the tag `developer` with Lowest severity Warning. Each address gets a mail of its own. The address of a Microsoft Teams channel works too: the card then shows as a post in that channel (see [Email](plugins.md#email)).
+3. **Mail your own notifications.** Each person opens Preferences > Email, switches on Email me my notifications and picks the kinds (see [The page](#the-page)). It is off for everyone until they switch it on, and mail goes only to the address of their own account.
+
+### Microsoft 365
+
+Microsoft turns off SMTP sign-in with a password for every tenant by default from the end of December 2026, so a mailbox with a username and password is not a lasting setup. Send through a connector instead:
+
+1. In the Exchange admin center, open Mail flow > Connectors and add a connector from "Your organization's email server" to "Office 365". Have it recognise Skopax by the static public IP address its mail leaves from, and require TLS.
+2. In Skopax, set Host to the MX host of your domain, such as `example-com.mail.protection.outlook.com`, Port `25`, Security `starttls`, and leave Username and Password empty. Set From to an address of your own domain, such as `alerts@example.com`.
+3. Choose Test connection. If mails are then refused for the sender, the connector does not see the IP address Skopax sends from.
+
+To mail a Teams channel, open Get email address on the channel in Teams and, under its advanced settings, allow mail from your own domain; otherwise Teams drops the mail without an answer.
 
 ## Deploys and deploy reports
 

@@ -75,7 +75,7 @@ def test_gitlab_identity_and_manifest():
     assert (loaded.state, loaded.reason) == ('ok', None) and 'skopax.plugins.gitlab' in BUILTIN
     assert Registry.load({}, entry_points=False).get('gitlab').state == 'ok'
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition'], manifest['maxInstances']) == (
-        'GitLab', '0.1.0', 'code', 'Skopax', 'Apache-2.0', '>=0.1,<0.5', 'community', 1)
+        'GitLab', '0.1.0', 'code', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community', 1)
     assert manifest['capabilities'] == {'hosts': ['@url'], 'secrets': ['token'], 'agentReads': False} and manifest['uses'] == []
     assert [(f['key'], f['kind'], f['required'], f['ui']) for f in manifest['fields']] == [('url', 'url', True, True), ('token', 'secret', True, False), ('group', 'text', True, False), ('ca', 'pem', False, False), ('ca-pinned', 'bool', False, False)]
     assert {t.name: (t.per_run, t.scan) for t in gitlab.PLUGIN.tools} == TOOLS

@@ -21,7 +21,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
         ('Models', ('investigate.model', 'investigate.effort', 'investigate.slack-model', 'investigate.slack-effort', 'chat.model', 'chat.effort', 'investigate.gate-model', 'investigate.gate-effort')),
         ('Spend and limits', ('investigate.daily-usd', 'page.ask-cap', 'chat.max-chars', 'chat.daily-cap', 'mcp.dive-cap', 'investigate.max-cards', 'investigate.rooms',
                               'investigate.max-tool-calls', 'investigate.assess-max-tool-calls', 'investigate.slack-max-tool-calls', 'chat.max-tool-calls', 'screenshot.max-per-day')),
-        ('Web', ('investigate.web-domains', 'investigate.web-searches', 'investigate.web-fetches')),
+        ('Web', ('core.own-sites', 'investigate.web-domains', 'investigate.web-searches', 'investigate.web-fetches')),
         ('Behaviour', ('investigate.mode', 'investigate.language', 'investigate.refire-hours', 'investigate.strict-tools', 'core.org-about', 'mcp.wait-seconds')),
     ),
     'Slack': (

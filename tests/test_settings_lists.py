@@ -21,6 +21,7 @@ LISTS = {
     'core.cert-skip': {'kind': 'host', 'separator': ','},
     'sso.scope': {'kind': 'scope', 'separator': ' '},
     'investigate.web-domains': {'kind': 'web-host', 'separator': ',', 'keywords': ['any', 'off', 'none', 'false', 'no']},
+    'core.own-sites': {'kind': 'own-site', 'separator': ','},
 }
 SAMPLES = {
     'mcp.allowed-clients': 'cli-one, cli-two',
@@ -32,6 +33,7 @@ SAMPLES = {
     'core.cert-skip': 'shop.example.com, *.example.com',
     'sso.scope': 'openid profile email',
     'investigate.web-domains': 'example.com, -blog.google',
+    'core.own-sites': 'example.com, shop.example.org',
 }
 
 

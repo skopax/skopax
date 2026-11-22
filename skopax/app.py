@@ -30,7 +30,7 @@ from pymongo.errors import DuplicateKeyError, OperationFailure, PyMongoError
 from starlette.concurrency import run_in_threadpool
 
 from skopax.cardlink import card_url, chat_url
-from skopax.investigator.web import own_domains as web_own_domains
+from skopax.investigator.web import WEBSITE_PLUGIN, own_sites_of
 from skopax.cardposts import CardPosts, REDRAW_MARK, drawn_sig
 from skopax.codehosts import CodeHosts
 from skopax.auth import LOGIN_COOKIE, LOGIN_SECONDS, SESSION_COOKIE, bearer_token, safe_next
@@ -93,11 +93,13 @@ from skopax.settle import Settle, ignore_doc, ignored
 from skopax.slackevents import Clicks, Intake, Listener, Replier, TicketRefused, socket_client, way_in
 from skopax.clearnotes import ClearNotes
 from skopax.notices import Notices
+from skopax import mail as mail_out, noticemail
+from skopax.noticemail import NoticeMail
 from skopax.versioncheck import OFFSET_S as VERSION_OFFSET, PERIOD_S as VERSION_PERIOD, START_DELAY_S as VERSION_START_DELAY, VersionCheck, jitter_of
 from skopax.reminders import Reminders
 from skopax import tagreport
 from skopax.routes import TRIES, Echo, Refused as RouteRefused, Routes
-from skopax.models import RouteSendIn, SsoIn, SsoTestIn
+from skopax.models import NoticeMailIn, RouteSendIn, SsoIn, SsoTestIn
 from skopax.statenotes import StateNotes, who_of
 from skopax.slack import stopped_who, thread_why, anomaly_message, fix_hash, fix_message, AUTO_BY, same_person, built_link, cut, esc, esc_keep_mentions, link_addresses, menu_kinds, NoThread, opening, public_hosts, reason_of, recurring_line, report_message, Slack, SlackError, SECTION_LIMIT
 from skopax.setup import BadCode, SetupDone, SetupGate, render_form
@@ -513,7 +515,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     live = Live(settings, TunableStore(db), extra=lambda: tuple(t for p in runtime.active() for t in plugin_tunables(p)), values=merged(sources.current()), labels=labelled(sources.current()))
     base_settings = settings
     settings = View(live)
-    live.own_domains = lambda: web_own_domains(live.current().email_domains, runtime.org().get('email_domains'))
+    live.own_sites = lambda: own_sites_of(live.current().own_sites, [i.values for i in runtime.instances_of(WEBSITE_PLUGIN)])
 
     def watch_sso(current: Settings) -> None:
         if not current.sso_on:
@@ -698,7 +700,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     pusher = Pusher(slack, settings.slack_push_user, base_url, on=lambda: features.on('push'))
     routes = Routes(store, runtime, settings, attribution=chat_attribution, base=lambda: base_url, autostart=True)
     enricher = Enricher(store, gitlab, jira, live_projects)
-    notes = StateNotes(store, slack, settings.slack_state_notes, jira_site=jira_site)
+    notes = StateNotes(store, slack, settings.slack_state_notes, jira_site=jira_site, mention=lambda email: slack_ids.mention(email), name_of=lambda email: slack_ids.name(email))
     def user_name(email: str) -> str:
         known = str((users.get(email) or {}).get('name') or '').strip()
         return known if known and '@' not in known else ''
@@ -716,7 +718,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     card_posts = CardPosts(store, slack, base_url, menu_on=lambda: started_at_boot('slack-socket'), name_of=slack_name, plugin_name=runtime.plugin_name, check=post_check, hosts=site_hosts)
     attacher = Attacher(store, slack, settings.slack_attach_screenshots, base_url)
-    notices = Notices(store)
+    notice_mail = NoticeMail(store, lambda: mail_out.mailer(runtime), base_url=base_url)
+    notices = Notices(store, mail=notice_mail)
     versions = VersionCheck(store, transport, lambda: features.on('update-check'), clock=clock)
     reminders = Reminders(store, slack, settings.slack_remind_hours, base_url, mention=lambda email: slack_ids.mention(email), name_of=lambda email: slack_ids.name(email))
     slack_people = tagreport.SlackPeople(slack)
@@ -1022,7 +1025,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     investigator = investigator or Investigator(
         store, Sources(gitlab=gitlab, jira=jira, plugin_tools=PluginTools(runtime), selfreview=lambda now: review_facts(store, server_info() | store.server_runs(), runtime.client('elasticsearch') if settings.self_log_index else None, now, own_commits, self_service(settings), settings.self_log_index, PluginTools(runtime)),
                               link_hosts=lambda: allowed_link_hosts(settings, runtime.org()['link_hosts'] + runtime.ui_hosts()), org=runtime.org,
-                              bridge=mcptools_bridge),
+                              bridge=mcptools_bridge, own_sites=lambda: live.own_sites()[0]),
         Effects(pod_slack_send, functools.partial(slack_thread_update, linked=True), replier.reply, state_note, tell=slack_tell, fixes=lambda key: post_fixes(key), slack_file=slack.file, autopost=lambda: auto.on(), wake=lambda: auto.wake()), settings, client=anthropic_client, base_url=base_url, talk=talk, key=ai_keys.current)
 
     if isinstance(investigator, Investigator):
@@ -1333,6 +1336,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         Job('version-check', VERSION_PERIOD, VERSION_OFFSET + jitter_of(base_settings.mongo_uri + base_settings.mongo_db), versions.scheduled, lambda: features.on('update-check')),
         Job(CUSTOM_CHECKS, CUSTOM_CHECKS_PERIOD, CUSTOM_CHECKS_OFFSET, custom_checks.run_once, custom_checks.enabled),
         Job(tagreport.RUN, tagreport.PERIOD, tagreport.OFFSET, tag_report.run_once, lambda: tag_report.enabled),
+        Job('notice-mail', noticemail.PERIOD, noticemail.OFFSET, notice_mail.run_once, notice_mail.ready),
     ]
     scheduler = Scheduler(store, boot=investigator.owner, jobs=lambda: core_jobs + [Job('postdeploy', POSTDEPLOY_PERIOD, POSTDEPLOY_OFFSET, lambda now: postdeploy.run_once(now), postdeploy.enabled)] + sweeper.jobs())
 
@@ -1547,6 +1551,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             token_indexes()
             throttle.ensure_indexes()
             live.tunables.ensure_indexes()
+            notice_mail.ensure_indexes()
             get_sessions()
             first_run()
             try:
@@ -2412,6 +2417,39 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             user_cache.pop(user.name, None)
         store.add_activity(ACCESS_KIND, user.name, msg('access.self_renamed', name=name))
         return {'name': name}
+
+    def own_mail_user(request: Request, authorization: str | None) -> User:
+        user = current_user(request) if not bearer_token(authorization) else None
+        if user is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, msg('password.needs_session'))
+        return user
+
+    def own_mail_view(email: str) -> dict:
+        doc = users.get(email)
+        if doc is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, msg('noticemail.no_account'))
+        return noticemail.choice(doc) | {'all': list(noticemail.KINDS), 'email': doc['_id'], 'ready': notice_mail.ready()}
+
+    @app.get('/api/me/notice-mail')
+    def get_notice_mail(request: Request, authorization: Annotated[str | None, Header()] = None) -> dict:
+        return own_mail_view(own_mail_user(request, authorization).name)
+
+    @app.put('/api/me/notice-mail')
+    def put_notice_mail(request: Request, body: NoticeMailIn, authorization: Annotated[str | None, Header()] = None) -> dict:
+        user = own_mail_user(request, authorization)
+        if not same_origin(request):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, msg('login.cross_site'))
+        if any(k not in noticemail.KINDS for k in body.kinds):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('noticemail.kind'))
+        if body.on and not notice_mail.ready():
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('noticemail.no_server'))
+        try:
+            users.update(user.name, {'mailNotices': {'on': body.on, 'kinds': [k for k in noticemail.KINDS if k in body.kinds]}})
+        except InvalidUser as e:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, msg('noticemail.no_account')) from e
+        finally:
+            user_cache.pop(user.name, None)
+        return own_mail_view(user.name)
 
     @app.get('/api/me')
     def me(request: Request) -> dict:
@@ -3335,7 +3373,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         slack_scopes = store.slack_scopes() if slack.enabled else {'missing': []}
         if slack_scopes['missing']:
             items.append({'id': 'slack-scopes', 'level': 'warn', 'text': msg('integrations.slack_scopes', scopes=', '.join(slack_scopes['missing'])), 'at': slack_scopes['at']})
-        items += [{'id': f'route-gave-up:{r["id"]}', 'level': 'warn', 'text': msg('routes.gave_up', plugin=r['plugin'], route=r['route'], count=r['count'], tries=TRIES, reason=r['reason'])}
+        items += [{'id': f'route-gave-up:{r["id"]}', 'level': 'warn', 'text': msg('routes.gave_up_one' if r['tries'] == 1 else 'routes.gave_up', plugin=r['plugin'], route=r['route'], count=r['count'], tries=r['tries'], reason=r['reason'])}
                   for r in routes.gave_up()]
         items += [{'id': f'plugin:{found.id}', 'level': 'warn', 'text': found.reason} for found in registry.loaded() if found.state == 'broken']
         packs = runtime.org_packs()

@@ -38,6 +38,21 @@ def person(who) -> str:
     return slug(who) if '@' in who else ''
 
 
+def addresses(*cards: dict | None) -> tuple[dict[str, str], set[str]]:
+    emails: dict[str, str] = {}
+    named: set[str] = set()
+    for card in cards:
+        if not card:
+            continue
+        held = card.get('assigned') if isinstance(card.get('assigned'), dict) else {}
+        who = str(held.get('email') or card.get('owner') or '').strip()
+        if '@' in who:
+            emails[slug(who)] = who.lower()
+        elif who:
+            named.add(slug(who))
+    return emails, named - set(emails)
+
+
 def holder(card: dict | None) -> str:
     if not card:
         return ''
@@ -101,11 +116,13 @@ def changes(old: dict, new: dict, by_key: dict | None = None) -> list[tuple[str,
 
 
 class Notices:
-    def __init__(self, store: Store, clock: Callable[[], float] = time.time):
+    def __init__(self, store: Store, clock: Callable[[], float] = time.time, mail=None):
         self.store = store
         self.clock = clock
+        self.mail = mail
 
-    def add(self, users, kind: str, by=None, card: dict | None = None, note: str = '', key: str | None = None, title: str | None = None, link: str | None = None) -> int:
+    def add(self, users, kind: str, by=None, card: dict | None = None, note: str = '', key: str | None = None, title: str | None = None, link: str | None = None,
+            seen: tuple[dict | None, ...] = (), emails: Mapping[str, str] | None = None, named: tuple[str, ...] = ()) -> int:
         actor = person(by)
         to = sorted({u for u in users if u and u != actor})
         if not to:
@@ -114,11 +131,18 @@ class Notices:
                'by': who_text(by), 'note': clip(note), 'text': LABELS[kind] + (f' · {clip(note)}' if note else '') + f' · by {who_text(by)}'}
         if link:
             row['link'] = link
+        known, by_name = addresses(card, *seen)
+        known |= {u: str(e).strip().lower() for u, e in (emails or {}).items() if e and '@' in str(e)}
+        by_name = (by_name | set(named)) - set(known)
+        fresh: list[dict] = []
         try:
-            return self.store.add_notices([{'user': u, **row} for u in to], SAME_S)
+            added = self.store.add_notices([{'user': u, **row, **({'to': known[u]} if u in known else {'named': True} if u in by_name else {})} for u in to], SAME_S, saved=fresh)
         except PyMongoError as e:
             log.warning('%s notification for %s not saved: %s', kind, row['key'], error_kind(e))
             return 0
+        if fresh and self.mail is not None:
+            self.mail.queue(fresh)
+        return added
 
     def _cards(self) -> dict[str, dict]:
         return {c['key']: c for c in self.store.load().get('anomalies') or []}
@@ -149,7 +173,7 @@ class Notices:
                 continue
             found = [(MUTES[action['type']], f"{action.get('hours'):g} h" if action['type'] == 'mute' and action.get('hours') else '')] if action.get('type') in MUTES else changes(old, new, cards)
             for kind, note in found:
-                sent += self.add({holder(old), holder(new)}, kind, by, new, note)
+                sent += self.add({holder(old), holder(new)}, kind, by, new, note, seen=(old,))
         return sent
 
     def triaged(self, key: str, before: dict, who: str = 'investigator') -> int:
@@ -161,14 +185,14 @@ class Notices:
         new = cards.get(key)
         if new is None:
             return 0
-        return sum(self.add({holder(before), holder(new)}, kind, who, new, note) for kind, note in changes(before, new, cards))
+        return sum(self.add({holder(before), holder(new)}, kind, who, new, note, seen=(before,)) for kind, note in changes(before, new, cards))
 
     def assigned(self, before: dict, name: str | None, email: str | None, by: str) -> int:
         card = dict(before)
         old, new = holder(before), slug(email or name) if (email or name) else ''
         sent = 0
         if new and new != old:
-            sent += self.add({new}, 'assigned', by, card)
+            sent += self.add({new}, 'assigned', by, card, emails={new: email} if email else None, named=() if email else (new,))
         if old and old != new:
             sent += self.add({old}, 'unassigned', by, card, str(name or ''))
         return sent
@@ -231,14 +255,15 @@ class Notices:
             chat = (action.get('chat') or {}).get('id')
             if action.get('source') != 'chat' or not chat:
                 return 0
-            return self.add({person(action.get('requestedBy'))}, 'answer', 'investigator', None, first, key='', title=clip(action.get('text'), TITLE_LIMIT), link=f'#t=chat/thread/{chat}')
+            return self.add({person(action.get('requestedBy'))}, 'answer', 'investigator', None, first, key='', title=clip(action.get('text'), TITLE_LIMIT), link=f'#t=chat/thread/{chat}',
+                            emails={person(action.get('requestedBy')): action.get('requestedBy')})
         if action.get('type') not in (None, 'dive'):
             return 0
         sent = 0
         for key in keys:
             card = self._card(key)
             if card is not None:
-                sent += self.add({holder(card), person(action.get('requestedBy'))}, 'run', 'investigator', card, first)
+                sent += self.add({holder(card), person(action.get('requestedBy'))}, 'run', 'investigator', card, first, emails={person(action.get('requestedBy')): action.get('requestedBy')})
         return sent
 
     def _card(self, key) -> dict | None:

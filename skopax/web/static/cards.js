@@ -140,9 +140,13 @@ function pageLink(a) {
 }
 function teamsTag(posts) {
   var named = function (r) { return TAG_NAMES[r] || r; };
-  var last = posts[posts.length - 1], routes = posts.map(function (p) { return named(p.route); }).filter(function (x, i, l) { return l.indexOf(x) === i; });
-  var tip = posts.map(function (p) { return dayhm(p.at) + ' · ' + named(p.route) + ' · ' + draftBy(p.by); }).join('\n');
-  return '<span class="tag k-good teams-sent" title="' + esc('Posted to Teams:\n' + tip) + '">' + ICON_SEND + 'Sent to Teams · ' + esc(routes.join(', ')) + ' ' + esc(dayhm(last.at)) + '</span>';
+  var plugins = posts.map(function (p) { return p.plugin || 'teams'; }).filter(function (x, i, l) { return l.indexOf(x) === i; });
+  return plugins.map(function (plugin) {
+    var mine = posts.filter(function (p) { return (p.plugin || 'teams') === plugin; }), words = routePosted(plugin);
+    var last = mine[mine.length - 1], routes = mine.map(function (p) { return named(p.route); }).filter(function (x, i, l) { return l.indexOf(x) === i; });
+    var tip = mine.map(function (p) { return dayhm(p.at) + ' · ' + named(p.route) + ' · ' + draftBy(p.by); }).join('\n');
+    return '<span class="tag k-good teams-sent" data-plugin="' + esc(plugin) + '" title="' + esc(words[0] + ':\n' + tip) + '">' + ICON_SEND + esc(words[1]) + ' · ' + esc(routes.join(', ')) + ' ' + esc(dayhm(last.at)) + '</span>';
+  }).join('');
 }
 function goneText(a) { return 'The page answers HTTP ' + a.gone.status + ' since ' + dayhm(a.gone.since) + ': if it was taken down on purpose, Resolve this card.'; }
 function draftTag(a) {

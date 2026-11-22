@@ -96,7 +96,7 @@ class Assigner:
         if not same:
             self.notify(before, name, email, by)
         log.info('%s assigned by %s', key, by)
-        return {'rev': rev, 'owner': name, 'assigned': assigned, 'dm': SAME if same else self.tell(card, name, email, by), 'thread': False if same else self.noted(key, name, by)}
+        return {'rev': rev, 'owner': name, 'assigned': assigned, 'dm': SAME if same else self.tell(card, name, email, by), 'thread': False if same else self.noted(key, name, by, email)}
 
     def announce(self, before: dict, name: str, email: str | None, by: str) -> None:
         self.notify(before, name, email, by)
@@ -105,7 +105,7 @@ class Assigner:
         except Exception as e:
             log.warning('assignee message for %s not sent: %s', before.get('key'), error_kind(e))
         try:
-            self.noted(before['key'], name, by)
+            self.noted(before['key'], name, by, email)
         except Exception as e:
             log.warning('assignee note for %s not sent: %s', before.get('key'), error_kind(e))
 
@@ -117,13 +117,13 @@ class Assigner:
         except Exception as e:
             log.warning('assignee notification for %s not saved: %s', before.get('key'), error_kind(e))
 
-    def noted(self, key: str, name: str | None, by: str) -> bool:
+    def noted(self, key: str, name: str | None, by: str, email: str | None = None) -> bool:
         if self.posts is not None:
             self.posts.assigned(key, name, by)
         if self.notes is None:
             return False
         try:
-            return self.notes.assigned(key, name, by)
+            return self.notes.assigned(key, name, by, self.address(name, email, by) if name else None, bool(email))
         except Exception as e:
             log.warning('assignee note for %s not sent to its thread: %s', key, error_kind(e))
             return False

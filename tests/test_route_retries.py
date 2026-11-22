@@ -55,7 +55,7 @@ def test_a_failing_tag_route_backs_off_gives_up_after_six_tries_and_never_moves_
     assert len(t.calls) == 2 * TRIES
     assert store.rev()['rev'] == rev, 'taking a claim back is bookkeeping, not a state change'
     assert sorted((r['key'], r['tries'], r['gaveUp'], r['reason']) for r in store.route_retries()) == [('log|a|ERROR|one', 6, True, 'HTTP 404'), ('log|a|ERROR|two', 6, True, 'HTTP 404')]
-    assert routes.gave_up() == [{'id': 'teams/seo', 'plugin': 'Microsoft Teams', 'route': 'seo', 'count': 2, 'reason': 'HTTP 404'}]
+    assert routes.gave_up() == [{'id': 'teams/seo', 'plugin': 'Microsoft Teams', 'route': 'seo', 'count': 2, 'reason': 'HTTP 404', 'tries': 6}]
     assert routes.failure('teams', 'seo') == 'error: seo: HTTP 404'
 
 

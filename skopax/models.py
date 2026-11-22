@@ -128,6 +128,12 @@ class NameIn(BaseModel):
     name: str = Field(max_length=400)
 
 
+class NoticeMailIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    on: bool
+    kinds: list[Annotated[str, StringConstraints(min_length=1, max_length=40)]] = Field(default_factory=list, max_length=64)
+
+
 class AdminSettingIn(BaseModel):
     key: str = Field(min_length=1, max_length=120)
     value: str = Field(max_length=SETTING_TEXT_MAX)

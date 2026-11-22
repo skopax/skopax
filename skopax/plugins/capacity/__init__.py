@@ -91,7 +91,7 @@ PLUGIN = Plugin(
         docs_label='Prometheus: HTTP API',
     ),
     id=ID, name='Capacity', version='0.1.0', category='infrastructure', description='Volume, host disk, autoscaler and JVM heap headroom read through a Prometheus instance.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.5', edition='community', capabilities=Capabilities(), uses=('prometheus', 'pmm'),
+    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community', capabilities=Capabilities(), uses=('prometheus', 'pmm'),
     fields=(Field('prometheus', 'Prometheus', 'instance', required=True, choices=('prometheus',), help='The Prometheus instance to read.'),
             Field('jvm', 'JVM heap', 'bool', default='true', help='Read the JVM heap of Micrometer services. Switched off, its open cards close at the next check.'),
             Field('host-disks', 'Host disks', 'bool', default='true',

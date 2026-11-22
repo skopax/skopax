@@ -65,6 +65,8 @@ BUILTIN: tuple[str, ...] = (
     'skopax.plugins.spring_config',
     'skopax.plugins.sonarqube',
     'skopax.plugins.sharepoint',
+    'skopax.plugins.mail_server',
+    'skopax.plugins.email_route',
 )
 CORE_PREFIXES = (
     'core',
@@ -604,13 +606,15 @@ def _shape(plugin: Plugin) -> None:
 def _outbound_ok(hook: object, fields: dict) -> bool:
     if not isinstance(hook, Outbound) or not callable(hook.post):
         return False
-    named = (hook.tags_field, hook.mentions_field, hook.link_field, hook.keys_field, hook.sev_field)
+    named = (hook.tags_field, hook.mentions_field, hook.link_field, hook.keys_field, hook.sev_field, hook.target_field)
     if not isinstance(hook.tags_field, str) or any(k is not None and not isinstance(k, str) for k in named):
         return False
-    texts = [k for k in (hook.tags_field, hook.mentions_field, hook.keys_field) if k is not None]
+    texts = [k for k in (hook.tags_field, hook.mentions_field, hook.keys_field, hook.target_field) if k is not None]
     if any(k not in fields or fields[k].kind != 'text' for k in texts):
         return False
-    if hook.link_field is not None and hook.link_field not in fields:
+    if hook.link_field is not None and (hook.link_field not in fields or hook.target_field is not None):
+        return False
+    if hook.ready is not None and not callable(hook.ready):
         return False
     sev = fields.get(hook.sev_field) if hook.sev_field is not None else None
     return hook.sev_field is None or (sev is not None and sev.kind == 'choice' and set(sev.choices) <= set(SEVERITIES))

@@ -68,6 +68,7 @@ WRITES = {
     ('POST', '/api/deploys'): 'machine',
     ('POST', '/api/investigations/{run_id}/proposal'): 'operator',
     ('POST', '/api/me/password'): 'session',
+    ('PUT', '/api/me/notice-mail'): 'session',
     ('POST', '/api/notes'): 'machine',
     ('POST', '/api/notifications/read'): 'login',
     ('POST', '/api/probe'): 'machine',
@@ -156,6 +157,7 @@ READS = {
     '/api/jira/search': 'operator',
     '/api/mcp/info': 'read',
     '/api/me': 'read',
+    '/api/me/notice-mail': 'session',
     '/api/notifications': 'login',
     '/api/notifications/count': 'login',
     '/api/operators/check': 'operator',
@@ -193,6 +195,7 @@ READS = {
 }
 BODIES = {('POST', '/api/me/password'): {'current': 'correct horse battery', 'new': 'another horse battery'},
           ('PATCH', '/api/me'): {'name': 'New Name'},
+          ('PUT', '/api/me/notice-mail'): {'on': False, 'kinds': []},
           ('PUT', '/api/admin/mcp-tools/instances/{name}/tools'): {'on': [], 'understood': False},
           ('POST', '/api/admin/mcp-tools/instances/{name}/confirm'): {'understood': True, 'version': 1},
           ('PUT', '/api/admin/mcp-tools/instances/{name}/scope'): {'id': 'f1'},

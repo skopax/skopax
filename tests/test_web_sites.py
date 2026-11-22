@@ -50,7 +50,7 @@ def test_the_own_domains_join_the_built_in_list_first_and_can_be_dropped():
 def test_admin_exposes_the_built_in_list_with_the_own_domains(store):
     # given
     import dataclasses
-    s = dataclasses.replace(settings(), email_domains=('example.com',))
+    s = dataclasses.replace(settings(), own_sites=('example.com',))
 
     # when
     with TestClient(create_app(s, store)) as client:

@@ -158,8 +158,30 @@ async function anAssignmentRowReadsAssignedToNameWithNoColon() {
   console.log('PASS an assignment row reads Assigned to name, with no colon');
 }
 
+async function emailPostsReadAsEmailAndTeamsPostsStillReadTeams() {
+  //given
+  const {w, errors} = await boot([card(KEY)]);
+  const posts = [{at: T(110), route: 'seo', by: 'server'}, {at: T(100), route: 'ops', plugin: 'email', by: 'server'}, {at: T(90), route: 'growth', plugin: 'teams', by: 'server'}];
+  const c = card(KEY, {num: 12, firstSeen: T(300), teamsPosts: posts});
+
+  //when
+  const rows = JSON.parse(JSON.stringify(w.cardHistoryRows(c, {actions: [], activity: []}, []))).filter((r) => r.kind === 'teams');
+  const box = w.document.createElement('div');
+  box.innerHTML = w.teamsTag(posts);
+  const tags = [...box.querySelectorAll('.teams-sent')];
+
+  //then
+  assert.deepStrictEqual(rows.map((r) => r.what), ['Posted to Teams: growth', 'Sent by email: ops', 'Posted to Teams: SEO']);
+  assert.strictEqual(tags.length, 2, 'one tag per plug-in');
+  assert.ok(tags[0].textContent.startsWith('Sent to Teams \u00b7 SEO, growth ') && tags[1].textContent.startsWith('Sent by email \u00b7 ops '), tags.map((t) => t.textContent).join('|'));
+  assert.ok(tags[0].title.startsWith('Posted to Teams:\n') && tags[1].title.startsWith('Sent by email:\n'));
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS email posts read as email and Teams posts still read Teams');
+}
+
 (async () => {
-  for (const t of [failedAndCancelledActionsReadInTheReadersLanguage, anAssignmentRowReadsAssignedToNameWithNoColon, historyRowsComeNewestFirstWithWhoWhenAndOldToNew, historyRowsAreTranslatedButTheirDataStaysAsWritten, theDetailsAndHistoryTabsSwitchByClickAndKeyboardAndStayAcrossARepaint]) {
+  for (const t of [emailPostsReadAsEmailAndTeamsPostsStillReadTeams, failedAndCancelledActionsReadInTheReadersLanguage, anAssignmentRowReadsAssignedToNameWithNoColon, historyRowsComeNewestFirstWithWhoWhenAndOldToNew, historyRowsAreTranslatedButTheirDataStaysAsWritten, theDetailsAndHistoryTabsSwitchByClickAndKeyboardAndStayAcrossARepaint]) {
     try { await t(); } catch (e) { console.error('FAIL ' + t.name + ': ' + e.message.replace(/\x1b\[[0-9;]*m/g, '').split('\n').slice(0, 30).join(' | ')); process.exitCode = 1; }
   }
   process.exit(process.exitCode || 0);

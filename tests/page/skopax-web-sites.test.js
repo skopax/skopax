@@ -1,5 +1,7 @@
 const pageHtml = require('./skopax-page');
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const {JSDOM, VirtualConsole} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
@@ -11,7 +13,7 @@ function entry(key, label, extra) {
   return Object.assign({key, group: 'Investigator', label, help: label, kind: 'text', live: true, value: '', base: '', default: '', source: 'default', by: null, at: null, limit: 1000}, extra);
 }
 
-async function boot(items) {
+async function boot(items, pack) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
@@ -21,6 +23,7 @@ async function boot(items) {
     url: 'https://skopax.example.com/#t=ai', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
       w.scrollTo = () => {};
+      if (pack) { w.SKOPAX_I18N = pack; w.document.cookie = 'skopax_lang=' + Object.keys(pack)[0] + '; path=/'; }
       w.Element.prototype.scrollIntoView = function () {};
       w.fetch = async (path) => {
         const p = String(path);
@@ -56,8 +59,8 @@ async function theWebSitesSettingShowsTheBuiltInListWithYourDomainFirstAndMarksT
   assert.ok(r.querySelector('.adm-built'), 'the built-in list shows under the setting');
   const shown = chips(r).filter((c) => !c.hidden).map((c) => c.textContent);
   assert.strictEqual(shown.length, 8, 'a compact list of eight');
-  assert.strictEqual(shown[0], 'example.com \u00b7 your domain');
-  assert.strictEqual(chips(r)[0].title, 'Your domain (from sign-in e-mail domains)');
+  assert.strictEqual(shown[0], 'example.com \u00b7 your website');
+  assert.strictEqual(chips(r)[0].title, 'One of your websites');
   const removed = chips(r).filter((c) => c.classList.contains('removed')).map((c) => c.textContent);
   assert.deepStrictEqual(removed, ['blog.google'], 'the host written with a dash is marked left out');
   assert.strictEqual(chips(r).find((c) => c.textContent === 'blog.google').title, 'Left out by -blog.google');
@@ -80,7 +83,7 @@ async function theWebSitesSettingShowsTheBuiltInListWithYourDomainFirstAndMarksT
   assert.deepStrictEqual(chips(r).filter((c) => c.classList.contains('removed')).map((c) => c.textContent), ['kubernetes.io'], 'the marks follow what is typed');
   assert.deepStrictEqual(errors, []);
   w.close();
-  console.log('PASS the Web sites setting lists the built-in sites, your domain first, and marks the ones left out with -host');
+  console.log('PASS the Web sites setting lists the built-in sites, your website first, and marks the ones left out with -host');
 }
 
 const HOST_ITEMS = {kind: 'web-host', separator: ',', pattern: '(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}', flags: 'i', strip: '', why: 'not a host name such as support.google.com; a host covers its subdomains', minus: true, keywords: ['any', 'off', 'none', 'false', 'no']};
@@ -137,6 +140,59 @@ async function theWebSitesSettingUsesTheChipEditorAndKeepsTheBuiltInListAndDashR
   console.log('PASS the Web sites setting uses the chip editor, keeps the built-in list and accepts -host chips');
 }
 
+const OWN_ITEMS = {kind: 'own-site', separator: ',', pattern: '(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}', flags: 'i', strip: '', why: 'not a host name such as example.com; leave out https://, any path and any port', loose: true};
+const ownRow = (from, hosts, value) => entry('core.own-sites', 'Your websites', {kind: 'list', value, items: OWN_ITEMS, ownFrom: from, ownHosts: hosts});
+const fromNote = (doc) => doc.querySelector('#ai-rows .adm-row[data-key="core.own-sites"] .adm-own-from');
+
+async function yourWebsitesShowsWhichSourceIsInUseAndTakesHostsWithCommasOrSpaces() {
+  //given
+  const set = await boot([ownRow('setting', ['example.com', 'shop.example.org'], 'example.com, shop.example.org')]);
+  const site = await boot([ownRow('website', ['shop.example.com', 'shop.example.net'], '')]);
+  const none = await boot([ownRow('none', [], '')]);
+
+  //then
+  assert.strictEqual(fromNote(set.doc).textContent, 'In use: the sites set here');
+  assert.strictEqual(fromNote(site.doc).textContent, 'In use: from the Website integration (shop.example.com, shop.example.net)');
+  assert.strictEqual(fromNote(site.doc).dataset.from, 'website');
+  assert.strictEqual(fromNote(none.doc).textContent, 'In use: none yet. Set Your websites or add a Website integration');
+  const r = row(set.doc, 'core.own-sites');
+  assert.deepStrictEqual([...r.querySelectorAll('.adm-chips li.adm-chip .adm-chip-t')].map((c) => c.textContent), ['example.com', 'shop.example.org'], 'the chip editor shows each host');
+
+  //when
+  const text = r.querySelector('.adm-in'), entryBox = r.querySelector('.adm-chip-in');
+  for (const typed of ['https://example.net/shop', 'example.net']) {
+    entryBox.value = typed;
+    entryBox.dispatchEvent(new set.w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
+  }
+
+  //then
+  const chipsNow = [...r.querySelectorAll('.adm-chips li.adm-chip')];
+  assert.deepStrictEqual(chipsNow.filter((c) => c.classList.contains('bad')).map((c) => c.querySelector('.adm-chip-t').textContent), ['https://example.net/shop'], 'a pasted address stays invalid');
+  assert.ok(!r.querySelector('.adm-chip-word'), 'no any or off keyword is offered');
+  assert.strictEqual(text.value, 'example.com, shop.example.org, https://example.net/shop, example.net');
+  [set, site, none].forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
+  console.log('PASS Your websites shows which source is in use and its chip editor refuses a pasted address');
+}
+
+async function yourWebsitesTranslatesTheSourceNoteWithAPack() {
+  //given
+  const de = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'skopax', 'locale', 'de', 'page.json'), 'utf8'));
+  const pack = {de: Object.assign({}, de.page, {'@rules': de.rules})};
+  const site = await boot([ownRow('website', ['shop.example.com'], ''), entry('investigate.web-domains', 'Web sites', {value: '', builtIn: BUILT, ownDomains: ['example.com']})], pack);
+  const set = await boot([ownRow('setting', ['example.com'], 'example.com')], pack);
+  const none = await boot([ownRow('none', [], '')], pack);
+
+  //then
+  assert.strictEqual(fromNote(site.doc).textContent, 'Verwendet: aus der Website-Integration (shop.example.com)');
+  assert.strictEqual(fromNote(set.doc).textContent, 'Verwendet: die hier eingestellten Websites');
+  assert.strictEqual(fromNote(none.doc).textContent, 'Verwendet: noch keine. Legen Sie Ihre Websites fest oder f\u00fcgen Sie eine Website-Integration hinzu');
+  const own = chips(row(site.doc, 'investigate.web-domains')).find((c) => c.classList.contains('own'));
+  assert.strictEqual(own.textContent, 'example.com \u00b7 Ihre Website');
+  assert.strictEqual(own.title, 'Eine Ihrer Websites');
+  [site, set, none].forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
+  console.log('PASS Your websites translates the source note and the own-site chip with a pack');
+}
+
 async function aboutYourCompanyIsAnEightRowBoxThatResizesBothWays() {
   //given
   const {w, doc, errors} = await boot([entry('core.org-about', 'About your company', {limit: 2000, lines: 8})]);
@@ -156,6 +212,8 @@ async function aboutYourCompanyIsAnEightRowBoxThatResizesBothWays() {
 (async () => {
   await theWebSitesSettingShowsTheBuiltInListWithYourDomainFirstAndMarksTheOnesYouLeftOut();
   await theWebSitesSettingUsesTheChipEditorAndKeepsTheBuiltInListAndDashRemoval();
+  await yourWebsitesShowsWhichSourceIsInUseAndTakesHostsWithCommasOrSpaces();
+  await yourWebsitesTranslatesTheSourceNoteWithAPack();
   await aboutYourCompanyIsAnEightRowBoxThatResizesBothWays();
   process.exit(0);
 })().catch((e) => { console.error('FAIL ' + (e && e.stack || e)); process.exit(1); });

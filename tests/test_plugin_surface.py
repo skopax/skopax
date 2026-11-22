@@ -18,7 +18,7 @@ from skopax.messages import msg
 from skopax.remote import HttpError, Unreachable
 
 ROOT = Path(skopax.__file__).parent
-PLUGIN_MAY_IMPORT = ('skopax.contract', 'skopax.kit', 'skopax.clock', 'skopax.remote', 'skopax.redact', 'skopax.monitor', 'skopax.messages', 'skopax.kube', 'skopax.agent', 'skopax.errkind')
+PLUGIN_MAY_IMPORT = ('skopax.contract', 'skopax.kit', 'skopax.clock', 'skopax.remote', 'skopax.redact', 'skopax.monitor', 'skopax.messages', 'skopax.kube', 'skopax.agent', 'skopax.errkind', 'skopax.mail')
 MESSAGES_NAMES = {'msg'}
 MOVED = ('Prometheus', 'PrometheusError', 'scoped', 'ranged', 'client_for', 'auth_headers', 'with_headers', 'signal_queries', 'out_err')
 CLOSURE = ('import importlib, json, sys; sys.path.insert(0, sys.argv[1]); importlib.import_module(sys.argv[2]); '
