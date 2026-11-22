@@ -20,6 +20,7 @@ from skopax.messages import msg, speaking
 log = logging.getLogger('skopax.mail')
 
 PLUGIN_ID = 'mail-server'
+TRIAL_KIND = 'test'
 TIMEOUT_S = 20
 LOOKUP_TIMEOUT_S = 5
 RECIPIENTS_MAX = 50
@@ -110,6 +111,14 @@ def reply_of(code: object, text: object, secret: str) -> str:
     said = ' '.join(said.split())
     said = ''.join(ch for ch in said if ch.isprintable())[:REPLY_MAX]
     return f'{code} {said}'.strip() if code else said
+
+
+def _hidden(text: str, to: tuple[str, ...]) -> str:
+    for address in to:
+        local, _, domain = str(address or '').partition('@')
+        if domain:
+            text = re.sub(re.escape(address), f'{local[:1]}***@{domain}', text, flags=re.IGNORECASE)
+    return text
 
 
 def reason_of(error: BaseException) -> str:
@@ -244,7 +253,7 @@ class Mailer:
         return MailDown(msg('mailserver.down', reason=reason_of(error), **where))
 
     @contextlib.contextmanager
-    def _session(self):
+    def _session(self, to: tuple[str, ...] = ()):
         self._checked()
         stage = ['connect']
         client = None
@@ -260,7 +269,7 @@ class Mailer:
                 with contextlib.suppress(Exception):
                     client.close()
             mapped = self._mapped(e, stage[0])
-            log.info('%s', mapped.text)
+            log.info('%s', _hidden(mapped.text, to))
             raise mapped from None
 
     def probe(self) -> str:
@@ -299,15 +308,35 @@ class Mailer:
             message.add_alternative(html, subtype='html', charset='utf-8', cte='quoted-printable')
         return message
 
-    def send(self, to: list[str], subject: str, text: str, html: str | None = None, *, kind: str = '') -> str:
+    def _delivered(self, to: list[str], subject: str, text: str, html: str | None, kind: str, said: list | None = None) -> str:
         problem = self._problem()
         if problem is not None:
             raise MailRefused(problem)
         message = self._message(list(to) if isinstance(to, (list, tuple)) else to, subject, text, html, kind)
         addr = (named(self._config.get('from', '')) or ('', ''))[1]
-        with self._session() as client:
+        with self._session(tuple(to)) as client:
+            if said is not None:
+                data = client.data
+
+                def heard(content):
+                    reply = data(content)
+                    said.append(reply)
+                    return reply
+
+                client.data = heard
             client.send_message(message, from_addr=addr, to_addrs=list(to))
         return message['Message-ID']
+
+    def send(self, to: list[str], subject: str, text: str, html: str | None = None, *, kind: str = '') -> str:
+        return self._delivered(to, subject, text, html, kind)
+
+    def send_answered(self, to: list[str], subject: str, text: str, html: str | None = None, *, kind: str = '') -> str:
+        said: list[tuple] = []
+        self._delivered(to, subject, text, html, kind, said)
+        if not said:
+            return ''
+        code, words = said[-1]
+        return reply_of(code, words, self._config.get('password', ''))
 
 
 def mailer(runtime) -> Mailer | None:
@@ -372,7 +401,10 @@ def card_html(title: str, head: str, sev: str, sev_text: str, status: str, lines
     if attribution is not None:
         tail += f'<br><a href="{esc(attribution["href"])}" style="color:{MUTED};">{esc(attribution["text"])}</a>'
     rows.append(cell(tail, f'padding-top:12px;padding-bottom:12px;{side}border-top:1px solid {EDGE};font-size:12px;color:{MUTED};background-color:{PAPER};'))
-    body = ''.join(rows)
+    return framed(title, ''.join(rows))
+
+
+def framed(title: str, body: str) -> str:
     return ('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">'
             f'<title>{esc(title)}</title></head><body style="margin:0;padding:0;background-color:{PAGE};color:{INK};">'
             f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{PAGE};"><tr><td align="center" style="padding:24px 12px;">'
@@ -407,3 +439,20 @@ def card_mail(card: dict, link: str, *, head: str, body_lines: list[str], lang: 
         text = card_text(title, shown_head, sev_text, status, lines, web, footer, attribution)
         html = card_html(title, shown_head, sev, sev_text, status, lines, web, footer, attribution)
     return subject, text, html
+
+
+def trial_mail(instance: str, at: str) -> tuple[str, str, str]:
+    title, head, footer = msg('mail.test.title'), msg('mail.test.head'), msg('mail.footer')
+    lines = [msg('mail.test.line'), msg('mail.test.instance', instance=instance), msg('mail.test.at', at=at)]
+    attribution = brand.attribution_line()
+    subject = flat(msg('mail.test.subject'))[:SUBJECT_MAX]
+    parts = [head, '', title, ''] + lines + ['', '-- ', footer] + ([f"{attribution['text']} {attribution['href']}"] if attribution is not None else [])
+    side = 'padding-left:24px;padding-right:24px;'
+    rows = [cell(esc(head), f'padding-top:20px;padding-bottom:8px;{side}font-size:14px;color:{MUTED};background-color:{PAPER};'),
+            cell(esc(title), f'padding-bottom:12px;{side}font-size:20px;font-weight:bold;color:{INK};background-color:{PAPER};')]
+    rows += [cell(esc(line), f'padding-bottom:8px;{side}font-size:15px;line-height:1.5;color:{INK};background-color:{PAPER};') for line in lines]
+    tail = esc(footer)
+    if attribution is not None:
+        tail += f'<br><a href="{esc(attribution["href"])}" style="color:{MUTED};">{esc(attribution["text"])}</a>'
+    rows.append(cell(tail, f'padding-top:12px;padding-bottom:12px;{side}border-top:1px solid {EDGE};font-size:12px;color:{MUTED};background-color:{PAPER};'))
+    return subject, '\n'.join(parts) + '\n', framed(title, ''.join(rows))

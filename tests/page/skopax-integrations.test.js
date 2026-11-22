@@ -2323,6 +2323,109 @@ async function theHeadlessBrowserHasItsOwnTileWithItsStatusAndAWebsiteFormPicksT
   console.log('PASS Integrations: the Headless browser has its own tile with its status, and a new Website form picks the only browser');
 }
 
+const MAIL_FIELDS = [
+  {key: 'host', label: 'Host', kind: 'text', required: true, default: '', help: '', choices: [], low: null, high: null, showIf: null, ui: true, group: 'connection'},
+  {key: 'from', label: 'From', kind: 'text', required: true, default: '', help: '', choices: [], low: null, high: null, showIf: null, ui: true, group: 'message'},
+];
+
+function mailCatalog(rows) {
+  const cat = catalog();
+  cat.plugins.push({id: 'mail-server', name: 'Mail server', version: '0.1.0', category: 'chat', description: 'The connection to your SMTP server.', edition: 'community', icon: true,
+    state: 'ok', reason: null, enabled: true, fields: MAIL_FIELDS, checks: [], uses: [], maxInstances: 1,
+    instances: rows.map((r, i) => instance(r.name, {primary: i === 0, enabled: r.enabled, values: {host: 'smtp.example.com', from: 'alerts@example.com'}, secrets: {}})),
+    health: health('ok', 'Healthy', iso(2), [])});
+  return cat;
+}
+
+async function theMailServerSendsATestMailFromASavedInstanceOnly() {
+  //given
+  const t = await boot({catalog: mailCatalog([{name: 'mail', enabled: true}])});
+  await open(t);
+  const answers = [{ok: true, text: 'Sent to a***@example.com; the mail server accepted it (250 2.0.0 OK)'}, {ok: false, text: 'The mail server refused: 550 5.7.60 sender refused'}];
+  t.flags.hook = async (method, p, body, r) => p === '/api/admin/plugins/mail-server/instances/mail/test-mail' ? (answers.length ? r.ok(answers.shift()) : r.bad(429, 'At most 5 test mails are sent per admin in an hour')) : null;
+
+  //when
+  openInstance(t, 'mail-server', 'mail');
+  const button = inPanel(t.doc, '.int-mail-test');
+  const row = button && button.closest('.int-test-row');
+  button.click();
+  await wait(120);
+  const first = inPanel(t.doc, '.int-result');
+  const said = [first.textContent, first.classList.contains('bad')];
+  inPanel(t.doc, '.int-mail-test').click();
+  await wait(120);
+  const refused = [inPanel(t.doc, '.int-result').textContent, inPanel(t.doc, '.int-result').classList.contains('bad')];
+  inPanel(t.doc, '.int-mail-test').click();
+  await wait(120);
+  const limited = inPanel(t.doc, '.int-form-msg').textContent;
+
+  //then
+  assert.ok(button && button.textContent === 'Send test mail' && !button.disabled && row && row.querySelector('.int-test'));
+  assert.strictEqual(inPanel(t.doc, '.int-mail-hint'), null);
+  assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'POST').map((c) => [c[1], c[2]]), [['/api/admin/plugins/mail-server/instances/mail/test-mail', null], ['/api/admin/plugins/mail-server/instances/mail/test-mail', null], ['/api/admin/plugins/mail-server/instances/mail/test-mail', null]]);
+  assert.deepStrictEqual(said, ['\u2713 Sent to a***@example.com; the mail server accepted it (250 2.0.0 OK)', false]);
+  assert.deepStrictEqual(refused, ['The mail server refused: 550 5.7.60 sender refused', true]);
+  assert.strictEqual(limited, 'At most 5 test mails are sent per admin in an hour');
+  assert.ok(!inPanel(t.doc, '.int-mail-test').disabled);
+  t.w.close();
+
+  //given
+  const other = await boot({catalog: mailCatalog([{name: 'mail', enabled: true}])});
+  await open(other);
+
+  //when
+  openInstance(other, 'acme', 'east');
+
+  //then
+  assert.ok(inPanel(other.doc, '.int-test'));
+  assert.strictEqual(inPanel(other.doc, '.int-mail-test'), null, 'only the Mail server offers Send test mail');
+  other.w.close();
+
+  //given
+  const fresh = await boot({catalog: mailCatalog([])});
+  await open(fresh);
+
+  //when
+  addBtn(fresh.doc).click();
+  pick(fresh.doc, 'mail-server').click();
+  const unsaved = inPanel(fresh.doc, '.int-mail-test');
+  inPanel(fresh.doc, '.int-test').click();
+  await wait(120);
+
+  //then
+  assert.ok(unsaved && unsaved.disabled, 'an unsaved instance cannot send a test mail');
+  assert.strictEqual(inPanel(fresh.doc, '.int-mail-hint').textContent, 'Save and turn on this Mail server to send a test mail');
+  assert.ok(inPanel(fresh.doc, '.int-mail-test').disabled, 'Test connection gives the other buttons back but not this one');
+  assert.deepStrictEqual(fresh.calls.filter((c) => c[1].endsWith('/test-mail')), []);
+  fresh.w.close();
+
+  //given
+  const off = await boot({catalog: mailCatalog([{name: 'mail', enabled: false}])});
+  await open(off);
+
+  //when
+  openInstance(off, 'mail-server', 'mail');
+
+  //then
+  assert.ok(inPanel(off.doc, '.int-mail-test').disabled && inPanel(off.doc, '.int-mail-hint'), 'a switched-off instance cannot send a test mail');
+  off.w.close();
+
+  //given
+  const paused = mailCatalog([{name: 'mail', enabled: true}]);
+  paused.plugins.filter((x) => x.id === 'mail-server')[0].enabled = false;
+  const pausedPage = await boot({catalog: paused});
+  await open(pausedPage);
+
+  //when
+  openInstance(pausedPage, 'mail-server', 'mail');
+
+  //then
+  assert.ok(inPanel(pausedPage.doc, '.int-mail-test').disabled, 'a switched-off Mail server plug-in cannot send a test mail');
+  assert.deepStrictEqual(t.errors.concat(other.errors, fresh.errors, off.errors, pausedPage.errors), []);
+  pausedPage.w.close();
+  console.log('PASS Integrations: the Mail server sends a test mail from a saved instance that is on, and shows the answer');
+}
+
 async function anOldBrowserUrlShowsTheMoveHintAndTheButtonMovesIt() {
   //given
   const t = await boot({catalog: browserCatalog(['chrome'], {url: 'https://www.example.com', 'browser-url': 'http://old-browser:9222'})});
@@ -2468,5 +2571,6 @@ async function anAgentInstanceShowsItsOwnGreenHealthWithTheAgeAndADownOneShowsIt
   await aCustomKnowledgePluginCarriesTheBadgeInItsGroupAndABrokenOneHasNone();
   await theHeadlessBrowserHasItsOwnTileWithItsStatusAndAWebsiteFormPicksTheOnlyOne();
   await anOldBrowserUrlShowsTheMoveHintAndTheButtonMovesIt();
+  await theMailServerSendsATestMailFromASavedInstanceOnly();
   await anAgentInstanceShowsItsOwnGreenHealthWithTheAgeAndADownOneShowsItsError();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

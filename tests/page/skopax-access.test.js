@@ -172,20 +172,20 @@ const rowOf = (doc, email) => [...doc.querySelectorAll('#access .acc-user')].fil
   //when
   const reset = rowOf(t.doc, 'carol@example.com').querySelector('.acc-reset');
   reset.click();
-  const pw = rowOf(t.doc, 'carol@example.com').querySelector('input.acc-pw');
+  const pw = t.doc.querySelector('#acc-dlg input[name=password]');
   setValue(pw, 'short');
-  rowOf(t.doc, 'carol@example.com').querySelector('.acc-pw-save').click();
+  t.doc.querySelector('#acc-dlg .acc-dlg-go').click();
   await wait(80);
 
   //then
-  assert.ok(/12 to 256/.test(rowOf(t.doc, 'carol@example.com').querySelector('.adm-msg').textContent), '422 detail inline on the row');
-  setValue(rowOf(t.doc, 'carol@example.com').querySelector('input.acc-pw'), 'a-long-enough-password');
-  rowOf(t.doc, 'carol@example.com').querySelector('.acc-pw-save').click();
+  assert.ok(/12 to 256/.test(t.doc.querySelector('#acc-dlg .acc-dlg-err').textContent), '422 detail inline in the dialog');
+  setValue(t.doc.querySelector('#acc-dlg input[name=password]'), 'a-long-enough-password');
+  t.doc.querySelector('#acc-dlg .acc-dlg-go').click();
   await wait(80);
   const pwPatch = t.calls.filter((c) => c[0] === 'PATCH' && c[2].password);
   assert.deepStrictEqual(pwPatch[1][2], {password: 'a-long-enough-password'});
-  assert.ok([...t.doc.querySelectorAll('#access .acc-pw-form')].every((f) => f.hidden), 'the reset form closes');
-  assert.ok(/Password reset/.test(rowOf(t.doc, 'carol@example.com').querySelector('.adm-msg').textContent), 'success note on the row');
+  assert.ok(!t.doc.getElementById('acc-dlg'), 'the reset dialog closes');
+  assert.ok(/Password set/.test(rowOf(t.doc, 'carol@example.com').querySelector('.adm-msg').textContent), 'success note on the row');
   console.log('PASS Reset password sends the password and shows 422 inline');
 
   //when

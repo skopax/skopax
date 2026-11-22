@@ -50,6 +50,7 @@ WRITES = {
     ('POST', '/api/admin/mcp-tools/instances/{name}/confirm'): 'admin',
     ('POST', '/api/admin/mcp-tools/instances/{name}/oauth/start'): 'admin',
     ('POST', '/api/admin/mcp-tools/instances/{name}/tools/refresh'): 'admin',
+    ('POST', '/api/admin/plugins/mail-server/instances/{name}/test-mail'): 'admin',
     ('POST', '/api/admin/plugins/website/instances/{name}/move-browser'): 'admin',
     ('POST', '/api/admin/plugins/{plugin_id}/instances'): 'admin',
     ('POST', '/api/admin/plugins/{plugin_id}/fields/{key}/suggestions'): 'admin',

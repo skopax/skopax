@@ -115,7 +115,7 @@ Test connection against a stored instance reuses its saved secrets. If you chang
 
 Skopax sends email in two ways, both through one Mail server integration: an Email route mails cards to a list, and each person can have their own notifications mailed to them. Nothing is mailed until a Mail server is set up.
 
-1. **Connect the mail server.** Open Connect > Integrations, choose "+ Add integration" > Mail server, and fill in Host, Port, Security and From (see [Mail server](plugins.md#mail-server) for every field). Choose Test connection, then Save & turn on. Test connection signs in and checks the server answers; it does not send a mail.
+1. **Connect the mail server.** Open Connect > Integrations, choose "+ Add integration" > Mail server, and fill in Host, Port, Security and From (see [Mail server](plugins.md#mail-server) for every field). Choose Test connection, then Save & turn on. Test connection signs in and checks the server answers; it does not send a mail. Then choose Send test mail on the saved instance: it sends one real mail to the address of your own account. A green Test connection alone does not prove delivery, since a server can take the sign-in and still refuse the sender or the recipient.
 2. **Mail cards to a list.** Choose "+ Add integration" > Email route. Fill in Recipients with 1 to 50 addresses and pick the cards with Card tags, Card keys or both, such as the tag `developer` with Lowest severity Warning. Each address gets a mail of its own. The address of a Microsoft Teams channel works too: the card then shows as a post in that channel (see [Email route](plugins.md#email-route)).
 3. **Mail your own notifications.** Each person opens Preferences > Email, switches on Email me my notifications and picks the kinds (see [The page](#the-page)). It is off for everyone until they switch it on, and mail goes only to the address of their own account.
 
@@ -125,7 +125,7 @@ Microsoft turns off SMTP sign-in with a password for every tenant by default fro
 
 1. In the Exchange admin center, open Mail flow > Connectors and add a connector from "Your organization's email server" to "Office 365". Have it recognise Skopax by the static public IP address its mail leaves from, and require TLS.
 2. In Skopax, set Host to the MX host of your domain, such as `example-com.mail.protection.outlook.com`, Port `25`, Security `starttls`, and leave Username and Password empty. Set From to an address of your own domain, such as `alerts@example.com`.
-3. Choose Test connection. If mails are then refused for the sender, the connector does not see the IP address Skopax sends from.
+3. Choose Test connection, then Save & turn on and choose Send test mail. With a connector, Test connection can be green while every mail is refused: the refusals for an unknown sender IP, a sender address or an outside recipient show only when a mail is sent. If Send test mail is refused for the sender, the connector does not see the IP address Skopax sends from.
 
 Many cloud providers block outgoing port 25 by default (Google Cloud always does; AWS and Azure often do until you ask). Before you set up the connector, check that a Skopax pod can open a TCP connection to the MX host on port 25, for example with `nc -vz example-com.mail.protection.outlook.com 25`. When the port is blocked, Test connection says only "Could not connect", however the connector is set up.
 

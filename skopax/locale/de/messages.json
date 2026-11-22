@@ -349,5 +349,11 @@
  "mail.notice.more_one": "1 weitere Benachrichtigung",
  "mail.notice.more_body": "In dieser Stunde kamen mehr Benachrichtigungen, als per E-Mail gesendet werden. Sie finden alle auf Ihrer Seite Benachrichtigungen.",
  "mail.notice.open_inbox": "Ihre Benachrichtigungen in {product} \u00f6ffnen",
- "mail.notice.open": "In {product} \u00f6ffnen"
+ "mail.notice.open": "In {product} \u00f6ffnen",
+ "mail.test.subject": "[{product}] Testmail",
+ "mail.test.head": "Test des Mailservers",
+ "mail.test.title": "Testmail",
+ "mail.test.line": "Der Mailserver von {product} kann Mails zustellen: Diese Testmail hat Sie erreicht.",
+ "mail.test.instance": "Mailserver-Instanz: {instance}",
+ "mail.test.at": "Gesendet: {at}"
 }

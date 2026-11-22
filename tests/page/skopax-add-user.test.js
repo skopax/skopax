@@ -270,6 +270,45 @@ async function theSwitchAndTheSegmentsWorkFromTheKeyboard() {
   console.log('PASS the switch toggles on Space and Enter, the role segments move with the arrows, Home and End, and Show/Hide flips the password');
 }
 
+async function theAddFormGeneratesAndCopiesAPassword() {
+  //given
+  const t = await boot({sso: true});
+  const wrote = [];
+  Object.defineProperty(t.w.navigator, 'clipboard', {value: {writeText: async (v) => { wrote.push(v); }}, configurable: true});
+  await open(t);
+  const pw = form(t).querySelector('[name=password]'), copy = form(t).querySelector('.acc-copy');
+  const before = copy.hidden;
+
+  //when
+  form(t).querySelector('.acc-gen').click();
+  copy.click();
+  await until(() => copy.textContent === 'Copied', 'the copy note');
+
+  //then
+  assert.ok(before && !copy.hidden);
+  assert.ok(pw.value.length === 20 && [...pw.value].every((c) => 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789-_.!@#%+='.includes(c)), pw.value);
+  assert.strictEqual(pw.type, 'text');
+  assert.deepStrictEqual(wrote, [pw.value]);
+  assert.strictEqual(copy.textContent, 'Copied');
+
+  //when
+  type(pw, '');
+
+  //then
+  assert.ok(copy.hidden, 'Copy hides when the field is cleared');
+
+  //when
+  form(t).querySelector('.acc-gen').click();
+  form(t).querySelector('.acc-add-cancel').click();
+  await open(t);
+
+  //then
+  assert.ok(form(t).querySelector('.acc-copy').hidden && form(t).querySelector('[name=password]').value === '', 'a reopened form starts without Copy');
+  assert.deepStrictEqual(t.errors, []);
+  t.close();
+  console.log('PASS the Add person form generates a 20-character password, shows it and copies it');
+}
+
 async function theListShowsSsoOnlyAccountsAndCancelGivesFocusBack() {
   //given
   const t = await boot({sso: true});
@@ -280,8 +319,8 @@ async function theListShowsSsoOnlyAccountsAndCancelGivesFocusBack() {
   const rows = [dana.querySelector('.acc-sso-only').textContent, dana.querySelector('.acc-not-yet').textContent, !!dana.querySelector('.acc-setpw'),
     bob.querySelector('.acc-sso-only').textContent, !!bob.querySelector('.acc-not-yet'), dana.querySelector('.acc-setpw').textContent, !!rowOf(t, 'alice@example.com').querySelector('.acc-sso-only')];
   dana.querySelector('.acc-setpw').click();
-  type(dana.querySelector('input.acc-pw'), 'a-long-enough-password');
-  dana.querySelector('.acc-pw-save').click();
+  type(t.doc.querySelector('#acc-dlg input[name=password]'), 'a-long-enough-password');
+  t.doc.querySelector('#acc-dlg .acc-dlg-go').click();
   await until(() => t.calls.some((c) => c[0] === 'PATCH'), 'the password patch');
   await open(t);
   form(t).querySelector('.acc-add-cancel').click();
@@ -389,5 +428,6 @@ async function makeSsoOnlyConfirmsInTheRowAndWarnsOnYourOwnRow() {
   await emptyFieldsGetInlineMessagesAndTheFirstBadOneIsFocused();
   await aServerRefusalLandsOnItsField();
   await theSwitchAndTheSegmentsWorkFromTheKeyboard();
+  await theAddFormGeneratesAndCopiesAPassword();
   await theListShowsSsoOnlyAccountsAndCancelGivesFocusBack();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

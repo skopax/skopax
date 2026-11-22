@@ -37,5 +37,6 @@ PLUGIN = Plugin(
         'Fill in Host, Port and Security. Fill in Username and Password when the server needs a sign-in.',
         'Fill in From with the sender address, and Reply-To when replies should go elsewhere.',
         'Choose Test connection: it connects, starts TLS, signs in and checks the server answers, without sending a mail. Then Save & turn on.',
+        'Choose Send test mail on the saved instance: it sends one real mail to your own address. A green Test connection alone does not prove that mail is delivered.',
     )),
 )

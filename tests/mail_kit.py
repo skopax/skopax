@@ -7,6 +7,7 @@ CONFIG = {'host': 'smtp.example.com', 'port': '587', 'security': 'starttls', 'us
 class FakeSMTP:
     made: list['FakeSMTP'] = []
     fail: dict[str, BaseException] = {}
+    reply: tuple[int, bytes] = (250, b'2.0.0 OK queued as 4ABC')
 
     def __init__(self, host='', port=0, local_hostname=None, timeout=None, source_address=None, context=None, **kw):
         self.host, self.port, self.timeout, self.context = host, port, timeout, context
@@ -42,7 +43,11 @@ class FakeSMTP:
     def send_message(self, message, from_addr=None, to_addrs=None):
         self.sent.append((message, from_addr, to_addrs))
         self.step('send')
+        self.data(message)
         return {}
+
+    def data(self, message):
+        return FakeSMTP.reply
 
     def quit(self):
         self.steps.append('quit')

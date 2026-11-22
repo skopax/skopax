@@ -349,5 +349,11 @@
 "mail.notice.more_one": "1 notification de plus",
 "mail.notice.more_body": "Plus de notifications sont arriv\u00e9es cette heure-ci que ce qui est envoy\u00e9 par e-mail. Elles sont toutes sur votre page Notifications.",
 "mail.notice.open_inbox": "Ouvrir vos notifications dans {product}",
-"mail.notice.open": "Ouvrir dans {product}"
+"mail.notice.open": "Ouvrir dans {product}",
+"mail.test.subject": "[{product}] Mail de test",
+"mail.test.head": "Test du serveur de mail",
+"mail.test.title": "Mail de test",
+"mail.test.line": "Le serveur de mail de {product} peut distribuer des mails : ce mail de test vous est bien parvenu.",
+"mail.test.instance": "Instance du serveur de mail : {instance}",
+"mail.test.at": "Envoy\u00e9 : {at}"
 }
