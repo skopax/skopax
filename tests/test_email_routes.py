@@ -317,7 +317,7 @@ def test_test_connection_checks_the_mail_server_and_sends_nothing(store: Store):
     empty = routes.runtime.connection_test(email_route.PLUGIN, 'ops', {'keys': ''}, 30, NOW)
 
     # then
-    assert tested['ok'] is True and 'smtp.example.com' in tested['summary'] and '2 recipients' in tested['summary']
+    assert (tested['ok'], tested['summary']) == (True, 'The mail server at smtp.example.com:587 answered over STARTTLS and took the sign-in of alerts@example.com. Each card goes to 2 recipients, one mail each; no mail was sent')
     assert sent() == [] and 'noop' in FakeSMTP.made[0].steps
     assert (empty['ok'], empty['summary']) == (False, msg('integrations.route_empty'))
 
