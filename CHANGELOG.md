@@ -2,6 +2,15 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.2 (2026-11-22)
+
+Two fixes: a race that could crash an investigator run, and held Slack posts that stand out again.
+
+**Fixed:**
+
+- Two investigator runs started at the same moment could crash one of them ("threads can only be started once"), and a run thread that had not started yet could be left out of the count of running investigations. Each run thread is now started inside the lock.
+- While Slack posts are held, the Activity item in the menu turns to the warning colour, as the Notifications item did before 0.5.1, and it stays visible when its menu group is folded. It returns to normal once the posts are sent or deleted.
+
 ## 0.5.1 (2026-11-22)
 
 Clearer Integrations and Notifications pages: integrations get icons instead of letters, Kubernetes agent instances show their health, the email integrations read as two different things, and the Notifications page lists only notifications.
