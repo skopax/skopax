@@ -2,6 +2,7 @@ import dataclasses
 import datetime as dt
 import json
 import threading
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -157,6 +158,53 @@ def test_kick_runs_on_a_worker_thread(store: Store, monkeypatch):
     # then
     assert [n for n, _ in seen] == [NOW]
     assert seen[0][1] is not threading.current_thread()
+
+
+class SlowExitLock:
+    def __init__(self):
+        self.inner = threading.Lock()
+
+    def __enter__(self):
+        self.inner.acquire()
+        return self
+
+    def __exit__(self, *exc):
+        self.inner.release()
+        time.sleep(0.05)
+        return False
+
+
+def test_two_kicks_at_once_each_start_their_own_run_thread(store: Store, monkeypatch):
+    # given
+    inv = investigator(store, [])
+    inv.rooms = 5
+    monkeypatch.setattr(inv, '_lock', SlowExitLock())
+    gate = threading.Event()
+    ran = []
+    monkeypatch.setattr(inv, 'run_once', lambda now: (ran.append(now), gate.wait(5)) and None)
+    errors = []
+
+    def kick(now):
+        try:
+            inv.kick(now)
+        except Exception as e:
+            errors.append(repr(e))
+
+    # when
+    callers = [threading.Thread(target=kick, args=(NOW + i,)) for i in range(2)]
+    for t in callers:
+        t.start()
+    for t in callers:
+        t.join(5)
+    started = [t for t in inv._threads if t.ident is not None]
+    gate.set()
+    for t in started:
+        t.join(5)
+
+    # then
+    assert errors == []
+    assert len(inv._threads) == 2 and len(started) == 2
+    assert sorted(ran) == [NOW, NOW + 1]
 
 
 def test_halt_extends_the_lease(store: Store):

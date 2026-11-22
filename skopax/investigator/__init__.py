@@ -276,9 +276,10 @@ class Investigator:
             self._threads = [t for t in self._threads if t.is_alive()]
             if len(self._threads) > self.rooms:
                 return
-            self._thread = threading.Thread(target=self._safe_run, args=(now,), name='investigator', daemon=True)
-            self._threads.append(self._thread)
-        self._thread.start()
+            thread = threading.Thread(target=self._safe_run, args=(now,), name='investigator', daemon=True)
+            thread.start()
+            self._thread = thread
+            self._threads.append(thread)
 
     def _safe_run(self, now: float) -> None:
         try:
