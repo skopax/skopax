@@ -97,7 +97,7 @@ function renderBrief() {
   var lv = D.summary && D.summary.level ? D.summary.level : worst;
   var lvMap = {ok: ['All clear', 'k-ok'], info: ['Info', 'k-info'], warn: ['Warning', 'k-warn'], high: ['High', 'k-high'], crit: ['Critical', 'k-crit']};
   var L = lvMap[lv] || lvMap.info;
-  var dot = {ok: '#1f9d55', info: '#2f6fe0', warn: '#e9b308', high: '#e8590c', crit: '#dc2626'}[lv];
+  var dot = {ok: '#1f9d55', info: '#2f6fe0', warn: '#e9b308', high: '#f97316', crit: '#dc2626'}[lv];
   var icon = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1.55 13.82 10.4 1 14.8 1 3.05 14.98ZM12.95 14.98 1.2 1 5.6 1 14.45 13.82Z' fill='#3cc8f0'/><path d='M6.25 7.01 8 4.48 9.75 7.01 8 9.09Z' fill='#b3eefc'/>" +
     (dot ? "<circle cx='12.5' cy='3.5' r='3.5' fill='" + dot + "' stroke='#14171c' stroke-width='1.2'/>" : '') + '</svg>';
   document.getElementById('favicon').href = 'data:image/svg+xml,' + encodeURIComponent(icon);
@@ -462,6 +462,7 @@ function showTab(id) {
   var moved = curTab !== null && curTab !== id;
   if (moved && curTab === 'access' && typeof clearAccessSecret === 'function') clearAccessSecret();
   if (moved && curTab === 'integrations' && typeof intLeave === 'function') intLeave();
+  if (moved && id === 'prefs' && typeof ntMailAgain === 'function') ntMailAgain();
   curTab = id;
   if (moved && typeof window.__skopaxPoll === 'function') window.__skopaxPoll();
   var bare = ADMIN_TABS.indexOf(id) >= 0 || id === 'chat' || id === 'integrations';

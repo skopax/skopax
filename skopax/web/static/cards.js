@@ -434,7 +434,7 @@ function loadRuns(key, force) {
   }, function () { done([], true); });
 }
 function body(a, recShown, i) {
-  var what = (a.what ? '<p class="what">' + linkify(a.what) + '</p>' : '') + cardShots(a);
+  var what = (a.what ? '<p class="what">' + linkify(a.what) + '</p>' : '') + (a.knownCause ? '<p class="known"><span>Known cause</span> \u00b7 <span data-no-tx>' + esc(a.knownCause) + '</span></p>' : '') + cardShots(a);
   var sus = (a.suspects || []).length ? '<section><h5>Suspects</h5><ol>' + a.suspects.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol></section>' : '';
   var rec = a.recommend && !recShown ? '<section class="rec"><h5>Recommendation</h5><p>' + esc(a.recommend) + '</p></section>' : '';
   var code = codeOf(a).filter(function (c) { return !isFix(c); });

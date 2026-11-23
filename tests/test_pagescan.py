@@ -21,7 +21,7 @@ TABLES = 'https://shop.example.com/garden/tables'
 JPEG = b'\xff\xd8jpeg'
 AT = '2026-11-08T10:00:00Z'
 SHOP = Site.of({'url': SITE, 'login-paths': '/account/sign-in'})
-DEFAULTS = {'page-scan': True, 'scan-hours': 1.0, 'recheck-days': 7.0, 'pages': 50, 'extra': (), 'ignore': (), 'model': 'claude-sonnet-5-5', 'digest-hour': 10,
+DEFAULTS = {'page-scan': True, 'scan-hours': 1.0, 'recheck-days': 7.0, 'pages': 50, 'extra': (), 'ignore': (), 'model': 'claude-sonnet-5-5', 'digest-hour': 10, 'release-delay': 10,
             'scan-prompt': ''}
 
 
@@ -113,6 +113,9 @@ class Ctx:
 
     def previous(self, section):
         return self._previous.get(section)
+
+    def last_status(self):
+        return None
 
     def peer(self, field):
         if isinstance(self._peer, Exception):
@@ -322,7 +325,7 @@ def test_a_browser_that_does_not_answer_stops_the_batch():
     sweep = run(ctx)
 
     # then
-    assert (sweep.result.ok, len(browser.calls)) == (False, 1) and sweep.result.status == 'error: pages: the screenshot browser does not answer'
+    assert (sweep.result.ok, len(browser.calls)) == (False, 1) and sweep.result.status == f'error: pages (tried {ps.iso(NOW)}): the screenshot browser does not answer'
 
 
 def test_a_browser_that_stops_answering_mid_batch_keeps_what_it_read():
@@ -772,7 +775,7 @@ def test_a_site_whose_every_page_fails_on_the_server_fails_the_pass():
     sweep = run(Ctx(browser, None, extra=(CHAIRS, TABLES)))
 
     # then
-    assert (sweep.result.ok, sweep.result.status) == (False, 'error: pages: not 200 (HTTP 503)')
+    assert (sweep.result.ok, sweep.result.status) == (False, f'error: pages (tried {ps.iso(NOW)}): not 200 (HTTP 503)')
 
 
 class DownOnEvidence(FakeBrowser):

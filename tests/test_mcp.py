@@ -249,6 +249,21 @@ def test_list_and_get_cards_read_like_the_page(store: Store):
     assert failed and 'no card #99' in missing
 
 
+def test_list_cards_offers_and_filters_the_high_severity(store: Store):
+    # given
+    board(store, *cards(), anomaly('5xx|shop/orders-service', sev='high', num=17, svc='orders-service', label='5xx', what='5xx went up'))
+
+    # when
+    with mcp_client(store) as c:
+        listed = rpc(c, 'tools/list', bearer=token()).json()['result']['tools']
+        high_only, failed = call(c, token(), 'list_cards', {'sev': 'high'})
+    enum = next(t for t in listed if t['name'] == 'list_cards')['inputSchema']['properties']['sev']['enum']
+
+    # then
+    assert enum == ['crit', 'high', 'warn', 'info']
+    assert not failed and '#17' in high_only and '#14' not in high_only and '#15' not in high_only
+
+
 def test_investigate_card_queues_one_dive_per_card_marked_mcp_within_the_hourly_cap(store: Store):
     # given
     board(store, *cards())

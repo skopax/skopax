@@ -58,7 +58,7 @@ async function boot(opts) {
     },
   });
   await wait(300);
-  return {dom, w: dom.window, doc: dom.window.document, errors, puts};
+  return {dom, w: dom.window, doc: dom.window.document, errors, puts, setMail: (patch) => { saved = Object.assign({}, saved, patch); }};
 }
 
 const kinds = (doc) => [...doc.querySelectorAll('#pf-mail .pf-kinds input[type="checkbox"]')];
@@ -124,6 +124,52 @@ async function withoutAMailServerTheSwitchIsDisabledWithANote() {
   return 'without a Mail server the switch is disabled and the note says the admin has not set one up';
 }
 
+async function aDisabledSwitchIsNeverShownOn() {
+  //given
+  const {dom, w, doc, errors, puts, setMail} = await boot({mail: {ready: false, on: true}});
+  const on = doc.getElementById('pf-mail-on');
+
+  //when
+  on.click();
+  await wait(50);
+
+  //then
+  assert.ok(on.disabled && !on.checked, 'without a mail server the held choice shows off');
+  assert.ok(doc.getElementById('pf-mail-kinds').hidden, 'no kinds under a switch shown off');
+  assert.deepStrictEqual(puts, [], 'nothing is saved, so the held choice stays on');
+
+  //when
+  setMail({ready: true});
+  w.showTab('anoms');
+  w.showTab('prefs');
+  await wait(100);
+
+  //then
+  assert.ok(doc.getElementById('pf-mail-on').checked && !doc.getElementById('pf-mail-on').disabled, 'on again once a mail server is set up');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'a disabled switch is never shown on, and the held choice comes back with a mail server';
+}
+
+async function openingPreferencesAgainReadsAMailServerSetUpMeanwhile() {
+  //given
+  const {dom, w, doc, errors, setMail} = await boot({mail: {ready: false}});
+  assert.ok(!doc.getElementById('pf-mail-none').hidden, 'no mail server yet');
+
+  //when
+  setMail({ready: true});
+  w.showTab('anoms');
+  w.showTab('prefs');
+  await wait(100);
+
+  //then
+  assert.ok(doc.getElementById('pf-mail-none').hidden, 'the no mail server note is gone without a reload');
+  assert.ok(!doc.getElementById('pf-mail-on').disabled, 'the switch can be used');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'opening Preferences again reads a mail server set up meanwhile, without a reload';
+}
+
 async function aFailedSaveTurnsTheSwitchBack() {
   //given
   const {dom, doc, errors} = await boot({failPut: true});
@@ -164,7 +210,7 @@ async function theSectionReadsInAPack() {
   assert.strictEqual(doc.getElementById('pf-mail-none').textContent, 'Ihr Admin hat keinen Mailserver eingerichtet');
   assert.strictEqual(named(doc)[0], 'Ihnen zugewiesen', 'the kinds use the Notifications page words of the pack');
   assert.strictEqual(doc.getElementById('pf-mail-to').textContent, 'alice.archer@example.com', 'the address is never translated');
-  assert.ok(!doc.getElementById('pf-mail-on').disabled, 'a stored on can still be turned off without a mail server');
+  assert.ok(doc.getElementById('pf-mail-on').disabled && !doc.getElementById('pf-mail-on').checked, 'without a mail server a stored on shows off and disabled');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
   return 'the Email section reads in the de pack, the address stays as it is';
@@ -173,6 +219,8 @@ async function theSectionReadsInAPack() {
 (async () => {
   console.log('PASS ' + await theEmailSectionIsOffByDefaultAndSavesTheSwitchAndEachKind());
   console.log('PASS ' + await withoutAMailServerTheSwitchIsDisabledWithANote());
+  console.log('PASS ' + await aDisabledSwitchIsNeverShownOn());
+  console.log('PASS ' + await openingPreferencesAgainReadsAMailServerSetUpMeanwhile());
   console.log('PASS ' + await aFailedSaveTurnsTheSwitchBack());
   console.log('PASS ' + await signedOutThereIsNoEmailSection());
   console.log('PASS ' + await theSectionReadsInAPack());

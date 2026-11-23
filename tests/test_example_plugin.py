@@ -37,8 +37,8 @@ URL = f'https://shop.example.com/health?key={SECRET}'
 SHOWN = 'https://shop.example.com/health'
 KEY = 'hello|shop.example.com'
 FULLER = {'couchbase': ('couchbase-plugin', 'skopax_couchbase', ('icon.svg', 'panel.js')), 'managed-redis': ('managed-redis-plugin', 'skopax_managed_redis', ('icon.svg',)),
-          'batch-jobs': ('batch-jobs-plugin', 'skopax_batch_jobs', ('icon.svg', 'panel.js'))}
-TOOLS = {'couchbase': 1, 'managed-redis': 1, 'batch-jobs': 0}
+          'example-batch-jobs': ('batch-jobs-plugin', 'skopax_batch_jobs', ('icon.svg', 'panel.js'))}
+TOOLS = {'couchbase': 1, 'managed-redis': 1, 'example-batch-jobs': 0}
 DISCOVER = ('import json, sys; from pathlib import Path; sys.path[:0] = [sys.argv[2], sys.argv[1]]; from skopax.registry import Registry; '
             'x = Registry.load({}, builtin=()).get(sys.argv[3] if len(sys.argv) > 3 else "hello"); '
             'print(json.dumps(None if x is None else {"id": x.id, "origin": x.origin, "state": x.state, "reason": x.reason, '
@@ -224,7 +224,7 @@ def test_a_second_instance_of_a_fuller_example_keeps_its_own_keys_and_clears_onl
     if plugin_id == 'couchbase':
         data = tests.put(tests.node_put(tests.healthy(), 'uptime', 0, tests.N1, 60), 'queue', 0, 50)
         first, second = tests.Ctx(tests.FakeProm(data), name='orders'), tests.Ctx(tests.FakeProm(data), name='search')
-    elif plugin_id == 'batch-jobs':
+    elif plugin_id == 'example-batch-jobs':
         data = tests.failing(tests.slow(tests.healthy(), tests.EXPORT, 200), tests.SEARCH, 4, 4)
         first, second = tests.Ctx(tests.FakeProm(data), name='shop-jobs'), tests.Ctx(tests.FakeProm(data), name='shop-jobs-eu')
     else:

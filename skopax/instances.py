@@ -28,6 +28,7 @@ log = logging.getLogger('skopax.instances')
 
 NAME = re.compile(r'[a-z0-9](?:[-a-z0-9]{0,18}[a-z0-9])?')
 REFRESH_S = 15
+REREAD_S = 2
 ADMIN = 'admin'
 TEXT_MAX = 1000
 SECRET_MAX = 4000
@@ -396,6 +397,7 @@ class Instances:
         self.every = every
         self._items: list[Instance] = []
         self._checked: float | None = None
+        self._asked: float | None = None
         self._last_sources: list[SourceData] = []
         self._warned: set = set()
         self._guard = threading.Lock()
@@ -415,6 +417,9 @@ class Instances:
     def age(self) -> float | None:
         return None if self._checked is None else self.clock() - self._checked
 
+    def live_age(self) -> float | None:
+        return None if self._asked is None else self.clock() - self._asked
+
     def all(self, plugin: str | None = None) -> list[Instance]:
         with self._guard:
             items = self._items
@@ -427,6 +432,15 @@ class Instances:
         with self._write:
             self._reload(live=False)
             return self.get(plugin, name)
+
+    def reread(self, within: float | None = None) -> None:
+        held = self.age()
+        if held is not None and held < (REREAD_S if within is None else within):
+            return
+        try:
+            self._reload(live=False)
+        except Exception as e:
+            self._warn(('refresh', type(e).__name__), msg('instances.refresh_failed', error=kind(e)))
 
     def primary(self, plugin: str) -> Instance | None:
         return next((i for i in self.all(plugin) if i.primary), None)
@@ -893,6 +907,7 @@ class Instances:
 
     def _reload(self, live: bool = True) -> None:
         with self._write:
+            asked = live or self._checked is None
             docs = list(self.col.find())
             sources = self._source_data(live)
             sealer = self._sealer()
@@ -900,6 +915,8 @@ class Instances:
             with self._guard:
                 self._items = built
                 self._checked = self.clock()
+                if asked:
+                    self._asked = self._checked
             self._reseal(reseal, sealer)
 
     def _reseal_one(self, doc_id: str, key: str, old: str, new: str) -> bool:

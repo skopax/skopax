@@ -460,6 +460,11 @@ function intTile(p) {
   sw.setAttribute('role', 'switch');
   sw.setAttribute('aria-checked', on ? 'true' : 'false');
   sw.setAttribute('aria-label', 'Switch ' + intName(p));
+  var held = intList(p.instances);
+  if (on && held.length && !held.some(function (i) { return i.enabled; })) {
+    sw.classList.add('idle');
+    sw.title = 'On, but no instance is on: open it and turn an instance on';
+  }
   if (!usable) {
     sw.title = String(p.reason || '');
     if (!on) sw.setAttribute('aria-disabled', 'true');

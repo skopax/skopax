@@ -77,6 +77,9 @@ def scan_parts(cards: list[dict], base: str) -> tuple[str, str]:
         if pod:
             soft.append(str((c['note'].get('text') if isinstance(c['note'], dict) else c['note']) or ''))
             c = {k: v for k, v in c.items() if k != 'note'}
+        if prompt.KNOWN_CAUSE in c:
+            soft.append(str(c[prompt.KNOWN_CAUSE] or ''))
+            c = {k: v for k, v in c.items() if k != prompt.KNOWN_CAUSE}
         soft.append(str(line or ''))
         strict.append(c)
     return prompt.cards_text(strict, base), '\n'.join(t for t in soft if t)

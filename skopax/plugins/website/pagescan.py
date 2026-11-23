@@ -1,5 +1,6 @@
 import base64
 import datetime as dt
+import fnmatch
 import hashlib
 import json
 import logging
@@ -18,6 +19,7 @@ from skopax.messages import msg
 from skopax.plugins.website import browsers
 
 log = logging.getLogger('skopax.plugins.website.pagescan')
+TRIED_AT = re.compile(r'error: pages \(tried (\S+)\):')
 
 PASS = 'pagescan'
 DIGEST = 'pagescan-digest'
@@ -495,6 +497,41 @@ def seconds_of(value: object) -> float | None:
         return None
 
 
+def release_globs(raw: object) -> list[str]:
+    return [g for g in dict.fromkeys(i.strip().lower() for i in str(raw or '').split(',')) if g and len(g) <= 100 and re.fullmatch(r'[a-z0-9._*?/-]+', g)][:50]
+
+
+RELEASE_NAME = re.compile(r'(?=.{1,100}$)[A-Za-z0-9._*?-]+(?:/[A-Za-z0-9._*?-]+)?')
+RELEASE_MAX = 50
+
+
+def release_problem(text: str) -> str | None:
+    items = [i.strip() for i in str(text or '').split(',') if i.strip()]
+    if len(items) > RELEASE_MAX:
+        return f'list at most {RELEASE_MAX} service names'
+    bad = next((i for i in items if not RELEASE_NAME.fullmatch(i)), None)
+    if bad is None:
+        return None
+    return f'"{bad.encode("ascii", "replace").decode()[:40]}" is not a service name: use letters, digits and . _ - with * or ? as wildcards, at most 100 characters, or namespace/service; no spaces or brackets'
+
+
+def released_at(row: object, globs: list[str]) -> float | None:
+    if not isinstance(row, dict) or not isinstance(row.get('svc'), str):
+        return None
+    svc = row['svc'].lower()
+    named = (svc, f"{str(row.get('ns') or '').lower()}/{svc}")
+    return seconds_of(row.get('at')) if any(fnmatch.fnmatchcase(n, g) for n in named for g in globs) else None
+
+
+def release_due(ctx: Context, last: float, now: float) -> bool:
+    globs = release_globs(ctx.instance.config.get('release-services') if ctx.instance is not None else '')
+    if not globs:
+        return False
+    wait = min(120.0, max(1.0, number(ctx.setting('release-delay')) or 10.0)) * 60
+    times = [t for t in (released_at(r, globs) for r in ctx.deploys(last - wait)) if t is not None and t + wait > last]
+    return bool(times) and now >= max(times) + wait
+
+
 def switched_on(ctx: Context) -> bool:
     return bool(ctx.setting('page-scan')) and ctx.instance is not None and browsers.ready(ctx)
 
@@ -652,7 +689,12 @@ class Scan:
             return Sweep(PassResult(PASS, False, f'error: {e.message}'))
         last = seconds_of(summary_of(self.ctx.previous(SECTION)).get('at'))
         hours = number(self.ctx.setting('scan-hours')) or 1
-        if last is not None and self.now - last < hours * 3600:
+        held = self.ctx.last_status()
+        found = TRIED_AT.match(held) if isinstance(held, str) else None
+        tried = seconds_of(found[1]) if found else None
+        if tried is not None and 0 <= self.now - tried < hours * 3600:
+            return Sweep(PassResult(PASS, False, held))
+        if last is not None and self.now - last < hours * 3600 and not release_due(self.ctx, last, self.now):
             return Sweep(PassResult(PASS, True, f'ok{DOT}{QUIET}', [], {}, (NO_DATA,)))
         busy, source, note = self.busy()
         limit = max(0, int(number(self.ctx.setting('pages')) or 0))
@@ -669,7 +711,8 @@ class Scan:
         if not urls:
             extra = [umami_card()] if self.umami == 'refused' else []
             ran = (NO_DATA,) + ((UMAMI_ACCESS,) if self.umami in ('read', 'none') else ())
-            return Sweep(PassResult(PASS, True, f'ok{DOT}{NO_PAGES}' + (f'{DOT}{note}' if note else ''), extra, {}, ran))
+            row = {'part': 'summary', 'at': iso(self.now), 'source': source, 'pages': 0, 'of': 0, 'missed': 0}
+            return Sweep(PassResult(PASS, True, f'ok{DOT}{NO_PAGES}' + (f'{DOT}{note}' if note else ''), extra, {}, ran), {SECTION: [row]})
         self.system = system_prompt(self.ctx, self.origin)
         self.remember()
         access = down = cut = False
@@ -701,7 +744,7 @@ class Scan:
         found = self.found + ([access_card()] if access else []) + ([site_card(refused)] if refused else []) + ([umami_card()] if self.umami == 'refused' else [])
         if not read and not access and not refused:
             first = self.missed[0]['reason'] if self.missed else next((r['skipped'] + (f" (HTTP {r['status']})" if r.get('status') else '') for r in self.rows if r.get('skipped')), 'no page was read')
-            return Sweep(PassResult(PASS, False, f'error: pages: {first}'))
+            return Sweep(PassResult(PASS, False, f'error: pages (tried {iso(self.now)}): {first}'))
         skipped = sum(1 for r in self.rows if r.get('skipped') in (AI_OFF, LATE))
         held = sum(1 for r in self.rows if r.get('held'))
         lines_held = sum(int(r.get('heldLines') or 0) for r in self.rows)

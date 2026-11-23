@@ -624,14 +624,14 @@ async function theCardGroupsItsFieldsAndShowsItsStatus() {
 
   //then
   const groups = [...card(t.doc).querySelectorAll('.sso-grp')].map((g) => [g.querySelector('.sso-num').textContent, g.querySelector('h4 .sso-grp-l').textContent, [...g.querySelectorAll('.sso-f')].map((f) => f.dataset.field)]);
-  assert.deepStrictEqual(groups, [['1', 'Provider', ['issuer', 'client-id', 'client-secret', 'scope', 'claims', 'require-verified-email', 'authorize-url', 'token-url', 'jwks-url', 'client-auth']],
+  assert.deepStrictEqual(groups, [['1', 'Provider', ['issuer', 'client-id', 'client-secret', 'scope', 'claims', 'require-verified-email', 'authorize-url', 'token-url', 'jwks-url', 'client-auth', 'extra-token-headers']],
     ['2', 'Redirect URI', []], ['3', 'Who may sign in', ['new-accounts', 'allowed-domains']], ['4', 'Roles from groups', ['roles-claim', 'role-map', 'default-role']], ['5', 'Sign-in button', ['button-text', 'button-icon']]]);
   const step = (key) => card(t.doc).querySelector('.sso-grp[data-grp="' + key + '"]');
   assert.ok(step('provider').querySelector('.sso-adv') && step('provider').querySelector('.sso-test') && step('provider').querySelector('.sso-result'), 'Advanced, Test connection and its result sit in the Provider card');
   assert.ok(step('redirect').querySelector('.sso-redirect .sso-copy'), 'the redirect URI and Copy sit in their own card');
   assert.ok(step('roles').querySelector('.sso-roles'), 'Last known role sits in the roles card');
   assert.ok(step('button').querySelector('.sso-icon-box') && step('button').querySelector('.sso-preview'), 'the icon upload and the preview sit in the button card');
-  assert.strictEqual(card(t.doc).querySelectorAll('.sso-f').length, 17, 'every field shows once');
+  assert.strictEqual(card(t.doc).querySelectorAll('.sso-f').length, 18, 'every field shows once');
   [...card(t.doc).querySelectorAll('.sso-grp')].forEach((g) => assert.strictEqual(g.getAttribute('aria-labelledby'), g.querySelector('h4').id, 'each card is named by its heading'));
   assert.strictEqual(card(t.doc).querySelector('.sso-status').textContent, 'Provider: Okta \u00b7 acme.okta.com \u00b7 Not tested since this page opened');
   assert.ok(card(t.doc).querySelector('.sso-adv') && !card(t.doc).querySelector('.sso-adv').open, 'Advanced stays folded');

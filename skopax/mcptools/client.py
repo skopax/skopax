@@ -35,6 +35,8 @@ REFUSED_NETS = tuple(ipaddress.ip_network(net) for net in ('169.254.0.0/16', 'fe
 NAT64 = ipaddress.ip_network('64:ff9b::/96')
 LOCAL_HOSTS = ('localhost', '127.0.0.1', '::1')
 LOOPBACK_NAMES = ('localhost',)
+CLUSTER_NAME = re.compile(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.){2,}svc(?:\.cluster\.local)?')
+PRIVATE_NETS = tuple(ipaddress.ip_network(net) for net in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10', 'fc00::/7'))
 HEADER_NAME = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 PROTECTED = ('host', 'content-type', 'accept', 'content-length', 'transfer-encoding', 'connection', 'mcp-session-id', 'mcp-protocol-version', 'accept-encoding')
 BAD_VALUE = ('\r', '\n', '\x00')
@@ -58,6 +60,7 @@ KEEPALIVE_S = 5
 
 Address = ipaddress.IPv4Address | ipaddress.IPv6Address
 TRIP: ContextVar[Callable[[Exception], None] | None] = ContextVar('mcptools_trip', default=None)
+PLAIN_HTTP: ContextVar[bool | None] = ContextVar('mcptools_plain_http', default=None)
 
 
 class Refused(Authored, Exception):
@@ -102,6 +105,19 @@ def loopback(host: str) -> bool:
     return host in LOOPBACK_NAMES if ip is None else ip.is_loopback
 
 
+def cluster(host: str) -> bool:
+    return bool(CLUSTER_NAME.fullmatch(host.lower()))
+
+
+def absolute(host: str) -> str:
+    name = host.lower()
+    return (name if name.endswith('.cluster.local') else name + '.cluster.local') + '.'
+
+
+def private(ip: Address) -> bool:
+    return any(ip in net for net in PRIVATE_NETS)
+
+
 def split(url: str) -> SplitResult | None:
     try:
         parts = urlsplit(url)
@@ -114,7 +130,7 @@ def split(url: str) -> SplitResult | None:
 def guard_url(url: str, allow_local_http: bool, discovered: bool = False) -> None:
     parts = split(url)
     scheme, host = (parts.scheme.lower(), parts.hostname or '') if parts else ('', '')
-    local_http = scheme == 'http' and allow_local_http and not discovered and host in LOCAL_HOSTS
+    local_http = scheme == 'http' and not discovered and ((allow_local_http and host in LOCAL_HOSTS) or cluster(host))
     if parts is not None and scheme != 'https' and not local_http:
         raise Refused(msg('mcptools.url.https'))
     if parts is None or not host or '@' in parts.netloc or '#' in url:
@@ -138,13 +154,16 @@ class GuardedBackend(httpcore.AsyncNetworkBackend):
     async def connect_tcp(self, host: str, port: int, timeout: float | None = None, local_address: str | None = None, socket_options=None) -> httpcore.AsyncNetworkStream:
         try:
             with anyio.fail_after(timeout):
-                found = await anyio.to_thread.run_sync(partial(socket.getaddrinfo, host, port, type=socket.SOCK_STREAM), abandon_on_cancel=True)
+                named = absolute(host) if cluster(host) and PLAIN_HTTP.get() is not False else host
+                found = await anyio.to_thread.run_sync(partial(socket.getaddrinfo, named, port, type=socket.SOCK_STREAM), abandon_on_cancel=True)
         except TimeoutError:
             raise httpcore.ConnectTimeout() from None
         except OSError:
             raise httpcore.ConnectError() from None
         addresses = [address(str(info[4][0])) for info in found]
-        if not addresses or any(ip is None or refused(ip) or (any(x.is_loopback for x in embedded(ip)) and not loopback(host)) for ip in addresses):
+        inside = PLAIN_HTTP.get() is not False and cluster(host)
+        if not addresses or any(ip is None or refused(ip) or (any(x.is_loopback for x in embedded(ip)) and not loopback(host)) or (inside and not private(ip))
+                                for ip in addresses):
             raise Refused(msg('mcptools.url.resolved'))
         failed: httpcore.ConnectError | httpcore.ConnectTimeout | None = None
         for ip in addresses:
@@ -188,7 +207,11 @@ class Capped(httpx.AsyncBaseTransport):
         self.limit = limit
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        response = await self.transport.handle_async_request(request)
+        mark = PLAIN_HTTP.set(request.url.scheme == 'http')
+        try:
+            response = await self.transport.handle_async_request(request)
+        finally:
+            PLAIN_HTTP.reset(mark)
         if response.headers.get('content-encoding', '').strip().lower() not in PLAIN:
             await response.aclose()
             raise Refused(msg('mcptools.encoded'))

@@ -6,7 +6,9 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import pytest
 
 from skopax.contract import HttpError, InstanceInfo, Peer
+from skopax import registry
 from skopax.kit import access, promql
+from skopax.plugins import batch_jobs as builtin
 from skopax.remote import Reply
 
 import skopax_batch_jobs
@@ -25,7 +27,7 @@ DRIFT = RULES['drift_min'] * 60
 
 
 def key(subject: str, sig: str, instance: str = 'shop-jobs') -> str:
-    return f'batch-jobs|{instance}|{subject}|{sig}'
+    return f'example-batch-jobs|{instance}|{subject}|{sig}'
 
 
 def labels(job: str, group: str = 'shop') -> dict:
@@ -132,14 +134,14 @@ def test_the_plugin_reads_batch_jobs_through_a_prometheus_peer_with_names_as_fie
     assert (fields['prometheus'].kind, fields['prometheus'].choices, fields['prometheus'].required) == ('instance', ('prometheus',), True)
     assert {k: fields[k].default for k in ('metric', 'group', 'job', 'result', 'failure', 'selector')} == {
         'metric': 'batch_job_duration_seconds', 'group': 'namespace', 'job': 'job_name', 'result': 'result', 'failure': 'failure', 'selector': ''}
-    assert (check.id, check.ran, check.sections, check.period) == ('batch-jobs', ('batch-jobs',), ('batch-jobs',), 300)
+    assert (check.id, check.ran, check.sections, check.period) == ('example-batch-jobs', ('example-batch-jobs',), ('example-batch-jobs',), 300)
     assert [(r.id, dict(r.defaults)) for r in PLUGIN.rules] == [('rules', RULES)] and set(PLUGIN.rules[0].help) == set(RULES)
     assert all(PLUGIN.rules[0].help[k].strip() for k in RULES)
-    assert {t.sig for t in CARD_TYPES} == set(LINK) == {'batch-jobs-failing', 'batch-jobs-missed', 'batch-jobs-slow'}
-    assert [(p.tab, p.script, p.group) for p in PLUGIN.panels] == [('batch-jobs', 'panel.js', 'observe')]
-    assert (knowledge.id, knowledge.title, knowledge.slack) == ('batch-jobs', 'Batch jobs', True)
+    assert {t.sig for t in CARD_TYPES} == set(LINK) == {'example-batch-jobs-failing', 'example-batch-jobs-missed', 'example-batch-jobs-slow'}
+    assert [(p.tab, p.script, p.group, p.label) for p in PLUGIN.panels] == [('example-batch-jobs', 'panel.js', 'observe', 'Example batch jobs')]
+    assert (knowledge.id, knowledge.title, knowledge.slack) == ('example-batch-jobs', 'Example batch jobs', True)
     assert len(knowledge.text) <= 8000 and knowledge.text.isascii()
-    assert all(s in knowledge.text for s in ('batch-jobs-failing', 'batch-jobs-missed', 'batch-jobs-slow', 'promql', 'batch_job_duration_seconds_count'))
+    assert all(s in knowledge.text for s in ('example-batch-jobs-failing', 'example-batch-jobs-missed', 'example-batch-jobs-slow', 'promql', 'batch_job_duration_seconds_count'))
 
 
 def test_a_healthy_pass_raises_nothing_and_fills_one_row_per_job_with_shifted_baselines():
@@ -151,11 +153,11 @@ def test_a_healthy_pass_raises_nothing_and_fills_one_row_per_job_with_shifted_ba
 
     # then
     out = sweep.result
-    assert (out.name, out.ok, out.status, out.found, out.ran) == ('batch-jobs', True, 'ok', [], ('batch-jobs', 'batch-jobs:access:metrics'))
+    assert (out.name, out.ok, out.status, out.found, out.ran) == ('example-batch-jobs', True, 'ok', [], ('example-batch-jobs', 'example-batch-jobs:access:metrics'))
     assert len(prom.calls) == 4 * 3 + 2 + 2
     assert {at for _, at in prom.calls} == {NOW, NOW - DAY, NOW - 7 * DAY, NOW - DAY - DRIFT, NOW - 7 * DAY - DRIFT}
     assert sorted(at for q, at in prom.calls if q == Q['expected']) == [NOW - 7 * DAY - DRIFT, NOW - DAY - DRIFT] and f'[{3600 - DRIFT}s]' in Q['expected']
-    rows = sweep.sections['batch-jobs']
+    rows = sweep.sections['example-batch-jobs']
     assert [r['job'] for r in rows if r['part'] == 'job'] == [CLEANUP, EXPORT, SEARCH, INVOICES]
     [summary] = [r for r in rows if r['part'] == 'summary']
     assert (summary['name'], summary['jobs'], summary['groups'], summary['source'], summary['ui'], summary['at']) == ('shop-jobs', 4, 1, 'metrics', UI, '2026-10-17T08:00:00Z')
@@ -166,7 +168,7 @@ def test_the_panel_rows_hold_runs_failures_and_times_against_one_and_seven_days_
     data = put(put(healthy(), 'fails', 1, EXPORT, 1), 'total', 2, EXPORT, 12 * 25)
 
     # when
-    rows = run(Ctx(FakeProm(data))).sections['batch-jobs']
+    rows = run(Ctx(FakeProm(data))).sections['example-batch-jobs']
 
     # then
     row = next(r for r in rows if r.get('job') == EXPORT)
@@ -245,8 +247,8 @@ def test_every_card_kind_is_a_declared_card_type_with_a_graph():
 
     # then
     assert {c['sig'] for c in found} == {t.sig for t in CARD_TYPES}
-    assert all(c['src'] == 'batch-jobs' and c['ns'] == 'shop' and c['ranKey'] == 'batch-jobs' for c in found)
-    assert all(c['key'] == key(f"shop/{c['svc']}", c['sig'].removeprefix('batch-jobs-')) for c in found)
+    assert all(c['src'] == 'example-batch-jobs' and c['ns'] == 'shop' and c['ranKey'] == 'example-batch-jobs' for c in found)
+    assert all(c['key'] == key(f"shop/{c['svc']}", c['sig'].removeprefix('example-batch-jobs-')) for c in found)
     assert all(len(c['urls']) == 1 and c['urls'][0]['url'].startswith(UI + '/query?') for c in found)
     assert all(c['what'].isascii() and c['short'].isascii() for c in found)
 
@@ -290,9 +292,9 @@ def test_a_refused_read_raises_one_access_card_and_keeps_the_other_cards_open(co
 
     # then
     [card] = out.found
-    assert (out.ok, out.ran, out.status) == (True, ('batch-jobs:access:metrics',), access.status('ok', ['batch job metrics']))
-    assert (card['sig'], card['ranKey'], card['sev']) == ('no-access', 'batch-jobs:access:metrics', 'warn')
-    assert card['label'] == access.text('Batch jobs', 'batch job metrics', credential='', status=status)
+    assert (out.ok, out.ran, out.status) == (True, ('example-batch-jobs:access:metrics',), access.status('ok', ['batch job metrics']))
+    assert (card['sig'], card['ranKey'], card['sev']) == ('no-access', 'example-batch-jobs:access:metrics', 'warn')
+    assert card['label'] == access.text('Example batch jobs', 'batch job metrics', credential='', status=status)
 
 
 def test_no_peer_or_a_failing_prometheus_is_an_error_pass_that_clears_nothing():
@@ -364,7 +366,7 @@ def test_card_links_are_prometheus_graphs_on_an_https_ui_only():
     assert 'namespace=' + json.dumps('shop') in expr and 'job_name=' + json.dumps(SEARCH) in expr and 'result=~"failure"' in expr
     assert plain['urls'] == [] and links(plain, InstanceInfo('shop-jobs', True, None, {})) == []
     assert links({'src': 'other', 'urls': [{'label': 'x', 'url': UI}]}, InstanceInfo('shop-jobs', True, None, {})) is None
-    assert links({'src': 'batch-jobs', 'urls': [{'label': 'x', 'url': 'javascript:alert(1)'}, 'x', {'label': 'y', 'url': UI}]}, InstanceInfo('shop-jobs', True, None, {})) == [
+    assert links({'src': 'example-batch-jobs', 'urls': [{'label': 'x', 'url': 'javascript:alert(1)'}, 'x', {'label': 'y', 'url': UI}]}, InstanceInfo('shop-jobs', True, None, {})) == [
         {'label': 'y', 'url': UI}]
 
 
@@ -409,12 +411,23 @@ def test_test_connection_counts_the_jobs_it_sees():
     assert [q for q, _ in prom.calls] == ['count by (namespace, job_name) (batch_job_duration_seconds_count)']
     assert (empty.ok, empty.summary) == (True, 'Prometheus metrics answered, but it holds no batch_job_duration_seconds_count series')
     assert (unset.ok, unset.summary) == (False, 'no Prometheus instance is set')
-    assert (refused.ok, refused.summary) == (False, access.text('Batch jobs', 'batch job metrics', credential='', status=403))
+    assert (refused.ok, refused.summary) == (False, access.text('Example batch jobs', 'batch job metrics', credential='', status=403))
 
 
-def test_the_module_exports_the_plugin():
+def test_the_module_exports_the_plugin_under_an_id_apart_from_the_built_in_batch_jobs():
     # then
-    assert skopax_batch_jobs.PLUGIN is PLUGIN and PLUGIN.id == 'batch-jobs' and PLUGIN.version == '0.1.0'
+    assert skopax_batch_jobs.PLUGIN is PLUGIN and PLUGIN.id == 'example-batch-jobs' and PLUGIN.version == '0.1.0'
+    assert PLUGIN.id != builtin.PLUGIN.id and {t.sig for t in CARD_TYPES}.isdisjoint(t.sig for t in builtin.CARD_TYPES)
+    assert {p.tab for p in PLUGIN.panels}.isdisjoint(p.tab for p in builtin.PLUGIN.panels) and PLUGIN.name != builtin.PLUGIN.name
+
+
+def test_the_example_loads_next_to_the_built_in_plugins():
+    # when
+    reg = registry.Registry.load({'SKOPAX_PLUGINS': 'skopax_batch_jobs'}, entry_points=False)
+
+    # then
+    assert reg.get('batch-jobs').state == 'ok' and reg.get('batch-jobs').origin == 'builtin'
+    assert reg.get('example-batch-jobs').state == 'ok', reg.get('example-batch-jobs').reason
 
 
 def test_current_runs_missing_while_baselines_exist_is_an_error_pass_that_clears_nothing():
@@ -492,7 +505,7 @@ def test_a_missed_card_names_its_window_and_shows_the_same_hour_counts_as_the_pa
     # when
     sweep = run(Ctx(FakeProm(data)))
     [card] = sweep.result.found
-    row = next(r for r in sweep.sections['batch-jobs'] if r.get('job') == 'export-orders-eu')
+    row = next(r for r in sweep.sections['example-batch-jobs'] if r.get('job') == 'export-orders-eu')
 
     # then
     assert (card['d1'], card['d7']) == (row['runsD1'], row['runsD7']) == (6, 6)

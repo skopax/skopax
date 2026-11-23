@@ -30,6 +30,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
         ('Channel and posting', ('slack.channel', 'slack.post-sev', 'slack.fallback-minutes', 'routes.slack-echo', 'slack.attach-screenshots', 'slack.push-user')),
         ('Questions', ('slack.ask-cap', 'slack.user-ask-cap', 'slack.ask-channels', 'slack.dm-chats', 'slack.listen', 'slack.operator-cache-seconds')),
         ('Threads and reminders', ('slack.thread-hours', 'slack.remind-hours', 'slack.clear-note-minutes', 'slack.state-notes', 'slack.great-emoji')),
+        ('Daily warnings', ('slack.warn-digest-at',)),
     ),
     'Self-review': (
         ('Daily review', ('self-review.model', 'self-review.dm', 'self-review.hour')),
@@ -47,6 +48,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     ),
     'Monitor rules': (
         ('Certificates', ('core.certs', 'core.cert-skip')),
+        ('Reachability', ('core.probe-extra',)),
     ),
     'Card tags': (
         ('Daily report', ('tags.report-at',)),

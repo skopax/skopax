@@ -145,12 +145,12 @@ function ntMailRender() {
   sec.hidden = !d;
   if (!d) return;
   var on = document.getElementById('pf-mail-on'), row = document.getElementById('pf-mail-kinds'), box = row.querySelector('.pf-kinds');
-  on.checked = !!d.on;
-  on.disabled = !d.ready && !d.on;
+  on.checked = !!(d.on && d.ready);
+  on.disabled = !d.ready;
   on.onchange = function () { ntMailSave({on: on.checked, kinds: d.kinds && d.kinds.length ? d.kinds : d.all}); };
   document.getElementById('pf-mail-to').textContent = d.email || '';
   document.getElementById('pf-mail-none').hidden = !!d.ready;
-  row.hidden = !d.on;
+  row.hidden = !on.checked;
   box.textContent = '';
   (d.all || []).forEach(function (k) {
     var label = document.createElement('label'), box1 = document.createElement('input'), text = document.createElement('span');
@@ -183,6 +183,9 @@ async function ntMail(on) {
     try { NT_MAIL.doc = await ntApi('GET', '/api/me/notice-mail'); } catch (e) { NT_MAIL.doc = null; }
   }
   ntMailRender();
+}
+function ntMailAgain() {
+  if (NT.signed) ntMail(true);
 }
 function ntSignedIn(on) {
   NT.signed = !!on;

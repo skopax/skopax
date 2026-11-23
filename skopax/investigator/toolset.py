@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from skopax import tags
 from skopax.errkind import Authored, kind as error_kind
 from skopax.messages import msg
+from skopax.probe import PROBE_PLUGIN
 from skopax.redact import redact_text
 
 log = logging.getLogger('skopax.investigator.toolset')
@@ -200,7 +201,7 @@ class ToolSet:
             owner, reach = CORE[name].needs or CORE_OWNER, CORE[name].reach
         else:
             owner, reach = next(((plugin.id, tuple(tool.reach)) for plugin, _ in (self.runtime.serving() if self.runtime else []) for tool in plugin.tools if tool.name == name), (None, ()))
-        named = [r for r in rows or [] if isinstance(r, dict) and (r.get('name') in reach if reach else r.get('plugin') == owner)]
+        named = [r for r in rows or [] if isinstance(r, dict) and r.get('plugin') != PROBE_PLUGIN and (r.get('name') in reach if reach else r.get('plugin') == owner)]
         if not named or any(r.get('ok') for r in named):
             return []
         return list(dict.fromkeys(str(r.get('name')) for r in named))

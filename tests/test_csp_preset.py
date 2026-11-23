@@ -161,7 +161,7 @@ def test_the_csp_preset_loads_at_start_as_an_elasticsearch_preset_with_an_index_
     view = preset.view()
 
     # then
-    assert (view['source'], [p['kind'] for p in view['placeholders']]) == ('elasticsearch', ['instance', 'name', 'index'])
+    assert (view['source'], [p['kind'] for p in view['placeholders']]) == ('elasticsearch', ['instance', 'name', 'index', 'condition'])
     assert [(c['key'], c['severity']) for c in view['checks']] == [('new-host', 'warn'), ('reports-jump', 'warn')]
     index = next(p for p in view['placeholders'] if p['kind'] == 'index')
     assert 'default' not in index and 'only the CSP report logs' in index['help']
@@ -172,7 +172,7 @@ def test_filling_the_preset_gives_bounded_elasticsearch_checks_that_read_the_rep
     values, made = presets()['csp'].fill(VALUES)
 
     # then
-    assert values == VALUES
+    assert values == VALUES | {'filter': ''}
     assert [d['id'] for d in made] == ['csp-shop-new-host', 'csp-shop-reports-jump']
     for d in made:
         assert (d['source'], d['instance'], d['window']) == ('elasticsearch', 'central', 60)
@@ -361,3 +361,54 @@ def test_the_shipped_queries_give_the_rows_the_tests_assume_on_a_real_elasticsea
     assert {r['host'] for r in want} == {'tracker.example.net', 'ads.example.org', 'raw.example.net', 'spaced.example.net', 'few.example.com'}
     (columns, rows), want = got['reports-jump']
     assert columns == COLUMNS['reports-jump'] and rows == want == [{'value': 600, 'day_ago': 50, 'week_ago': 80}]
+
+
+def test_the_filter_is_optional_and_empty_adds_nothing_to_the_queries():
+    # given
+    view = presets()['csp'].view()
+    filter_ = next(p for p in view['placeholders'] if p['key'] == 'filter')
+
+    # when
+    _, plain = presets()['csp'].fill(VALUES)
+    _, blank = presets()['csp'].fill(VALUES | {'filter': '   '})
+
+    # then
+    assert filter_['optional'] is True and filter_['kind'] == 'condition'
+    assert plain == blank and all('()' not in d['query'] and '${' not in d['query'] and 'kubernetes' not in d['query'] for d in plain)
+
+
+def test_a_filter_goes_in_parentheses_right_after_the_time_where_of_every_check():
+    # given
+    condition = 'kubernetes.namespace == "shop" AND NOT (log.level == "debug")'
+
+    # when
+    values, made = presets()['csp'].fill(VALUES | {'filter': condition})
+
+    # then
+    assert values['filter'] == condition
+    for d in made:
+        before, after = d['query'].split(f'\n| WHERE ({condition})')
+        assert before.count('| WHERE') == 1 and 'TO_DATETIME(?end)' in before.split('\n')[-1]
+        assert after.startswith('\n| WHERE message LIKE "*blockedURL*"')
+        assert promqlchecks.clean(d) == d
+
+
+@pytest.mark.parametrize('condition', ['kubernetes.namespace == "shop"', 'host.name LIKE "web-*" AND NOT (log.level == "debug")', 
+                                       'message LIKE "*a(b*"', 'a == "say \\"hi\\""'])
+def test_plain_boolean_conditions_are_taken(condition):
+    # when
+    values, _ = presets()['csp'].fill(VALUES | {'filter': condition})
+
+    # then
+    assert values['filter'] == condition
+
+
+@pytest.mark.parametrize('condition', ['a == 1 | DROP message', 'a == 1; b', 'a == 1\n| LIMIT 1', '(a == 1', 'a == 1) OR (b == 2', 'a == "x', 'a == 1 /* c', 'a == 1 // c', 'a == 1 ) | ( b', 'a == """x"""" // ) OR (true', 'a == """x"""', '`k8s.pod` == "x"', 'a == `b', 'a == "x|y"', 'a == "x;y"',
+                                       'x' * 301])
+def test_a_filter_that_is_not_a_plain_condition_is_refused(condition):
+    # when
+    with pytest.raises(Invalid) as e:
+        presets()['csp'].fill(VALUES | {'filter': condition})
+
+    # then
+    assert 'Filter' in e.value.text and 'condition' in e.value.text

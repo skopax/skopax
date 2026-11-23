@@ -24,8 +24,9 @@ KINDS = {
     'prefix': ('query', 'text'),
     'label': ('query', 'by', 'title', 'text'),
     'index': ('query',),
+    'condition': ('query',),
 }
-MAXES = {'instance': INSTANCE_MAX, 'datasource': DATASOURCE_MAX, 'name': 20, 'matchers': 300, 'prefix': 100, 'label': 100, 'index': 200}
+MAXES = {'instance': INSTANCE_MAX, 'datasource': DATASOURCE_MAX, 'name': 20, 'matchers': 300, 'prefix': 100, 'label': 100, 'index': 200, 'condition': 300}
 ONE_OF = ('instance', 'name')
 PRESET_KEYS = frozenset({'id', 'name', 'summary', 'source', 'needs', 'placeholders', 'checks'})
 PLACEHOLDER_KEYS = frozenset({'key', 'kind', 'label', 'help', 'example', 'default', 'optional', 'max'})
@@ -39,8 +40,34 @@ class PresetError(ValueError):
     pass
 
 
+def _plain_condition(v: str) -> bool:
+    if '|' in v or ';' in v or '`' in v or '"""' in v:
+        return False
+    depth, i = 0, 0
+    while i < len(v):
+        c = v[i]
+        if c == '"':
+            i += 1
+            while i < len(v) and v[i] != '"':
+                i += 2 if v[i] == '\\' else 1
+            if i >= len(v):
+                return False
+        elif v.startswith(('//', '/*'), i):
+            return False
+        elif c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+            if depth < 0:
+                return False
+        i += 1
+    return depth == 0 and bool(v)
+
+
 def _shaped(v: str, p: dict) -> bool:
     kind = p['kind']
+    if kind == 'condition':
+        return (v == '' and p['optional']) or (_plain_condition(v) and not LINE_BREAKS.search(v))
     if kind == 'name':
         return bool(NAME.fullmatch(v))
     if kind == 'matchers':
@@ -61,6 +88,7 @@ SHAPES = {
     'matchers': 'label matchers such as {example}: label, operator, quoted value, joined by commas',
     'prefix': 'the start of a metric name, such as {example}',
     'label': 'a label name, such as {example}',
+    'condition': 'a plain ES|QL condition such as {example}: no pipe, semicolon, comment or line break, quotes and parentheses closed',
     'index': 'an index pattern such as {example}: letters, digits and - _ . * : only, several joined by commas',
 }
 
@@ -99,9 +127,12 @@ class Preset:
 
     def fill(self, raw: object) -> tuple[dict, list[dict]]:
         values = self.values(raw)
+        kinds = {p['key']: p['kind'] for p in self.placeholders}
+
+        shown = {k: (f'\n| WHERE ({v})' if v else '') if kinds[k] == 'condition' else v for k, v in values.items()}
 
         def put(text: str) -> str:
-            return MARK.sub(lambda m: values[m[1]], text)
+            return MARK.sub(lambda m: shown[m[1]], text)
 
         out = []
         for c in self.checks:
@@ -143,8 +174,8 @@ def _placeholder(raw: object, where: str) -> dict:
     if isinstance(most, bool) or not isinstance(most, int) or not 1 <= most <= MAXES[raw['kind']]:
         raise _fail(where, f"the placeholder {raw['key']} has a max outside 1 to {MAXES[raw['kind']]}")
     optional = raw.get('optional', False)
-    if not isinstance(optional, bool) or (optional and raw['kind'] != 'matchers'):
-        raise _fail(where, f"only a matchers placeholder may be optional, not {raw['key']}")
+    if not isinstance(optional, bool) or (optional and raw['kind'] not in ('matchers', 'condition')):
+        raise _fail(where, f"only a matchers or condition placeholder may be optional, not {raw['key']}")
     out = {'key': raw['key'], 'kind': raw['kind'], 'label': _text(raw, 'label', where), 'help': raw.get('help') or '', 'example': raw['example'], 'optional': optional,
            'max': most}
     if 'default' in raw:
@@ -195,7 +226,7 @@ def _sample(p: dict, longest: bool) -> str:
         return p['example']
     most = p['max']
     return {'matchers': 'a="' + 'x' * (most - 4) + '"', 'prefix': 'p' * most, 'label': 'l' * most, 'name': 'n' + 'x' * (most - 1), 'instance': 'i' * most,
-            'datasource': 'd' * most, 'index': 'x' * most}[p['kind']]
+            'datasource': 'd' * most, 'index': 'x' * most, 'condition': 'x' * most}[p['kind']]
 
 
 def _preset(raw: object, stem: str) -> Preset:

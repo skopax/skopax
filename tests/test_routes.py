@@ -323,7 +323,8 @@ def test_a_route_with_a_bad_link_or_no_known_tag_is_skipped_and_its_health_says_
     with caplog.at_level(logging.WARNING, logger='skopax.runtime'):
         with TestClient(create_app(settings(), store, kube=Kube(root=tmp_path), transport=t)) as c:
             add_route(c, 'plain', 'http://hooks.example.com/workflows/x?sig=PLAIN', tags='seo')
-            add_route(c, 'lost', SEO, tags='finance, type:crux')
+            add_route(c, 'lost', SEO, tags='seo')
+            store.db['instances'].update_one({'_id': 'teams/lost'}, {'$set': {'values.tags': 'finance, type:crux'}})
             add_route(c, 'good', BIZDEV, tags='bizdev')
             row = {p['id']: p for p in c.get('/api/admin/plugins', headers=AUTH).json()['plugins']}['teams']
             found = [r.id for r in c.app.state.routes.routes()]

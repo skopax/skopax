@@ -1,6 +1,7 @@
 import re
 from collections.abc import Mapping
 
+from skopax import severity
 from skopax.contract import Context, InstanceInfo, PassResult, Sweep, anomaly, fmt, iso
 from skopax.kit.access import SIG as ACCESS_SIG
 from skopax.kit.elastic import (Budget, ElasticError, access_card, client_for, discover_for, epoch, index_of, indices_of, kql_levels, kql_text, level_filter, log_fields, namespace_problem,
@@ -81,6 +82,7 @@ def logs_query(config: Mapping[str, str], with_error: bool = True) -> str:
 | STATS now = COUNT(CASE(w == "now", 1, null)), d1 = COUNT(CASE(w == "d1", 1, null)), d7 = COUNT(CASE(w == "d7", 1, null)) BY app = {quoted(named['service'])}, level, msg
 | EVAL base = GREATEST(d1, d7)
 | WHERE (level == "ERROR" AND now >= 5 AND now > 2 * base + 3) OR (level == "WARN" AND now >= 30 AND now >= 5 * base) OR (level == "ERROR" AND now >= 30)
+  OR (level == "WARN" AND now >= {severity.WARN_LOG_GROWTH_MIN} AND ((d1 > 0 AND now >= {severity.WARN_LOG_GROWTH_TIMES} * d1) OR (d7 > 0 AND now >= {severity.WARN_LOG_GROWTH_TIMES} * d7)))
 | KEEP app, level, msg, now, d1, d7
 | SORT now DESC | LIMIT {TOP}'''
 
@@ -118,13 +120,13 @@ def evaluate_logs(rows: list[dict] | None) -> tuple[list[dict], list[dict]]:
         base = max(d1, d7)
         top.append(dict(app=app, level=level, msg=msg, now=now, d1=d1, d7=d7))
         error_rule = level == 'ERROR'
-        flagged = (error_rule and now >= 5 and now > 2 * base + 3) or (level == 'WARN' and now >= 30 and now >= 5 * max(base, 1))
+        flagged = (error_rule and now >= 5 and now > 2 * base + 3) or (level == 'WARN' and ((now >= 30 and now >= 5 * max(base, 1)) or severity.warn_log(now, d1, d7) == severity.HIGH))
         if not flagged:
             continue
         if error_rule:
             sev = 'crit' if base == 0 and now >= 50 else 'high'
         else:
-            sev = 'warn' if now >= 50 else 'info'
+            sev = severity.warn_log(now, d1, d7) if now >= 50 else 'info'
         kind = 'new' if base == 0 else 'growing'
         x = anomaly('logs', 'log', '-', app, '', sev, now, d1, d7, '', f'{level} pattern',
                     f'{kind} {level} pattern, {now} in the last 60 min against {d1} a day ago and {d7} a week ago: {msg}', 5)

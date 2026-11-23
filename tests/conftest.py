@@ -20,7 +20,7 @@ from skopax.chatui.text import reset as reset_chat_texts
 from skopax.investigator import prompt, select
 from skopax.config import Settings
 from skopax.jiralinks import JiraLinks
-from skopax.store import SEVERITY_HIGH_MARK, Store
+from skopax.store import SEVERITY_HIGH_MARK, SEVERITY_RESCORE_MARK, Store
 from skopax.users import Users
 
 RELEASE_IGNORE = ('help-ui', 'tools-gateway', 'tools-mcp')
@@ -156,6 +156,7 @@ def fresh_chainlit(monkeypatch):
 def store() -> Store:
     made = Store(mongomock.MongoClient(tz_aware=True)['skopax'], release_ignore=RELEASE_IGNORE, self_deploy='platform/skopax')
     made.counters.insert_one({'_id': SEVERITY_HIGH_MARK, 'done': True})
+    made.counters.insert_one({'_id': SEVERITY_RESCORE_MARK, 'done': True})
     Users(made.db).create(ADMIN_EMAIL, 'Admin', 'admin')
     return made
 

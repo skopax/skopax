@@ -27,7 +27,7 @@ AGENT_FIELDS = (Field('langfuse.url', 'Langfuse URL', 'url', help='https address
                 Field('langfuse.secret-key', 'Langfuse secret key', 'secret', help='Secret key of the same project.'))
 AGENT_WHERE = 'through the agent'
 TRACED = 'traced-instance'
-TRACED_STATUS = "Receives Skopax's own traces, so it is not watched"
+TRACED_STATUS = "ok \u00b7 receives Skopax's own traces, so it is not watched"
 
 STR = {'type': 'string'}
 SECTION_HELP = {check.SECTION: 'the last hour of traced turns: turns, steps, error and warning steps, p95 turn time and cost per turn, with the turns 1 day and 7 days earlier'}

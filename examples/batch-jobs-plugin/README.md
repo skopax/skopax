@@ -2,6 +2,8 @@
 
 Batch jobs reads scheduled jobs, such as `export-orders`, `send-invoices`, `rebuild-search-index` and `cleanup-sessions`, through a Prometheus instance, and opens cards for jobs that fail, jobs that did not run when they usually do, and jobs that got slow. Like the [Couchbase example](../couchbase-plugin/README.md), it builds on [Hello](../hello-plugin/README.md); read Hello first. It adds a problem that a threshold on one series cannot solve: knowing when a job should have run, from its own history.
 
+Skopax ships a fuller copy of this plug-in built in, as [Batch jobs](../../docs/plugins.md#batch-jobs), with per-job graph and log links and known causes on top. To run beside it, the example registers under its own id, `example-batch-jobs`, with its own card types, check, section and page; a plug-in id that clashes with a built-in one is refused at load. Use the built-in to watch jobs, and this folder to read how such a check is written.
+
 ## What it reads
 
 One timer per job, as most job runners and client libraries can export it: a summary or histogram named `batch_job_duration_seconds`, with its `_count`, `_sum` and `_max` series, and three labels: the group of the job (`namespace`), the job (`job_name`) and the outcome of the run (`result`, such as `success` or `failure`). The metric, the three labels and the failure values are fields with those defaults, so a setup that writes `cron_run_seconds` with `team`, `task` and `status` changes the fields and nothing else.
@@ -12,10 +14,10 @@ The job label is `job_name` and not `job` on purpose. Prometheus sets its own `j
 
 | File | What it shows |
 | --- | --- |
-| `pyproject.toml` | The package, and the `skopax.plugins` entry point named `batch-jobs` that points at `skopax_batch_jobs:PLUGIN`. |
+| `pyproject.toml` | The package, and the `skopax.plugins` entry point named `example-batch-jobs` that points at `skopax_batch_jobs:PLUGIN`. |
 | `skopax_batch_jobs/__init__.py` | The `Plugin`: seven fields, a Test connection, one check with a rule set, card types, card links, a knowledge entry and one page. It has no tool. |
 | `skopax_batch_jobs/batch_jobs.md` | The knowledge entry for the investigator: how to read the cards and which PromQL to run. |
-| `skopax_batch_jobs/panel.js` | The script of the Batch jobs page in the sidebar's Observe group: one table per group, one row per job. |
+| `skopax_batch_jobs/panel.js` | The script of the Example batch jobs page in the sidebar's Observe group: one table per group, one row per job. |
 | `skopax_batch_jobs/icon.svg` | The icon on the Integrations tile and in the sidebar. |
 | `tests/test_batch_jobs.py` | Unit tests that run the check and Test connection with a fake Prometheus. |
 | `Dockerfile` | A layer image: the Skopax image with this plug-in added. |
@@ -32,12 +34,12 @@ The job label is `job_name` and not `job` on purpose. Prometheus sets its own `j
 - **Counts are rounded.** `increase()` extrapolates, so 0.4 runs is no run and 0.6 is one. A job with no series now counts as no run; a job with no series anywhere is not a job.
 - **The first run of a new series is not counted.** `increase()` needs two samples, so the run that creates a series (the first run of a new job, or of a job whose pod just started) shows from its second run on. Exporters that start the counter at 0 before the first run avoid this.
 - **Checking the fields.** The metric, the labels, the failure values and the optional selector are pasted into PromQL, so the pass and Test connection refuse a value that is not a name, a list of words or a list of label matchers, before any query. Label values from the series go into the card links through `json.dumps`.
-- **Card types and keys.** Three kinds: `batch-jobs-failing`, `batch-jobs-missed` and `batch-jobs-slow`. The keys are `batch-jobs|<instance>|<group>/<job>|<kind>`, and `batch-jobs|<instance>|<group>|missed` for a group card, so two instances never share a card. A `%`, `/` or `|` in a group or job is written as `%25`, `%2F` or `%7C` in the key, and the page matches cards the same way.
+- **Card types and keys.** Three kinds: `example-batch-jobs-failing`, `example-batch-jobs-missed` and `example-batch-jobs-slow`. The keys are `example-batch-jobs|<instance>|<group>/<job>|<kind>`, and `example-batch-jobs|<instance>|<group>|missed` for a group card, so two instances never share a card. A `%`, `/` or `|` in a group or job is written as `%25`, `%2F` or `%7C` in the key, and the page matches cards the same way.
 - **Links.** Each card carries a Prometheus graph of its own query on the peer's UI address, only when that address is `https://`.
 - **No access.** A Prometheus that answers 401 or 403 raises one card built with `kit.access.card`, ends `ok` with the tail `no access to batch job metrics`, and keeps the other cards open.
 - **Errors keep the cards.** No peer, a failing Prometheus, a spent budget, or no series of the metric in the last 60 minutes fail the pass, and a failed pass clears no card. A metric that disappeared, for example while its exporter is down, is therefore an error, not every job missed.
-- **Knowledge.** `Knowledge('batch-jobs', 'Batch jobs', ..., slack=True)` tells the investigator what each card means, what a group card usually points at, and which PromQL to run with the core `promql` tool. It reaches the prompt whole on runs about batch job cards, and is listed in the knowledge index on other runs.
-- **A section and a page.** The check writes one row per job and one summary row to its `batch-jobs` section, and `Panel('batch-jobs', 'panel.js', label='Batch jobs', group='observe')` shows them: runs, failed runs and average run against 1 and 7 days earlier, the longest run, the last run and the interval.
+- **Knowledge.** `Knowledge('example-batch-jobs', 'Example batch jobs', ..., slack=True)` tells the investigator what each card means, what a group card usually points at, and which PromQL to run with the core `promql` tool. It reaches the prompt whole on runs about batch job cards, and is listed in the knowledge index on other runs.
+- **A section and a page.** The check writes one row per job and one summary row to its `example-batch-jobs` section, and `Panel('example-batch-jobs', 'panel.js', label='Example batch jobs', group='observe')` shows them: runs, failed runs and average run against 1 and 7 days earlier, the longest run, the last run and the interval.
 - **Test connection.** `test` counts the jobs and groups that have the metric's `_count` series.
 
 ## Run the tests
@@ -48,17 +50,17 @@ From the root of the Skopax repository:
 .venv/bin/python -m pytest -q -n 0 examples/batch-jobs-plugin/tests
 ```
 
-The page has its own suite, `tests/page/skopax-batch-jobs-panel.test.js`, which runs with the other page suites (`node tests/page/run.js batch-jobs`).
+The page has its own suite, `tests/page/skopax-batch-jobs-panel.test.js`, which runs with the other page suites (`node tests/page/run.js batch-jobs`) and checks this page and the built-in one alike.
 
 ## Build the layer image
 
 As for Hello, the layer image installs the plug-in in a Python build stage and copies it into the Skopax image's `site-packages`:
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.5.8 -t skopax-batch-jobs examples/batch-jobs-plugin
+docker build --build-arg SKOPAX_VERSION=0.5.9 -t skopax-batch-jobs examples/batch-jobs-plugin
 ```
 
-Pin `SKOPAX_VERSION` to the Skopax release you run. Batch jobs is then listed in Connect > Integrations; add a Prometheus instance first, then one Batch jobs instance per set of jobs.
+Pin `SKOPAX_VERSION` to the Skopax release you run. Example batch jobs is then listed in Connect > Integrations next to the built-in Batch jobs; add a Prometheus instance first, then one instance per set of jobs.
 
 ## Licence
 

@@ -269,6 +269,10 @@ function adminRows(d, items) {
   });
 }
 function adminId(key) { return 'adm-' + key.replace(/[^a-z0-9]/gi, '-'); }
+function admHint(i) {
+  if (i.kind === 'tagrules') return tx('Add rules, such as type:log, log|checkout-*');
+  return i.default != null ? 'default: ' + (i.default || 'empty') : '';
+}
 function adminControl(i) {
   var id = adminId(i.key), named = ' aria-labelledby="' + esc(id + '-l') + '"';
   if (i.kind === 'choice') return '<select id="' + esc(id) + '" class="adm-in"' + named + '>' + i.choices.map(function (c) { return '<option value="' + esc(c) + '"' + (c === i.value ? ' selected' : '') + '>' + esc((i.choiceLabels || {})[c] || c) + '</option>'; }).join('') + '</select>';
@@ -282,8 +286,8 @@ function adminControl(i) {
         '<td class="muted">' + (v !== d ? 'default ' + esc(d) : '') + '</td></tr>';
     }).join('') + '</tbody></table>';
   }
-  if (i.kind === 'text' && (i.limit > ADMIN_LINE_MAX || i.lines)) return '<textarea id="' + esc(id) + '" class="adm-in adm-long"' + named + ' rows="' + esc(i.lines || 8) + '" spellcheck="' + (i.lines ? 'true' : 'false') + '" maxlength="' + esc(i.limit) + '" placeholder="' + esc(i.default != null ? 'default: ' + (i.default || 'empty') : '') + '">' + esc(i.value) + '</textarea>';
-  return '<input id="' + esc(id) + '" class="adm-in"' + named + ' type="text"' + (i.limit ? ' maxlength="' + esc(i.limit) + '"' : '') + ' value="' + esc(i.value) + '" placeholder="' + esc(i.default != null ? 'default: ' + (i.default || 'empty') : '') + '">';
+  if (i.kind === 'text' && (i.limit > ADMIN_LINE_MAX || i.lines)) return '<textarea id="' + esc(id) + '" class="adm-in adm-long"' + named + ' rows="' + esc(i.lines || 8) + '" spellcheck="' + (i.lines ? 'true' : 'false') + '" maxlength="' + esc(i.limit) + '" placeholder="' + esc(admHint(i)) + '">' + esc(i.value) + '</textarea>';
+  return '<input id="' + esc(id) + '" class="adm-in"' + named + ' type="text"' + (i.limit ? ' maxlength="' + esc(i.limit) + '"' : '') + ' value="' + esc(i.value) + '" placeholder="' + esc(admHint(i)) + '">';
 }
 function rowId(row) { return row.dataset.key || row.dataset.secret || row.dataset.route || row.dataset.source || row.dataset.talk || (row.classList.contains('route-add') ? '+route' : ''); }
 var UNSAVED_FIELDS = 'input:not(.r-link), select, textarea';
@@ -368,7 +372,7 @@ function adminRow(i, card) {
   row.innerHTML = !card ? admRowHtml(i) : '<div class="adm-l"><div class="adm-n"><b id="' + esc(adminId(i.key) + '-l') + '">' + esc(i.label) + '</b>' + adminSource(i) +
     (i.live ? '' : '<span class="tag k-warn" title="Read when the service starts: saved now, used after the next restart">after restart</span>') + '</div>' +
     '<p class="adm-help">' + esc(i.help) + '</p><code class="adm-key">' + esc(i.key) + '</code></div>' +
-    '<div class="adm-c">' + adminControl(i) + (i.pluginTerms && i.pluginTerms.length ? '<p class="adm-help adm-plugin-terms">From plug-ins, not saved here: ' + i.pluginTerms.map(function (t) { return '<code>' + esc(t) + '</code>'; }).join(' ') + '</p>' : '') + '<div class="adm-acts">' + (card ? '' : '<button type="button" class="btn small adm-save" disabled>Save</button>') +
+    '<div class="adm-c">' + adminControl(i) + (i.pluginTerms && i.pluginTerms.length ? '<p class="adm-help adm-plugin-terms">' + esc(tx('Also tagged by plug-ins (fixed, added to yours):')) + ' ' + i.pluginTerms.map(function (t) { return '<code>' + esc(t) + '</code>'; }).join(' ') + '</p>' : '') + '<div class="adm-acts">' + (card ? '' : '<button type="button" class="btn small adm-save" disabled>Save</button>') +
     (i.source === 'admin' ? '<button type="button" class="btn sec small adm-reset" title="' + esc('Drop the value set here and go back to ' + (i.base ? i.base : 'the default')) + '">Reset</button>' : '') +
     '<span class="adm-msg" role="status"></span></div></div>';
   if (i.builtIn && i.builtIn.length) adminBuiltIn(i, row);
@@ -399,6 +403,11 @@ function adminRow(i, card) {
   var owners = i.kind === 'tagrules' ? tagOwnersBox(i) : null;
   if (owners) {
     tagNameTint(row, owners.dataset.tag);
+    var chip = accText('code', 'adm-tag-id', owners.dataset.tag);
+    chip.title = tx('Tag id: use it in a route\'s Card tags');
+    var nameBox = row.querySelector('.adm-n b');
+    if (nameBox) nameBox.parentNode.insertBefore(chip, nameBox.nextSibling);
+    row.dataset.find += ' ' + owners.dataset.tag.toLowerCase();
     row.querySelector('.adm-c').appendChild(owners);
     row.dataset.find += ' responsibles ' + tagOwnersOf(owners.dataset.tag).responsibles.map(function (p) { return p.name + ' ' + p.email; }).join(' ').toLowerCase();
   }
@@ -2419,17 +2428,18 @@ var SSO_ICON_TYPES = {'image/png': 'PNG', 'image/webp': 'WebP', 'image/svg+xml':
 var SSO_MARK_NAMES = {google: 'Google', microsoft: 'Microsoft', okta: 'Okta', auth0: 'Auth0', onelogin: 'OneLogin', jumpcloud: 'JumpCloud', zitadel: 'ZITADEL', authentik: 'authentik', gitlab: 'GitLab',
   keycloak: 'Keycloak', key: 'OpenID Connect'};
 var SSO_ROLE_KEYS = ['roles.stale-max-minutes'];
-var SSO_ADVANCED = ['authorize-url', 'token-url', 'jwks-url', 'client-auth'];
+var SSO_ADVANCED = ['authorize-url', 'token-url', 'jwks-url', 'client-auth', 'extra-token-headers'];
 var SSO_LABELS = {issuer: 'Issuer URL', 'client-id': 'Client ID', 'client-secret': 'Client secret', scope: 'Scope', claims: 'Claims come from', 'roles-claim': 'Roles claim',
   'role-map': 'Role map', 'default-role': 'Default role', 'require-verified-email': 'Require verified email', 'authorize-url': 'Authorize URL', 'token-url': 'Token URL',
   'jwks-url': 'Keys (JWKS) URL', 'client-auth': 'Client authentication', 'new-accounts': 'New accounts', 'allowed-domains': 'Allowed email domains', 'button-text': 'Button text',
-  'button-icon': 'Button icon'};
+  'button-icon': 'Button icon', 'extra-token-headers': 'Extra token request headers'};
 var SSO_HELP = {issuer: 'Its /.well-known/openid-configuration document gives the endpoints.', 'client-secret': 'Saved sealed and never shown again.',
   scope: 'Separated by spaces; it includes openid unless the claims come from the access token.', 'roles-claim': 'A claim name such as roles or groups, or a dot path such as realm_access.roles.',
   'role-map': 'Claim values matched exactly; several matches give the highest role.',
   'default-role': 'For someone no plug-in, claim or Admin-set role gives a role.', 'require-verified-email': 'Refuses a sign-in whose token does not say the email is verified.',
   'authorize-url': 'Empty uses the one the provider lists.', 'token-url': 'Empty uses the one the provider lists.', 'jwks-url': 'Empty uses the one the provider lists.',
   'client-auth': 'auto follows what the provider lists, post sends the secret in the form and basic in an Authorization header.',
+  'extra-token-headers': 'Sent with the token request only, as Name: value pairs separated by semicolons; at most 10. Shown here in plain text: no secrets.',
   'new-accounts': 'Added only lets in only people who already have an account, added here or by an earlier sign-in. With a public provider, such as a consumer Google sign-in, Anyone means any account there.',
   'allowed-domains': 'Email domains such as example.com, matched exactly; none lets every domain in. Checked before an account is made or used.',
   'button-text': 'The text of the login button, at most 40 characters; empty uses Sign in with SSO.', 'button-icon': 'Auto picks a mark from the issuer host; Company shows the image uploaded below; None shows the text only.'};
@@ -2588,7 +2598,7 @@ function ssoGroup(g, n) {
   }
   var body = '<div class="sso-fields">' + fields + (g[0] === 'roles' ? '<div class="sso-roles acc-fields"></div>' : '') + '</div>';
   if (g[0] === 'provider') {
-    body += '<details class="sso-adv"><summary class="chev">Advanced: endpoints</summary><div class="sso-fields">' + SSO_ADVANCED.map(ssoField).join('') + '</div></details>' +
+    body += '<details class="sso-adv"><summary class="chev">Advanced: endpoints and token request</summary><div class="sso-fields">' + SSO_ADVANCED.map(ssoField).join('') + '</div></details>' +
       '<div class="sso-test-row"><button type="button" class="btn sec small sso-test">Test connection</button><span class="adm-help">Checks the provider with the values typed here, without saving them.</span></div>' +
       '<div class="sso-result" aria-live="polite"></div>';
   }

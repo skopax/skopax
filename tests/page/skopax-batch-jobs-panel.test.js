@@ -3,7 +3,11 @@ const fs = require('fs');
 const path = require('path');
 const {JSDOM, VirtualConsole} = require('jsdom');
 
-const PANEL = fs.readFileSync(path.join(__dirname, '..', '..', 'examples', 'batch-jobs-plugin', 'skopax_batch_jobs', 'panel.js'), 'utf8');
+const COPIES = [
+  {tab: 'batch-jobs', panel: fs.readFileSync(path.join(__dirname, '..', '..', 'skopax', 'plugins', 'batch_jobs', 'panel.js'), 'utf8')},
+  {tab: 'example-batch-jobs', panel: fs.readFileSync(path.join(__dirname, '..', '..', 'examples', 'batch-jobs-plugin', 'skopax_batch_jobs', 'panel.js'), 'utf8')},
+];
+let copy = COPIES[0];
 const AT = '2026-10-17T08:00:00Z';
 const NOW = Date.parse(AT) / 1000;
 
@@ -13,18 +17,19 @@ function job(group, name, extra) {
 }
 
 function card(subject, sev, extra) {
-  return Object.assign({key: 'batch-jobs|shop-jobs|' + subject + '|failing', src: 'batch-jobs', status: 'open', sev, label: 'failed runs', short: 'x'}, extra || {});
+  const own = extra && extra.key ? Object.assign({}, extra, {key: extra.key.replace(/^batch-jobs\|/, copy.tab + '|')}) : extra;
+  return Object.assign({key: copy.tab + '|shop-jobs|' + subject + '|failing', src: copy.tab, status: 'open', sev, label: 'failed runs', short: 'x'}, own || {});
 }
 
 function render(rows, anomalies) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
-  const dom = new JSDOM('<section id="s"></section><script>' + PANEL + '</script>', {runScripts: 'dangerously', virtualConsole: vc});
+  const dom = new JSDOM('<section id="s"></section><script>' + copy.panel + '</script>', {runScripts: 'dangerously', virtualConsole: vc});
   const w = dom.window;
   const section = w.document.getElementById('s');
-  w.document.dispatchEvent(new w.CustomEvent('skopax:state', {detail: {state: {'batch-jobs': rows, anomalies}}}));
-  w.document.dispatchEvent(new w.CustomEvent('skopax:page', {detail: {tab: 'batch-jobs', section}}));
+  w.document.dispatchEvent(new w.CustomEvent('skopax:state', {detail: {state: {[copy.tab]: rows, anomalies}}}));
+  w.document.dispatchEvent(new w.CustomEvent('skopax:page', {detail: {tab: copy.tab, section}}));
   return {dom, section, errors};
 }
 
@@ -92,7 +97,9 @@ function aPercentSignIsEscapedSoNamesThatLookEscapedStayApart() {
 }
 
 try {
-  for (const t of [groupsAndRowsRenderWithTheirCards, aSlashOrBarInANameMatchesOnlyItsOwnCard, aPercentSignIsEscapedSoNamesThatLookEscapedStayApart]) console.log('PASS ' + t());
+  for (copy of COPIES) {
+    for (const t of [groupsAndRowsRenderWithTheirCards, aSlashOrBarInANameMatchesOnlyItsOwnCard, aPercentSignIsEscapedSoNamesThatLookEscapedStayApart]) console.log('PASS ' + copy.tab + ': ' + t());
+  }
 } catch (e) {
   console.error('FAIL', e.message);
   process.exit(1);

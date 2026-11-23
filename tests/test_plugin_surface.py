@@ -18,7 +18,7 @@ from skopax.messages import msg
 from skopax.remote import HttpError, Unreachable
 
 ROOT = Path(skopax.__file__).parent
-PLUGIN_MAY_IMPORT = ('skopax.contract', 'skopax.kit', 'skopax.clock', 'skopax.remote', 'skopax.redact', 'skopax.monitor', 'skopax.messages', 'skopax.kube', 'skopax.agent', 'skopax.errkind', 'skopax.mail')
+PLUGIN_MAY_IMPORT = ('skopax.contract', 'skopax.kit', 'skopax.clock', 'skopax.remote', 'skopax.redact', 'skopax.monitor', 'skopax.messages', 'skopax.kube', 'skopax.agent', 'skopax.errkind', 'skopax.mail', 'skopax.severity', 'skopax.tags')
 MESSAGES_NAMES = {'msg'}
 MOVED = ('Prometheus', 'PrometheusError', 'scoped', 'ranged', 'client_for', 'auth_headers', 'with_headers', 'signal_queries', 'out_err')
 CLOSURE = ('import importlib, json, sys; sys.path.insert(0, sys.argv[1]); importlib.import_module(sys.argv[2]); '
@@ -655,3 +655,11 @@ def test_the_plugin_docs_say_the_plugin_guard_catches_mistakes_and_is_not_a_sand
 
     # then
     assert path.is_file() and 'not a sandbox' in path.read_text(encoding='utf-8')
+
+
+def test_the_plugin_docs_say_a_key_pushed_by_the_writer_replaces_the_agent_reads_own_config():
+    # given
+    text = (ROOT.parent / 'docs' / 'extending.md').read_text(encoding='utf-8')
+
+    # then
+    assert "replaces the value of that key in the agent read's own config" in text

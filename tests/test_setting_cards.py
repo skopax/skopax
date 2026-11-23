@@ -32,7 +32,7 @@ def test_the_investigator_section_has_the_agreed_cards_in_order():
 
     # then
     assert titles == ['Provider', 'Models', 'Spend and limits', 'Web', 'Behaviour', 'Langfuse tracing']
-    assert [title for title, _ in settingcards.CARDS['Slack']] == ['Channel and posting', 'Questions', 'Threads and reminders']
+    assert [title for title, _ in settingcards.CARDS['Slack']] == ['Channel and posting', 'Questions', 'Threads and reminders', 'Daily warnings']
 
 
 def test_an_unknown_key_falls_back_to_more_and_plugin_rules_to_thresholds():

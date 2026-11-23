@@ -27,6 +27,7 @@ PYTHON_ESCAPES = {'A': 'anchor \\A', 'Z': 'anchor \\Z', 'z': 'anchor \\z', 'G': 
 INLINE_FLAGS = re.compile(r'[aiLmsux-]+[:)]')
 COUNTS = re.compile(r'\{\d+(?:,\d*)?\}')
 OPEN_COUNT = re.compile(r'\{,\d+\}')
+MAIL_HELP = 'Preferences > Email: Email me my notifications is on for every kind once an admin sets up a Mail server. Switch it off, or untick the kinds you do not want. Mail goes only to the address of your own account.'
 
 
 def core(lang: str) -> Locale:
@@ -322,3 +323,20 @@ def test_the_spanish_pack_keeps_one_regional_variant_for_cost_as_it_does_for_add
     assert re.search(r'\b[Aa]ñadir\b', values) and re.search(r'\b[Cc]aduca\b', values)
     assert not re.search(r'\b[Cc]ostos?\b', values)
     assert page['Costs'] == 'Costes'
+
+
+@pytest.mark.parametrize('lang', LANGS)
+def test_the_idle_switch_title_is_translated_and_no_pack_quotes_the_old_langfuse_status(lang):
+    # given
+    page = json.loads((locales.ROOT / lang / 'page.json').read_text(encoding='utf-8'))['page']
+
+    # when
+    idle = page.get('On, but no instance is on: open it and turn an instance on')
+    quoted = [k for k, v in page.items() if "Receives Skopax's own traces" in v or 'switch on Email me my notifications' in v]
+    mail = page.get(MAIL_HELP)
+
+    # then
+    assert idle and idle != 'On, but no instance is on: open it and turn an instance on'
+    assert quoted == []
+    assert mail and mail != MAIL_HELP and page['Email me my notifications'] in mail
+    assert not [k for k in page if 'switch on Email me my notifications' in k]

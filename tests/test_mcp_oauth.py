@@ -170,6 +170,29 @@ def test_start_discovers_registers_and_builds_a_pkce_url(store):
     assert not [s for s in fake.seen if 'evil' in s[1]]
 
 
+def test_an_http_cluster_server_is_discovered_but_its_sign_in_addresses_stay_https(store):
+    # given
+    url = 'http://mcp.tools.svc.cluster.local/mcp'
+    good = FakeAuth(resource=url)
+    plain = FakeAuth(resource=url, servers=['http://auth.tools.svc.cluster.local'])
+    values = {'url': url, 'auth': 'oauth'}
+
+    # when
+    with app(store, good) as c:
+        add(c, values)
+        started = c.post(START)
+        c.app.state.mcptools.http = lambda ca: plain.client
+        refused = c.post(START)
+
+    # then
+    assert started.status_code == 200, started.text
+    found = query(started.json()['url'])
+    assert found['resource'] == url and urlsplit(started.json()['url']).scheme == 'https'
+    assert ('GET', 'mcp.tools.svc.cluster.local') in {(m, h) for m, h, _ in good.seen}
+    assert refused.status_code != 200 and refused.json()['detail'] == msg('mcptools.url.https')
+    assert not [h for _, h, _ in plain.seen if h == 'auth.tools.svc.cluster.local']
+
+
 def test_a_server_without_registration_needs_a_client_id(store):
     # given
     fake = FakeAuth(registration=False)

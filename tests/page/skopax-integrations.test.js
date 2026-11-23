@@ -229,6 +229,25 @@ async function aLockedSwitchIsDisabledAndShowsTheReason() {
   console.log('PASS Integrations: a locked plug-in that is off has a disabled switch and shows its reason');
 }
 
+async function anOnTileWithEveryInstanceOffShowsItsSwitchAsIdle() {
+  //given
+  const cat = catalog();
+  cat.plugins[0].instances = cat.plugins[0].instances.map((i) => Object.assign({}, i, {enabled: false}));
+  const t = await boot({catalog: cat});
+
+  //when
+  await open(t);
+  const acme = tile(t.doc, 'acme').querySelector('.int-switch'), pager = tile(t.doc, 'pager').querySelector('.int-switch');
+
+  //then
+  assert.strictEqual(acme.getAttribute('aria-checked'), 'true', 'the plug-in itself is still on');
+  assert.ok(acme.classList.contains('idle'), 'but no instance is on, so the switch is not shown as working');
+  assert.strictEqual(acme.title, 'On, but no instance is on: open it and turn an instance on');
+  assert.ok(!pager.classList.contains('idle'), 'a plug-in with no instances keeps the plain switch');
+  t.w.close();
+  console.log('PASS Integrations: an on plug-in whose instances are all off shows an idle switch that says why');
+}
+
 async function aStoredOnPluginThatCannotRunCanStillBeSwitchedOff() {
   //given
   const cat = catalog();
@@ -2498,6 +2517,7 @@ async function anAgentInstanceShowsItsOwnGreenHealthWithTheAgeAndADownOneShowsIt
 
 (async () => {
   await theTilesShowEveryConnectedPluginWithItsStateHealthAndIcon();
+  await anOnTileWithEveryInstanceOffShowsItsSwitchAsIdle();
   await aCustomPluginIsMarkedOnItsTileWithATooltipAndAnOrigin();
   await theDrawerHeaderShowsOneMutedLineSayingBuiltInOrCustom();
   await theCustomChipAppearsOnlyWhenACustomPluginIsLoadedAndFiltersAlone();

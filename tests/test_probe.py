@@ -19,7 +19,7 @@ from tests.test_auth import sso_settings
 from tests.test_instances import pem
 from tests.test_role_classes import OPERATOR, people
 from skopax import probe, remote, runtime as runtime_module, selfreview, toolusage
-from skopax.contract import Field
+from skopax.contract import Capabilities, Field
 from skopax.actors import BOOTSTRAP_TOKEN
 from skopax.app import create_app
 from skopax.auth import SESSION_COOKIE
@@ -28,8 +28,11 @@ from skopax.instances import Instances, PluginState
 from skopax.investigator import toolset
 from skopax.investigator.toolset import ToolSet
 from skopax.messages import msg
-from skopax.probe import CERT_RULES, Probe, cert_pass, check, http_status, public, summary
+from skopax.probe import CERT_RULES, Probe, cert_pass, check, core_targets, google_hosts, http_status, public, read_extra, summary
 from skopax.registry import Registry
+from skopax.slack import Slack
+from tests.fake_slack import FakeSlackApi
+from tests.test_slack import FakeSlack
 from skopax.runtime import Runtime
 from skopax.sealer import Sealer, master_key
 from skopax.sessions import Sessions, session_secret
@@ -1034,3 +1037,241 @@ def test_a_pinned_target_trusts_its_certificate_as_it_is_and_says_so_in_its_targ
     assert (target['pem'], target['pinned']) == (ca, True)
     context = net.fetches[0][1]
     assert isinstance(context, remote.PinnedContext) and context.pins == {ssl.PEM_cert_to_DER_cert(ca)}, 'only the pasted certificate itself is accepted'
+
+
+def test_core_targets_appear_only_when_their_integration_is_on():
+    # given
+    off = core_targets(False, 'anthropic', False, {}, [], '')
+    # when
+    slack = core_targets(True, 'anthropic', False, {}, [], '')
+    ai = core_targets(False, 'openai', True, {}, [], '')
+    google = core_targets(False, 'anthropic', False, {}, ['sheets.googleapis.com'], '')
+    # then
+    assert off == []
+    assert [t['url'] for t in slack] == ['https://slack.com/api/api.test']
+    assert [(t['name'], t['url']) for t in ai] == [('OpenAI API', 'https://api.openai.com/')]
+    assert [t['url'] for t in google] == ['https://sheets.googleapis.com/']
+
+
+def test_the_ai_target_follows_a_valid_custom_base_url_only():
+    # given
+    env = {'ANTHROPIC_BASE_URL': 'https://gateway.example.com/anthropic'}
+    # when
+    custom = core_targets(False, 'anthropic', True, env, [], '')
+    bad = core_targets(False, 'anthropic', True, {'ANTHROPIC_BASE_URL': 'https://u:p@gateway.example.com'}, [], '')
+    other = core_targets(False, 'openai', True, env, [], '')
+    # then
+    assert custom[0]['url'] == 'https://gateway.example.com/anthropic'
+    assert bad[0]['url'] == ''
+    assert other[0]['url'] == 'https://api.openai.com/'
+
+
+def test_google_hosts_come_only_from_serving_google_plugins_and_skip_wildcards():
+    # given
+    class Caps:
+        def __init__(self, *hosts):
+            self.capabilities = type('C', (), {'hosts': hosts})()
+    plugins = [Caps('analyticsdata.googleapis.com', 'oauth2.googleapis.com'), Caps('oauth2.googleapis.com', '*', 'itunes.apple.com'), Caps('transparencyreport.google.com')]
+    # when
+    found = google_hosts(plugins)
+    # then
+    assert found == ['analyticsdata.googleapis.com', 'oauth2.googleapis.com', 'transparencyreport.google.com']
+    assert google_hosts([]) == []
+
+
+def test_extra_targets_are_parsed_one_per_line():
+    # given
+    raw = 'status = https://status.example.com\n\n docs=http://docs.example.com:8080/up \n'
+    # when
+    found, refused = read_extra(raw)
+    # then
+    assert refused is None
+    assert [(t['name'], t['url'], t['plugin']) for t in found] == [('status', 'https://status.example.com', 'probe'), ('docs', 'http://docs.example.com:8080/up', 'probe')]
+    assert [t['url'] for t in core_targets(False, 'anthropic', False, {}, [], raw)] == ['https://status.example.com', 'http://docs.example.com:8080/up']
+
+
+@pytest.mark.parametrize('raw, entry', [
+    ('status', 1),
+    ('status=', 1),
+    ('a=https://a.example.com\nb<>=https://b.example.com', 2),
+    ('a=ftp://a.example.com', 1),
+    ('a=https://user:pw@a.example.com', 1),
+    ('a=https://a.example.com\nA=https://b.example.com', 2),
+    ('x' * 41 + '=https://a.example.com', 1),
+    ('a=https://a.example.com b', 1),
+    ('\n'.join(f'n{i}=https://n{i}.example.com' for i in range(21)), 21),
+])
+def test_extra_targets_are_refused_with_the_entry_number(raw, entry):
+    # when
+    found, refused = read_extra(raw)
+    # then
+    assert refused is not None and refused[0] == entry
+
+
+def test_twenty_extra_targets_are_allowed():
+    # given
+    raw = '\n'.join(f'n{i}=https://n{i}.example.com' for i in range(20))
+    # when
+    found, refused = read_extra(raw)
+    # then
+    assert refused is None and len(found) == 20
+
+
+def test_saving_extra_targets_refuses_a_bad_list_and_keeps_a_good_one():
+    # given
+    from skopax.tunables import Invalid, parse, registry
+    tunable = {t.key: t for t in registry()}['core.probe-extra']
+    # when
+    with pytest.raises(Invalid) as bad:
+        parse(tunable, 'a=https://user:pw@a.example.com', settings())
+    good = parse(tunable, 'a=https://a.example.com\nb=https://b.example.com', settings())
+    # then
+    assert 'entry 1' in str(bad.value)
+    assert good == 'a=https://a.example.com\nb=https://b.example.com'
+
+
+def test_a_probe_request_carries_no_credentials():
+    # given
+    seen = []
+
+    class Resp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def opener(req, timeout, context):
+        seen.append(dict(req.header_items()) | {'method': req.get_method(), 'data': req.data})
+        return Resp()
+
+    # when
+    status = http_status('https://slack.com/api/api.test', None, 5, opener)
+    # then
+    assert status == 200
+    assert seen == [{'Accept': '*/*', 'method': 'GET', 'data': None}]
+
+
+def test_the_probe_runs_extra_and_core_targets_together_with_the_others():
+    # given
+    targets = core_targets(True, 'anthropic', True, {}, [], 'status=https://status.example.com')
+    run = Probe(lambda: [PROM] + targets, checker=lambda t, timeout: {'ok': True, 'status': 200}).run(NOW)
+    # when
+    names = [r['name'] for r in public(run)['targets']]
+    # then
+    assert names == ['prometheus-main', 'Slack API', 'Anthropic API', 'status']
+
+
+def test_the_app_probes_extra_targets_and_the_ai_provider_only_when_configured(store: Store, monkeypatch):
+    # given
+    from skopax import app as app_module
+    monkeypatch.delenv('ANTHROPIC_BASE_URL', raising=False)
+    captured = []
+    monkeypatch.setattr(app_module, 'Probe', lambda targets, **kw: captured.append(targets) or FakeProbe())
+    bare = dataclasses.replace(settings(), probe=True, probe_extra='status=https://status.example.com')
+    keyed = dataclasses.replace(bare, anthropic_api_key='sk-test')
+    # when
+    with TestClient(create_app(bare, store)):
+        plain = [t['name'] for t in captured[0]()]
+    with TestClient(create_app(keyed, store)):
+        with_ai = [t['name'] for t in captured[1]()]
+    # then
+    assert 'status' in plain and 'Anthropic API' not in plain
+    assert 'status' in with_ai and 'Anthropic API' in with_ai
+
+
+def test_a_bad_env_base_url_shows_a_url_failure_and_never_the_default_host():
+    # given
+    targets = core_targets(False, 'anthropic', True, {'ANTHROPIC_BASE_URL': 'https://u:p@gateway.example.com'}, [], '')
+    # when
+    row = Net().check(targets[0])
+    # then
+    assert row['ok'] is False and row['error'] == 'url' and 'u:p' not in str(row)
+
+
+def test_the_env_base_url_loses_its_query_and_fragment_before_it_is_probed_or_shown():
+    # given
+    env = {'OPENAI_BASE_URL': 'https://gateway.example.com/v1?key=SECRETKEY#frag'}
+    net = Net()
+    # when
+    target = core_targets(False, 'openai', True, env, [], '')[0]
+    row = net.check(target)
+    report = public(Probe(lambda: [target], checker=lambda t, timeout: net.check(t)).run(NOW))
+    # then
+    assert target['url'] == 'https://gateway.example.com/v1'
+    assert net.fetches[0][0] == 'https://gateway.example.com/v1'
+    assert 'SECRETKEY' not in str(row) and 'SECRETKEY' not in str(report)
+
+
+def test_a_failing_core_probe_row_never_cuts_off_core_tools(store: Store):
+    # given
+    tools = ToolSet(demo_runtime(store))
+    rows = [{**t, 'ok': False, 'error': 'dns: gaierror'} for t in core_targets(True, 'anthropic', True, {}, ['oauth2.googleapis.com'], 'status=https://status.example.com')]
+    report = {'at': iso(NOW), 'targets': rows}
+    # when
+    found = {name: tools.status(name, report) for name in ('card', 'note', 'triage', 'slack_send') if name in toolset.CORE}
+    # then
+    assert found and all(v == {'state': 'on', 'reason': None} for v in found.values())
+    assert all(r['plugin'] == 'probe' for r in rows)
+
+
+def test_an_extra_target_named_like_a_plugin_target_does_not_mask_its_outage(store: Store):
+    # given
+    add_instance(store, 'demo', 'main', sealer_key='k', primary=True, url='https://main.example.org', token='pw')
+    echo = dataclasses.replace(DEMO.tools[0], reach=('prometheus-main',))
+    plugin = dataclasses.replace(DEMO, tools=(echo,) + DEMO.tools[1:])
+    registry = registry_with(plugin)
+    runtime = Runtime(registry, PluginState(store.db), Instances(store.db, registry, lambda: Sealer('k')))
+    runtime.refresh()
+    extra = {**read_extra('prometheus-main=https://status.example.com')[0][0], 'ok': True}
+    report = {'at': iso(NOW), 'targets': [{**PROM, 'ok': False, 'error': 'dns: gaierror'}, extra]}
+    # when
+    found = ToolSet(runtime).status('demo_echo', report)
+    # then
+    assert found['state'] == 'unreachable'
+
+
+@pytest.mark.parametrize('name', ['Slack API', 'anthropic api', 'OpenAI API', 'oauth2.googleapis.com', 'x.google.com'])
+def test_extra_names_equal_to_built_in_target_names_are_refused(name):
+    # when
+    found, refused = read_extra(f'{name}=https://a.example.com')
+    # then
+    assert found == [] and refused is not None and refused[0] == 1
+
+
+def test_the_app_wires_slack_openai_and_real_google_plugins_into_the_probe(store: Store, monkeypatch):
+    # given
+    from skopax import app as app_module
+    from skopax.registry import Registry as Reg
+    monkeypatch.delenv('OPENAI_BASE_URL', raising=False)
+    google = minimal('sheets', 'Sheets', capabilities=Capabilities(hosts=('sheets.googleapis.com', 'itunes.apple.com')))
+    captured = []
+    monkeypatch.setattr(app_module, 'Probe', lambda targets, **kw: captured.append(targets) or FakeProbe())
+    s = dataclasses.replace(settings(), probe=True, ai_provider='openai', openai_api_key='sk-x')
+    # when
+    with TestClient(create_app(s, store, registry=Reg.of(google, directory=DEMO_DIR), slack=Slack('xoxb-test', '#ops', FakeSlack(), FakeSlackApi()))):
+        rows = {t['name']: t['url'] for t in captured[0]()}
+    # then
+    assert rows['Slack API'] == 'https://slack.com/api/api.test'
+    assert rows['OpenAI API'] == 'https://api.openai.com/'
+    assert {'sheets.googleapis.com'} <= set(rows) and not {'itunes.apple.com'} & set(rows)
+    assert 'Anthropic API' not in rows
+
+
+def test_the_app_continues_with_plugin_targets_when_the_core_targets_fail(store: Store, monkeypatch):
+    # given
+    from skopax import app as app_module
+    captured = []
+    monkeypatch.setattr(app_module, 'Probe', lambda targets, **kw: captured.append(targets) or FakeProbe())
+
+    def boom(*a):
+        raise RuntimeError('x')
+
+    monkeypatch.setattr(app_module, 'core_targets', boom)
+    # when
+    with TestClient(create_app(dataclasses.replace(settings(), probe=True), store)):
+        found = captured[0]()
+    # then
+    assert found == []

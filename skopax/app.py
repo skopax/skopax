@@ -101,7 +101,7 @@ from skopax import mail as mail_out, noticemail
 from skopax.noticemail import NoticeMail
 from skopax.versioncheck import OFFSET_S as VERSION_OFFSET, PERIOD_S as VERSION_PERIOD, START_DELAY_S as VERSION_START_DELAY, VersionCheck, jitter_of
 from skopax.reminders import Reminders
-from skopax import tagreport
+from skopax import tagreport, warndigest
 from skopax.routes import TRIES, Echo, Refused as RouteRefused, Routes
 from skopax.models import NoticeMailIn, RouteSendIn, SsoIn, SsoTestIn, TestMailIn
 from skopax.mailtrial import MailTrials, PER_HOUR as TRIALS_PER_HOUR
@@ -118,7 +118,7 @@ from skopax.plugai import PluginAi
 from skopax.plugintools import PluginTools
 from skopax.runtime import Runtime, SuggestFailed
 from skopax.monitor import rules_of as monitor_rules
-from skopax.probe import CERT_RULES, Probe, cert_pass, public as public_reach, summary as probe_summary
+from skopax.probe import CERT_RULES, Probe, cert_pass, core_targets, google_hosts, public as public_reach, summary as probe_summary
 from skopax import promqlroutes
 from skopax.promqlchecks import JOB_OFFSET as CUSTOM_CHECKS_OFFSET, JOB_PERIOD as CUSTOM_CHECKS_PERIOD, PASS as CUSTOM_CHECKS, CustomChecks
 from skopax.sweepout import Outputs
@@ -133,7 +133,7 @@ from skopax import ssobutton, workspaceicon
 from skopax.ssoicon import ICON_MAX as SSO_ICON_MAX, IconRefused, SsoIcon, check as icon_check
 from skopax.sso import FIELDS as SSO_FIELDS, SECRET_FIELD as SSO_SECRET_FIELD, SECRET_ID as SSO_SECRET_ID, SECRET_MAX as SSO_SECRET_MAX, InvalidSecret, SignOn, SourceOwned as SecretOwned, SsoConfig, SsoHttp, SsoSecret, TestBusy as SsoTestBusy
 from skopax.throttle import Throttle
-from skopax.store import CARD_HISTORY_MAX, SEVERITY_HIGH_MARK, TAG_HUE_NAMES, ActionMoved, ChatPrivate, Conflict, NotFound, Store, iso, new_id, utc_now
+from skopax.store import CARD_HISTORY_MAX, SEVERITY_HIGH_MARK, SEVERITY_RESCORE_MARK, TAG_HUE_NAMES, ActionMoved, ChatPrivate, Conflict, NotFound, Store, iso, new_id, utc_now
 
 OPEN_PATHS = ('/actuator/health', '/actuator/health/*', '/static/*', '/icons/*', '/favicon.ico', '/plugins/*', '/manifest.webmanifest', '/setup', '/login', '/login/sso', '/authorized', '/logout', '/mcp',
               '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/*', '/login/sso-icon')
@@ -169,7 +169,8 @@ WEB = Path(__file__).parent / 'web'
 TEMPLATE = WEB / 'template.html'
 CARD_PAGE = WEB / 'card.html'
 CARD_FIELDS = ('num', 'key', 'svc', 'label', 'sub', 'sev', 'status', 'muted', 'triage', 'ticket', 'owner', 'ownerName', 'assigned', 'firstSeen', 'lastSeen', 'clearedAt', 'what', 'note', 'business',
-               'tags', 'url', 'gone', 'now', 'd1', 'd7', 'unit', 'recommend', 'suspects', 'outcome', 'resolution', 'triagedBy', 'autoResolvedAt', 'clearNote')
+               'tags', 'url', 'gone', 'now', 'd1', 'd7', 'unit', 'recommend', 'suspects', 'outcome', 'resolution', 'triagedBy', 'autoResolvedAt', 'clearNote',
+               'knownCause')
 PLACEHOLDER = '/*__SKOPAX_DATA__*/'
 PLUGIN_SLOT = '<script type="text/plain" id="plugin-scripts"></script>'
 PEOPLE_MIN = 2
@@ -542,7 +543,16 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     runtime = Runtime(registry, plugin_state, instances, transport, {**(clients or {}), **({'gitlab': gitlab} if gitlab is not None else {}), **({'jira': jira} if jira is not None else {})})
     runtime.live = live
     runtime.sources = sources
-    probe = probe or Probe(runtime.probe_targets)
+    def probe_all() -> list[dict]:
+        found = runtime.probe_targets()
+        try:
+            more = core_targets(slack.enabled, settings.ai_provider, bool(ai_keys.current()), os.environ, google_hosts([p for p, _ in runtime.serving()]), settings.probe_extra)
+        except Exception as e:
+            log.warning('probe: the core targets were skipped (%s)', kind(e))
+            more = []
+        return found + more
+
+    probe = probe or Probe(probe_all)
     features = Features(live, registry.edition, needs=lambda feature_id: needs_of(feature_id), started=lambda what: started_at_boot(what))
     brand.use_hidden(lambda: features.on('hide-attribution'))
     tunable_defs.TRACE_NAMES[0] = lambda: tuple(i.name for i in instances.all(tracing.PLUGIN))
@@ -759,6 +769,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     tag_report = tagreport.TagReport(store, slack, slack_ids, store.tag_owners, active_people,
                                      lambda: settings.tag_report_at, lambda: features.on(tagreport.FEATURE) and features.on('slack-autosend'), base_url, left_out=disabled_people)
+    warn_digest = warndigest.WarnDigest(store, slack, lambda: settings.warn_digest_at, lambda: features.on(warndigest.FEATURE) and features.on('slack-autosend'), base_url)
     clear_notes = ClearNotes(store, slack, settings.slack_clear_note_minutes, title_prefix=settings.jira_title_prefix)
     jira_links = JiraLinks(store, jira, settings.jira_links, notes, base_url, settings.jira_developer_field)
     backlinks = Backlinks(store, jira, base_url, mode=lambda: settings.jira_backlink, projects=live_projects,
@@ -1381,6 +1392,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         Job('version-check', VERSION_PERIOD, VERSION_OFFSET + jitter_of(base_settings.mongo_uri + base_settings.mongo_db), versions.scheduled, lambda: features.on('update-check')),
         Job(CUSTOM_CHECKS, CUSTOM_CHECKS_PERIOD, CUSTOM_CHECKS_OFFSET, custom_checks.run_once, custom_checks.enabled),
         Job(tagreport.RUN, tagreport.PERIOD, tagreport.OFFSET, tag_report.run_once, lambda: tag_report.enabled),
+        Job(warndigest.RUN, warndigest.PERIOD, warndigest.OFFSET, warn_digest.run_once, lambda: warn_digest.enabled),
         Job('notice-mail', noticemail.PERIOD, noticemail.OFFSET, notice_mail.run_once, notice_mail.ready),
     ]
     scheduler = Scheduler(store, boot=investigator.owner, jobs=lambda: core_jobs + [Job('postdeploy', POSTDEPLOY_PERIOD, POSTDEPLOY_OFFSET, lambda now: postdeploy.run_once(now), postdeploy.enabled)] + sweeper.jobs())
@@ -1550,6 +1562,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def boot_backfills() -> None:
         backfill.run(store)
         severity_upgrade()
+        severity_rescore()
         card_history_backfill()
         slack_links_backfill()
 
@@ -1563,6 +1576,17 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             store.finish_once(SEVERITY_HIGH_MARK)
         except Exception as e:
             log.warning('the warning cards were not moved to High this start: %s', kind(e))
+
+    def severity_rescore() -> None:
+        try:
+            if not store.begin_once(SEVERITY_RESCORE_MARK, iso(utc_now() - dt.timedelta(seconds=REDRAW_MARK_STALE_S))):
+                return
+            lifted = store.rescore_warnings(iso(utc_now() - dt.timedelta(hours=settings.archive_hours or 48)), settings.alerts_warn)
+            if lifted:
+                store.add_activity(ADMIN_KIND, 'server', msg('severity.rescored_one' if lifted == 1 else 'severity.rescored', count=lifted))
+            store.finish_once(SEVERITY_RESCORE_MARK)
+        except Exception as e:
+            log.warning('the warning cards were not checked against the High rules this start: %s', kind(e))
 
     def card_history_backfill() -> None:
         try:
@@ -1772,6 +1796,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         'chat': (('investigator', lambda: not investigator_ready()), ('chat_ui', lambda: not (settings.chat_ui and signon.active()))),
         'slack-autosend': (('slack_token', lambda: not slack.enabled),),
         'tag-report': (('slack_token', lambda: not slack.enabled), ('slack_autosend', lambda: not features.on('slack-autosend'))),
+        'warn-digest': (('slack_token', lambda: not slack.enabled), ('slack_autosend', lambda: not features.on('slack-autosend'))),
         'slack-listener': (('slack_app_token', lambda: link.app_token() == ''), ('slack_token', lambda: not slack.enabled), ('investigator', lambda: not investigator_ready()),
                            ('listen_mode', lambda: settings.slack_listen == 'off')),
         'mcp': (('sso', lambda: not signon.active()),),
@@ -1800,6 +1825,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     app.state.feature_needs = feature_needs
     app.state.auto_send = auto
     app.state.tag_report = tag_report
+    app.state.warn_digest = warn_digest
     app.state.slack_people = slack_people
     app.state.auto_assign = auto_assign
     app.state.slack_fallback = fallback
@@ -2558,6 +2584,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/me/notice-mail')
     def get_notice_mail(request: Request, authorization: Annotated[str | None, Header()] = None) -> dict:
+        instances.reread()
         return own_mail_view(own_mail_user(request, authorization).name)
 
     @app.put('/api/me/notice-mail')
@@ -2567,6 +2594,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise HTTPException(status.HTTP_403_FORBIDDEN, msg('login.cross_site'))
         if any(k not in noticemail.KINDS for k in body.kinds):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg('noticemail.kind'))
+        instances.reread()
+        if body.on and not notice_mail.ready():
+            instances.reread(within=0)
         if body.on and not notice_mail.ready():
             raise HTTPException(status.HTTP_409_CONFLICT, msg('noticemail.no_server'))
         try:
@@ -3697,6 +3727,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/admin/plugins')
     def get_admin_plugins(by: Annotated[str, Depends(require_admin)]) -> dict:
+        instances.reread()
         passes = store.server_runs()['passes']
         return {'edition': registry.edition(), 'secretsKey': 'env' if base_settings.secret_key else 'generated', 'plugins': [plugin_row(x, passes) for x in registry.loaded()]}
 
@@ -3712,6 +3743,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/integrations')
     def get_integrations(by: Annotated[str, Depends(require_login)]) -> dict:
+        instances.reread()
         passes = store.server_runs()['passes']
         return {'edition': registry.edition(), 'readOnly': True,
                 'plugins': [reader_row(plugin_row(x, passes), rule_values(x.plugin) if x.plugin is not None and x.state != 'broken' else []) for x in registry.loaded()]}

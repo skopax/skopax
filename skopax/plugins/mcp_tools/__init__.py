@@ -11,7 +11,7 @@ PLUGIN = Plugin(
     max_instances=20,
     setup=Setup(
         steps=(
-            'Get the streamable HTTP address of the MCP server from its vendor or your platform team and paste it into URL. It must be https.',
+            'Get the streamable HTTP address of the MCP server from its vendor or your platform team and paste it into URL. It must be https, or plain http for a service in the same Kubernetes cluster (name.namespace.svc or name.namespace.svc.cluster.local).',
             'Token in a header: create an access token on the server with read permissions only. Set Method to Token in a header, keep Header name as Authorization, and write Bearer, a space and the token in Header value.',
             'OAuth: set Method to OAuth and save, then choose Connect in the connection panel and sign in as an account that can read what the investigator should see. Skopax finds the sign-in details the server publishes.',
             'OAuth scopes: list scopes separated by spaces, or leave it empty. If the server does not register clients itself, create an OAuth client in its admin console, register <SKOPAX_BASE_URL>/api/admin/mcp-tools/oauth/callback as the redirect address, and enter OAuth client id and OAuth client secret.',
@@ -31,5 +31,7 @@ PLUGIN = Plugin(
                   choice_labels={'viewer': 'Everyone', 'operator': 'Operators and admins', 'admin': 'Admins only'}, group='access', help='Card runs always may.'),
             Field('knowledge', 'Knowledge source', 'bool', default='false', group='access', help='Works only for a catalog entry with a ready adapter.'),
             Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.')),
-    settings=(Setting('allow-local-http', 'Allow plain http to this machine', 'Lets a connection use http://localhost; for local testing only', 'bool', 'false'),),
+    settings=(Setting('allow-local-http', 'Allow plain http to this machine', 'Lets a connection use http://localhost; for local testing only', 'bool', 'false'),
+              Setting('run-calls', 'Calls to MCP servers per run', 'How many calls one investigator run or chat answer may make to all MCP servers together; '
+                      'a call refused before it reaches a server does not count', 'int', '20', 1, 60)),
 )

@@ -14,7 +14,7 @@ from pymongo.database import Database
 from pymongo.errors import BulkWriteError, DuplicateKeyError, OperationFailure, PyMongoError
 from pymongo.results import UpdateResult
 
-from skopax import causes, history, information, severity
+from skopax import causes, history, information, rescore, severity
 from skopax.actors import POD_BY, is_token
 from skopax.errkind import Authored, kind as error_kind
 from skopax.tags import FIELDS as TAG_FIELDS
@@ -48,6 +48,7 @@ AUTO_SEVS = severity.CARD_LEVELS
 AUTO_TAKEN = ('progress', 'handled')
 EMAIL_SCOPE_ID = 'tag-report-scope'
 TAG_REPORT_ID = 'tag-report-last'
+WARN_DIGEST_ID = 'warn-digest-last'
 SEVERITIES = severity.LEVELS
 CLAIM_ATTEMPTS = 3
 WRITE_LEASE_S = 30
@@ -125,6 +126,7 @@ ACTION_MOVES_FROM = {
 
 REDRAW_RUN = 'slack-redraw-run'
 SEVERITY_HIGH_MARK = 'severity-high-0-5-8'
+SEVERITY_RESCORE_MARK = 'severity-rescore-0-5-9'
 
 class Conflict(Authored, Exception):
     def __init__(self, current: int):
@@ -496,6 +498,13 @@ class Store:
 
     def tag_report_at(self) -> float | None:
         at = (self.db['meta'].find_one({'_id': TAG_REPORT_ID}) or {}).get('at')
+        return float(at) if isinstance(at, (int, float)) and not isinstance(at, bool) else None
+
+    def note_warn_digest(self, at: float) -> None:
+        self.db['meta'].replace_one({'_id': WARN_DIGEST_ID}, {'_id': WARN_DIGEST_ID, 'at': float(at)}, upsert=True)
+
+    def warn_digest_at(self) -> float | None:
+        at = (self.db['meta'].find_one({'_id': WARN_DIGEST_ID}) or {}).get('at')
         return float(at) if isinstance(at, (int, float)) and not isinstance(at, bool) else None
 
     def tag_owners(self) -> dict[str, list[str]]:
@@ -1952,7 +1961,7 @@ class Store:
         return {k: v for k, v in doc.items() if k not in ('_id', 'holder')} or {'running': False}
 
     def lift_warnings(self, archived_before: str) -> int:
-        wanted = {'sev': severity.WARN, 'status': 'open', 'triage': {'$ne': 'handled'}, 'sevSet': {'$exists': False}, 'sevBefore': {'$exists': False}}
+        wanted = {'sev': severity.WARN, 'status': 'open', 'triage': {'$ne': 'handled'}, 'sevSet': None, 'sevBefore': None}
         lifted = 0
         with self._locked():
             muted_at = {m.get('pattern'): str(m.get('at') or '') for m in self.muted_rules() if isinstance(m, dict)}
@@ -1961,6 +1970,26 @@ class Store:
                 self._claim(None)
             for doc in found:
                 fields = {'sev': severity.HIGH, 'sevBefore': severity.WARN, 'sevUp': severity.HIGH} | ({'pushedSev': severity.HIGH} if doc.get('pushedSev') == severity.WARN else {})
+                lifted += self.anomalies.update_one({'_id': doc['_id'], **wanted}, {'$set': fields}).modified_count
+        return lifted
+
+    def rescore_warnings(self, archived_before: str, kept: tuple[str, ...] = ()) -> int:
+        wanted = {'sev': severity.WARN, 'status': {'$in': ['open', 'cleared']}, 'triage': {'$ne': 'handled'}, 'sevSet': None, 'autoResolvedAt': None}
+        lifted = 0
+        with self._locked():
+            muted_at = {m.get('pattern'): str(m.get('at') or '') for m in self.muted_rules() if isinstance(m, dict)}
+
+            def live(d: dict) -> bool:
+                if d.get('status') == 'cleared':
+                    return not d.get('muted') and d.get('triage') != 'progress'
+                return not d.get('muted') or muted_at.get(d['_id'], '') >= archived_before
+            found = [d for d in self.anomalies.find(wanted) if live(d) and rescore.current({**d, 'key': d['_id']}, kept) == severity.HIGH]
+            if found:
+                self._claim(None)
+            for doc in found:
+                short = str(doc.get('short') or '')
+                fields = ({'sev': severity.HIGH, 'sevUp': severity.HIGH} | ({} if doc.get('sevBefore') else {'sevBefore': severity.WARN})
+                          | ({'pushedSev': severity.HIGH} if doc.get('pushedSev') == severity.WARN else {}) | ({'short': 'HIGH ' + short[5:]} if short.startswith('WARN ') else {}))
                 lifted += self.anomalies.update_one({'_id': doc['_id'], **wanted}, {'$set': fields}).modified_count
         return lifted
 

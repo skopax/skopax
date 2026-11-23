@@ -374,14 +374,54 @@ async function highSitsBetweenCriticalAndWarning() {
   assert.strictEqual(doc.getElementById('tab-anoms').title, '1 critical \u00b7 1 high \u00b7 1 warning');
   assert.ok(/\.k-high \{ --c: var\(--high\); --cb: var\(--high-bg\); \}/.test(tpl), 'k-high reads the high tokens');
   assert.strictEqual((tpl.match(/--high: #[0-9a-f]{6}; --high-bg:/g) || []).length, 4, 'the light theme, both dark blocks and the sidebar set the high colour');
-  assert.ok(/--high: #ffa25e; --high-bg: rgba\(255, 162, 94, 0\.14\);/.test(tpl), 'the sidebar sets it too');
+  assert.ok(/--high: #ff8c42; --high-bg: rgba\(255, 140, 66, 0\.14\);/.test(tpl), 'the sidebar sets it too');
   assert.ok(!errors.length, 'no errors: ' + errors.join(' | '));
   dom.window.close();
   return 'High sits between Critical and Warning: the side menu filter and its colour, the card pill, the tab tooltip and the theme tokens';
 }
 
+function rgbOf(hex) { return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)); }
+function lumOf(rgb) {
+  const c = rgb.map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function ratio(a, b) { const x = lumOf(a), y = lumOf(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+function hueOf(rgb) {
+  const [r, g, b] = rgb.map((v) => v / 255), hi = Math.max(r, g, b), lo = Math.min(r, g, b), d = hi - lo;
+  const h = hi === r ? ((g - b) / d) % 6 : hi === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return {hue: (h * 60 + 360) % 360, sat: d / (1 - Math.abs(hi + lo - 1))};
+}
+function over(rgba, under) {
+  const m = /rgba\((\d+), (\d+), (\d+), ([\d.]+)\)/.exec(rgba), a = Number(m[4]);
+  return [1, 2, 3].map((i, k) => Math.round(a * Number(m[i]) + (1 - a) * under[k]));
+}
+
+async function highIsAClearOrangeApartFromWarning() {
+  //given
+  const tpl = require('fs').readFileSync(TEMPLATE, 'utf8');
+  const all = (name) => [...tpl.matchAll(new RegExp('--' + name + ': (#[0-9a-f]{6}|rgba\\([^)]*\\))', 'g'))].map((m) => m[1]);
+  const high = all('high'), highBg = all('high-bg'), warn = all('warn'), crit = all('crit'), bar = rgbOf(all('bar-bg')[0]);
+  const themes = [
+    {name: 'light', surfaces: [all('surface')[0], all('bg')[0], all('sunken')[0], all('raised')[0], all('hover')[0], all('active')[0], highBg[0]].map(rgbOf)},
+    {name: 'dark', surfaces: [all('surface')[1], all('bg')[1], all('sunken')[1], all('raised')[1], all('hover')[1], all('active')[1], highBg[1]].map(rgbOf)},
+    {name: 'dark by choice', surfaces: [all('surface')[2], all('bg')[2], all('sunken')[2], all('raised')[2], all('hover')[2], all('active')[2], highBg[2]].map(rgbOf)},
+    {name: 'sidebar', surfaces: [bar, over(highBg[3], bar), over(all('hover')[3], bar), over(all('active')[3], bar)]},
+  ];
+
+  //then
+  assert.deepStrictEqual(high, ['#b54400', '#ff7a2e', '#ff7a2e', '#ff8c42'], 'a purer orange in light, dark and the sidebar');
+  themes.forEach((t, i) => {
+    const h = rgbOf(high[i]), tone = hueOf(h), w = hueOf(rgbOf(warn[i])), c = hueOf(rgbOf(crit[i]));
+    for (const s of t.surfaces) assert.ok(ratio(h, s) >= 4.5, t.name + ' high text contrast ' + ratio(h, s).toFixed(2) + ' is below 4.5');
+    assert.ok(tone.hue >= 20 && tone.hue <= 26 && tone.sat >= 0.95, t.name + ' high is a saturated orange (hue ' + tone.hue.toFixed(0) + ')');
+    assert.ok(w.hue - tone.hue >= 20, t.name + ' high and warning sit at least 20 degrees apart');
+    assert.ok(tone.hue - c.hue >= 12, t.name + ' high and critical sit apart');
+  });
+  return 'High is a saturated orange at 20-26 degrees, AA readable on every surface it sits on and set apart from Warning yellow and Critical red';
+}
+
 (async () => {
-  for (const t of [warnRowOpensItsCards, handledCardsClearTheRowOnLiveUpdate, noAnomalyListFallsBackToStoredStatus, severityChipsFilterTheOpenCards, highSitsBetweenCriticalAndWarning, inProgressSplitsFromActionTaken, sameServiceInSeveralNamespaces]) {
+  for (const t of [warnRowOpensItsCards, highIsAClearOrangeApartFromWarning, handledCardsClearTheRowOnLiveUpdate, noAnomalyListFallsBackToStoredStatus, severityChipsFilterTheOpenCards, highSitsBetweenCriticalAndWarning, inProgressSplitsFromActionTaken, sameServiceInSeveralNamespaces]) {
     console.log('PASS ' + (await t()));
   }
 })().catch((e) => { console.error('FAIL', e.message); process.exit(1); });

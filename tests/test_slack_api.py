@@ -130,14 +130,15 @@ def test_bot_user_is_the_user_id_and_is_read_once():
 @pytest.mark.parametrize('raw', ['mail adam.baker@example.com now', 'tel +44 7700 900123', 'tel +1-202-555-0143', 'tel +4915112345678',
                                  'iban DE89 3704 0044 0532 0130 00', 'iban GB82WEST12345698765432', 'iban fr14 2004 1010 0505 0001 3m02 606',
                                  'card 4111 1111 1111 1111', 'auth Bearer abcdefghijklmnop', 'jwt eyJhbGciOi.eyJzdWIiOi.c2lnbmF0dXJl',
-                                 'id 5 4111111111111111', '2026-10-24 4111111111111111', 'no 12 4111 1111 1111 1111'])
+                                 'id 5 4111111111111111', '2026-10-24 4111111111111111', 'no 12 4111 1111 1111 1111',
+                                 'id 10000000146', 'tel 0532 123 45 67'])
 def test_redact_hides_personal_data_and_tokens(raw):
     # then
     assert REDACTED in redact(raw)
 
 
 @pytest.mark.parametrize('raw', ['p95 1240 ms at 14:05', 'epoch 1792224000000', 'trace 4bf92f3577b34da6a3ce929d0e0e4736', 'order 12345678901', 'OPS-125 is live',
-                                 'span ab12cdef34567890ab12', 'offset +01:00 at 2026-10-24T10:00:00+01:00', 'p99 +250 ms', 'id 10000000146'])
+                                 'span ab12cdef34567890ab12', 'offset +01:00 at 2026-10-24T10:00:00+01:00', 'p99 +250 ms', 'id 10000000147'])
 def test_redact_keeps_numbers_that_are_not_personal(raw):
     # then
     assert redact(raw) == raw

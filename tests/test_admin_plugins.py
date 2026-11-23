@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from skopax import instances as inst
 from skopax.app import create_app
 from skopax.contract import CATEGORIES, Check, Field, PassResult, SourceData, Sweep, TestResult
 from skopax.engine import anomaly, iso
@@ -671,6 +672,37 @@ def test_an_instance_another_pod_just_added_can_be_edited_and_deleted_at_once(st
     # then
     assert edited.status_code == 200 and edited.json()['instance']['values']['mode'] == 'slow'
     assert deleted.status_code == 204
+
+
+def test_an_instance_another_pod_just_added_shows_in_the_lists_at_once(store, monkeypatch):
+    # given
+    monkeypatch.setattr(inst, 'REREAD_S', 0)
+    with served(store) as c:
+        add_instance(store, DEMO, 'east', sealer_key='', url='https://east.example.com')
+
+        # when
+        admin = listed(c)['demo']['instances']
+        reader = {p['id']: p for p in c.get('/api/integrations', headers=AUTH).json()['plugins']}['demo']['instances']
+
+    # then
+    assert [i['name'] for i in admin] == ['east'] and [i['name'] for i in reader] == ['east']
+
+
+def test_an_instance_another_pod_just_added_or_changed_tests_with_its_stored_values_at_once(store):
+    # given
+    with served(store) as c:
+        add_instance(store, DEMO, 'main', sealer_key='', url='https://demo.example.com')
+        listed(c)
+        add_instance(store, DEMO, 'main', sealer_key='', url='https://moved.example.com')
+        add_instance(store, DEMO, 'east', sealer_key='', url='https://east.example.com')
+
+        # when
+        east = c.post('/api/admin/plugins/demo/test', json={'name': 'east', 'values': {}}, headers=AUTH)
+        main = c.post('/api/admin/plugins/demo/test', json={'name': 'main', 'values': {}}, headers=AUTH)
+
+    # then
+    assert east.status_code == 200 and main.status_code == 200
+    assert [s['url'] for s in SEEN] == ['https://east.example.com', 'https://moved.example.com']
 
 
 def test_a_patch_that_changes_nothing_writes_no_changed_line(store):

@@ -26,7 +26,7 @@ function admRowHtml(i) {
   var name = typeof i.shortLabel === 'string' && i.shortLabel ? esc(i.shortLabel) + '<span class="sr">' + esc(i.label.slice(i.shortLabel.length)) + '</span>' : esc(i.label);
   return '<div class="adm-l"><div class="adm-n"><b id="' + esc(adminId(i.key) + '-l') + '">' + name + '</b>' + admDot(i) + '</div>' +
     admHelp(i.help) + '<code class="adm-key">' + esc(i.key) + '</code></div>' +
-    '<div class="adm-c">' + adminControl(i) + (i.pluginTerms && i.pluginTerms.length ? '<p class="adm-help adm-plugin-terms">From plug-ins, not saved here: ' + i.pluginTerms.map(function (t) { return '<code>' + esc(t) + '</code>'; }).join(' ') + '</p>' : '') +
+    '<div class="adm-c">' + adminControl(i) + (i.pluginTerms && i.pluginTerms.length ? '<p class="adm-help adm-plugin-terms">' + esc(tx('Also tagged by plug-ins (fixed, added to yours):')) + ' ' + i.pluginTerms.map(function (t) { return '<code>' + esc(t) + '</code>'; }).join(' ') + '</p>' : '') +
     '<div class="adm-acts"><button type="button" class="btn small adm-save" disabled>Save</button><span class="adm-msg" role="status"></span></div></div>' + admMeta(i);
 }
 var ADM_FOLD_AT = 160, ADM_FOLD_SEQ = 0;

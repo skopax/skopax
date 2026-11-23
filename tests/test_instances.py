@@ -472,6 +472,39 @@ def test_all_is_a_cache_that_refresh_replaces(db):
     assert box.instances.age() == 7.0 and box.instances.every == inst.REFRESH_S == 15
 
 
+def test_reread_skips_a_cache_younger_than_two_seconds(db):
+    # given
+    ticks = [0.0]
+    box = Box(db, DEMO, clock=lambda: ticks[0])
+    box.instances.reread()
+    add_instance(box.db, 'demo', 'main', sealer_key='k', url='https://a.example.com', token='pw')
+
+    # when
+    ticks[0] = 1.5
+    box.instances.reread()
+    young = [i.name for i in box.instances.all()]
+    ticks[0] = 2.5
+    box.instances.reread()
+
+    # then
+    assert young == [] and [i.name for i in box.instances.all()] == ['main']
+    assert inst.REREAD_S == 2
+
+
+def test_reread_with_no_wait_always_reads_again(db):
+    # given
+    ticks = [0.0]
+    box = Box(db, DEMO, clock=lambda: ticks[0])
+    box.instances.reread()
+    add_instance(box.db, 'demo', 'main', sealer_key='k', url='https://a.example.com', token='pw')
+
+    # when
+    box.instances.reread(within=0)
+
+    # then
+    assert [i.name for i in box.instances.all()] == ['main']
+
+
 def test_a_database_failure_keeps_the_cache_and_logs_once(db, monkeypatch, caplog):
     # given
     box = Box(db, DEMO)

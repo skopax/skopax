@@ -34,13 +34,15 @@ OFFSET = 7
 PREFS = '/#t=prefs'
 INBOX = '/#t=slack'
 WHY_LIMIT = 200
+CHOSE_ON = {'$or': [{'mailNotices.on': True}, {'mailNotices.on': {'$ne': False}, 'lastLogin': {'$ne': None}, 'opened': {'$ne': False}}]}
 
 
 def choice(doc: dict | None) -> dict:
     held = (doc or {}).get('mailNotices')
     held = held if isinstance(held, dict) else {}
     kinds = held.get('kinds')
-    return {'on': held.get('on') is True, 'kinds': [k for k in KINDS if k in kinds] if isinstance(kinds, list) else list(KINDS)}
+    signed = (doc or {}).get('lastLogin') is not None and (doc or {}).get('opened') is not False
+    return {'on': held.get('on') is True or (held.get('on') is not False and signed), 'kinds': [k for k in KINDS if k in kinds] if isinstance(kinds, list) else list(KINDS)}
 
 
 def wants(doc: dict | None, kind: str) -> bool:
@@ -154,7 +156,8 @@ class NoticeMail:
             if not rows or not self.ready():
                 return 0
             kinds = sorted({r['kind'] for r in rows})
-            found = list(self.users.find({'disabled': {'$ne': True}, 'mailNotices.on': True, 'mailNotices.kinds': {'$in': kinds}}, {'email': 1, 'mailNotices': 1, 'disabled': 1}))
+            found = list(self.users.find({'disabled': {'$ne': True}, '$and': [CHOSE_ON, {'$or': [{'mailNotices.kinds': {'$in': kinds}}, {'mailNotices.kinds': {'$not': {'$type': 'array'}}}]}]},
+                                         {'email': 1, 'mailNotices': 1, 'disabled': 1, 'lastLogin': 1, 'opened': 1}))
             now = self.clock()
             loose = {r['user'] for r in rows if not r.get('to') and not r.get('named')}
             enabled = [doc['_id'] for doc in self.users.find({'disabled': {'$ne': True}}, {'_id': 1})] if loose else []
