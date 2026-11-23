@@ -12,6 +12,10 @@ A step-by-step guide to tracing Skopax with Langfuse, and traces that explain th
 - A step-by-step guide to tracing Skopax's own AI calls with Langfuse: a separate Langfuse project, a key pair that may write, which instance fields to fill, how to check it and what to do when nothing shows up. It is in the plug-in docs (Langfuse tracing) and in a new "Trace Skopax with Langfuse" section of the Docs page. The help of the Langfuse instance setting says to pick a separate project, because the picked instance is no longer watched.
 - The card drawer's Expand and Shrink button sits at the left of its top bar, on the side the drawer grows to, with an arrow pointing the way it moves.
 
+**Fixed:**
+
+- A Slack reminder for a card assigned by name now mentions the person (through the e-mail saved with the assignment), so they are pinged; before it only printed the name.
+
 ## 0.5.6 (2026-11-23)
 
 Skopax can trace its own AI calls to Langfuse, and admins can see Integrations as everyone else does.

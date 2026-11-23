@@ -243,3 +243,31 @@ def test_the_reminder_packs_carry_the_person_mark_in_every_language():
     for lang in ('tr', 'de', 'es', 'fr'):
         text = json.loads((root / lang / 'messages.json').read_text(encoding='utf-8'))['reminder.owned']
         assert ':bust_in_silhouette: {owner}' in text
+
+
+def test_a_card_assigned_by_name_pings_the_person_through_the_assigned_email(store: Store):
+    # given
+    seed(store, card(KEY, owner='Dora Lane', assigned={'name': 'Dora Lane', 'email': 'dora.lane@example.com'}))
+    t = Transport()
+    asked = []
+    box = reminders(store, t, mention=lambda email: asked.append(email) or '<@U123>', name_of=lambda email: 'Dora Lane')
+
+    # when
+    box.run_once(POSTED + 24.5 * H)
+
+    # then
+    text = t.replies()[0][1]
+    assert asked == ['dora.lane@example.com'], 'the owner field holds a name, so the lookup goes through the assigned email'
+    assert ':bust_in_silhouette: <@U123> was assigned' in text and 'dora.lane@example.com' not in text
+
+
+def test_a_name_only_assignee_with_no_slack_match_keeps_the_name(store: Store):
+    # given
+    seed(store, card(KEY, owner='Dora Lane', assigned={'name': 'Dora Lane', 'email': 'dora.lane@example.com'}))
+    t = Transport()
+
+    # when
+    reminders(store, t, mention=lambda email: None, name_of=lambda email: 'Someone Else').run_once(POSTED + 24.5 * H)
+
+    # then
+    assert ':bust_in_silhouette: Dora Lane was assigned' in t.replies()[0][1]
