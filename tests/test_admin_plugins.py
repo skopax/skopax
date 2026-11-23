@@ -682,10 +682,10 @@ def test_an_instance_another_pod_just_added_shows_in_the_lists_at_once(store, mo
 
         # when
         admin = listed(c)['demo']['instances']
-        reader = {p['id']: p for p in c.get('/api/integrations', headers=AUTH).json()['plugins']}['demo']['instances']
+        reader = {p['id']: p for p in c.get('/api/integrations', headers=AUTH).json()['plugins']}['demo']
 
     # then
-    assert [i['name'] for i in admin] == ['east'] and [i['name'] for i in reader] == ['east']
+    assert [i['name'] for i in admin] == ['east'] and reader['instanceCount'] == 1 and 'instances' not in reader
 
 
 def test_an_instance_another_pod_just_added_or_changed_tests_with_its_stored_values_at_once(store):

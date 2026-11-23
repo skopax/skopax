@@ -15,7 +15,7 @@ function state() {
 
 async function boot(label) {
   const vc = new VirtualConsole();
-  const brand = {name: 'Skopax', slug: 'skopax', version: '0.5.10', attribution: null, podBy: POD};
+  const brand = {name: 'Skopax', slug: 'skopax', version: '0.5.11', attribution: null, podBy: POD};
   if (label) brand.investigator = label;
   const html = pageHtml(TEMPLATE, {}).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state())).replace(BRAND_BLOB, (m, a, b) => a + JSON.stringify(brand) + b);
   const dom = new JSDOM(html, {url: 'https://example.com/', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc, beforeParse(w) {

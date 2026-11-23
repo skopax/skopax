@@ -333,18 +333,7 @@ article.inc:not(.open) .run-banner { display: none; }
 .adm-nav .tab .count { margin: 0; font: 500 11px var(--font-data); color: var(--muted); }
 .adm-nav .tab .count:empty { display: none; }
 .int-ro-note { margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-left: 3px solid var(--link); border-radius: 6px; background: var(--sunken); color: var(--fg-2); font-size: 0.84rem; }
-.int-ro-top { margin: 0 0 12px; }
 .int-ro { display: grid; gap: 16px; min-width: 0; }
-.int-ro-sec { display: grid; gap: 8px; min-width: 0; }
-.int-ro-fields { display: grid; grid-template-columns: minmax(120px, max-content) minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: 0.86rem; }
-.int-ro-fields dt { color: var(--muted); }
-.int-ro-fields dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-.int-ro-checks { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 0.86rem; }
-.int-ro-checks li { display: flex; align-items: center; gap: 8px; }
-.int-ro-checks li .tag { margin-left: auto; }
-.int-ro-rules { display: flex; flex-wrap: wrap; gap: 12px 24px; }
-.int-ro-rule caption { text-align: left; font-weight: 600; font-size: 0.82rem; padding-bottom: 4px; }
-.int-ro-v { font-family: var(--font-data); }
 .int-tile .int-switch[aria-disabled="true"] { opacity: 0.4; filter: grayscale(1); cursor: not-allowed; }
 .tag.int-know-tag { display: block; flex: 0 1 auto; max-width: 100%; min-width: 0; white-space: normal; font-size: 0.66rem; padding: 0 5px; line-height: 1.5; }
 .adm-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
@@ -1551,6 +1540,9 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
 .int-tile:hover { border-color: var(--line-2); background: var(--raised); }
 .int-tile:focus-within { border-color: var(--line-2); }
 .int-tile.off { opacity: 0.62; }
+.int-tile.ro, .int-tile.ro .int-open { cursor: default; }
+.int-tile.ro:hover { border-color: var(--line); background: var(--surface); }
+.int-blurb { font-size: 0.72rem; line-height: 1.35; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .int-tile.need { border-left: 3px solid var(--warn); padding-left: 8px; }
 .int-tile-top { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .int-tile .int-ico { width: 20px; height: 20px; border-radius: 5px; }

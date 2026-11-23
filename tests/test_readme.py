@@ -18,7 +18,7 @@ NUMBERS = dict(enumerate(('zero', 'one', 'two', 'three', 'four', 'five', 'six', 
 VENDOR_DOCS = ('argo-cd.readthedocs.io', 'dev.dengage.com', 'developer.chrome.com', 'developer.hashicorp.com', 'developers.cloudflare.com', 'developers.google.com', 'docs.airbyte.com', 'docs.github.com', 'docs.gitlab.com',
                'docs.percona.com', 'docs.slack.dev', 'docs.sonarsource.com', 'docs.spring.io', 'docs.umami.is', 'firebase.google.com', 'grafana.com', 'help.wingify.com',
                'kubernetes.io', 'langfuse.com', 'learn.microsoft.com', 'modelcontextprotocol.io', 'prometheus.io', 'support.atlassian.com', 'support.google.com',
-               'support.microsoft.com', 'www.elastic.co')
+               'support.microsoft.com', 'www.elastic.co', 'www.zabbix.com')
 VENDOR_REPOS = ('github.com/oliver006/redis_exporter', 'github.com/danielqsj/kafka_exporter', 'github.com/chromedp/docker-headless-shell')
 LINK_HOSTS = ('skopax.io', 'docs.astral.sh', 'localhost:8080') + VENDOR_DOCS
 LINK_TREES = ('github.com/skopax', 'ghcr.io/skopax', 'img.shields.io/github/v/release/skopax/skopax', 'img.shields.io/github/license/skopax/skopax') + VENDOR_REPOS

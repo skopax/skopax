@@ -251,6 +251,9 @@ function intFieldHtml(p, f, inst) {
     '<span class="adm-msg int-field-msg" role="status"></span></div>';
 }
 function intList(x) { return Array.isArray(x) ? x : []; }
+function intCount(p) { return typeof p.instanceCount === 'number' ? p.instanceCount : intList(p.instances).length; }
+function intHasFields(p) { return typeof p.hasFields === 'boolean' ? p.hasFields : intList(p.fields).length > 0; }
+function intAnyOn(p) { return typeof p.instancesOn === 'number' ? p.instancesOn > 0 : intList(p.instances).some(function (i) { return i && i.enabled === true && !i.problem; }); }
 function intName(p) { return String(p.name || p.id); }
 function intUsable(p) { return p.state === 'ok'; }
 function intCatOf(p) { return typeof p.category === 'string' && p.category ? p.category : 'other'; }
@@ -258,6 +261,7 @@ function intIsCustom(p) { return p.origin === 'package' || p.origin === 'env'; }
 function intKnowKey(p) { return typeof p.companyKnowledge === 'string' ? p.companyKnowledge : ''; }
 function intKnowing(p) {
   var key = intKnowKey(p), insts = intList(p.instances);
+  if (typeof p.knowing === 'boolean') return p.knowing;
   if (p.id === INT_MCP) return insts.some(function (i) { return !!i && !!i.values && String(i.values.knowledge) === 'true'; });
   if (key === 'always') return intUsable(p);
   return !!key && insts.some(function (i) { return !!i && !!i.values && i.values[key] != null && String(i.values[key]).trim() !== ''; });
@@ -265,6 +269,7 @@ function intKnowing(p) {
 var INT_KNOW_TIP = 'Knowledge source: the investigator searches and cites it';
 function intKnowErr(p) {
   var rows = intList(p.health && p.health.instances);
+  if (typeof p.knowledgeError === 'boolean') return p.knowledgeError;
   if (p.id === INT_MCP && rows.length) {
     var known = intList(p.instances).filter(function (i) { return !!i && !!i.values && String(i.values.knowledge) === 'true'; }).map(function (i) { return i.name; });
     return rows.some(function (r) { return !!r && r.state === 'error' && known.indexOf(r.name) >= 0; });
@@ -305,15 +310,16 @@ function intMetaOf(p) {
 }
 function intCatLabel(c) { return Object.prototype.hasOwnProperty.call(INT_CATS, c) ? INT_CATS[c] : c; }
 function intOutside(p) {
+  if (p && typeof p.outside === 'boolean') return intUsable(p) && p.outside;
   return !!p && intUsable(p) && !intList(p.fields).length && Array.isArray(p.checks) && !p.checks.length && Array.isArray(p.panels) && !p.panels.length;
 }
 function intTiled(p) {
-  if (!intUsable(p)) return p.enabled === true || intList(p.instances).length > 0;
+  if (!intUsable(p)) return p.enabled === true || intCount(p) > 0;
   if (intOutside(p)) return false;
-  return intList(p.instances).length > 0 || (!intList(p.fields).length && p.enabled === true);
+  return intCount(p) > 0 || (!intHasFields(p) && p.enabled === true);
 }
 function intConnected(p) {
-  return !!p && intUsable(p) && !intOutside(p) && p.enabled === true && (!intList(p.fields).length || intList(p.instances).some(function (i) { return i && i.enabled === true && !i.problem; }));
+  return !!p && intUsable(p) && !intOutside(p) && p.enabled === true && (!intHasFields(p) || intAnyOn(p));
 }
 function intAttention(p) { return !intUsable(p) || !!(p.health && (p.health.state === 'error' || p.health.state === 'warn')); }
 function intChecks(p) { return intList(p.checks).filter(function (c) { return c && typeof c.id === 'string' && c.id; }); }
@@ -400,14 +406,17 @@ function intHay(p, ks) {
 function intMatches(hay, q) {
   return foldCase(String(q || '').trim()).split(/\s+/).filter(Boolean).every(function (w) { return String(hay || '').indexOf(w) >= 0; });
 }
+function intLean(p) { return typeof p.knowing === 'boolean' && !(p.health && p.health.instances); }
 function intShort(p, h) {
-  var n = intList(p.instances).length;
+  var n = intCount(p);
   if (n < 2) return h.text;
+  if (intLean(p)) return n + ' instances' + (h.state === 'error' || h.state === 'warn' ? '' : ' \u00b7 ' + h.text);
   var bad = intList(p.health && p.health.instances).filter(function (r) { return r && (r.state === 'error' || r.state === 'warn'); }).length;
   return n + ' instances \u00b7 ' + (bad ? bad + (bad === 1 ? ' needs attention' : ' need attention') : h.text);
 }
 function intWhy(p) {
   var rows = intList(p.health && p.health.instances).filter(function (r) { return r && (r.state === 'error' || r.state === 'warn') && typeof r.text === 'string' && r.text; });
+  if (!rows.length && intLean(p) && p.health && (p.health.state === 'error' || p.health.state === 'warn') && typeof p.health.text === 'string') return p.health.text;
   return rows.length ? rows[0].text : '';
 }
 function intTip(p, h) {
@@ -427,8 +436,10 @@ function intTile(p) {
   if (tip) t.title = tip;
   var top = accText('div', 'int-tile-top');
   top.appendChild(intIcon(p));
-  var open = accText('button', 'int-open'), row = accText('span', 'int-row1'), dot = accText('span', 'int-st'), line = accText('span', 'int-line');
-  open.type = 'button';
+  var ro = intRO(), open = accText(ro ? 'span' : 'button', 'int-open'), row = accText('span', 'int-row1'), dot = accText('span', 'int-st'), line = accText('span', 'int-line');
+  if (ro) t.classList.add('ro');
+  else open.type = 'button';
+  t.dataset.instances = String(intCount(p));
   row.appendChild(accText('b', 'int-name', intName(p)));
   dot.appendChild(accText('span', 'int-dot ' + (h ? h.state : 'off')));
   dot.appendChild(accText('span', 'sr', need ? 'Needs attention' : st === 'on' ? 'On' : 'Off'));
@@ -441,12 +452,13 @@ function intTile(p) {
   open.appendChild(row);
   var custom = intIsCustom(p);
   if (!need || custom) line.appendChild(accText('span', 'int-cat', need ? 'Custom' : intCatLabel(intCatOf(p)) + (custom ? ' \u00b7 Custom' : '')));
-  var healthText = h ? (h.none ? (intList(p.instances).length > 1 ? intList(p.instances).length + ' instances' : '') : intShort(p, h)) : '';
+  var healthText = h ? (h.none ? (intCount(p) > 1 ? intCount(p) + ' instances' : '') : intShort(p, h)) : '';
   if (healthText) line.appendChild(accText('span', 'int-health', healthText));
-  var why = need && h && intList(p.instances).length > 1 ? intWhy(p) : '';
+  var why = need && h && intCount(p) > 1 ? intWhy(p) : '';
   if (why) line.appendChild(accText('span', 'int-why', why));
   open.appendChild(line);
-  if (custom) {
+  if (ro && typeof p.description === 'string' && p.description) open.appendChild(accText('span', 'int-blurb', p.description));
+  if (custom && !ro) {
     var said = intCustomSaid(p), note = accText('span', 'int-custom-d', said);
     note.id = 'int-custom-' + p.id;
     note.hidden = true;
@@ -460,8 +472,7 @@ function intTile(p) {
   sw.setAttribute('role', 'switch');
   sw.setAttribute('aria-checked', on ? 'true' : 'false');
   sw.setAttribute('aria-label', 'Switch ' + intName(p));
-  var held = intList(p.instances);
-  if (on && held.length && !held.some(function (i) { return i.enabled; })) {
+  if (on && intCount(p) && !(typeof p.instancesOn === 'number' ? p.instancesOn > 0 : intList(p.instances).some(function (i) { return i.enabled; }))) {
     sw.classList.add('idle');
     sw.title = 'On, but no instance is on: open it and turn an instance on';
   }
@@ -479,7 +490,7 @@ function intTile(p) {
   msg.setAttribute('role', 'status');
   t.appendChild(msg);
   sw.addEventListener('click', function (e) { e.stopPropagation(); intSwitch(p, sw, msg); });
-  t.addEventListener('click', function (e) { if (!e.target.closest('.int-switch')) intOpen(p.id, undefined, {tile: p.id}); });
+  if (!ro) t.addEventListener('click', function (e) { if (!e.target.closest('.int-switch')) intOpen(p.id, undefined, {tile: p.id}); });
   return t;
 }
 async function intSwitch(p, sw, msg) {
@@ -535,7 +546,7 @@ function intFindBox() {
     } else if (e.key === 'Enter') {
       var seen = [].filter.call(document.querySelectorAll('#integrations .int-tile'), function (t) { return !t.hidden; });
       e.preventDefault();
-      if (seen.length === 1) intOpen(seen[0].dataset.id, undefined, {tile: seen[0].dataset.id});
+      if (seen.length === 1 && !intRO()) intOpen(seen[0].dataset.id, undefined, {tile: seen[0].dataset.id});
     }
   });
   w.appendChild(f);
@@ -807,6 +818,7 @@ function intFocusFirst(sel) {
   if (to) to.focus();
 }
 function intOpen(id, name, from) {
+  if (intRO()) return;
   var w = intWrap();
   if (!w) return;
   INT_PANEL = {id: id, name: name, from: from};
@@ -898,7 +910,6 @@ function intPanelPaint(note) {
   said.setAttribute('role', 'status');
   panel.appendChild(said);
   if (!usable) return true;
-  if (intRO()) { intViewPanel(panel, p, insts, cur, said); return true; }
   if (!fields.length) {
     panel.appendChild(accText('p', 'adm-help int-nofields', 'Nothing to set up: this plug-in needs no instance.'));
     if (p.enabled !== true) panel.appendChild(intTurnOn(p));
@@ -938,7 +949,7 @@ function intPanelPaint(note) {
 }
 function intCard(p, i, cur, said) {
   var sel = !!cur && cur.name === i.name, ranked = !!((p.checks || []).length || (p.tools || []).length), h = intInstHealth(p, i);
-  var c = accText('div', 'int-icard' + (sel ? ' sel' : '') + (i.enabled ? '' : ' off')), b = accText('button', 'int-itab', i.name), meta = accText('span', 'int-icard-m'), line = accText('span', 'int-icard-h'), edit = accText('span', 'int-icard-e', intRO() ? (sel ? 'Viewing' : 'View') : sel ? 'Editing' : 'Edit');
+  var c = accText('div', 'int-icard' + (sel ? ' sel' : '') + (i.enabled ? '' : ' off')), b = accText('button', 'int-itab', i.name), meta = accText('span', 'int-icard-m'), line = accText('span', 'int-icard-h'), edit = accText('span', 'int-icard-e', sel ? 'Editing' : 'Edit');
   b.type = 'button';
   b.dataset.name = i.name;
   b.setAttribute('role', 'tab');

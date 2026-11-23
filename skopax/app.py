@@ -3755,22 +3755,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         passes = store.server_runs()['passes']
         return {'edition': registry.edition(), 'secretsKey': 'env' if base_settings.secret_key else 'generated', 'plugins': [plugin_row(x, passes) for x in registry.loaded()]}
 
-    def rule_values(plugin) -> list[dict]:
-        out = []
-        for r in plugin.rules:
-            try:
-                values = live.rules_of(f'{plugin.id}.{r.id}')
-            except KeyError:
-                values = dict(r.defaults)
-            out.append({'id': r.id, 'label': r.label, 'defaults': dict(r.defaults), 'help': dict(r.help), 'values': values})
-        return out
-
     @app.get('/api/integrations')
     def get_integrations(by: Annotated[str, Depends(require_login)]) -> dict:
         instances.reread()
         passes = store.server_runs()['passes']
         return {'edition': registry.edition(), 'readOnly': True,
-                'plugins': [reader_row(plugin_row(x, passes), rule_values(x.plugin) if x.plugin is not None and x.state != 'broken' else []) for x in registry.loaded()]}
+                'plugins': [reader_row(plugin_row(x, passes)) for x in registry.loaded()]}
 
     @app.put('/api/admin/plugins/{plugin_id}')
     def put_admin_plugin(plugin_id: str, body: PluginSwitchIn, by: Annotated[str, Depends(require_admin)]) -> dict:

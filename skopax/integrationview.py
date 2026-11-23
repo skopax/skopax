@@ -4,8 +4,6 @@ from urllib.parse import urlsplit
 
 from skopax.redact import BEARER, JWT, REDACTED, SECRET_WORDS, secrets_masked
 
-PLAIN_KINDS = ('choice', 'bool', 'int', 'instance')
-READ_KINDS = PLAIN_KINDS + ('text', 'url', 'regex')
 WEB_SCHEMES = ('http', 'https')
 SECRET_NAME = re.compile(rf'(?i)(?:{SECRET_WORDS}|header[ _-]?value|web[ _-]?hook|hook|cookie|dsn|signature|bearer|session)')
 URL_IN_TEXT = re.compile(r'[a-z][a-z0-9+.-]*://[^\s"\'<>]+', re.I)
@@ -16,16 +14,9 @@ TOKEN_SHAPED = re.compile(r'\b(?:xox[abprse]-[A-Za-z0-9-]+|xapp-[A-Za-z0-9-]+|gh
                           r'|hf_[A-Za-z0-9]{8,}|dop_v1_[a-f0-9]{8,}|SG\.[A-Za-z0-9_-]{8,})')
 HOST_PATH = re.compile(r'(?<![\w/:@.-])((?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d{1,5})?)/[^\s"\'<>]*', re.I)
 RUN_KEYS = ('state', 'reason', 'at', 'ranAt', 'series', 'read', 'skipped', 'noBaseline', 'firing', 'cards')
-ROW_KEYS = ('id', 'name', 'version', 'category', 'description', 'author', 'licence', 'origin', 'state', 'reason', 'enabled', 'icon', 'edition', 'companyKnowledge', 'knowledgeAlso',
-            'setup', 'checks', 'tools', 'panels', 'fields', 'instances', 'health', 'rules')
-FIELD_KEYS = ('key', 'label', 'kind', 'required', 'default', 'help', 'choices', 'choiceLabels', 'showIf', 'group')
-CHECK_KEYS = ('id', 'label', 'once')
-TOOL_KEYS = ('name', 'kind')
-PANEL_KEYS = ('tab', 'label', 'group')
-SETUP_KEYS = ('steps', 'docs', 'docsLabel')
-HEALTH_KEYS = ('state', 'text', 'at')
-INSTANCE_HEALTH_KEYS = ('name', 'state', 'text', 'at')
-INSTANCE_KEYS = ('name', 'primary', 'enabled', 'source', 'problem', 'values', 'secrets', 'offChecks')
+ROW_KEYS = ('id', 'name', 'category', 'description', 'origin', 'state', 'enabled', 'icon', 'edition', 'companyKnowledge', 'knowledgeAlso')
+HEALTH_WORDS = {'ok': 'Connected', 'warn': 'Needs attention: an admin can see the details', 'error': 'Needs attention: an admin can see the details', 'pending': 'Checking', 'none': 'Off', 'off': 'Off'}
+MCP_ID = 'mcp-tools'
 
 
 def bare_url(url: str) -> str:
@@ -52,74 +43,52 @@ def secret_named(f: Mapping) -> bool:
     return bool(SECRET_NAME.search(str(f.get('key', ''))) or SECRET_NAME.search(str(f.get('label', ''))))
 
 
-def shown(f: Mapping, value: str) -> str | None:
-    kind = f.get('kind')
-    if kind not in READ_KINDS or (kind not in PLAIN_KINDS and secret_named(f)):
-        return None
-    if kind == 'url':
-        return bare_url(value)
-    return value if kind in PLAIN_KINDS else masked(value)
-
-
 def picked(source: Mapping | None, keys: Iterable[str]) -> dict:
     source = source or {}
     return {k: source[k] for k in keys if k in source}
 
 
-def reader_field(f: Mapping) -> dict:
-    out = picked(f, FIELD_KEYS)
-    if out.get('kind') not in READ_KINDS or secret_named(f):
-        out['default'] = ''
-    elif out.get('kind') == 'url' and out.get('default'):
-        out['default'] = bare_url(out['default'])
-    return out
+def held(inst: Mapping, key: str) -> str:
+    value = (inst.get('values') or {}).get(key)
+    return '' if value is None else str(value)
 
 
-def reader_instance(inst: Mapping, fields: Iterable[Mapping]) -> dict:
-    secrets = {k: {'set': bool((v or {}).get('set'))} for k, v in (inst.get('secrets') or {}).items()}
-    values, given = {}, inst.get('values') or {}
-    for f in fields:
-        key = f.get('key')
-        if key not in given or key in secrets:
-            continue
-        raw = str(given[key])
-        out = shown(f, raw)
-        if out is None or (out == '' and raw.strip()):
-            secrets[key] = {'set': given[key] not in (None, '')}
-        else:
-            values[key] = out
-    out = picked(inst, INSTANCE_KEYS)
-    out.update(problem=masked(inst.get('problem')), values=values, secrets=secrets, offChecks=list(inst.get('offChecks') or []))
-    return {k: out.get(k) for k in INSTANCE_KEYS}
+def knowing(row: Mapping, insts: list[Mapping]) -> bool:
+    key = row.get('companyKnowledge')
+    if row.get('id') == MCP_ID:
+        return any(held(i, 'knowledge') == 'true' for i in insts)
+    if key == 'always':
+        return row.get('state') == 'ok'
+    return bool(key) and any(held(i, key).strip() != '' for i in insts)
+
+
+def knowledge_error(row: Mapping, insts: list[Mapping]) -> bool:
+    health = row.get('health') or {}
+    rows = [h for h in health.get('instances') or [] if isinstance(h, Mapping)]
+    if row.get('id') == MCP_ID and rows:
+        known = {i.get('name') for i in insts if held(i, 'knowledge') == 'true'}
+        return any(h.get('state') == 'error' and h.get('name') in known for h in rows)
+    if rows:
+        return any(h.get('state') == 'error' for h in rows)
+    return health.get('state') == 'error'
 
 
 def reader_health(health: Mapping | None) -> dict | None:
     if not health:
         return None
-    out = picked(health, HEALTH_KEYS)
-    out['text'] = masked(out.get('text'))
-    out['instances'] = [{**picked(h, INSTANCE_HEALTH_KEYS), 'text': masked(h.get('text'))} for h in health.get('instances') or []]
-    return out
+    state = health.get('state')
+    text = HEALTH_WORDS.get(state) or HEALTH_WORDS['none']
+    return {'state': state, 'text': text, 'at': health.get('at')}
 
 
-def reader_row(row: Mapping, rules: list[dict]) -> dict:
+def reader_row(row: Mapping) -> dict:
     out = picked(row, ROW_KEYS)
-    if 'reason' in out:
-        out['reason'] = masked(out['reason'])
-    fields = list(row.get('fields') or [])
-    if 'fields' in out:
-        out['fields'] = [reader_field(f) for f in fields]
-    for key, keys in (('checks', CHECK_KEYS), ('tools', TOOL_KEYS), ('panels', PANEL_KEYS)):
-        if key in out:
-            out[key] = [picked(x, keys) for x in out[key] or []]
-    if out.get('setup'):
-        out['setup'] = picked(out['setup'], SETUP_KEYS)
-    if 'instances' in out:
-        out['instances'] = [reader_instance(i, fields) for i in out['instances'] or []]
-    if 'health' in out:
-        out['health'] = reader_health(out['health'])
-    if 'rules' in out:
-        out['rules'] = rules
+    insts = [i for i in row.get('instances') or [] if isinstance(i, Mapping)]
+    out.update(instanceCount=len(insts), instancesOn=sum(1 for i in insts if i.get('enabled') is True and not i.get('problem')),
+               hasFields=bool(row.get('fields')), outside=not (row.get('fields') or row.get('checks') or row.get('panels')), knowing=knowing(row, insts),
+               knowledgeError=knowledge_error(row, insts))
+    if 'health' in row:
+        out['health'] = reader_health(row['health'])
     return out
 
 

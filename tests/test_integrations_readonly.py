@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from skopax.app import create_app
 from skopax.contract import Capabilities, Field, RuleSet
-from skopax.integrationview import FIELD_KEYS, INSTANCE_KEYS, ROW_KEYS, RUN_KEYS, bare_url, reader_row
+from skopax.integrationview import ROW_KEYS, RUN_KEYS, bare_url, reader_row
 from skopax.messages import msg
 from skopax.promqlchecks import clean
 from skopax.registry import Registry
@@ -35,10 +35,9 @@ KEYED_WORD = 'plain-word-keyed-49'
 PREFIXED = ('xoxb-plain-word-50', 'ghp_plainword51', 'glpat-plainword52')
 BARE_WORD = 'plain-word-bare-53'
 SEEDED = (TOKEN_WORD, PEM_WORD, USER_WORD, QUERY_WORD, HEADER_WORD, HOOK_WORD, PATH_WORD, BASIC_WORD, KEYED_WORD, BARE_WORD) + PREFIXED
-ROW_EXPECTED = frozenset({'id', 'name', 'version', 'category', 'description', 'author', 'licence', 'origin', 'state', 'reason', 'enabled', 'icon', 'edition', 'companyKnowledge',
-                          'knowledgeAlso', 'setup', 'checks', 'tools', 'panels', 'fields', 'instances', 'health', 'rules'})
-INSTANCE_EXPECTED = frozenset({'name', 'primary', 'enabled', 'source', 'problem', 'values', 'secrets', 'offChecks'})
-FIELD_EXPECTED = frozenset({'key', 'label', 'kind', 'required', 'default', 'help', 'choices', 'choiceLabels', 'showIf', 'group'})
+ROW_EXPECTED = frozenset({'id', 'name', 'category', 'description', 'origin', 'state', 'enabled', 'icon', 'edition', 'companyKnowledge', 'knowledgeAlso'})
+LIST_EXTRA = frozenset({'health', 'instanceCount', 'instancesOn', 'hasFields', 'outside', 'knowing', 'knowledgeError'})
+DETAIL_KEYS = ('fields', 'instances', 'setup', 'checks', 'tools', 'panels', 'rules', 'reason', 'version', 'author', 'licence')
 RUN_EXPECTED = frozenset({'state', 'reason', 'at', 'ranAt', 'series', 'read', 'skipped', 'noBaseline', 'firing', 'cards'})
 PEM_TEXT = f'-----BEGIN PRIVATE KEY-----\n{PEM_WORD}\n-----END PRIVATE KEY-----'
 FIELDS = (
@@ -82,7 +81,7 @@ def vault_of(body: dict) -> dict:
 
 
 @pytest.mark.parametrize('role', ['viewer', 'operator'])
-def test_a_signed_in_non_admin_reads_integrations_without_any_secret_value(store, role):
+def test_a_signed_in_non_admin_reads_only_what_is_connected_with_no_instance_detail(store, role):
     # given
     with served(store) as c:
         signed_in(c, store, role)
@@ -94,28 +93,23 @@ def test_a_signed_in_non_admin_reads_integrations_without_any_secret_value(store
     assert res.status_code == 200
     assert [w for w in SEEDED if w in res.text] == []
     vault = vault_of(res.json())
-    inst = vault['instances'][0]
-    assert inst['name'] == 'main' and inst['enabled'] is True
-    assert inst['values']['url'] == 'https://vault.example.com' and inst['values']['endpoint'] == 'https://mcp.example.com'
-    assert inst['values']['namespaces'] == 'shop,checkout' and inst['values']['mode'] == 'slow'
-    assert 'header-value' not in inst['values'] and 'hook' not in inst['values']
-    assert inst['secrets'] == {'token': {'set': True}, 'header-value': {'set': True}, 'hook': {'set': True}}
+    assert vault['instanceCount'] == 1 and vault['instancesOn'] == 1 and vault['hasFields'] is True
+    assert [k for k in DETAIL_KEYS if k in vault] == []
+    assert 'main' not in res.text and 'shop,checkout' not in res.text and 'vault.example.com' not in res.text
     assert res.json()['readOnly'] is True
 
 
-def test_the_reader_view_carries_checks_on_and_threshold_values(store):
+def test_the_reader_view_carries_no_checks_thresholds_or_setup(store):
     # given
     with served(store) as c:
         signed_in(c, store, 'viewer')
-        put = c.put('/api/admin/settings', json={'key': 'vault.lag', 'value': '{"warn": 150}'}, headers=AUTH)
 
         # when
         vault = vault_of(c.get('/api/integrations').json())
 
     # then
-    assert put.status_code == 200
-    assert [ch['id'] for ch in vault['checks']] == ['vault'] and vault['instances'][0]['offChecks'] == []
-    assert vault['rules'] == [{'id': 'lag', 'label': 'Lag', 'defaults': {'warn': 100.0, 'crit': 500.0}, 'help': {}, 'values': {'warn': 150.0, 'crit': 500.0}}]
+    assert set(vault) <= ROW_EXPECTED | LIST_EXTRA
+    assert vault['name'] == 'Vault demo' and vault['state'] == 'ok' and vault['enabled'] is True
 
 
 def test_the_admin_catalog_still_shows_plain_values_to_admins(store):
@@ -197,28 +191,62 @@ def test_a_viewer_reads_custom_checks_with_masked_run_texts_but_cannot_add_one(s
     assert write.status_code == 403 and defs.list() == [made]
 
 
-def test_reader_row_masks_secrets_in_health_problem_and_reason_texts():
+def test_reader_row_sends_only_a_generic_health_sentence_and_no_instance_rows():
     # given
-    row = {'id': 'vault', 'name': 'Vault demo', 'reason': f'refused token={TOKEN_WORD}; sent Basic {BASIC_WORD} and {PREFIXED[0]}', 'module': 'pkg.vault',
-           'fields': [{'key': 'url', 'kind': 'url'}, {'key': 'ca', 'kind': 'pem'}, {'key': 'socket', 'kind': 'url'}, {'key': 'email', 'kind': 'text'}],
-           'health': {'state': 'error', 'text': f'https://{USER_WORD}:{USER_WORD}@vault.example.com/s/{PATH_WORD} answered 401; retried vault.example.com/k/{BARE_WORD} with {PREFIXED[1]}', 'at': None, 'extra': 'x',
-                      'instances': [{'name': 'main', 'state': 'error', 'text': f'password: {HEADER_WORD}, cookie={KEYED_WORD}, {PREFIXED[2]}', 'at': None, 'detail': 'x'}]},
-           'instances': [{'name': 'main', 'primary': True, 'enabled': True, 'source': 'admin', 'problem': f'Bearer {QUERY_WORD}-and-more',
-                          'values': {'url': f'https://{USER_WORD}:{USER_WORD}@vault.example.com/s/{PATH_WORD}', 'ca': PEM_TEXT, 'socket': 'unix:///run/vault.sock', 'email': 'alice@example.com', 'stray': 'x'},
-                          'secrets': {}, 'owned': ['url'], 'offChecks': [], 'extra': 'x'}]}
+    row = {'id': 'vault', 'name': 'Vault demo', 'reason': f'refused token={TOKEN_WORD}', 'module': 'pkg.vault', 'fields': [{'key': 'url', 'kind': 'url'}], 'state': 'ok',
+           'health': {'state': 'error', 'text': f'https://{USER_WORD}:{USER_WORD}@vault.example.com/s/{PATH_WORD} answered 401 for prod-east with {PREFIXED[1]}', 'at': None, 'extra': 'x',
+                      'instances': [{'name': 'prod-east', 'state': 'error', 'text': f'prod-east: password: {HEADER_WORD}, cookie={KEYED_WORD}, {PREFIXED[2]}', 'at': None, 'detail': 'x'}]},
+           'instances': [{'name': 'prod-east', 'enabled': True, 'problem': f'Bearer {QUERY_WORD}-and-more', 'values': {'url': f'https://{USER_WORD}@vault.example.com/{PATH_WORD}'}}]}
 
     # when
-    out = reader_row(row, [])
+    out = reader_row(row)
 
     # then
     text = repr(out)
     assert [w for w in SEEDED if w in text] == []
-    assert out['instances'][0]['values'] == {'url': 'https://vault.example.com', 'email': 'alice@example.com'}, 'emails stay visible'
-    assert out['instances'][0]['secrets'] == {'ca': {'set': True}, 'socket': {'set': True}}, 'a non-web address is set but hidden'
-    assert set(out['instances'][0]) == INSTANCE_EXPECTED
-    assert 'module' not in out
-    assert out['health']['text'] == 'https://vault.example.com answered 401; retried vault.example.com with [redacted]'
-    assert set(out['health']) == {'state', 'text', 'at', 'instances'} and set(out['health']['instances'][0]) == {'name', 'state', 'text', 'at'}
+    assert 'prod-east' not in text and 'vault.example.com' not in text and 'reason' not in out and 'module' not in out and 'instances' not in out
+    assert out['health'] == {'state': 'error', 'text': 'Needs attention: an admin can see the details', 'at': None}
+    assert (out['instanceCount'], out['instancesOn'], out['hasFields'], out['outside']) == (1, 0, True, False)
+
+
+@pytest.mark.parametrize('state, words', [('ok', 'Connected'), ('warn', 'Needs attention: an admin can see the details'), ('error', 'Needs attention: an admin can see the details'), ('none', 'Off'), ('pending', 'Checking')])
+def test_reader_health_is_one_fixed_sentence_per_state(state, words):
+    # when
+    out = reader_row({'id': 'vault', 'state': 'ok', 'health': {'state': state, 'text': 'prod-east: refused', 'at': None}})
+
+    # then
+    assert out['health']['text'] == words
+
+
+def test_a_viewer_never_sees_an_instance_name_in_a_health_problem(store):
+    # given
+    with served(store) as c:
+        add_instance(store, VAULT, 'prod-east', sealer_key=SEAL, enabled=True, **GIVEN)
+        c.app.state.instances.reread()
+        signed_in(c, store, 'viewer')
+
+        # when
+        res = c.get('/api/integrations')
+
+    # then
+    assert res.status_code == 200 and 'prod-east' not in res.text
+    assert vault_of(res.json())['instanceCount'] >= 1
+
+
+def test_reader_row_counts_instances_that_are_on_and_without_a_problem_and_tells_knowledge():
+    # given
+    row = {'id': 'wiki', 'state': 'ok', 'companyKnowledge': 'space', 'fields': [{'key': 'space'}], 'checks': [{'id': 'c'}],
+           'instances': [{'name': 'a', 'enabled': True, 'problem': None, 'values': {'space': 'ENG'}}, {'name': 'b', 'enabled': True, 'problem': 'down', 'values': {}}, {'name': 'c', 'enabled': False, 'values': {'space': ''}}]}
+    mcp = {'id': 'mcp-tools', 'state': 'ok', 'fields': [{'key': 'knowledge'}], 'instances': [{'name': 'x', 'enabled': True, 'values': {'knowledge': 'true'}}, {'name': 'y', 'enabled': True, 'values': {}}],
+           'health': {'state': 'warn', 'text': 't', 'at': None, 'instances': [{'name': 'x', 'state': 'error', 'text': 'e', 'at': None}, {'name': 'y', 'state': 'ok', 'text': 'o', 'at': None}]}}
+
+    # when
+    out, via = reader_row(row), reader_row(mcp)
+
+    # then
+    assert (out['instanceCount'], out['instancesOn'], out['knowing'], out['outside']) == (3, 1, True, False)
+    assert via['knowing'] is True and via['knowledgeError'] is True and 'instances' not in via['health']
+    assert reader_row({'id': 'tool', 'state': 'ok', 'fields': [], 'checks': [], 'panels': []})['outside'] is True
 
 
 @pytest.mark.parametrize('url, shown', [('https://u:p@shop.example.com:8443/s/x?y=1#z', 'https://shop.example.com:8443'), ('http://shop.example.com/a', 'http://shop.example.com'),
@@ -230,19 +258,13 @@ def test_a_reader_sees_only_scheme_host_and_port_of_a_web_address(url, shown):
 
 def test_a_reader_row_is_built_from_explicit_key_lists():
     # given
-    row = {k: 'x' for k in ROW_KEYS} | {'module': 'pkg.vault', 'localeDrops': [], 'secretsKey': 'env', 'maxInstances': 2, 'settings': [], 'hooks': ['role_resolver'], 'agentReads': [],
-                                        'fields': [{'key': 'url', 'label': 'URL', 'kind': 'url', 'default': 'https://a.example.com/p', 'suggest': True, 'ui': True}],
-                                        'checks': [{'id': 'c', 'label': 'C', 'period': 60, 'ran': ['c']}], 'tools': [{'name': 't', 'kind': 'read', 'description': 'd'}],
-                                        'panels': [{'tab': 't', 'label': 'T', 'group': 'g', 'script': 's.js', 'fragment': 'f'}], 'setup': {'steps': ['a'], 'docs': 'https://a.example.com', 'docsLabel': 'A', 'x': 1},
-                                        'instances': [{'name': 'main', 'values': {}, 'secrets': {}, 'owned': ['url'], 'offChecks': [], 'extra': 1}], 'health': {'state': 'ok', 'text': 't', 'at': None, 'instances': []}}
+    row = {k: 'x' for k in ROW_KEYS} | {'module': 'pkg.vault', 'reason': 'r', 'version': '1', 'author': 'a', 'licence': 'l', 'rules': [{'id': 'r'}], 'setup': {'steps': ['a']}, 'tools': [{'name': 't'}], 'localeDrops': [],
+                                        'fields': [{'key': 'url', 'kind': 'url'}], 'checks': [{'id': 'c'}], 'panels': [{'tab': 't'}], 'instances': [{'name': 'main', 'values': {}, 'secrets': {}}], 'health': {'state': 'ok', 'text': 't', 'at': None, 'instances': []}}
 
     # when
-    out = reader_row(row, [])
+    out = reader_row(row)
 
     # then
-    assert set(out) == set(ROW_KEYS) == ROW_EXPECTED
-    assert (frozenset(INSTANCE_KEYS), frozenset(FIELD_KEYS), frozenset(RUN_KEYS)) == (INSTANCE_EXPECTED, FIELD_EXPECTED, RUN_EXPECTED)
-    assert out['fields'] == [{'key': 'url', 'label': 'URL', 'kind': 'url', 'default': 'https://a.example.com'}]
-    assert (out['checks'], out['tools'], out['panels']) == ([{'id': 'c', 'label': 'C'}], [{'name': 't', 'kind': 'read'}], [{'tab': 't', 'label': 'T', 'group': 'g'}])
-    assert set(out['setup']) == {'steps', 'docs', 'docsLabel'}
-    assert set(out['instances'][0]) == {'name', 'primary', 'enabled', 'source', 'problem', 'values', 'secrets', 'offChecks'}
+    assert set(ROW_KEYS) == ROW_EXPECTED and frozenset(RUN_KEYS) == RUN_EXPECTED
+    assert set(out) == ROW_EXPECTED | LIST_EXTRA
+    assert out['instanceCount'] == 1

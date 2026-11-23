@@ -2,6 +2,18 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.11 (2026-11-23)
+
+A Zabbix plug-in, and a read-only Integrations list that shows only what is connected.
+
+**Added:**
+
+- Zabbix plug-in: active Zabbix problems (6.0 LTS and later) become cards, one per trigger, keyed `zabbix|<host>|<trigger description>|<trigger id>`, with Zabbix severities mapped (Disaster Critical, High High, Average and Warning Warning, Information and Not classified Info). Acknowledged problems stay with a note, tags fill the card text and a `service` or `component` tag its service, and a card clears when the problem is gone. Optional host groups, tags and lowest severity narrow it. It uses an API token in the Bearer header (also in the body below 6.4), only read methods, no redirects and at most 500 problems a pass. The investigator gets `zabbix_problem`, `zabbix_host` and `zabbix_history`.
+
+**Changed:**
+
+- The read-only Integrations list (people who are not admins, and admins previewing as a viewer) shows each integration's icon, name, category, description, state and how many instances are connected, and nothing opens on click. Readers no longer get instance names, fields, setup, checks, tools or problem texts; each state reads as one fixed sentence, such as "Needs attention: an admin can see the details".
+
 ## 0.5.10 (2026-11-23)
 
 Routes wait for the investigation and never back-fill, tag responsibles get their part by mail, waiting cards are re-checked and closed with a short announcement, a Vault settings source, and a confirmation before a Teams test card. Read the upgrade notes under Changed.

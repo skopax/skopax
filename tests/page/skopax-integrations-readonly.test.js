@@ -19,6 +19,19 @@ function plugin() {
     health: {state: 'ok', text: 'Connected', at: iso(1), instances: [{name: 'main', state: 'ok', text: 'Connected', at: iso(1)}]}};
 }
 
+function lean(p) {
+  const insts = p.instances || [];
+  const out = {};
+  ['id', 'name', 'category', 'description', 'origin', 'state', 'enabled', 'icon', 'edition', 'companyKnowledge', 'knowledgeAlso'].forEach((k) => { if (k in p) out[k] = p[k]; });
+  const known = new Set(insts.filter((i) => i.values && String(i.values.knowledge) === 'true').map((i) => i.name));
+  const key = p.companyKnowledge;
+  const knowing = p.id === 'mcp-tools' ? known.size > 0 : key === 'always' ? p.state === 'ok' : !!key && insts.some((i) => i.values && String(i.values[key] || '').trim() !== '');
+  Object.assign(out, {instanceCount: insts.length, instancesOn: insts.filter((i) => i.enabled === true && !i.problem).length, hasFields: !!(p.fields || []).length,
+    outside: !((p.fields || []).length || (p.checks || []).length || (p.panels || []).length), knowing});
+  if (p.health) out.health = {state: p.health.state, text: p.health.text, at: p.health.at, instances: (p.health.instances || []).map((h) => Object.assign({state: h.state, text: h.text, at: h.at}, p.id === 'mcp-tools' ? {knowledge: known.has(h.name)} : {}))};
+  return out;
+}
+
 async function boot(role, hash, plugins, notices) {
   const errors = [], calls = [];
   const vc = new VirtualConsole();
@@ -39,7 +52,7 @@ async function boot(role, hash, plugins, notices) {
         if (p.startsWith('/api/me')) return ok(anon ? {loginEnabled: true, user: null, teams: [], tags: []} : {loginEnabled: true, user: 'dora.lane@example.com', userRole: role, operator: role !== 'viewer', admin, teams: [], tags: []});
         if (p === '/api/integrations/custom-checks') return anon ? no(401) : ok({readOnly: true, items: [{id: 'redis-memory', name: 'Redis memory', source: 'prometheus', instance: 'main', op: '>', threshold: 90, severity: 'warn', enabled: true, run: {state: 'ok', series: 2, cards: 0}}],
           limits: {checks: 50, periodSeconds: 300}, choices: {}, presets: []});
-        if (p === '/api/integrations') return anon ? no(401) : ok({edition: 'community', readOnly: true, plugins: plugins || [plugin()]});
+        if (p === '/api/integrations') return anon ? no(401) : ok({edition: 'community', readOnly: true, plugins: (plugins || [plugin()]).map(lean)});
         if (p.startsWith('/api/admin')) {
           if (!admin) return no(403);
           if (p === '/api/admin/plugins') return ok({edition: 'community', secretsKey: 'generated', plugins: plugins || [plugin()]});
@@ -111,33 +124,62 @@ async function aViewerOpensTheSamePageReadOnly() {
   return 'a viewer opens the same Integrations page read-only: one note, disabled switches, custom checks without Add or Edit, and no admin calls';
 }
 
-async function theReadOnlyPanelShowsInstancesChecksThresholdsAndSecretsAsSet() {
+async function aReadOnlyRowShowsWhatIsConnectedAndOpensNothing() {
   //given
   const {w, doc, errors, calls} = await boot('operator', '#t=integrations');
   await wait(100);
+  const tile = doc.querySelector('#integrations .int-tile[data-id="prometheus"]');
 
   //when
+  tile.click();
+  tile.querySelector('.int-name').click();
+  tile.querySelector('.int-open').click();
+  tile.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
   w.intOpen('prometheus', undefined, {tile: 'prometheus'});
-  await wait(40);
-  const panel = doc.getElementById('int-panel');
+  await wait(60);
 
   //then
-  assert.ok(!doc.getElementById('panel-integrations').hidden, 'a link opens the read-only page');
-  assert.strictEqual(panel.querySelector('.int-ro-note').textContent, NOTE);
-  assert.strictEqual(panel.querySelector('.int-itab').textContent, 'main');
-  assert.strictEqual(panel.querySelector('.int-icard-e').textContent, 'Viewing');
-  assert.ok(!panel.querySelector('.int-inst-ro .int-inst-h'), 'one instance is named once, on its card, not again below it');
-  assert.ok(panel.querySelector('.int-setup'), 'the setup guide shows');
-  const value = (key) => panel.querySelector('.int-ro-fields dd[data-key="' + key + '"]').textContent;
-  assert.deepStrictEqual([value('url'), value('token'), value('namespaces')], ['https://prometheus.example.com', 'set', 'shop']);
-  assert.deepStrictEqual([...panel.querySelectorAll('.int-ro-checks li')].map((li) => li.dataset.check + '=' + li.querySelector('.tag').textContent), ['prom=On', 'restarts=Off']);
-  assert.deepStrictEqual([...panel.querySelectorAll('.int-ro-rule tr')].map((tr) => [...tr.children].map((c) => c.textContent).join('|')), ['err|15|default 10', 'warn|100|']);
-  assert.strictEqual(panel.querySelectorAll('input, select, textarea, form').length, 0, 'nothing to edit');
-  assert.ok(!panel.querySelector('.int-save, .int-test, .int-del, .int-add, .int-on, .int-primary-btn, .int-turn-on'), 'no Save, Test, Delete, Add, toggle or Make primary');
+  assert.ok(doc.getElementById('int-wrap').hidden && !doc.getElementById('int-panel').textContent, 'no panel opens');
+  assert.strictEqual(w.INT_PANEL, null);
+  assert.strictEqual(tile.querySelectorAll('[role="button"], [tabindex], a[href]').length, 0, 'no button role, tabindex or link on the row');
+  assert.strictEqual(tile.querySelectorAll('button').length, 1, 'only the disabled switch is a control');
+  assert.strictEqual(tile.querySelector('button').getAttribute('role'), 'switch');
+  assert.strictEqual(tile.querySelector('button').getAttribute('aria-disabled'), 'true');
+  assert.strictEqual(tile.querySelector('button').title, NOTE);
+  assert.ok(tile.classList.contains('ro'));
+  assert.ok(!/\bView(ing)?\b/.test(tile.textContent), 'no View label');
+  assert.strictEqual(tile.querySelector('.int-name').textContent, 'Prometheus');
+  assert.strictEqual(tile.querySelector('.int-cat').textContent, 'Metrics');
+  assert.strictEqual(tile.querySelector('.int-blurb').textContent, 'Metrics');
+  assert.strictEqual(tile.dataset.instances, '1');
+  assert.ok(tile.querySelector('.int-dot.ok'), 'the state dot shows');
+  assert.ok(!doc.querySelector('#integrations .int-itab, #integrations .int-icard'), 'no instance cards');
+  assert.ok(doc.querySelector('#integrations .int-chip') && doc.querySelector('#integrations .int-sub').textContent === '1 connected \u00b7 0 need attention');
+  assert.strictEqual(doc.querySelector('#integrations .int-ro-note').textContent, NOTE);
+  assert.ok(!w.location.hash.includes('prometheus'), 'no deep link');
   assert.deepStrictEqual(calls.filter((c) => c[1].startsWith('/api/admin')), []);
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'the read-only panel shows instances, which checks are on, thresholds, the setup guide and secrets only as set';
+  return 'a read-only row shows icon, name, category, description, state and count, and a click, Enter or intOpen opens nothing';
+}
+
+async function aReadOnlyRowWithSeveralInstancesShowsOnlyTheCount() {
+  //given
+  const many = Object.assign(plugin(), {instances: ['a', 'b', 'c'].map((name) => ({name, primary: name === 'a', enabled: true, source: 'admin', problem: null, values: {url: 'https://' + name + '-secret.example.com'}, secrets: {}, offChecks: []})),
+    health: {state: 'warn', text: 'Slow', at: iso(1), instances: [{name: 'a', state: 'ok', text: 'Connected', at: iso(1)}, {name: 'b', state: 'warn', text: 'Slow', at: iso(1)}, {name: 'c', state: 'ok', text: 'Connected', at: iso(1)}]}});
+  const {w, doc, errors} = await boot('viewer', '#t=integrations', [many]);
+  await wait(100);
+  const tile = doc.querySelector('#integrations .int-tile[data-id="prometheus"]');
+
+  //then
+  assert.strictEqual(tile.dataset.instances, '3');
+  assert.ok(tile.textContent.includes('3 instances \u00b7 1 needs attention'));
+  assert.ok(!/secret\.example|\bmain\b/.test(doc.getElementById('integrations').innerHTML), 'no instance names or values');
+  assert.ok(tile.classList.contains('need'));
+  assert.ok(doc.querySelector('#integrations .int-sub').textContent.endsWith('1 needs attention'));
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  return 'a read-only row with several instances shows the count and attention only, no names or values';
 }
 
 async function anAdminStillGetsTheEditablePage() {
@@ -155,6 +197,10 @@ async function anAdminStillGetsTheEditablePage() {
   assert.ok(!doc.querySelector('#adm-nav [data-tab="integrations"]'), 'Admin no longer lists an Integrations section');
   assert.ok(calls.some((c) => c[1] === '/api/admin/plugins') && !calls.some((c) => c[1] === '/api/integrations'));
   assert.ok(doc.getElementById('int-add-btn') && !doc.querySelector('#integrations .int-ro-note'));
+  assert.ok(!doc.querySelector('#integrations .int-tile.ro') && doc.querySelector('#integrations .int-tile .int-open').tagName === 'BUTTON');
+  doc.querySelector('#integrations .int-tile .int-open').click();
+  await wait(60);
+  assert.ok(!doc.getElementById('int-wrap').hidden && doc.getElementById('int-panel').querySelector('.int-itab'), 'a click opens the panel');
   assert.notStrictEqual(doc.querySelector('#integrations .int-switch').getAttribute('aria-disabled'), 'true');
   assert.deepStrictEqual(errors, []);
   w.close();
@@ -303,6 +349,6 @@ async function anAdminCanPreviewThePageAsReadOnlyFromTheSameDataOthersGet() {
 }
 
 (async () => {
-  for (const t of [theConnectRowShowsForEverySignedInRoleOnly, aViewerOpensTheSamePageReadOnly, theReadOnlyPanelShowsInstancesChecksThresholdsAndSecretsAsSet, anAdminStillGetsTheEditablePage,
+  for (const t of [theConnectRowShowsForEverySignedInRoleOnly, aViewerOpensTheSamePageReadOnly, aReadOnlyRowShowsWhatIsConnectedAndOpensNothing, aReadOnlyRowWithSeveralInstancesShowsOnlyTheCount, anAdminStillGetsTheEditablePage,
     aVisitorWithoutLoginCannotOpenIt, everyKnowledgeSourceCarriesABadgeInItsOwnCategoryAndSitsOnceInTheChip, aJiraOnlyInstallKeepsThePlainGridAndTheChip, theAddCustomMcpButtonShowsForAnAdminOnlyWhileTheMcpPluginServes, anAdminSeesTheNoticesOnTheIntegrationsPage, anAdminCanPreviewThePageAsReadOnlyFromTheSameDataOthersGet]) console.log('PASS ' + await t());
 })().catch((e) => { console.log('FAIL ' + e.message); console.error(e); process.exit(1); });

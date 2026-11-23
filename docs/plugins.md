@@ -11,7 +11,7 @@ Prometheus, Kubernetes, the observability plug-ins, GitLab, GitHub, Jira, Conflu
 
 Connect > Integrations shows a tile for each connected plug-in, with its health and an on/off switch, and "+ Add integration" lists the plug-ins that can be set up. A plug-in is on unless an admin switched it off, and one that needs instances does nothing until it has an enabled, valid instance.
 
-Admins read and change integrations through `/api/admin/plugins`. Everyone else who is signed in reads them through `GET /api/integrations`, which every role may call and which answers 401 without a login. It lists the same plug-ins with only what the read-only page shows: each instance's plain values (choices, switches, numbers), web addresses cut to scheme, host and port (an address that is not http or https shows only as set), other texts with secrets masked (passwords, tokens, keys, `Basic` and `Bearer` credentials, known token shapes, and paths cut from addresses), every secret and every secret-named field only as `{"set": true}` or `false`, which checks are on, and the current thresholds as `rules[].values`. User names, emails and public keys (such as a Langfuse public key or an OAuth client id) are not secrets and stay visible. Every write route stays admin-only.
+Admins read and change integrations through `/api/admin/plugins`. Everyone else who is signed in reads them through `GET /api/integrations`, which every role may call and which answers 401 without a login. It lists the same plug-ins with only what the read-only page shows, which is what is connected and nothing more: each plug-in's name, category, short description, icon, edition, origin, on or off, health as a state with one fixed sentence (Connected, Needs attention: an admin can see the details, Off), never the problem text, whether it is a knowledge source, and how many instances it has and how many of those are on. It carries no instance names, fields, values, secrets, checks, thresholds, tools, setup steps or failure reasons, and the page opens nothing when a row is clicked. Every write route stays admin-only.
 
 Below the tiles, Custom checks turns a PromQL query on a Prometheus or Grafana instance, or an ES|QL query on an Elasticsearch instance, into cards without a plug-in (see [Custom checks](custom-checks.md)).
 
@@ -54,7 +54,7 @@ A plug-in can limit how many instances it takes. Admin then refuses one more wit
 
 ## Observability plug-ins
 
-Besides Prometheus and Kubernetes, Skopax ships plug-ins for Capacity, Redis, Batch jobs, Kafka, Grafana, Elasticsearch, Varnish, CSP reports, PMM, Cloudflare, Airbyte and Langfuse. Each does nothing until an admin adds an instance in Connect > Integrations. A check runs every 15 minutes unless its entry says otherwise, and its id is also its pass name in Admin and in `GET /api/state`. Rule sets are tuned in Admin > Settings, under the plug-in's name, by the ids given here. Links to a service's own pages (Kibana, Grafana, PMM dashboards, the Airbyte timeline) are added only for an `https://` address.
+Besides Prometheus and Kubernetes, Skopax ships plug-ins for Capacity, Redis, Batch jobs, Kafka, Grafana, Zabbix, Elasticsearch, Varnish, CSP reports, PMM, Cloudflare, Airbyte and Langfuse. Each does nothing until an admin adds an instance in Connect > Integrations. A check runs every 15 minutes unless its entry says otherwise, and its id is also its pass name in Admin and in `GET /api/state`. Rule sets are tuned in Admin > Settings, under the plug-in's name, by the ids given here. Links to a service's own pages (Kibana, Grafana, PMM dashboards, the Airbyte timeline) are added only for an `https://` address.
 
 ### Severities
 
@@ -110,7 +110,7 @@ Each instance has its own cards. The primary's card keys and pass names carry no
 
 ### Reserved instance names
 
-The check ids and ran keys of these plug-ins cannot name an instance of any plug-in, alone or followed by a hyphen: `prom`, `kube`, `alert`, `capacity`, `redis`, `kafka`, `grafana`, `nodes`, `logs`, `apm`, `logflow`, `varnish`, `varnish-cache`, `csp`, `pmm`, `qan`, `mongo`, `cf`, `edge`, `airbyte`, `langfuse`, `sonarqube` and `ghdeploy`. A Varnish instance also cannot be named `cache` or `cache-<anything>`. `no-data` is reserved for every plug-in.
+The check ids and ran keys of these plug-ins cannot name an instance of any plug-in, alone or followed by a hyphen: `prom`, `kube`, `alert`, `capacity`, `redis`, `kafka`, `grafana`, `zabbix`, `nodes`, `logs`, `apm`, `logflow`, `varnish`, `varnish-cache`, `csp`, `pmm`, `qan`, `mongo`, `cf`, `edge`, `airbyte`, `langfuse`, `sonarqube` and `ghdeploy`. A Varnish instance also cannot be named `cache` or `cache-<anything>`. `no-data` is reserved for every plug-in.
 
 ### Prometheus
 
@@ -214,6 +214,25 @@ Alerts firing on the Prometheus datasources of Grafana.
 - **Fields:** `url` (also used for links to the alert rules), `token` (a service account token), `ca` and `skip-datasources` (comma-separated datasource names). Grafana reads at most 12 datasources a pass and says `read <n> of <m> datasources` past that. A datasource it stops watching, because it is skipped or because a Prometheus instance now covers it, has its cards closed at the next pass.
 - **Check** `grafana` (sub-keys `grafana:<datasource>`; section `grafanaAlerts`). **Tool** `grafana_alerts`.
 - **Access:** `datasources:read` to list the datasources (part `datasources`), `datasources:query` on each datasource read (the part is its name) and, for the Grafana-managed alerts the tool shows, `alert.rules:read`.
+
+### Zabbix
+
+A card for each active Zabbix problem, one per trigger, from the Zabbix JSON-RPC API (Zabbix 6.0 LTS and later) with a read-only API token, and read tools for problems, hosts and item history. It takes one instance per Zabbix.
+
+- **Set it up:**
+
+  1. In Zabbix create a user (or pick one) whose user group has Read access to the host groups to watch, and whose user role allows the API (Users > User roles > API access).
+  2. Open Users > API tokens > Create API token, pick that user, set an expiry if you like, and choose Add. Copy the token at once: Zabbix shows it once.
+  3. Paste the token into `Token` and the Zabbix frontend address into `URL` (the address you open in the browser; the API is `<URL>/api_jsonrpc.php`).
+  4. Zabbix 6.0 works too: Skopax reads the version first (`apiinfo.version`, sent without the token) and, below 6.4, also sends the token as `auth` in the request body, as that version expects. From 6.4 on the token goes only in the `Authorization: Bearer` header.
+  5. Optionally narrow it with `Host groups`, `Tags` and `Lowest severity`, then press `Test connection`. It names the version and how many problems the instance watches.
+
+  Vendor guide: [Zabbix: API tokens](https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections/users/api_tokens)
+
+- **Fields:** `url` (the frontend address, also used for links to the problem view), `token` (an API token), `host-groups` (comma-separated host group names; empty watches every group the user can read; a name Zabbix does not know is named in the status, and when none of the names is known the pass fails instead of watching everything), `tags` (comma-separated problem tags as `name` or `name:value`; a problem with any of them is watched; empty watches all), `min-severity` (Not classified, Information, Warning, Average, High or Disaster; default Warning), `ca` and `ca-pinned` (as for PMM). Every call is a read (`apiinfo.version`, `problem.get`, `trigger.get`, `host.get`, `hostgroup.get`, `event.get`, `history.get`, `item.get`); the client refuses any other method before it sends it. Redirects are not followed (set `URL` to the final address), and an answer may be at most 8 MB.
+- **Check** `zabbix` (section `zabbixProblems`). Every 15 minutes it reads the unresolved, not suppressed problems at or above the lowest severity. One card per trigger, keyed `zabbix|<host>|<trigger description>|<trigger id>` with the technical host name and the trigger's raw description, so two triggers with the same description keep their own cards; several open problems of one trigger give one card at the most severe. When Zabbix gives no trigger row, the key reads `zabbix|-|trigger <id>|<id>`, never the problem name. A problem or event whose id is not all digits is left out. Disaster is Critical, High is High, Average and Warning are Warning, Information and Not classified are Info. An acknowledged problem keeps its card and says "acknowledged in Zabbix". The problem's tags and operational data are in the card text, and a `service` or `component` tag fills the card's service (otherwise the host). Problem names, host names, tags and operational data are masked for secrets, and a text that reads like instructions to an AI is replaced by a held marker, also in the key and in the server's error text in the pass status. A card clears at the first pass that no longer sees its problem; a pass that fails keeps the cards. Past 500 problems only the newest 500 are read, the status says `read 500 problems, more not read`, no card clears, and one warning is logged when the cap is first hit.
+- **Tools** `zabbix_problem` (by event id, trigger id or a part of the name: up to 5 problems with severity, start, acknowledged or resolved, operational data, 10 tags, the last 3 acknowledgements, the trigger and the hosts), `zabbix_host` (up to 3 hosts with status, maintenance, 20 host groups, 10 interfaces with their availability and error, and the open problem count) and `zabbix_history` (the newest values of one item, by item id or host and key, over at most 24 hours: up to 100 numbers or 40 text values).
+- **Access:** the token's user needs API access and Read on the host groups. A refused token (`Not authorized`, HTTP 401 or 403) gives the `no access to problems` card and keeps the problem cards open.
 
 ### Kubernetes nodes
 
