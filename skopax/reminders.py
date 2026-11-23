@@ -37,16 +37,19 @@ def waiting_since(card: dict) -> float:
     return max(parse_iso(s) for s in (card['slackPost'].get('at'), card.get('firstSeen')) if s)
 
 
-def person(owner: str, mention: Callable[[str], str | None] | None = None, name_of: Callable[[str], str] | None = None) -> str:
-    if '@' not in owner:
+def person(owner: str, mention: Callable[[str], str | None] | None = None, name_of: Callable[[str], str] | None = None, email: str = '') -> str:
+    address = owner if '@' in owner else email if '@' in email else ''
+    if not address:
         return esc(owner)
     found = None
     try:
-        found = mention(owner) if mention is not None else None
+        found = mention(address) if mention is not None else None
     except Exception as e:
         log.warning('the assignee of a reminder was not looked up in Slack: %s', error_kind(e))
     if found:
         return found
+    if '@' not in owner:
+        return esc(owner)
     name = ''
     try:
         name = (name_of(owner) if name_of is not None else '') or ''
@@ -57,7 +60,9 @@ def person(owner: str, mention: Callable[[str], str | None] | None = None, name_
 
 def who_text(card: dict, mention: Callable[[str], str | None] | None = None, name_of: Callable[[str], str] | None = None) -> str:
     owner = str(card.get('owner') or '').strip()
-    return msg('reminder.owned', owner=person(owner, mention, name_of)) if owner else msg('reminder.nobody')
+    held = card.get('assigned') if isinstance(card.get('assigned'), dict) else {}
+    email = str(held.get('email') or '').strip()
+    return msg('reminder.owned', owner=person(owner, mention, name_of, email)) if owner else msg('reminder.nobody')
 
 
 def state_text(card: dict, by_key: dict | None = None) -> str:
