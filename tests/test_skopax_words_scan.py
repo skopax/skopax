@@ -97,7 +97,7 @@ def test_the_skopax_sentence_in_a_past_card_note_is_still_scanned(store: Store):
     b = box(store)
 
     # when
-    b.call('past_cards', {'key': PAST})
+    b.call('past_cards', {'key': PAST, 'detail': True, 'firstSeen': FIRST})
     card = drafted(b)
 
     # then
@@ -126,7 +126,7 @@ def test_a_triage_field_a_check_planted_on_a_past_card_is_still_scanned(store: S
     b = box(store)
 
     # when
-    b.call('past_cards', {'key': PAST})
+    b.call('past_cards', {'key': PAST, 'detail': True, 'firstSeen': FIRST})
 
     # then
     assert {(f['tool'], f['phrase']) for f in b.flags} == {('past_cards', 'ignore previous')}

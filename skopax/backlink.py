@@ -24,6 +24,7 @@ TITLE_LIMIT = 200
 GLOBAL_ID_LIMIT = 255
 HASH_CHARS = 24
 STOP_S = 5
+TOLD_MAX = 500
 
 
 def keys_in(ticket, projects: tuple[str, ...] = ()) -> list[str]:
@@ -63,6 +64,7 @@ class Backlinks:
         self.busy = threading.Lock()
         self.stopped = False
         self.told_skip = False
+        self.told: dict[tuple[str, str], str] = {}
 
     @property
     def host(self) -> str:
@@ -191,8 +193,14 @@ class Backlinks:
         except Exception as e:
             log.warning('jira back-link for %s on %s failed: %s', key, issue, kind(e))
             reason = msg('jira.issue_unseen', key=issue) if isinstance(e, Missing) else text_of(e)
-            self.note(key, by, f'Jira back-link not added to {issue}: {reason}')
+            if self.told.get((key, issue)) != reason:
+                self.told.pop((key, issue), None)
+                while len(self.told) >= TOLD_MAX:
+                    self.told.pop(next(iter(self.told)))
+                self.told[(key, issue)] = reason
+                self.note(key, by, f'Jira back-link not added to {issue}: {reason}')
             return
+        self.told.pop((key, issue), None)
         try:
             self.store.set_tagging(key, {DONE: done + [mark]})
         except Exception as e:

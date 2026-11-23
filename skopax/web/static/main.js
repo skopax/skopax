@@ -41,6 +41,12 @@ var hash = (location.hash || '').replace('#', '');
 showTab(TABS.some(function (t) { return t.id === hash; }) ? hash : defaultTab());
 setFilter('open');
 window.addEventListener('hashchange', function () { followHash((location.hash || '').replace('#', '')); });
+document.addEventListener('click', function (e) {
+  var a = e.target && e.target.closest ? e.target.closest('a[href^="#a="], a[href^="#c="]') : null;
+  if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.getAttribute('href') !== location.hash) return;
+  e.preventDefault();
+  followHash(location.hash.replace('#', ''));
+});
 function followHash(h) {
   var m = /^(a|c|r|rel|t)=(.*)$/.exec(h);
   if (!m || m[1] === 't') dropCard();

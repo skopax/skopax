@@ -103,13 +103,13 @@ def test_a_parse_or_unknown_column_error_is_never_read_as_a_range_error(failure)
     assert sent(http).count(THREE) == 1 and all('NOW() - 1 day' not in q for q in sent(http))
 
 
-def test_a_range_error_on_a_one_day_range_is_not_retried():
+def test_a_range_error_on_a_one_hour_range_is_not_retried():
     # given
     http = scripted(HttpError(400, QUERY, '{"error": {"type": "search_phase_execution_exception", "reason": "all shards failed"}}'))
 
     # when
     with pytest.raises(ReadError):
-        run_esql(ctx(http), {'query': 'FROM app-logs-* | WHERE @timestamp >= NOW() - 1 day | STATS n = COUNT(*)'})
+        run_esql(ctx(http), {'query': 'FROM app-logs-* | WHERE @timestamp >= NOW() - 1 hour | STATS n = COUNT(*)'})
 
     # then
     assert len(sent(http)) == 1

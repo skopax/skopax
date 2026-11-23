@@ -46,7 +46,7 @@ CONNECTION_ID = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 NO_REASON = 'the Airbyte public API has no failure reason, attempt count or logs: open the job link or the timeline for them'
 RUNNING = ('running', 'pending', 'incomplete')
 DASH = '\u2013'
-SEVERITIES = ('info', 'warn', 'crit')
+SEVERITIES = ('info', 'warn', 'high', 'crit')
 RETRY = ' Airbyte retries a failed attempt inside the same job and the public API has no attempt count, so a run this long is most likely a retry loop.'
 BETWEEN = ' (status incomplete: its last attempt failed and Airbyte retries)'
 

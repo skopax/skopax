@@ -93,7 +93,7 @@ def test_soft_words_in_what_the_investigator_wrote_do_not_flag(store: Store):
     b = box(store)
 
     # when
-    text, err = b.call('past_cards', {'key': PAST})
+    text, err = b.call('past_cards', {'key': PAST, 'detail': True, 'firstSeen': FIRST})
 
     # then
     assert not err and 'is it real?' in text and 'marked it as known noise' in text
@@ -107,7 +107,7 @@ def test_a_recap_that_says_ignore_previous_still_flags(store: Store):
     b = box(store)
 
     # when
-    b.call('past_cards', {'key': PAST})
+    b.call('past_cards', {'key': PAST, 'detail': True, 'firstSeen': FIRST})
 
     # then
     assert {(f['tool'], f['phrase']) for f in b.flags} == {('past_cards', 'ignore previous')}
@@ -120,7 +120,7 @@ def test_an_ask_answer_that_says_you_are_now_still_flags(store: Store):
     b = box(store)
 
     # when
-    b.call('past_cards', {'key': PAST})
+    b.call('past_cards', {'key': PAST, 'detail': True, 'firstSeen': FIRST})
 
     # then
     assert {f['phrase'] for f in b.flags} == {'you are'}
@@ -133,7 +133,7 @@ def test_a_pod_note_and_a_recommend_with_a_hard_phrase_still_flag(store: Store):
     b = box(store)
 
     # when
-    b.call('past_cards', {'key': PAST})
+    b.call('past_cards', {'key': PAST, 'detail': True, 'firstSeen': FIRST})
 
     # then
     assert {f['phrase'] for f in b.flags} == {'do not report', 'disregard'}
@@ -146,7 +146,7 @@ def test_a_note_a_person_wrote_is_scanned_for_the_soft_words_too(store: Store):
     b = box(store)
 
     # when
-    b.call('past_cards', {'key': PAST})
+    b.call('past_cards', {'key': PAST, 'detail': True, 'firstSeen': FIRST})
 
     # then
     assert {f['phrase'] for f in b.flags} == {'assistant', 'known noise'}
@@ -210,7 +210,7 @@ def test_a_question_or_a_slack_remark_a_person_wrote_on_a_past_card_still_flags(
     b = box(store)
 
     # when
-    b.call('past_cards', {'key': PAST})
+    b.call('past_cards', {'key': PAST, 'detail': True, 'firstSeen': FIRST})
 
     # then
     assert {f['phrase'] for f in b.flags} == {'ignore previous', 'do not report'}
@@ -374,7 +374,7 @@ def test_held_and_refused_calls_are_counted_apart_from_errors():
 def past_flags(store: Store) -> set[str]:
     store.record_card(store.anomaly(PAST), 'cleared')
     b = box(store)
-    b.call('past_cards', {'key': PAST})
+    b.call('past_cards', {'key': PAST, 'detail': True, 'firstSeen': FIRST})
     return {f['phrase'] for f in b.flags}
 
 

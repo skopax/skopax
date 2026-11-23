@@ -2394,6 +2394,7 @@ async function theMailServerSendsATestMailFromASavedInstanceOnly() {
 
   //then
   assert.ok(unsaved && unsaved.disabled, 'an unsaved instance cannot send a test mail');
+  assert.ok(!inPanel(fresh.doc, '.int-mail-hint').closest('.int-test-row') && inPanel(fresh.doc, '.int-mail-hint').closest('.int-foot'), 'the hint sits below the buttons, not between them');
   assert.strictEqual(inPanel(fresh.doc, '.int-mail-hint').textContent, 'Save and turn on this Mail server to send a test mail');
   assert.ok(inPanel(fresh.doc, '.int-mail-test').disabled, 'Test connection gives the other buttons back but not this one');
   assert.deepStrictEqual(fresh.calls.filter((c) => c[1].endsWith('/test-mail')), []);

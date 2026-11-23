@@ -252,9 +252,9 @@ def test_the_first_start_redraw_waits_for_the_packs(store: Store):
 
 def legacy_sig(card: dict, who: str = '') -> str:
     import hashlib, json
-    from skopax.cardposts import language, tags
+    from skopax.cardposts import DRAW_VERSION, language, tags
     from skopax.slack import status_of, stopped_ending
-    shown = [status_of(card, None), card.get('sev'), card.get('owner') or '', sorted(t for t in tags.ids(card) if t in tags.all_tags()), card.get('firstSeen') or '', 3, language(), stopped_ending(card), who]
+    shown = [status_of(card, None), card.get('sev'), card.get('owner') or '', sorted(t for t in tags.ids(card) if t in tags.all_tags()), card.get('firstSeen') or '', DRAW_VERSION, language(), stopped_ending(card), who]
     return hashlib.sha1(json.dumps(shown, default=str).encode()).hexdigest()[:16]
 
 

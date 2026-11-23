@@ -294,7 +294,7 @@ def card(url: str, found: list[dict], sig: str, status: int, final: str | None) 
     verb = 'sends' if one else 'send'
     if sig == BROKEN:
         what = f'{ads} {verb} visitors to {url}, which answers HTTP {status}: paid clicks land on a broken page until the ad link is changed.'
-        label, sev = 'Broken ad link', 'warn'
+        label, sev = 'Broken ad link', 'high'
     else:
         what = f'{ads} {verb} visitors to {url}, which now redirects to {final}: point the ads at the new address so the click lands without a redirect.'
         label, sev = 'Ad link redirects', 'info'

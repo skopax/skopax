@@ -187,7 +187,7 @@ def test_argocd_second_instance_is_scoped(store: Store):
     # then
     main, east = first['argo|shop/checkout-service'], first['argo|web/storefront@east']
     assert 'cluster' not in main and main['ranKey'] == f'argo:{CHECKOUT}' and main['links'][0]['url'] == f'{URL}/applications/argocd/{CHECKOUT}'
-    assert (east['cluster'], east['ranKey'], east['short']) == ('east', 'argo:web-storefront-east', 'WARN EAST storefront Argo CD sync failed for 0 s')
+    assert (east['cluster'], east['ranKey'], east['short']) == ('east', 'argo:web-storefront-east', 'HIGH EAST storefront Argo CD sync failed for 0 s')
     assert east['links'][0]['url'] == f'{EAST}/applications/argocd/web-storefront'
     assert 'argo|payments/ledger-service@east' not in first
     assert found['argo|payments/ledger-service@east']['cluster'] == 'east' and found['argo|payments/ledger-service@east']['status'] == 'open'

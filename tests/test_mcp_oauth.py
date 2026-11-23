@@ -620,7 +620,7 @@ def test_a_401_from_the_server_refreshes_once_then_retries_once(store):
         stuck_counts = (fake.refreshes, fake.rejected - base)
 
     # then
-    assert (healed['ok'], healed['summary']) == (True, 'fake \u00b7 1 tools') and healed_counts == (1, 1)
+    assert (healed['ok'], healed['summary']) == (True, 'fake \u00b7 1 tool') and healed_counts == (1, 1)
     assert (stuck['ok'], stuck['summary']) == (False, msg('connection.rejected', status=401)) and stuck_counts == (2, 2)
 
 

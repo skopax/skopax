@@ -38,7 +38,7 @@ def option_problem(config) -> str | None:
     if (config.get('connection-match') or '').strip() and name_pattern(config.get('connection-match')) is None:
         return 'Connection name pattern is not a valid pattern'
     bad = severities_of(config.get('severities'))[1]
-    return f"Severities needs name=info, warn or crit entries; {', '.join(bad)} cannot be read" if bad else None
+    return f"Severities needs name=info, warn, high or crit entries; {', '.join(bad)} cannot be read" if bad else None
 
 
 def test(ctx: Context) -> TestResult:
@@ -159,7 +159,7 @@ PLUGIN = Plugin(
             Field('client-secret', 'Client secret', 'secret', required=True, help='Client secret of that application.'),
             Field('connections', 'Connections', 'text', help='Comma-separated names or ids of the connections to watch. Empty watches every connection.'),
             Field('connection-match', 'Connection name pattern', 'regex', help='Pattern that also watches every connection whose name it matches, on top of the names and ids above. With the list empty, only the matching connections are watched. Empty adds nothing.'),
-            Field('severities', 'Severity per connection', 'text', help='Comma-separated name=severity entries, the connection name or id and info, warn or crit, for example nightly-orders=crit, test-sync=info. Other connections stay warn.'),
+            Field('severities', 'Severity per connection', 'text', help='Comma-separated name=severity entries, the connection name or id and info, warn, high or crit, for example nightly-orders=crit, test-sync=info. Other connections stay warn.'),
             Field('workspaces', 'Workspaces', 'text', help='Comma-separated workspace ids; only connections of these workspaces are watched. Empty watches every workspace.'),
             Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),
             Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), group='advanced', help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),

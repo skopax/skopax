@@ -1,6 +1,6 @@
 var PQC = null, PQC_SEQ = 0, PQC_EDIT = null, PQC_FORM = null, PQC_PATH = '/api/admin/custom-checks', PQC_CONFIRM_MS = 4000;
 var PQC_STATES = {ok: ['ok', 'k-ok'], failing: ['failing', 'k-warn'], off: ['off', 'plain']};
-var PQC_SEV = {info: 'k-info', warn: 'k-warn', crit: 'k-crit'};
+var PQC_SEV = {info: 'k-info', warn: 'k-warn', high: 'k-high', crit: 'k-crit'};
 var PQC_BASE = {'1d': '1 day ago', '1w': '1 week ago'};
 var PQC_OPEN = {}, PQC_GSEQ = 0;
 var PQC_PRESETS = null, PQC_PICK = null, PQC_PICK_FORM = null, PQC_PICK_RUN = null, PQC_SOURCE_NAMES = {prometheus: 'Prometheus', grafana: 'Grafana datasource', elasticsearch: 'Elasticsearch'};

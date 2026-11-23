@@ -374,7 +374,28 @@ async function aHeldPostCountsOnActivityNotOnNotifications() {
   return 'one held post shows its count on Activity and not on Notifications';
 }
 
+async function aRefusedMailIsMarkedOnItsNotificationWithTheReason() {
+  //given
+  const list = rows(2, 0);
+  list[0].mail = {state: 'refused', why: '550 mailbox unavailable'};
+  const en = await boot({list: JSON.parse(JSON.stringify(list))});
+  const de = await boot({list: JSON.parse(JSON.stringify(list)), lang: 'de', pack: true});
+
+  //when
+  await show(en.doc, 'slack');
+  await show(de.doc, 'slack');
+  const marks = (doc) => [...doc.querySelectorAll('#nt-list .nt-item')].map((i) => { const m = i.querySelector('.nt-mail'); return m ? [m.textContent, m.title] : null; });
+
+  //then
+  assert.deepStrictEqual(marks(en.doc), [['Email not sent', 'The mail server refused this email: 550 mailbox unavailable'], null]);
+  assert.deepStrictEqual(marks(de.doc), [['E-Mail nicht gesendet', 'Der Mailserver hat diese E-Mail abgelehnt: 550 mailbox unavailable'], null]);
+  assert.deepStrictEqual(en.errors.concat(de.errors), []);
+  en.w.close(); de.w.close();
+  return 'a notification whose email the mail server refused says Email not sent, with the reason as its tooltip, also in German';
+}
+
 (async () => {
+  console.log('PASS ' + await aRefusedMailIsMarkedOnItsNotificationWithTheReason());
   console.log('PASS ' + await theRowCountsUnreadAndThePanelListsNewestFirst());
   console.log('PASS ' + await showingTheTabMarksTheFeedReadOnce());
   console.log('PASS ' + await showingMarksOnlyWhatItLoaded());

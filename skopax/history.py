@@ -6,6 +6,7 @@ from typing import Callable
 from skopax import brand
 from skopax.actors import POD_BY, SYSTEM, investigator_label, is_token, token_label
 from skopax.errkind import Refusal
+from skopax.ownwords import REASONS as OWN_REASONS
 from skopax.redact import redact
 
 KEEP_DAYS = 365
@@ -38,7 +39,9 @@ STORED_FIELDS = {f: 1 for f in CARD_FIELDS + ('note', 'noteBy', 'recommend', 're
 PAST_FIELDS = ('key', 'num', 'svc', 'label', 'sub', 'ns', 'src', 'sev', 'unit', 'firstSeen', 'lastSeen', 'clearedAt', 'peak', 'outcome', 'triage', 'ticket', 'owner', 'triagedBy',
                'muted', 'note', 'noteBy', 'recommend', 'recommendBy', 'runId', 'recap', 'reopens', 'asks', 'said', 'backfill', 'resolution', 'clearNote')
 ASK_FIELDS = ('at', 'by', 'question', 'answer', 'thread', 'usd', 'runId')
-ROW_FIELDS = {'key': 1, 'firstSeen': 1, 'lastSeen': 1, 'clearedAt': 1, 'outcome': 1, 'ticket': 1, 'lastAsk': 1, 'resolution': 1}
+ROW_FIELDS = {'key': 1, 'num': 1, 'firstSeen': 1, 'lastSeen': 1, 'clearedAt': 1, 'outcome': 1, 'ticket': 1, 'lastAsk': 1, 'resolution': 1, 'triagedBy': 1, 'owner': 1}
+CLEARED_FIELDS = ('resolution', 'triagedBy', 'owner', 'ticket', 'autoResolvedAt')
+VERDICT_FIELDS = {'note': 1, 'noteBy': 1, 'muted': 1, 'mutedPreset': 1, 'events': 1, 'backfill': 1}
 CLOSED_FIELDS = ('key', 'num', 'svc', 'ns', 'label', 'sub', 'sev', 'src', 'firstSeen', 'lastSeen', 'clearedAt', 'outcome', 'ticket', 'owner', 'reopens', 'resolution')
 CLOSED_NOTE_LIMIT = 160
 CLOSED_PAGE_MAX = 100
@@ -56,6 +59,29 @@ REF_LIMIT = 200
 BACKFILL_ACTIONS = ('resolve', 'take', 'known', 'mute', 'ticket', 'dive', 'slack', 'slack-update')
 TRIAGE_WRITE = re.compile(r'^(progress|handled)(?: ((?:[A-Z][A-Z0-9]+-\d+ ?)+))?(?: \((.+?)\))?(?: · (fixed|duplicate)(?: (.+))?)?$')
 CREATED = re.compile(r'^([A-Z][A-Z0-9]+-\d+) created')
+PERSON = 'person'
+AUTO = 'auto'
+INVESTIGATOR = 'investigator'
+API = 'api'
+MACHINE = (AUTO, INVESTIGATOR, API)
+SWEEP_BY = 'jira-links'
+INVESTIGATOR_BY = ('pod', POD_BY, 'Claude')
+MACHINE_DECIDERS = INVESTIGATOR_BY + ('auto', SWEEP_BY, SYSTEM, 'server')
+MACHINE_TRIAGE = ('pod', 'auto', SWEEP_BY)
+MUTE_KINDS = ('known', 'muted')
+PERSON_KINDS = RESOLVE_KINDS + ('progress',)
+VERDICTS_KEEP = 3
+VERDICT_NOTE_LIMIT = 160
+PERSON_LINE = re.compile(r'^(?:Resolved|Taken) by [^:\n]+: *(\S.*)$', re.M)
+TOKEN_BY = re.compile(r'^token(?::|$)')
+OWN_MUTE = re.compile(r'^(?:muted on the page(?: for [\d.]+ h)?|follows \S+: .*)$')
+PERSON_QUERY = {'$or': [{'outcome': {'$in': list(MUTE_KINDS)}},
+                        {'outcome': {'$in': list(PERSON_KINDS)}, '$or': [
+                            {'$and': [{'resolution.by': {'$nin': [None, ''] + list(MACHINE_DECIDERS)}}, {'resolution.by': {'$not': TOKEN_BY}}, {'resolution.via': {'$ne': SYSTEM}}]},
+                            {'resolution.by': {'$in': [None, '']}, 'triagedBy': {'$nin': list(MACHINE_TRIAGE)}, 'owner': {'$not': TOKEN_BY}}]}]}
+MACHINE_QUERY = {'$nor': [PERSON_QUERY]}
+DIGEST_FIELDS = ('key', 'num', 'svc', 'label', 'sev', 'peak', 'unit', 'firstSeen', 'clearedAt', 'outcome', 'outcomeText', 'ticket', 'muted', 'reopens', 'runId')
+CAUSE_LIMIT = 160
 
 
 def doc_id(key: str, first_seen: str) -> str:
@@ -171,7 +197,7 @@ def snapshot(card: dict) -> dict:
     note = note_text(card.get('note'))
     if note:
         out['note'] = note
-    out['noteBy'] = 'pod' if note and card.get('noteBy') == 'pod' else None
+    out['noteBy'] = card['noteBy'] if note and card.get('noteBy') in ('pod', PERSON) else None
     if card.get('recommend'):
         out['recommend'] = cut(card['recommend'], TEXT_LIMIT)
     out['recommendBy'] = 'pod' if card.get('recommend') and card.get('recommendBy') == 'pod' else None
@@ -239,6 +265,124 @@ def past_row(doc: dict, match: str) -> dict:
         row['asks'] = [{f: x[f] for f in ASK_FIELDS if x.get(f) is not None} for x in row['asks']]
     if row.get('outcome'):
         row['outcomeText'] = outcome_text(row['outcome'], row.get('resolution'))
+    row['decidedBy'] = decided_by(doc)
+    return row | {'match': match}
+
+
+def decided_by(doc: dict) -> str:
+    outcome = doc.get('outcome')
+    if outcome in MUTE_KINDS:
+        return PERSON
+    r = doc.get('resolution')
+    by = r.get('by') if isinstance(r, dict) else None
+    if by:
+        if by in INVESTIGATOR_BY:
+            return INVESTIGATOR
+        if by in MACHINE_DECIDERS or r.get('via') == SYSTEM:
+            return AUTO
+        if TOKEN_BY.match(str(by)):
+            return API
+        return PERSON if outcome in PERSON_KINDS else AUTO
+    if doc.get('triagedBy') == 'pod':
+        return INVESTIGATOR
+    if doc.get('triagedBy') in MACHINE_TRIAGE or outcome == 'auto-resolved':
+        return AUTO
+    if TOKEN_BY.match(str(doc.get('owner') or '')):
+        return API
+    return PERSON if outcome in PERSON_KINDS else AUTO
+
+
+def own_mute(text: str) -> bool:
+    return text in OWN_REASONS or bool(OWN_MUTE.match(text))
+
+
+def person_note(doc: dict) -> str | None:
+    if doc.get('outcome') in MUTE_KINDS:
+        text = first_line(doc.get('muted'))
+        if not text or doc.get(MUTED_PRESET) or own_mute(text):
+            return None
+        return cut(text, VERDICT_NOTE_LIMIT)
+    if doc.get('noteBy') == 'pod':
+        return None
+    text = str(note_text(doc.get('note')) or '')
+    said = PERSON_LINE.findall(text)
+    if said:
+        return cut(said[-1], VERDICT_NOTE_LIMIT)
+    if doc.get('noteBy') == PERSON or doc.get('backfill'):
+        return cut(first_line(text), VERDICT_NOTE_LIMIT) or None
+    return None
+
+
+def event_at(doc: dict, kind: str) -> str | None:
+    names = {kind, 'handled'} if kind in RESOLVE_KINDS else {kind}
+    return next((e.get('at') for e in reversed(doc.get('events') or []) if isinstance(e, dict) and e.get('ev') in names), None)
+
+
+def verdict(doc: dict) -> dict:
+    r = doc.get('resolution') if isinstance(doc.get('resolution'), dict) else {}
+    kind = doc.get('outcome')
+    out = {'kind': kind, 'by': r.get('by') or (doc.get('owner') if kind == 'progress' else None),
+           'at': r.get('at') or event_at(doc, kind) or doc.get('clearedAt') or doc.get('lastSeen') or doc.get('firstSeen'),
+           'ref': r.get('ref'), 'ticket': doc.get('ticket'), 'note': person_note(doc), 'num': doc.get('num'), 'firstSeen': doc.get('firstSeen')}
+    return {k: v for k, v in out.items() if v not in (None, '')}
+
+
+def ruled_at(doc: dict) -> str:
+    r = doc.get('resolution') if isinstance(doc.get('resolution'), dict) else {}
+    return r.get('at') or doc.get('clearedAt') or doc.get('lastSeen') or doc.get('firstSeen') or ''
+
+
+def picked(occurrences: Iterable[dict], keep: int = VERDICTS_KEEP) -> list[dict]:
+    out: list[dict] = []
+    for o in sorted((o for o in occurrences if decided_by(o) == PERSON), key=ruled_at, reverse=True):
+        if out and o.get('outcome') in MUTE_KINDS and o.get('outcome') == out[-1].get('outcome'):
+            continue
+        out.append(o)
+        if len(out) == keep:
+            break
+    return out
+
+
+def verdicts(occurrences: Iterable[dict], keep: int = VERDICTS_KEEP) -> list[dict]:
+    return [verdict(o) for o in picked(occurrences, keep)]
+
+
+def past_of(card: dict, occurrences: Iterable[dict]) -> list[dict]:
+    return [o for o in occurrences if o.get('firstSeen') != card.get('firstSeen')]
+
+
+def machine_cause(doc: dict) -> str | None:
+    if not doc.get('note') or doc.get('noteBy') != 'pod':
+        return None
+    return cut(first_line(note_text(doc['note'])), CAUSE_LIMIT) or None
+
+
+def duration_s(doc: dict) -> int | None:
+    end = doc.get('clearedAt') or doc.get('lastSeen')
+    if not doc.get('firstSeen') or not end:
+        return None
+    try:
+        return max(0, int(stamp(end) - stamp(doc['firstSeen'])))
+    except ValueError:
+        return None
+
+
+def digest(doc: dict, match: str) -> dict:
+    row = {f: doc[f] for f in DIGEST_FIELDS if doc.get(f) is not None}
+    if row.get('outcome'):
+        row['outcomeText'] = outcome_text(row['outcome'], doc.get('resolution'))
+    row['decidedBy'] = decided_by(doc)
+    took = duration_s(doc)
+    if took is not None:
+        row['durationS'] = took
+    cause = machine_cause(doc)
+    if cause:
+        row['cause'] = {'text': cause, 'by': INVESTIGATOR}
+    if row['decidedBy'] == PERSON:
+        row['verdict'] = {k: v for k, v in verdict(doc).items() if k not in ('num', 'firstSeen')}
+    asks = [a for a in doc.get('asks') or [] if isinstance(a, dict)]
+    if asks:
+        row['asks'] = len(asks)
     return row | {'match': match}
 
 
@@ -249,7 +393,10 @@ def seen_before(card: dict, occurrences: list[dict]) -> dict | None:
         return None
     out = {'count': len(past)}
     if past:
-        out |= {'lastAt': past[0].get('clearedAt') or past[0].get('lastSeen') or past[0].get('firstSeen'), 'outcome': past[0].get('outcome')}
+        out |= {'lastAt': past[0].get('clearedAt') or past[0].get('lastSeen') or past[0].get('firstSeen'), 'outcome': past[0].get('outcome'), 'decidedBy': decided_by(past[0])}
+        ruled = verdicts(past, 1)
+        if ruled:
+            out['ruled'] = {k: ruled[0][k] for k in ('kind', 'by', 'at') if ruled[0].get(k)}
         if past[0].get('outcome') in RESOLVE_KINDS and isinstance(past[0].get('resolution'), dict):
             out['resolution'] = past[0]['resolution']
         ticket = next((o['ticket'] for o in past if o.get('ticket')), None)

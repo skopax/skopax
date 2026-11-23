@@ -117,7 +117,8 @@ def test_failures_map_to_down_or_refused(monkeypatch, fail, kind):
 @pytest.mark.parametrize(('fail', 'recipient'), [
     (smtplib.SMTPRecipientsRefused({'alice@example.com': (550, b'no such user')}), True),
     (smtplib.SMTPSenderRefused(553, b'not yours', 'alerts@example.com'), False),
-    (smtplib.SMTPDataError(554, b'rejected'), False),
+    (smtplib.SMTPDataError(554, b'rejected'), True),
+    (smtplib.SMTPDataError(451, b'try later'), None),
     (smtplib.SMTPAuthenticationError(535, b'bad credentials'), False),
 ])
 def test_a_refusal_says_whether_the_server_refused_that_recipient_or_every_mail(monkeypatch, fail, recipient):
@@ -125,12 +126,30 @@ def test_a_refusal_says_whether_the_server_refused_that_recipient_or_every_mail(
     faked(monkeypatch, **{'login' if isinstance(fail, smtplib.SMTPAuthenticationError) else 'send': fail})
 
     # when
-    with pytest.raises(MailRefused) as raised:
+    with pytest.raises((MailDown, MailRefused)) as raised:
         Mailer(CONFIG).send(['alice@example.com'], 'Hi', 'plain')
 
     # then
-    assert raised.value.recipient is recipient
+    if recipient is None:
+        assert type(raised.value) is MailDown
+    else:
+        assert raised.value.recipient is recipient
     assert MailRefused('plain words').recipient is False
+
+
+def test_a_partial_refusal_from_the_server_is_a_recipient_refusal_that_counts_but_names_nobody(monkeypatch, caplog):
+    # given
+    fake = faked(monkeypatch)
+    fake.partial = {'bob@example.com': (550, b'no such user')}
+
+    # when
+    with caplog.at_level('DEBUG'), pytest.raises(MailRefused) as raised:
+        Mailer(CONFIG).send(['alice@example.com', 'bob@example.com'], 'Hi', 'plain')
+
+    # then
+    assert raised.value.recipient is True
+    assert '1' in str(raised.value) and 'bob@example.com' not in str(raised.value)
+    assert 'bob@example.com' not in caplog.text
 
 
 def test_an_address_that_is_not_one_is_refused_for_that_recipient(monkeypatch):
@@ -373,3 +392,12 @@ def test_speaking_does_not_leak_out_of_card_mail():
     # then
     from skopax.messages import SPEAKING
     assert SPEAKING.get() is None
+
+
+def test_hiding_recipients_masks_the_longest_address_first():
+    # given
+    # when
+    shown = mail._hidden('refused a@example.com and ba@example.com', ('a@example.com', 'ba@example.com'))
+
+    # then
+    assert shown == 'refused a***@example.com and b***@example.com'

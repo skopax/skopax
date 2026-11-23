@@ -1,4 +1,5 @@
 import dataclasses
+import importlib
 import json
 import logging
 import re
@@ -174,7 +175,7 @@ def test_core_version_range_is_checked():
 
     # then
     assert loaded.state == 'incompatible'
-    assert skopax.__version__ == '0.5.6' and '0.5.6' in loaded.reason and '>=9' in loaded.reason
+    assert skopax.__version__ == '0.5.8' and '0.5.8' in loaded.reason and '>=9' in loaded.reason
     assert [p.id for p in reg.usable()] == ['demo']
 
 
@@ -806,8 +807,8 @@ def test_the_registry_import_closure_is_the_allowlist():
 
     root = Path(__file__).resolve().parent.parent
     code = 'import sys; sys.path.insert(0, sys.argv[1]); import skopax.registry; print(sorted(m for m in sys.modules if m.startswith("skopax")))'
-    allowed = {'skopax', 'skopax.actors', 'skopax.bounded', 'skopax.brand', 'skopax.businesstime', 'skopax.cardlink', 'skopax.causes', 'skopax.chattext', 'skopax.clock', 'skopax.contract', 'skopax.engine', 'skopax.errkind', 'skopax.history', 'skopax.information', 'skopax.jiralinks', 'skopax.messages', 'skopax.redact', 'skopax.registry', 'skopax.remote',
-               'skopax.settle', 'skopax.store', 'skopax.summary', 'skopax.tags'}
+    allowed = {'skopax', 'skopax.actors', 'skopax.bounded', 'skopax.brand', 'skopax.businesstime', 'skopax.cardlink', 'skopax.causes', 'skopax.chattext', 'skopax.clock', 'skopax.contract', 'skopax.engine', 'skopax.errkind', 'skopax.history', 'skopax.information', 'skopax.jiralinks', 'skopax.messages', 'skopax.ownwords', 'skopax.redact', 'skopax.registry', 'skopax.remote',
+               'skopax.settle', 'skopax.severity', 'skopax.store', 'skopax.summary', 'skopax.tags'}
 
     # when
     out = subprocess.run([sys.executable, '-I', '-c', code, str(root)], capture_output=True, text=True, check=True).stdout
@@ -818,7 +819,7 @@ def test_the_registry_import_closure_is_the_allowlist():
     # then
     assert closure == allowed
     assert not closure & {'skopax.selfreview', 'skopax.slackhealth', 'skopax.toolusage', 'skopax.postdeploy', 'skopax.plugins.prometheus', 'skopax.plugins.prometheus.engine', 'skopax.investigator.tools'}
-    assert contract_imports == {'skopax.engine', 'skopax.errkind', 'skopax.remote'}
+    assert contract_imports == {'skopax.engine', 'skopax.errkind', 'skopax.remote', 'skopax.severity'}
 
 
 @pytest.mark.parametrize('over', [{'knowledge': None}, {'after': None}, {'id': 5}, {'id': None}, {'after': 'order-c'}, {'agent_reads': None}, {'tools': (Tool(['t'], 'x', OBJECT, demo_plugin.echo),)},
@@ -1066,7 +1067,6 @@ def test_no_test_pins_the_order_of_the_builtin_list():
 def test_built_in_checks_alone_roll_over_at_most_four_times_in_any_minute_core_jobs_not_counted():
     # given
     import collections
-    import importlib
     from skopax.scheduler import MAX_PARALLEL
     marks = collections.Counter()
 
@@ -1089,7 +1089,6 @@ def test_built_in_checks_alone_roll_over_at_most_four_times_in_any_minute_core_j
 def test_no_two_foreground_builtin_checks_start_in_the_same_second_of_an_hour():
     # given
     import collections
-    import importlib
     together = {'pmm': ('pmm', 'qan', 'mongo'), 'cloudflare': ('cf', 'edge'), 'elasticsearch': ('logs', 'apm')}
     starts = collections.defaultdict(list)
 
@@ -1108,7 +1107,6 @@ def test_no_two_foreground_builtin_checks_start_in_the_same_second_of_an_hour():
 
 def test_every_builtin_plugin_says_how_to_set_it_up():
     # given
-    import importlib
     loaded = [importlib.import_module(name).PLUGIN for name in registry.BUILTIN]
 
     # when

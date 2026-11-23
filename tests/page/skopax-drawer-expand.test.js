@@ -24,7 +24,7 @@ async function boot(opts) {
     beforeParse(w) {
       w.scrollTo = () => {}; w.Element.prototype.scrollIntoView = function () {};
       if (opts.store) {
-        const kept = {};
+        const kept = Object.assign({}, opts.initial || {});
         const fake = {getItem: (k) => (opts.store === 'throw' ? (() => { throw new Error('blocked'); })() : (k in kept ? kept[k] : null)),
           setItem: (k, v) => { if (opts.store === 'throw') throw new Error('blocked'); kept[k] = String(v); }, removeItem: (k) => { delete kept[k]; }};
         Object.defineProperty(w, 'localStorage', {value: fake, configurable: true});
@@ -60,7 +60,10 @@ async function theButtonToggles() {
   assert.ok(btn.getAttribute('aria-label') && btn.title, 'it has an aria-label and a title');
   assert.ok(!drawer.classList.contains('wide'));
   const kids = [...drawer.querySelector('.cd-bar').children].map((c) => c.className.split(' ').find((x) => x.startsWith('cd-')));
-  assert.deepStrictEqual(kids.slice(-3), ['cd-link', 'cd-expand', 'cd-close'], 'between Open alone and Close');
+  assert.deepStrictEqual(kids, ['cd-expand', 'cd-t', 'cd-link', 'cd-close'], 'first in the bar, on the left side the drawer grows to');
+  assert.strictEqual(btn.querySelectorAll('svg.cd-x-i').length, 1, 'Expand carries an arrow icon');
+  const arrowOf = () => [...btn.querySelectorAll('polyline')].map((p) => p.getAttribute('points')).join(' ');
+  const expandArrow = arrowOf();
 
   //when
   btn.click();
@@ -68,7 +71,10 @@ async function theButtonToggles() {
   //then
   assert.ok(drawer.classList.contains('wide'));
   assert.strictEqual(btn.textContent, 'Shrink');
+  assert.ok(btn.querySelector('svg.cd-x-i') && arrowOf() !== expandArrow, 'Shrink carries the opposite arrow');
   assert.strictEqual(btn.getAttribute('aria-pressed'), 'true');
+  assert.strictEqual(btn.getAttribute('aria-label'), 'Shrink the card to the narrow view');
+  assert.strictEqual(btn.title, 'Shrink the card to the narrow view');
 
   //when
   btn.click();
@@ -76,6 +82,40 @@ async function theButtonToggles() {
   //then
   assert.ok(!drawer.classList.contains('wide'));
   assert.strictEqual(btn.textContent, 'Expand');
+  assert.strictEqual(btn.getAttribute('aria-label'), 'Expand the card to the wide view');
+  assert.strictEqual(btn.title, 'Expand the card to the wide view');
+  assert.deepStrictEqual(errors, []);
+}
+
+async function itOpensWideFromAStoredChoiceAndClosesAfterAToggle() {
+  //given
+  const {w, doc, errors} = await boot({store: 'ok', initial: {[KEY]: '1'}});
+
+  //when
+  tile(doc, A).click();
+  const drawer = doc.querySelector('.card-drawer');
+
+  //then
+  assert.ok(drawer.classList.contains('wide'), 'the first drawer of the page opens wide');
+  assert.strictEqual(drawer.querySelector('.cd-expand').textContent, 'Shrink');
+  assert.strictEqual(drawer.querySelector('.cd-expand').getAttribute('aria-pressed'), 'true');
+
+  //when
+  drawer.querySelector('.cd-expand').click();
+  drawer.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+
+  //then
+  assert.strictEqual(doc.querySelector('.card-drawer'), null, 'Escape closes the drawer after a toggle');
+  assert.strictEqual(w.__kept[KEY], '0');
+
+  //when
+  tile(doc, B).click();
+  doc.querySelector('.cd-expand').click();
+  doc.querySelector('.cd-close').click();
+
+  //then
+  assert.strictEqual(doc.querySelector('.card-drawer'), null, 'Close closes the drawer after a toggle');
+  assert.strictEqual(w.__kept[KEY], '1');
   assert.deepStrictEqual(errors, []);
 }
 
@@ -143,6 +183,8 @@ function theStylesCoverWidthAndPhones() {
 (async () => {
   await theButtonToggles();
   console.log('PASS the Expand button widens the drawer and Shrink narrows it again');
+  await itOpensWideFromAStoredChoiceAndClosesAfterAToggle();
+  console.log('PASS a stored wide choice opens the first drawer wide and Escape and Close still close it');
   await theChoiceIsRemembered();
   console.log('PASS the wide choice is remembered for the next drawer');
   await itStillTogglesWhenStorageThrows();

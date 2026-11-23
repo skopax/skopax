@@ -274,9 +274,11 @@ async function germanPackCoversTheNotPostedLinesAndTheSlackTab() {
   assert.match(orders.querySelector('.sdraft-status').textContent, /^Nicht gepostet: Der Lauf hat verd\u00e4chtigen Text gelesen \(planted text in the esql answer \(ignore previous\)\); pr\u00fcfen und An Slack senden nutzen$/);
   assert.match(card(doc, CART).querySelector('.slack-rec').textContent, /^Slack-Post fehlgeschlagen: channel_not_found$/);
   assert.ok(!/use Send to Slack|Not posted|Slack post failed/.test(doc.getElementById('slackq').textContent), 'no English left in the Slack tab rows');
+  assert.strictEqual(doc.getElementById('count-acts').textContent, '0 · 2 nicht gepostet', 'the History row count reads in German');
+  assert.strictEqual(doc.getElementById('tab-acts').title, 'nichts in der Warteschlange · 2 nicht gepostet', 'the History row tooltip reads in German');
   assert.ok(!navigated(errors), errors.join(' | '));
   dom.window.close();
-  return 'with the German pack the not-posted tags, the status line under the text and the Slack tab heading, note, columns and rows read in German';
+  return 'with the German pack the not-posted tags, the status line under the text, the History row count and tooltip and the Slack tab heading, note, columns and rows read in German';
 }
 
 async function aTextDroppedForAgeSaysSoInEnglishAndGerman() {

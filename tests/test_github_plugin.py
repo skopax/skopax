@@ -258,6 +258,24 @@ def test_a_rate_limit_pauses_every_read_until_retry_after_and_is_never_a_permiss
     assert later['id'] == 'abc12345' * 5
 
 
+def test_a_read_held_by_a_rate_limit_says_how_long_is_left_not_the_first_wait():
+    # given
+    clock = Clock()
+    url = f'{CART_API}/commits/abc12345'
+    gh = client(github_http({('GET', url): rate_limited(url)}), clock)
+    repo = gh.repo('checkout-service')
+    with pytest.raises(SourceDown):
+        gh.commit(repo, 'abc12345')
+
+    # when
+    clock.now += 20.4
+    with pytest.raises(SourceDown) as held:
+        gh.commit(repo, 'abc12345')
+
+    # then
+    assert held.value.text == msg('github.rate_limited', seconds=10)
+
+
 @pytest.mark.parametrize('error, wait', [
     pytest.param(rate_limited(f'{CART_API}/commits/x', code=403, retry=None, remaining='0', reset=str(int(NOW) + 600)), 600, id='primary-403-reset'),
     pytest.param(rate_limited(f'{CART_API}/commits/x', code=403, retry=None, body='{"message": "You have exceeded a secondary rate limit."}'), 60, id='secondary-403'),
@@ -410,6 +428,24 @@ def test_a_graphql_blame_error_maps_like_a_rest_one(answer, raised):
     # then
     with pytest.raises(raised):
         gh.blame(gh.repo('checkout-service'), 'a.py', FULL, 1, 2)
+
+
+def test_a_graphql_rate_limit_pauses_until_the_reset_the_headers_give():
+    # given
+    body = {'data': None, 'errors': [{'type': 'RATE_LIMITED', 'message': 'API rate limit exceeded'}]}
+    limited = Reply(body, {'x-ratelimit-remaining': '0', 'x-ratelimit-reset': str(int(NOW) + 300)})
+    bare = Reply(body, {})
+    gh, plain = client(github_http({('POST', GRAPHQL): limited})), client(github_http({('POST', GRAPHQL): bare}))
+
+    # when
+    with pytest.raises(SourceDown) as reset:
+        gh.blame(gh.repo('checkout-service'), 'a.py', FULL, 1, 2)
+    with pytest.raises(SourceDown) as fixed:
+        plain.blame(plain.repo('checkout-service'), 'a.py', FULL, 1, 2)
+
+    # then
+    assert reset.value.text == msg('github.rate_limited', seconds=300)
+    assert fixed.value.text == msg('github.rate_limited', seconds=github.client.RATE_PAUSE_S)
 
 
 def test_the_file_tool_reads_the_deployed_ref_with_line_numbers():
@@ -624,7 +660,7 @@ def test_the_check_tracks_deployments_and_releases_and_raises_a_failed_deploy_wi
     assert [(d['state'], d['from']) for d in row['deployments']] == [('failure', OLD), ('success', None), ('success', None)]
     assert [r['tag'] for r in row['releases']] == ['v1.4.0', 'v1.3.0']
     assert [c['key'] for c in sweep.result.found] == ['github-deploy|github/checkout-service|production']
-    assert card['sev'] == 'warn' and card['github'] == {'repo': CART, 'sha': FULL, 'pull': 12, 'deployment': 42}
+    assert card['sev'] == 'high' and card['github'] == {'repo': CART, 'sha': FULL, 'pull': 12, 'deployment': 42}
     assert links == [{'label': 'Commit 2b2b2b2b', 'url': f'{CART_WEB}/commit/{FULL}'}, {'label': 'Pull request #12', 'url': f'{CART_WEB}/pull/12'},
                      {'label': 'Deployments', 'url': f'{CART_WEB}/deployments'}]
     assert len(http.hits(f'{CART_API}/deployments/41/statuses')) == 1 and len(http.hits(f'{CART_API}/deployments/42/statuses')) == 1

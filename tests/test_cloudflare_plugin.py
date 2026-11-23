@@ -668,7 +668,7 @@ def test_cloudflare_rules_come_from_the_rule_set(store: Store):
         stricter = cards_of(store)[f'edge|{SHOP}|edge-conn']['sev']
 
     # then
-    assert (default, stricter) == ('crit', 'warn')
+    assert (default, stricter) == ('crit', 'high')
 
 
 def test_every_pass_test_and_tool_has_a_time_budget_and_each_call_gets_only_the_time_left():

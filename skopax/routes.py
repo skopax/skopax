@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
-from skopax import information, tags
+from skopax import information, severity, tags
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
 from skopax.cardlink import card_url, chat_url
 from skopax.contract import ECHO_FIELD
@@ -22,8 +22,9 @@ from skopax.store import NotFound
 
 log = logging.getLogger('skopax.routes')
 
-SEV_RANK = {'info': 0, 'warn': 1, 'crit': 2}
-DEFAULTS: dict[str, object] = {'repeat-days': 7.0, 'min-sev': 'warn', 'fixed-posts': False}
+SEV_RANK = severity.RANK
+DEFAULTS: dict[str, object] = {'repeat-days': 7.0, 'min-sev': 'high', 'fixed-posts': False}
+TAG_FLOOR = 'warn'
 TAG = 'tag:'
 MAX_CARDS = 10
 WHAT_LIMIT = 300
@@ -51,6 +52,14 @@ ECHO_WAIT_MAX_S = 21600.0
 ECHO_TRIES = 5
 MD_LINK = re.compile(r'\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\(([^)]*)\)')
 REASON_MAX = 300
+
+
+def came_back_line(card: dict) -> str:
+    back = card.get('cameBack')
+    if not isinstance(back, dict) or card.get('triage') == 'handled':
+        return ''
+    ref = str(back.get('ref') or '')
+    return msg('routes.came_back', ref=ref) if ref else msg('routes.came_back_plain')
 
 
 @dataclass(frozen=True)
@@ -208,7 +217,7 @@ class Route:
             return False
         if self.business:
             return self.hit(card)
-        return SEV_RANK.get(card.get('sev'), 0) >= SEV_RANK.get(self.min_sev, 1) and self.hit(card)
+        return SEV_RANK.get(card.get('sev'), 0) >= SEV_RANK.get(self.min_sev, SEV_RANK[str(DEFAULTS['min-sev'])]) and self.hit(card)
 
     def due(self, card: dict, by_key: dict | None = None) -> bool:
         if card.get('status') != 'open' or card.get('muted') or card.get('triage') == 'handled' or grouped(card, by_key) or card.get('noRoutes') is True:
@@ -299,8 +308,19 @@ class Routes:
             return value if isinstance(value, bool) else default
         return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else default
 
+    def floor(self, plugin_id: str, tagged: bool) -> str:
+        value = str(self.setting(plugin_id, 'min-sev'))
+        if not tagged:
+            return value
+        try:
+            given = self.runtime.setting_given(plugin_id, 'min-sev')
+        except Exception as e:
+            log.warning('route setting min-sev of plug-in %s not read, using its default: %s', plugin_id, kind(e))
+            given = False
+        return value if given else TAG_FLOOR
+
     def routes(self) -> list[Route]:
-        return [r if r.min_sev else dataclasses.replace(r, min_sev=self.setting(r.plugin, 'min-sev')) for r in self.runtime.routes()]
+        return [r if r.min_sev else dataclasses.replace(r, min_sev=self.floor(r.plugin, bool(r.tags))) for r in self.runtime.routes()]
 
     @property
     def enabled(self) -> bool:
@@ -465,7 +485,7 @@ class Routes:
 
     def _card(self, card: dict) -> dict:
         return {'key': card.get('key'), 'svc': str(card.get('svc') or ''), 'ns': str(card.get('ns') or ''), 'sev': str(card.get('sev') or 'info'), 'label': str(card.get('label') or ''),
-                'short': str(card.get('short') or ''), 'number': number(card)}
+                'short': str(card.get('short') or ''), 'number': number(card)} | ({'cameBack': came_back_line(card)} if came_back_line(card) else {})
 
     def _message(self, kind_: str, title: str, card: dict, mention: Iterable[str], **extra) -> dict:
         base = self._base()
@@ -753,7 +773,7 @@ class Routes:
         by_key = {c.get('key'): c for c in cards}
         for group in self.shared(self.routes() if live is None else live):
             plugin = group[0].plugin
-            floor = SEV_RANK[self.setting(plugin, 'min-sev')]
+            floor = SEV_RANK[self.floor(plugin, True)]
             days = self.setting(plugin, 'repeat-days')
             label = ', '.join(dict.fromkeys(r.label for r in group))
             team_tags = ordered(t for r in group for t in r.tags)

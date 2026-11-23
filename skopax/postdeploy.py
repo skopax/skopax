@@ -69,7 +69,7 @@ def slack_text(rows: list[dict], frm: float, now: float, flags: list[str] | None
     flagged = [r for r in rows if r['flags']]
     first = min(when(r['at']) for r in rows if r.get('at')) if any(r.get('at') for r in rows) else utc(frm)
     span = f"{clock.hm(first)}–{clock.hm(utc(frm))}" if clock.hm(first) != clock.hm(utc(frm)) else clock.hm(utc(frm))
-    head = msg('postdeploy.head', date=clock.date(utc(frm), hm=False), count=len(rows), span=span, zone=clock.label(utc(frm)), clean=len(rows) - len(flagged))
+    head = msg('postdeploy.head_one' if len(rows) == 1 else 'postdeploy.head', date=clock.date(utc(frm), hm=False), count=len(rows), span=span, zone=clock.label(utc(frm)), clean=len(rows) - len(flagged))
     if flagged:
         head += msg('postdeploy.flagged', n=len(flagged), list='; '.join(f"{r['svc']} ({', '.join(r['flags'])})" for r in flagged[:SLACK_ROWS])) + (msg('postdeploy.more') if len(flagged) > SLACK_ROWS else '')
     if flags:

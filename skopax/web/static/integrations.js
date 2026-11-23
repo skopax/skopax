@@ -1159,18 +1159,19 @@ function intFormHtml(p, inst) {
       '<span class="adm-msg int-field-msg" role="status"></span></div>';
   }
   if (adv) h += '<details class="int-adv"' + (open ? ' open' : '') + '><summary class="int-adv-h">Advanced</summary><div class="int-adv-b">' + adv + '</div></details>';
+  var hint = '';
   h += '<div class="int-foot"><p class="int-result" role="status" hidden></p><span class="adm-msg int-form-msg" role="status"></span><div class="int-foot-row"><div class="int-test-row"><button type="button" class="btn sec small int-test">Test connection</button>';
   if (p.id === 'mail-server' && !intRO()) {
     var mailable = !!inst && inst.enabled && p.enabled && !inst.problem;
     h += '<button type="button" class="btn sec small int-mail-test"' + (mailable ? '' : ' disabled data-off="1"') + '>Send test mail</button>';
-    if (!mailable) h += '<span class="adm-help int-mail-hint">Save and turn on this Mail server to send a test mail</span>';
+    if (!mailable) hint = '<p class="adm-help int-mail-hint">Save and turn on this Mail server to send a test mail</p>';
   }
   if (inst && inst.source === 'admin') h += '<button type="button" class="btn sec small int-del">Delete</button>';
   h += '</div><div class="int-acts int-foot-acts">';
   if (!inst) h += '<button type="button" class="btn sec small int-cancel">Cancel</button>';
   h += '<button type="submit" class="btn small int-save">Save</button>';
   if ((!inst || !inst.enabled) && p.id !== INT_MCP) h += '<button type="button" class="btn small int-save-on">Save &amp; turn on</button>';
-  return h + '</div></div></div></form>';
+  return h + '</div></div>' + hint + '</div></form>';
 }
 function intMovable(p, inst) {
   return p.id === 'website' && !!inst && inst.source === 'admin' && !intRO() && String((inst.values || {})['browser-url'] || '').trim() !== '';

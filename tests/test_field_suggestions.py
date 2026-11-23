@@ -225,6 +225,26 @@ def test_a_slow_list_answers_with_a_timeout_and_a_second_ask_is_told_to_wait(sto
     assert other.status_code == 200
 
 
+def test_two_admins_on_two_new_instance_forms_of_one_field_each_get_their_own_list(store, monkeypatch):
+    # given
+    monkeypatch.setattr(app_module, 'SUGGEST_TIMEOUT_S', 0.2)
+    with_password(store)
+    with served(store) as c:
+        other = TestClient(c.app, base_url='https://testserver', follow_redirects=False)
+        post_login(other)
+
+        # when
+        slow = ask(c, values={'url': 'https://wait.example.com'})
+        theirs = other.post('/api/admin/plugins/demo/fields/topics/suggestions', json={'values': {'url': 'https://demo.example.com'}}, headers={'Origin': 'https://testserver'})
+        again = ask(c, values={'url': 'https://wait.example.com'})
+        HOLD.set()
+
+    # then
+    assert slow.status_code == 502
+    assert theirs.status_code == 200, theirs.text
+    assert again.status_code == 409, 'the same admin asking again still waits for the first list'
+
+
 def test_an_unknown_field_or_a_field_without_a_list_is_404(store):
     # given
     with served(store) as c:

@@ -50,7 +50,7 @@ def test_only_a_closed_card_wears_the_done_mark():
     # then
     assert [k for k, v in marks.items() if v.startswith(':white_check_mark:')] == ['handled', 'cleared_handled', 'known', 'cleared_known']
     assert marks['muted'].startswith(':large_yellow_circle:')
-    assert marks['open'].startswith(':large_orange_circle:') and marks['progress'].startswith(':large_orange_circle:')
+    assert marks['open'].startswith(':large_yellow_circle:') and marks['progress'].startswith(':large_yellow_circle:')
 
 
 def test_an_event_stop_says_it_is_still_open_in_the_bar_and_the_notification_text():
@@ -165,7 +165,7 @@ def test_a_card_shared_by_the_investigator_names_it_and_not_the_pod():
     message = anomaly_message(CARD, LINK, actors.POD_BY, head={'kind': 'shared', 'by': actors.POD_BY})
 
     # then
-    assert '(pod)' not in ' '.join(texts(message)) and head_of(message).startswith(':large_orange_circle: Investigator shared a card')
+    assert '(pod)' not in ' '.join(texts(message)) and head_of(message).startswith(':large_yellow_circle: Investigator shared a card')
 
 
 def test_history_notices_and_mcp_texts_show_the_investigator_label():

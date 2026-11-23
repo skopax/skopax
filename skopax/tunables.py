@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 from pymongo import DESCENDING, ReturnDocument
 
 from skopax import brand, clock as zone_clock, logs, settingcards, tags
-from skopax.config import AI_PROVIDERS, DEFAULT_ROLES, JIRA_BACKLINK_MODES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve, TRACE_CONTENTS
+from skopax.config import ALERT_GLOB, ALERT_GLOBS_MAX, AI_PROVIDERS, DEFAULT_ROLES, JIRA_BACKLINK_MODES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve, TRACE_CONTENTS
 from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
@@ -38,7 +38,7 @@ CHAT_CALLS_KEY = 'chat.max-tool-calls'
 WEB_DOMAINS_KEY = 'investigate.web-domains'
 OWN_SITES_KEY = 'core.own-sites'
 EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
-SEVS = ('info', 'warn', 'crit')
+SEVS = ('info', 'warn', 'high', 'crit')
 REFRESH_S = 15
 TEXT_LIMIT = 1000
 TEXT_LIMITS = {'core.org-about': ORG_ABOUT_MAX}
@@ -114,10 +114,11 @@ SLACK_CHANNEL_KEY = 'slack.channel'
 POST_SEV_KEY = 'slack.post-sev'
 ROUTE_SEV = 'min-sev'
 CRIT_NOW_KEY = 'slack.crit-now'
-POST_SEV_LABELS = {'crit': 'Critical', 'warn': 'Warning', 'off': 'Off'}
+POST_SEV_LABELS = {'crit': 'Critical', 'high': 'High', 'warn': 'Warning', 'off': 'Off'}
 RENAMED = {CRIT_NOW_KEY: POST_SEV_KEY}
 OLD_HOURS_KEYS = ('core.auto-resolve-hours', 'core.auto-resolve-days')
-SEV_HOURS_KEYS = {'core.auto-resolve-hours-crit': ('auto_resolve_hours_crit', 'crit'), 'core.auto-resolve-hours-warn': ('auto_resolve_hours_warn', 'warn')}
+SEV_HOURS_KEYS = {'core.auto-resolve-hours-crit': ('auto_resolve_hours_crit', 'crit'), 'core.auto-resolve-hours-high': ('auto_resolve_hours_high', 'high'),
+                  'core.auto-resolve-hours-warn': ('auto_resolve_hours_warn', 'warn')}
 INFO_DAYS_KEY = 'core.info-auto-close-days'
 TIMEZONE_KEY = 'general.timezone'
 TAG_REPORT_KEY = 'tags.report-at'
@@ -138,8 +139,10 @@ ITEM_RULES = {
     'project-key': (r'[A-Za-z][A-Za-z0-9_]{0,49}', '', ''),
     'channel': (r'[CG][A-Z0-9]{8,12}', '', ''),
     'scope': (r'[\x21-\x7e]{1,100}', '', ''),
+    'alert-name': (ALERT_GLOB.pattern, '', ''),
 }
-ITEM_RULES_CHECKED = ('host', 'web-host', 'own-site', 'email', 'slack-user-id', 'client-id', 'project-key', 'channel', 'scope')
+ITEM_RULES_CHECKED = ('host', 'web-host', 'own-site', 'email', 'slack-user-id', 'client-id', 'project-key', 'channel', 'scope', 'alert-name')
+ALERTS_WARN_KEY = 'alerts.warn'
 LINK_NAME_MAX = 40
 LINK_NAME = re.compile(r'[A-Za-z0-9 ._-]{1,%d}' % LINK_NAME_MAX)
 LINK_COLOURS = ('#e3a744', '#9a7ce3', '#5cbf80', '#f0857a', '#7eaaf2', '#c98500')
@@ -260,8 +263,9 @@ STATIC = (
     T('investigate.web-searches', 'investigate_web_searches', INV, 'Web searches per run', 'Web searches one run may make, $0.01 each; 0 turns search off', 'int', 0, 10),
     T('investigate.web-fetches', 'investigate_web_fetches', INV, 'Web pages per run', 'Web pages one run may read; 0 turns page reads off', 'int', 0, 10),
     T('screenshot.max-per-day', 'screenshot_max_per_day', INV, 'Screenshots per day', 'Screenshots plug-in tools may store per day, all runs together; it resets at local midnight', 'int', 0, 500),
-    T(TRACE_INSTANCE_KEY, 'langfuse_trace_instance', INV, 'Langfuse instance', 'The Langfuse integration (Connect \u203a Integrations) that Langfuse tracing sends to; '
-      'its keys must be allowed to write traces. None sends nothing. Turn tracing on in Admin \u203a Features', 'choice', choices=trace_instances, choice_labels={'': 'None'}),
+    T(TRACE_INSTANCE_KEY, 'langfuse_trace_instance', INV, 'Langfuse instance', 'The Langfuse instance (Connect \u203a Integrations) that {product} sends its own traces to. Pick one for a separate Langfuse project, for example one named skopax, '
+      'not the project of an app {product} watches: the picked instance stops being watched. Its keys must be allowed to write traces; a read-only key cannot. '
+      'None sends nothing. Turn tracing on in Admin \u203a Features', 'choice', choices=trace_instances, choice_labels={'': 'None'}),
     T('langfuse.trace-content', 'langfuse_trace_content', INV, 'Trace content', 'metadata sends names, models, tokens, cost, timing, status, card keys and run ids only. '
       'full also sends prompts, questions, answers and tool output, redacted and cut; Warning: they can hold customer data and pass to the Langfuse project and everyone who can read it',
       'choice', choices=TRACE_CONTENTS),
@@ -290,8 +294,12 @@ STATIC = (
     T('self-review.dm', 'selfreview_dm', REVIEW, 'Send to', 'Emails that get the self-review as a Slack DM, separated by commas; empty uses the push users', 'text', items='email'),
     T('self-review.hour', 'selfreview_hour', REVIEW, 'Hour (local time)', 'Hour of the daily self-review; -1 turns it off', 'int', -1, 23, live=False),
     T('cards.archive-hours', 'archive_hours', CARDS, 'Archive after (hours)', 'A card that is not firing (or is muted) and had no change for N hours moves to Archived: hidden on the board, the lists and the counts, still under the Archived list. Waiting cards nobody acted on stay', 'int', 1, 720),
-    T('core.auto-resolve-hours', 'auto_resolve_hours', CARDS, 'Auto-resolve cleared cards after (hours)', 'Deprecated: use the critical and warning settings. Seeds the severities that have no setting of their own', 'int', 0, 720, hidden=True),
+    T('core.auto-resolve-hours', 'auto_resolve_hours', CARDS, 'Auto-resolve cleared cards after (hours)', 'Deprecated: use the critical, high and warning settings. Seeds the severities that have no setting of their own', 'int', 0, 720, hidden=True),
     T('core.auto-resolve-hours-crit', 'auto_resolve_hours_crit', CARDS, 'Auto-resolve cleared critical cards after (hours)', 'Closes a critical card that stopped firing and that nobody acted on after N hours; 0 turns it off for critical cards. With Business days only on, only Monday to Friday counts', 'int', 0, 720),
+    T(ALERTS_WARN_KEY, 'alerts_warn', CARDS, 'Alerts kept at Warning', 'Alert names whose warning label stays Warning instead of High, such as noisy forecast alerts, separated by commas; '
+      'a name may use * and ?, such as *Forecast* or CephPoolGrowthForecast, matched with case. A critical alert is never lowered', 'list', items='alert-name'),
+    T('core.auto-resolve-hours-high', 'auto_resolve_hours_high', CARDS, 'Auto-resolve cleared high cards after (hours)', 'Closes a high card that stopped firing and that nobody acted on after N hours; 0 turns it off for high cards. '
+      'Without a value of its own it follows the warning setting. With Business days only on, only Monday to Friday counts', 'int', 0, 720),
     T('core.auto-resolve-hours-warn', 'auto_resolve_hours_warn', CARDS, 'Auto-resolve cleared warning cards after (hours)', 'Closes a warning card that stopped firing and that nobody acted on after N hours; 0 turns it off for warning cards. With Business days only on, only Monday to Friday counts', 'int', 0, 720),
     T('core.info-auto-close-days', 'info_auto_close_days', CARDS, 'Auto-resolve info cards still firing after (days)', 'Deprecated and ignored: information items are never closed, they end when their signal stops', 'int', 0, 90, hidden=True),
     T('core.business-days', 'business_days', CARDS, 'Business days only', 'Count only Monday to Friday (install time zone) for the auto-resolve timers', 'bool'),
@@ -489,6 +497,10 @@ def parse(t: Tunable, raw, base: Settings, loading: bool = False):
                 raise Invalid(msg('sso.domain_invalid', entry=wrong[0][:SKIP_SHOWN]))
         if t.items and not loading:
             check_items(t, entries)
+        if t.key == ALERTS_WARN_KEY:
+            if len(entries) > ALERT_GLOBS_MAX and not loading:
+                raise Invalid(msg('alerts.warn_too_many', limit=ALERT_GLOBS_MAX))
+            entries = entries[:ALERT_GLOBS_MAX]
         return entries
     if t.kind == 'rolemap':
         from skopax.roles import map_text, parse_role_map
@@ -652,6 +664,8 @@ def apply(base: Settings, overrides: dict[str, str], extra: tuple[Tunable, ...] 
                 changes[f'auto_resolve_hours_{sev}'] = changes['auto_resolve_hours']
         if 'info_auto_close_days' not in changes and not base.info_auto_close_days_set:
             changes['info_auto_close_days'] = 0 if changes['auto_resolve_hours'] == 0 else defaults()['info_auto_close_days']
+    if 'auto_resolve_hours_warn' in changes and 'auto_resolve_hours_high' not in changes and 'high' not in base.auto_resolve_sev_set:
+        changes['auto_resolve_hours_high'] = changes['auto_resolve_hours_warn']
     if 'slack_crit_now' in changes and 'slack_post_sev' not in changes and not base.slack_post_sev_set:
         changes['slack_post_sev'] = SLACK_POST_SEV if changes['slack_crit_now'] else 'off'
     if tag_parts:
@@ -818,6 +832,10 @@ class Live:
             given = self.overrides.get(t.key)
             return given['value'] if given else self.base_text(t)
         return text_of(t, self.current())
+
+    def plugin_value_given(self, key: str) -> bool:
+        self.current()
+        return (self.overrides.get(key) or {}).get('value') is not None or self.values.get(key) is not None
 
     def plugin_value(self, key: str) -> object:
         self.current()

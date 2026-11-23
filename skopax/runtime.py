@@ -425,6 +425,9 @@ class Runtime:
         found = self.shared.get(f'{plugin_id}.{key}')
         return found() if found is not None else self.live.plugin_value(f'{plugin_id}.{key}')
 
+    def setting_given(self, plugin_id: str, key: str) -> bool:
+        return f'{plugin_id}.{key}' in self.shared or self.live.plugin_value_given(f'{plugin_id}.{key}')
+
     def rules(self, plugin_id: str, set_id: str) -> dict:
         return self.live.rules_of(f'{plugin_id}.{set_id}')
 
@@ -590,7 +593,7 @@ class Runtime:
         ms = found.ms if isinstance(found.ms, int) and not isinstance(found.ms, bool) and found.ms >= 0 else elapsed
         return {'ok': found.ok, 'summary': text[:TEST_SUMMARY_MAX], 'ms': ms}
 
-    def suggestions(self, plugin: Plugin, key: str, name: str | None, given: Mapping[str, str | None], timeout: float) -> dict:
+    def suggestions(self, plugin: Plugin, key: str, name: str | None, given: Mapping[str, str | None], timeout: float, asker: str = '') -> dict:
         f = next((x for x in effective_fields(plugin, self.instances.extra_fields(plugin.id)) if x.key == key), None)
         if f is None or f.suggest is None:
             raise SuggestFailed(404, msg('integrations.suggest_none', field=key))
@@ -603,7 +606,7 @@ class Runtime:
         asked = SuggestContext(MappingProxyType(dict(clean)), self.transport_for(plugin, temp.info()), time.monotonic() + timeout)
         box: dict = {}
         done = threading.Event()
-        slot = (plugin.id, name, key)
+        slot = (plugin.id, name, key, '' if name else asker)
 
         def go() -> None:
             try:

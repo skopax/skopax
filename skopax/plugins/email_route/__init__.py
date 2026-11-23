@@ -7,7 +7,7 @@ from skopax.kit import connection
 from skopax.messages import msg
 
 ID = 'email'
-SEVS = ('warn', 'crit')
+SEVS = ('warn', 'high', 'crit')
 KIND = 'route'
 BUDGET_S = 7.0
 KEEP_S = 6 * 3600
@@ -20,7 +20,10 @@ GUARD = threading.Lock()
 
 
 def addresses(raw: object) -> list[str]:
-    return list(dict.fromkeys(p.lower() for p in str(raw or '').replace(',', ' ').split()))
+    found: dict[str, str] = {}
+    for part in str(raw or '').replace(',', ' ').split():
+        found.setdefault(part.lower(), mail.tidy(part))
+    return list(found.values())
 
 
 def recipients_problem(value: str) -> str | None:
@@ -125,18 +128,18 @@ def post(ctx: Context, message: dict) -> dict:
     to = addresses(given)
     name = ctx.instance.name if ctx.instance is not None else ''
     mails = mails_of(message)
-    marks = [(name, str(message.get('kind') or ''), key, addr) for key, _ in mails for addr in to]
+    marks = [(name, str(message.get('kind') or ''), key, addr.lower()) for key, _ in mails for addr in to]
     seen = known(marks)
     refused = {m[3]: text for m, (_, state, text) in seen.items() if state == REFUSED}
     started = time.monotonic()
     tried = False
     for key, (subject, text, html) in mails:
         for addr in to:
-            mark = (name, str(message.get('kind') or ''), key, addr)
+            mark = (name, str(message.get('kind') or ''), key, addr.lower())
             if mark in seen:
                 continue
-            if addr in refused:
-                remember(mark, REFUSED, refused[addr])
+            if addr.lower() in refused:
+                remember(mark, REFUSED, refused[addr.lower()])
                 continue
             if tried and time.monotonic() - started > BUDGET_S:
                 done = sum(1 for _, state, _ in known(marks).values() if state == SENT)
@@ -149,7 +152,7 @@ def post(ctx: Context, message: dict) -> dict:
             except mail.MailRefused as e:
                 if not e.recipient:
                     return failed(e.text)
-                refused[addr] = e.text
+                refused[addr.lower()] = e.text
                 remember(mark, REFUSED, e.text)
                 continue
             remember(mark, SENT, '')
@@ -194,11 +197,11 @@ PLUGIN = Plugin(
                   help='Comma or space list of 1 to 50 email addresses, such as alice@example.com, ops@example.com. Each address gets a mail of its own, so no one sees the others.'),
             Field('tags', 'Card tags', 'text', help='Comma list of card tags this route takes, such as seo, developer. A route needs card tags or card keys.'),
             Field('keys', 'Card keys', 'text', help='Comma list of card key patterns this route takes, with * and ?, such as log|checkout-*|*.'),
-            Field('min-sev', 'Lowest severity', 'choice', choices=SEVS, choice_labels={'warn': 'Warning', 'crit': 'Critical'}, help='Cards below it are not mailed on their own; empty uses the Email route lowest severity setting.')),
+            Field('min-sev', 'Lowest severity', 'choice', choices=SEVS, choice_labels={'warn': 'Warning', 'high': 'High', 'crit': 'Critical'}, help='Cards below it are not mailed on their own; empty uses the Email route lowest severity setting.')),
     settings=(Setting('repeat-days', 'Email route repeat days', 'Days before a card already mailed to a list is mailed to it again when it fires again or gets another tag; 0 mails every time',
                       'float', '7', low=0, high=365),
-              Setting('min-sev', 'Email route lowest severity', 'Cards below this severity are not mailed to a list on their own; it is also the default of a key route with no lowest severity of its own, and a key route\'s own lowest severity replaces it, higher or lower',
-                      'choice', 'warn', choices=SEVS),
+              Setting('min-sev', 'Email route lowest severity', 'Cards below this severity are not mailed to a list on their own; it is also the default of a key route with no lowest severity of its own, and a key route\'s own lowest severity replaces it, higher or lower. While it is not set, tag routes take cards from Warning up and key routes from High up',
+                      'choice', 'high', choices=SEVS),
               Setting('fixed-posts', 'Email route fixed mails', 'Mails a fixed message to a business list when a card it was told about as info closes after that mail', 'bool', 'false')),
     test=test, outbound=Outbound(post, 'tags', None, keys_field='keys', sev_field='min-sev', target_field='recipients', ready=ready),
     setup=Setup(steps=(

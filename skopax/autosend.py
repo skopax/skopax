@@ -6,7 +6,7 @@ from typing import Callable
 
 from pymongo.errors import PyMongoError
 
-from skopax import clock, information
+from skopax import clock, information, severity
 from skopax.engine import SEV_RANK, Applied, fmt, iso as epoch_iso, parse_iso
 from skopax.errkind import Authored, kind as error_kind
 from skopax.investigator.select import EVENT_WINDOW_S, announced_twin, merged, own_findings, stamps
@@ -19,14 +19,14 @@ log = logging.getLogger('skopax.autosend')
 
 INTERVAL_SECONDS = 30
 STOPPED_TRIAGE = ('progress', 'handled')
-LIVE_WHEN_CLEARED = ('crit', 'warn')
+LIVE_WHEN_CLEARED = severity.CARD_LEVELS
 SEND_ERRORS = (SlackError, PyMongoError, NotFound)
 FALLBACK_SEV = 'crit'
 FALLBACK_SKIP_TRIAGE = ('investigating',) + STOPPED_TRIAGE
 FALLBACK_TRIGGERS = ('cards', 'action')
 FALLBACK_COVERED = ('done', 'running')
 POST_NOW_BURST = 3
-SEV_WORDS = {'crit': 'critical', 'warn': 'warning'}
+SEV_WORDS = severity.WORDS
 SUB_LIMIT = 80
 SWEEP_AGE = dt.timedelta(hours=1)
 STALE_CLAIM = dt.timedelta(minutes=15)
@@ -132,7 +132,7 @@ class AutoSend:
             self.store.anomaly_auto_send_failed(key, failure_of(e))
             return 0
         fallback = a.get('slackFallback') or {}
-        if fallback.get('atOnce') and fallback.get('at') == draft.get('at'):
+        if fallback.get('atOnce') and fallback.get('at') == draft.get('at') and not (a.get('autoSend') or {}).get('retries'):
             said_at_once(self.store, key)
             return 1
         log.info('Slack post sent on %s', key)

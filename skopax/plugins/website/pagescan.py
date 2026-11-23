@@ -902,7 +902,7 @@ class Scan:
         for a in cards:
             findings = [f for f in a.get('findings') or [] if isinstance(f, dict)]
             card = (typo_card if kind_of(a) == TYPOS else layout_card)(url, findings)
-            card.update(what=card['what'] + note, gone={'status': status, 'since': since})
+            card.update(what=card['what'] + note, gone={'status': status, 'since': since}, sev='high', short=card['short'].replace(card['sev'].upper(), 'HIGH', 1))
             out.append(card)
         return out
 

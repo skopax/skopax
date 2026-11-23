@@ -470,7 +470,7 @@ def test_saving_one_severity_writes_the_other_explicitly_and_clears_the_old_key(
     assert 'core.auto-resolve-hours' not in stored and stored[HOURS_KEYS['warn']]['value'] == '9' and stored[HOURS_KEYS['crit']]['value'] == '30'
     assert (change['before'], change['after']) == ('9', '30')
     legacy = {r['key']: r for r in rows if r.get('legacy')}
-    assert set(legacy) == {'core.auto-resolve-hours', HOURS_KEYS['warn']}
+    assert set(legacy) == {'core.auto-resolve-hours', HOURS_KEYS['warn'], 'core.auto-resolve-hours-high'}
     assert (legacy['core.auto-resolve-hours']['old'], legacy['core.auto-resolve-hours']['new']) == ('9', None)
     assert not [r for r in rows if r['key'] == HOURS_KEYS['crit'] and r.get('legacy')]
 
@@ -633,7 +633,7 @@ def test_saving_a_severity_at_its_seeded_value_writes_no_history_row_but_still_p
     assert stored[HOURS_KEYS['crit']]['value'] == '9' and stored[HOURS_KEYS['crit']]['by'] == 'alice@example.com'
     assert stored[HOURS_KEYS['warn']]['value'] == '9' and 'core.auto-resolve-hours' not in stored
     assert (change['before'], change['after']) == ('9', '9')
-    assert len(rows) == before + 2
+    assert len(rows) == before + 3, 'the high and warning windows are pinned, the old key cleared'
     assert (entry['source'], entry['value']) == ('admin', '9')
     assert live.tunables.rev() > 0
 

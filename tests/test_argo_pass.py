@@ -132,8 +132,8 @@ def test_a_failed_sync_that_left_the_app_behind_is_a_card_at_once():
 
     # then
     assert {x['key']: (x['sev'], x['label']) for x in found} == {
-        'argo|shop/checkout-service': ('warn', 'Argo CD sync failed'),
-        'argo|web/storefront': ('warn', 'Argo CD sync failed'),
+        'argo|shop/checkout-service': ('high', 'Argo CD sync failed'),
+        'argo|web/storefront': ('high', 'Argo CD sync failed'),
     }
     assert {r['app'] for r in rows} == {CHECKOUT, 'web-storefront'}
 
@@ -154,7 +154,7 @@ def test_the_card_says_what_argo_sees_in_allowlisted_cut_text():
     assert (gw['ranKey'], cs['ranKey']) == (f'argo:{CHECKOUT}', 'argo:accounts-profile-service')
     assert gw['now'] == PERSIST_S and gw['d1'] is None
     assert gw['label'] == 'Argo CD sync failed \u00b7 Degraded'
-    assert gw['short'] == 'WARN checkout-service Argo CD sync failed \u00b7 Degraded for 15 min'
+    assert gw['short'] == 'HIGH checkout-service Argo CD sync failed \u00b7 Degraded for 15 min'
     assert CHECKOUT in gw['what'] and 'sync OutOfSync' in gw['what'] and 'health Degraded' in gw['what']
     assert 'exceeded its progress deadline' in gw['what'] and 'one or more objects failed to apply' in gw['what']
     assert 'Deployment/checkout-service' in gw['what'] and '+3 more' in gw['what']

@@ -68,7 +68,7 @@ def test_a_slack_style_answer_becomes_markdown_with_card_links_and_the_status_li
     assert about_line([{'key': KEY, 'num': 14, 'title': 'checkout-service / ERROR lines'}]) == '📌 **[#14](/c/14) · checkout-service / ERROR lines**'
     full = {'key': KEY, 'num': 14, 'title': 'checkout-service / ERROR lines', 'sev': 'warn', 'status': 'open', 'what': '40 ERROR lines in the last hour,\n 2 a day ago', 'next': 'Check the 14:05 deploy.',
             'owner': 'nina.white@example.com', 'ticket': 'OPS-1'}
-    assert about_line([full]) == ('📌 🟠 **[#14](/c/14) · checkout-service / ERROR lines**\n\n> 40 ERROR lines in the last hour, 2 a day ago\n\n→ Check the 14:05 deploy.\n\n👤 nina.white · [OPS-1](https://jira.example.com/browse/OPS-1)')
+    assert about_line([full]) == ('📌 🟡 **[#14](/c/14) · checkout-service / ERROR lines**\n\n> 40 ERROR lines in the last hour, 2 a day ago\n\n→ Check the 14:05 deploy.\n\n👤 nina.white · [OPS-1](https://jira.example.com/browse/OPS-1)')
     assert about_line([full | {'status': 'cleared', 'what': 'x' * 900}]).startswith('📌 ✅ **[#14]') and len(about_line([full | {'what': 'x' * 900}])) < 560
     assert cookie_of('a=1; skopax_chat_card=log%7Ca; b=2', 'skopax_chat_card') == 'log|a' and cookie_of('a=1', 'skopax_chat_card') is None
 
@@ -177,7 +177,7 @@ def test_the_history_sidebar_reads_the_stored_chats_and_share_and_delete_go_thro
 
     # then
     assert [(t['id'], t['name'], t['userIdentifier']) for t in listed.data] == [(THREAD, 'Why is this card open?', NINA)] and other.data == []
-    assert [(s['type'], s['output']) for s in thread['steps']] == [('assistant_message', '📌 🟠 **[#14](/c/14) · checkout-service / ERROR lines**'),
+    assert [(s['type'], s['output']) for s in thread['steps']] == [('assistant_message', '📌 🟡 **[#14](/c/14) · checkout-service / ERROR lines**'),
                                                                  ('user_message', 'Why is this card open?'), ('assistant_message', '**checkout-service**: card [#14](/c/14) open.')]
     assert author == NINA and untouched is False and shared is True
     assert gone is None and store.chats(NINA, 10) == [] and not store.chat_shared(THREAD), 'a deleted chat leaves the list and stops being shared'
@@ -472,8 +472,8 @@ def test_the_chat_brand_json_follows_the_attribution_rules(monkeypatch):
         served = c.get('/chat/public/skopax-brand.json')
 
     # then
-    assert json.loads(plain.body) == {'attribution': {'text': 'Skopax 0.5.6 \u00b7 skopax.io', 'href': 'https://skopax.io'}}
-    assert json.loads(named.body) == {'attribution': {'text': 'Acme Ops \u00b7 powered by Skopax 0.5.6', 'href': 'https://skopax.io'}}
+    assert json.loads(plain.body) == {'attribution': {'text': 'Skopax 0.5.8 \u00b7 skopax.io', 'href': 'https://skopax.io'}}
+    assert json.loads(named.body) == {'attribution': {'text': 'Acme Ops \u00b7 powered by Skopax 0.5.8', 'href': 'https://skopax.io'}}
     assert plain.media_type == 'application/json' and plain.headers['cache-control'] == 'no-cache'
     assert served.status_code == 200 and served.json() == json.loads(named.body)
     assert served.headers['content-type'].startswith('application/json') and served.headers['cache-control'] == 'no-cache' and 'content-security-policy' not in served.headers

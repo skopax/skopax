@@ -5,7 +5,7 @@ function initReports() {
   var days = 365, MAX_DAYS = 3650, shown = -1, widened = false, oldest = false;
   var GITLAB_READ_MS = 7 * 86400000;
   var repLimit = 100, MAX_REPORTS = 200, want = null, loaded = false, seq = 0;
-  var REP_LV = {ok: ['All clear', 'k-ok'], info: ['Info', 'k-info'], warn: ['Warning', 'k-warn'], crit: ['Critical', 'k-crit']};
+  var REP_LV = {ok: ['All clear', 'k-ok'], info: ['Info', 'k-info'], warn: ['Warning', 'k-warn'], high: ['High', 'k-high'], crit: ['Critical', 'k-crit']};
   var REP_BY = 'Written when this post-deploy check was saved. Send to Slack uses it under the message.';
   var REP_BY_OLD = 'This report was saved before report summaries existed, so this is its one-line summary.';
   var KEYS_SHOWN = 6, SHA = /^[0-9a-f]{7,40}$/;

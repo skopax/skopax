@@ -125,6 +125,12 @@ function renderTools(d) {
   box.innerHTML = toolStrip(d) + '<div class="box"><table class="ttable"><thead>' + toolHead() + '</thead><tbody>' + rows + '</tbody></table></div>';
   var count = document.getElementById('count-tools');
   if (count) count.textContent = String(d.toolsUsed);
+  var lf = document.getElementById('tools-langfuse');
+  if (lf) {
+    var ok = typeof d.langfuse === 'string' && /^https?:\/\//.test(d.langfuse);
+    lf.hidden = !ok;
+    if (ok) lf.href = d.langfuse; else lf.removeAttribute('href');
+  }
 }
 function markToolRange() {
   document.querySelectorAll('#tools-range button').forEach(function (b) { b.setAttribute('aria-pressed', String(Number(b.dataset.days) === TOOLS_DAYS)); });

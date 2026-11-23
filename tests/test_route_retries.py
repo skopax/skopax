@@ -62,7 +62,7 @@ def test_a_failing_tag_route_backs_off_gives_up_after_six_tries_and_never_moves_
 def test_a_failing_key_route_backs_off_the_same_way_and_a_card_sent_by_hand_meanwhile_is_not_posted_again(store: Store):
     # given
     t = Gone(403)
-    routes = routes_of(store, t, route('tech', TECH, keys='log|*'), old=False)
+    routes = routes_of(store, t, route('tech', TECH, keys='log|*'), old=False, min_sev='warn')
     store.save(state(open_card('log|a|ERROR|one'), open_card('log|a|ERROR|two')), None)
     cards = store.load()['anomalies']
 
@@ -203,7 +203,7 @@ def test_a_route_whose_webhook_changed_is_not_held_by_the_retries_of_the_old_one
 def test_a_key_route_that_gave_up_posts_its_cards_again_after_a_passing_test_or_a_new_webhook(store: Store, heal):
     # given
     t = Gone(404)
-    routes = routes_of(store, t, route('tech', TECH, keys='log|*'), old=False)
+    routes = routes_of(store, t, route('tech', TECH, keys='log|*'), old=False, min_sev='warn')
     store.save(state(open_card('log|a|ERROR|one')), None)
     routes.deliver([], NOW, pushed=store.load()['anomalies'])
     for offset in range(30, 7200, 30):
@@ -406,7 +406,7 @@ def test_every_worker_batch_not_finished_at_stop_is_kept_as_a_retry(store: Store
 def test_a_retried_card_and_a_new_push_to_the_same_route_in_one_pass_are_both_counted(store: Store):
     # given
     t = Gone(403)
-    routes = routes_of(store, t, route('tech', TECH, keys='log|*'), old=False)
+    routes = routes_of(store, t, route('tech', TECH, keys='log|*'), old=False, min_sev='warn')
     store.save(state(open_card('log|a|ERROR|one'), open_card('log|a|ERROR|two')), None)
     one, two = store.load()['anomalies']
     routes.deliver([], NOW, pushed=[one])

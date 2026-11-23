@@ -54,10 +54,10 @@ BUTTON_LIMIT = 75
 POST_ACTIONS = ('take', 'resolve', 'known')
 SLACK_MARKS = str.maketrans({'*': '\u2217', '_': '\u02cd', '~': '\u223c', '`': '\u02cb'})
 DRAFT_LINES = 3
-EMOJI = {'crit': ':red_circle:', 'warn': ':large_orange_circle:', 'info': ':large_blue_circle:', 'ok': ':large_green_circle:'}
-SEVS = ('crit', 'warn', 'info')
+EMOJI = {'crit': ':red_circle:', 'high': ':large_orange_circle:', 'warn': ':large_yellow_circle:', 'info': ':large_blue_circle:', 'ok': ':large_green_circle:'}
+SEVS = ('crit', 'high', 'warn', 'info')
 LEVELS = ('ok',) + SEVS
-COLOR = {'crit': '#c4231a', 'warn': '#e08a00', 'info': '#2f6fe0', 'cleared': '#0b7287', 'ok': '#1f8a4c'}
+COLOR = {'crit': '#c4231a', 'high': '#e8590c', 'warn': '#e9b308', 'info': '#2f6fe0', 'cleared': '#0b7287', 'ok': '#1f8a4c'}
 MAX_LINK_BUTTONS = 2
 MAX_POST_LINKS = 5
 MENU_LIMIT = 5
@@ -69,6 +69,14 @@ FENCE = '`' * 3
 ENTITY_CUT = re.compile(r'&[a-z]{0,3}…$')
 CARD_MENU = 'card_menu'
 KNOWN_VIEW = 'known_confirm'
+RESOLVE_VIEW = 'resolve_kind'
+RESOLVE_PICK = 'fixed'
+RESOLVE_KIND = 'resolve_kind'
+RESOLVE_WHY = 'resolve_why'
+RESOLVE_DUP = 'resolve_dup'
+RESOLVE_WHY_LIMIT = 300
+INPUT_TEXT_LIMIT = 2000
+PLACEHOLDER_LIMIT = 150
 VIEW_TEXT_LIMIT = 24
 DONE = ':white_check_mark:'
 SHORT_LIMIT = 160
@@ -853,6 +861,9 @@ def head_text(a: dict, head: dict, mute: str | None = None, stopped: str = '') -
         text = msg('slack.head.assigned', who=who, card=ref, name=esc(actor(head.get('name'))))
     elif kind in ('auto', 'auto_first'):
         text = msg(f'slack.head.{kind}', card=ref, span=esc(str(head.get('span') or '')))
+    elif kind in ('reopened', 'opened', 'shared') and isinstance(a.get('cameBack'), dict) and a.get('status') == 'open' and a.get('triage') != 'handled':
+        fix = str(a['cameBack'].get('ref') or '')
+        text = msg('slack.head.came_back', card=ref, ref=esc(fix)) if fix else msg('slack.head.came_back_plain', card=ref)
     elif kind in HEAD_KINDS:
         text = msg(f'slack.head.{kind}', who=who, card=ref)
     else:
@@ -962,7 +973,7 @@ def thread_why(card: dict, host: dict | None, host_key: str, why: str | None = N
         why = same[0] if same else None
     if why is None:
         return ''
-    return msg(f'slack.thread.{why}', host=esc(parent_name(host) if host is not None else host_key))
+    return msg(f'slack.thread.{why}', host=esc(parent_name(host) if host is not None else host_key).translate(SLACK_MARKS))
 
 
 def anomaly_message(a: dict, link: str, by: str, draft: str | None = None, buttons: str | None = None, chat: str | None = None, *, head: dict | None = None,
@@ -994,10 +1005,48 @@ def anomaly_message(a: dict, link: str, by: str, draft: str | None = None, butto
     return {'text': (f'{esc(summary)}\n' if summary else '') + said if draft else fallback, 'blocks': blocks}
 
 
+def card_view(callback: str, meta: dict, title: str, submit: str, blocks: list[dict]) -> dict:
+    return {'type': 'modal', 'callback_id': callback, 'private_metadata': json.dumps(meta),
+            'title': plain(title, VIEW_TEXT_LIMIT), 'submit': plain(submit, VIEW_TEXT_LIMIT), 'close': plain(msg('slack.cancel'), VIEW_TEXT_LIMIT), 'blocks': blocks}
+
+
 def known_view(ask_id: str, channel: str, ts: str) -> dict:
-    return {'type': 'modal', 'callback_id': KNOWN_VIEW, 'private_metadata': json.dumps({'ask': ask_id, 'channel': channel, 'ts': ts}),
-            'title': plain(msg('slack.known.title'), VIEW_TEXT_LIMIT), 'submit': plain(msg('slack.known.ok'), VIEW_TEXT_LIMIT), 'close': plain(msg('slack.cancel'), VIEW_TEXT_LIMIT),
-            'blocks': [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': msg('slack.known.confirm')}}]}
+    return card_view(KNOWN_VIEW, {'ask': ask_id, 'channel': channel, 'ts': ts}, msg('slack.known.title'), msg('slack.known.ok'),
+                     [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': msg('slack.known.confirm')}}])
+
+
+def resolve_option(kind: str) -> dict:
+    return {'text': plain(msg(f'slack.resolve.kind.{kind}')), 'value': kind}
+
+
+def text_input(block: str, limit: int, key: str) -> dict:
+    return {'type': 'input', 'block_id': block, 'optional': True, 'label': plain(msg(f'slack.resolve.{key}'), INPUT_TEXT_LIMIT), 'hint': plain(msg(f'slack.resolve.{key}_hint'), INPUT_TEXT_LIMIT),
+            'element': {'type': 'plain_text_input', 'action_id': block, 'max_length': limit, 'placeholder': plain(msg(f'slack.resolve.{key}_placeholder'), PLACEHOLDER_LIMIT)}}
+
+
+def resolve_view(ask_id: str, channel: str, ts: str, thread_ts: str | None = None, button: bool = False, pick: str | None = None) -> dict:
+    meta = {'ask': ask_id, 'channel': channel, 'ts': ts} | ({'thread': thread_ts} if thread_ts and thread_ts != ts else {}) | ({'button': True} if button else {})
+    tips = '\n'.join(msg(f'slack.resolve.tip.{k}') for k in history.RESOLVE_KINDS)
+    return card_view(RESOLVE_VIEW, meta, msg('slack.resolve.title'), msg('slack.resolve.ok'), [
+        {'type': 'input', 'block_id': RESOLVE_KIND, 'label': plain(msg('slack.resolve.how'), INPUT_TEXT_LIMIT),
+         'element': {'type': 'radio_buttons', 'action_id': RESOLVE_KIND, 'options': [resolve_option(k) for k in history.RESOLVE_KINDS], 'initial_option': resolve_option(pick if pick in history.RESOLVE_KINDS else RESOLVE_PICK)}},
+        {'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': tips}]},
+        text_input(RESOLVE_WHY, RESOLVE_WHY_LIMIT, 'why'),
+        text_input(RESOLVE_DUP, history.REF_LIMIT, 'dup')])
+
+
+def resolve_choice(view: dict) -> tuple[str | None, str, str]:
+    values = (view.get('state') or {}).get('values') or {}
+    field = lambda block: (values.get(block) or {}).get(block) or {}
+    kind = (field(RESOLVE_KIND).get('selected_option') or {}).get('value')
+    text = lambda block: str(field(block).get('value') or '')
+    return (kind if kind in history.RESOLVE_KINDS else None), text(RESOLVE_WHY).strip(), ' '.join(text(RESOLVE_DUP).split())
+
+
+def resolve_fields(kind: str, why: str, ref: str) -> dict:
+    if kind == 'duplicate':
+        return {'kind': 'duplicate', 'ref': ref}
+    return ({'kind': 'fixed'} if kind == 'fixed' else {}) | ({'reason': why} if why else {})
 
 
 def carries(blocks: list, mark: str) -> bool:

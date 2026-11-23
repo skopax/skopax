@@ -4,16 +4,16 @@ import re
 from collections.abc import Mapping
 
 from skopax import clock
-from skopax.messages import msg
 from skopax.contract import Context, Field, ReadError, send
+from skopax.messages import msg
 from skopax.kit.elastic import CLUSTERS, DATED, FALLBACK, REJECTED, Elastic, ElasticError, client_for, closest_patterns, index_of, log_fields, refused_text, sources_of
 
 FROM = re.compile(r'^\s*FROM\s+([^|]+)', re.I)
 TIME_BOUND = re.compile(r'@timestamp`?\s*(>=|>|<=|<)', re.I)
 UPPER_BOUND = re.compile(r'@timestamp`?\s*(<=|<)', re.I)
-LOWER_BOUND = re.compile(r'(@timestamp`?\s*(?:>=|>)\s*)(?:NOW\(\)\s*-\s*(\d+)\s*(minutes?|hours?|days?|weeks?)\b|"([^"]+)")', re.I)
-UNIT_HOURS = {'minute': 1 / 60, 'hour': 1, 'day': 24, 'week': 168}
-LAST_DAY = 'NOW() - 1 day'
+LOWER_BOUND = re.compile(r'(@timestamp`?\s*(?:>=|>)\s*)(?:NOW\(\)\s*-\s*(\d+)\s*(minutes?|min|hours?|days?|weeks?|h|d|w)\b|"([^"]+)")', re.I)
+UNIT_HOURS = {'minute': 1 / 60, 'min': 1 / 60, 'hour': 1, 'h': 1, 'day': 24, 'd': 24, 'week': 168, 'w': 168}
+WINDOWS = (('day', 24, 'NOW() - 1 day'), ('hour', 1, 'NOW() - 1 hour'))
 MAX_INDICES = 3
 COLUMNS_SHOWN = 5
 COLUMNS_CLOSE = 0.5
@@ -80,21 +80,24 @@ def literal_hours(text: str) -> float | None:
     return (dt.datetime.now(dt.timezone.utc) - stamp).total_seconds() / 3600
 
 
-def last_day(query: str) -> str | None:
+def bound_hours(m: re.Match) -> float | None:
+    return hours_of(m.group(2), m.group(3)) if m.group(2) else literal_hours(m.group(4))
+
+
+def narrower(query: str) -> tuple[str, str] | None:
     if UPPER_BOUND.search(query):
         return None
-    wide = False
+    widest = max((h for h in (bound_hours(m) for m in LOWER_BOUND.finditer(query)) if h is not None), default=None)
+    window = next(((name, hours, bound) for name, hours, bound in WINDOWS if widest is not None and widest > hours), None)
+    if window is None:
+        return None
+    _, hours, bound = window
 
     def narrow(m: re.Match) -> str:
-        nonlocal wide
-        hours = hours_of(m.group(2), m.group(3)) if m.group(2) else literal_hours(m.group(4))
-        if hours is None or hours <= 24:
-            return m.group(0)
-        wide = True
-        return m.group(1) + LAST_DAY
+        found = bound_hours(m)
+        return m.group(0) if found is None or found <= hours else m.group(1) + bound
 
-    narrowed = LOWER_BOUND.sub(narrow, query)
-    return narrowed if wide else None
+    return LOWER_BOUND.sub(narrow, query), window[0]
 
 
 def check_scope(query: str, index: str) -> None:
@@ -133,14 +136,15 @@ def run_esql(ctx: Context, args: dict) -> object:
             raise ReadError(status, first + column_hint(es, query, e.unknown), HINT_ROOM) from None
         slow = e.status == 504 or e.timed_out
         unserved = not slow and unserved_range(e)
-        narrowed = last_day(query) if slow or unserved else None
+        narrowed = narrower(query) if slow or unserved else None
         if narrowed is None:
             raise ReadError(status, first + (f" - {msg('esql.narrow')}" if slow or unserved else '')) from None
+    retry, window = narrowed
     try:
-        rows = es.query(narrowed, timeout=QUERY_S)
+        rows = es.query(retry, timeout=QUERY_S)
     except ElasticError as again:
-        raise ReadError(status, msg('esql.retry_last_day', first=first, again=answer(again.text, again.status, config))) from None
-    return {'note': msg('esql.range_note' if unserved else 'esql.last_day_note'), 'rows': rows}
+        raise ReadError(status, msg(f'esql.retry_last_{window}', first=first, again=answer(again.text, again.status, config))) from None
+    return {'note': msg(f"esql.{'range' if unserved else 'timeout'}_note_{window}"), 'rows': rows}
 
 
 def missing_names(detail: str) -> set[str]:

@@ -180,8 +180,37 @@ async function emailPostsReadAsEmailAndTeamsPostsStillReadTeams() {
   console.log('PASS email posts read as email and Teams posts still read Teams');
 }
 
+async function anUnknownRoutePluginNamesItsIdAsARouteInTheReadersLanguage() {
+  //given
+  const posts = [{at: T(100), route: 'ops', plugin: 'pager', by: 'server'}];
+  const c = card(KEY, {num: 12, firstSeen: T(300), teamsPosts: posts});
+  const en = await boot([c], {history: {actions: [], activity: []}});
+  const de = await boot([c], {history: {actions: [], activity: []}, lang: 'de'});
+  const opened = async (x) => {
+    const a = () => article(x.doc, KEY);
+    expand(a());
+    a().querySelector('.cd-tab[data-tab="history"]').click();
+    await until(() => a().querySelector('.cd-hist li.h-teams'));
+    await wait(30);
+    return {label: a().querySelector('.cd-hist li.h-teams .h-l').textContent, tag: a().querySelector('.teams-sent').textContent};
+  };
+
+  //when
+  const said = {en: await opened(en), de: await opened(de)};
+
+  //then
+  assert.strictEqual(said.en.label, 'Posted by the pager route');
+  assert.ok(said.en.tag.startsWith('Sent by the pager route \u00b7 ops '), said.en.tag);
+  assert.strictEqual(said.de.label, 'Gepostet \u00fcber die Route pager');
+  assert.ok(said.de.tag.startsWith('Gesendet \u00fcber die Route pager \u00b7 ops '), said.de.tag);
+  assert.deepStrictEqual(en.errors.concat(de.errors), []);
+  en.w.close();
+  de.w.close();
+  console.log('PASS a post by an unknown route plug-in names its id as a route, in the reader language')
+}
+
 (async () => {
-  for (const t of [emailPostsReadAsEmailAndTeamsPostsStillReadTeams, failedAndCancelledActionsReadInTheReadersLanguage, anAssignmentRowReadsAssignedToNameWithNoColon, historyRowsComeNewestFirstWithWhoWhenAndOldToNew, historyRowsAreTranslatedButTheirDataStaysAsWritten, theDetailsAndHistoryTabsSwitchByClickAndKeyboardAndStayAcrossARepaint]) {
+  for (const t of [anUnknownRoutePluginNamesItsIdAsARouteInTheReadersLanguage, emailPostsReadAsEmailAndTeamsPostsStillReadTeams, failedAndCancelledActionsReadInTheReadersLanguage, anAssignmentRowReadsAssignedToNameWithNoColon, historyRowsComeNewestFirstWithWhoWhenAndOldToNew, historyRowsAreTranslatedButTheirDataStaysAsWritten, theDetailsAndHistoryTabsSwitchByClickAndKeyboardAndStayAcrossARepaint]) {
     try { await t(); } catch (e) { console.error('FAIL ' + t.name + ': ' + e.message.replace(/\x1b\[[0-9;]*m/g, '').split('\n').slice(0, 30).join(' | ')); process.exitCode = 1; }
   }
   process.exit(process.exitCode || 0);

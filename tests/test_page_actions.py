@@ -109,7 +109,7 @@ def test_severity_is_set_by_hand_and_auto_gives_the_signal_s_back(client: TestCl
     set_card = store.anomaly(KEY)
     listed = client.get('/api/state').json()
     back = client.post('/api/actions', json={'type': 'severity', 'key': KEY, 'sev': 'auto', 'label': 'Severity'}, headers=AUTH).json()
-    wrong = client.post('/api/actions', json={'type': 'severity', 'key': KEY, 'sev': 'high', 'label': 'Severity'}, headers=AUTH)
+    wrong = client.post('/api/actions', json={'type': 'severity', 'key': KEY, 'sev': 'loud', 'label': 'Severity'}, headers=AUTH)
 
     # then
     assert (down['status'], down['result']) == ('done', 'severity set to Info by hand (the signal says Warning)')
@@ -296,3 +296,15 @@ def test_any_other_triage_drops_the_resolution_and_a_relink_keeps_it(client: Tes
     # then
     assert (relinked['triage'], relinked['ticket'], relinked['resolution']['kind']) == ('handled', 'OPS-141', 'fixed')
     assert taken['triage'] == 'progress' and 'resolution' not in taken
+
+
+def test_a_high_child_stays_out_of_a_handled_parent_like_a_critical_one(client: TestClient):
+    # given
+    high, handled = 'log|g|ERROR|g', 'log|h|ERROR|h'
+    client.put('/api/state', json=state(anomaly(high, sev='high'), anomaly(handled, triage='handled')), headers=AUTH)
+
+    # when
+    refused = client.post('/api/actions', json={'type': 'group', 'key': high, 'parent': handled, 'label': 'Group'}, headers=AUTH).json()
+
+    # then
+    assert (refused['status'], refused['result']) == ('failed', f'{handled} is handled and {high} is high; a high card stays open for a human, also under a parent')

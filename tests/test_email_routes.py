@@ -341,7 +341,7 @@ def test_teams_routes_are_unchanged_next_to_an_email_route(store: Store):
     # given
     t = Transport()
     runtime = runtime_of(store, t, server(), mail_route(keys='log|*'), (teams.PLUGIN, *teams_route('seo', SEO, keys='log|*')), plugins=PLUGINS)
-    runtime.live = live_of(store, PLUGINS, DEFAULTS)
+    runtime.live = live_of(store, PLUGINS, DEFAULTS | {'teams.min-sev': 'warn'})
     routes = Routes(store, runtime, settings())
 
     # when
@@ -575,6 +575,151 @@ def test_the_email_route_and_the_mail_server_read_as_two_different_things():
     # then
     assert (route.id, route.name, server.name) == ('email', 'Email route', 'Mail server')
     assert route.description == 'A route that mails chosen cards to a list of addresses, like a Teams route. Add one per list; it sends through the Mail server.'
-    assert server.description == 'The connection to your SMTP server. Set it up once; Email routes and personal notification mail send through it.'
+    assert server.description == 'The connection that sends mail: your SMTP server, or Microsoft 365 through Microsoft Graph. Set it up once; Email routes and personal notification mail send through it.'
     assert route.description != server.description
     assert settings == ['Email route repeat days', 'Email route lowest severity', 'Email route fixed mails']
+
+
+CARD = {'key': 'log|checkout-service|ERROR|boom', 'label': 'checkout-service / ERROR lines', 'num': 7, 'sev': 'warn'}
+
+
+def test_an_urgent_action_mail_leads_with_urgent_and_lists_the_open_child_cards_with_their_links():
+    # given
+    message = {'kind': 'action', 'card': CARD, 'link': 'https://skopax.example.com/c/7', 'urgent': True, 'page': 'https://skopax.example.com/p/7', 'chat': 'https://skopax.example.com/chat/7',
+               'lines': [{'label': 'Impact', 'text': 'orders fail'}],
+               'kids': [{'text': 'cart errors', 'page': 'https://skopax.example.com/p/8', 'number': 8, 'link': 'https://skopax.example.com/c/8'}, {'text': 'no links'}]}
+
+    # when
+    [(key, (_, text, _))] = email_route.mails_of(message)
+
+    # then
+    assert key == CARD['key']
+    assert f"{msg('routes.urgent')} · Impact: orders fail" in text
+    assert '• cart errors · ' + msg('routes.open_page') + ': https://skopax.example.com/p/8 · #8 https://skopax.example.com/c/8' in text
+    assert '• no links\n' in text
+    assert msg('routes.open_page') + ': https://skopax.example.com/p/7' in text and msg('routes.chat') + ': https://skopax.example.com/chat/7' in text
+
+
+def test_a_card_digest_adds_the_more_line_to_the_last_card_only():
+    # given
+    rows = [{'key': f'log|a|ERROR|{n}', 'label': f'a {n}', 'num': n, 'sev': 'warn', 'what': f'what {n}', 'link': f'https://skopax.example.com/c/{n}'} for n in (1, 2)]
+    message = {'kind': 'card', 'cards': rows, 'more': 3, 'board': 'https://skopax.example.com/board'}
+
+    # when
+    [(_, (_, first, _)), (_, (_, last, _))] = email_route.mails_of(message)
+
+    # then
+    more = msg('routes.more', count=3) + ': https://skopax.example.com/board'
+    assert more not in first and more in last
+
+
+def test_a_route_whose_ready_check_raises_is_off_and_says_why(store: Store, monkeypatch):
+    # given
+    routes = routes_with(store, server(), mail_route(keys='log|*'))
+    runtime = routes.runtime
+    item = runtime.instances_of('email')[0]
+
+    def boom(self):
+        raise RuntimeError('config is gone')
+
+    monkeypatch.setattr(mail.Mailer, 'ready', boom)
+
+    # when
+    problem = runtime.route_problem(email_route.PLUGIN, item)
+
+    # then
+    assert problem and routes.routes() == []
+
+
+def test_a_mail_server_that_does_not_answer_in_time_fails_the_connection_test_with_the_timeout(store: Store, monkeypatch):
+    # given
+    routes = routes_with(store, server(), mail_route(keys='log|*'))
+
+    def silent(self):
+        raise mail.MailDown(f'no answer in {mail.TIMEOUT_S} s')
+
+    monkeypatch.setattr(mail.Mailer, 'probe', silent)
+
+    # when
+    tested = routes.runtime.connection_test(email_route.PLUGIN, 'ops', {}, 30, NOW)
+
+    # then
+    assert tested['ok'] is False and f'no answer in {mail.TIMEOUT_S} s' in tested['summary']
+
+
+def test_a_route_that_gave_up_mails_again_after_its_retries_are_reset(store: Store):
+    # given
+    routes = routes_with(store, server(), mail_route(recipients=ALICE, tags='developer'))
+    store.save(state(open_card('log|checkout-service|ERROR|boom', tags=tag('developer'))), None)
+    Box.refuse = {ALICE}
+    routes.deliver(store.load()['anomalies'], NOW)
+    gave_up = routes.gave_up()
+    Box.refuse = set()
+
+    # when
+    routes.reset('email', 'ops')
+    again = routes.deliver(store.load()['anomalies'], NOW + 60)
+
+    # then
+    assert len(gave_up) == 1 and routes.gave_up() == [] and again == 1 and [to for to, _ in sent()] == [ALICE]
+
+
+def test_a_recipient_keeps_the_typed_local_part_and_lowers_only_the_domain():
+    # given
+    given = 'Alice.Smith@Example.COM, a@example.com A@example.com, ALICE.SMITH@example.com'
+
+    # when
+    found = email_route.addresses(given)
+
+    # then
+    assert found == ['Alice.Smith@example.com', 'a@example.com']
+
+
+def test_a_mail_goes_to_the_address_as_typed_and_an_old_lower_case_mark_still_dedupes(store: Store):
+    # given
+    routes = routes_with(store, server(), mail_route(recipients='Alice.Smith@Example.COM, Bob@example.com', tags='developer'))
+    store.save(state(open_card('log|checkout-service|ERROR|boom', tags=tag('developer'))), None)
+    cards = store.load()['anomalies']
+    email_route.remember(('ops', 'card', 'log|checkout-service|ERROR|boom', 'alice.smith@example.com'), email_route.SENT, '')
+
+    # when
+    routes.deliver(cards, NOW)
+
+    # then
+    assert Box.tried == ['Bob@example.com'], 'the lower-case mark covers Alice.Smith'
+
+
+def test_a_mail_is_sent_to_the_typed_spelling(store: Store):
+    # given
+    routes = routes_with(store, server(), mail_route(recipients='Alice.Smith@Example.COM', tags='developer'))
+    store.save(state(open_card('log|checkout-service|ERROR|boom', tags=tag('developer'))), None)
+
+    # when
+    routes.deliver(store.load()['anomalies'], NOW)
+
+    # then
+    assert Box.tried == ['Alice.Smith@example.com']
+
+
+def test_a_refused_data_stage_counts_against_that_recipient_only(store: Store):
+    # given
+    routes = routes_with(store, server(), mail_route(recipients=f'{ALICE}, {BOB}', tags='developer'))
+    store.save(state(open_card('log|checkout-service|ERROR|boom', tags=tag('developer'))), None)
+    real = Box.send_message
+
+    def reject(box, message, from_addr=None, to_addrs=None):
+        Box.tried.append(to_addrs[0])
+        if to_addrs == [ALICE]:
+            raise smtplib.SMTPDataError(554, b'5.7.1 content rejected')
+        return FakeSMTP.send_message(box, message, from_addr, to_addrs)
+    Box.send_message = reject
+
+    # when
+    try:
+        first = routes.deliver(store.load()['anomalies'], NOW)
+    finally:
+        Box.send_message = real
+
+    # then
+    assert first == 1 and Box.tried == [ALICE, BOB]
+    assert store.route_retries() == []

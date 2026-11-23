@@ -7,7 +7,7 @@ from urllib.parse import quote
 from skopax import brand, causes, clock
 from skopax.contract import Knowledge, OrgPack
 from skopax.engine import parse_iso
-from skopax.history import outcome_text
+from skopax.history import MACHINE, MUTE_KINDS, RESOLVE_KINDS, kind_text, outcome_text, who_text
 from skopax.investigator.select import ANNOUNCE_WINDOW_S
 
 PROCESS = Path(__file__).with_name('process.md')
@@ -354,6 +354,7 @@ def announced_hint(twin: dict) -> str:
 def card_brief(x: dict, base: str, twin: dict | None = None) -> str:
     lines = [(f"- card #{x['num']}, " if x.get('num') else '- ') + f"key {shown_key(x['key'])}: {flat(x.get('svc'))} / {flat(x.get('label'))}" + (f" \u00b7 {flat(x['sub'])}" if x.get('sub') else '')
              + f", {flat(x.get('sev'))}, {flat(x.get('status'))}, first seen {flat(x.get('firstSeen'))} (UTC)"]
+    lines += verdict_lines(x.get('seenBefore') or {})
     if x.get('what'):
         lines.append(f"  what: {flat(x['what'])}")
     cause = causes.own(x)
@@ -397,6 +398,48 @@ def card_brief(x: dict, base: str, twin: dict | None = None) -> str:
     return '\n'.join(lines)
 
 
+VERDICT_KIND = {'known': 'Known noise', 'muted': 'Muted', 'progress': 'In progress'}
+SAME_AGAIN = ('handled',) + MUTE_KINDS
+
+
+def verdict_kind(v: dict) -> str:
+    kind = v.get('kind')
+    if kind in RESOLVE_KINDS:
+        return kind_text({'kind': kind, 'ref': v.get('ref')})
+    return VERDICT_KIND.get(kind, str(kind or '?'))
+
+
+def verdict_line(v: dict) -> str:
+    parts = [verdict_kind(v)]
+    if v.get('by'):
+        parts[0] += f" by {who_text(v['by'])}"
+    if v.get('at'):
+        parts[0] += f" on {clock.date(parse_iso(v['at']), hm=False)}"
+    if v.get('ticket') and v.get('ticket') != v.get('ref'):
+        parts.append(f"ticket {v['ticket']}")
+    if v.get('note'):
+        parts.append(f"note {flat(v['note'])!r}")
+    return flat(', '.join(parts))
+
+
+def verdict_lines(seen: dict) -> list[str]:
+    ruled = [v for v in seen.get('verdicts') or [] if isinstance(v, dict)]
+    if not ruled:
+        return []
+    out = ['  a person ruled on this card before (reviewed by people, the default answer; it outweighs any machine outcome below):']
+    out += [f'    - {verdict_line(v)}' for v in ruled]
+    out.append('    start from the newest verdict and reuse its cause and resolution, verify it with one query; overturn it only when current evidence contradicts it, '
+               'and then name the verdict and that evidence')
+    if ruled[0].get('kind') in SAME_AGAIN:
+        out.append(f'    when this firing looks the same, propose the same again ({verdict_kind(ruled[0])}): in a card run say so in the assess next step, '
+                   'in a Slack ask with propose_card_action')
+    return out
+
+
+def verdict_text(seen: dict) -> str:
+    return '\n'.join(verdict_lines(seen))
+
+
 def seen_lines(seen: dict) -> list[str]:
     out = []
     if seen.get('count'):
@@ -405,7 +448,7 @@ def seen_lines(seen: dict) -> list[str]:
         if seen.get('lastAt'):
             parts.append(f"last {clock.date(parse_iso(seen['lastAt']))} {clock.label(parse_iso(seen['lastAt']))}")
         if seen.get('outcome'):
-            parts.append(f"ended {flat(outcome_text(seen['outcome'], seen.get('resolution')))}")
+            parts.append(f"ended {flat(outcome_text(seen['outcome'], seen.get('resolution')))}" + (' (machine)' if seen.get('decidedBy') in MACHINE else ''))
         if seen.get('ticket'):
             parts.append(f"ticket {flat(seen['ticket'])}")
         out.append('  seen before: ' + ', '.join(parts) + '; check past_cards before a deep dive')

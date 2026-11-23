@@ -40,7 +40,7 @@ def test_routes_come_from_instances_and_an_incomplete_one_stays_off(store: Store
 
     # then
     assert [(r.id, r.keys, r.min_sev, r.tags, r.mentions) for r in found] == [('teams/data', ('*namespace=reporting*',), 'crit', frozenset(), ()),
-                                                                               ('teams/marketing', ('page-typos|*', 'page-layout|*'), 'warn', frozenset(), ())]
+                                                                               ('teams/marketing', ('page-typos|*', 'page-layout|*'), 'high', frozenset(), ())], 'a key route with no lowest severity starts at high'
 
 
 def test_each_team_gets_one_post_with_its_own_cards_and_never_a_muted_or_too_mild_one(store: Store):
@@ -61,7 +61,7 @@ def test_each_team_gets_one_post_with_its_own_cards_and_never_a_muted_or_too_mil
     assert adaptive['contentType'] == 'application/vnd.microsoft.card.adaptive' and adaptive['content']['type'] == 'AdaptiveCard'
     lines = texts(body)
     assert lines[0] == 'Skopax \u00b7 1 card'
-    assert lines[1] == '\U0001f7e0 Warning \u00b7 **shop.example.com/products / Typos**'
+    assert lines[1] == '\U0001f7e1 Warning \u00b7 **shop.example.com/products / Typos**'
     assert lines[2] == 'x' * 299 + '\u2026'
     assert lines[3] == '[Open in Skopax](https://skopax.example.com/#a=page-typos%7Cshop.example.com%2Fproducts) \u00b7 [Chat](https://skopax.example.com/#t=chat/new/page-typos%7Cshop.example.com%2Fproducts)'
     assert any(r['kind'] == 'routes' and 'marketing' in r['text'] for r in store.list_activity(None, 5))
@@ -89,7 +89,7 @@ def test_the_app_posts_pushed_cards_to_teams_and_a_test_post_checks_a_route(stor
 
     # when
     with TestClient(create_app(settings(), store, kube=Kube(root=tmp_path), transport=t)) as c:
-        add_route(c, 'marketing', MARKETING, keys='page-typos|*')
+        add_route(c, 'marketing', MARKETING, keys='page-typos|*', min_sev='warn')
         c.app.state.server_apply([PassResult('pagescan', True, 'ok', [found], {}, (found['ranKey'],))], NOW, None)
         assert c.app.state.routes.drain(5)
         tested = c.post('/api/admin/plugins/teams/test', json={'name': 'marketing'}, headers=AUTH)
@@ -443,7 +443,7 @@ def test_a_route_that_takes_the_tech_tag_posts_the_technical_card_once_and_needs
     assert pushed == {}, 'a tag route waits for the tag; the push flow leaves it alone'
     assert first == {'teams/eng': ['log|a|ERROR|fix']} and again == {}
     [(url, body)] = t.calls
-    assert url == TECH and texts(body) == ['Skopax \u00b7 Developer', '\U0001f7e0 Warning \u00b7 **checkout-service / ERROR lines**', 'NullPointerException in OrderService',
+    assert url == TECH and texts(body) == ['Skopax \u00b7 Developer', '\U0001f7e1 Warning \u00b7 **checkout-service / ERROR lines**', 'NullPointerException in OrderService',
                                           '[Open in Skopax](https://skopax.example.com/#a=log%7Ca%7CERROR%7Cfix) \u00b7 [Chat](https://skopax.example.com/#t=chat/new/log%7Ca%7CERROR%7Cfix)']
 
 
@@ -461,8 +461,8 @@ def test_a_link_shared_by_a_business_and_a_tech_route_posts_the_sentence_once_an
     # then
     assert sent == {'teams/seo': ['log|a|ERROR|both'], 'teams/eng': ['log|a|ERROR|both', 'log|a|ERROR|code', 'log|a|ERROR|unsaid']}
     assert [texts(b)[:2] for _, b in t.calls] == [['Skopax \u00b7 SEO, Developer', '**Recommended:** Add a redirect.'],
-                                                  ['Skopax \u00b7 Developer', '\U0001f7e0 Warning \u00b7 **checkout-service / ERROR lines**'],
-                                                  ['Skopax \u00b7 Developer', '\U0001f7e0 Warning \u00b7 **checkout-service / ERROR lines**']]
+                                                  ['Skopax \u00b7 Developer', '\U0001f7e1 Warning \u00b7 **checkout-service / ERROR lines**'],
+                                                  ['Skopax \u00b7 Developer', '\U0001f7e1 Warning \u00b7 **checkout-service / ERROR lines**']]
 
 
 def test_a_card_that_fires_again_or_gets_a_second_team_tag_is_not_posted_twice_to_one_channel_within_the_repeat_days(store: Store):

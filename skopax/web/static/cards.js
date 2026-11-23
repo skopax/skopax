@@ -223,10 +223,18 @@ function bizNoteSync(a, box) {
   w.innerHTML = '<b>Why:</b> ' + esc((b && b.why) || '');
   w.hidden = !(b && b.text && b.why);
 }
+var RULED_KIND = {known: 'Known noise', muted: 'Muted', progress: 'In progress'};
+function ruledHtml(v) {
+  var kind = RULED_KIND[v.kind] ? '<span>' + esc(RULED_KIND[v.kind]) + '</span>' : resKindHtml(resolutionOf({resolution: {kind: v.kind, ref: v.ref}}));
+  var by = v.by ? ' ' + tx('by {0}').replace('{0}', function () { return '<span data-no-tx>' + esc(resWho(v.by)) + '</span>'; }) : '';
+  var at = v.at ? ', <span data-no-tx>' + esc(dayMonth(new Date(v.at))) + '</span>' : '';
+  return '<span class="seen-ruled" title="A person decided an earlier occurrence of this card; the investigator starts from it"><span>Ruled</span> ' + kind + by + at + '</span>';
+}
 function seenHtml(a) {
   var s = a.seenBefore;
   if (!s) return '';
   var parts = [];
+  if (s.ruled && s.ruled.kind) parts.push(ruledHtml(s.ruled));
   if (s.count) {
     var r = outcomeHtml(s.outcome, s.resolution) && resolutionOf(s);
     var t = 'Seen before: ' + (s.count === 1 ? 'once' : s.count + ' times') + (s.lastAt ? ', last ' + daytime(s.lastAt) : '') + (s.outcome ? ', ' + (r ? 'resolved as' : SEEN_END[s.outcome] || s.outcome) : '');
@@ -470,6 +478,8 @@ function cardTags(a) {
   if (d) t.push({row: notPosted(a) && draftLive(a) ? 1 : 0, html: d});
   if (a.src === 'qan' && a.kind) t.push({row: 0, html: a.kind === 'dwh' ? '<span class="tag plain" title="Not application traffic: a data-platform or reporting query. Info only, never pushed.">DWH / data</span>' : '<span class="tag plain" title="Application query traffic">App query</span>'});
   if (a.gone && a.status === 'open') t.push({row: 1, html: '<span class="tag k-warn page-gone" title="' + esc(goneText(a)) + '">Page gone · ' + esc(a.gone.status) + '</span>'});
+  var was = backTag(a);
+  if (was) t.push({row: 1, html: was});
   if ((a.teamsPosts || []).length) t.push({row: 0, html: teamsTag(a.teamsPosts)});
   if (a.muted) t.push({row: 3, html: '<span class="tag k-muted">Muted</span>'});
   if (a.status === 'cleared') t.push({row: 4, html: '<span class="tag k-cleared">' + esc(clearedWord(a) + ' ' + daytime(a.clearedAt)) + '</span>'});
@@ -489,7 +499,14 @@ function clearedWord(a, short) {
   if (a.triage === 'progress') return base + ' \u00b7 ' + (a.owner ? stoppedWho(a) : 'someone') + ' is on it';
   return a.owner ? base + ' \u00b7 awaiting action \u00b7 assigned to ' + stoppedWho(a) : base + ' \u00b7 unassigned';
 }
-function stoppedLong(a) { return a.status === 'cleared' && !a.muted && a.triage !== 'handled' && (a.sev === 'warn' || a.sev === 'crit'); }
+function backTag(a) {
+  var p = a.previousResolution;
+  if (!p || typeof p !== 'object' || a.triage === 'handled') return '';
+  if (p.kind === 'fixed' && a.cameBack) return '<span class="tag k-high came-back" title="' + esc('Fixed on ' + daytime(p.at) + ', then it fired again') + '">Came back after fix' + (p.ref ? ' <span data-no-tx>' + esc(p.ref) + '</span>' : '') + '</span>';
+  if (p.kind === 'handled') return '<span class="tag plain was-noaction" title="' + esc('Resolved as no action needed on ' + daytime(p.at)) + '">Was no action needed</span>';
+  return '';
+}
+function stoppedLong(a) { return a.status === 'cleared' && !a.muted && a.triage !== 'handled' && cardSev(a.sev); }
 function stoppedWho(a) { return a.ownerName || (a.assigned && a.assigned.name) || ownerName(a.owner); }
 function causeHtml(a) {
   var c = causeOf(a);
@@ -644,7 +661,7 @@ function filterBase(f) {
   function add(list) { list.forEach(function (a) { if (out.indexOf(a) < 0) out.push(a); }); }
   if (f === 'open') { add(open); add(stale); return out; }
   if (f === 'all') { [open, stale, inprog, taken, muted, cleared].forEach(add); return out; }
-  if (f === 'crit' || f === 'warn') return openBySev(f);
+  if (cardSev(f)) return openBySev(f);
   if (f === 'investigating' || f === 'dived') return A.filter(function (a) { return a.triage === f; });
   if (f === 'svc') return svcF ? svcCards(svcF).list : [];
   return {stale: stale, progress: inprog, taken: taken, muted: muted, cleared: cleared, recurring: recurringL, archived: ARCHIVED, closed: []}[f] || A;
@@ -802,7 +819,7 @@ function dragDone() {
   document.querySelectorAll('#anoms .bcol').forEach(function (c) { c.classList.remove('drop-ok', 'drop-no', 'drop-on'); });
 }
 function landsIn(a) {
-  return a.status === 'open' || (a.status === 'cleared' && (a.sev === 'warn' || a.sev === 'crit')) ? 'open' : null;
+  return a.status === 'open' || (a.status === 'cleared' && cardSev(a.sev)) ? 'open' : null;
 }
 function moveSteps(a, to) {
   var from = boardColumn(a), name = svcName(a) + ' ' + a.label, base = {target: a.key, key: a.key};
@@ -955,7 +972,7 @@ function renderBoard(root, groups) {
   var board = el('div', 'board');
   BOARD_COLS.forEach(function (c) {
     var list = cards.filter(function (a) { return boardColumn(a) === c[0]; }).sort(function (x, y) {
-      return (x.sev in SEV_ORD ? SEV_ORD[x.sev] : 3) - (y.sev in SEV_ORD ? SEV_ORD[y.sev] : 3) || (c[0] === 'open' ? (x.status === 'open' ? 0 : 1) - (y.status === 'open' ? 0 : 1) : 0) || String(y.lastSeen || y.firstSeen || '').localeCompare(String(x.lastSeen || x.firstSeen || ''));
+      return bySevOrd(x, y) || (c[0] === 'open' ? (x.status === 'open' ? 0 : 1) - (y.status === 'open' ? 0 : 1) : 0) || String(y.lastSeen || y.firstSeen || '').localeCompare(String(x.lastSeen || x.firstSeen || ''));
     });
     var col = el('section', 'bcol bcol-' + c[0]);
     col.dataset.col = c[0];
@@ -1051,10 +1068,13 @@ function boardSearchHint() {
   if (panel && window.MutationObserver) new MutationObserver(function () { if (!panel.hidden) boardSync(false); }).observe(panel, {attributes: true, attributeFilter: ['hidden']});
 })();
 var DRAWER_WIDE_KEY = 'skopax.drawer.wide';
+var ICON_EXPAND = '<svg class="cd-x-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>';
+var ICON_SHRINK = '<svg class="cd-x-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>';
 function drawerWide(wrap, on) {
   var b = wrap.querySelector('.cd-expand'), label = on ? 'Shrink' : 'Expand', hint = on ? 'Shrink the card to the narrow view' : 'Expand the card to the wide view';
   wrap.classList.toggle('wide', on);
-  b.textContent = label;
+  b.innerHTML = (on ? ICON_SHRINK : ICON_EXPAND) + '<span class="cd-x-l"></span>';
+  b.querySelector('.cd-x-l').textContent = label;
   b.setAttribute('aria-label', hint);
   b.title = hint;
   b.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -1073,8 +1093,8 @@ function openDrawer(key, quiet) {
   wrap.setAttribute('role', 'dialog');
   wrap.setAttribute('aria-modal', 'true');
   wrap.setAttribute('aria-label', svcName(a) + ' / ' + a.label);
-  wrap.innerHTML = '<div class="cd-backdrop"></div><div class="cd-panel"><div class="cd-bar"><span class="cd-t">' + (a.num ? 'Card #' + esc(a.num) : 'Card') + '</span>' +
-    (a.num ? '<a class="cd-link" href="/c/' + esc(a.num) + '" target="_blank" rel="noopener">Open alone ↗</a>' : '') + '<button type="button" class="btn sec small cd-expand"></button><button type="button" class="btn sec small cd-close">Close</button></div></div>';
+  wrap.innerHTML = '<div class="cd-backdrop"></div><div class="cd-panel"><div class="cd-bar"><button type="button" class="btn sec small cd-expand"></button><span class="cd-t">' + (a.num ? 'Card #' + esc(a.num) : 'Card') + '</span>' +
+    (a.num ? '<a class="cd-link" href="/c/' + esc(a.num) + '" target="_blank" rel="noopener">Open alone ↗</a>' : '') + '<button type="button" class="btn sec small cd-close">Close</button></div></div>';
   var card = anomCard(a, CARDS.indexOf(a));
   wrap.querySelector('.cd-panel').appendChild(card);
   root.appendChild(wrap);
@@ -1251,7 +1271,7 @@ function paintAnoms() {
     if (list.length || (!searchQ && id === 'open') || empty) groups.push({id: id, title: title, hint: hint, k: k, list: list, empty: empty});
   }
   if (filter === 'open' || filter === 'all') g('open', 'Open', 'critical first; a card that stopped firing or was investigated stays here until someone takes, resolves or mutes it, and its tags say which', SEV[worst][1], openAll());
-  if (['crit', 'warn'].indexOf(filter) >= 0) g('open', SEV[filter][0], 'open: firing, or stopped with nobody acting on it yet', SEV[filter][1], openBySev(filter));
+  if (cardSev(filter)) g('open', SEV[filter][0], 'open: firing, or stopped with nobody acting on it yet', SEV[filter][1], openBySev(filter));
   if (filter === 'progress' || filter === 'all') g('progress', TRI.progress[0], 'a ticket or hand-off is underway; pushes again only if it doubles or gets worse. A card with a Jira ticket stays until the ticket closes, one with free text drops off 24 hours after it cleared', TRI.progress[1], inprog);
   if (filter === 'taken' || filter === 'all') g('taken', 'Done', 'no action needed; pushes again only if it doubles or gets worse, and comes back under Open when it stops and fires again. Drops off 24 hours after it cleared or was resolved, whichever is later', 'k-good', taken);
   if (filter === 'muted' || filter === 'all') g('muted', 'Muted', 'no pushes while the mute lasts, open or already cleared; unmute to get them again', 'k-muted', muted);
@@ -1291,16 +1311,16 @@ function typeGroups(list) {
     if (!by[t]) { by[t] = []; order.push(t); }
     by[t].push(a);
   });
-  var rank = function (list) { return Math.min.apply(null, list.map(function (a) { return a.sev in SEV_ORD ? SEV_ORD[a.sev] : 3; })); };
+  var rank = function (list) { return Math.min.apply(null, list.map(function (a) { return a.sev in SEV_ORD ? SEV_ORD[a.sev] : 4; })); };
   return order.map(function (t, i) { return {type: t, list: by[t], rank: rank(by[t]), i: i}; })
     .sort(function (x, y) { return x.rank - y.rank || x.i - y.i; });
 }
 function typeGroup(groupId, p) {
   var id = groupId + ':' + p.type, d = el('details', 'tgrp');
   d.dataset.fold = id;
-  var crit = p.list.filter(function (a) { return a.sev === 'crit'; }).length;
+  var crit = p.list.filter(function (a) { return a.sev === 'crit'; }).length, high = p.list.filter(function (a) { return a.sev === 'high'; }).length;
   d.appendChild(el('summary', 'tgrp-h chev', '<span class="tgrp-n">' + esc(typeName(p.type)) + '</span><span class="count">' + p.list.length + '</span>' +
-    (crit ? '<span class="tag k-crit">' + crit + ' critical</span>' : '')));
+    (crit ? '<span class="tag k-crit">' + crit + ' critical</span>' : '') + (high ? '<span class="tag k-high">' + high + ' high</span>' : '')));
   var body = el('div', 'tgrp-body');
   p.list.forEach(function (a) { body.appendChild(anomCard(a, CARDS.indexOf(a))); });
   d.appendChild(body);

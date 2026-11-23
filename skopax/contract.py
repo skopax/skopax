@@ -10,6 +10,7 @@ from pymongo.database import Database
 from skopax.engine import PassResult, anomaly, fmt, iso
 from skopax.errkind import Authored, InvalidInstance, NoAccess, SourceOwned
 from skopax.remote import HttpError, Transport, Unreachable, call, send
+from skopax.severity import LEVELS as SEVERITIES, from_label as alert_sev
 
 __all__ = [
     'ID',
@@ -76,6 +77,8 @@ __all__ = [
     'Plugin',
     'PassResult',
     'anomaly',
+    'SEVERITIES',
+    'alert_sev',
     'fmt',
     'iso',
     'Transport',

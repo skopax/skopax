@@ -5,7 +5,7 @@ from skopax.messages import msg
 CARD = 'application/vnd.microsoft.card.adaptive'
 SCHEMA = 'http://adaptivecards.io/schemas/adaptive-card.json'
 DOT = ' \u00b7 '
-SEVS = ('crit', 'warn', 'info')
+SEVS = ('crit', 'high', 'warn', 'info')
 MARKS = re.compile(r'([\\`*_\[\]()<>#~])')
 
 
@@ -38,7 +38,7 @@ def card_rows(message: dict) -> list[dict]:
     blocks = []
     for c in message.get('cards') or []:
         head = f"{sev_label(c.get('sev'))}{DOT}**{escaped(c.get('svc') or '-')} / {escaped(c.get('label') or '?')}**" + (f"{DOT}#{c['number']}" if c.get('number') else '')
-        blocks += [text_block(head, separator=True), text_block(escaped(c.get('what')), isSubtle=True, size='Small'),
+        blocks += [text_block(head, separator=True)] + ([text_block(escaped(c['cameBack']), weight='Bolder', size='Small')] if c.get('cameBack') else []) + [text_block(escaped(c.get('what')), isSubtle=True, size='Small'),
                    text_block(link(msg('routes.open'), c.get('link') or '') + DOT + link(msg('routes.chat'), c.get('chat') or ''), size='Small')]
     if message.get('more'):
         blocks.append(text_block(msg('routes.more', count=message['more']) + DOT + link(msg('routes.all'), message.get('board') or ''), size='Small'))

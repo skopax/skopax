@@ -744,7 +744,7 @@ def test_the_app_promises_an_investigation_only_while_the_investigator_runs_live
     import time
     s = dataclasses.replace(settings(), anthropic_api_key='sk-test', investigate_mode=mode)
     store.save_state({'anomalies': [], 'initialized': True}, None)
-    found = [item('cf-health|shop', sev='crit'), item('cf-health|cart', sev='warn')]
+    found = [item('cf-health|shop', sev='crit'), item('cf-health|cart', sev='high')]
 
     # when
     with TestClient(create_app(s, store, slack=Slack('xoxb-test', '#ops', FakeSlack(), FakeSlackApi()), anthropic_client=FakeAnthropic([]))) as c:
@@ -758,6 +758,28 @@ def test_the_app_promises_an_investigation_only_while_the_investigator_runs_live
     assert warn.endswith(msg('autosend.post_now.warn_last')) is investigated
     if not investigated:
         assert crit.endswith('.') and msg('autosend.crit_now.last') not in crit and msg('autosend.post_now.warn_last') not in warn
+
+
+def test_a_post_at_once_that_failed_and_went_out_on_a_later_retry_does_not_say_at_once(store: Store):
+    # given
+    from skopax.autosend import AutoSend
+    store.save(state(crit_card(KEY)), None)
+    sent = []
+
+    def down(key):
+        raise SlackDown('Slack did not answer')
+    cards = store.load()['anomalies']
+    PostNow(store, down, lambda: 'crit').run(cards, cards, utc_now().timestamp())
+    due_now(store)
+
+    # when
+    AutoSend(store, sent.append, lambda report_id: None).run_once()
+
+    # then
+    texts = [r['text'] for r in store.list_activity(None, 20) if r.get('key') == KEY or KEY in r['text']]
+    assert sent == [KEY]
+    assert not any('at once' in t for t in texts), texts
+    assert f'Slack post sent \u00b7 {KEY}' in texts
 
 
 def test_a_post_at_once_the_worker_claims_first_still_says_so_once(store: Store, monkeypatch):

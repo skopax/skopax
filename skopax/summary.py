@@ -1,10 +1,10 @@
 import datetime as dt
 
-from skopax import clock, information
+from skopax import clock, information, severity
 from skopax.settle import RELEASE_GAP_HOURS, REPORT_LOOKBACK_HOURS, SETTLE_MINUTES, WINDOW_HOURS, covered, ignored, newest_release, when
 from skopax.store import Store, iso
 
-RANK = {'crit': 3, 'warn': 2, 'info': 1}
+RANK = severity.RANK
 SHOWN = 4
 ADDRESSED = ('progress', 'handled')
 NO_HEALTH = 'noHealth'
@@ -35,7 +35,7 @@ def open_cards(anomalies: list[dict]) -> list[dict]:
 
 def waiting_cards(anomalies: list[dict]) -> list[dict]:
     keys = {a['key'] for a in anomalies}
-    live = [a for a in anomalies if a.get('status') == 'cleared' and not a.get('muted') and a.get('triage') not in ADDRESSED and a.get('sev') in ('warn', 'crit') and not (a.get('parent') in keys and a.get('parent') != a['key'])]
+    live = [a for a in anomalies if a.get('status') == 'cleared' and not a.get('muted') and a.get('triage') not in ADDRESSED and a.get('sev') in severity.CARD_LEVELS and not (a.get('parent') in keys and a.get('parent') != a['key'])]
     return sorted(live, key=lambda a: (-RANK.get(a.get('sev'), 0), a.get('firstSeen') or ''))
 
 

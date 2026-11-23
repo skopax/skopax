@@ -357,7 +357,7 @@ class Ctx:
         return {**check.RULES, **self.rules_given}
 
 
-def test_umami_opens_a_crit_card_when_events_collapse_and_a_warn_per_value_and_for_pageviews():
+def test_umami_opens_a_crit_card_when_events_collapse_and_a_high_one_per_value_and_for_pageviews():
     # given
     http = collapsed()
 
@@ -370,7 +370,7 @@ def test_umami_opens_a_crit_card_when_events_collapse_and_a_warn_per_value_and_f
     assert {c['sig']: c['ranKey'] for c in out.found} == {'umami-redirect': 'umami:events', 'umami-pageviews': 'umami:pageviews'}
     assert cards['umami-redirect|-/shop.example.com|checkout']['sev'] == 'crit'
     assert (cards['umami-redirect|-/shop.example.com|checkout']['now'], cards['umami-redirect|-/shop.example.com|checkout']['d1']) == (15, 290)
-    assert cards['umami-redirect|-/shop.example.com|checkout:TRIAL']['sev'] == 'warn' and 'checkout:UPGRADE' in ' '.join(cards)
+    assert cards['umami-redirect|-/shop.example.com|checkout:TRIAL']['sev'] == 'high' and 'checkout:UPGRADE' in ' '.join(cards)
     assert cards['umami-pageviews|-/shop.example.com|pageviews']['now'] == 200
     assert all(c['siteId'] == SITE and c['src'] == 'umami' and 'cluster' not in c and 'plugin' not in c for c in out.found)
     info = InstanceInfo('main', True, None, dict(VALUES))
@@ -391,7 +391,7 @@ def test_umami_card_texts_are_neutral_and_name_the_event_and_property():
     assert crit['what'].startswith('Umami counted 15 checkout events in the hour to ') and 'By type: TRIAL 10 (1d 200 / 7d 180), UPGRADE 5 (1d 90 / 7d 100).' in crit['what']
     assert crit['short'] == 'CRIT shop.example.com checkout events 15 in the last hour (1d 290 / 7d 280)' and crit['label'] == 'checkout events down'
     assert per['what'].startswith('Umami counted 10 checkout events with type TRIAL in the hour to ') and per['label'] == 'TRIAL checkout events down'
-    assert views['short'] == 'WARN shop.example.com Umami pageviews 200 in the last hour (1d 1000 / 7d 900)'
+    assert views['short'] == 'HIGH shop.example.com Umami pageviews 200 in the last hour (1d 1000 / 7d 900)'
     assert all(' UTC' in c['what'] for c in cards.values())
 
 
@@ -1070,7 +1070,7 @@ def test_umami_rules_come_from_the_rule_set(store: Store, tmp_path):
 
     # then
     assert 'umami-pageviews|-/shop.example.com|pageviews' not in before
-    assert after['umami-pageviews|-/shop.example.com|pageviews']['status'] == 'open' and after['umami-pageviews|-/shop.example.com|pageviews']['sev'] == 'warn'
+    assert after['umami-pageviews|-/shop.example.com|pageviews']['status'] == 'open' and after['umami-pageviews|-/shop.example.com|pageviews']['sev'] == 'high'
 
 
 def test_umami_probe_target_is_the_heartbeat_of_each_instance(store):

@@ -20,6 +20,7 @@ LISTS = {
     'sso.allowed-domains': {'kind': 'domain', 'separator': ','},
     'core.cert-skip': {'kind': 'host', 'separator': ','},
     'sso.scope': {'kind': 'scope', 'separator': ' '},
+    'alerts.warn': {'kind': 'alert-name', 'separator': ','},
     'investigate.web-domains': {'kind': 'web-host', 'separator': ',', 'keywords': ['any', 'off', 'none', 'false', 'no']},
     'core.own-sites': {'kind': 'own-site', 'separator': ','},
 }

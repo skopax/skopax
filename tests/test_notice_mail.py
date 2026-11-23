@@ -13,7 +13,7 @@ from tests.test_notifications import board
 from skopax import mail, messages, noticemail
 from skopax.mail import Mailer
 from skopax.noticemail import GIVE_UP_S, HOUR_S, LEASE_S, PER_HOUR, NoticeMail
-from skopax.notices import LABELS, Notices
+from skopax.notices import LABELS, Notices, addresses
 from skopax.store import Store
 from skopax.users import Users
 
@@ -380,6 +380,46 @@ def test_a_long_pass_stamps_each_claim_when_it_is_made_so_no_other_pod_takes_a_m
     assert len(log) == 5 and len(set(log)) == 5, f'each mail went out once: {log}'
 
 
+def test_a_long_pass_keeps_the_lease_of_a_refused_mail_so_no_other_pod_sends_it_again(store: Store, monkeypatch):
+    # given
+    people(store, alice={'on': True, 'kinds': ['assigned']}, dora={'on': True, 'kinds': ['assigned']})
+    clock = Clock()
+    log: list = []
+    stolen: list = []
+    b = NoticeMail(store, lambda: None, base_url=BASE, clock=clock, owner='pod-b')
+
+    def other_pod() -> None:
+        taken = []
+        while (job := b.claim()) is not None:
+            taken.append(job)
+        stolen.extend(j['email'] for j in taken if j['email'] == ALICE)
+        for job in taken:
+            b.finish(job, 'queued')
+
+    class RefusesAlice(SlowMailer):
+        def send(self, to, subject, text, html=None, *, kind=''):
+            if to == [ALICE]:
+                raise mail.MailRefused('550 no such user', recipient=True)
+            return super().send(to, subject, text, html, kind=kind)
+
+    a = NoticeMail(store, lambda: RefusesAlice(clock, 200, log, then=other_pod), base_url=BASE, clock=clock, owner='pod-a')
+    notices = Notices(store, mail=a)
+    keys = [f'log|checkout-service|ERROR|n{i}' for i in range(4)]
+    board(store, *[anomaly(k, num=100 + i) for i, k in enumerate(keys)])
+    assign(notices, keys[0])
+    for key in keys[1:]:
+        clock.now += 1
+        assign(notices, key, to='dora@example.com')
+
+    # when
+    a.run_once()
+
+    # then
+    assert clock.now - T0 > LEASE_S, 'the pass ran past one lease'
+    assert stolen == [], 'another pod never takes the refused mail while the pass runs'
+    assert store.db['notice_mail'].find_one({'email': ALICE})['state'] == 'refused'
+
+
 def test_a_slug_shared_by_two_accounts_mails_neither_and_an_exact_address_reaches_only_its_account(store: Store, monkeypatch, caplog):
     # given
     smtp = faked(monkeypatch)
@@ -546,6 +586,78 @@ def test_a_refused_sender_after_a_refused_recipient_keeps_both_queued_and_marks_
     rows = list(store.db['notice_mail'].find({}))
     assert [r['state'] for r in rows] == ['queued', 'queued'] and all(r['tries'] == 1 and r['due'] > clock.now for r in rows), 'both rows wait with a backoff'
     assert all('mail' not in row for who in ('alice', 'dora') for row in store.notices_of(who, 10)), 'neither notice is marked refused'
+
+
+def two_assigned_one_refused(store: Store, monkeypatch) -> tuple[Clock, NoticeMail]:
+    faked(monkeypatch)
+    monkeypatch.setattr(smtplib, 'SMTP', NoSuchUser)
+    NoSuchUser.refuse = {ALICE}
+    people(store, alice={'on': True, 'kinds': ['assigned']}, dora={'on': True, 'kinds': ['assigned']})
+    clock = Clock()
+    notices, sender = wired(store, clock)
+    board(store, anomaly(CARD, num=14), anomaly('log|payments|ERROR|x', num=15))
+    assign(notices)
+    clock.now += 1
+    assign(notices, 'log|payments|ERROR|x', to='dora@example.com')
+    return clock, sender
+
+
+def test_a_refused_recipient_then_a_down_mail_server_drops_the_refused_one_and_retries_the_other(store: Store, monkeypatch):
+    # given
+    clock, sender = two_assigned_one_refused(store, monkeypatch)
+    real = NoSuchUser.send_message
+
+    def then_down(box, message, from_addr=None, to_addrs=None):
+        if to_addrs == ['dora@example.com']:
+            raise smtplib.SMTPServerDisconnected('gone')
+        return real(box, message, from_addr, to_addrs)
+    monkeypatch.setattr(NoSuchUser, 'send_message', then_down)
+
+    # when
+    done = sender.run_once()
+
+    # then
+    assert done == 0
+    states = {r['email']: r for r in store.db['notice_mail'].find({})}
+    assert states[ALICE]['state'] == 'refused'
+    assert states['dora@example.com']['state'] == 'queued' and states['dora@example.com']['due'] > clock.now
+    [hers] = store.notices_of('alice', 10)
+    assert hers['mail']['state'] == 'refused'
+    assert all('mail' not in row for row in store.notices_of('dora', 10))
+
+
+def test_a_refused_recipient_then_an_outbox_error_still_drops_the_refused_one_so_no_pass_resends_it(store: Store, monkeypatch):
+    # given
+    clock, sender = two_assigned_one_refused(store, monkeypatch)
+    real = sender.claim
+    calls = []
+    tried = []
+    send = NoSuchUser.send_message
+
+    def noted(box, message, from_addr=None, to_addrs=None):
+        tried.extend(to_addrs)
+        return send(box, message, from_addr, to_addrs)
+    monkeypatch.setattr(NoSuchUser, 'send_message', noted)
+
+    def then_outbox_down(now=None):
+        calls.append(now)
+        if len(calls) == 2:
+            raise noticemail.PyMongoError('outbox gone')
+        return real(now)
+    monkeypatch.setattr(sender, 'claim', then_outbox_down)
+
+    # when
+    done = sender.run_once()
+    clock.now += LEASE_S + 1
+    monkeypatch.setattr(sender, 'claim', real)
+    again = sender.run_once()
+
+    # then
+    assert done == 0 and again == 1
+    assert tried == [ALICE, 'dora@example.com'], 'the refused address is not tried again'
+    assert {r['email']: r['state'] for r in store.db['notice_mail'].find({})} == {ALICE: 'refused', 'dora@example.com': 'sent'}
+    [hers] = store.notices_of('alice', 10)
+    assert hers['mail']['state'] == 'refused'
 
 
 def test_a_reply_that_echoes_the_address_is_masked_in_logs_and_on_the_notice(store: Store, monkeypatch, caplog):
@@ -776,3 +888,31 @@ def test_the_api_needs_a_signed_in_person_and_a_mail_server_to_turn_on(store: St
 @pytest.mark.parametrize('kind', list(LABELS))
 def test_every_kind_has_an_outbound_head(kind):
     assert noticemail.head_of(kind) == LABELS[kind]
+
+
+def test_a_card_address_keeps_the_typed_local_part_and_lowers_only_the_domain():
+    # given
+    card = {'key': CARD, 'assigned': {'email': ' Alice.Smith@Example.COM '}}
+
+    # when
+    emails, named = addresses(card, {'key': CARD, 'owner': 'Bob'})
+
+    # then
+    assert emails == {'alice.smith': 'Alice.Smith@example.com'} and named == {'bob'}
+
+
+def test_a_mixed_case_assigned_address_reaches_the_lower_case_account(store: Store, monkeypatch):
+    # given
+    smtp = faked(monkeypatch)
+    people(store, alice={'on': True, 'kinds': ['reminder']})
+    notices, sender = wired(store, Clock())
+    card = anomaly('log|payments|ERROR|y', num=16, owner='Alice')
+    card['assigned'] = {'email': 'ALICE@EXAMPLE.COM'}
+    board(store, card)
+
+    # when
+    notices.reminded(['log|payments|ERROR|y'])
+    sender.run_once()
+
+    # then
+    assert [m['To'] for m in sent(smtp)] == [ALICE]

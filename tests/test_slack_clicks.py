@@ -217,7 +217,7 @@ def test_a_click_during_a_lookup_outage_is_silent_and_claims_nothing(store: Stor
     assert 'ticket' not in store.get_action(act['id'])
 
 
-CALL = {'key': KEY, 'action': 'resolve'}
+CALL = {'key': KEY, 'action': 'resolve', 'kind': 'fixed'}
 
 
 def action_ask(store: Store, call: dict | None = CALL) -> dict:
@@ -565,19 +565,19 @@ def test_the_triage_buttons_on_a_card_post_apply_once_and_leave_a_line_in_the_po
     box, applier, api = clicks(store)
 
     # when
-    first = box.handle(post_payload(doc['id'], 'resolve'))
-    second = box.handle(post_payload(doc['id'], 'take'))
+    first = box.handle(post_payload(doc['id'], 'take'))
+    second = box.handle(post_payload(doc['id'], 'resolve'))
 
     # then
     assert (first, second) == ('applied', 'claimed')
-    assert applier.calls == [{'type': 'resolve', 'key': KEY, 'target': KEY, 'label': f'Resolve from Slack: {KEY}', 'requestedBy': 'adam.baker@example.com', 'source': 'slack', 'askId': doc['id']}]
+    assert applier.calls == [{'type': 'take', 'key': KEY, 'target': KEY, 'label': f'Take from Slack: {KEY}', 'requestedBy': 'adam.baker@example.com', 'source': 'slack', 'askId': doc['id']}]
     update = next(p for m, p in api.calls if m == 'chat.update')
     assert 'attachments' not in update
     ids = [e.get('action_id') for b in update['blocks'] if b['type'] == 'actions' for e in b['elements']]
     labels = [e['text']['text'] for b in update['blocks'] if b['type'] == 'actions' for e in b['elements'] if e['type'] == 'button']
     assert not any(str(i).startswith(CARD_ACTION) for i in ids) and labels == ['Open in Skopax']
-    assert update['blocks'][-1] == {'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': 'Resolve · adam.baker@example.com'}]}
-    assert ephemerals(api) == ['Already applied: Resolve · adam.baker@example.com']
+    assert update['blocks'][-1] == {'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': 'Take · adam.baker@example.com'}]}
+    assert ephemerals(api) == ['Already applied: Take · adam.baker@example.com']
 
 
 def test_a_post_button_for_an_unknown_kind_or_a_missing_card_applies_nothing(store: Store):
@@ -625,7 +625,7 @@ def test_a_post_from_before_the_new_layout_keeps_its_attachment_when_a_button_is
            {'type': 'actions', 'elements': [{'type': 'button', 'action_id': f'{CARD_ACTION}_{k}', 'value': doc['id'], 'text': {'type': 'plain_text', 'text': k}} for k in POST_ACTIONS]}]
     payload = {'type': 'block_actions', 'user': {'id': 'U1'}, 'channel': {'id': 'C1'},
                'message': {'ts': CARD_TS, 'text': 'x', 'attachments': [{'id': 1, 'color': 'e08a00', 'fallback': 'x', 'blocks': old}]},
-               'actions': [{'action_id': f'{CARD_ACTION}_resolve', 'value': doc['id']}]}
+               'actions': [{'action_id': f'{CARD_ACTION}_take', 'value': doc['id']}]}
 
     # when
     got = box.handle(payload)
@@ -636,4 +636,4 @@ def test_a_post_from_before_the_new_layout_keeps_its_attachment_when_a_button_is
     [att] = update['attachments']
     assert att['color'] == '#e08a00' and 'blocks' not in update
     assert not any(str(e.get('action_id')).startswith(CARD_ACTION) for b in att['blocks'] if b['type'] == 'actions' for e in b['elements'])
-    assert att['blocks'][-1]['elements'][0]['text'] == 'Resolve · adam.baker@example.com'
+    assert att['blocks'][-1]['elements'][0]['text'] == 'Take · adam.baker@example.com'

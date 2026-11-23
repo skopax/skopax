@@ -4,7 +4,7 @@ import threading
 import time
 from collections.abc import Callable
 
-from skopax import clock, information, tags
+from skopax import clock, information, severity, tags
 from skopax.cardlink import card_url
 from skopax.engine import parse_iso
 from skopax.errkind import kind as error_kind
@@ -26,6 +26,7 @@ TEXT_LIMIT = 3000
 NAME_LIMIT = 60
 FAILURE_TTL_S = 600
 LOOKUP_TTL_S = 86400
+UNKNOWN_TTL_S = 3600
 WEEKEND = (5, 6)
 SCOPE = 'users:read.email'
 OWNERS_MAX = 20
@@ -35,8 +36,8 @@ QUERY_MIN = 2
 QUERY_MAX = 100
 SOURCES = ('skopax', 'responsible', 'slack')
 STOPPED = ('progress', 'handled')
-SEV_ORDER = {'crit': 0, 'warn': 1, 'info': 2}
-QUIET_KEPT = ('crit', 'warn')
+SEV_ORDER = {sev: i for i, sev in enumerate(severity.LEVELS)}
+QUIET_KEPT = severity.CARD_LEVELS
 DAY_H = 24
 WINDOW_S = 2 * 3600
 REPEAT_GAP_S = 20 * 3600
@@ -128,8 +129,8 @@ def counted(kind: str, n: int) -> str:
     return msg(f'tagreport.{kind}.{"one" if n == 1 else "many"}', n=n)
 
 
-def counts(total: int, crit: int, warn: int) -> str:
-    split = [counted(kind, n) for kind, n in (('crit', crit), ('warn', warn)) if n]
+def counts(total: int, crit: int, warn: int, high: int = 0) -> str:
+    split = [counted(kind, n) for kind, n in (('crit', crit), ('high', high), ('warn', warn)) if n]
     head = counted('open', total)
     return msg('tagreport.split', open=head, parts=', '.join(split)) if split else head
 
@@ -152,8 +153,12 @@ def card_line(a: dict, base_url: str, now: float) -> str:
                svc=esc(a.get('svc') or '-'), age=age(now - seen_at(a, now)))
 
 
-def split_counts(crit: int, warn: int) -> str:
-    return ', '.join(counted(kind, n) for kind, n in (('crit', crit), ('warn', warn)) if n)
+def split_counts(crit: int, warn: int, high: int = 0) -> str:
+    return ', '.join(counted(kind, n) for kind, n in (('crit', crit), ('high', high), ('warn', warn)) if n)
+
+
+def of_sev(cards: list[dict], sev: str) -> int:
+    return sum(1 for a in cards if a.get('sev') == sev)
 
 
 def build(cards: list[dict], owners: dict[str, list[str]], names: dict[str, str], mention: Callable[[str], str | None], base_url: str, now: float,
@@ -167,12 +172,11 @@ def build(cards: list[dict], owners: dict[str, list[str]], names: dict[str, str]
         mine = sorted((a for a in shown if tag in tags.ids(a)), key=lambda a: (SEV_ORDER.get(a.get('sev'), 3), seen_at(a, now)))
         busy = sum(1 for a in taken if tag in tags.ids(a))
         if mine or busy:
-            crit = sum(1 for a in mine if a.get('sev') == 'crit')
-            rows.append((tag, emails, mine, crit, busy))
+            rows.append((tag, emails, mine, (of_sev(mine, 'crit'), of_sev(mine, 'high')), busy))
     orphans = sorted((a for a in shown if not any(t in held for t in tags.ids(a))), key=lambda a: (SEV_ORDER.get(a.get('sev'), 3), seen_at(a, now)))
     if not orphans and not any(r[2] for r in rows):
         return None
-    rows.sort(key=lambda r: (-r[3], -len(r[2]), labels[r[0]].lower(), r[0]))
+    rows.sort(key=lambda r: (-r[3][0], -r[3][1], -len(r[2]), labels[r[0]].lower(), r[0]))
     head = msg('tagreport.head', date=clock.date(now, hm=False))
     blocks, lines, closing = [{'type': 'section', 'text': {'type': 'mrkdwn', 'text': head}}], [], None
     room = TAGS_MAX - (1 if orphans else 0)
@@ -181,7 +185,7 @@ def build(cards: list[dict], owners: dict[str, list[str]], names: dict[str, str]
         label = link_text(labels[tag])
         progress = msg('tagreport.progress', n=busy) if busy else ''
         if mine:
-            found = counts(len(mine), crit, sum(1 for a in mine if a.get('sev') == 'warn'))
+            found = counts(len(mine), crit[0], of_sev(mine, 'warn'), crit[1])
             line = msg('tagreport.tag', who=', '.join(person(e, names, mention) for e in emails), link=link, tag=label,
                        counts=msg('tagreport.with_progress', counts=found, progress=progress) if busy else found)
         else:
@@ -195,8 +199,7 @@ def build(cards: list[dict], owners: dict[str, list[str]], names: dict[str, str]
         blocks.append({'type': 'context', 'elements': [{'type': 'mrkdwn', 'text': msg('tagreport.more_tags', n=len(rows) - room)}]})
     if orphans:
         link = open_link(base_url)
-        crit = sum(1 for a in orphans if a.get('sev') == 'crit')
-        line = msg(f'tagreport.nobody.{"one" if len(orphans) == 1 else "many"}', link=link, n=len(orphans), parts=split_counts(crit, len(orphans) - crit))
+        line = msg(f'tagreport.nobody.{"one" if len(orphans) == 1 else "many"}', link=link, n=len(orphans), parts=split_counts(of_sev(orphans, 'crit'), of_sev(orphans, 'warn'), of_sev(orphans, 'high')))
         body = [line] + [card_line(a, base_url, now) for a in orphans[:SHOWN]]
         if len(orphans) > SHOWN:
             body.append(msg('tagreport.more', link=link, n=len(orphans) - SHOWN))
@@ -254,7 +257,7 @@ class SlackIds:
             return None
         held = self._held.get(email)
         last = held[1] if held else None
-        if held is not None and self.clock() - held[0] < self.ttl and not self._recheck:
+        if self.fresh(held) and not self._recheck:
             return last
         if stopped is not None and stopped[0]:
             return last
@@ -293,7 +296,7 @@ class SlackIds:
         if not email:
             return ''
         held = self._held.get(email)
-        if held is not None and self.clock() - held[0] < self.ttl:
+        if self.fresh(held):
             return held[2]
         failed = self._failed.get(email)
         if failed is not None and self.clock() - failed < FAILURE_TTL_S:
@@ -323,11 +326,13 @@ class SlackIds:
         held = self._held.get(str(email or '').strip().lower())
         return held[2] if held else ''
 
+    def fresh(self, held: tuple[float, str | None, str] | None) -> bool:
+        return held is not None and self.clock() - held[0] < (self.ttl if held[1] else min(self.ttl, UNKNOWN_TTL_S))
+
     def check_all(self, emails: list[str]) -> None:
         for email in emails:
             email = str(email or '').strip().lower()
-            held = self._held.get(email)
-            if held is not None and self.clock() - held[0] < self.ttl:
+            if self.fresh(self._held.get(email)):
                 continue
             if not self.slack.enabled or self.clock() < self._down_until:
                 continue
@@ -341,7 +346,9 @@ class SlackIds:
 
     def _scope(self, missing: bool) -> None:
         self._missing = missing
-        if missing and not self._told:
+        if not missing:
+            self._told = False
+        elif not self._told:
             self._told = True
             log.warning('the Slack app lacks the scope %s: responsibles in the tag report are named without a ping', SCOPE)
         if missing == self._stored():

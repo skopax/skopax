@@ -573,6 +573,7 @@ def test_the_core_pass_name_is_reserved_so_no_plugin_can_claim_its_cards():
     # then
     assert PASS == 'custom-checks' and PASS in CORE_RAN
     assert found.state == 'broken'
+    assert found.reason.endswith(messages.msg('plugins.why.ran_taken', key=PASS, owner='core')), found.reason
 
 
 def test_an_unexpected_error_inside_one_check_fails_only_that_check(store, monkeypatch):
@@ -959,3 +960,15 @@ def test_a_create_that_loses_the_count_race_is_taken_back(store, monkeypatch):
 
     # then
     assert store.db['custom_checks'].find_one({}) is None
+
+
+def test_a_start_or_end_inside_an_esql_string_is_not_a_time_parameter():
+    # given
+    quoted = 'FROM logs | WHERE url LIKE "*?start=1*" OR message == """?end""" | STATS n = COUNT(*)'
+    real = 'FROM logs | WHERE @timestamp >= TO_DATETIME(?start) AND url LIKE "*?end*" | STATS n = COUNT(*)'
+
+    # when
+    found = promqlchecks.time_params(quoted), promqlchecks.time_params(real)
+
+    # then
+    assert found == (set(), {'start'})

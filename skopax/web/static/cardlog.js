@@ -2,7 +2,7 @@ var HIST_ACTS = {take: 'Started progress', resolve: 'Resolved', ticket: 'Ticket 
   dive: 'Investigation queued', group: 'Grouped', severity: 'Severity changed', ask: 'Asked the investigator'};
 var HIST_TRIED = {take: 'Start progress', resolve: 'Resolve', ticket: 'Create task', link: 'Link ticket', mute: 'Mute', unmute: 'Unmute', known: 'Mark as known noise', reopen: 'Reopen',
   dive: 'Investigate', group: 'Group', severity: 'Change severity', ask: 'Ask the investigator'};
-var HIST_SEV = {crit: 'Critical', warn: 'Warning', info: 'Info'};
+var HIST_SEV = {crit: 'Critical', high: 'High', warn: 'Warning', info: 'Info'};
 var HIST_CUT = 160;
 function svcReal(v) { v = String(v == null ? '' : v).trim(); return v === '-' ? '' : v; }
 function svcFromCluster(a) { return !!(a && a.cluster && !svcReal(a.svc) && !svcReal(a.ns) && !svcReal(a.sub)); }
@@ -27,7 +27,7 @@ var HIST_FIXED = {Investigator: 1, system: 1, signal: 1, rule: 1};
 function histTx(t) { return typeof tx === 'function' ? tx(t) : t; }
 function histLabel(id, names) { return (names && names[id]) || (typeof tagName === 'function' ? tagName(id) : id); }
 var ROUTE_POSTED = {teams: ['Posted to Teams', 'Sent to Teams'], email: ['Sent by email', 'Sent by email']};
-function routePosted(plugin) { var p = plugin || 'teams'; return ROUTE_POSTED[p] || ['Posted to ' + p, 'Sent to ' + p]; }
+function routePosted(plugin) { var p = plugin || 'teams'; return Object.hasOwn(ROUTE_POSTED, p) ? ROUTE_POSTED[p] : ['Posted by the ' + p + ' route', 'Sent by the ' + p + ' route']; }
 function cardHistoryRows(c, data, runs, names) {
   c = c || {};
   data = data || {};

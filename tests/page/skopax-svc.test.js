@@ -239,9 +239,9 @@ async function severityChipsFilterTheOpenCards() {
   const statusPressed = () => doc.querySelector('#tab-sub-anoms .tab-sub-g').querySelector('button:not(.child)[aria-pressed="true"]');
 
   //then
-  assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child')].map(txt), ['Critical 1', 'Warning 2'], 'open counts in the side menu; muted and cleared cards left out, and no Info filter');
+  assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child')].map(txt), ['Critical 1', 'High 0', 'Warning 2'], 'open counts in the side menu; muted and cleared cards left out, and no Info filter');
   assert.deepStrictEqual([...listGroup.querySelectorAll('button.tab-sub-i')].map(txt), ['Archived 0', 'Closed '], 'Lists holds Archived and Closed; Closed has no count until its list is loaded');
-  assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child.zero')].map((b) => b.dataset.f).concat([...listGroup.querySelectorAll('button.zero')].map((b) => b.dataset.f)), ['archived', 'closed'], 'zero items are faded');
+  assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child.zero')].map((b) => b.dataset.f).concat([...listGroup.querySelectorAll('button.zero')].map((b) => b.dataset.f)), ['high', 'archived', 'closed'], 'zero items are faded');
   assert.ok(sevItem('open').nextElementSibling === sevItem('crit') && !groups[0].querySelector('.tab-sub-l') && groups.indexOf(listGroup) === 1, 'the severities sit right under Open, in the unlabelled status group');
   assert.ok(groups.every((g) => !/Triage/.test(g.textContent)), 'no Triage group while nothing is investigating or investigated');
   assert.ok(!doc.getElementById('sev-chips') && !doc.getElementById('anom-chips') && !doc.getElementById('filters'), 'the chips row is gone from the Anomalies tab');
@@ -348,8 +348,40 @@ async function sameServiceInSeveralNamespaces() {
   return 'a card that names a namespace with Services rows (prom, kube, alert, batch job) colours only the row of that namespace and shows only there; a card without one (logs, APM: ns "-") still colours every row of that service name';
 }
 
+async function highSitsBetweenCriticalAndWarning() {
+  //given
+  const anomalies = [
+    anomaly('lag|store/catalog-service', 'catalog-service', 'warn', {label: 'lag'}),
+    anomaly('5xx|store/orders-service', 'orders-service', 'high', {label: '5xx'}),
+    anomaly('restart|store/pricing-service', 'pricing-service', 'crit', {label: 'restarts'}),
+  ];
+  const serve = {rev: 7, state: base(7, anomalies, [svc('catalog-service', 'store', 'app', 'ok', 9000), svc('orders-service', 'store', 'app', 'ok', 8000), svc('pricing-service', 'store', 'app', 'ok', 7000)])};
+  const {doc, errors, dom} = await boot(serve);
+  const sevItem = (f) => doc.querySelector('#tab-sub-anoms .tab-sub-g button[data-f="' + f + '"]');
+  const chips = [...doc.querySelectorAll('#tab-sub-anoms .tab-sub-g button.child')].map((b) => b.dataset.f + ':' + b.querySelector('.count').textContent);
+  const tpl = require('fs').readFileSync(TEMPLATE, 'utf8');
+
+  //when
+  sevItem('high').click();
+  const onlyHigh = cards(doc);
+  const pill = doc.querySelector('#anoms article.inc .sev');
+
+  //then
+  assert.deepStrictEqual(chips, ['crit:1', 'high:1', 'warn:1'], 'High sits between Critical and Warning in the side menu');
+  assert.ok(sevItem('high').classList.contains('k-high'), 'the High filter wears the high colour');
+  assert.deepStrictEqual(onlyHigh, ['5xx|store/orders-service'], 'High shows the open high cards only');
+  assert.ok(pill && pill.classList.contains('k-high') && pill.textContent === 'High', 'a high card says High in the high colour');
+  assert.strictEqual(doc.getElementById('tab-anoms').title, '1 critical \u00b7 1 high \u00b7 1 warning');
+  assert.ok(/\.k-high \{ --c: var\(--high\); --cb: var\(--high-bg\); \}/.test(tpl), 'k-high reads the high tokens');
+  assert.strictEqual((tpl.match(/--high: #[0-9a-f]{6}; --high-bg:/g) || []).length, 4, 'the light theme, both dark blocks and the sidebar set the high colour');
+  assert.ok(/--high: #ffa25e; --high-bg: rgba\(255, 162, 94, 0\.14\);/.test(tpl), 'the sidebar sets it too');
+  assert.ok(!errors.length, 'no errors: ' + errors.join(' | '));
+  dom.window.close();
+  return 'High sits between Critical and Warning: the side menu filter and its colour, the card pill, the tab tooltip and the theme tokens';
+}
+
 (async () => {
-  for (const t of [warnRowOpensItsCards, handledCardsClearTheRowOnLiveUpdate, noAnomalyListFallsBackToStoredStatus, severityChipsFilterTheOpenCards, inProgressSplitsFromActionTaken, sameServiceInSeveralNamespaces]) {
+  for (const t of [warnRowOpensItsCards, handledCardsClearTheRowOnLiveUpdate, noAnomalyListFallsBackToStoredStatus, severityChipsFilterTheOpenCards, highSitsBetweenCriticalAndWarning, inProgressSplitsFromActionTaken, sameServiceInSeveralNamespaces]) {
     console.log('PASS ' + (await t()));
   }
 })().catch((e) => { console.error('FAIL', e.message); process.exit(1); });

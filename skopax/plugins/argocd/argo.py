@@ -387,7 +387,7 @@ def evaluate(items: list[dict], prev: list[dict], now: float, url: str, namespac
         failed = phase in FAILED and sync != 'Synced'
         if not failed and now - since < PERSIST_S:
             continue
-        sev = 'warn' if failed or health in WARN_HEALTH else 'info'
+        sev = 'high' if failed else 'warn' if health in WARN_HEALTH else 'info'
         label = 'Argo CD ' + ' \u00b7 '.join(x for x in ('sync failed' if failed else sync if sync != 'Synced' else None, health if health not in CALM_HEALTH else None) if x)
         x = anomaly('argo', 'argo', ns or '-', svc, '', sev, now - since, None, None, 'dur', label, card_text(a, name, sync, health, failed, since, now, url, namespace), 86400,
                     f'{sev.upper()} {svc} {label} for {duration(now - since)}')

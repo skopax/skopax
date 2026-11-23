@@ -2,6 +2,7 @@ import datetime as dt
 import functools
 import json
 import logging
+import concurrent.futures
 import queue
 import re
 import threading
@@ -13,6 +14,7 @@ from slack_sdk.socket_mode import SocketModeClient
 from slack_sdk.socket_mode.response import SocketModeResponse
 
 from skopax.actions import PRESET
+from skopax.cardlink import card_url
 from skopax.config import Setting
 from skopax import brand, drafts, history
 from skopax.engine import iso as epoch_iso, parse_iso
@@ -27,7 +29,7 @@ from skopax import messages
 from skopax.investigator.toolset import NoProposal, ProposalClosed, ProposalUnavailable
 from skopax.messages import msg
 from skopax.operators import OperatorUnknown
-from skopax.slack import CARD_ACTION, CARD_MENU, CREATE_TASK, FILE_HOST, IMAGE_BYTES_MAX, IMAGE_MIMES, KNOWN_VIEW, POST_ACTIONS, PROPOSAL_CONFIRM, SCOPE_ERRORS, SECTION_LIMIT, SlackError, answer_blocks, card_action_label, cut, esc, known_view, cut_clear, guard_addresses, link_addresses, reason_of, redact, take_offer_blocks
+from skopax.slack import CARD_ACTION, CARD_MENU, CREATE_TASK, FILE_HOST, IMAGE_BYTES_MAX, IMAGE_MIMES, KNOWN_VIEW, POST_ACTIONS, PROPOSAL_CONFIRM, RESOLVE_DUP, RESOLVE_KIND, RESOLVE_VIEW, SCOPE_ERRORS, SECTION_LIMIT, SlackError, answer_blocks, card_action_label, cut, esc, known_view, resolve_choice, resolve_fields, resolve_view, cut_clear, guard_addresses, link_addresses, reason_of, redact, take_offer_blocks
 from skopax.statenotes import card_name, who_of
 from skopax.store import NotFound, new_id
 from skopax.tickets import slack_reason
@@ -55,6 +57,8 @@ LABEL_LIMIT = 300
 REASON_LIMIT = 200
 QUEUE_SIZE = 50
 CONNECT_RETRY_S = 60.0
+VIEW_CHECK_S = 1.5
+VIEW_CHECK_WORKERS = 2
 LISTENER_WAIT_S = 30.0
 DOWN_ALERT_S = 120.0
 DOWN_REPEAT_S = 1800.0
@@ -69,6 +73,7 @@ IMAGES_MAX = 3
 FILE_SUBTYPE = 'file_share'
 CARD_OFFERS = {'take': 'slackevents.offer.take', 'resolve': 'slackevents.offer.resolve', 'known': 'slackevents.offer.known', 'mute': 'slackevents.offer.mute'}
 OFFER_NAMES = {'take': 'In progress', 'resolve': 'Resolve', 'known': 'Known noise', 'mute': 'Mute'}
+VIEW_KINDS = {KNOWN_VIEW: 'known', RESOLVE_VIEW: 'resolve'}
 OFFER_REASON = 150
 AGREE = '+1'
 MIND_BLOWN = 'exploding_head'
@@ -675,6 +680,24 @@ class TicketRefused(Authored, Exception):
     pass
 
 
+def asks_how(call: dict) -> bool:
+    return call.get('action') == 'resolve' and call.get('kind') in (None, 'handled') and not call.get('reason')
+
+
+def resolve_pick(ask: dict, call: dict) -> str | None:
+    if call.get('kind') in history.RESOLVE_KINDS:
+        return call['kind']
+    return 'handled' if ask.get('type') == 'ask' else None
+
+
+def view_meta(view: dict) -> dict | None:
+    try:
+        meta = json.loads(view.get('private_metadata') or '{}')
+    except ValueError:
+        return None
+    return meta if isinstance(meta, dict) and meta.get('ask') else None
+
+
 def without_buttons(blocks: list | None, action_id: str, value: str | None = None) -> list[dict]:
     out = []
     for b in blocks or []:
@@ -714,9 +737,10 @@ def way_in(sso: bool, account: bool, base: str, added_only: bool = False, viewer
 class Clicks:
     def __init__(self, store, slack, operators, apply: Callable[[dict], str], jira_site: str | Callable[[], str] = '', on: Callable[[], bool] = lambda: True,
                  confirm: Callable[[str, str], dict] | None = None, background: Callable[[Callable[[], None]], None] | None = None, way_in: Callable[[str], str] | None = None,
-                 hosts: Callable[[], tuple[str, ...]] = lambda: ()):
+                 hosts: Callable[[], tuple[str, ...]] = lambda: (), base_url: str = ''):
         self.on = on
         self.hosts = hosts
+        self.base_url = base_url
         self.way_in = way_in
         self.confirm = confirm
         self.background = background or (lambda job: threading.Thread(target=job, name='proposal-confirm', daemon=True).start())
@@ -764,6 +788,8 @@ class Clicks:
         if found is None:
             return self._tell(channel, user, msg('slackevents.click.gone'), thread_ts, 'gone')
         ask, call = found
+        if card_click and asks_how(call):
+            return self._resolve_window(payload, channel, user, ask, call, str(message.get('ts') or ''), thread_ts, button=kind is None)
         if card_click:
             return self._card_action(channel, user, login, ask, call, message, thread_ts)
         return self._create_task(channel, user, login, ask, message, thread_ts)
@@ -835,35 +861,98 @@ class Clicks:
         if found is None:
             return self._tell(channel, user, msg('slackevents.click.gone'), thread_ts, 'gone')
         ask, call = found
-        if kind != 'known':
-            return self._card_action(channel, user, login, ask, call, message, thread_ts, swap=False)
+        ts = str(message.get('ts') or '')
+        if kind == 'known':
+            return self._window(payload, channel, user, known_view(ask['id'], channel, ts), thread_ts, 'known noise', msg('slackevents.click.window_failed'), 'confirm-open')
+        if asks_how(call):
+            return self._resolve_window(payload, channel, user, ask, call, ts, thread_ts)
+        return self._card_action(channel, user, login, ask, call, message, thread_ts, swap=False)
+
+    def _window(self, payload: dict, channel: str, user: str, view: dict, thread_ts: str | None, what: str, failed: str, decision: str) -> str:
         try:
-            self.slack.call('views.open', {'trigger_id': payload.get('trigger_id'), 'view': known_view(ask['id'], channel, str(message.get('ts') or ''))})
+            self.slack.call('views.open', {'trigger_id': payload.get('trigger_id'), 'view': view})
         except SlackError as e:
-            log.warning('the known noise window in %s was not opened: %s', channel, error_kind(e))
-            return self._tell(channel, user, msg('slackevents.click.window_failed'), thread_ts, 'modal-failed')
-        return 'confirm-open'
+            log.warning('the %s window in %s was not opened: %s', what, channel, error_kind(e))
+            return self._tell(channel, user, failed, thread_ts, 'modal-failed')
+        return decision
+
+    def _resolve_window(self, payload: dict, channel: str, user: str, ask: dict, call: dict, ts: str, thread_ts: str | None, button: bool = False) -> str:
+        if ask.get('cardActionApplied'):
+            return self._claimed(channel, user, ask['cardActionApplied'], card_action_label(call), thread_ts)
+        view = resolve_view(ask['id'], channel, ts, thread_ts, button, resolve_pick(ask, call))
+        return self._window(payload, channel, user, view, thread_ts, 'resolve', self._resolve_failed(call['key']), 'resolve-open')
+
+    def _resolve_failed(self, key: str) -> str:
+        if not self.base_url:
+            return msg('slackevents.click.resolve_window_failed_bare')
+        try:
+            num = self.store.anomaly(key).get('num')
+        except NotFound:
+            num = None
+        return msg('slackevents.click.resolve_window_failed', url=card_url(self.base_url, key, num))
+
+    def view_errors(self, payload: dict) -> dict | None:
+        view = payload.get('view') or {}
+        if payload.get('type') != 'view_submission' or view.get('callback_id') != RESOLVE_VIEW or not self.on():
+            return None
+        meta = view_meta(view)
+        found = self._ask(str(meta['ask']), 'cardAction', None if meta.get('button') else 'resolve') if meta else None
+        return self._resolve_errors(found[1]['key'], view) if found else None
+
+    def _resolve_errors(self, key: str, view: dict) -> dict | None:
+        kind, _, ref = resolve_choice(view)
+        if kind is None:
+            return {RESOLVE_KIND: msg('slack.resolve.pick')}
+        if kind != 'duplicate':
+            return None
+        if history.resolve_problem(kind, ref or None):
+            return {RESOLVE_DUP: msg('slack.resolve.dup_missing')}
+        try:
+            history.duplicate_ref(self.store, key, ref)
+        except ValueError:
+            return {RESOLVE_DUP: msg('slack.resolve.dup_unknown', ref=ref)}
+        return None
 
     def _submitted(self, payload: dict) -> str | None:
         view = payload.get('view') or {}
-        if view.get('callback_id') != KNOWN_VIEW:
-            return None
-        try:
-            meta = json.loads(view.get('private_metadata') or '{}')
-        except ValueError:
-            return None
-        if not isinstance(meta, dict) or not meta.get('ask'):
+        kind = VIEW_KINDS.get(view.get('callback_id'))
+        meta = view_meta(view) if kind else None
+        if meta is None:
             return None
         channel, ts = str(meta.get('channel') or ''), str(meta.get('ts') or '') or None
+        thread_ts = str(meta.get('thread') or '') or ts
         user = (payload.get('user') or {}).get('id') or ''
-        login, refused = self._operator(channel, user, ts)
+        login, refused = self._operator(channel, user, thread_ts)
         if login is None:
             return refused
-        found = self._ask(str(meta['ask']), 'cardAction', 'known')
+        if kind == 'resolve':
+            return self._resolve_submitted(channel, user, login, meta, view, ts, thread_ts)
+        found = self._ask(str(meta['ask']), 'cardAction', None if meta.get('button') else kind)
         if found is None:
-            return self._tell(channel, user, msg('slackevents.click.gone'), ts, 'gone')
+            return self._tell(channel, user, msg('slackevents.click.gone'), thread_ts, 'gone')
         ask, call = found
-        return self._card_action(channel, user, login, ask, call, {'ts': ts}, ts, swap=False)
+        return self._card_action(channel, user, login, ask, call, {'ts': ts}, thread_ts, swap=False)
+
+    def _resolve_submitted(self, channel: str, user: str, login: str, meta: dict, view: dict, ts: str | None, thread_ts: str | None) -> str:
+        found = None
+        try:
+            found = self._ask(str(meta['ask']), 'cardAction', None if meta.get('button') else 'resolve')
+            if found is None or not asks_how(found[1]):
+                return self._tell(channel, user, msg('slackevents.click.gone'), thread_ts, 'gone')
+            errors = self._resolve_errors(found[1]['key'], view)
+        except Exception as e:
+            log.warning('a resolve window from Slack was not checked: %s', error_kind(e))
+            return self._tell(channel, user, self._check_failed(found[1]['key'] if found else None), thread_ts, 'check-failed')
+        if errors:
+            return self._tell(channel, user, ' '.join(errors.values()), thread_ts, 'invalid')
+        ask, call = found
+        call = {k: v for k, v in call.items() if k not in ('kind', 'ref', 'reason')} | resolve_fields(*resolve_choice(view))
+        return self._card_action(channel, user, login, ask, call, {'ts': ts}, thread_ts, swap=False)
+
+    def _check_failed(self, key: str | None) -> str:
+        if self.base_url and key:
+            return msg('slackevents.click.resolve_check_failed', url=card_url(self.base_url, key))
+        return msg('slackevents.click.resolve_check_failed_bare')
 
     def _card_action(self, channel: str, user: str, login: str, ask: dict, call: dict, message: dict, thread_ts: str | None, swap: bool = True) -> str:
         if call.get('action') not in CARD_ACTIONS:
@@ -876,9 +965,7 @@ class Clicks:
                 claim = self.store.get_action(ask['id']).get('cardActionApplied') or {}
             except NotFound:
                 return self._tell(channel, user, msg('slackevents.click.gone'), thread_ts, 'gone')
-            applied = card_action_label(claim['call']) if isinstance(claim.get('call'), dict) else claim.get('label') or label
-            text = msg('slackevents.click.applied', label=applied, login=claim.get('claimedBy')) if claim.get('at') else msg('slackevents.click.applying')
-            return self._tell(channel, user, text, thread_ts, 'claimed')
+            return self._claimed(channel, user, claim, label, thread_ts)
         action = {'type': call['action'], 'key': call['key'], 'target': call['key'], 'label': f"{stored} from Slack: {call['key']}"[:LABEL_LIMIT],
                   'requestedBy': login, 'source': 'slack', 'askId': ask['id']} | ({'hours': call.get('hours')} if call['action'] == 'mute' else {}) | ({'reason': f'{stored} from Slack by {login}', PRESET: True} if call['action'] in ('mute', 'known') else {})
         if call['action'] == 'take' and call.get('owner'):
@@ -910,6 +997,11 @@ class Clicks:
             line += ' · ' + esc(self._name(call['key']))
         self._swap_button(channel, message, CARD_ACTION, line, ask['id'])
         return 'applied'
+
+    def _claimed(self, channel: str, user: str, claim: dict, label: str, thread_ts: str | None) -> str:
+        applied = card_action_label(claim['call']) if isinstance(claim.get('call'), dict) else claim.get('label') or label
+        text = msg('slackevents.click.applied', label=applied, login=claim.get('claimedBy')) if claim.get('at') else msg('slackevents.click.applying')
+        return self._tell(channel, user, text, thread_ts, 'claimed')
 
     def _confirm_job(self, channel: str, user: str, login: str, run_id: str, message: dict, thread_ts: str | None) -> None:
         try:
@@ -995,8 +1087,10 @@ def socket_client(app_token: str):
 
 class Listener:
     def __init__(self, app_token: str, intake, clicks, client_factory: Callable[[str], object], queue_size: int = QUEUE_SIZE, retry_s: float = CONNECT_RETRY_S,
-                 clock: Callable[[], float] = time.time):
+                 clock: Callable[[], float] = time.time, check_s: float = VIEW_CHECK_S):
         self.app_token = app_token
+        self.check_s = check_s
+        self.checks = concurrent.futures.ThreadPoolExecutor(max_workers=VIEW_CHECK_WORKERS, thread_name_prefix='slack-view-check')
         self.intake = intake
         self.clicks = clicks
         self.client_factory = client_factory
@@ -1069,6 +1163,10 @@ class Listener:
                 self._stop.wait(self.retry_s)
 
     def on_request(self, client, req) -> None:
+        errors = self._view_errors(req.payload) if req.type == 'interactive' else None
+        if errors:
+            client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id, payload={'response_action': 'errors', 'errors': errors}))
+            return
         client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
         if req.type not in ('events_api', 'interactive'):
             return
@@ -1076,6 +1174,17 @@ class Listener:
             (self.click_queue if req.type == 'interactive' else self.queue).put_nowait((req.type, req.payload))
         except queue.Full:
             log.warning('slack queue full, dropped a %s envelope', req.type)
+
+    def _view_errors(self, payload) -> dict | None:
+        check = getattr(self.clicks, 'view_errors', None)
+        if check is None or not isinstance(payload, dict) or payload.get('type') != 'view_submission':
+            return None
+        try:
+            errors = self.checks.submit(check, payload).result(timeout=self.check_s)
+        except Exception as e:
+            log.warning('a Slack window was not checked before its submit: %s', error_kind(e))
+            return None
+        return errors if isinstance(errors, dict) and errors else None
 
     def process(self, item: tuple[str, dict]) -> str | None:
         kind, payload = item
@@ -1096,6 +1205,7 @@ class Listener:
 
     def stop(self) -> None:
         self._stop.set()
+        self.checks.shutdown(wait=False, cancel_futures=True)
         if self.client is not None:
             self._close(self.client)
 

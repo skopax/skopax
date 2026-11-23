@@ -541,7 +541,7 @@ def test_the_rules_move_the_thresholds_a_failed_read_fails_the_pass_without_the_
     failed = langfuse.run(Ctx(down)).result
 
     # then
-    assert 'lf-errors' not in loose_cards and strict_cards['lf-errors']['sev'] == 'warn'
+    assert 'lf-errors' not in loose_cards and strict_cards['lf-errors']['sev'] == 'high'
     assert not failed.ok and failed.status == 'error: metrics: Langfuse HTTP 404 on /api/public/v2/metrics: not found'
     assert SK not in failed.status and PK not in failed.status
     assert langfuse.links({'src': 'langfuse'}, info) == [{'label': 'Langfuse traces', 'url': URL + '/'}] and langfuse.links({'src': 'airbyte'}, info) is None
@@ -989,7 +989,7 @@ def test_langfuse_rules_come_from_the_rule_set(store: Store, tmp_path):
 
     # then
     assert 'lf-errors|-/langfuse' not in before
-    assert after['lf-errors|-/langfuse']['status'] == 'open' and after['lf-errors|-/langfuse']['sev'] == 'warn'
+    assert after['lf-errors|-/langfuse']['status'] == 'open' and after['lf-errors|-/langfuse']['sev'] == 'high'
 
 
 def test_langfuse_probe_target_is_the_public_health_endpoint_of_each_instance(store):

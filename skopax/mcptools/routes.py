@@ -286,7 +286,7 @@ def tester(deps: Deps) -> Callable[[Context], TestResult]:
             return TestResult(False, msg('mcptools.test_empty_open', server=server), found.ms)
         if not found.tools:
             return TestResult(False, msg('mcptools.test_empty', server=server, permission=wanted(values)), found.ms)
-        return TestResult(True, msg('mcptools.test_ok', server=server, count=len(found.tools)), found.ms)
+        return TestResult(True, msg('mcptools.test_ok_one' if len(found.tools) == 1 else 'mcptools.test_ok', server=server, count=len(found.tools)), found.ms)
     return test
 
 

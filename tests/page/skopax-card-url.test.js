@@ -214,4 +214,33 @@ async function check(name, fn) {
     assert.strictEqual(p.hash(), '#t=anoms');
     p.dom.window.close();
   });
+
+  await check('a click on a link to the card already in the address bar shows that card again, in the list and the board', async () => {
+    //given
+    const list = await boot('list', '#t=anoms/all');
+    const board = await boot('board', '#t=anoms/all');
+    list.card(BARE_KEY).querySelector('.inc-title .fold').click();
+    board.tile(NUM_KEY).click();
+    const link = (p, href) => { const a = p.doc.createElement('a'); a.href = href; a.textContent = 'card'; p.doc.body.appendChild(a); return a; };
+    const shown = [];
+    list.w.Element.prototype.scrollIntoView = function () { shown.push(this.dataset.key); };
+    board.drawer().remove();
+    const lenList = list.len(), lenBoard = board.len();
+
+    //when
+    link(list, '#a=' + encoded(BARE_KEY)).click();
+    link(board, '#c=7').click();
+    await wait(80);
+
+    //then
+    assert.ok(list.card(BARE_KEY).classList.contains('linked'), 'the list card is ringed again');
+    assert.deepStrictEqual(shown, [BARE_KEY], 'the list scrolls to the card');
+    assert.strictEqual(list.hash(), '#a=' + encoded(BARE_KEY));
+    assert.strictEqual(board.drawer() && board.drawer().dataset.key, NUM_KEY, 'the board opens the drawer again');
+    assert.strictEqual(board.hash(), '#c=7');
+    assert.deepStrictEqual([list.len(), board.len()], [lenList, lenBoard], 'no history entry is added');
+    assert.deepStrictEqual(list.errors.concat(board.errors), []);
+    list.dom.window.close();
+    board.dom.window.close();
+  });
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

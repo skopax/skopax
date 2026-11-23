@@ -122,7 +122,7 @@ def evaluate_logs(rows: list[dict] | None) -> tuple[list[dict], list[dict]]:
         if not flagged:
             continue
         if error_rule:
-            sev = 'crit' if base == 0 and now >= 50 else 'warn'
+            sev = 'crit' if base == 0 and now >= 50 else 'high'
         else:
             sev = 'warn' if now >= 50 else 'info'
         kind = 'new' if base == 0 else 'growing'
@@ -157,7 +157,7 @@ def evaluate_apm(rows: list[dict] | None, warm: set[tuple[str, str]], rules: Map
             x['key'] = f'apm|{svc}|p95'
             found.append(x)
         if r.get('failing'):
-            x = anomaly('apm', 'apm-fail', '-', svc, '', 'warn', r.get('f_now') or 0, None, None, '', 'failed transactions',
+            x = anomaly('apm', 'apm-fail', '-', svc, '', 'high', r.get('f_now') or 0, None, None, '', 'failed transactions',
                         f'{r.get("f_now")} failed transactions ({r.get("fr_now") or 0:.2%}) in the last 60 min, the baseline share is {r.get("fr_base") or 0:.2%}', 10)
             x['key'] = f'apm|{svc}|fail'
             found.append(x)

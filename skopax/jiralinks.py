@@ -12,6 +12,7 @@ from skopax.errkind import NoAccess
 from skopax.store import NotFound, Store, iso
 
 GENERIC_KEY = r'[A-Z][A-Z0-9]{1,9}-\d+'
+NOT_TICKETS = ('UTF', 'ISO', 'SHA', 'AES', 'RSA', 'TLS', 'SSL', 'HTTP', 'RFC', 'CVE')
 
 
 def ticket_pattern(projects: tuple[str, ...]) -> re.Pattern:
@@ -33,11 +34,12 @@ def ticket_projects(settings, extra: tuple[str, ...] = ()) -> tuple[str, ...]:
 
 
 def ticket_finder(projects: tuple[str, ...]) -> re.Pattern:
-    return re.compile(r'\b(' + ticket_pattern(projects).pattern + r')\b')
+    skip = '' if projects else r'(?!(?:' + '|'.join(NOT_TICKETS) + r')-)'
+    return re.compile(r'\b(' + skip + ticket_pattern(projects).pattern + r')\b')
 
 
 SWEEP_BY = 'jira-links'
-MACHINE_TRIAGE = ('pod', 'auto')
+MACHINE_TRIAGE = ('pod', 'auto', SWEEP_BY)
 
 log = logging.getLogger('skopax.jiralinks')
 
@@ -110,7 +112,7 @@ class JiraLinks:
                 if card.get('triage') == 'progress' and card.get('ticket') == key:
                     continue
                 picked = card.get('owner') if card.get('assigned') else None
-                self.store.triage(card_key, 'progress', ticket=key, owner=None if picked else owner, owner_name=None if picked else owner)
+                self.store.triage(card_key, 'progress', ticket=key, owner=None if picked else owner, owner_name=None if picked else owner, by=SWEEP_BY)
                 shown = picked or owner
                 self.store.add_activity('jira', 'server', f'{key} → {card_key} In progress' + (f' · {shown}' if shown else ''), key=card_key)
                 if self.notes:

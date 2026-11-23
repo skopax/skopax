@@ -66,7 +66,7 @@ function ntItem(n) {
   b.dataset.id = n.id;
   var what = (n.num ? '#' + n.num + ' ' : '') + (n.title || '');
   b.innerHTML = '<span class="nt-dot" aria-hidden="true"></span><span class="nt-body"><span class="nt-head"><span class="tag ' + (NT_TONE[n.kind] || 'plain') + '">' + esc(NT_LABELS[n.kind] || n.kind) + '</span>' +
-    (fresh ? '<span class="sr">Unread</span>' : '') + '<span class="nt-when">' + esc(ago(n.t)) + '</span></span>' +
+    (fresh ? '<span class="sr">Unread</span>' : '') + (n.mail && n.mail.state === 'refused' ? '<span class="tag k-warn nt-mail" title="' + esc(n.mail.why ? 'The mail server refused this email: ' + String(n.mail.why) : 'The mail server refused this email') + '">Email not sent</span>' : '') + '<span class="nt-when">' + esc(ago(n.t)) + '</span></span>' +
     (what ? '<span class="nt-what" data-no-tx>' + esc(what) + '</span>' : '') + (n.note ? '<span class="nt-note"' + (n.kind === 'auto' ? '' : ' data-no-tx') + '>' + esc(n.note) + '</span>' : '') +
     '<span class="nt-by" data-no-tx>' + esc(isInvestigatorBy(n.by) ? investigatorName() : n.by || '') + '</span></span>';
   b.addEventListener('click', function () { ntGo(n); });

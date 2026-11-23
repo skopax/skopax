@@ -39,6 +39,7 @@ CHANGE_CAUSE = 'kubernetes.io/change-cause'
 ARGO_APP = 'argocd.argoproj.io/instance'
 TEXT_ACCEPT = 'text/plain, application/json'
 NO_PREVIOUS = 'previous terminated container'
+PREVIOUS_GONE = 'unable to retrieve container logs'
 NODE_ROLE = 'node-role.kubernetes.io/'
 NODE_LABELS = ('nodegroup', 'node.kubernetes.io/instance-type', 'topology.kubernetes.io/zone')
 PRESSURES = ('MemoryPressure', 'DiskPressure', 'PIDPressure', 'NetworkUnavailable')
@@ -336,17 +337,21 @@ class Kube:
         box = checked(CONTAINER, container_name, 'container') if container_name else None
         lines_wanted = max(1, min(int(tail or LOG_TAIL_MAX), LOG_TAIL_MAX))
         path, said = f'/api/v1/namespaces/{ns}/pods/{quote(name)}/log', ''
+        who = f'container {box}' if box else 'its container'
         try:
             text = self.get(path, {'previous': 'true', 'tailLines': lines_wanted, 'container': box}, text=True)
+            why = None if text.strip() else f'no previous logs: the previous run of {who} left no lines'
         except KubeError as e:
-            if not (e.code == 400 and NO_PREVIOUS in e.reason):
+            if not (e.code == 400 and (NO_PREVIOUS in e.reason or PREVIOUS_GONE in e.reason)):
                 raise
-            who = f'container {box}' if box else 'its container'
+            why = f'no previous run: {who} never restarted' if NO_PREVIOUS in e.reason else f'no previous logs: the logs of the previous run of {who} could not be read (the runtime no longer holds them)'
+        if why:
             try:
                 text = self.get(path, {'tailLines': lines_wanted, 'container': box}, text=True)
             except KubeError:
-                raise KubeError(f'{name} has no previous logs: {who} never restarted, so there is no earlier run to read, and its current logs could not be read either', 400) from None
-            said = f'no previous run: {who} never restarted, so these are its current logs\n'
+                lost = f'{who} never restarted, so there is no earlier run to read' if why.startswith('no previous run') else why.partition(': ')[2]
+                raise KubeError(f'{name} has no previous logs: {lost}, and its current logs could not be read either', 400) from None
+            said = f'{why}, so these are its current logs\n'
         lines = clean_lines(text.splitlines()[-lines_wanted:], LOG_LINE_LIMIT)
         kept, size = [], 0
         for line in reversed(lines):

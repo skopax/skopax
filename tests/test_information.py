@@ -582,12 +582,12 @@ def test_every_pack_words_the_move_label_and_the_severity_tooltip(lang):
     assert all(len(h) == 1 for h in hits), hits
 
 
-def test_teams_offers_no_info_and_an_old_info_route_or_setting_reads_as_warning(store: Store, caplog):
+def test_teams_offers_no_info_and_an_old_info_route_or_setting_reads_as_warning(store: Store, caplog, monkeypatch):
     # given
     from skopax import config
     from skopax.plugins import teams
     from tests.teams_kit import DATA, Transport, route, routes_of
-    config.TOLD.clear()
+    monkeypatch.setattr(config, 'TOLD', set())
     caplog.set_level(logging.WARNING, 'skopax')
     field = next(f for f in teams.PLUGIN.fields if f.key == 'min-sev')
     setting = next(s for s in teams.PLUGIN.settings if s.key == 'min-sev')

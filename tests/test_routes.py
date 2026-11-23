@@ -141,7 +141,7 @@ def test_a_settings_read_that_fails_uses_the_default_and_says_so_while_a_missing
         broken = routes.setting('teams', 'min-sev')
 
     # then
-    assert quiet == ('warn', 'crit') and broken == 'warn'
+    assert quiet == ('high', 'crit') and broken == 'high'
     assert 'route setting min-sev of plug-in teams not read, using its default: ZeroDivisionError' in caplog.text and 'plug-in hook' not in caplog.text
 
 

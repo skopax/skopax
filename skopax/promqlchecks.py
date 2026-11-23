@@ -56,7 +56,7 @@ BASELINE_WORDS = {'1d': 'custom_checks.day_ago', '1w': 'custom_checks.week_ago'}
 EVALUATED = ('source', 'instance', 'datasource', 'query', 'window', 'op', 'threshold', 'baselines', 'baselineMode', 'by')
 MODES = ('ratio', 'difference')
 SOURCES = ('prometheus', 'grafana', 'elasticsearch')
-SEVERITIES = ('info', 'warn', 'crit')
+SEVERITIES = ('info', 'warn', 'high', 'crit')
 ID = re.compile(r'[a-z][a-z0-9-]{1,40}')
 LABEL = re.compile(r'[a-zA-Z_][a-zA-Z0-9_]*')
 PLACEHOLDER = re.compile(r'\{([a-zA-Z_][a-zA-Z0-9_]*)\}')
@@ -64,6 +64,7 @@ CONTROL = re.compile(r'[\x00-\x08\x0b-\x1f\x7f]')
 LINE_BREAKS = re.compile(r'[\x00-\x1f\x7f]+')
 ESQL_FROM = re.compile(r'\s*FROM\s', re.I)
 TIME_PARAM = re.compile(r'\?(start|end)\b')
+ESQL_STRING = re.compile(r'"""[\s\S]*?"""|"(?:[^"\\\n]|\\.)*"')
 NO_TIME = 'query has no ?start/?end: reads every document'
 INERT = str.maketrans({'*': '\u2217', '`': "'"})
 FIELDS = ('id', 'name', 'enabled', 'source', 'instance', 'datasource', 'query', 'window', 'op', 'threshold', 'baselines', 'baselineMode', 'severity', 'by', 'for', 'title', 'text')
@@ -505,7 +506,7 @@ class ElasticAsker(Asker):
         self.warnings: list[str] = []
 
     def rows(self, query: str, at: float) -> tuple[list[str], list[dict]]:
-        named = set(TIME_PARAM.findall(query))
+        named = time_params(query)
         params = [{k: v} for k, v in (('start', iso(at - self.window * 60)), ('end', iso(at))) if k in named]
         try:
             return self.es.answer(query, timeout=QUERY_TIME_S, params=params, limit=BODY_MAX)
@@ -618,6 +619,10 @@ class Definitions:
 
     def set_state(self, check_id: str, doc: dict) -> None:
         self.runs.replace_one({'_id': check_id}, {'_id': check_id, **doc}, upsert=True)
+
+
+def time_params(query: str) -> set[str]:
+    return set(TIME_PARAM.findall(ESQL_STRING.sub('""', str(query or ''))))
 
 
 def edited_since(was: dict, now: dict) -> bool:
@@ -755,7 +760,7 @@ class CustomChecks:
         except Failed as e:
             return {'ok': False, 'reason': redact_text(e.reason, REASON_MAX), 'cards': [], 'series': 0, 'read': 0, 'skipped': 0, 'noBaseline': 0, 'firing': 0, 'for': d['for'],
                     'warnings': []}
-        warnings = ([NO_TIME] if d['source'] == 'elasticsearch' and 'start' not in TIME_PARAM.findall(d['query']) else []) + [redact_text(w, REASON_MAX) for w in outcome.warnings]
+        warnings = ([NO_TIME] if d['source'] == 'elasticsearch' and 'start' not in time_params(d['query']) else []) + [redact_text(w, REASON_MAX) for w in outcome.warnings]
         return {'ok': True, 'reason': '', 'warnings': warnings, 'series': outcome.total, 'read': outcome.read, 'skipped': outcome.skipped, 'noBaseline': outcome.missing, 'firing': len(pending),
                 'for': d['for'], 'cards': [{'key': c['key'], 'sev': c['sev'], 'title': c['label'], 'text': c['what'], 'value': c['now'], 'd1': c['d1'], 'd7': c['d7'], 'labels': c['checkLabels'],
                            'links': c.get('links') or [], 'more': int(c['now']) if c['key'].endswith('|more') else 0} for c in made]}

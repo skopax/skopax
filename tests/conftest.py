@@ -13,14 +13,14 @@ import mongomock
 import pytest
 from fastapi.testclient import TestClient
 
-from skopax import agent, app as app_module, brand, clock, engine, locales, messages, probe, redact, sections, tags, versioncheck
+from skopax import agent, app as app_module, brand, clock, engine, locales, messages, probe, redact, sections, tags, tracing, versioncheck
 from skopax.remote import Unreachable
 from skopax.app import create_app
 from skopax.chatui.text import reset as reset_chat_texts
 from skopax.investigator import prompt, select
 from skopax.config import Settings
 from skopax.jiralinks import JiraLinks
-from skopax.store import Store
+from skopax.store import SEVERITY_HIGH_MARK, Store
 from skopax.users import Users
 
 RELEASE_IGNORE = ('help-ui', 'tools-gateway', 'tools-mcp')
@@ -155,6 +155,7 @@ def fresh_chainlit(monkeypatch):
 @pytest.fixture
 def store() -> Store:
     made = Store(mongomock.MongoClient(tz_aware=True)['skopax'], release_ignore=RELEASE_IGNORE, self_deploy='platform/skopax')
+    made.counters.insert_one({'_id': SEVERITY_HIGH_MARK, 'done': True})
     Users(made.db).create(ADMIN_EMAIL, 'Admin', 'admin')
     return made
 
@@ -179,3 +180,15 @@ def no_google_retry_pause(monkeypatch):
     monkeypatch.setattr(google, 'RETRY_PAUSE', 0)
 
 
+@pytest.fixture
+def installed():
+    made = []
+
+    def put(found: tracing.Tracer) -> tracing.Tracer:
+        tracing.install(found)
+        made.append(found)
+        return found
+
+    yield put
+    for found in made:
+        tracing.uninstall(found)
