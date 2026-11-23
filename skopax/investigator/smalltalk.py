@@ -9,7 +9,7 @@ from skopax.ai import THINK_OFF, ModelSetting, key_for, maker, wrap
 from skopax.aikey import ClientBox
 from skopax.config import Setting
 from skopax.engine import iso as epoch_iso
-from skopax import clock
+from skopax import clock, tracing
 from skopax.contract import OrgPack
 from skopax.errkind import kind as error_kind
 from skopax.investigator import pricing, prompt
@@ -75,7 +75,8 @@ class SmallTalk:
             if ai is None:
                 return None
             model = pricing.effective(ai.provider, self.model, 'gate')
-            resp = ai.once(model, system, [{'role': 'user', 'content': text}], REPLY_MAX_TOKENS, 'low', THINK_OFF)
+            with tracing.opened('small talk', provider=ai.provider, talkFor=talk_for, cards=', '.join(keys)):
+                resp = ai.once(model, system, [{'role': 'user', 'content': text}], REPLY_MAX_TOKENS, 'low', THINK_OFF)
         except Exception as e:
             log.warning('small talk call failed: %s', error_kind(e))
             return None

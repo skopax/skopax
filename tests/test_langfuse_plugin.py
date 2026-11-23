@@ -5,6 +5,7 @@ import re
 import ssl
 import time
 from dataclasses import dataclass, field
+from types import SimpleNamespace as NS
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -29,7 +30,7 @@ from skopax.runtime import Runtime
 from skopax.sealer import Sealer, master_key
 from skopax.store import Store
 from tests.agent_kit import AUTH, agent_boot, agent_client
-from tests.conftest import settings, state as state_of
+from tests.conftest import AUTH as ADMIN, settings, state as state_of
 from tests.fake_http import FakeHttp
 from tests.kube_kit import Seen, agent_app, app_transport, kube_runtime
 from tests.plugin_kit import add_instance
@@ -1171,3 +1172,60 @@ def test_the_connection_test_reads_metrics_with_the_turn_filter_the_check_uses(s
 
     # then
     assert tested['ok'] and asked and ROOT in asked[0]['filters'], 'a Langfuse that does not know isRootObservation fails at Test, not at every pass'
+
+
+@pytest.mark.parametrize('traced', [True, False])
+def test_the_instance_that_receives_skopax_traces_is_not_watched_while_tracing_is_on(store: Store, tmp_path, traced: bool):
+    # given
+    steps = [{'level': 'ERROR', 'name': 'search_products', 'statusMessage': 'tool timeout', 'traceId': 'a'}]
+    http = api({'now': calm(errors={'ERROR': 40, 'WARNING': 5}), '1d': calm(), '7d': calm()}, steps=steps)
+    http.routes.update(api({'now': calm(errors={'ERROR': 30, 'WARNING': 5}), '1d': calm(), '7d': calm()}, steps=steps, url=EAST_URL).routes)
+
+    # when
+    with app_with(store, tmp_path, http, instances={'main': VALUES, 'east': dict(VALUES, url=EAST_URL)}) as c:
+        picked = c.put('/api/admin/settings', json={'key': 'langfuse.trace-instance', 'value': 'east'}, headers=ADMIN)
+        switched = c.put('/api/admin/features/langfuse-tracing', json={'on': traced}, headers=ADMIN)
+        c.app.state.sweeper.run('langfuse', 'langfuse', NOW)
+    keys = sorted(a['key'] for a in store.load()['anomalies'])
+    sources = store.load()['sources']
+    east_reads = [u for _, u, _, _ in http.calls if u.startswith(EAST_URL)]
+
+    # then
+    assert (picked.status_code, switched.status_code) == (200, 200)
+    if traced:
+        assert keys == ['lf-errors|-/langfuse'] and east_reads == []
+        assert (sources['langfuse-east'], sources['langfuse']) == (langfuse.TRACED_STATUS, 'ok') and langfuse.TRACED_STATUS == "Receives Skopax's own traces, so it is not watched"
+    else:
+        assert keys == ['lf-errors|-/langfuse', 'lf-errors|-/langfuse@east'] and east_reads and sources['langfuse-east'] == 'ok'
+
+
+def test_a_skipped_traced_instance_also_settles_its_access_cards():
+    # given
+    ctx = NS(instance=NS(name='east', config={}), setting=lambda key: 'east' if key == 'traced-instance' else '')
+
+    # when
+    swept = langfuse.run(ctx)
+
+    # then
+    assert swept.result.found == [] and swept.result.status == langfuse.TRACED_STATUS
+    assert set(swept.result.ran) == {'langfuse', 'langfuse:access:metrics', 'langfuse:access:observations'}
+
+
+def test_an_open_card_of_the_instance_closes_once_it_receives_skopax_traces(store: Store, tmp_path):
+    # given
+    steps = [{'level': 'ERROR', 'name': 'search_products', 'statusMessage': 'tool timeout', 'traceId': 'a'}]
+    http = api({'now': calm(), '1d': calm(), '7d': calm()})
+    http.routes.update(api({'now': calm(errors={'ERROR': 30, 'WARNING': 5}), '1d': calm(), '7d': calm()}, steps=steps, url=EAST_URL).routes)
+
+    with app_with(store, tmp_path, http, instances={'main': VALUES, 'east': dict(VALUES, url=EAST_URL)}) as c:
+        c.app.state.sweeper.run('langfuse', 'langfuse', NOW)
+        before = by_key(store.load())['lf-errors|-/langfuse@east']['status']
+
+        # when
+        c.put('/api/admin/settings', json={'key': 'langfuse.trace-instance', 'value': 'east'}, headers=ADMIN)
+        c.put('/api/admin/features/langfuse-tracing', json={'on': True}, headers=ADMIN)
+        c.app.state.sweeper.run('langfuse', 'langfuse', NOW + 900)
+    after = by_key(store.load())['lf-errors|-/langfuse@east']['status']
+
+    # then
+    assert (before, after) == ('open', 'cleared')

@@ -14,7 +14,7 @@ from skopax.aikey import ClientBox
 from skopax.config import Setting
 from skopax import toolusage
 from skopax.engine import iso, mute_for, parse_iso
-from skopax import clock
+from skopax import clock, tracing
 from skopax.errkind import kind as error_kind
 from skopax.investigator import pricing, prompt
 from skopax.kit.elastic import LOG_DEFAULTS, level_filter, quoted
@@ -276,7 +276,8 @@ class SelfReview:
             return None
         facts = self.facts(now)
         model = pricing.effective(ai.provider, self.model, 'review')
-        resp = ai.once(model, prompt.org_block(self.settings.org_about) + SYSTEM, [{'role': 'user', 'content': 'Facts (JSON):\n' + json.dumps(facts, ensure_ascii=False, default=str)}], MAX_TOKENS, 'medium', THINK_AUTO)
+        with tracing.opened('self-review', provider=ai.provider):
+            resp = ai.once(model, prompt.org_block(self.settings.org_about) + SYSTEM, [{'role': 'user', 'content': 'Facts (JSON):\n' + json.dumps(facts, ensure_ascii=False, default=str)}], MAX_TOKENS, 'medium', THINK_AUTO)
         usd = pricing.usd(model, resp.usage)
         self.store.add_spend(day, usd)
         try:

@@ -24,6 +24,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
                               'investigate.max-tool-calls', 'investigate.assess-max-tool-calls', 'investigate.slack-max-tool-calls', 'chat.max-tool-calls', 'screenshot.max-per-day')),
         ('Web', ('core.own-sites', 'investigate.web-domains', 'investigate.web-searches', 'investigate.web-fetches')),
         ('Behaviour', ('investigate.mode', 'investigate.language', 'investigate.refire-hours', 'investigate.strict-tools', 'core.org-about', 'mcp.wait-seconds')),
+        ('Langfuse tracing', ('langfuse.trace-instance', 'langfuse.trace-content', 'langfuse.trace-sample')),
     ),
     'Slack': (
         ('Channel and posting', ('slack.channel', 'slack.post-sev', 'slack.fallback-minutes', 'routes.slack-echo', 'slack.attach-screenshots', 'slack.push-user')),
@@ -55,7 +56,7 @@ UNITS = {
     'investigate.daily-usd': '$', 'page.ask-cap': 'per hour', 'slack.ask-cap': 'per hour', 'slack.user-ask-cap': 'per hour', 'mcp.dive-cap': 'per hour', 'chat.daily-cap': 'per day',
     'screenshot.max-per-day': 'per day', 'investigate.web-searches': 'per run', 'investigate.web-fetches': 'per run', 'investigate.max-cards': 'cards',
     'investigate.max-tool-calls': 'calls', 'investigate.assess-max-tool-calls': 'calls', 'investigate.slack-max-tool-calls': 'calls', 'chat.max-tool-calls': 'calls', 'investigate.rooms': 'rooms',
-    'chat.max-chars': 'chars', 'investigate.refire-hours': 'h', 'jira.points': 'points', 'slack.operator-cache-seconds': 's',
+    'chat.max-chars': 'chars', 'investigate.refire-hours': 'h', 'jira.points': 'points', 'slack.operator-cache-seconds': 's', 'langfuse.trace-sample': '%',
 }
 LABEL_UNITS = {'h': 'h', 'hours': 'h', 'min': 'min', 'minutes': 'min', 's': 's', 'seconds': 's', 'days': 'days', '$': '$', 'times': 'times', 'characters': 'chars'}
 LABEL_UNIT = re.compile(r'\(([^()]+)\)\s*$')

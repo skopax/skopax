@@ -10,7 +10,7 @@ import anthropic
 from skopax.ai import THINK_OFF, ModelSetting, api_errors, key_for, maker, wrap
 from skopax.aikey import ClientBox
 from skopax.config import Setting
-from skopax import clock
+from skopax import clock, tracing
 from skopax.contract import OrgPack
 from skopax.errkind import kind as error_kind
 from skopax.investigator import pricing, prompt
@@ -97,7 +97,8 @@ class Gate:
             if ai is None:
                 raise GateDown(NO_KEY)
             model = pricing.effective(ai.provider, self.model, 'gate')
-            resp = ai.once(model, prompt.gate_system(self.examples()['examples'], self.org, self.pack()), [{'role': 'user', 'content': text}], GATE_MAX_TOKENS, self.effort, THINK_OFF, GATE_SCHEMA)
+            with tracing.opened('topic check', provider=ai.provider, gateFor=gate_for, cards=', '.join(keys)):
+                resp = ai.once(model, prompt.gate_system(self.examples()['examples'], self.org, self.pack()), [{'role': 'user', 'content': text}], GATE_MAX_TOKENS, self.effort, THINK_OFF, GATE_SCHEMA)
         except GateDown:
             raise
         except (anthropic.APIError, *api_errors()) as e:

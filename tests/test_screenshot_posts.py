@@ -1,6 +1,7 @@
 import dataclasses
 import datetime as dt
 import json
+import time
 
 import pytest
 from bson import Binary
@@ -76,6 +77,9 @@ def send_now(client: TestClient, store: Store) -> None:
 
 def pod_send(client: TestClient, store: Store) -> None:
     client.app.state.investigator.effects.send_slack(KEY, POD_BY)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and not ((store.anomaly(KEY).get('slackPost') or {}).get('ts') and client.get('/api/actions').json()):
+        time.sleep(0.02)
 
 
 def blocks_of(payload: dict) -> list[dict]:

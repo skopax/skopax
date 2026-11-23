@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 import anthropic
 
-from skopax import clock
+from skopax import clock, tracing
 from skopax.ai import THINK_AUTO, maker, wrap
 from skopax.aikey import ClientBox
 from skopax.contract import Check, InstanceInfo, Planted, Plugin, ReadError
@@ -96,7 +96,8 @@ class AiCall:
             return None
         self.model = pricing.effective(ai.provider, self.model, 'plugin')
         try:
-            resp = ai.once(self.model, system, messages, max_tokens, effort, THINK_AUTO, schema)
+            with tracing.opened('plug-in AI', provider=ai.provider, plugin=self.plugin_id, instance=self.instance, source=self.source):
+                resp = ai.once(self.model, system, messages, max_tokens, effort, THINK_AUTO, schema)
         except Exception as e:
             log.warning('a plug-in model call for %s failed (%s)', self.source, kind(e))
             raise ReadError(502, msg('sweeps.ai_failed', kind=type(e).__name__)) from None

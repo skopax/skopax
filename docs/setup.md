@@ -53,6 +53,7 @@ Each switch has an environment name, which sets the starting value. A value save
 | Self-review | `SKOPAX_SELF_REVIEW` | the daily self-review |
 | Check for new versions | `SKOPAX_UPDATE_CHECK` | asks GitHub once a day for the latest release and shows admins a notice when a newer one exists; see [Version check](operations.md#version-check) |
 | Daily tag report | `SKOPAX_FEATURE_TAG_REPORT` | the daily Slack report that names the responsibles of each tag with open cards, Monday to Friday; it also needs Slack auto-send on; see [Card tags and responsibles](#card-tags-and-responsibles) |
+| Langfuse tracing | `SKOPAX_FEATURE_LANGFUSE_TRACING` | off by default; sends every AI call of Skopax (runs, chat answers, topic checks, self-review and plug-in AI helpers) to a Langfuse project as a trace; it needs a Langfuse instance picked in Admin > Investigator > Langfuse tracing; see [Langfuse tracing](plugins.md#langfuse-tracing) |
 | Hide "powered by Skopax" | `SKOPAX_FEATURE_HIDE_ATTRIBUTION` | Enterprise only; hides the line on every page, in the chat and on Slack and Teams posts; see [Branding](configuration.md#branding) |
 
 ### Card tags and responsibles

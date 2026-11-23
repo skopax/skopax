@@ -598,6 +598,7 @@ function renderIntegrations(note) {
       head.appendChild(addMcp);
     }
   }
+  if (INT_SIGNED && intAdmin()) head.appendChild(intPreviewToggle());
   top.appendChild(head);
   if (intRO()) top.appendChild(intViewNote('int-ro-list'));
   top.appendChild(accText('p', 'muted int-sub', live + ' connected \u00b7 ' + need + (need === 1 ? ' needs attention' : ' need attention')));

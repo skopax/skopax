@@ -606,6 +606,9 @@
   "Open Google Tag Manager": "Google Tag Manager öffnen",
   "Open image ↗": "Image öffnen ↗",
   "Open in": "Öffnen in",
+  "Langfuse tracing": "Langfuse-Tracing",
+  "sends each AI call of the investigator, the chat and the topic checks to a Langfuse project as a trace, with an Open trace link on the Investigator page. Switch it on in Admin > Features and pick the Langfuse instance in Admin > Investigator.": "sendet jeden KI-Aufruf des Investigators, des Chats und der Themenprüfungen als Trace an ein Langfuse-Projekt, mit einem Link „Trace öffnen“ auf der Investigator-Seite. Schalten Sie es unter Admin > Funktionen ein und wählen Sie die Langfuse-Instanz unter Admin > Investigator.",
+  "Open trace ↗": "Trace öffnen ↗",
   "Open in Slack ↗": "In Slack öffnen ↗",
   "Open menu": "Menü öffnen",
   "Open page": "Seite öffnen",
@@ -1582,7 +1585,12 @@
   "cards that are not firing, or muted, with no change for a while; they are hidden everywhere else.": "Karten, die nicht aktiv oder stummgeschaltet sind und sich länger nicht geändert haben; sonst überall ausgeblendet.",
   "cards that are not firing, or muted, with no change for {0} hours; they are hidden everywhere else.": "Karten, die nicht aktiv oder stummgeschaltet sind und sich seit {0} Stunden nicht geändert haben; sonst überall ausgeblendet.",
   "mute the card for {0} hours or {1} days. Unmute undoes it.": "schalten die Karte für {0} Stunden oder {1} Tage stumm. Stummschaltung aufheben macht es rückgängig.",
-  "silence a card for a while or for good; see Card actions.": "schalten eine Karte eine Zeit lang oder dauerhaft stumm; siehe Kartenaktionen."
+  "silence a card for a while or for good; see Card actions.": "schalten eine Karte eine Zeit lang oder dauerhaft stumm; siehe Kartenaktionen.",
+  "View as read-only": "Schreibgeschützt ansehen",
+  "Back to editing": "Zurück zum Bearbeiten",
+  "Preview: this is the page people without the admin role see. Only admins can change integrations.": "Vorschau: So sehen Personen ohne Admin-Rolle diese Seite. Nur Admins können Integrationen ändern.",
+  "Show the page you can edit again": "Die bearbeitbare Seite wieder anzeigen",
+  "Shows this page as operators and viewers see it, from the same data they get": "Zeigt diese Seite so, wie Operatoren und Betrachter sie sehen, mit denselben Daten"
  },
  "rules": [
   [

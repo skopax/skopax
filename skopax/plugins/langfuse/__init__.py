@@ -26,6 +26,9 @@ AGENT_FIELDS = (Field('langfuse.url', 'Langfuse URL', 'url', help='https address
                 Field('langfuse.public-key', 'Langfuse public key', 'text', help='Public key (pk-lf-...) of the Langfuse project.'),
                 Field('langfuse.secret-key', 'Langfuse secret key', 'secret', help='Secret key of the same project.'))
 AGENT_WHERE = 'through the agent'
+TRACED = 'traced-instance'
+TRACED_STATUS = "Receives Skopax's own traces, so it is not watched"
+
 STR = {'type': 'string'}
 SECTION_HELP = {check.SECTION: 'the last hour of traced turns: turns, steps, error and warning steps, p95 turn time and cost per turn, with the turns 1 day and 7 days earlier'}
 DESCRIPTION = ('Langfuse, where the traced app records every turn, read only. '
@@ -72,8 +75,17 @@ def card_place(config: Mapping[str, str]) -> tuple[str, str]:
     return (config.get('namespace') or '').strip() or NO_NAMESPACE, (config.get('service') or '').strip() or SERVICE
 
 
+def traced_here(ctx: Context) -> bool:
+    try:
+        return bool(ctx.instance.name) and ctx.setting(TRACED) == ctx.instance.name
+    except Exception:
+        return False
+
+
 def run(ctx: Context) -> Sweep:
     info = ctx.instance
+    if traced_here(ctx):
+        return Sweep(PassResult(check.CHECK, True, TRACED_STATUS, [], {}, RAN + tuple(f'{check.CHECK}:access:{part}' for part in check.COVERS)))
     ns, svc = card_place(info.config)
     held = any(a.get('src') == check.CHECK and a.get('sig') == access.SIG and a.get('sub') == 'observations' for a in ctx.open_cards())
     errors: dict[str, str] = {}

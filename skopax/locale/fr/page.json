@@ -606,6 +606,9 @@
   "Open Google Tag Manager": "Ouvrir Google Tag Manager",
   "Open image ↗": "Ouvrir l'image ↗",
   "Open in": "Ouvrir dans",
+  "Langfuse tracing": "Traces Langfuse",
+  "sends each AI call of the investigator, the chat and the topic checks to a Langfuse project as a trace, with an Open trace link on the Investigator page. Switch it on in Admin > Features and pick the Langfuse instance in Admin > Investigator.": "envoie chaque appel IA de l’investigateur, du chat et des contrôles de sujet à un projet Langfuse sous forme de trace, avec un lien Ouvrir la trace sur la page Investigateur. Activez-le dans Admin > Fonctionnalités et choisissez l’instance Langfuse dans Admin > Investigator.",
+  "Open trace ↗": "Ouvrir la trace ↗",
   "Open in Slack ↗": "Ouvrir dans Slack ↗",
   "Open menu": "Ouvrir le menu",
   "Open page": "Ouvrir la page",
@@ -1582,7 +1585,12 @@
   "cards that are not firing, or muted, with no change for a while; they are hidden everywhere else.": "cartes inactives, ou en sourdine, sans changement depuis un moment ; masquées partout ailleurs.",
   "cards that are not firing, or muted, with no change for {0} hours; they are hidden everywhere else.": "cartes inactives, ou en sourdine, sans changement depuis {0} heures ; masquées partout ailleurs.",
   "mute the card for {0} hours or {1} days. Unmute undoes it.": "mettent la carte en sourdine pendant {0} heures ou {1} jours. Réactiver l'annule.",
-  "silence a card for a while or for good; see Card actions.": "mettent une carte en sourdine un moment ou pour de bon ; voir Actions sur la carte."
+  "silence a card for a while or for good; see Card actions.": "mettent une carte en sourdine un moment ou pour de bon ; voir Actions sur la carte.",
+  "View as read-only": "Voir en lecture seule",
+  "Back to editing": "Revenir à l'édition",
+  "Preview: this is the page people without the admin role see. Only admins can change integrations.": "Aperçu : voici la page que voient les personnes sans le rôle admin. Seuls les admins peuvent modifier les intégrations.",
+  "Show the page you can edit again": "Afficher à nouveau la page modifiable",
+  "Shows this page as operators and viewers see it, from the same data they get": "Affiche cette page comme la voient les opérateurs et les lecteurs, avec les mêmes données"
  },
  "rules": [
   [

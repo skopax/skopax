@@ -163,6 +163,10 @@ class Settings:
     push_on: bool = True
     update_check: bool = True
     tag_report_on: bool = True
+    langfuse_tracing_on: bool = False
+    langfuse_trace_instance: str = ''
+    langfuse_trace_content: str = 'metadata'
+    langfuse_trace_sample: int = 100
     hide_attribution: bool = False
     jira_project: str = ''
     jira_parent: str = ''
@@ -399,6 +403,15 @@ def bounded(key: str, raw: str, low: int, high: int, default: int) -> int:
 
 
 CHAT_EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
+TRACE_CONTENTS = ('metadata', 'full')
+
+
+def trace_content(raw: str) -> str:
+    value = raw.strip().lower()
+    if value in TRACE_CONTENTS:
+        return value
+    log.warning('langfuse.trace-content %r is not metadata or full; using metadata', raw)
+    return TRACE_CONTENTS[0]
 
 
 def chat_effort_of(raw: str) -> str:
@@ -621,6 +634,10 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         push_on=get('core.push', 'SKOPAX_FEATURE_PUSH', 'true').strip().lower() == 'true',
         update_check=get('core.update-check', 'SKOPAX_UPDATE_CHECK', 'true').strip().lower() == 'true',
         tag_report_on=get('core.tag-report', 'SKOPAX_FEATURE_TAG_REPORT', 'true').strip().lower() == 'true',
+        langfuse_tracing_on=get('core.langfuse-tracing', 'SKOPAX_FEATURE_LANGFUSE_TRACING', 'false').strip().lower() == 'true',
+        langfuse_trace_instance=get('langfuse.trace-instance', 'LANGFUSE_TRACE_INSTANCE', '').strip(),
+        langfuse_trace_content=trace_content(get('langfuse.trace-content', 'LANGFUSE_TRACE_CONTENT', 'metadata')),
+        langfuse_trace_sample=bounded('langfuse.trace-sample', get('langfuse.trace-sample', 'LANGFUSE_TRACE_SAMPLE', '100').strip() or '100', 0, 100, 100),
         hide_attribution=get('core.hide-attribution', 'SKOPAX_FEATURE_HIDE_ATTRIBUTION', 'false').strip().lower() == 'true',
         jira_project=get('jira.project', 'JIRA_PROJECT', '').strip(),
         jira_parent=get('jira.parent', 'JIRA_PARENT', '').strip(),

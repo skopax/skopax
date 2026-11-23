@@ -136,9 +136,26 @@ async function thePolledRowStaysASidebarTabThatOpeningThePageMarksCurrent() {
   console.log('PASS the polled Investigator row keeps its tab class, so the sidebar marks it current when its page opens');
 }
 
+async function aSentRunLinksItsLangfuseTraceAndOthersDoNot() {
+  //given
+  const traced = board().recent.map((r, i) => Object.assign({}, r, i === 0 ? {traceUrl: 'https://langfuse.example.com/project/p1/traces/abc'} : i === 1 ? {traceUrl: 'javascript:alert(1)'} : {}));
+  const {w, doc, errors} = await boot({board: board({recent: traced})});
+
+  //then
+  const rows = [...doc.querySelectorAll('#inv .inv-recent tbody tr')];
+  const links = rows.map((r) => r.querySelector('a.inv-trace'));
+  assert.ok(links[0] && links[0].textContent === 'Open trace \u2197' && links[0].href === 'https://langfuse.example.com/project/p1/traces/abc');
+  assert.ok(links[0].target === '_blank' && links[0].rel === 'noopener');
+  assert.deepStrictEqual(links.slice(1), [null, null], 'a run that was not sent, or a link that is not http, shows no trace link');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS a recent run that was sent to Langfuse shows Open trace in a new tab, and other runs show no link');
+}
+
 (async () => {
   await thePageShowsRoomsTheQueueLimitsAndRecentRuns();
   await aStoppedInvestigatorAndAnIdleOneAndAFailedLoadSaySo();
   await aSwitchedOffInvestigatorSaysWhereToTurnItOn();
   await thePolledRowStaysASidebarTabThatOpeningThePageMarksCurrent();
+  await aSentRunLinksItsLangfuseTraceAndOthersDoNot();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });
