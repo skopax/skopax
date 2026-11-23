@@ -311,7 +311,7 @@ class Catalog:
                    'account': new_account() if moved else doc.get('account') or new_account()}
             dropped = {'refused': '', **({'scope': '', 'folders': '', 'confirm': ''} if moved else {})}
             self.col.update_one({'_id': name}, {'$set': put, '$unset': dropped}, upsert=True)
-        self.note(by, msg('mcptools.tools.listed', by=by, instance=name, count=len(rows), on=sum(1 for r in rows if r['on'])))
+        self.note(by, msg('mcptools.tools.listed_one' if len(rows) == 1 else 'mcptools.tools.listed', by=by, instance=name, count=len(rows), on=sum(1 for r in rows if r['on'])))
         return Changes(tuple(new), tuple(changed), tuple(gone))
 
     @staticmethod

@@ -5,7 +5,7 @@ import urllib.parse
 
 from collections.abc import Mapping
 
-from skopax.contract import anomaly, fmt, iso
+from skopax.contract import alert_sev, anomaly, fmt, iso
 from skopax.kit.alerts import ALERT_KEEP, QUIET_ALERTS
 from skopax.kit.promql import POD, WATCHED, Prometheus, out_err, prom_link, scoped
 
@@ -53,12 +53,12 @@ APP = f'namespace=~{WATCHED}'
 INGRESS_EXCLUDE = '<ingress-exclude>'
 ING = f'exported_namespace=~{WATCHED}{INGRESS_EXCLUDE}'
 RATES = [
-    dict(sig='err', label='ERROR logs', q=inc('log4j2_events_total', APP + ',level="error"'), slack=10, sev='warn'),
+    dict(sig='err', label='ERROR logs', q=inc('log4j2_events_total', APP + ',level="error"'), slack=10, sev='high'),
     dict(sig='warn', label='WARN logs', q=inc('log4j2_events_total', APP + ',level="warn"'), slack=100, sev='info'),
-    dict(sig='5xx', label='5xx responses', q=inc('http_server_requests_seconds_count', APP + ',status=~"5.."'), slack=5, sev='warn', req='req'),
+    dict(sig='5xx', label='5xx responses', q=inc('http_server_requests_seconds_count', APP + ',status=~"5.."'), slack=5, sev='high', req='req'),
     dict(sig='out-err', label='failed outbound calls', q=out_err(APP, W, 'namespace, job'), slack=10, sev='warn'),
-    dict(sig='gw-err', label='gateway errors', q=inc('krakend_proxy_duration_count', APP + ',error="true"'), slack=20, sev='warn', req='gw-req'),
-    dict(sig='ing-5xx', label='ingress 5xx', q=inc('nginx_ingress_controller_requests', ING + ',status=~"5.."', 'exported_namespace, ingress'), slack=10, sev='warn', ident=ing_id, req='ing-req'),
+    dict(sig='gw-err', label='gateway errors', q=inc('krakend_proxy_duration_count', APP + ',error="true"'), slack=20, sev='high', req='gw-req'),
+    dict(sig='ing-5xx', label='ingress 5xx', q=inc('nginx_ingress_controller_requests', ING + ',status=~"5.."', 'exported_namespace, ingress'), slack=10, sev='high', ident=ing_id, req='ing-req'),
     dict(sig='hikari-tmo', label='DB pool timeouts', q=inc('hikaricp_connections_timeout_total', APP), slack=1, sev='warn'),
 ]
 TRAFFIC = [
@@ -159,14 +159,14 @@ def evaluate_prom(now, data, hard, alerts, deploys, image_by=None, floors: Mappi
             lo = min(b1.get(k, 0), b7.get(k, 0))
             hi = max(b1.get(k, 0), b7.get(k, 0))
             if lo >= 600 and v < 0.3 * lo:
-                found.append(anomaly('prom', 'traffic-drop', k[0], k[1], '', 'warn', v, b1.get(k, 0), b7.get(k, 0), '', spec['label'],
+                found.append(anomaly('prom', 'traffic-drop', k[0], k[1], '', 'high', v, b1.get(k, 0), b7.get(k, 0), '', spec['label'],
                                      f'{spec["label"]} in the last 60 min fell to {fmt(v)}, the same window had {fmt(b1.get(k, 0))} a day ago and {fmt(b7.get(k, 0))} a week ago', hi))
             elif v > 3 * hi + 3000:
                 found.append(anomaly('prom', 'traffic-spike', k[0], k[1], '', 'info', v, b1.get(k, 0), b7.get(k, 0), '', spec['label'],
                                      f'{spec["label"]} in the last 60 min rose to {fmt(v)}, more than three times the baseline', 3000))
         for k, v in b1.items():
             if k not in cur and min(v, b7.get(k, 0)) >= 600:
-                found.append(anomaly('prom', 'traffic-drop', k[0], k[1], '', 'warn', 0, v, b7.get(k, 0), '', spec['label'],
+                found.append(anomaly('prom', 'traffic-drop', k[0], k[1], '', 'high', 0, v, b7.get(k, 0), '', spec['label'],
                                      f'no {spec["label"]} in the last 60 min, the same window had {fmt(v)} a day ago', max(v, b7.get(k, 0))))
     for spec in RATES:
         cur, b1, b7 = trio(spec['sig'])
@@ -255,13 +255,14 @@ def evaluate_prom(now, data, hard, alerts, deploys, image_by=None, floors: Mappi
         name = lab.get('alertname', '?')
         if a.get('state') != 'firing' or name in QUIET_ALERTS:
             continue
-        sev = {'critical': 'crit', 'warning': 'warn'}.get(lab.get('severity', ''), 'info')
+        sev = alert_sev(lab.get('severity'))
         ident = ','.join([f'cluster={segment}'] * bool(segment) + [f'{k}={lab[k]}' for k in ALERT_KEEP if k in lab])
         svc = lab.get('job') or lab.get('service') or lab.get('deployment') or lab.get('ingress') or lab.get('consumergroup') or lab.get('domain') or '-'
         ann = a.get('annotations', {})
         text = (ann.get('summary') or ann.get('description') or ann.get('message') or name).replace('\n', ' ')[:200]
         x = anomaly('alert', 'alert', lab.get('namespace', '-'), svc, name, sev, 1, None, None, '', name, f'Prometheus alert {name} firing since {a.get("activeAt", "?")[:16].replace("T", " ")}Z: {text}')
         x['key'] = f'alert|{name}|{ident}'
+        x['alertName'], x['alertLabel'] = name, str(lab.get('severity') or '').strip().lower()
         x['short'] = f'{sev.upper()} alert {name}' + (f' {svc}' if svc != '-' else '')
         found.append(x)
     dep_rows = []

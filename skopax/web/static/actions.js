@@ -750,7 +750,7 @@ async function initActions() {
     form.hidden = true;
     form.setAttribute('role', 'group');
     form.setAttribute('aria-label', 'Severity for ' + name);
-    [['crit', 'Critical'], ['warn', 'Warning'], ['info', 'Move to Information']].concat(a.sevSet ? [['auto', 'Back to the signal']] : []).forEach(function (o) {
+    [['crit', 'Critical'], ['high', 'High'], ['warn', 'Warning'], ['info', 'Move to Information']].concat(a.sevSet ? [['auto', 'Back to the signal']] : []).forEach(function (o) {
       var b = btn(o[1], 'sec small sev-pick');
       b.dataset.sev = o[0];
       if (o[0] === a.sev && a.sevSet) b.setAttribute('aria-pressed', 'true');

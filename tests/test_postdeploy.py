@@ -3,7 +3,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from skopax import clock
 from skopax.enrich import SourceDown
-from skopax.postdeploy import LOOKBACK_HOURS, PostDeploy, queries
+from skopax.postdeploy import LOOKBACK_HOURS, PostDeploy, queries, slack_text
 from skopax.kit.promql import Prometheus
 from tests.plugin_kit import prom_runtime
 from skopax.remote import Reply, Unreachable
@@ -200,3 +200,16 @@ def test_with_slack_auto_send_off_the_report_queues_no_slack_text(store: Store):
     # then
     assert 'slackDraft' not in report and 'autoSend' not in report and 'slackSkipped' not in report
     assert store.list_activity(None, 5)[0]['text'].endswith('Slack auto-send is off, not posted')
+
+
+def test_a_deploy_check_of_one_service_says_one_service():
+    # given
+    one = [{'svc': 'checkout-service', 'flags': []}]
+    two = one + [{'svc': 'cart-service', 'flags': []}]
+
+    # when
+    said = slack_text(one, NOW, NOW), slack_text(two, NOW, NOW)
+
+    # then
+    assert ': 1 service (' in said[0] and '1 services' not in said[0]
+    assert ': 2 services (' in said[1]

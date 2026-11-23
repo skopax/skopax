@@ -11,9 +11,11 @@ from skopax.backlink import Backlinks
 from skopax.contract import Denied
 from skopax.plugins.jira.client import JIRA_GATEWAY, Jira
 from skopax.remote import HttpError
+from skopax.sso import SsoHttp
 from skopax.store import Store
 from tests.conftest import AUTH, anomaly, settings, state
 from tests.fake_http import FakeHttp
+from tests.test_mcp import IDP, board, call, mcp_settings, token
 
 NOW = 1_792_224_000.0
 USER = 'alice@example.com'
@@ -324,6 +326,27 @@ def test_a_jira_outage_adds_an_activity_line_and_a_later_set_tries_again(store: 
     assert jira_lines(store) == ['Jira back-link not added to OPS-40: Jira HTTP 503', 'Linked back from OPS-40']
 
 
+def test_the_same_refusal_again_adds_no_second_activity_line_until_the_reason_changes_or_it_links(store: Store):
+    # given
+    saved(store, anomaly(KEY, num=12))
+    http = answering('OPS-40', error=HttpError(403, remote('OPS-40')))
+    links = backlinks(store, http)
+
+    # when
+    for _ in range(3):
+        links.ticket_set(KEY, 'OPS-40', USER)
+    http.routes[('POST', remote('OPS-40'))] = HttpError(503, remote('OPS-40'))
+    links.ticket_set(KEY, 'OPS-40', USER)
+    http.routes[('POST', remote('OPS-40'))] = {'id': 1}
+    links.ticket_set(KEY, 'OPS-40', USER)
+
+    # then
+    assert len(http.hits(remote('OPS-40'))) == 5, 'every ticket action still tries again'
+    lines = jira_lines(store)
+    assert len(lines) == 3 and lines[0].startswith('Jira back-link not added to OPS-40: ') and 'HTTP 403' in lines[0]
+    assert lines[1:] == ['Jira back-link not added to OPS-40: Jira HTTP 503', 'Linked back from OPS-40']
+
+
 def test_the_investigator_triage_links_the_ticket_back(store: Store):
     # given
     saved(store, anomaly(KEY, num=12))
@@ -474,3 +497,21 @@ def test_the_global_id_carries_the_base_path_and_stays_under_255_characters(stor
     long_id, = [h[3]['globalId'] for h in http.hits(remote('OPS-41'))]
     assert short == 'skopax:example.com/ops:card:12'
     assert len(long_id) <= 255 and long_id.startswith('skopax:example.com/ops:card:') and len(long_id.rsplit(':', 1)[1]) == 24
+
+
+def test_a_ticket_linked_through_mcp_links_the_jira_issue_back_like_the_page(store: Store):
+    # given
+    board(store, anomaly(KEY, num=12))
+    http = answering('OPS-40')
+    s = dataclasses.replace(mcp_settings(), jira_backlink='link')
+
+    # when
+    with TestClient(create_app(s, store, transport=http, sso_http=SsoHttp(fetch=IDP.fetch, exchange=IDP.exchange))) as c:
+        with_jira(c)
+        said, failed = call(c, token(), 'link_ticket', {'card': 12, 'ticket': 'OPS-40'})
+        drained(c)
+
+    # then
+    assert not failed and 'OPS-40' in said
+    assert [h[3]['globalId'] for h in http.hits(remote('OPS-40'))] == ['skopax:skopax.example.com:card:12']
+    assert jira_lines(store) == ['Linked back from OPS-40']

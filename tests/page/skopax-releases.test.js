@@ -1031,7 +1031,7 @@ async function tabGroupsCarryTheHealthState() {
   assert.ok(narrow.some((r) => r.selectorText === '.layout' && r.style.getPropertyValue('grid-template-columns') === 'minmax(0px, 1fr)'), 'on a narrow content the main column takes the full width');
   assert.ok(narrow.some((r) => r.selectorText === '.tabs' && r.style.getPropertyValue('position') === 'fixed') && narrow.some((r) => r.selectorText === 'body.nav-open .tabs'), 'and the menu becomes a drawer');
   assert.deepStrictEqual([...doc.querySelector('section.overview').children].map((c) => c.id), ['reco', 'meta'], 'the overview keeps the Skopax summary and the source pills');
-  assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms button')].map((b) => b.dataset.f).slice(0, 4), ['all', 'open', 'crit', 'warn'], 'All first, then the Open counts right under Open in the Anomalies side sub menu');
+  assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms button')].map((b) => b.dataset.f).slice(0, 5), ['all', 'open', 'crit', 'high', 'warn'], 'All first, then the Open counts right under Open in the Anomalies side sub menu');
   assert.strictEqual(tab('anoms').title, '1 critical', 'the Anomalies tab tooltip counts by severity');
   assert.ok(tab('svcs').classList.contains('hot') && tab('svcs').classList.contains('k-crit'), 'Services is coloured by its worst service: ' + tab('svcs').className);
   assert.strictEqual(doc.getElementById('count-svcs').textContent, '1/2');

@@ -1,6 +1,7 @@
 import datetime as dt
 import posixpath
 import re
+import time
 from collections.abc import Callable
 
 from skopax.contract import Context, Denied, Missing, ReadError, SourceDown, Tool, iso
@@ -9,6 +10,10 @@ from skopax.plugins.github.client import PERMISSIONS, SEARCH_HITS, split_name
 from skopax.redact import redact_secrets
 
 MAX_FILE_LINES = 400
+HINT_ROOM = 1600
+TREE_ENTRIES = 20
+TREE_STEPS = 6
+TREE_BUDGET_S = 10
 PR_STATES = ('open', 'merged', 'closed', 'all')
 PR_ROWS = 20
 PR_SEARCH_LIMIT = 100
@@ -137,8 +142,32 @@ def words_of(query: str) -> str:
     return text
 
 
-def no_file(a: dict, repo: dict) -> ReadError:
-    return ReadError(404, msg('github.no_file', path=req(a, 'path'), repo=name_of(req(a, 'repo')), ref=ref_of(a, repo), permission=PERMISSIONS['code']))
+def nearby(github, a: dict, repo: dict) -> str:
+    ref = ref_of(a, repo)
+    folder = str(req(a, 'path')).strip('/')
+    end = time.monotonic() + TREE_BUDGET_S
+    for _ in range(TREE_STEPS):
+        if time.monotonic() > end:
+            return ''
+        try:
+            rows = github.listing(repo, folder, ref)
+        except Missing:
+            rows = []
+        except Exception:
+            return ''
+        if rows:
+            ordered = sorted(rows, key=lambda r: r.get('type') != 'dir')[:TREE_ENTRIES]
+            names = [str(r.get('path') or r.get('name')) + ('/' if r.get('type') == 'dir' else '') for r in ordered]
+            return msg('github.hint.nearby', folder=folder or msg('github.hint.root'), ref=ref, names=', '.join(names))
+        if not folder:
+            return ''
+        folder = folder.rpartition('/')[0]
+    return ''
+
+
+def no_file(a: dict, repo: dict, github=None) -> ReadError:
+    text = msg('github.no_file', path=req(a, 'path'), repo=name_of(req(a, 'repo')), ref=ref_of(a, repo), permission=PERMISSIONS['code'])
+    return ReadError(404, text + (nearby(github, a, repo) if github is not None else ''), HINT_ROOM)
 
 
 def read_file(github, a: dict):
@@ -146,7 +175,7 @@ def read_file(github, a: dict):
     try:
         lines = github.file(repo, req(a, 'path'), one_ref(ref_of(a, repo))).splitlines()
     except Missing:
-        raise no_file(a, repo) from None
+        raise no_file(a, repo, github) from None
     first, last = span(a.get('lines'), len(lines))
     return '\n'.join(f'{i}: {lines[i - 1]}' for i in range(first, min(last, len(lines)) + 1))
 

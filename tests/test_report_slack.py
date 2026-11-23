@@ -96,9 +96,9 @@ def test_send_posts_the_report_and_records_it(saved: dict, store: Store):
     assert post['at']
     _, payload = transport.calls[0]
     assert payload['channel'] == '#ops'
-    assert payload['text'] == ':large_orange_circle: *OPS 13.10 release* · WARNING · 2 services · 1 flagged'
+    assert payload['text'] == ':large_yellow_circle: *OPS 13.10 release* · WARNING · 2 services · 1 flagged'
     card = payload['attachments'][0]
-    assert card['color'] == '#e08a00'
+    assert card['color'] == '#e9b308'
     blocks = card['blocks']
     assert [b['type'] for b in blocks] == ['section', 'section', 'section', 'actions', 'context', 'context']
     assert blocks[0]['text']['text'] == '*WARNING* · *Release 05:06–05:28: 2 services*\norders-service restarted 3 times at startup\n• orders-service healthy since 05:14\n• checkout-service clean'
@@ -147,7 +147,7 @@ def test_empty_draft_clears_it_and_the_post_falls_back_to_the_headline(saved: di
     # then
     assert cleared.json() == {'slackDraft': None, 'autoSend': None}
     assert 'slackDraft' not in listed[0]
-    assert transport.calls[0][1]['text'].startswith(':large_orange_circle: *OPS 13.10 release*')
+    assert transport.calls[0][1]['text'].startswith(':large_yellow_circle: *OPS 13.10 release*')
 
 
 def test_draft_and_send_need_an_operator_and_a_known_report(saved: dict, store: Store):

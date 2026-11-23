@@ -9,6 +9,8 @@ from skopax.assign import slug
 from skopax import brand
 from skopax.actors import POD_BY, SYSTEM, investigator_label, is_token, token_label
 from skopax.errkind import kind as error_kind
+from skopax.mail import tidy
+from skopax.messages import msg
 from skopax.store import NotFound, Store, glob_match
 
 log = logging.getLogger('skopax.notices')
@@ -47,10 +49,14 @@ def addresses(*cards: dict | None) -> tuple[dict[str, str], set[str]]:
         held = card.get('assigned') if isinstance(card.get('assigned'), dict) else {}
         who = str(held.get('email') or card.get('owner') or '').strip()
         if '@' in who:
-            emails[slug(who)] = who.lower()
+            emails[slug(who)] = tidy(who)
         elif who:
             named.add(slug(who))
     return emails, named - set(emails)
+
+
+def came_back_text(ref: str) -> str:
+    return msg('mail.notice.came_back', ref=ref) if ref else msg('mail.notice.came_back_plain')
 
 
 def holder(card: dict | None) -> str:
@@ -133,7 +139,7 @@ class Notices:
         if link:
             row['link'] = link
         known, by_name = addresses(card, *seen)
-        known |= {u: str(e).strip().lower() for u, e in (emails or {}).items() if e and '@' in str(e)}
+        known |= {u: tidy(str(e).strip()) for u, e in (emails or {}).items() if e and '@' in str(e)}
         by_name = (by_name | set(named)) - set(known)
         fresh: list[dict] = []
         try:
@@ -208,7 +214,8 @@ class Notices:
             resolved_at = (card.get('resolution') or {}).get('at')
             if kind == 'stopped' and resolved_at and resolved_at == ev.get('t'):
                 continue
-            sent += self.add({holder(card)}, kind, 'server', card, f"{card.get('sev')}" if kind == 'escalated' else '')
+            note = f"{card.get('sev')}" if kind == 'escalated' else came_back_text(ev['cameBack']) if 'cameBack' in ev else ''
+            sent += self.add({holder(card)}, kind, 'server', card, note)
         return sent
 
     @staticmethod

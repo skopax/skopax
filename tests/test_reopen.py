@@ -66,7 +66,7 @@ def test_reopen_tells_the_slack_thread_once_and_redraws_the_head(store: Store):
     replies = transport.replies()
     assert replies == [(POST_TS, msg('notes.state.reopened', who='bootstrap', card='#349'))] and 'reopened #349' in replies[0][1]
     updates = [p for m, p in api.calls if m == 'chat.update']
-    assert updates and updates[-1]['blocks'][0]['text']['text'].startswith(':large_orange_circle:') and ':white_check_mark:' not in updates[-1]['blocks'][0]['text']['text']
+    assert updates and updates[-1]['blocks'][0]['text']['text'].startswith(':large_yellow_circle:') and ':white_check_mark:' not in updates[-1]['blocks'][0]['text']['text']
 
 
 def test_reopen_of_a_card_without_a_post_or_that_was_not_closed_sends_nothing(store: Store):

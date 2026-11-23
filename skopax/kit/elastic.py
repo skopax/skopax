@@ -40,6 +40,7 @@ PATTERNS_FAILED_TTL = 60
 PATTERNS_TIMEOUT = 10
 PATTERNS_SHOWN = 10
 PATTERNS_CLOSE = 0.5
+AFFIX_MIN = 6
 DATED = re.compile(r'\d{4}[.\-]\d{2}[.\-]\d{2}|-\d{6}$')
 
 
@@ -211,8 +212,21 @@ def refusal(es: object, e: ElasticError, indices: tuple[str, ...], budget: Budge
         return again.denied and bool(es.api_key)
 
 
+def shared_start(a: str, b: str) -> int:
+    return next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
+
+
+def affix_score(src: str, name: str) -> float:
+    core, plain = src.replace('*', ''), name.replace('*', '')
+    if not core:
+        return 0.0
+    ends = max(shared_start(core, plain), shared_start(core[::-1], plain[::-1]))
+    inside = any(len(part) >= AFFIX_MIN and part in plain for part in (p.strip('-_.') for p in src.split('*')))
+    return max(ends / len(core), PATTERNS_CLOSE if inside else 0.0)
+
+
 def closest_patterns(sources: tuple[str, ...], names: list[str], count: int = PATTERNS_SHOWN) -> list[str]:
-    scored = sorted(((max(difflib.SequenceMatcher(None, src, name).ratio() for src in sources), name) for name in names), key=lambda x: (-x[0], x[1]))
+    scored = sorted(((max(max(difflib.SequenceMatcher(None, src, name).ratio(), affix_score(src, name)) for src in sources), name) for name in names), key=lambda x: (-x[0], x[1]))
     return [name for ratio, name in scored if ratio >= PATTERNS_CLOSE][:count]
 
 

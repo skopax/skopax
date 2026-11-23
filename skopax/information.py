@@ -1,6 +1,8 @@
 import datetime as dt
 
-CARD_SEVS = ('crit', 'warn')
+from skopax import severity
+
+CARD_SEVS = severity.CARD_LEVELS
 IN_FLIGHT = ('progress', 'handled')
 SYSTEM_TRIAGE = ('pod', 'auto')
 ENDED_KEEP_S = 24 * 3600

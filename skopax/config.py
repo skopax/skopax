@@ -16,8 +16,8 @@ log = logging.getLogger('skopax.config')
 INVESTIGATE_MODES = ('off', 'shadow', 'live')
 SLACK_LISTEN_MODES = ('off', 'shadow', 'live')
 JIRA_BACKLINK_MODES = ('link', 'comment', 'off')
-SLACK_POST_SEVS = ('crit', 'warn', 'off')
-SLACK_POST_SEV = 'warn'
+SLACK_POST_SEVS = ('crit', 'high', 'warn', 'off')
+SLACK_POST_SEV = 'high'
 CRIT_NOW_TOLD = 'slack.crit-now'
 INFO_DAYS_TOLD = 'core.info-auto-close-days'
 ENV_LABEL_TOLD = 'core.env-label'
@@ -217,6 +217,7 @@ class Settings:
     auto_resolve_hours_set: bool = False
     auto_resolve_hours_crit: int = 6
     auto_resolve_hours_warn: int = 6
+    auto_resolve_hours_high: int = 6
     auto_resolve_sev_set: tuple[str, ...] = ()
     info_auto_close_days: int = 3
     info_auto_close_days_set: bool = False
@@ -264,6 +265,7 @@ class Settings:
     sso_token_headers: str = ''
     jira_developer_field: str = ''
     alert_twins: tuple[str, ...] = ()
+    alerts_warn: tuple[str, ...] = ()
     release_ignore: tuple[str, ...] = ()
     log_format: str = logs.TEXT
     log_color: str = logs.ALWAYS
@@ -281,6 +283,19 @@ class Settings:
 
 def csv_of(raw: str) -> tuple[str, ...]:
     return tuple(p for p in (part.strip() for part in (raw or '').split(',')) if p)
+
+
+ALERT_GLOB = re.compile(r'[A-Za-z0-9_:.*?\[\]!-]{1,100}')
+ALERT_GLOBS_MAX = 100
+ALERTS_WARN_TOLD = 'alerts.warn'
+
+
+def alert_globs(entries: tuple[str, ...]) -> tuple[str, ...]:
+    kept = tuple(dict.fromkeys(e for e in entries if ALERT_GLOB.fullmatch(e)))
+    if (len(kept) < len(entries) or len(kept) > ALERT_GLOBS_MAX) and ALERTS_WARN_TOLD not in TOLD:
+        TOLD.add(ALERTS_WARN_TOLD)
+        log.warning('alerts.warn keeps %d alert names; an entry is an alert name or a pattern with * and ?, at most %d', min(len(kept), ALERT_GLOBS_MAX), ALERT_GLOBS_MAX)
+    return kept[:ALERT_GLOBS_MAX]
 
 
 def own_sites_of(raw: str) -> tuple[str, ...]:
@@ -524,6 +539,10 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         sev_hours[sev] = bounded(f'core.auto-resolve-hours-{sev}', sev_raw, 0, 720, auto_hours) if sev_raw else auto_hours
         if sev_raw and whole_in(sev_raw, 0, 720):
             sev_set.append(sev)
+    high_raw = get('core.auto-resolve-hours-high', 'SKOPAX_AUTO_RESOLVE_HOURS_HIGH', '').strip()
+    sev_hours['high'] = bounded('core.auto-resolve-hours-high', high_raw, 0, 720, sev_hours['warn']) if high_raw else sev_hours['warn']
+    if high_raw and whole_in(high_raw, 0, 720):
+        sev_set.append('high')
     info_raw = get('core.info-auto-close-days', 'SKOPAX_INFO_AUTO_CLOSE_DAYS', '').strip()
     info_fallback = 0 if auto_hours == 0 else 3
     info_days = bounded('core.info-auto-close-days', info_raw, 0, 90, info_fallback) if info_raw else info_fallback
@@ -688,6 +707,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         auto_resolve_hours_set=bool(auto_hours_raw),
         auto_resolve_hours_crit=sev_hours['crit'],
         auto_resolve_hours_warn=sev_hours['warn'],
+        auto_resolve_hours_high=sev_hours['high'],
         auto_resolve_sev_set=tuple(sev_set),
         info_auto_close_days=info_days,
         info_auto_close_days_set=info_set,
@@ -736,6 +756,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         sso_token_headers=get('sso.token-headers', 'SSO_TOKEN_HEADERS', '').strip(),
         jira_developer_field=get('jira.developer-field', 'JIRA_DEVELOPER_FIELD', '').strip(),
         alert_twins=csv_of(get('core.alert-twins', 'SKOPAX_ALERT_TWINS', '')),
+        alerts_warn=alert_globs(csv_of(get('alerts.warn', 'SKOPAX_ALERTS_WARN', ''))),
         release_ignore=csv_of(get('core.release-ignore', 'SKOPAX_RELEASE_IGNORE', '')),
         log_format=log_setting(LOG_FORMAT_KEY, logs.FORMAT_ENV, logs.FORMATS, logs.TEXT),
         log_color=log_color,

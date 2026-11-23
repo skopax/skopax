@@ -34,7 +34,7 @@ RULE_HELP = {
     'crash_floor': 'Crashes in the last hour must reach this count before a card is raised.',
     'crash_times': 'Crashes must also be more than this many times the same hour yesterday or a week ago (the higher of the two).',
     'crash_gap': 'Crashes must also be at least this many above that earlier hour.',
-    'crash_crit_users': 'A crash card is critical when this many users were hit in the hour; below it is a warning.',
+    'crash_crit_users': 'A crash card is critical when this many users were hit in the hour; below it is high.',
     'anr_floor': 'App-not-responding events (Android freezes) in the last hour must reach this count before a card is raised.',
     'anr_times': 'Freezes must also be more than this many times the same hour yesterday or a week ago.',
     'anr_gap': 'Freezes must also be at least this many above that earlier hour.',
@@ -202,7 +202,7 @@ def evaluate_app(app: str, windows: dict[str, dict[str, dict]], now: float, rule
         key = 'crash' if kind == 'FATAL' else 'anr'
         if not above(n, max(n1, n7), rules[f'{key}_times'], rules[f'{key}_gap'], rules[f'{key}_floor']):
             continue
-        sev = 'crit' if kind == 'FATAL' and users >= rules['crash_crit_users'] else 'warn'
+        sev = 'crit' if kind == 'FATAL' and users >= rules['crash_crit_users'] else 'high'
         top = sorted((i for i in issues.values() if i['type'] == kind), key=lambda i: -i['events'])
         lines = '; '.join(f"{i['title']} ({i['events']} events, {i['users']} users, first seen {i['first'] or '?'})" for i in top[:3])
         found.append(crash_item('crash-rate', app, kind, sev, n, n1, n7, f'{word} up',

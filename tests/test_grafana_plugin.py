@@ -579,7 +579,7 @@ def test_grafana_second_instance_is_scoped(store: Store):
     # then
     far = cards['alert|DiskFull|cluster=east-only,namespace=shop,persistentvolumeclaim=data-0@east']
     near = cards['alert|DiskFull|cluster=data-prometheus,namespace=shop,persistentvolumeclaim=data-0']
-    assert (far['cluster'], far['ranKey']) == ('east', 'grafana:east-only-east') and far['short'].startswith('WARN EAST alert DiskFull')
+    assert (far['cluster'], far['ranKey']) == ('east', 'grafana:east-only-east') and far['short'].startswith('HIGH EAST alert DiskFull')
     assert 'cluster' not in near and near['ranKey'] == 'grafana:data-prometheus'
     assert set(state['serverPasses']) >= {'grafana', 'grafana-east'}
     assert {r.get('cluster'): r['checked'] for r in state['grafanaAlerts']} == {None: ['data-prometheus'], 'east': ['east-only']}

@@ -1,5 +1,6 @@
 import collections
 import copy
+import fnmatch
 import datetime as dt
 import logging
 import re
@@ -9,7 +10,7 @@ from typing import Callable, Mapping
 
 from pymongo.errors import PyMongoError
 
-from skopax import causes, clock, history, information, summary, tags
+from skopax import causes, clock, history, information, severity, summary, tags
 from skopax.actors import SYSTEM
 from skopax.businesstime import elapsed
 from skopax.errkind import kind as error_kind
@@ -22,14 +23,19 @@ log = logging.getLogger('skopax.engine')
 REOPEN_QUIET_S = 2 * 3600
 PUSH_SVC_QUIET_S = 30 * 60
 CLEARED_KEEP_S = information.ENDED_KEEP_S
-KEEP_UNTIL_ADDRESSED = ('warn', 'crit')
+KEEP_UNTIL_ADDRESSED = severity.CARD_LEVELS
 ADDRESSED_TRIAGE = ('progress', 'handled')
 HANDLED = ('progress', 'handled')
 POD_REOPEN = ('dived',) + HANDLED
 HISTORY_KEEP = 300
-SEV_RANK = {'info': 0, 'warn': 1, 'crit': 2}
+SEV_RANK = severity.RANK
 OFFER_MARKS = ('takeOffered', 'resolveOffered', 'knownOffered', 'muteOffered', 'ticketOffered')
-CARRY = ('note', 'suspects', 'recommend', 'assessedAt', 'triage', 'ticket', 'owner', 'absorb', 'code', 'slackDraft', 'slackPost', 'autoSend', 'slackFallback', 'triagedBy', 'investigator', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'num', 'assigned', 'sevSet', 'resolution', 'cause', 'noteBy', 'recommendBy', 'noteFlagged', 'recommendFlagged', 'autoAssigned', 'handAssigned', 'ownerName')
+LIFTED = 'sevUp'
+AGE_UNITS = ('dur', 'min', 'h')
+KEPT_WARNING = 'Warning: listed in Alerts kept at Warning.'
+FIXED = 'fixed'
+NO_ACTION = 'handled'
+CARRY = ('note', 'suspects', 'recommend', 'assessedAt', 'triage', 'ticket', 'owner', 'absorb', 'code', 'slackDraft', 'slackPost', 'autoSend', 'slackFallback', 'triagedBy', 'investigator', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'num', 'assigned', 'sevSet', 'resolution', 'cause', 'noteBy', 'recommendBy', 'noteFlagged', 'recommendFlagged', 'autoAssigned', 'handAssigned', 'ownerName', LIFTED, 'sevBefore', 'previousResolution', 'cameBack')
 POST_LISTS = ('teamsPosts', 'fixPosts')
 SHOTS = 'screenshots'
 NO_SERVICE = (None, '', '-', '?')
@@ -49,7 +55,7 @@ STALE_DAILY_S = 3 * 24 * 3600
 STALE_MANUAL_S = 7 * 24 * 3600
 DAILY_KEYS = ('crux', 'ga', 'varnish-cache')
 PLUGIN_DAILY: frozenset[str] = frozenset()
-SEVERITIES = ('crit', 'warn')
+SEVERITIES = severity.CARD_LEVELS
 NO_DATA = ':no-data'
 
 
@@ -81,6 +87,35 @@ def anomaly(src: str, sig: str, ns: str, svc: str, sub: str, sev: str, now: floa
     return dict(key=key, src=src, sig=sig, ns=ns, svc=svc, sub=sub, sev=sev, now=round(now, 3), d1=None if d1 is None else round(d1, 3),
                 d7=None if d7 is None else round(d7, 3), unit=unit, label=label, what=what,
                 short=short or f'{sev.upper()} {target} {label}{value}{base}', slack=slack)
+
+
+def lift(a: dict) -> None:
+    floor = a.get(LIFTED)
+    if a.get('keptWarning'):
+        return
+    if (a.get('sev') in SEVERITIES or a.get('cameBack')) and severity.higher(floor, a.get('sev')):
+        a['sev'] = floor
+
+
+def came_back(a: dict, followed: str | None, closed_at: str | None) -> dict | None:
+    how = a.get('resolution')
+    if a.get('triage') != 'handled' or followed is not None or a.get('muted') or a.get('triagedBy') in BY_SYSTEM or not isinstance(how, dict) or how.get('kind') not in (FIXED, NO_ACTION):
+        return None
+    return {'kind': how['kind'], 'ref': how.get('ref'), 'by': how.get('by') or a.get('triagedBy'), 'at': how.get('at') or closed_at}
+
+
+def reopened_after(a: dict, back: dict, t: str) -> None:
+    a['previousResolution'] = back
+    if back['kind'] != FIXED:
+        a.pop('cameBack', None)
+        return
+    a['cameBack'] = {'ref': back.get('ref'), 'at': t}
+    if severity.rank(a.get('sev')) < severity.rank(severity.HIGH):
+        a[LIFTED] = severity.HIGH
+    person = str(back.get('by') or '')
+    held = a.get('assigned') if isinstance(a.get('assigned'), dict) else {}
+    if '@' in person and str(held.get('email') or '').lower() != person.lower():
+        a['assignBack'] = person
 
 
 def ticket_owned(a: dict | None) -> bool:
@@ -142,7 +177,7 @@ def follow_original(state: dict, a: dict, original: dict, firing: set, now: floa
         set_muted(a, entry)
         return 'muted'
     if original.get('triage') == 'progress':
-        a.update(triage='progress', ticket=original.get('ticket'), owner=original.get('owner'), triagedBy=None, resolution=None)
+        a.update(triage='progress', ticket=original.get('ticket'), owner=original.get('owner'), triagedBy=original.get('triagedBy'), resolution=None)
         if live:
             a['parent'] = original['key']
         return 'progress'
@@ -177,6 +212,7 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
             continue
         seen.add(k)
         a = prev.get(k)
+        back = None
         set_muted(f, mute_for(state, k, now))
         f.pop('cause', None)
         if a is None:
@@ -187,17 +223,25 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
             carried = {x: a.get(x) for x in CARRY if x not in POST_LISTS or a.get(x) is not None}
             carried['cause'] = flap_cause(a, now, t)
             pushed = (a.get('pushedAt'), a.get('pushedSev'), a.get('pushedPeak'))
+            closed_at = a.get('triagedAt')
             a.clear()
             a.update(f, **carried)
             a.update(firstSeen=t, lastSeen=t, peak=f['now'], status='open', pushedAt=pushed[0], pushedSev=pushed[1], pushedPeak=pushed[2])
             original = duplicate_of(a, prev) if a.get('triage') == 'handled' else None
             followed = follow_original(state, a, original, firing, now) if original else None
+            back = came_back(a, followed, closed_at)
+            if a.get('triage') == 'handled' and not back:
+                a.pop('cameBack', None)
+                a.pop('previousResolution', None)
             if a.get('triage') == 'handled' and followed != 'muted':
+                a.pop(LIFTED, None)
                 if a.get('triagedBy') not in BY_SYSTEM:
                     a[BACK_AFTER_RESOLVE] = t
                 a['triage'] = None
                 a['triagedBy'] = None
                 a['resolution'] = None
+            if back:
+                reopened_after(a, back, t)
             ev = 'reopened'
         else:
             keep = {x: a.get(x) for x in ('firstSeen', 'pushedAt', 'pushedSev', 'pushedPeak', 'peak', 'parent', BACK_AFTER_RESOLVE, SHOTS) + OFFER_MARKS + CARRY
@@ -208,9 +252,13 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
             a['status'] = 'open'
             a['peak'] = max(a.get('peak') or 0, f['now'])
             ev = None
+        regressed = ev == 'reopened' and bool(back) and back['kind'] == FIXED
+        quiet_back = ev == 'reopened' and bool(back) and back['kind'] == NO_ACTION
         manual = a.get('sevSet')
-        if isinstance(manual, dict) and manual.get('sev') in SEV_RANK:
-            a['sevAuto'] = f['sev']
+        hand = isinstance(manual, dict) and manual.get('sev') in SEV_RANK
+        lift(a)
+        if hand:
+            a['sevAuto'] = a['sev']
             a['sev'] = manual['sev']
         if ev and not a.get('parent'):
             host = next((p for p in prev.values() if p is not a and p['status'] == 'open' and p.get('triage') != 'handled' and SEV_RANK[a['sev']] <= SEV_RANK.get(p.get('sev'), 0)
@@ -223,13 +271,15 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
             a['pushedAt'], a['pushedSev'], a['pushedPeak'] = t, a['sev'], a['now']
             pushable = False
         if pushable:
-            higher = a.get('pushedSev') is None or SEV_RANK[a['sev']] > SEV_RANK[a['pushedSev']]
-            quiet = a.get('pushedAt') is None or now - parse_iso(a['pushedAt']) > REOPEN_QUIET_S
             doubled = a.get('pushedPeak') is not None and a['now'] >= 2 * a['pushedPeak'] and a['now'] - a['pushedPeak'] >= a.get('slack', 1)
+            if doubled and ev != 'new' and not hand and not a.get('keptWarning') and a.get('unit') not in AGE_UNITS and severity.up(a['sev']) != a['sev']:
+                a[LIFTED] = a['sev'] = severity.up(a['sev'])
+            higher = a.get('pushedSev') not in SEV_RANK or SEV_RANK[a['sev']] > SEV_RANK[a['pushedSev']]
+            quiet = a.get('pushedAt') is None or now - parse_iso(a['pushedAt']) > REOPEN_QUIET_S
             if ev == 'new':
                 should = True
             elif ev == 'reopened':
-                should = higher or (doubled if a.get('triage') in HANDLED else quiet)
+                should = regressed or (higher if quiet_back else higher or (doubled if a.get('triage') in HANDLED else quiet))
             else:
                 should = higher or doubled
                 if should:
@@ -241,10 +291,10 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
         if first and SEV_RANK[a['sev']] >= 1:
             a['pushedAt'], a['pushedSev'], a['pushedPeak'] = t, a['sev'], a['now']
         if ev:
-            events.append(dict(t=t, key=k, ev=ev, sev=a['sev'], text=a['short'], muted=bool(a['muted'])))
+            events.append(dict(t=t, key=k, ev=ev, sev=a['sev'], text=a['short'], muted=bool(a['muted'])) | ({'cameBack': str(back.get('ref') or '')} if regressed else {}))
         if should:
             a['pushedAt'], a['pushedSev'], a['pushedPeak'] = t, a['sev'], a['now']
-            if SEV_RANK[a['sev']] > recent.get(push_group(a), -1):
+            if regressed or SEV_RANK[a['sev']] > recent.get(push_group(a), -1):
                 push.append(a)
     for k, a in prev.items():
         if k in seen or a['status'] != 'open' or not reported(ran.get(clearing_key(a)), a):
@@ -532,7 +582,7 @@ def group_siblings(state: dict) -> list[tuple[str, str]]:
         for a in same:
             if a is host or a.get('triage') in ADDRESSED_TRIAGE + ('investigating',) or a.get('slackDraft') or posted_this_time(a):
                 continue
-            if host.get('triage') == 'handled' and a.get('sev') == 'crit':
+            if host.get('triage') == 'handled' and not information.calm(a):
                 continue
             a['parent'] = host['key']
             out.append((a['key'], host['key']))
@@ -552,7 +602,7 @@ def new_pushes(before: dict[str, str | None], items: list[dict], now: float) -> 
     by_key = {x.get('key'): x for x in items}
     for a in items:
         at = a.get('pushedAt')
-        if not at or at == before.get(a['key']) or a.get('muted') or a.get('sev') not in ('warn', 'crit'):
+        if not at or at == before.get(a['key']) or a.get('muted') or a.get('sev') not in severity.CARD_LEVELS:
             continue
         if a.get('parent') and a.get('firstSeen') == at and not information.under_information(a, by_key):
             continue
@@ -611,9 +661,22 @@ def number_cards(store: Store, cards: list[dict]) -> None:
         log.warning('card numbers not given this pass: %s', error_kind(e))
 
 
-def _merged(state: dict, all_results: list[PassResult], now: float, alert_twins: tuple[str, ...], screen, clusters) -> tuple:
+def kept_at_warning(found: list[dict], patterns: tuple[str, ...]) -> list[dict]:
+    if not patterns:
+        return found
+    for x in found:
+        name = x.get('alertName')
+        if x.get('sig') == 'alert' and x.get('sev') == severity.HIGH and x.get('alertLabel') in severity.ALERT_WARNING and isinstance(name, str) and any(fnmatch.fnmatchcase(name, p) for p in patterns):
+            x['sev'] = severity.WARN
+            x['short'] = re.sub(r'^HIGH ', 'WARN ', str(x.get('short') or ''))
+            x['what'] = f"{x.get('what') or ''} {KEPT_WARNING}".strip()
+            x['keptWarning'] = True
+    return found
+
+
+def _merged(state: dict, all_results: list[PassResult], now: float, alert_twins: tuple[str, ...], screen, clusters, alerts_warn: tuple[str, ...] = ()) -> tuple:
     results = screen(state, all_results) if screen else all_results
-    found = [x for r in results if r.ok for x in r.found]
+    found = kept_at_warning(copy.deepcopy([x for r in results if r.ok for x in r.found]), alerts_warn)
     events, push, first = merge(state, copy.deepcopy(found), reach_of(results, clusters), now)
     twins = group_alert_twins(state, alert_twins)
     siblings = group_siblings(state)
@@ -628,19 +691,19 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
           recurring_count: int = history.RECURRING_COUNT, recurring_days: int = history.RECURRING_DAYS, tag_rules: tuple | None = None,
           alert_twins: tuple[str, ...] = (), screen: Callable[[dict, list[PassResult]], list[PassResult]] | None = None,
           clusters: Mapping[str, tuple[str | None, ...]] | None = None, kind_windows: tuple = (),
-          severity_hours: Mapping[str, int] | None = None, business: tzinfo | None = None) -> Applied | None:
+          severity_hours: Mapping[str, int] | None = None, business: tzinfo | None = None, alerts_warn: tuple[str, ...] = ()) -> Applied | None:
     all_results = results
     hooks = tags.text_hooks() if tag_rules is not None else []
     texts = None
     if hooks:
         ahead = store.load()
-        _merged(ahead, all_results, now, alert_twins, screen, clusters)
+        _merged(ahead, all_results, now, alert_twins, screen, clusters, alerts_warn)
         texts = tags.texts_with(ahead['anomalies'], tag_rules, iso(now), hooks)
     for attempt in range(attempts):
         state = store.load()
         loaded = copy.deepcopy(state)
         base = state.get('rev', 0)
-        results, events, push, twins, siblings, first = _merged(state, all_results, now, alert_twins, screen, clusters)
+        results, events, push, twins, siblings, first = _merged(state, all_results, now, alert_twins, screen, clusters, alerts_warn)
         if tag_rules is not None:
             tags.apply_rules(state['anomalies'], tag_rules, iso(now), texts if hooks else tags.texts_with(state['anomalies'], tag_rules, iso(now), hooks))
         number_cards(store, state['anomalies'])
@@ -660,7 +723,9 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
         state['serverPasses'] = runs
         if after:
             after(state)
-        by_severity = {sev: (severity_hours or {}).get(sev, auto_resolve_hours) for sev in SEVERITIES}
+        given = dict(severity_hours or {})
+        given.setdefault(severity.HIGH, given.get(severity.WARN, auto_resolve_hours))
+        by_severity = {sev: given.get(sev, auto_resolve_hours) for sev in SEVERITIES}
         resolved = (auto_resolve_kinds(state, now, kind_windows, business) + auto_resolve(state, now, auto_resolve_hours, kind_windows, by_severity, business)
                     + (follow_parents(state, now) if any(h > 0 for h in by_severity.values()) else []))
         rows = store.history_rows([a['key'] for a in state['anomalies']])

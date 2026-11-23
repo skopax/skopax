@@ -2,7 +2,7 @@ import datetime as dt
 import logging
 import re
 
-from skopax import history, information, tickets
+from skopax import history, information, severity, tickets
 from skopax import clock
 from skopax.contract import Refused as ClientRefused
 from skopax.enrich import SourceDown
@@ -19,7 +19,7 @@ ANY_RECORD = frozenset({'severity', 'assess', 'postdeploy', 'unmute'})
 INSTANT = frozenset({'mute', 'unmute', 'reopen', 'link', 'severity', 'known', 'resolve', 'take', 'group', 'ticket'})
 DEFAULT_MUTE_HOURS = 24
 RESULT_WHY = 160
-SEV_NAMES = {'crit': 'Critical', 'warn': 'Warning', 'info': 'Info', 'auto': 'auto'}
+SEV_NAMES = {**severity.NAMES, 'auto': 'auto'}
 PRESET = 'presetReason'
 
 
@@ -127,7 +127,7 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
     if kind == 'severity':
         sev = action.get('sev')
         if sev not in SEV_NAMES:
-            raise Refused('severity is one of crit, warn, info or auto')
+            raise Refused('severity is one of crit, high, warn, info or auto')
         _, auto = store.set_severity(key, sev, action.get('requestedBy'))
         store.number_card(key)
         return f'severity back to the signal ({SEV_NAMES[auto]})' if sev == 'auto' else f'severity set to {SEV_NAMES[sev]} by hand (the signal says {SEV_NAMES[auto]})'
@@ -153,7 +153,7 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
         why = (action.get('reason') or '').strip()
         how = resolution(store, action)
         if why:
-            store.note(key, note_under(store.anomaly(key).get('note'), why, action.get('requestedBy'), 'Resolved'))
+            store.note(key, note_under(store.anomaly(key).get('note'), why, action.get('requestedBy'), 'Resolved'), by=history.PERSON)
         store.triage(key, 'handled', ticket=ticket, resolution=how)
         return history.kind_text(how) + (f' · {ticket}' if ticket else '') + (f' · {why[:RESULT_WHY]}' if why else '')
     if kind == 'take':
@@ -162,7 +162,7 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
         held = store.anomaly(key).get('owner')
         owner = (action.get('owner') or '').strip() or (None if held else (action.get('requestedBy') or '').strip() or None)
         if why:
-            store.note(key, note_under(store.anomaly(key).get('note'), why, action.get('requestedBy'), 'Taken'))
+            store.note(key, note_under(store.anomaly(key).get('note'), why, action.get('requestedBy'), 'Taken'), by=history.PERSON)
         store.triage(key, 'progress', ticket=ticket or None, owner=owner, owner_name=display_name(owner, name_of))
         store.mark_hand_assigned(key)
         owner = owner or held
@@ -186,7 +186,8 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
             if over and over.get('status') == 'open':
                 raise Refused(f'{parent} is already merged under {key}; that grouping stands' if above == key else f'{parent} is itself merged under {above}; group under {above} instead')
         if host.get('triage') == 'handled' and not information.calm(kid):
-            raise Refused(f'{parent} is handled and {key} is critical; a critical card stays open for a human, also under a parent')
+            word = severity.WORDS.get(kid.get('sev'), 'critical')
+            raise Refused(f'{parent} is handled and {key} is {word}; a {word} card stays open for a human, also under a parent')
         if host.get('triage') == 'handled' and kid.get('triage') != 'handled':
             raise Refused(f'{parent} is already resolved (Done), so {key} would disappear from Open under it; pick an open card as the parent')
         store.group(parent, [key])

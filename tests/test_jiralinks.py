@@ -1,7 +1,7 @@
 from tests.conftest import anomaly, jira_links, state
 from skopax.engine import iso
 from skopax.jiralinks import SWEEP_BY
-from skopax.jiralinks import JiraLinks, card_keys, jira_time
+from skopax.jiralinks import JiraLinks, card_keys, jira_time, ticket_finder
 from skopax.store import Store
 
 
@@ -132,3 +132,16 @@ def test_jira_times_parse_with_and_without_the_offset_colon():
     # then
     assert jira_time('2026-10-22T01:15:30.123-0500') == jira_time('2026-10-22T01:15:30.123-05:00') == jira_time('2026-10-22T07:15:30.123+01:00') == 1_792_649_730.123
     assert jira_time(None) is None and jira_time('not a date') is None
+
+
+def test_with_no_jira_projects_the_ticket_finder_skips_encodings_hashes_and_standards():
+    # given
+    text = 'fix UTF-8 decoding for OPS-12 per RFC-7231, hashed with SHA-256 over TLS-1 for CVE-2024-1234 and ISO-8859'
+
+    # when
+    found = ticket_finder(()).findall(text)
+    named = ticket_finder(('UTF', 'OPS')).findall(text)
+
+    # then
+    assert found == ['OPS-12']
+    assert named == ['UTF-8', 'OPS-12'], 'a configured project of that name is still found'

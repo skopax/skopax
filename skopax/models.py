@@ -9,7 +9,7 @@ from skopax.messages import msg
 from skopax.sso import FIELDS as SSO_FIELDS, VALUE_MAX as SSO_VALUE_MAX
 
 CHAT_TEXT_MAX = 8000
-Level = Literal['ok', 'info', 'warn', 'crit']
+Level = Literal['ok', 'info', 'warn', 'high', 'crit']
 IssueKey = Annotated[str, StringConstraints(pattern=r'^[A-Z][A-Z0-9]{1,9}-\d{1,7}$')]
 SignalName = Annotated[str, StringConstraints(pattern=r'^[a-z0-9-]{1,40}$')]
 CheckId = Annotated[str, StringConstraints(min_length=1, max_length=64)]
@@ -61,7 +61,7 @@ class ActionIn(BaseModel):
     points: float | None = Field(default=None, ge=0, le=100)
     project: str | None = Field(default=None, max_length=20)
     epic: str | None = Field(default=None, max_length=30)
-    sev: Literal['crit', 'warn', 'info', 'auto'] | None = None
+    sev: Literal['crit', 'high', 'warn', 'info', 'auto'] | None = None
     reportId: str | None = Field(default=None, max_length=100)
     kind: str | None = Field(default=None, max_length=20)
     ref: str | None = Field(default=None, max_length=REF_LIMIT)

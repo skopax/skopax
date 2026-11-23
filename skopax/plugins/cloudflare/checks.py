@@ -16,13 +16,13 @@ EDGE_HELP = {
     'min_req': 'A zone is judged only when its hour has at least this many requests; a share of a handful of requests says nothing.',
     'conn_crit_n': 'Critical when at least this many requests in the hour end 502 or 520-526 at the edge (Cloudflare could not reach or get an answer from the origin).',
     'conn_crit_pct': 'And those requests are at least this percentage of all requests of the zone (0.5 = 0.5 %).',
-    'conn_warn_n': 'Warning when at least this many requests in the hour end 502 or 520-526 at the edge.',
+    'conn_warn_n': 'High when at least this many requests in the hour end 502 or 520-526 at the edge.',
     'conn_warn_pct': 'And those requests are at least this percentage of all requests of the zone.',
     'conn_info_n': 'Info when at least this many requests in the hour end 502 or 520-526 at the edge.',
     'conn_info_pct': 'And those requests are at least this percentage of all requests of the zone.',
     'srv_crit_n': 'Critical when at least this many requests in the hour end with another 5xx at the edge (500, 503, 504, 530).',
     'srv_crit_pct': 'And those requests are at least this percentage of all requests of the zone (1 = 1 %).',
-    'srv_warn_n': 'Warning when at least this many requests in the hour end with another 5xx at the edge.',
+    'srv_warn_n': 'High when at least this many requests in the hour end with another 5xx at the edge.',
     'srv_warn_pct': 'And those requests are at least this percentage of all requests of the zone.',
     'srv_info_n': 'Info when at least this many requests in the hour end with another 5xx at the edge.',
     'srv_info_pct': 'And those requests are at least this percentage of all requests of the zone.',
@@ -307,7 +307,7 @@ def edge_sev(kind: str, n: int, req: int | None, rules: dict) -> str | None:
         return None
     for sev in ('crit', 'warn', 'info'):
         if n >= rules[f'{kind}_{sev}_n'] and n / req * 100 >= rules[f'{kind}_{sev}_pct']:
-            return sev
+            return 'high' if sev == 'warn' else sev
     return None
 
 

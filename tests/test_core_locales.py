@@ -309,3 +309,16 @@ def test_the_source_tool_prints_every_english_text_a_translator_needs():
     assert found['rules'] == [pattern for pattern, _ in reference.rules] and found['tails'] == [end for end, _ in reference.tails]
     assert found['headers'] == sorted(reference.headers) and found['months'] == list(MONTHS) and found['days'] == list(DAYS)
     assert locale_source.text().isascii()
+
+
+def test_the_spanish_pack_keeps_one_regional_variant_for_cost_as_it_does_for_add_and_expire():
+    # given
+    page = json.loads((locales.ROOT / 'es' / 'page.json').read_text(encoding='utf-8'))['page']
+
+    # when
+    values = ' '.join(page.values())
+
+    # then
+    assert re.search(r'\b[Aa]ñadir\b', values) and re.search(r'\b[Cc]aduca\b', values)
+    assert not re.search(r'\b[Cc]ostos?\b', values)
+    assert page['Costs'] == 'Costes'

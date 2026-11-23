@@ -95,13 +95,13 @@ function renderBrief() {
   var briefOpen = openAll().filter(healthCard);
   var openTxt = briefOpen.length ? briefOpen.length + ' open' : 'Nothing open';
   var lv = D.summary && D.summary.level ? D.summary.level : worst;
-  var lvMap = {ok: ['All clear', 'k-ok'], info: ['Info', 'k-info'], warn: ['Warning', 'k-warn'], crit: ['Critical', 'k-crit']};
+  var lvMap = {ok: ['All clear', 'k-ok'], info: ['Info', 'k-info'], warn: ['Warning', 'k-warn'], high: ['High', 'k-high'], crit: ['Critical', 'k-crit']};
   var L = lvMap[lv] || lvMap.info;
-  var dot = {ok: '#1f9d55', info: '#2f6fe0', warn: '#e08a00', crit: '#dc2626'}[lv];
+  var dot = {ok: '#1f9d55', info: '#2f6fe0', warn: '#e9b308', high: '#e8590c', crit: '#dc2626'}[lv];
   var icon = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1.55 13.82 10.4 1 14.8 1 3.05 14.98ZM12.95 14.98 1.2 1 5.6 1 14.45 13.82Z' fill='#3cc8f0'/><path d='M6.25 7.01 8 4.48 9.75 7.01 8 9.09Z' fill='#b3eefc'/>" +
     (dot ? "<circle cx='12.5' cy='3.5' r='3.5' fill='" + dot + "' stroke='#14171c' stroke-width='1.2'/>" : '') + '</svg>';
   document.getElementById('favicon').href = 'data:image/svg+xml,' + encodeURIComponent(icon);
-  var sevTxt = ['crit', 'warn'].map(function (s) { var n = briefOpen.filter(function (a) { return a.sev === s; }).length; return n ? n + ' ' + SEV[s][0].toLowerCase() : ''; }).filter(Boolean).join(' · ');
+  var sevTxt = CARD_SEVS.map(function (s) { var n = briefOpen.filter(function (a) { return a.sev === s; }).length; return n ? n + ' ' + SEV[s][0].toLowerCase() : ''; }).filter(Boolean).join(' · ');
   var links = (briefOpen.length ? '<button type="button" class="xlink" data-open-anoms title="Show the open cards">' + esc(sevTxt || openTxt) + ' open</button>' : '<span>Nothing open</span>') +
     (D.summary && /\brelease\b/i.test(D.summary.headline || '') ? ' · <button type="button" class="xlink" data-reps>Deploy reports ›</button>' : '');
   r.innerHTML = '<div class="brief-top"><span class="sev ' + L[1] + '" title="' + esc(BRIEF_BY) + '">' + esc(L[0]) + '</span><span class="brief-when">' + links + '</span></div>';
@@ -407,10 +407,10 @@ var relCount = null;
 function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 function renderTabs() {
   var bad = S.filter(function (s) { return s.status !== 'ok'; });
-  var svcK = bad.some(function (s) { return s.status === 'crit'; }) ? 'k-crit' : bad.some(function (s) { return s.status === 'warn'; }) ? 'k-warn' : 'k-info';
+  var svcTop = CARD_SEVS.filter(function (v) { return bad.some(function (s) { return s.status === v; }); })[0], svcK = svcTop ? SEV[svcTop][1] : 'k-info';
   var badTip = bad.slice(0, 5).map(function (s) { return s.svc + ' (' + (SEV[s.status] || SEV.info)[0] + ')'; }).join(', ') + (bad.length > 5 ? ', +' + (bad.length - 5) + ' more' : '');
-  var openNow = openAll(), openTop = ['crit', 'warn'].filter(function (s) { return openNow.some(function (a) { return healthCard(a) && a.sev === s; }); })[0];
-  var anomTip = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; });
+  var openNow = openAll(), openTop = CARD_SEVS.filter(function (s) { return openNow.some(function (a) { return healthCard(a) && a.sev === s; }); })[0];
+  var anomTip = [[openBySev('crit').length, 'critical'], [openBySev('high').length, 'high'], [openBySev('warn').length, 'warning']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; });
   if (!openAll().length) anomTip.push('nothing open');
   var T = {
     anoms: [String(openNow.length), openTop ? SEV[openTop][1] : SEV[worst][1], !!openNow.length, anomTip.join(' · ')],
@@ -418,7 +418,7 @@ function renderTabs() {
     info: [infoFiring().length, 'k-info', false, infoFiring().length ? plural(infoFiring().length, 'item', 'items') + ' still firing' : 'nothing firing'],
     lat: [(D.routes || []).length, 'k-info', false, ''],
     hist: [H.length, 'k-cleared', false, ''],
-    slack: slackTabState(),
+    slack: ['', 'k-info', false, ''],
     rels: deps.length ? [deps.length + ' deployed', 'k-act', true, plural(deps.length, 'service', 'services') + ' with a new image in the last 24 h: ' + deps.map(function (d) { return d.svc + clusterTag(d); }).join(', ')] :
       [relCount == null ? '–' : relCount, 'k-info', false, 'no service got a new image in the last 24 h']
   };
@@ -500,6 +500,7 @@ function renderFilters() {
     {id: 'investigating', label: 'Investigating', k: 'k-act', n: triCount('investigating'), seg: 'tri-chips'},
     {id: 'dived', label: 'Investigated', k: 'k-cleared', n: triCount('dived'), seg: 'tri-chips'},
     {id: 'crit', label: 'Critical', k: 'k-crit', n: openBySev('crit').length, seg: 'sev-chips', tip: 'open critical items (pushed)'},
+    {id: 'high', label: 'High', k: 'k-high', n: openBySev('high').length, seg: 'sev-chips', tip: 'open high items (pushed)'},
     {id: 'warn', label: 'Warning', k: 'k-warn', n: openBySev('warn').length, seg: 'sev-chips', tip: 'open warning items (pushed)'},
     {id: 'recurring', label: 'Recurring', k: 'k-warn', n: recurringL.length, seg: 'list-chips', whenAny: true, tip: 'cards that keep coming back with no Jira ticket on them, whatever their status'},
     {id: 'archived', label: 'Archived', k: 'k-cleared', n: ARCHIVED.length, seg: 'list-chips', tip: 'cards not firing (or muted) with no change for ' + archiveHours() + ' hours; hidden everywhere else'},
@@ -518,7 +519,7 @@ function renderFilterNote(c) {
   var note = document.getElementById('filter-note');
   var f = c ? c.id : 'open', refocus = document.activeElement && document.activeElement.id === 'filter-menu';
   note.className = 'filter-note ' + (c ? c.k : SEV[worst][1]) + (f !== 'open' || typeF || searchQ ? ' on' : '');
-  note.title = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning'], [inprog.length, 'in progress'], [taken.length, 'done'], [muted.length, 'muted'], [cleared.length, 'stopped firing'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
+  note.title = [[openBySev('crit').length, 'critical'], [openBySev('high').length, 'high'], [openBySev('warn').length, 'warning'], [inprog.length, 'in progress'], [taken.length, 'done'], [muted.length, 'muted'], [cleared.length, 'stopped firing'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
   note.innerHTML = '<span class="fn-cur">Showing <b>' + esc(c ? c.label : 'Open') + '</b>' + (typeF ? ' · <b>' + esc(typeName(typeF)) + '</b>' : '') +
     '<span class="count">' + esc(typeF ? shownN : c ? c.n : openAll().length) + '</span></span>' +
     (f === 'svc' ? '<button class="xlink" type="button" id="back-svcs">← Back to Services</button>' : '') +

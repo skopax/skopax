@@ -274,7 +274,7 @@ def action_label(card_action: dict, card: dict | None, lang: str = 'en') -> str:
     return f"{verb}{' ' + said(lang, 'hours', n=card_action.get('hours') or 24) if card_action.get('action') == 'mute' else ''}: {name}"
 
 
-SEV_MARK = {'crit': '🔴', 'warn': '🟠', 'info': '🔵'}
+SEV_MARK = {'crit': '\U0001f534', 'high': '\U0001f7e0', 'warn': '\U0001f7e1', 'info': '\U0001f535'}
 CONTEXT_LIMIT = 400
 
 

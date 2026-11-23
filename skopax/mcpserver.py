@@ -17,7 +17,7 @@ from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from skopax import __version__, brand, information
+from skopax import __version__, brand, information, severity
 from skopax.actors import shown
 from skopax.assign import Invalid as AssignInvalid, slug
 from skopax.errkind import Authored, kind as error_kind
@@ -54,8 +54,8 @@ RECAP_CLIP = 4000
 QUEUE_SCAN = 500
 OPEN_STATES = ('requested', 'processing')
 DONE_STATES = ('done', 'failed', 'cancelled')
-SEV_RANK = {'crit': 0, 'warn': 1, 'info': 2}
-SEVS = ('crit', 'warn', 'info')
+SEV_RANK = {sev: i for i, sev in enumerate(severity.LEVELS)}
+SEVS = severity.LEVELS
 FILTERS = ('open', 'firing', 'waiting', 'progress', 'handled', 'muted', 'all', 'archived')
 CARD_TOOL = {'investigate': 'investigate_card', 'resolve': 'resolve_card', 'take': 'take_card', 'mute': 'mute_card'}
 HALTED = {'stopped': 'the investigator is stopped (Stop switch on the page)', 'capped': 'the investigator is over its daily limit until local midnight', 'off': off_text('investigator')}
@@ -234,7 +234,7 @@ INVESTIGATION = {'investigating': 'being investigated', 'dived': 'investigated'}
 
 
 def waiting(a: dict) -> bool:
-    return a.get('status') == 'cleared' and not a.get('muted') and not done(a) and a.get('sev') in ('warn', 'crit')
+    return a.get('status') == 'cleared' and not a.get('muted') and not done(a) and a.get('sev') in severity.CARD_LEVELS
 
 
 def state_of(a: dict) -> str:
@@ -404,7 +404,7 @@ class Tools:
             rows = [a for a in rows if kind in (str(a.get('sig') or '').lower(), str(a.get('src') or '').lower())]
         if text:
             rows = [a for a in rows if any(text in str(a.get(f) or '').lower() for f in ('key', 'svc', 'label', 'what', 'title'))]
-        rows.sort(key=lambda a: (SEV_RANK.get(a.get('sev'), 3), -stamp(a.get('lastSeen') or a.get('firstSeen'))))
+        rows.sort(key=lambda a: (SEV_RANK.get(a.get('sev'), len(SEVS)), -stamp(a.get('lastSeen') or a.get('firstSeen'))))
         limit = int(args.get('limit') or LIST_DEFAULT)
         if not rows:
             return f'No {which} cards' + (' match those filters.' if any((sev, svc, kind, text)) else '.')

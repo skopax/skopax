@@ -418,7 +418,6 @@
   "No investigations yet.": "Henüz inceleme yok.",
   "No investigator run on this card yet.": "Bu kartta henüz Investigator run'ı yok.",
   "No older deploys recorded.": "Daha eski kayıtlı deploy yok.",
-  "No open warning or critical card to attach.": "Eklenecek açık uyarı ya da kritik kart yok.",
   "No person matches": "Eşleşen kişi yok",
   "No ready pods": "Hazır pod yok",
   "No result text.": "Sonuç metni yok.",
@@ -1475,9 +1474,6 @@
   "With a new card, read it first: what fired, its numbers and the investigator's note. Then choose Start progress, Assign, Investigate or Resolve.": "Yeni bir kartı önce okuyun: neyin tetiklendiğini, sayılarını ve Investigator'ın notunu. Sonra İşe başla, Ata, İncele ya da Çözüldü'yü seçin.",
   "A card's life": "Bir kartın yaşamı",
   "A card fires while the problem is there. When it goes quiet it reads Stopped firing and stays under Open until someone resolves it, or it closes by itself.": "Sorun sürdükçe kart sinyal verir. Sustuğunda Sinyal durdu yazar ve biri çözene ya da kendiliğinden kapanana kadar Açık altında kalır.",
-  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, warning cards after {1} h.": "Durmuş ve kimsenin ilgilenmediği bir kart kendiliğinden kapanır: kritikler {0} saat, uyarılar {1} saat sonra.",
-  "A stopped critical card that nobody acted on closes by itself after {0} h. Warning cards do not close by themselves.": "Durmuş ve kimsenin ilgilenmediği kritik bir kart {0} saat sonra kendiliğinden kapanır. Uyarı kartları kendiliğinden kapanmaz.",
-  "A stopped warning card that nobody acted on closes by itself after {0} h. Critical cards do not close by themselves.": "Durmuş ve kimsenin ilgilenmediği bir uyarı kartı {0} saat sonra kendiliğinden kapanır. Kritik kartlar kendiliğinden kapanmaz.",
   "Stopped cards do not close by themselves: someone has to resolve them.": "Duran kartlar kendiliğinden kapanmaz: birinin çözmesi gerekir.",
   "A stopped card that nobody acted on closes by itself after a set time per severity (Admin > Settings).": "Durmuş ve kimsenin ilgilenmediği bir kart, önem derecesine göre belirlenen sürenin sonunda kendiliğinden kapanır (Admin > Ayarlar).",
   "Only Monday to Friday counts.": "Yalnızca pazartesiden cumaya sayılır.",
@@ -1607,7 +1603,36 @@
   "Check it": "Kontrol et",
   "the instance now reads Receives Skopax's own traces, so it is not watched. Run Investigate on a card, find its trace under Traces in the Langfuse project, and open it from Open trace on the Investigator page.": "instance artık Receives Skopax's own traces, so it is not watched yazar. Bir kartta İncele'yi çalıştırın, trace'i Langfuse projesinde Traces altında bulun ve Investigator sayfasındaki Open trace ile açın.",
   "Nothing shows up": "Hiçbir şey görünmüyor",
-  "check that the keys come from the right project and may write, that Traces sampled is 100, and that the run made a model call. Traces go out within seconds after a run ends.": "key'lerin doğru projeden geldiğini ve yazabildiğini, Traces sampled'ın 100 olduğunu ve çalışmanın bir model çağırdığını kontrol edin. Trace'ler bir çalışma bittikten birkaç saniye sonra gönderilir."
+  "check that the keys come from the right project and may write, that Traces sampled is 100, and that the run made a model call. Traces go out within seconds after a run ends.": "key'lerin doğru projeden geldiğini ve yazabildiğini, Traces sampled'ın 100 olduğunu ve çalışmanın bir model çağırdığını kontrol edin. Trace'ler bir çalışma bittikten birkaç saniye sonra gönderilir.",
+  "{0} open": "{0} açık",
+  "{0} queued, {1} in progress": "{0} kuyrukta, {1} işleniyor",
+  "A tag takes at most {0} responsibles": "Bir etikete en fazla {0} sorumlu eklenebilir",
+  "Email not sent": "E-posta gönderilmedi",
+  "The mail server refused this email": "Posta sunucusu bu e-postayı reddetti",
+  "Every investigator run, model call and tool call, traced in Langfuse": "Araştırmacının her çalışması, model çağrısı ve araç çağrısı Langfuse'ta izlenir",
+  "Open in Langfuse": "Langfuse'ta aç",
+  "High": "Yüksek",
+  "{0} high": "{0} yüksek",
+  "Critical, High": "Kritik, Yüksek",
+  "open high items (pushed)": "açık yüksek öğeler (bildirilen)",
+  "While Slack auto-send is on, cards from High up are posted to the Slack channel on their own.": "Slack auto-send açıkken Yüksek ve üstündeki kartlar Slack kanalına kendiliğinden gönderilir.",
+  "Severity goes Critical, High, Warning, then Info. High means users feel it now, such as errors, a broken page or a failed deploy. A card whose numbers double moves one level up.": "Önem düzeyi Kritik, Yüksek, Uyarı ve sonra Bilgi diye gider. Yüksek, kullanıcıların bunu şimdi hissettiği anlamına gelir; hatalar, bozuk bir sayfa ya da başarısız bir dağıtım gibi. Sayıları iki katına çıkan bir kart bir düzey yukarı çıkar.",
+  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, high cards after {1} h, warning cards after {2} h.": "Durmuş ve kimsenin ilgilenmediği bir kart kendiliğinden kapanır: kritikler {0} saat sonra, yüksekler {1} saat sonra, uyarılar {2} saat sonra.",
+  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, high cards after {1} h, warning cards never.": "Durmuş ve kimsenin ilgilenmediği bir kart kendiliğinden kapanır: kritikler {0} saat sonra, yüksekler {1} saat sonra, uyarılar hiç.",
+  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, high cards never, warning cards after {1} h.": "Durmuş ve kimsenin ilgilenmediği bir kart kendiliğinden kapanır: kritikler {0} saat sonra, yüksekler hiç, uyarılar {1} saat sonra.",
+  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, high cards never, warning cards never.": "Durmuş ve kimsenin ilgilenmediği bir kart kendiliğinden kapanır: kritikler {0} saat sonra, yüksekler hiç, uyarılar hiç.",
+  "A stopped card that nobody acted on closes by itself: critical cards never, high cards after {0} h, warning cards after {1} h.": "Durmuş ve kimsenin ilgilenmediği bir kart kendiliğinden kapanır: kritikler hiç, yüksekler {0} saat sonra, uyarılar {1} saat sonra.",
+  "A stopped card that nobody acted on closes by itself: critical cards never, high cards after {0} h, warning cards never.": "Durmuş ve kimsenin ilgilenmediği bir kart kendiliğinden kapanır: kritikler hiç, yüksekler {0} saat sonra, uyarılar hiç.",
+  "A stopped card that nobody acted on closes by itself: critical cards never, high cards never, warning cards after {0} h.": "Durmuş ve kimsenin ilgilenmediği bir kart kendiliğinden kapanır: kritikler hiç, yüksekler hiç, uyarılar {0} saat sonra.",
+  "Came back after fix": "Düzeltmeden sonra geri geldi",
+  "Was no action needed": "İşlem gerekmiyordu",
+  "Fixed on {0} {M} {1}, then it fired again": "{0} {M} {1} tarihinde düzeltildi, sonra yeniden tetiklendi",
+  "Fixed on {0} {M} {1}, came back": "{0} {M} {1} tarihinde düzeltildi, geri geldi",
+  "Resolved as no action needed on {0} {M} {1}": "{0} {M} {1} tarihinde işlem gerekmez olarak çözüldü",
+  "A card resolved as Fixed that fires again came back: it is posted at once as at least High and goes back to the person who resolved it. A card resolved as No action needed reopens on the board only, unless it got worse.": "Düzeltildi olarak çözülen ve yeniden tetiklenen bir kart geri gelmiştir: hemen en az Yüksek olarak gönderilir ve onu çözen kişiye geri döner. İşlem gerekmez olarak çözülen bir kart, kötüleşmedikçe yalnızca panoda yeniden açılır.",
+  "No open warning, high or critical card to attach.": "Eklenecek açık uyarı, yüksek ya da kritik kart yok.",
+  "Ruled": "Karar verildi",
+  "A person decided an earlier occurrence of this card; the investigator starts from it": "Bu kartın önceki bir oluşumuna bir kişi karar verdi; Investigator bundan başlar"
  },
  "rules": [
   [
@@ -2037,6 +2062,26 @@
   [
    "^not read from (.+)$",
    "$1 üzerinden okunmadı"
+  ],
+  [
+   "^No tag named (.+)$",
+   "$1 adında bir etiket yok"
+  ],
+  [
+   "^(.+) is not a valid e-mail address$",
+   "$1 geçerli bir e-posta adresi değil"
+  ],
+  [
+   "^Posted by the (\\S+) route$",
+   "$1 route'u ile gönderildi"
+  ],
+  [
+   "^Sent by the (\\S+) route · (.+)$",
+   "$1 route'u ile gönderildi · $2"
+  ],
+  [
+   "^The mail server refused this email: (.+)$",
+   "Posta sunucusu bu e-postayı reddetti: $1"
   ]
  ],
  "months": {

@@ -111,6 +111,30 @@ async function seenBeforeLineInTheExpandedCard() {
   console.log('PASS seenBeforeLineInTheExpandedCard');
 }
 
+async function seenBeforeLineLeadsWithThePersonVerdict() {
+  //given
+  const ruled = {count: 2, lastAt: '2026-11-20T09:05:00Z', outcome: 'auto-resolved', decidedBy: 'auto',
+    ruled: {kind: 'handled', by: 'nina.white@example.com', at: '2026-11-03T10:00:00Z'}};
+  const known = {count: 1, lastAt: '2026-11-20T09:05:00Z', outcome: 'known', decidedBy: 'person', ruled: {kind: 'known', at: '2026-10-28T10:00:00Z'}};
+  const serve = {state: stateAt(5, [card(KEY, {seenBefore: ruled}), card(NEW, {seenBefore: known})]), runs: []};
+  const {dom, doc, errors} = await boot(serve);
+  //when
+  expand(article(doc, KEY));
+  expand(article(doc, NEW));
+  const line = article(doc, KEY).querySelector('.inc-more .seen-line');
+  const lead = line.firstElementChild;
+  //then
+  assert.ok(lead.classList.contains('seen-ruled'), 'the person verdict comes first');
+  assert.strictEqual(lead.textContent, 'Ruled No action needed by nina.white, 3 Nov');
+  assert.ok(/A person decided/.test(lead.title), 'the tooltip says a person decided it');
+  assert.ok(lead.nextElementSibling.textContent.startsWith('Seen before: 2 times'), 'the machine history follows');
+  assert.strictEqual(article(doc, NEW).querySelector('.seen-ruled').textContent, 'Ruled Known noise, 28 Oct', 'no name when none was kept');
+  assert.strictEqual(article(doc, 'log|reports-service|WARN|ShipCorp 456 invalid client ip').querySelectorAll('.seen-ruled').length, 1);
+  assert.deepStrictEqual(errors, []);
+  close(dom);
+  console.log('PASS seenBeforeLineLeadsWithThePersonVerdict');
+}
+
 async function runsOnThisCardLoadOnExpandAndSurviveALiveUpdate() {
   //given
   const serve = {state: stateAt(5, [card(KEY), card(NEW)]), runs: RUNS};
@@ -826,7 +850,7 @@ async function askAboutThisCardSurvivesLiveUpdates() {
 }
 
 (async () => {
-  for (const t of [seenBeforeLineInTheExpandedCard, runsOnThisCardLoadOnExpandAndSurviveALiveUpdate, runsEmptyOrUnavailableStayQuiet, recurringTagOnTheRowAndInTheSideMenu, runRecordOpensInTheJsonViewerAndThePageStays,
+  for (const t of [seenBeforeLineInTheExpandedCard, seenBeforeLineLeadsWithThePersonVerdict, runsOnThisCardLoadOnExpandAndSurviveALiveUpdate, runsEmptyOrUnavailableStayQuiet, recurringTagOnTheRowAndInTheSideMenu, runRecordOpensInTheJsonViewerAndThePageStays,
     screenshotsShowAsThumbnailsAndZoomInADialog, historyListShowsTheScreenshotsAndLinksOfEveryRun, activityRailShowsTheRunsScreenshotsAndAnswerLinks, slackDraftsShowTheirScreenshots,
     cardHeadShowsACompactActionBadgeAndTheFullLineInside, cardPillNamesTheActionNotJustDone, anActionFromBeforeTheCardFiredAgainIsMarkedEarlier, lastActionLineNamesTheActionLikeThePill, historyRowsFoldAndRememberWhichAreOpen, historyNamesTheCardsAndKeepsTheHowToInTheFoot,
     askAboutThisCardForOperatorsLockedForGuests, askAboutThisCardStartsAPrivateChatAndClearsTheBox, askAboutThisCardShowsEachErrorInline, pageAskRunsOnTheCardShowTheQuestionAndTheFullAnswer, askAboutThisCardSurvivesLiveUpdates]) await t();

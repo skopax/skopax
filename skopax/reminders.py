@@ -2,7 +2,7 @@ import logging
 import time
 from typing import Callable
 
-from skopax import causes, information
+from skopax import causes, information, severity
 from skopax.cardlink import card_url
 from skopax.clearnotes import recurs
 from skopax.engine import iso, mute_for, parse_iso
@@ -15,7 +15,7 @@ from skopax.store import Store
 log = logging.getLogger('skopax.reminders')
 
 ADDRESSED = ('progress', 'handled')
-WAITING_SEVS = ('warn', 'crit')
+WAITING_SEVS = severity.CARD_LEVELS
 REMINDER_TYPE = 'reminder'
 DAY_H = 24
 GROUP_MAX = 10

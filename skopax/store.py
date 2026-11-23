@@ -14,7 +14,7 @@ from pymongo.database import Database
 from pymongo.errors import BulkWriteError, DuplicateKeyError, OperationFailure, PyMongoError
 from pymongo.results import UpdateResult
 
-from skopax import causes, history, information
+from skopax import causes, history, information, severity
 from skopax.actors import POD_BY, is_token
 from skopax.errkind import Authored, kind as error_kind
 from skopax.tags import FIELDS as TAG_FIELDS
@@ -44,11 +44,11 @@ TAG_HUES = len(TAG_HUE_NAMES)
 CARD_HISTORY_MAX = 200
 AUTO_TURN = 'auto-assign:'
 AUTO_SINCE_ID = 'auto-assign-since'
-AUTO_SEVS = ('crit', 'warn')
+AUTO_SEVS = severity.CARD_LEVELS
 AUTO_TAKEN = ('progress', 'handled')
 EMAIL_SCOPE_ID = 'tag-report-scope'
 TAG_REPORT_ID = 'tag-report-last'
-SEVERITIES = ('crit', 'warn', 'info')
+SEVERITIES = severity.LEVELS
 CLAIM_ATTEMPTS = 3
 WRITE_LEASE_S = 30
 SETTLE_FIRST_S = 0.002
@@ -57,7 +57,7 @@ HOLD_WAIT_S = 2 * WRITE_LEASE_S
 MERGED = ('sources', 'serverPasses')
 PREPENDED = ('history', 'serverPushes')
 AUTO_SEND_MINUTES = 0
-AUTO_SEND_SEVERITIES = ('crit', 'warn')
+AUTO_SEND_SEVERITIES = severity.CARD_LEVELS
 AUTO_PENDING = {'autoSend.claimedAt': {'$exists': False}, 'autoSend.holdBy': {'$exists': False}}
 AUTO_RETRIES = 3
 AUTO_RETRY_S = 600
@@ -124,6 +124,7 @@ ACTION_MOVES_FROM = {
 
 
 REDRAW_RUN = 'slack-redraw-run'
+SEVERITY_HIGH_MARK = 'severity-high-0-5-8'
 
 class Conflict(Authored, Exception):
     def __init__(self, current: int):
@@ -810,8 +811,8 @@ class Store:
         dived = {'$set': {'triage': 'dived', 'triagedBy': 'pod'}, '$unset': {'resolution': ''}} if by == 'pod' else {'$set': {'triage': 'dived'}, '$unset': {'triagedBy': '', 'resolution': ''}}
         with self._locked():
             rev, _ = self._claim(None)
-            unset = ({'cause': ''} if drop_cause else {}) | ({} if by == 'pod' else {'noteBy': ''}) | ({} if flagged else {'noteFlagged': ''})
-            self.anomalies.update_one({'_id': doc['_id']}, {'$set': {'note': {'text': text, 'at': iso(utc_now())}} | ({'noteBy': 'pod'} if by == 'pod' else {}) | ({'noteFlagged': True} if flagged else {})
+            unset = ({'cause': ''} if drop_cause else {}) | ({} if by in ('pod', history.PERSON) else {'noteBy': ''}) | ({} if flagged else {'noteFlagged': ''})
+            self.anomalies.update_one({'_id': doc['_id']}, {'$set': {'note': {'text': text, 'at': iso(utc_now())}} | ({'noteBy': by} if by in ('pod', history.PERSON) else {}) | ({'noteFlagged': True} if flagged else {})
                                                         | ({'cause': causes.recorded(cause, doc.get('firstSeen'))} if cause else {})}
                                       | ({'$unset': unset} if unset else {}))
             self.anomalies.update_one({'_id': doc['_id'], 'triage': {'$nin': kept}}, dived)
@@ -836,6 +837,8 @@ class Store:
         else:
             unsets['triage'] = ''
             unsets['triagedAt'] = ''
+        if state == 'handled':
+            unsets.update(cameBack='', previousResolution='')
         if state == 'handled' and resolution:
             sets['resolution'] = {'at': sets['triagedAt']} | {k: v for k, v in resolution.items() if v not in (None, '')}
         elif state != 'handled':
@@ -851,8 +854,8 @@ class Store:
             sets['ownerName'] = owner_name
         elif owner is not None:
             unsets['ownerName'] = ''
-        if by == 'pod' and state:
-            sets['triagedBy'] = 'pod'
+        if by in ('pod', history.SWEEP_BY) and state:
+            sets['triagedBy'] = by
         else:
             unsets['triagedBy'] = ''
         update = {}
@@ -872,7 +875,7 @@ class Store:
         auto = doc.get('sevAuto') or doc.get('sev')
         if sev == 'auto':
             update = {'$set': {'sev': auto}, '$unset': {'sevSet': '', 'sevAuto': ''}}
-        elif sev in ('crit', 'warn', 'info'):
+        elif sev in severity.LEVELS:
             update = {'$set': {'sev': sev, 'sevAuto': auto, 'sevSet': {'sev': sev, 'by': by or 'Claude', 'at': iso(utc_now()), 'auto': auto}}}
         else:
             raise ValueError(f'unknown severity {sev}')
@@ -1065,8 +1068,9 @@ class Store:
         if said:
             push['said'] = {'$each': [said], '$slice': -history.SAID_KEEP}
         update = {'$set': doc, '$push': push}
-        if 'resolution' not in doc:
-            update['$unset'] = {'resolution': ''}
+        gone = {f: '' for f in history.CLEARED_FIELDS if f not in doc}
+        if gone:
+            update['$unset'] = gone
         if old is None:
             update['$setOnInsert'] = {'createdAt': iso(now), 'reopens': self.card_history.count_documents({'key': key, 'firstSeen': {'$lt': first}})}
         self.card_history.update_one({'_id': did}, update, upsert=True)
@@ -1075,15 +1079,28 @@ class Store:
             self.investigations.update_many({'_id': {'$in': linked}}, {'$addToSet': {'cardHistory': did}})
         return did
 
-    def history_rows(self, keys: list[str]) -> dict[str, list[dict]] | None:
+    def history_rows(self, keys: list[str], ruled: int = 1) -> dict[str, list[dict]] | None:
         try:
             rows: dict[str, list[dict]] = {}
             for d in self.card_history.find({'key': {'$in': list(keys)}}, history.ROW_FIELDS):
                 rows.setdefault(d['key'], []).append(d)
+            wanted = {o['_id']: o for occurrences in rows.values() for o in history.picked(occurrences, ruled)}
+            if wanted:
+                for d in self.card_history.find({'_id': {'$in': list(wanted)}}, history.VERDICT_FIELDS):
+                    wanted[d['_id']].update(d)
             return rows
         except PyMongoError as e:
             log.warning('card history not read: %s', error_kind(e))
             return None
+
+    def history_verdicts(self, cards: list[dict]) -> dict[str, list[dict]]:
+        rows = self.history_rows([c['key'] for c in cards if c.get('key')], history.VERDICTS_KEEP) or {}
+        out = {}
+        for c in cards:
+            ruled = history.verdicts(history.past_of(c, rows.get(c.get('key')) or []))
+            if ruled:
+                out[c['key']] = ruled
+        return out
 
     def mute_entries(self) -> list:
         return list(self._meta().get('muted') or [])
@@ -1108,18 +1125,20 @@ class Store:
     def preset_muted(self, ids: list[str]) -> set[str]:
         return {d['_id'] for d in self.card_history.find({'_id': {'$in': list(ids)}, MUTED_PRESET: True}, {'_id': 1})} if ids else set()
 
-    def past_cards(self, key: str | None = None, service: str | None = None, text: str | None = None, limit: int = history.PAST_DEFAULT) -> list[dict]:
+    def past_cards(self, key: str | None = None, service: str | None = None, text: str | None = None, limit: int = history.PAST_DEFAULT, full: bool = False) -> list[dict]:
         limit = max(1, min(int(limit or history.PAST_DEFAULT), history.PAST_LIMIT))
         out: list[dict] = []
         seen: set[str] = set()
+        row = history.past_row if full else history.digest
 
         def take(query: dict, match: str) -> None:
-            for d in self.card_history.find(query, sort=[('lastSeen', DESCENDING), ('firstSeen', DESCENDING)], limit=limit):
-                if len(out) >= limit:
-                    return
-                if d['_id'] not in seen:
-                    seen.add(d['_id'])
-                    out.append(history.past_row(d, match))
+            for who in (history.PERSON_QUERY, history.MACHINE_QUERY):
+                for d in self.card_history.find({'$and': [query, who]}, sort=[('lastSeen', DESCENDING), ('firstSeen', DESCENDING)], limit=limit):
+                    if len(out) >= limit:
+                        return
+                    if d['_id'] not in seen:
+                        seen.add(d['_id'])
+                        out.append(row(d, match))
 
         if key:
             take({'key': key}, 'key')
@@ -1132,6 +1151,19 @@ class Store:
             rx = {'$regex': re.escape(text[:history.TEXT_QUERY_LIMIT]), '$options': 'i'}
             take({'$or': [{'label': rx}, {'note': rx}]}, 'text')
         return out
+
+    def past_card(self, key: str | None = None, first_seen: str | None = None, num: int | None = None) -> dict | None:
+        query: dict = {}
+        if key:
+            query['key'] = key
+        if num is not None:
+            query['num'] = num
+        if first_seen:
+            query['firstSeen'] = first_seen
+        if not query or not (first_seen or num is not None):
+            return None
+        d = self.card_history.find_one(query, sort=[('lastSeen', DESCENDING), ('firstSeen', DESCENDING)])
+        return history.past_row(d, 'detail') if d else None
 
     def closed_cards(self, start: str, end: str, text: str | None = None, outcome: str | None = None, page: int = 0, size: int = 50) -> tuple[list[dict], int]:
         docs_now = list(self.anomalies.find({'firstSeen': {'$exists': True}}, {'firstSeen': 1, 'sev': 1, 'owner': 1, 'assigned': 1, 'ticket': 1, 'triage': 1, 'triagedBy': 1}))
@@ -1201,6 +1233,11 @@ class Store:
         if both:
             query['$and'] = both
         return list(self.investigations.find(query | NOT_CHAT, PAST_RUN_FIELDS, sort=[('startedAt', DESCENDING), ('_id', DESCENDING)], limit=limit))
+
+    def past_run(self, run_id: str, skip: str | None = None) -> dict | None:
+        if not run_id or run_id == skip:
+            return None
+        return self.investigations.find_one({'_id': run_id, 'outcome': 'done'} | NOT_CHAT, PAST_RUN_FIELDS)
 
     def add_investigation(self, doc: dict) -> dict:
         body = {k: v for k, v in doc.items() if k != 'id'}
@@ -1913,6 +1950,19 @@ class Store:
     def redraw_status(self) -> dict:
         doc = self.counters.find_one({'_id': REDRAW_RUN}) or {}
         return {k: v for k, v in doc.items() if k not in ('_id', 'holder')} or {'running': False}
+
+    def lift_warnings(self, archived_before: str) -> int:
+        wanted = {'sev': severity.WARN, 'status': 'open', 'triage': {'$ne': 'handled'}, 'sevSet': {'$exists': False}, 'sevBefore': {'$exists': False}}
+        lifted = 0
+        with self._locked():
+            muted_at = {m.get('pattern'): str(m.get('at') or '') for m in self.muted_rules() if isinstance(m, dict)}
+            found = [d for d in self.anomalies.find(wanted, {'_id': 1, 'pushedSev': 1, 'muted': 1}) if not d.get('muted') or muted_at.get(d['_id'], '') >= archived_before]
+            if found:
+                self._claim(None)
+            for doc in found:
+                fields = {'sev': severity.HIGH, 'sevBefore': severity.WARN, 'sevUp': severity.HIGH} | ({'pushedSev': severity.HIGH} if doc.get('pushedSev') == severity.WARN else {})
+                lifted += self.anomalies.update_one({'_id': doc['_id'], **wanted}, {'$set': fields}).modified_count
+        return lifted
 
     def finish_once(self, name: str) -> None:
         self.counters.update_one({'_id': name}, {'$set': {'done': True, 'doneAt': iso(utc_now())}})

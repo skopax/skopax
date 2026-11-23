@@ -372,6 +372,7 @@ class Tracer:
         self.version = version
         self.queue: deque[Trace] = deque()
         self.projects: dict[tuple[str, str], tuple[str | None, float]] = {}
+        self._looking: set[tuple[str, str]] = set()
         self.dropped = 0
         self.sent = 0
         self.failures = 0
@@ -543,6 +544,35 @@ class Tracer:
             log.warning('the Langfuse project of %s not read, runs show no trace link: %s', target.name, error_kind(e))
         self.projects[target.key] = (found, self.clock())
 
+    def project_url(self) -> str | None:
+        try:
+            target = self.target() if self.on() else None
+        except Exception as e:
+            log.warning('tracing settings not read, no project link: %s', error_kind(e))
+            return None
+        if target is None:
+            return None
+        known = self.projects.get(target.key)
+        if known is None and self.threaded:
+            self._look(target)
+        base = project_base(target.url, known[0] if known else None)
+        return f'{base}/traces' if base else None
+
+    def _look(self, target: Target) -> None:
+        with self._lock:
+            if target.key in self._looking:
+                return
+            self._looking.add(target.key)
+
+        def read() -> None:
+            try:
+                self._project(target)
+            finally:
+                with self._lock:
+                    self._looking.discard(target.key)
+
+        threading.Thread(target=read, name='skopax-tracing-project', daemon=True).start()
+
     def shutdown(self) -> None:
         self._stop.set()
         self._wake.set()
@@ -643,10 +673,15 @@ def failed(trace: Trace | None, e: BaseException) -> None:
 def trace_link(found) -> str | None:
     if not isinstance(found, dict):
         return None
-    url, project, trace_id = (found.get(k) for k in ('url', 'project', 'id'))
-    if not all(isinstance(v, str) and v for v in (url, project, trace_id)) or not url.startswith(('https://', 'http://')):
+    trace_id = found.get('id')
+    base = project_base(found.get('url'), found.get('project'))
+    return f'{base}/traces/{trace_id}' if base and isinstance(trace_id, str) and trace_id else None
+
+
+def project_base(url, project) -> str | None:
+    if not all(isinstance(v, str) and v for v in (url, project)) or not url.startswith(('https://', 'http://')):
         return None
-    return f'{url}/project/{project}/traces/{trace_id}'
+    return f'{url}/project/{project}'
 
 
 def priced(model: str, usage) -> float | None:

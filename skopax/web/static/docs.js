@@ -1,5 +1,6 @@
 var DOCS_SEQ = 0, DOCS_FOLDS = null;
 var DOCS_SEV = {warn: 'While Slack auto-send is on, cards from Warning up are posted to the Slack channel on their own.',
+  high: 'While Slack auto-send is on, cards from High up are posted to the Slack channel on their own.',
   crit: 'While Slack auto-send is on, Critical cards are posted to the Slack channel on their own.',
   off: 'Post immediately from is Off: no card is posted to Slack on its own. Send to Slack posts one by hand.'};
 var DOCS_MODE = {live: 'It runs in live mode now.', shadow: 'It runs in shadow mode now.', off: 'It is off now.'};
@@ -29,17 +30,17 @@ function docsText(items, key) {
   var it = (items || []).filter(function (i) { return i && i.key === key; })[0];
   return it ? String(it.value || '').trim() : '';
 }
+var DOCS_AUTO_SEVS = [['crit', 'critical'], ['high', 'high'], ['warn', 'warning']];
 function docsAuto(items) {
-  var c = docsNum(items, 'core.auto-resolve-hours-crit'), w = docsNum(items, 'core.auto-resolve-hours-warn');
-  if (c === null || w === null) return '';
-  return c && w ? 'A stopped card that nobody acted on closes by itself: critical cards after ' + c + ' h, warning cards after ' + w + ' h.'
-    : c ? 'A stopped critical card that nobody acted on closes by itself after ' + c + ' h. Warning cards do not close by themselves.'
-    : w ? 'A stopped warning card that nobody acted on closes by itself after ' + w + ' h. Critical cards do not close by themselves.'
-    : 'Stopped cards do not close by themselves: someone has to resolve them.';
+  var hours = DOCS_AUTO_SEVS.map(function (s) { return docsNum(items, 'core.auto-resolve-hours-' + s[0]); });
+  if (hours[1] === null) hours[1] = hours[2];
+  if (hours.some(function (h) { return h === null; })) return '';
+  if (!hours.some(Boolean)) return 'Stopped cards do not close by themselves: someone has to resolve them.';
+  return 'A stopped card that nobody acted on closes by itself: ' + DOCS_AUTO_SEVS.map(function (s, n) { return s[1] + ' cards ' + (hours[n] ? 'after ' + hours[n] + ' h' : 'never'); }).join(', ') + '.';
 }
 function docsDays(items) {
-  var c = docsNum(items, 'core.auto-resolve-hours-crit'), w = docsNum(items, 'core.auto-resolve-hours-warn'), days = docsText(items, 'core.business-days');
-  if (!c && !w) return '';
+  var days = docsText(items, 'core.business-days');
+  if (!DOCS_AUTO_SEVS.some(function (s) { return docsNum(items, 'core.auto-resolve-hours-' + s[0]); })) return '';
   return days === 'true' ? 'Only Monday to Friday counts.' : days === 'false' ? 'Every day counts.' : '';
 }
 function docsRemind(items) {

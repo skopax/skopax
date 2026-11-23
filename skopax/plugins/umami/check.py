@@ -19,13 +19,13 @@ BOTH = 'the same window 1 day and 7 days earlier'
 RULES = {'redirect_warn': 0.5, 'redirect_crit': 0.2, 'redirect_floor': 50, 'redirect_crit_floor': 100, 'type_warn': 0.4, 'type_floor': 30,
          'pageview_warn': 0.5, 'pageview_floor': 500}
 RULE_HELP = {
-    'redirect_warn': f'Warning when the events named in the event field fall below this share of {BOTH} (0.5 = under half of both).',
+    'redirect_warn': f'High when the events named in the event field fall below this share of {BOTH} (0.5 = under half of both).',
     'redirect_crit': 'Critical when those events fall below this share of both earlier windows (0.2 = under a fifth).',
     'redirect_floor': 'The warning is checked only when both earlier windows had at least this many of those events, so quiet hours raise nothing.',
     'redirect_crit_floor': 'The critical level is checked only when both earlier windows had at least this many of those events.',
-    'type_warn': 'Warning when the events with one value of the first listed property (one plan, one product type) fall below this share of both earlier windows.',
+    'type_warn': 'High when the events with one value of the first listed property (one plan, one product type) fall below this share of both earlier windows.',
     'type_floor': 'One value is checked only when both earlier windows had at least this many events with it.',
-    'pageview_warn': 'Warning when page views fall below this share of both earlier windows.',
+    'pageview_warn': 'High when page views fall below this share of both earlier windows.',
     'pageview_floor': 'Page views are checked only when both earlier windows had at least this many.',
 }
 COUNTED = 'Umami counts only the visitors its tracker records'
@@ -53,7 +53,7 @@ def evaluate(counts: dict[str, tuple[int, dict[str, int]]], now: float, rules: d
     found = []
     total, total1, total7 = sum(types.values()), sum(types1.values()), sum(types7.values())
     sev = ('crit' if below_both(total, total1, total7, rules['redirect_crit'], rules['redirect_crit_floor'])
-           else 'warn' if below_both(total, total1, total7, rules['redirect_warn'], rules['redirect_floor']) else None)
+           else 'high' if below_both(total, total1, total7, rules['redirect_warn'], rules['redirect_floor']) else None)
     if sev:
         by_value = ', '.join(f'{t} {types.get(t, 0)} (1d {n1} / 7d {types7.get(t, 0)})' for t, n1 in sorted(types1.items(), key=lambda kv: -kv[1])[:BY_LIMIT])
         found.append(card('umami-redirect', event, sev, total, total1, total7, f'{event} events down',
@@ -63,16 +63,16 @@ def evaluate(counts: dict[str, tuple[int, dict[str, int]]], now: float, rules: d
     for t in sorted(set(types1) | set(types7)):
         n, n1, n7 = types.get(t, 0), types1.get(t, 0), types7.get(t, 0)
         if below_both(n, n1, n7, rules['type_warn'], rules['type_floor']):
-            found.append(card('umami-redirect', f'{event}:{t}', 'warn', n, n1, n7, f'{t} {event} events down',
+            found.append(card('umami-redirect', f'{event}:{t}', 'high', n, n1, n7, f'{t} {event} events down',
                               f'Umami counted {n} {event} events with {prop} {t} in the hour to {until}, {pct(n, n1)} of the same hour yesterday ({n1}) and {pct(n, n7)} '
                               f'of a week ago ({n7}); all {event} events in the hour: {total} (1d {total1} / 7d {total7}). {COUNTED}.',
-                              f'WARN {site} {event} {prop} {t} {n} in the last hour (1d {n1} / 7d {n7})', site, website, EVENTS_RAN))
+                              f'HIGH {site} {event} {prop} {t} {n} in the last hour (1d {n1} / 7d {n7})', site, website, EVENTS_RAN))
     if below_both(pv, pv1, pv7, rules['pageview_warn'], rules['pageview_floor']):
-        found.append(card('umami-pageviews', 'pageviews', 'warn', pv, pv1, pv7, 'pageviews down',
+        found.append(card('umami-pageviews', 'pageviews', 'high', pv, pv1, pv7, 'pageviews down',
                           f'Umami counted {pv} pageviews in the hour to {until}, {pct(pv, pv1)} of the same hour yesterday ({pv1}) and {pct(pv, pv7)} of a week ago ({pv7}). '
                           'A drop this size with the site up usually means the tracker stopped loading (its script route, a consent banner or a site release); '
                           f'{COUNTED}.',
-                          f'WARN {site} Umami pageviews {pv} in the last hour (1d {pv1} / 7d {pv7})', site, website, PAGEVIEWS_RAN))
+                          f'HIGH {site} Umami pageviews {pv} in the last hour (1d {pv1} / 7d {pv7})', site, website, PAGEVIEWS_RAN))
     return found
 
 

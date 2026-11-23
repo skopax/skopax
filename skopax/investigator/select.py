@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Callable, Iterable
 
-from skopax import information
+from skopax import information, severity
 from skopax.engine import SEV_RANK, parse_iso
 
 log = logging.getLogger('skopax.investigator.select')
@@ -14,7 +14,7 @@ REFIRE_COOLDOWN_S = 72 * 3600
 EVENTS = ('new', 'escalated', 'reopened')
 MAX_FAILURES = 2
 NOT_FAILURES = ('done', 'stopped', 'skipped', 'abandoned')
-SEVERITIES = ('warn', 'crit')
+SEVERITIES = severity.CARD_LEVELS
 NO_SERVICE = (None, '', '-')
 PLUGGED: list = [()]
 

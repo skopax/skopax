@@ -18,7 +18,7 @@ Only admins add, change, preview or delete checks. Operators and viewers see the
 | `window` | For `elasticsearch` only: 5 to 1440 minutes, 60 by default; the time between `?start` and `?end`. |
 | `op` and `threshold` | The comparison, one of `>`, `>=`, `<`, `<=`, `==` and `!=`, and a finite number. |
 | `baselines` and `baselineMode` | Optional: `1d` and `1w`, the same query at the same time 1 day or 1 week earlier, compared as a `ratio` (now / then, the default) or a `difference` (now - then). |
-| `severity` | `info`, `warn` (the default) or `crit`. |
+| `severity` | `info`, `warn` (the default), `high` or `crit`. |
 | `by` | At most 5 label names (for `elasticsearch`, column names). One card per value set of these labels; empty means one card for the whole check. |
 | `for` | 1 to 12: how many passes in a row a label set must match before its card opens. |
 | `title` and `text` | The card title (at most 200 characters) and text (at most 1000), as plain text with placeholders. |

@@ -548,7 +548,6 @@
   "No match": "Kein Treffer",
   "No older deploys recorded.": "Keine älteren Deploys erfasst.",
   "No one matches the search or the role.": "Niemand passt zur Suche oder zur Rolle.",
-  "No open warning or critical card to attach.": "Keine offene Warnungs- oder kritische Karte zum Anhängen.",
   "No people yet: add the first person who signs in.": "Noch keine Personen: fügen Sie die erste Person hinzu, die sich anmeldet.",
   "No person matches": "Keine Person passt",
   "No ready pods": "Keine bereiten Pods",
@@ -1475,9 +1474,6 @@
   "With a new card, read it first: what fired, its numbers and the investigator's note. Then choose Start progress, Assign, Investigate or Resolve.": "Lesen Sie eine neue Karte zuerst: was ausgelöst hat, ihre Zahlen und die Notiz des Investigators. Wählen Sie dann Bearbeitung beginnen, Zuweisen, Untersuchen oder Lösen.",
   "A card's life": "Das Leben einer Karte",
   "A card fires while the problem is there. When it goes quiet it reads Stopped firing and stays under Open until someone resolves it, or it closes by itself.": "Eine Karte ist aktiv, solange das Problem besteht. Wird es ruhig, zeigt sie Nicht mehr aktiv und bleibt unter Offen, bis jemand sie löst oder sie sich von selbst schließt.",
-  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, warning cards after {1} h.": "Eine gestoppte Karte, um die sich niemand gekümmert hat, schließt sich selbst: kritische nach {0} h, Warnungen nach {1} h.",
-  "A stopped critical card that nobody acted on closes by itself after {0} h. Warning cards do not close by themselves.": "Eine gestoppte kritische Karte, um die sich niemand gekümmert hat, schließt sich nach {0} h selbst. Warnungen schließen sich nicht selbst.",
-  "A stopped warning card that nobody acted on closes by itself after {0} h. Critical cards do not close by themselves.": "Eine gestoppte Warnungskarte, um die sich niemand gekümmert hat, schließt sich nach {0} h selbst. Kritische Karten schließen sich nicht selbst.",
   "Stopped cards do not close by themselves: someone has to resolve them.": "Gestoppte Karten schließen sich nicht selbst: jemand muss sie lösen.",
   "A stopped card that nobody acted on closes by itself after a set time per severity (Admin > Settings).": "Eine gestoppte Karte, um die sich niemand gekümmert hat, schließt sich nach einer festen Zeit je Schweregrad selbst (Admin > Einstellungen).",
   "Only Monday to Friday counts.": "Es zählen nur Montag bis Freitag.",
@@ -1607,7 +1603,36 @@
   "Check it": "Prüfen",
   "the instance now reads Receives Skopax's own traces, so it is not watched. Run Investigate on a card, find its trace under Traces in the Langfuse project, and open it from Open trace on the Investigator page.": "die Instanz zeigt jetzt Receives Skopax's own traces, so it is not watched. Starten Sie Untersuchen auf einer Karte, suchen Sie den Trace unter Traces im Langfuse-Projekt und öffnen Sie ihn über Open trace auf der Investigator-Seite.",
   "Nothing shows up": "Nichts zu sehen",
-  "check that the keys come from the right project and may write, that Traces sampled is 100, and that the run made a model call. Traces go out within seconds after a run ends.": "prüfen Sie, ob die Keys aus dem richtigen Projekt stammen und schreiben dürfen, ob Traces sampled 100 ist und ob der Lauf ein Modell aufgerufen hat. Traces gehen wenige Sekunden nach dem Ende eines Laufs hinaus."
+  "check that the keys come from the right project and may write, that Traces sampled is 100, and that the run made a model call. Traces go out within seconds after a run ends.": "prüfen Sie, ob die Keys aus dem richtigen Projekt stammen und schreiben dürfen, ob Traces sampled 100 ist und ob der Lauf ein Modell aufgerufen hat. Traces gehen wenige Sekunden nach dem Ende eines Laufs hinaus.",
+  "{0} open": "{0} offen",
+  "{0} queued, {1} in progress": "{0} in der Warteschlange, {1} in Arbeit",
+  "A tag takes at most {0} responsibles": "Ein Tag nimmt höchstens {0} Verantwortliche auf",
+  "Email not sent": "E-Mail nicht gesendet",
+  "The mail server refused this email": "Der Mailserver hat diese E-Mail abgelehnt",
+  "Every investigator run, model call and tool call, traced in Langfuse": "Jeder Lauf des Investigators, jeder Modellaufruf und jeder Tool-Aufruf, in Langfuse nachverfolgt",
+  "Open in Langfuse": "In Langfuse öffnen",
+  "High": "Hoch",
+  "{0} high": "{0} hoch",
+  "Critical, High": "Kritisch, Hoch",
+  "open high items (pushed)": "offene hohe Einträge (gemeldet)",
+  "While Slack auto-send is on, cards from High up are posted to the Slack channel on their own.": "Solange Slack auto-send an ist, werden Karten ab Hoch von selbst in den Slack-Kanal gepostet.",
+  "Severity goes Critical, High, Warning, then Info. High means users feel it now, such as errors, a broken page or a failed deploy. A card whose numbers double moves one level up.": "Der Schweregrad geht von Kritisch über Hoch und Warnung bis Info. Hoch heißt, Nutzer spüren es jetzt, etwa Fehler, eine kaputte Seite oder ein fehlgeschlagenes Deployment. Eine Karte, deren Werte sich verdoppeln, steigt eine Stufe auf.",
+  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, high cards after {1} h, warning cards after {2} h.": "Eine gestoppte Karte, um die sich niemand gekümmert hat, schließt sich selbst: kritische nach {0} h, hohe nach {1} h, Warnungen nach {2} h.",
+  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, high cards after {1} h, warning cards never.": "Eine gestoppte Karte, um die sich niemand gekümmert hat, schließt sich selbst: kritische nach {0} h, hohe nach {1} h, Warnungen nie.",
+  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, high cards never, warning cards after {1} h.": "Eine gestoppte Karte, um die sich niemand gekümmert hat, schließt sich selbst: kritische nach {0} h, hohe nie, Warnungen nach {1} h.",
+  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, high cards never, warning cards never.": "Eine gestoppte Karte, um die sich niemand gekümmert hat, schließt sich selbst: kritische nach {0} h, hohe nie, Warnungen nie.",
+  "A stopped card that nobody acted on closes by itself: critical cards never, high cards after {0} h, warning cards after {1} h.": "Eine gestoppte Karte, um die sich niemand gekümmert hat, schließt sich selbst: kritische nie, hohe nach {0} h, Warnungen nach {1} h.",
+  "A stopped card that nobody acted on closes by itself: critical cards never, high cards after {0} h, warning cards never.": "Eine gestoppte Karte, um die sich niemand gekümmert hat, schließt sich selbst: kritische nie, hohe nach {0} h, Warnungen nie.",
+  "A stopped card that nobody acted on closes by itself: critical cards never, high cards never, warning cards after {0} h.": "Eine gestoppte Karte, um die sich niemand gekümmert hat, schließt sich selbst: kritische nie, hohe nie, Warnungen nach {0} h.",
+  "Came back after fix": "Nach dem Fix zurück",
+  "Was no action needed": "War kein Handlungsbedarf",
+  "Fixed on {0} {M} {1}, then it fired again": "Behoben am {0}. {M} {1}, dann wieder aktiv",
+  "Fixed on {0} {M} {1}, came back": "Behoben am {0}. {M} {1}, zurückgekommen",
+  "Resolved as no action needed on {0} {M} {1}": "Am {0}. {M} {1} als kein Handlungsbedarf gelöst",
+  "A card resolved as Fixed that fires again came back: it is posted at once as at least High and goes back to the person who resolved it. A card resolved as No action needed reopens on the board only, unless it got worse.": "Eine als Behoben gelöste Karte, die wieder auslöst, ist zurückgekommen: Sie wird sofort mindestens als Hoch gepostet und geht an die Person zurück, die sie gelöst hat. Eine als kein Handlungsbedarf gelöste Karte öffnet sich nur auf dem Board wieder, außer sie wurde schlimmer.",
+  "No open warning, high or critical card to attach.": "Keine offene Warnungs-, hohe oder kritische Karte zum Anhängen.",
+  "Ruled": "Entschieden",
+  "A person decided an earlier occurrence of this card; the investigator starts from it": "Eine Person hat ein früheres Auftreten dieser Karte entschieden; der Investigator geht davon aus"
  },
  "rules": [
   [
@@ -2037,6 +2062,26 @@
   [
    "^not read from (.+)$",
    "Nicht von $1 gelesen"
+  ],
+  [
+   "^No tag named (.+)$",
+   "Kein Tag namens $1"
+  ],
+  [
+   "^(.+) is not a valid e-mail address$",
+   "$1 ist keine gültige E-Mail-Adresse"
+  ],
+  [
+   "^Posted by the (\\S+) route$",
+   "Gepostet über die Route $1"
+  ],
+  [
+   "^Sent by the (\\S+) route · (.+)$",
+   "Gesendet über die Route $1 · $2"
+  ],
+  [
+   "^The mail server refused this email: (.+)$",
+   "Der Mailserver hat diese E-Mail abgelehnt: $1"
   ]
  ],
  "months": {

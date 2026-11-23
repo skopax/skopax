@@ -508,7 +508,7 @@ def sender(context: ssl.SSLContext | None = None, follow: bool = True, limit: in
         try:
             opened = (open_url if follow else open_plain) if proxied else functools.partial(open_direct, follow=follow)
             with opened(urllib.request.Request(url, data=data, headers=headers, method=method), timeout, context) as resp:
-                raw, head = resp.read(cap + 1), {k.lower(): v for k, v in resp.headers.items()}
+                raw, head, code = resp.read(cap + 1), {k.lower(): v for k, v in resp.headers.items()}, getattr(resp, 'status', None)
             if expired.is_set():
                 raise TimeoutError
         except urllib.error.HTTPError as e:
@@ -526,9 +526,9 @@ def sender(context: ssl.SSLContext | None = None, follow: bool = True, limit: in
         if len(raw) > cap:
             raise TooLarge(f'{where} answered more than {cap // MB} MB' if cap % MB == 0 else f'{where} answered more than {cap} bytes')
         if text is not None:
-            return Reply(raw.decode('utf-8', 'replace'), head)
+            return Reply(raw.decode('utf-8', 'replace'), head, code)
         try:
-            return Reply(json.loads(raw or b'null'), head)
+            return Reply(json.loads(raw or b'null'), head, code)
         except ValueError:
             raise NotJson(f'{where} answered without JSON') from None
 

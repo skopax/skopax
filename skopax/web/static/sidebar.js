@@ -28,13 +28,13 @@ var SIDE_GROUPS = [
 ];
 var SIDE_PINNED = ['prefs'];
 var SIDE_NEW = [];
-var SIDE_BLANK = ['chat', 'mcp', 'docs', 'prefs'];
+var SIDE_BLANK = ['slack', 'chat', 'mcp', 'docs', 'prefs'];
 var ADMIN_TABS = ['settings', 'access', 'workspaces', 'features', 'ai', 'changes'];
 var ADMIN_LABELS = {settings: 'Settings', access: 'Access & sign-in', workspaces: 'Workspaces', features: 'Features', ai: 'Investigator', changes: 'Changes'};
 var ADMIN_ICONS = {settings: 'gear', access: 'lock', workspaces: 'server', features: 'toggle', ai: 'spark', changes: 'history'};
 var ADMIN_COUNTED = ['settings', 'access', 'features'];
 var ADMIN_KEY = 'skopax-admin-tab', ADMIN_HOME = 'settings';
-var SIDE_HOT = ['k-crit', 'k-warn', 'k-info', 'k-act', 'k-ok'];
+var SIDE_HOT = ['k-crit', 'k-high', 'k-warn', 'k-info', 'k-act', 'k-ok'];
 var SIDE_THEMES = ['system', 'light', 'dark'];
 var SIDE_FOLD_KEY = 'skopax-sidebar-folds', SIDE_KEY = 'skopax-sidebar', SIDE_PHONE = '(max-width: 768px)', SIDE_SHORT = '(max-height: 500px) and (pointer: coarse)', SIDE_FULL_W = 252, SIDE_RAIL_W = 64;
 var SIDE_PAGE_TAB = /^[a-z][a-z0-9-]{1,30}$/, SIDE_PAGE_ICON = /^\/plugins\/[a-z][a-z0-9-]{1,30}\/[A-Za-z0-9._-]{1,80}$/;
@@ -169,7 +169,7 @@ function sideUnread() {
 }
 function sideRowHot(t) {
   if (t.id === 'tab-slack') return !!sideUnread();
-  return t.classList.contains('hot') && (t.classList.contains('k-crit') || t.classList.contains('k-warn'));
+  return t.classList.contains('hot') && (t.classList.contains('k-crit') || t.classList.contains('k-high') || t.classList.contains('k-warn'));
 }
 function sideMarkFolds() {
   document.querySelectorAll('#snav > .s-grp').forEach(function (box) {
@@ -177,7 +177,7 @@ function sideMarkFolds() {
     if (!btn) return;
     var rows = [].filter.call(box.children, function (c) { return c.matches('a.tab') && !c.hidden; }), rail = sideRailOn && !sidePhone();
     var hot = rows.filter(sideRowHot);
-    var folded = box.classList.contains('folded'), sum = btn.querySelector('.g-sum'), k = hot.some(function (t) { return t.classList.contains('k-crit'); }) ? 'k-crit' : hot.length ? 'k-warn' : '';
+    var folded = box.classList.contains('folded'), sum = btn.querySelector('.g-sum'), k = hot.some(function (t) { return t.classList.contains('k-crit'); }) ? 'k-crit' : hot.some(function (t) { return t.classList.contains('k-high'); }) ? 'k-high' : hot.length ? 'k-warn' : '';
     var text = folded ? String(hot.length || rows.length) : '';
     if (sum.textContent !== text) sum.textContent = text;
     var cls = 'g-sum' + (folded && k ? ' hot ' + k : '');

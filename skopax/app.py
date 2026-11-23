@@ -52,7 +52,7 @@ from skopax.mcptools.bridge import ToolBridge, asker_role
 from skopax.mcptools.catalog import Catalog as McpCatalog
 from skopax.mcptools.oauth import McpOAuth
 from skopax import actors
-from skopax.actors import BOOTSTRAP_TOKEN as BOOTSTRAP, is_token
+from skopax.actors import BOOTSTRAP_TOKEN as BOOTSTRAP, SYSTEM, is_token
 from skopax.apitokens import Actor, ApiTokens, TokenNameError, UnknownToken
 from skopax.messages import msg
 from skopax.oidc import OidcError
@@ -133,7 +133,7 @@ from skopax import ssobutton, workspaceicon
 from skopax.ssoicon import ICON_MAX as SSO_ICON_MAX, IconRefused, SsoIcon, check as icon_check
 from skopax.sso import FIELDS as SSO_FIELDS, SECRET_FIELD as SSO_SECRET_FIELD, SECRET_ID as SSO_SECRET_ID, SECRET_MAX as SSO_SECRET_MAX, InvalidSecret, SignOn, SourceOwned as SecretOwned, SsoConfig, SsoHttp, SsoSecret, TestBusy as SsoTestBusy
 from skopax.throttle import Throttle
-from skopax.store import CARD_HISTORY_MAX, TAG_HUE_NAMES, ActionMoved, ChatPrivate, Conflict, NotFound, Store, iso, new_id, utc_now
+from skopax.store import CARD_HISTORY_MAX, SEVERITY_HIGH_MARK, TAG_HUE_NAMES, ActionMoved, ChatPrivate, Conflict, NotFound, Store, iso, new_id, utc_now
 
 OPEN_PATHS = ('/actuator/health', '/actuator/health/*', '/static/*', '/icons/*', '/favicon.ico', '/plugins/*', '/manifest.webmanifest', '/setup', '/login', '/login/sso', '/authorized', '/logout', '/mcp',
               '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/*', '/login/sso-icon')
@@ -1109,7 +1109,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         return way_in(bool(settings.sso_on), doc is not None, base_url, added_only=settings.sso_new_accounts == 'added-only', viewer_default=settings.sso_default_role != 'operator',
                       mapped=mapped, closed=closed)
 
-    clicks = Clicks(store, slack, operators, apply_from_slack, jira_site, on=lambda: features.on('slack-listener') and slack.enabled, confirm=proposals.confirm, way_in=slack_way_in, hosts=site_hosts)
+    clicks = Clicks(store, slack, operators, apply_from_slack, jira_site, on=lambda: features.on('slack-listener') and slack.enabled, confirm=proposals.confirm, way_in=slack_way_in, hosts=site_hosts, base_url=base_url)
     listen_mode = settings.slack_listen
     listener: Listener | None = None
 
@@ -1167,6 +1167,19 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     post_now = PostNow(store, lambda key: send_anomaly_to_slack(key, SERVER_BY), lambda: settings.slack_post_sev if slack.enabled and features.on('slack-autosend') else 'off',
                        lambda: investigator_ready() and settings.investigate_mode == 'live')
 
+    def assign_back(cards: list[dict]) -> None:
+        for card in cards:
+            email = card.get('assignBack')
+            if not isinstance(email, str) or '@' not in email:
+                continue
+            try:
+                store.set_tagging(card['key'], {'assignBack': None})
+                done = assigner.assign(card['key'], user_name(email) or email.split('@')[0], email, SYSTEM)
+                card.update(owner=done.get('owner'), assigned=done.get('assigned'))
+                card.pop('assignBack', None)
+            except Exception as e:
+                log.warning('the card %s that came back was not assigned back: %s', card.get('key'), kind(e))
+
     def server_apply(results: list[PassResult], now: float, links, after=None, check: str | None = None, screen=None, clusters=None) -> Applied | None:
         try:
             took = time.time() - now
@@ -1176,14 +1189,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             log.warning('check runs not recorded: %s', kind(e))
         applied = apply(store, results, now, links, dm=pusher.enabled, after=after, auto_resolve_hours=settings.auto_resolve_hours,
                         recurring_count=settings.recurring_count, recurring_days=settings.recurring_days, tag_rules=tags.rules(settings.tag_rules), alert_twins=settings.alert_twins, screen=screen, clusters=clusters, kind_windows=runtime.auto_windows(),
-                        severity_hours={'crit': settings.auto_resolve_hours_crit, 'warn': settings.auto_resolve_hours_warn},
-                        business=clocks.zone() if settings.business_days else None)
+                        severity_hours={'crit': settings.auto_resolve_hours_crit, 'high': settings.auto_resolve_hours_high, 'warn': settings.auto_resolve_hours_warn},
+                        business=clocks.zone() if settings.business_days else None, alerts_warn=settings.alerts_warn)
         if applied and applied.resolved:
             for r in applied.resolved:
                 notes.auto_resolved([r['key']], r.get('hours') or settings.auto_resolve_hours, r.get('since'), {r['key']} if r.get('event') else (), bool(r.get('businessTime')))
             notices.auto_resolved([r['key'] for r in applied.resolved if not r.get('progress')], {r['key']: r['why'] for r in applied.resolved if r.get('why')})
             notices.followed([r['key'] for r in applied.resolved if r.get('progress')])
         if applied:
+            assign_back(applied.cards)
             notices.fired(applied.events, applied.cards)
             auto_assign.sweep(applied.cards)
         if applied and applied.push:
@@ -1535,8 +1549,20 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     def boot_backfills() -> None:
         backfill.run(store)
+        severity_upgrade()
         card_history_backfill()
         slack_links_backfill()
+
+    def severity_upgrade() -> None:
+        try:
+            if not store.begin_once(SEVERITY_HIGH_MARK, iso(utc_now() - dt.timedelta(seconds=REDRAW_MARK_STALE_S))):
+                return
+            lifted = store.lift_warnings(iso(utc_now() - dt.timedelta(hours=settings.archive_hours or 48)))
+            if lifted:
+                store.add_activity(ADMIN_KIND, 'server', msg('severity.high_added_one' if lifted == 1 else 'severity.high_added', count=lifted))
+            store.finish_once(SEVERITY_HIGH_MARK)
+        except Exception as e:
+            log.warning('the warning cards were not moved to High this start: %s', kind(e))
 
     def card_history_backfill() -> None:
         try:
@@ -4018,7 +4044,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def post_admin_field_suggestions(plugin_id: str, key: Annotated[str, PathParam(max_length=64)], body: FieldSuggestIn, by: Annotated[str, Depends(require_admin)]) -> dict:
         plugin = plugin_usable(plugin_id)
         try:
-            return runtime.suggestions(plugin, key, body.name, body.values, SUGGEST_TIMEOUT_S)
+            return runtime.suggestions(plugin, key, body.name, body.values, SUGGEST_TIMEOUT_S, asker=by)
         except SuggestFailed as e:
             raise HTTPException(e.status, e.text) from None
         except InvalidInstance as e:
@@ -4089,7 +4115,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         since = iso(utc_now() - dt.timedelta(days=days))
         usage = toolusage.summary(store.tool_usage_runs(since), days, since, store.check_runs_since(since), investigator.sources.plugin_tools)
         on = bool(settings.probe)
-        return toolusage.with_status(usage, ToolSet(runtime), store.last_probe() if on else None) | {'probe': on}
+        return toolusage.with_status(usage, ToolSet(runtime), store.last_probe() if on else None) | {'probe': on, 'langfuse': tracer.project_url()}
 
     @app.get('/api/costs')
     def get_costs(_: Annotated[str, Depends(require_login)], days: Annotated[int, Query(ge=1, le=30)] = 7) -> dict:

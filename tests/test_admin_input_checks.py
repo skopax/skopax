@@ -41,3 +41,18 @@ def test_every_admin_default_is_what_the_service_falls_back_to_without_a_config_
 
     # then
     assert [k for k, s in sources.items() if s != 'default'] == []
+
+
+def test_an_unrecorded_write_stores_the_value_bumps_the_revision_and_leaves_no_history_line(store):
+    # given
+    from skopax.tunables import TunableStore
+    tunables = TunableStore(store.db)
+    before = tunables.rev()
+
+    # when
+    answer = tunables.write('investigate.daily-usd', '5', 'nina.white@example.com', None, record=False)
+
+    # then
+    assert tunables.rev() == before + 1 and tunables.all()['investigate.daily-usd']['value'] == '5'
+    assert (answer['key'], answer['old'], answer['new'], answer['by']) == ('investigate.daily-usd', None, '5', 'nina.white@example.com')
+    assert 'id' not in answer and 'seq' not in answer and tunables.history() == []

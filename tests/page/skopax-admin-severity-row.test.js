@@ -6,7 +6,7 @@ const TEMPLATE = process.argv[2];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
 const ADMIN_USER = 'nina.white@example.com';
-const SEV = [['crit', 'Critical', 'critical'], ['warn', 'Warning', 'warning']];
+const SEV = [['crit', 'Critical', 'critical'], ['high', 'High', 'high'], ['warn', 'Warning', 'warning']];
 const KEYS = SEV.map(([s]) => 'core.auto-resolve-hours-' + s);
 
 let HELP = null;
@@ -20,7 +20,7 @@ async function boot(hash, historyRows, fromOld) {
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
   const state = {rev: 1, updatedAt: iso(0), sweptIso: iso(1), nextIso: new Date(Date.now() + 3600000).toISOString(), sources: {prom: 'ok'}, summary: {level: 'ok', headline: 'x', points: [], at: iso(1)},
     anomalies: [], services: [], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
-  let list = SEV.map(([s, , word], n) => entry(KEYS[n], 'Auto-resolve cleared ' + word + ' cards after (hours)', fromOld ? {value: '9', source: 'admin', by: ADMIN_USER, at: iso(5), base: '6', oldSwitch: 'core.auto-resolve-hours'} : n === 1 ? {value: '12', source: 'admin', by: ADMIN_USER, at: iso(5), base: '6'} : {}))
+  let list = SEV.map(([s, , word], n) => entry(KEYS[n], 'Auto-resolve cleared ' + word + ' cards after (hours)', fromOld ? {value: '9', source: 'admin', by: ADMIN_USER, at: iso(5), base: '6', oldSwitch: 'core.auto-resolve-hours'} : n === 2 ? {value: '12', source: 'admin', by: ADMIN_USER, at: iso(5), base: '6'} : {}))
     .concat([entry('core.info-auto-close-days', 'Auto-resolve info cards still firing after (days)', fromOld ? {value: '0', base: '0', default: '3', high: 90, source: 'config', oldSwitch: 'core.auto-resolve-hours'} : {value: '3', base: '3', default: '3', high: 90}),
       entry('cards.archive-hours', 'Archive after (hours)', {value: '48', base: '48', default: '48', high: 720})]);
   const dom = new JSDOM(pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state)), {
@@ -75,14 +75,14 @@ async function theTwoSeverityWindowsShareOneLabelledRowWithAnInputEach() {
   assert.strictEqual(groups.length, 1, 'one grouped row');
   assert.strictEqual(label.textContent, 'Auto-resolve cleared cards after (hours)');
   assert.deepStrictEqual(inputs.map((i) => i.closest('.adm-row').dataset.key), KEYS);
-  assert.deepStrictEqual(inputs.map((i) => i.value), ['6', '12']);
+  assert.deepStrictEqual(inputs.map((i) => i.value), ['6', '6', '12']);
   inputs.forEach((inp, n) => {
     const names = inp.getAttribute('aria-labelledby').split(' ').map((id) => doc.getElementById(id).textContent);
     assert.deepStrictEqual(names, ['Auto-resolve cleared cards after (hours)', SEV[n][1]], 'each input is named by the group label and its severity');
   });
-  assert.ok(group.querySelectorAll('.adm-row .adm-save').length === 2, 'each input keeps its own Save');
-  assert.ok(group.querySelectorAll('.adm-row .adm-reset').length === 1 && group.querySelector('.adm-row[data-key="' + KEYS[1] + '"] .adm-reset'), 'Reset only where a value was set here');
-  assert.ok(group.querySelector('.adm-row[data-key="' + KEYS[1] + '"]').textContent.indexOf('Set by') >= 0, 'the source tag stays per input');
+  assert.ok(group.querySelectorAll('.adm-row .adm-save').length === 3, 'each input keeps its own Save');
+  assert.ok(group.querySelectorAll('.adm-row .adm-reset').length === 1 && group.querySelector('.adm-row[data-key="' + KEYS[2] + '"] .adm-reset'), 'Reset only where a value was set here');
+  assert.ok(group.querySelector('.adm-row[data-key="' + KEYS[2] + '"]').textContent.indexOf('Set by') >= 0, 'the source tag stays per input');
   assert.ok(!doc.querySelector('#admin .adm-row[data-key="core.info-auto-close-days"]').closest('[role="group"]'), 'the info still-firing setting is an ordinary row');
   assert.ok(doc.querySelector('#admin .adm-row[data-key="cards.archive-hours"]'), 'other settings are untouched');
   assert.deepStrictEqual(errors, []);
@@ -95,7 +95,7 @@ async function savingOneSeverityWindowSendsOnlyItsKeyAndKeepsTheOtherEdits() {
   const {w, doc, errors, calls} = await boot('#t=settings');
   const row = (key) => doc.querySelector('#admin .adm-row[data-key="' + key + '"]');
   typeIn(w, row(KEYS[0]).querySelector('.adm-in'), '48');
-  typeIn(w, row(KEYS[1]).querySelector('.adm-in'), '2');
+  typeIn(w, row(KEYS[2]).querySelector('.adm-in'), '2');
 
   //when
   row(KEYS[0]).querySelector('.adm-save').click();
@@ -104,8 +104,8 @@ async function savingOneSeverityWindowSendsOnlyItsKeyAndKeepsTheOtherEdits() {
   //then
   assert.deepStrictEqual(calls.filter((c) => c[0] === 'PUT').map((c) => c[2]), [{key: KEYS[0], value: '48'}]);
   assert.strictEqual(row(KEYS[0]).querySelector('.adm-msg').textContent, 'Saved, live within 15 s on every pod');
-  assert.strictEqual(row(KEYS[1]).querySelector('.adm-in').value, '2', 'the other window keeps its unsaved edit');
-  assert.ok(!row(KEYS[1]).querySelector('.adm-save').disabled);
+  assert.strictEqual(row(KEYS[2]).querySelector('.adm-in').value, '2', 'the other window keeps its unsaved edit');
+  assert.ok(!row(KEYS[2]).querySelector('.adm-save').disabled);
   assert.ok(row(KEYS[0]).querySelector('.adm-reset'), 'the saved window now offers Reset');
   assert.deepStrictEqual(errors, []);
   w.close();
@@ -118,12 +118,12 @@ async function resetOnOneSeverityWindowDeletesOnlyItsKey() {
   const row = (key) => doc.querySelector('#admin .adm-row[data-key="' + key + '"]');
 
   //when
-  row(KEYS[1]).querySelector('.adm-reset').click();
+  row(KEYS[2]).querySelector('.adm-reset').click();
   await wait(80);
 
   //then
-  assert.deepStrictEqual(calls.filter((c) => c[0] === 'DELETE').map((c) => c[1]), ['/api/admin/settings?key=' + encodeURIComponent(KEYS[1])]);
-  assert.strictEqual(row(KEYS[1]).querySelector('.adm-in').value, '6');
+  assert.deepStrictEqual(calls.filter((c) => c[0] === 'DELETE').map((c) => c[1]), ['/api/admin/settings?key=' + encodeURIComponent(KEYS[2])]);
+  assert.strictEqual(row(KEYS[2]).querySelector('.adm-in').value, '6');
   assert.deepStrictEqual(errors, []);
   w.close();
   console.log('PASS Reset on one severity window drops only its own value');
@@ -144,7 +144,7 @@ async function findingASeverityWordOrTheGroupLabelShowsTheWholeRow() {
   const hiddenWhenOther = doc.querySelector('#admin .adm-multi').hidden;
 
   //then
-  assert.strictEqual(shown, 2);
+  assert.strictEqual(shown, 3);
   assert.ok(groupShown);
   assert.ok(hiddenWhenOther, 'the group hides when no input matches');
   assert.deepStrictEqual(errors, []);
@@ -180,7 +180,7 @@ async function aValueSeededByTheOldHoursKeyShowsTheOldSettingTagAndResets() {
   await wait(80);
 
   //then
-  assert.deepStrictEqual(tags, [['old setting'], ['old setting']]);
+  assert.deepStrictEqual(tags, [['old setting'], ['old setting'], ['old setting']]);
   assert.deepStrictEqual([].map.call(infoRow.querySelectorAll('.adm-m .tag'), (t) => t.textContent), ['old setting']);
   assert.strictEqual(infoRow.querySelector('.adm-m .tag').title, 'Off because the old Auto-resolve cleared cards after setting (core.auto-resolve-hours) is 0; a value saved here wins over it');
   assert.ok(!infoRow.querySelector('.adm-reset'), 'the info row is not an Admin value, so it has no Reset');

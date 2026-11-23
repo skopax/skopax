@@ -2,19 +2,62 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
-## 0.5.7 (2026-11-23)
+## 0.5.8 (2026-11-23)
 
-A step-by-step guide to tracing Skopax with Langfuse, and traces that explain themselves without sending any text.
+A High severity, Microsoft 365 mail through Graph, Dengage back in core, a Slack resolve window, an investigator that leans on people's earlier verdicts, and a long list of fixes. Read the upgrade notes under Changed before you upgrade: every pod at once, and warning alerts become High.
+
+**Added:**
+
+- A High severity between Critical and Warning, for problems users feel now: 5xx and error-log spikes, broken pages and ad links, traffic down by more than half, failed deploys, and Langfuse, Umami and Crashlytics drops and spikes. It has its own colour (orange; Warning is now yellow), a filter, a Board chip, a severity change by hand, custom-check and MCP support, and an auto-resolve window that follows Warning unless set (`core.auto-resolve-hours-high`).
+- Alert labels map critical to Critical, warning, high, major and error to High, and low and minor to Warning. Alerts kept at Warning (`alerts.warn`, `SKOPAX_ALERTS_WARN`) lists alert-name globs that stay at Warning, for noisy forecast alerts.
+- A card whose value doubles moves one level up, once; a severity set by hand is never moved.
+- A card resolved as Fixed that fires again comes back as a regression: it is posted at once as at least High, assigned back to the person who fixed it, and says "Came back after fix <ref>" on the page, in Slack and in Teams. A card resolved as No action needed reopens quietly unless it got worse.
+- The Mail server can send through Microsoft 365 with Microsoft Graph (Send with: Microsoft 365 (Graph)). It signs in as an app, preferably with a certificate, and sends the same MIME mail through sendMail as one mailbox, scoped by Exchange RBAC for Applications. No SMTP relay or static IP is needed, and national clouds work through Authority and Graph URL. Test connection gets a token and warns, best effort, about a tenant-wide Mail.Send permission. The setup guide lists the Entra and Exchange Online steps. Saved SMTP mail servers are unchanged.
+- Dengage is back as a built-in community plug-in. It reads completed push, e-mail and SMS sends and opens cards for large sends, poor delivery against each channel's 4-week baseline, quiet channels and refused channels, and the `dengage` tool lets the investigator read sends and daily sums. The plug-in id, fields, checks and card keys match the earlier extension copy, so saved instances and open cards carry over; the UTC offset now defaults to 0. A plug-in package that registers the id of a built-in is refused with a notice and one warning log line, and the built-in keeps serving.
+- The Tools page shows an "Open in Langfuse" link to the project of Skopax's own tracing when Langfuse tracing is on and the project is known.
 
 **Changed:**
 
+- Post immediately from, the Teams and Email lowest severity and the core route default now start at High. A route with card tags and no lowest severity of its own keeps Warning, so business routes still get typo, layout and similar cards; a value you set is kept.
+- On upgrade, open Warning cards that are not resolved or archived become High once (`sevBefore` keeps the old value). Nothing is posted and Slack posts are redrawn. Before upgrading, list noisy warning alerts in Alerts kept at Warning, or set Post immediately from to Warning. Upgrade every pod at once (Recreate or one replica): 0.5.8 cannot run beside or be rolled back to an older version once cards are High.
+- Resolve in Slack (card menu, post buttons and the Resolve button in a thread) opens a window that asks how, like the page: Fixed, No action needed or Duplicate, an optional why that becomes the card note, and the other card for a duplicate, checked before anything is applied. A No action needed proposal of the investigator opens on No action needed.
+- The investigator now treats a person's earlier verdict on the same card (Fixed, No action needed, Duplicate, Known noise, a mute, a ticket they linked, and the reason they wrote) as reviewed ground truth. The card brief lists the last three such verdicts first, the investigator starts from the newest and overturns it only with named current evidence, and auto-resolves, expiries, Jira sweep links, API-token actions, its own earlier notes and earlier answers never outweigh it. The card page leads its "Seen before" line with "Ruled <verdict> by <name>, <date>".
+- `past_cards` now answers with short per-occurrence digests (when it fired, how long, how it ended, who decided, the investigator's first note line, and a person's verdict word for word), people's rulings first, and `detail` returns one full occurrence. `past_runs` rows carry a clipped answer, `detail` with a run id gives the whole one, and its answers are now scanned for planted text. past_cards allows 10 calls per run, or 2 per card plus 4 up to 24; past_runs allows 8.
 - Langfuse tracing in `metadata` mode sends a short summary as the input and output of each step instead of leaving them empty, which Langfuse showed as "undefined". Model calls show the message count, prompt and system sizes, input tokens and the tools offered, then the stop reason, the tools called and the answer length. Tool steps show the tool and the argument names it declares, then whether it worked and the result length. Traces show the kind and card count, then the outcome and the model and tool call counts. No prompt, answer or tool text is sent, and a tool name or argument the model made up shows as unknown or other.
 - A step-by-step guide to tracing Skopax's own AI calls with Langfuse: a separate Langfuse project, a key pair that may write, which instance fields to fill, how to check it and what to do when nothing shows up. It is in the plug-in docs (Langfuse tracing) and in a new "Trace Skopax with Langfuse" section of the Docs page. The help of the Langfuse instance setting says to pick a separate project, because the picked instance is no longer watched.
 - The card drawer's Expand and Shrink button sits at the left of its top bar, on the side the drawer grows to, with an arrow pointing the way it moves.
+- The esql tool retries a failed or timed-out query of a day or less once on the last hour, and says so; ranges over a day still retry on the last day. Short time units like 3d or 12h are recognised. An unknown index pattern suggests existing patterns that share its start, end or a word.
+
+**Plug-ins:**
+
+- `high` is a severity plug-ins may send (`skopax.contract.SEVERITIES`, `alert_sev`); plug-ins that send only crit and warn need no change.
 
 **Fixed:**
 
 - A Slack reminder for a card assigned by name now mentions the person (through the e-mail saved with the assignment), so they are pinged; before it only printed the name.
+- group refuses a bare type prefix such as `log|`; its no-match error says how many of the 5 patterns are used and names open same-service cards the pattern does match.
+- slack_update points to report_slack_draft in report runs, and to slack_draft and the run's unposted cards otherwise.
+- The card tool points a closed card or an unknown key to open cards with a close key.
+- github_file lists the nearest existing directory when a path is not found.
+- kube previous_logs falls back to current logs when the previous run left no lines or its logs can no longer be read.
+- Email route and notification mail addresses keep the part before the @ as typed and lower-case only the domain, so Alice.Smith@Example.COM is sent to Alice.Smith@example.com. Two spellings that differ only in case are one recipient, and a recipient already marked as mailed in lower case is still recognised.
+- A mail the server rejects at the data stage (a 5xx reply) now counts against that one recipient instead of the whole mail server, so the other recipients are still mailed; a 4xx reply is still retried. A partial refusal the server reports after accepting the mail is now also counted as a refused recipient, with only the number of refused recipients in the message.
+- The History row's "not posted" count and its tooltip now show in your language.
+- Tag errors on the admin page (unknown tag, bad address, too many responsibles) now show in your language.
+- A post by a route plug-in Skopax does not know reads "Posted by the <name> route", translated.
+- Clicking a link to the card that is already open shows that card again.
+- Notifications show "Email not sent" with the reason when the mail server refused the email.
+- A refused notification mail is no longer sent again after an outbox error or a long send pass.
+- A Jira back-link that keeps failing for the same reason adds one activity line, not one per ticket action.
+- Text like UTF-8 or SHA-256 is no longer taken for a Jira ticket when no Jira projects are set.
+- Two admins filling in new integrations at the same time no longer block each other's field lists.
+- A tag responsible not found in Slack is checked again after an hour instead of a day.
+- The thread reason in Slack no longer turns parts of a card name into italics.
+- A card posted on a later retry no longer says it was posted at once.
+- GitHub rate-limit messages say how long is left, and GraphQL limits wait for GitHub's reset time.
+- `?start` or `?end` inside an ES|QL text value no longer counts as the check's time range.
+- "1 service" and "1 tool" instead of "1 services" and "1 tools".
+- Spanish uses "coste" consistently.
 
 ## 0.5.6 (2026-11-23)
 

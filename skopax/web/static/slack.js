@@ -25,16 +25,14 @@ function sqWhat(r) {
 }
 function sqSender(by, drafted) { return by === AUTO_BY ? draftBy(by, drafted) : isTokenActor(by) ? tokenActorLabel(by, 'Investigator') + ' (on request)' : !by || isInvestigatorBy(by) ? investigatorName() + ' (on request)' : String(by).split('@')[0]; }
 function sqFirstLine(t) { return String(t).split('\n').filter(function (l) { return l.trim(); })[0] || ''; }
-function slackTabState() {
-  return ['', 'k-info', false, ''];
-}
 function actsHeldMark() {
   var c = document.getElementById('count-acts'), tab = document.getElementById('tab-acts');
   if (!c || !tab) return;
   if (c.dataset.base === undefined) { c.dataset.base = c.textContent; tab.dataset.base = tab.title; }
   var n = sqDrafts().length;
-  c.textContent = c.dataset.base + (n ? ' \u00b7 ' + n + ' not posted' : '');
-  tab.title = tab.dataset.base + (n ? (tab.dataset.base ? ' \u00b7 ' : '') + n + ' not posted' : '');
+  var held = n ? tx(n + ' not posted') : '';
+  c.textContent = tx(c.dataset.base) + (n ? ' \u00b7 ' + held : '');
+  tab.title = tx(tab.dataset.base) + (n ? (tab.dataset.base ? ' \u00b7 ' : '') + held : '');
   tab.classList.toggle('k-warn', n > 0);
   tab.classList.toggle('k-act', n === 0);
 }

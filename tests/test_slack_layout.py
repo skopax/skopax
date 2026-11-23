@@ -15,7 +15,7 @@ from skopax.cardposts import CardPosts, drawn_sig
 from skopax.engine import Applied, PassResult, anomaly as found_card
 from skopax.messages import MESSAGES, msg
 from skopax.postdeploy import SERVER_BY
-from skopax.slack import AUTO_BY, CARD_MENU, KNOWN_VIEW, POST_ACTIONS, Slack, SlackDown, SlackError, anomaly_message, slowed
+from skopax.slack import AUTO_BY, CARD_MENU, KNOWN_VIEW, POST_ACTIONS, RESOLVE_DUP, RESOLVE_KIND, RESOLVE_WHY, Slack, SlackDown, SlackError, anomaly_message, slowed
 from skopax.store import Store
 
 LINK = 'https://skopax.example.com/c/14'
@@ -84,7 +84,7 @@ def test_an_open_card_post_reads_who_did_what_then_the_title_the_body_and_one_ba
     # then
     blocks = message['blocks']
     assert [b['type'] for b in blocks] == ['section', 'section', 'context', 'context']
-    assert head_of(message) == ':large_orange_circle: Skopax opened a card \u00b7 Warning'
+    assert head_of(message) == ':large_yellow_circle: Skopax opened a card \u00b7 Warning'
     assert blocks[0]['accessory']['type'] == 'overflow' and blocks[0]['accessory']['action_id'] == CARD_MENU
     assert menu_of(message) == [('Take', 'take:ask1', None), ('Resolve', 'resolve:ask1', None), ('Known noise', 'known:ask1', None), ('Ask in chat', 'chat', CHAT)]
     assert blocks[1]['text']['text'] == f'*<{LINK}|#14 checkout-service / ERROR lines \u00b7 east>*'
@@ -103,10 +103,10 @@ def test_a_person_who_sends_the_card_is_named_in_the_headline_and_the_ai_summary
     auto = anomaly_message(CARD, LINK, 'auto \u00b7 Claude draft')
 
     # then
-    assert head_of(sent) == ':large_orange_circle: alice shared a card \u00b7 Warning'
+    assert head_of(sent) == ':large_yellow_circle: alice shared a card \u00b7 Warning'
     assert [b['type'] for b in sent['blocks']] == ['section', 'section', 'section', 'context', 'context']
     assert sent['blocks'][2]['text']['text'] == '*Checkout is slow*\np95 &lt;2 s&gt; &amp; rising'
-    assert head_of(auto) == ':large_orange_circle: Skopax opened a card \u00b7 Warning'
+    assert head_of(auto) == ':large_yellow_circle: Skopax opened a card \u00b7 Warning'
     assert 'accessory' not in auto['blocks'][0], 'no menu when there is nothing to pick'
 
 
@@ -122,8 +122,8 @@ def test_taken_resolved_and_cleared_cards_change_the_headline_and_the_bar():
 
     # then
     assert [head_of(m) for m in (taken, resolved, cleared, reopened, assigned, known)] == [
-        ':large_orange_circle: alice took #14', ':white_check_mark: ci-bot resolved #14', ':large_yellow_circle: #14 stopped firing \u00b7 unassigned', ':large_orange_circle: #14 reopened',
-        ':large_orange_circle: alice assigned #14 to Bob Smith', ':white_check_mark: alice marked #14 as known noise']
+        ':large_yellow_circle: alice took #14', ':white_check_mark: ci-bot resolved #14', ':large_yellow_circle: #14 stopped firing \u00b7 unassigned', ':large_yellow_circle: #14 reopened',
+        ':large_yellow_circle: alice assigned #14 to Bob Smith', ':white_check_mark: alice marked #14 as known noise']
     assert bar_of(taken)[0] == f'In progress \u00b7 Warning \u00b7 Assignee bob \u00b7 Tags: Developer \u00b7 {SINCE}'
     assert [bar_of(m)[0].split(' \u00b7 ')[0] for m in (resolved, cleared, reopened, known)] == ['Resolved', 'Stopped firing', 'Open', 'Known noise']
     assert menu_of(taken) == [('Resolve', 'resolve:ask1', None), ('Known noise', 'known:ask1', None), ('Ask in chat', 'chat', CHAT)]
@@ -156,7 +156,7 @@ def test_the_headline_the_title_and_the_bar_are_escaped():
     message = anomaly_message(card | {'num': None}, LINK, 'server', head={'kind': 'took', 'by': 'mallory<x>@example.com'})
 
     # then
-    assert head_of(message) == ':large_orange_circle: mallory&lt;x&gt; took &lt;!channel&gt; &amp; co / *x* &lt;@U0AAA1111&gt;'
+    assert head_of(message) == ':large_yellow_circle: mallory&lt;x&gt; took &lt;!channel&gt; &amp; co / *x* &lt;@U0AAA1111&gt;'
     assert message['blocks'][1]['text']['text'] == f'*<{LINK}|&lt;!channel&gt; &amp; co / *x* &lt;@U0AAA1111&gt; \u00b7 &lt;east&gt;>*'
     assert bar_of(message)[0] == f'Open \u00b7 Warning \u00b7 Assignee &lt;b&gt; \u00b7 {SINCE}'
     assert bar_of(message)[2] == '<https://logs.example.com/a?b=1&amp;c=2|&lt;evil&gt; &amp; co>'
@@ -174,6 +174,12 @@ def menu_pick(kind: str, ask_id: str) -> dict:
 
 def submit(view: dict, user: str = 'U1') -> dict:
     return {'type': 'view_submission', 'user': {'id': user}, 'view': {'callback_id': view['callback_id'], 'private_metadata': view['private_metadata']}}
+
+
+def resolve_submit(view: dict, kind: str | None, why: str | None = None, ref: str | None = None, user: str = 'U1') -> dict:
+    values = {RESOLVE_KIND: {RESOLVE_KIND: {'type': 'radio_buttons', 'selected_option': {'value': kind} if kind else None}},
+              RESOLVE_WHY: {RESOLVE_WHY: {'type': 'plain_text_input', 'value': why}}, RESOLVE_DUP: {RESOLVE_DUP: {'type': 'plain_text_input', 'value': ref}}}
+    return submit(view, user) | {'view': submit(view, user)['view'] | {'state': {'values': values}}}
 
 
 def menu_ask(store: Store) -> dict:
@@ -220,7 +226,7 @@ def test_a_known_noise_window_that_slack_does_not_open_applies_nothing(store: St
     assert store.get_action(doc['id']).get('cardActionApplied') is None
 
 
-def test_take_and_resolve_from_the_menu_apply_at_once_and_leave_the_post_to_the_refresh(store: Store):
+def test_take_from_the_menu_applies_at_once_and_a_later_resolve_on_the_same_menu_says_it_was_applied(store: Store):
     # given
     doc = menu_ask(store)
     box, applier, api = clicks(store)
@@ -254,7 +260,7 @@ def test_a_state_change_updates_the_post_in_place_and_never_reposts_it(store: St
     updates = [p for m, p in api.calls if m == 'chat.update']
     assert len(top) == 1, 'the card is posted once'
     assert [(u['channel'], u['ts']) for u in updates] == [('C123', POSTED_TS)] * 2
-    assert [head_of(u) for u in updates] == [':large_orange_circle: bootstrap took #14', ':white_check_mark: bootstrap resolved #14']
+    assert [head_of(u) for u in updates] == [':large_yellow_circle: bootstrap took #14', ':white_check_mark: bootstrap resolved #14']
     assert [bar_of(u)[0].split(' \u00b7 ')[0] for u in updates] == ['In progress', 'Resolved']
     assert store.anomaly(KEY)['slackPost']['head']['kind'] == 'resolved'
 
@@ -276,7 +282,7 @@ def test_assigning_or_tagging_the_card_rewrites_its_post(store: Store):
     # then
     updates = [p for m, p in api.calls if m == 'chat.update']
     assert (assigned.status_code, tagged.status_code, business.status_code) == (200, 200, 200)
-    assert [head_of(u) for u in updates] == [':large_orange_circle: bootstrap assigned #14 to Bob Smith'] * 2, 'a tag change keeps the last headline'
+    assert [head_of(u) for u in updates] == [':large_yellow_circle: bootstrap assigned #14 to Bob Smith'] * 2, 'a tag change keeps the last headline'
     assert [bar_of(u)[0] for u in updates] == [f'Open \u00b7 Warning \u00b7 Assignee Bob Smith \u00b7 {SINCE}', f'Open \u00b7 Warning \u00b7 Assignee Bob Smith \u00b7 Tags: Developer \u00b7 {SINCE}']
     assert len([p for _, p in transport.calls if 'thread_ts' not in p]) == 1
     assert len(updates) == 2, 'a business sentence is not on the post, so saving one rewrites nothing'
@@ -296,7 +302,7 @@ def test_a_sweep_that_clears_reopens_escalates_or_auto_resolves_a_card_rewrites_
     posts.run_batch()
 
     # then
-    assert [(u['ts'], head_of(u)) for u in rewrites(api)] == [(CARD_TS, ':large_yellow_circle: #14 stopped firing \u00b7 unassigned'), ('1792224000.000201', ':large_orange_circle: #15 reopened'),
+    assert [(u['ts'], head_of(u)) for u in rewrites(api)] == [(CARD_TS, ':large_yellow_circle: #14 stopped firing \u00b7 unassigned'), ('1792224000.000201', ':large_yellow_circle: #15 reopened'),
                                                              ('1792224000.000202', ':red_circle: Skopax opened a card \u00b7 Critical'),
                                                              ('1792224000.000203', ':white_check_mark: Skopax resolved #17')]
     assert bar_of(rewrites(api)[2])[0].startswith('Open \u00b7 Critical'), 'an escalation redraws the bar and keeps the headline'
@@ -320,8 +326,8 @@ def test_investigator_triage_and_jira_sweeps_rewrite_the_headline(store: Store):
     posts.run_batch()
 
     # then
-    assert [head_of(u) for u in rewrites(api)] == [':white_check_mark: Skopax resolved #14', ':white_check_mark: Skopax resolved #14', ':large_orange_circle: Skopax took #15',
-                                                  ':large_orange_circle: #16 reopened']
+    assert [head_of(u) for u in rewrites(api)] == [':white_check_mark: Skopax resolved #14', ':white_check_mark: Skopax resolved #14', ':large_yellow_circle: Skopax took #15',
+                                                  ':large_yellow_circle: #16 reopened']
 
 
 def test_the_rewritten_menu_follows_the_card_and_drops_triage_once_the_post_was_used(store: Store):
@@ -412,7 +418,7 @@ def test_a_card_posted_in_another_cards_thread_is_rewritten_through_its_own_repl
 
     # then
     [update] = [p for m, p in api.calls if m == 'chat.update']
-    assert (update['ts'], head_of(update)) == ('1792224000.000900', ':large_orange_circle: alice took #14')
+    assert (update['ts'], head_of(update)) == ('1792224000.000900', ':large_yellow_circle: alice took #14')
 
 
 def test_a_post_from_before_the_new_layout_is_left_as_it_is(store: Store):
@@ -570,7 +576,7 @@ def test_a_slack_take_leaves_a_fresh_menu_so_resolve_still_works(store: Store):
     # given
     doc = menu_ask(store)
     posted(store, KEY, menu=doc['id'])
-    box, applier, _ = clicks(store)
+    box, applier, clicked = clicks(store)
     taken = box.handle(menu_pick('take', doc['id']))
     store.triage(KEY, 'progress', owner='adam.baker@example.com')
     slack, _, api = fake_slack()
@@ -581,14 +587,16 @@ def test_a_slack_take_leaves_a_fresh_menu_so_resolve_still_works(store: Store):
     posts.run_batch()
     fresh = menu_of(rewrites(api)[0])
     new_id = fresh[0][1].split(':', 1)[1]
-    resolved = box.handle(menu_pick('resolve', new_id))
+    window = box.handle(menu_pick('resolve', new_id))
+    [opened] = [p['view'] for m, p in clicked.calls if m == 'views.open']
+    resolved = box.handle(resolve_submit(opened, 'handled'))
     stale = box.handle(menu_pick('resolve', doc['id']))
 
     # then
     assert taken == 'applied' and new_id != doc['id']
     assert [v for _, v, _ in fresh] == [f'resolve:{new_id}', f'known:{new_id}', 'chat']
     assert store.anomaly(KEY)['slackPost']['drawn']['menu'] == new_id
-    assert (resolved, stale) == ('applied', 'claimed') and [c['type'] for c in applier.calls] == ['take', 'resolve']
+    assert (window, resolved, stale) == ('resolve-open', 'applied', 'claimed') and [c['type'] for c in applier.calls] == ['take', 'resolve']
 
 
 def test_a_menu_that_cannot_be_read_is_logged_and_offers_no_triage(store: Store, caplog, monkeypatch):

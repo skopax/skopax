@@ -548,7 +548,6 @@
   "No match": "Aucune correspondance",
   "No older deploys recorded.": "Aucun déploiement plus ancien enregistré.",
   "No one matches the search or the role.": "Personne ne correspond à la recherche ou au rôle.",
-  "No open warning or critical card to attach.": "Aucune carte ouverte d'avertissement ou critique à joindre.",
   "No people yet: add the first person who signs in.": "Personne pour l'instant : ajoutez la première personne qui se connecte.",
   "No person matches": "Aucune personne ne correspond",
   "No ready pods": "Aucun pod prêt",
@@ -1475,9 +1474,6 @@
   "With a new card, read it first: what fired, its numbers and the investigator's note. Then choose Start progress, Assign, Investigate or Resolve.": "Face à une nouvelle carte, lisez-la d'abord : ce qui s'est déclenché, ses chiffres et la note de l'enquêteur. Choisissez ensuite Passer En cours, Assigner, Enquêter ou Résoudre.",
   "A card's life": "La vie d'une carte",
   "A card fires while the problem is there. When it goes quiet it reads Stopped firing and stays under Open until someone resolves it, or it closes by itself.": "Une carte est active tant que le problème est là. Quand il se calme, elle affiche N'émet plus et reste sous Ouverte jusqu'à ce que quelqu'un la résolve ou qu'elle se ferme d'elle-même.",
-  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, warning cards after {1} h.": "Une carte arrêtée dont personne ne s'est occupé se ferme d'elle-même : les critiques après {0} h, les avertissements après {1} h.",
-  "A stopped critical card that nobody acted on closes by itself after {0} h. Warning cards do not close by themselves.": "Une carte critique arrêtée dont personne ne s'est occupé se ferme d'elle-même après {0} h. Les avertissements ne se ferment pas d'eux-mêmes.",
-  "A stopped warning card that nobody acted on closes by itself after {0} h. Critical cards do not close by themselves.": "Une carte d'avertissement arrêtée dont personne ne s'est occupé se ferme d'elle-même après {0} h. Les cartes critiques ne se ferment pas d'elles-mêmes.",
   "Stopped cards do not close by themselves: someone has to resolve them.": "Les cartes arrêtées ne se ferment pas d'elles-mêmes : quelqu'un doit les résoudre.",
   "A stopped card that nobody acted on closes by itself after a set time per severity (Admin > Settings).": "Une carte arrêtée dont personne ne s'est occupé se ferme d'elle-même après un délai fixé par gravité (Admin > Paramètres).",
   "Only Monday to Friday counts.": "Seuls les jours du lundi au vendredi comptent.",
@@ -1607,7 +1603,36 @@
   "Check it": "Vérifier",
   "the instance now reads Receives Skopax's own traces, so it is not watched. Run Investigate on a card, find its trace under Traces in the Langfuse project, and open it from Open trace on the Investigator page.": "l'instance affiche maintenant Receives Skopax's own traces, so it is not watched. Lancez Enquêter sur une carte, trouvez sa trace sous Traces dans le projet Langfuse, et ouvrez-la avec Open trace sur la page de l'Enquêteur.",
   "Nothing shows up": "Rien n'apparaît",
-  "check that the keys come from the right project and may write, that Traces sampled is 100, and that the run made a model call. Traces go out within seconds after a run ends.": "vérifiez que les clés viennent du bon projet et peuvent écrire, que Traces sampled vaut 100 et que l'exécution a appelé un modèle. Les traces partent quelques secondes après la fin d'une exécution."
+  "check that the keys come from the right project and may write, that Traces sampled is 100, and that the run made a model call. Traces go out within seconds after a run ends.": "vérifiez que les clés viennent du bon projet et peuvent écrire, que Traces sampled vaut 100 et que l'exécution a appelé un modèle. Les traces partent quelques secondes après la fin d'une exécution.",
+  "{0} open": "{0} ouvertes",
+  "{0} queued, {1} in progress": "{0} en file, {1} en cours",
+  "A tag takes at most {0} responsibles": "Un tag accepte au plus {0} responsables",
+  "Email not sent": "E-mail non envoyé",
+  "The mail server refused this email": "Le serveur de mail a refusé cet e-mail",
+  "Every investigator run, model call and tool call, traced in Langfuse": "Chaque exécution de l'investigateur, appel de modèle et appel d'outil, tracé dans Langfuse",
+  "Open in Langfuse": "Ouvrir dans Langfuse",
+  "High": "Haute",
+  "{0} high": "{0} hautes",
+  "Critical, High": "Critique, Haute",
+  "open high items (pushed)": "éléments hauts ouverts (signalés)",
+  "While Slack auto-send is on, cards from High up are posted to the Slack channel on their own.": "Tant que Slack auto-send est activé, les cartes à partir de Haute sont publiées d'elles-mêmes sur le canal Slack.",
+  "Severity goes Critical, High, Warning, then Info. High means users feel it now, such as errors, a broken page or a failed deploy. A card whose numbers double moves one level up.": "La gravité va de Critique à Haute, Avertissement puis Info. Haute veut dire que les utilisateurs le ressentent maintenant, comme des erreurs, une page cassée ou un déploiement échoué. Une carte dont les chiffres doublent monte d'un niveau.",
+  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, high cards after {1} h, warning cards after {2} h.": "Une carte arrêtée dont personne ne s'est occupé se ferme d'elle-même : les critiques après {0} h, les hautes après {1} h, les avertissements après {2} h.",
+  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, high cards after {1} h, warning cards never.": "Une carte arrêtée dont personne ne s'est occupé se ferme d'elle-même : les critiques après {0} h, les hautes après {1} h, les avertissements jamais.",
+  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, high cards never, warning cards after {1} h.": "Une carte arrêtée dont personne ne s'est occupé se ferme d'elle-même : les critiques après {0} h, les hautes jamais, les avertissements après {1} h.",
+  "A stopped card that nobody acted on closes by itself: critical cards after {0} h, high cards never, warning cards never.": "Une carte arrêtée dont personne ne s'est occupé se ferme d'elle-même : les critiques après {0} h, les hautes jamais, les avertissements jamais.",
+  "A stopped card that nobody acted on closes by itself: critical cards never, high cards after {0} h, warning cards after {1} h.": "Une carte arrêtée dont personne ne s'est occupé se ferme d'elle-même : les critiques jamais, les hautes après {0} h, les avertissements après {1} h.",
+  "A stopped card that nobody acted on closes by itself: critical cards never, high cards after {0} h, warning cards never.": "Une carte arrêtée dont personne ne s'est occupé se ferme d'elle-même : les critiques jamais, les hautes après {0} h, les avertissements jamais.",
+  "A stopped card that nobody acted on closes by itself: critical cards never, high cards never, warning cards after {0} h.": "Une carte arrêtée dont personne ne s'est occupé se ferme d'elle-même : les critiques jamais, les hautes jamais, les avertissements après {0} h.",
+  "Came back after fix": "Revenue après le correctif",
+  "Was no action needed": "Sans action nécessaire avant",
+  "Fixed on {0} {M} {1}, then it fired again": "Corrigée le {0} {M} {1}, puis revenue",
+  "Fixed on {0} {M} {1}, came back": "Corrigée le {0} {M} {1}, revenue",
+  "Resolved as no action needed on {0} {M} {1}": "Résolue sans action nécessaire le {0} {M} {1}",
+  "A card resolved as Fixed that fires again came back: it is posted at once as at least High and goes back to the person who resolved it. A card resolved as No action needed reopens on the board only, unless it got worse.": "Une carte résolue comme Corrigée qui se déclenche à nouveau est revenue : elle est publiée tout de suite au moins en Haute et revient à la personne qui l'a résolue. Une carte résolue sans action nécessaire se rouvre seulement sur le tableau, sauf si elle s'est aggravée.",
+  "No open warning, high or critical card to attach.": "Aucune carte ouverte d’avertissement, haute ou critique à joindre.",
+  "Ruled": "Décidé",
+  "A person decided an earlier occurrence of this card; the investigator starts from it": "Une personne a tranché une occurrence précédente de cette carte ; l'enquêteur part de là"
  },
  "rules": [
   [
@@ -2037,6 +2062,26 @@
   [
    "^not read from (.+)$",
    "Non lu depuis $1"
+  ],
+  [
+   "^No tag named (.+)$",
+   "Aucun tag nommé $1"
+  ],
+  [
+   "^(.+) is not a valid e-mail address$",
+   "$1 n'est pas une adresse e-mail valide"
+  ],
+  [
+   "^Posted by the (\\S+) route$",
+   "Publié par la route $1"
+  ],
+  [
+   "^Sent by the (\\S+) route · (.+)$",
+   "Envoyé par la route $1 · $2"
+  ],
+  [
+   "^The mail server refused this email: (.+)$",
+   "Le serveur de mail a refusé cet e-mail : $1"
   ]
  ],
  "months": {

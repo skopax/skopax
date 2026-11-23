@@ -1303,3 +1303,20 @@ def test_open_cards_holds_a_planted_card_back_and_keeps_the_run_clean(store: Sto
     assert 'Checkout errors went up' in text and 'Payment timeouts' in text and 'log|b|ERROR|y' in text
     assert HELD_CARD in text
     assert b.flags == [] and 'planted text' not in sent[0]
+
+
+def test_handled_is_allowed_on_a_card_lifted_to_high_by_the_upgrade_and_refused_on_one_born_high(store: Store):
+    # given
+    lifted, born = 'log|l|ERROR|l', 'log|h|ERROR|h'
+    store.save_state(state(anomaly(lifted, sev='high', sevBefore='warn', sevUp='high'), anomaly(born, sev='high')), None)
+    b = box(store, keys=(lifted, born))
+    for key in (lifted, born):
+        b.call('note', {'key': key, 'text': 'harmless, one client'})
+
+    # when
+    ok = b.call('triage', {'key': lifted, 'state': 'handled'})
+    refused = b.call('triage', {'key': born, 'state': 'handled'})
+
+    # then
+    assert not ok[1] and store.anomaly(lifted)['triage'] == 'handled'
+    assert refused[1] and "this one is 'high'" in refused[0] and store.anomaly(born).get('triage') != 'handled'

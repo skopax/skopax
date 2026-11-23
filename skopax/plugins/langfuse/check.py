@@ -25,12 +25,12 @@ RULES = {'errors_warn_times': 3, 'errors_crit_times': 10, 'errors_gap': 5, 'erro
          'turn_cost_times': 1.6, 'turn_cost_gap_usd': 0.01, 'turn_cost_min_turns': 20,
          'day_cost_times': 1.5, 'day_cost_gap_usd': 5, 'day_cost_floor_usd': 5}
 RULE_HELP = {
-    'errors_warn_times': f'Warning when the error and warning steps of the last hour pass this many times the higher of {BOTH}.',
+    'errors_warn_times': f'High when the error and warning steps of the last hour pass this many times the higher of {BOTH}.',
     'errors_crit_times': 'Critical when they pass this many times the higher earlier window.',
     'errors_gap': 'And at least this many steps more than the higher earlier window, so a jump from 1 to 4 raises nothing.',
     'errors_floor': 'A warning needs at least this many error and warning steps in the last hour.',
     'errors_crit_floor': 'The critical level needs at least this many.',
-    'traffic_warn': f'Warning when the turns of the last hour fall below this share of {BOTH} (0.3 = under a third of both).',
+    'traffic_warn': f'High when the turns of the last hour fall below this share of {BOTH} (0.3 = under a third of both).',
     'traffic_crit': 'Critical when they fall below this share of both (0.05 = nearly none: an outage or tracing stopped).',
     'traffic_floor': 'Traffic is checked only when both earlier windows had at least this many turns, so quiet night hours raise nothing.',
     'latency_times': 'Warning when the p95 turn time passes this many times the higher earlier p95.',
@@ -106,7 +106,7 @@ def evaluate(w: dict, days: dict[str, float], now: float, rules: dict, ns: str, 
     err, err1, err7 = sum(cur['errors'].values()), sum(d1['errors'].values()), sum(d7['errors'].values())
     base = max(err1, err7)
     sev = ('crit' if above(err, base, rules['errors_crit_times'], rules['errors_gap'], rules['errors_crit_floor'])
-           else 'warn' if above(err, base, rules['errors_warn_times'], rules['errors_gap'], rules['errors_floor']) else None)
+           else 'high' if above(err, base, rules['errors_warn_times'], rules['errors_gap'], rules['errors_floor']) else None)
     if sev:
         listed = cur.get('top')
         top = 'not read on this pass' if cur.get('unread') else f'not readable, the keys lack {PERMISSION}' if listed is None else '; '.join(f'{level} {name} {TIMES}{n}' + (f': {said}' if said else '') for (level, name, said), n in listed)
@@ -116,7 +116,7 @@ def evaluate(w: dict, days: dict[str, float], now: float, rules: dict, ns: str, 
                           f'{sev.upper()} {svc} {err} error steps in the last hour (1d {err1} / 7d {err7})'))
     n, n1, n7 = cur['traces'], d1['traces'], d7['traces']
     sev = ('crit' if below_both(n, n1, n7, rules['traffic_crit'], rules['traffic_floor'])
-           else 'warn' if below_both(n, n1, n7, rules['traffic_warn'], rules['traffic_floor']) else None)
+           else 'high' if below_both(n, n1, n7, rules['traffic_warn'], rules['traffic_floor']) else None)
     if sev:
         found.append(card('lf-traffic', '', sev, ns, svc, n, n1, n7, '', 'traffic down',
                           f'Langfuse recorded {n} {svc} traces in the hour to {until}, {pct(n, n1)} of the same hour yesterday ({n1}) and {pct(n, n7)} of a week ago ({n7}). '

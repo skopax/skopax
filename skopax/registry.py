@@ -61,6 +61,7 @@ BUILTIN: tuple[str, ...] = (
     'skopax.plugins.gtm',
     'skopax.plugins.google_ads',
     'skopax.plugins.vwo',
+    'skopax.plugins.dengage',
     'skopax.plugins.mcp_tools',
     'skopax.plugins.spring_config',
     'skopax.plugins.sonarqube',
@@ -148,7 +149,7 @@ SETUP_STEP_MAX = 400
 SETUP_DOCS_MAX = 500
 SETUP_LABEL_MAX = 60
 DROPS_MAX = 50
-SEVERITIES = ('info', 'warn', 'crit')
+SEVERITIES = ('info', 'warn', 'high', 'crit')
 CARD_LABEL_MAX = 40
 CORE_SIGS = frozenset((
     'page-typos', 'page-layout', 'log', 'alert', 'err', '5xx', 'avg-latency', 'apm-p95', 'apm-fail', 'pvc-disk', 'db-disk', 'hpa-max', 'jvm-heap', 'varnish-cache', 'varnish-hit',
@@ -965,6 +966,7 @@ def _static(items: list[Loaded]) -> list[Loaded]:
             continue
         if x.id in seen:
             x.state, x.reason = 'broken', _broken_text(_label(x), msg('plugins.why.duplicate_id', id=x.id, origin=msg(ORIGIN_WORDS[seen[x.id]])))
+            log.warning('%s', x.reason)
             continue
         seen[x.id] = x.origin
         try:

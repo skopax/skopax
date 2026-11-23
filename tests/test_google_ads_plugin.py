@@ -204,7 +204,7 @@ def test_the_pass_opens_each_ad_link_once_raises_cards_and_clears_links_no_ad_us
     assert sorted(fetched(http)) == [f'{SITE}/benches', f'{SITE}/benches/old', f'{SITE}/garden/sofas', f'{SITE}/lamps', f'{SITE}/slow'], 'the app store link is not on the site'
     broken, moved = sorted(result.found, key=lambda c: c['sig'])
     assert (broken['key'], broken['sev'], broken['httpStatus'], broken['adCampaigns'], broken['adCount']) == (
-        'ad-link|ads/shop.example.com/garden/sofas', 'warn', 404, ['Sofa Search', 'Sofa Brand'], 2)
+        'ad-link|ads/shop.example.com/garden/sofas', 'high', 404, ['Sofa Search', 'Sofa Brand'], 2)
     assert (moved['key'], moved['sev'], moved['finalUrl'], moved['ranKey']) == ('ad-link-moved|ads/shop.example.com/benches/old', 'info', f'{SITE}/benches', f'gads:{SITE}/benches/old')
     assert f'gads:{SITE}/slow' not in result.ran, 'a link that did not answer keeps its card as it was'
     assert f'gads:{SITE}/lamps' in result.ran and f'gads:{SITE}/removed-ad' in result.ran and 'gads:access:account' in result.ran

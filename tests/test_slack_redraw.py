@@ -30,7 +30,7 @@ def recent() -> str:
     return iso(utc_now())
 
 
-def test_a_cleared_open_card_wears_the_yellow_mark_and_words_but_a_warning_stays_orange_and_a_closed_card_green():
+def test_a_cleared_open_card_wears_the_yellow_mark_and_words_like_a_warning_and_a_closed_card_green():
     # when
     cleared = anomaly_message(CARD | {'status': 'cleared'}, LINK, 'server', head={'kind': 'cleared'})
     warn = anomaly_message(CARD, LINK, 'server', head={'kind': 'reopened', 'by': 'system'})
@@ -38,7 +38,7 @@ def test_a_cleared_open_card_wears_the_yellow_mark_and_words_but_a_warning_stays
 
     # then
     assert head_of(cleared) == ':large_yellow_circle: #14 stopped firing \u00b7 unassigned'
-    assert head_of(warn).startswith(':large_orange_circle:') and head_of(closed).startswith(':white_check_mark:')
+    assert head_of(warn).startswith(':large_yellow_circle:') and head_of(closed).startswith(':white_check_mark:')
     assert ':eyes:' not in head_of(cleared) and msg('slackevents.offer.take', name='alice').startswith('\U0001F440')
 
 
@@ -65,7 +65,7 @@ def test_the_redraw_updates_only_posts_that_exist_through_chat_update_and_posts_
     # then
     assert (result['redrawn'], result['skipped'], result['result']) == (3, 0, 'done')
     marks = {u['ts']: head_of(u).split(' ')[0] for u in rewrites(api)}
-    assert marks == {'1792224000.000200': ':large_orange_circle:', '1792224000.000201': ':large_yellow_circle:', '1792224000.000202': ':white_check_mark:'}
+    assert marks == {'1792224000.000200': ':large_yellow_circle:', '1792224000.000201': ':large_yellow_circle:', '1792224000.000202': ':white_check_mark:'}
     assert post.calls == [] and not [m for m, _ in api.calls if m in ('chat.postMessage', 'conversations.replies')]
 
 
@@ -137,7 +137,7 @@ def test_a_card_reopened_while_the_redraw_runs_is_drawn_open_not_closed(store: S
 
     # then
     last = rewrites(api)[-1]
-    assert last['ts'] == '1792224000.000201' and head_of(last).startswith(':large_orange_circle:') and 'reopened' in head_of(last), head_of(last)
+    assert last['ts'] == '1792224000.000201' and head_of(last).startswith(':large_yellow_circle:') and 'reopened' in head_of(last), head_of(last)
 
 
 def test_a_row_whose_post_changed_during_the_run_is_skipped(store: Store):

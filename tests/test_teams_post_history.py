@@ -231,4 +231,4 @@ def test_a_business_channel_only_gets_cards_at_the_teams_lowest_severity_or_abov
 
     # then
     assert quiet == {} and loud == {'teams/seo': [KEY]}, 'the route itself takes info, the Teams floor holds the info card back until it is a warning'
-    assert {s.key: s.default for s in teams.PLUGIN.settings}['min-sev'] == 'warn', 'warn and up is the default'
+    assert {s.key: s.default for s in teams.PLUGIN.settings}['min-sev'] == 'high', 'high is the default of key routes; a tag route with no value of its own keeps warn'

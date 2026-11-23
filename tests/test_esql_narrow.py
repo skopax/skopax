@@ -58,8 +58,8 @@ def test_a_client_timeout_over_several_days_also_narrows_and_retries_once():
     assert 'last day' in out['note'] and out['rows'] == [{'n': 7}]
 
 
-@pytest.mark.parametrize('query', [ONE, BARE])
-def test_an_esql_504_on_a_one_day_range_or_no_range_is_reported_with_the_narrowing_hint_and_no_retry(query: str):
+@pytest.mark.parametrize('query', [ONE.replace('1 day', '1 hour'), BARE])
+def test_an_esql_504_on_a_one_hour_range_or_no_range_is_reported_with_the_narrowing_hint_and_no_retry(query: str):
     # given
     http = scripted(HttpError(504, QUERY, 'gateway timeout'))
 

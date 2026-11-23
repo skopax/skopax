@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from email.headerregistry import Address
 from email.message import EmailMessage
 
-from skopax import brand
+from skopax import brand, graphmail
 from skopax.errkind import Authored
 from skopax.messages import msg, speaking
 
@@ -26,6 +26,9 @@ LOOKUP_TIMEOUT_S = 5
 RECIPIENTS_MAX = 50
 DEFAULT_PORT = 587
 SECURITIES = ('starttls', 'tls', 'none')
+METHODS = ('smtp', 'graph')
+GRAPH_AUTHORITY = 'https://login.microsoftonline.com'
+GRAPH_URL = 'https://graph.microsoft.com'
 SECURITY_NAMES = {'starttls': 'STARTTLS', 'tls': 'TLS', 'none': 'no encryption'}
 ADDRESS_MAX = 254
 SUBJECT_MAX = 200
@@ -37,7 +40,8 @@ HOST = re.compile(rf'{LABEL}(?:\.{LABEL})*|\[[0-9A-Fa-f:.]+\]|[0-9A-Fa-f:.]+')
 KIND = re.compile(r'[A-Za-z0-9._-]{1,40}')
 BREAKS = re.compile(r'[\r\n\x00]')
 WEB_LINK = re.compile(r'https?://[^\s"<>]+')
-SEV_COLOURS = {'crit': '#b42318', 'warn': '#b54708', 'info': '#175cd3'}
+SEV_COLOURS = {'crit': '#b42318', 'high': '#c4320a', 'warn': '#fdb022', 'info': '#175cd3'}
+SEV_INKS = {'warn': '#0f1720'}
 INK, MUTED, PAPER, PAGE, EDGE, BUTTON = '#0f1720', '#4a5560', '#ffffff', '#f4f6f8', '#d5dbe1', '#1f5fbf'
 FONT = '-apple-system,Segoe UI,Helvetica,Arial,sans-serif'
 
@@ -50,6 +54,11 @@ class MailRefused(Authored, Exception):
     def __init__(self, *args: object, recipient: bool = False):
         super().__init__(*args)
         self.recipient = recipient
+
+
+def tidy(address: str) -> str:
+    local, at, domain = address.partition('@')
+    return f'{local}{at}{domain.lower()}'
 
 
 def address_ok(value: object) -> bool:
@@ -75,6 +84,22 @@ def named(value: str) -> tuple[str, str] | None:
 
 def sender_problem(value: str) -> str | None:
     return None if named(value) is not None else msg('mailserver.from')
+
+
+def graph_tenant_problem(value: str) -> str | None:
+    return graphmail.tenant_problem(value)
+
+
+def graph_client_problem(value: str) -> str | None:
+    return graphmail.client_problem(value)
+
+
+def graph_credential_problem(value: str) -> str | None:
+    return graphmail.credential_problem(value)
+
+
+def https_problem(value: str) -> str | None:
+    return graphmail.https_problem(value)
 
 
 def host_problem(value: str) -> str | None:
@@ -114,7 +139,7 @@ def reply_of(code: object, text: object, secret: str) -> str:
 
 
 def _hidden(text: str, to: tuple[str, ...]) -> str:
-    for address in to:
+    for address in sorted(to, key=lambda a: -len(str(a or ''))):
         local, _, domain = str(address or '').partition('@')
         if domain:
             text = re.sub(re.escape(address), f'{local[:1]}***@{domain}', text, flags=re.IGNORECASE)
@@ -134,13 +159,26 @@ def reason_of(error: BaseException) -> str:
 
 
 class Mailer:
-    def __init__(self, config: Mapping[str, str], timeout: float = TIMEOUT_S):
+    def __init__(self, config: Mapping[str, str], timeout: float = TIMEOUT_S, transport=None):
         self._config = {str(k): str(v if v is not None else '') for k, v in (config or {}).items()}
         self.timeout = timeout
         self._target = ''
+        self._transport = transport
 
     def __repr__(self) -> str:
+        if self.method == graphmail.METHOD:
+            return f'Mailer(graph:{self._graph().sender})'
         return f'Mailer({self.host}:{self.port_text})'
+
+    @property
+    def method(self) -> str:
+        return self._config.get('method', '').strip() or METHODS[0]
+
+    def _graph(self) -> 'graphmail.Graph':
+        return graphmail.Graph(self._config, self.timeout, self._transport)
+
+    def _sender(self) -> str:
+        return self._config.get('sender' if self.method == graphmail.METHOD else 'from', '')
 
     @property
     def host(self) -> str:
@@ -167,6 +205,11 @@ class Mailer:
         return self._config.get('username', '').strip()
 
     def _problem(self) -> str | None:
+        if self.method not in METHODS:
+            return msg('mailserver.not_ready')
+        if self.method == graphmail.METHOD:
+            reply = self._config.get('reply-to', '')
+            return self._graph().problem() or (msg('mailserver.graph_not_ready') if reply.strip() and named(reply) is None else None)
         if not self.host or host_problem(self.host) is not None or not self.port or self.security not in SECURITIES:
             return msg('mailserver.not_ready')
         if named(self._config.get('from', '')) is None:
@@ -239,7 +282,11 @@ class Mailer:
             text = msg('mailserver.refused', reply=reply_of(error.smtp_code, error.smtp_error, secret))
             if stage == 'login' and error.smtp_code >= 500:
                 return MailRefused(msg('mailserver.login'))
-            return MailDown(text) if error.smtp_code < 500 else MailRefused(text)
+            if error.smtp_code < 500:
+                return MailDown(text)
+            if isinstance(error, smtplib.SMTPDataError):
+                return MailRefused(text, recipient=True)
+            return MailRefused(text)
         if isinstance(error, smtplib.SMTPNotSupportedError):
             if stage == 'tls':
                 return MailRefused(msg('mailserver.tls', host=self.host, reason='the server does not offer STARTTLS'))
@@ -273,6 +320,8 @@ class Mailer:
             raise mapped from None
 
     def probe(self) -> str:
+        if self.method == graphmail.METHOD:
+            return self._graph().probe()
         with self._session() as client:
             client.noop()
         shown = SECURITY_NAMES[self.security]
@@ -290,7 +339,7 @@ class Mailer:
             raise MailRefused(msg('mailserver.address', address=reply_of(0, bad, '')), recipient=True)
         if kind and not KIND.fullmatch(kind):
             raise MailRefused(msg('mailserver.kind'))
-        name, addr = named(self._config.get('from', '')) or ('', '')
+        name, addr = named(self._sender()) or ('', '')
         message = EmailMessage(policy=email.policy.SMTP)
         message['From'] = Address(display_name=name, addr_spec=addr)
         message['To'] = ', '.join(to)
@@ -313,6 +362,11 @@ class Mailer:
         if problem is not None:
             raise MailRefused(problem)
         message = self._message(list(to) if isinstance(to, (list, tuple)) else to, subject, text, html, kind)
+        if self.method == graphmail.METHOD:
+            answer = self._graph().send(message)
+            if said is not None:
+                said.append(answer)
+            return message['Message-ID']
         addr = (named(self._config.get('from', '')) or ('', ''))[1]
         with self._session(tuple(to)) as client:
             if said is not None:
@@ -324,7 +378,9 @@ class Mailer:
                     return reply
 
                 client.data = heard
-            client.send_message(message, from_addr=addr, to_addrs=list(to))
+            left = client.send_message(message, from_addr=addr, to_addrs=list(to))
+        if left:
+            raise MailRefused(msg('mailserver.some_refused', count=len(left)), recipient=True)
         return message['Message-ID']
 
     def send(self, to: list[str], subject: str, text: str, html: str | None = None, *, kind: str = '') -> str:
@@ -387,20 +443,35 @@ def cell(content: str, style: str) -> str:
     return f'<tr><td style="{style}">{content}</td></tr>'
 
 
-def card_html(title: str, head: str, sev: str, sev_text: str, status: str, lines: list[str], link: str | None, footer: str, attribution: dict | None) -> str:
-    side = 'padding-left:24px;padding-right:24px;'
-    rows = [cell(esc(head), f'padding-top:20px;padding-bottom:8px;{side}font-size:14px;color:{MUTED};background-color:{PAPER};'),
-            cell(esc(title), f'padding-bottom:12px;{side}font-size:20px;font-weight:bold;color:{INK};background-color:{PAPER};'),
-            cell(f'<span style="background-color:{SEV_COLOURS[sev]};color:#ffffff;padding:2px 8px;border-radius:4px;font-weight:bold;">{esc(sev_text)}</span>'
-                 f'<span style="color:{MUTED};"> &nbsp;{esc(msg("mail.status"))}: {esc(status)}</span>', f'padding-bottom:16px;{side}font-size:14px;background-color:{PAPER};')]
-    rows += [cell(html_lines(line), f'padding-bottom:8px;{side}font-size:15px;line-height:1.5;color:{INK};background-color:{PAPER};') for line in lines]
-    if link:
-        rows.append(cell(f'<a href="{esc(link)}" style="display:inline-block;background-color:{BUTTON};color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold;">'
-                         f'{esc(msg("mail.open"))}</a>', f'padding-top:16px;padding-bottom:24px;{side}background-color:{PAPER};'))
+SIDE = 'padding-left:24px;padding-right:24px;'
+
+
+def head_cells(head: str, title: str) -> list[str]:
+    return [cell(esc(head), f'padding-top:20px;padding-bottom:8px;{SIDE}font-size:14px;color:{MUTED};background-color:{PAPER};'),
+            cell(esc(title), f'padding-bottom:12px;{SIDE}font-size:20px;font-weight:bold;color:{INK};background-color:{PAPER};')]
+
+
+def line_cell(content: str) -> str:
+    return cell(content, f'padding-bottom:8px;{SIDE}font-size:15px;line-height:1.5;color:{INK};background-color:{PAPER};')
+
+
+def footer_cell(footer: str, attribution: dict | None) -> str:
     tail = esc(footer)
     if attribution is not None:
         tail += f'<br><a href="{esc(attribution["href"])}" style="color:{MUTED};">{esc(attribution["text"])}</a>'
-    rows.append(cell(tail, f'padding-top:12px;padding-bottom:12px;{side}border-top:1px solid {EDGE};font-size:12px;color:{MUTED};background-color:{PAPER};'))
+    return cell(tail, f'padding-top:12px;padding-bottom:12px;{SIDE}border-top:1px solid {EDGE};font-size:12px;color:{MUTED};background-color:{PAPER};')
+
+
+def card_html(title: str, head: str, sev: str, sev_text: str, status: str, lines: list[str], link: str | None, footer: str, attribution: dict | None) -> str:
+    side = SIDE
+    rows = head_cells(head, title) + [
+            cell(f'<span style="background-color:{SEV_COLOURS[sev]};color:{SEV_INKS.get(sev, '#ffffff')};padding:2px 8px;border-radius:4px;font-weight:bold;">{esc(sev_text)}</span>'
+                 f'<span style="color:{MUTED};"> &nbsp;{esc(msg("mail.status"))}: {esc(status)}</span>', f'padding-bottom:16px;{side}font-size:14px;background-color:{PAPER};')]
+    rows += [line_cell(html_lines(line)) for line in lines]
+    if link:
+        rows.append(cell(f'<a href="{esc(link)}" style="display:inline-block;background-color:{BUTTON};color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold;">'
+                         f'{esc(msg("mail.open"))}</a>', f'padding-top:16px;padding-bottom:24px;{side}background-color:{PAPER};'))
+    rows.append(footer_cell(footer, attribution))
     return framed(title, ''.join(rows))
 
 
@@ -447,12 +518,5 @@ def trial_mail(instance: str, at: str) -> tuple[str, str, str]:
     attribution = brand.attribution_line()
     subject = flat(msg('mail.test.subject'))[:SUBJECT_MAX]
     parts = [head, '', title, ''] + lines + ['', '-- ', footer] + ([f"{attribution['text']} {attribution['href']}"] if attribution is not None else [])
-    side = 'padding-left:24px;padding-right:24px;'
-    rows = [cell(esc(head), f'padding-top:20px;padding-bottom:8px;{side}font-size:14px;color:{MUTED};background-color:{PAPER};'),
-            cell(esc(title), f'padding-bottom:12px;{side}font-size:20px;font-weight:bold;color:{INK};background-color:{PAPER};')]
-    rows += [cell(esc(line), f'padding-bottom:8px;{side}font-size:15px;line-height:1.5;color:{INK};background-color:{PAPER};') for line in lines]
-    tail = esc(footer)
-    if attribution is not None:
-        tail += f'<br><a href="{esc(attribution["href"])}" style="color:{MUTED};">{esc(attribution["text"])}</a>'
-    rows.append(cell(tail, f'padding-top:12px;padding-bottom:12px;{side}border-top:1px solid {EDGE};font-size:12px;color:{MUTED};background-color:{PAPER};'))
+    rows = head_cells(head, title) + [line_cell(esc(line)) for line in lines] + [footer_cell(footer, attribution)]
     return subject, '\n'.join(parts) + '\n', framed(title, ''.join(rows))

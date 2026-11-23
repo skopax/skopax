@@ -228,10 +228,10 @@ async function severityChangesFromTheCardAndAHandSetOneSaysSo() {
 
   //then
   assert.ok(open.textContent === 'Change severity' && !folded, 'Change severity is a text button outside the More actions fold');
-  assert.deepStrictEqual(picks, ['Critical', 'Warning', 'Move to Information'], 'no Back to the signal while the signal decides');
+  assert.deepStrictEqual(picks, ['Critical', 'High', 'Warning', 'Move to Information'], 'no Back to the signal while the signal decides');
   assert.deepStrictEqual(posted.map((b) => [b.type, b.key, b.sev]), [['severity', NEW, 'info']]);
   assert.ok(hand && /set by hand by carol/.test(hand.title) && /the signal says Critical/.test(hand.title), 'a hand-set severity shows a tag saying who set it and what the signal says');
-  assert.deepStrictEqual(handPicks, ['crit', 'warn*', 'info', 'auto'], 'it can go back to the signal');
+  assert.deepStrictEqual(handPicks, ['crit', 'high', 'warn*', 'info', 'auto'], 'it can go back to the signal');
   assert.deepStrictEqual(errors, []);
   w.close();
   return 'Change severity offers Critical, Warning and Info (plus Back to the signal once set by hand), and a hand-set card carries a Severity by hand tag naming who and the signal\'s own severity';

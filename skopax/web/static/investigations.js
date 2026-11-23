@@ -92,10 +92,10 @@ function askDialog() {
   wrap.dataset.open = '1';
   err.hidden = true;
   err.textContent = '';
-  var open = (typeof A !== 'undefined' ? A : []).filter(function (a) { return a.status === 'open' && (a.sev === 'warn' || a.sev === 'crit'); });
+  var open = (typeof A !== 'undefined' ? A : []).filter(function (a) { return a.status === 'open' && (a.sev === 'warn' || a.sev === 'high' || a.sev === 'crit'); });
   list.innerHTML = open.length ? open.map(function (a) {
     return '<label><input type="checkbox" value="' + esc(a.key) + '"> <span class="tag ' + (SEV[a.sev] || SEV.info)[1] + '">' + esc(a.sev) + '</span> <span>' + esc(svcName(a)) + ' · ' + esc(a.short || a.label || a.key) + '</span></label>';
-  }).join('') : '<span class="muted">No open warning or critical card to attach.</span>';
+  }).join('') : '<span class="muted">No open warning, high or critical card to attach.</span>';
   function close() {
     wrap.hidden = true;
     delete wrap.dataset.open;

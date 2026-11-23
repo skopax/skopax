@@ -959,9 +959,13 @@ def test_a_post_that_may_have_reached_slack_is_not_tried_again_that_day(store: S
     assert (first, again, later) == (None, None, None) and r.post.posted == [] and len(r.post.calls) == 1
 
 
-def test_a_refused_connection_from_the_real_client_counts_as_never_sent():
+def test_a_refused_connection_from_the_real_client_counts_as_never_sent(monkeypatch):
     # given
     from skopax.slack import _answer, never_sent
+
+    def refused(req, timeout=None):
+        raise urllib.error.URLError(ConnectionRefusedError(61, 'Connection refused'))
+    monkeypatch.setattr(urllib.request, 'urlopen', refused)
 
     # when
     with pytest.raises(SlackDown) as caught:
@@ -969,3 +973,44 @@ def test_a_refused_connection_from_the_real_client_counts_as_never_sent():
 
     # then
     assert never_sent(caught.value) is True
+
+
+def test_a_responsible_not_found_in_slack_is_checked_again_after_an_hour_not_a_day():
+    # given
+    now = [0.0]
+    api = FakeSlackApi(emails={'U0ALICE': ALICE})
+    ids = tagreport.SlackIds(Slack('xoxb-test', '#ops', FakePost(), api), clock=lambda: now[0])
+    ids.check_all([ALICE, BOB])
+    api.emails['U0BOB'] = BOB
+
+    # when
+    now[0] = tagreport.UNKNOWN_TTL_S - 1
+    ids.check_all([ALICE, BOB])
+    early = ids.peek(BOB)
+    now[0] = tagreport.UNKNOWN_TTL_S + 1
+    ids.check_all([ALICE, BOB])
+
+    # then
+    assert tagreport.UNKNOWN_TTL_S < tagreport.LOOKUP_TTL_S
+    assert early == 'unknown' and ids.peek(BOB) == 'found' and ids.peek(ALICE) == 'found'
+    assert api.methods().count('users.lookupByEmail') == 3, 'the found one waits its day'
+
+
+def test_a_scope_that_goes_missing_again_after_a_fix_is_logged_again(caplog):
+    # given
+    now = [0.0]
+    api = ScopeApi(emails={'U0ALICE': ALICE})
+    ids = tagreport.SlackIds(Slack('xoxb-test', '#ops', FakePost(), api), clock=lambda: now[0])
+    caplog.set_level(logging.WARNING, 'skopax.tagreport')
+
+    # when
+    ids.mention(ALICE)
+    api.refuse = False
+    now[0] += tagreport.FAILURE_TTL_S + 1
+    ids.mention(ALICE)
+    api.refuse = True
+    now[0] += tagreport.LOOKUP_TTL_S + 1
+    ids.mention(ALICE)
+
+    # then
+    assert len([m for m in caplog.messages if 'lacks the scope' in m]) == 2

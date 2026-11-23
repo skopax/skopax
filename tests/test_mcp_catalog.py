@@ -913,7 +913,7 @@ def test_a_long_server_name_never_leaves_a_fragment_of_the_header_token(store):
     # then
     runs = {token[i:i + 8] for i in range(len(token) - 7)}
     assert not [r for r in runs for text in seen if r in text]
-    assert summary == 'x' * 50 + '*** \u00b7 1 tools' and stored(store)['server'] == {'name': 'x' * 50 + '***', 'version': 'y' * 55 + '***'}
+    assert summary == 'x' * 50 + '*** \u00b7 1 tool' and stored(store)['server'] == {'name': 'x' * 50 + '***', 'version': 'y' * 55 + '***'}
 
 
 def test_an_oauth_token_echoed_in_the_server_name_is_scrubbed_in_the_test(store):
@@ -926,7 +926,7 @@ def test_an_oauth_token_echoed_in_the_server_name_is_scrubbed_in_the_test(store)
         summary = c.post('/api/admin/plugins/mcp-tools/test', json={'name': 'main', 'values': {}}).json()['summary']
 
     # then
-    assert summary == '*** \u00b7 1 tools'
+    assert summary == '*** \u00b7 1 tool'
 
 
 def test_a_preset_change_reblocks_its_denied_tools(store):

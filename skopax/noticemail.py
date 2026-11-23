@@ -172,7 +172,7 @@ class NoticeMail:
         if row.get('named'):
             return []
         if row.get('to'):
-            return [doc['_id'] for doc in found if doc['_id'] == row['to'] and wants(doc, row['kind'])]
+            return [doc['_id'] for doc in found if doc['_id'].lower() == row['to'].lower() and wants(doc, row['kind'])]
         same = [doc['_id'] for doc in found if slug(doc['_id']) == row['user'] and wants(doc, row['kind'])]
         if row['user'] in shared or len(same) > 1:
             log.info('a %s notification mail for %s was skipped: more than one account has that name', row['kind'], row['user'])
@@ -196,15 +196,24 @@ class NoticeMail:
                 job = self.claim()
                 if job is None:
                     break
+                self.renew(refused, job['claimedAt'])
                 sent = self.attempt(mailer, job, job['claimedAt'], refused)
                 if sent is None:
                     break
                 done += sent
+        except PyMongoError as e:
+            log.warning('notification mails paused, the outbox could not be read: %s', error_kind(e))
+        try:
             for job, e in refused:
                 self.drop_refused(job, e)
         except PyMongoError as e:
-            log.warning('notification mails paused, the outbox could not be read: %s', error_kind(e))
+            log.warning('refused notification mails not dropped yet, the outbox could not be written: %s', error_kind(e))
         return done
+
+    def renew(self, refused: list[tuple[dict, MailRefused]], now: float) -> None:
+        for job, _ in refused:
+            if self.outbox.update_one({'_id': job['_id'], 'claimedAt': job['claimedAt']}, {'$set': {'claimedAt': now}}).modified_count:
+                job['claimedAt'] = now
 
     def drop_refused(self, job: dict, e: MailRefused) -> None:
         why = scrub(e.text, job['email'])[:WHY_LIMIT]

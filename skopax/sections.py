@@ -62,8 +62,7 @@ def status_of(state: dict, svc_rows: dict) -> list[dict]:
         found = [worst[k] for k in ((r['ns'], r['svc']), ('*', r['svc'])) if k in worst]
         r['status'] = max(found, key=SEV_RANK.get) if found else 'ok'
         rows.append(r)
-    rank = {'crit': 3, 'warn': 2, 'info': 1, 'ok': 0}
-    rows.sort(key=lambda r: (-rank[r['status']], r['kind'] != 'app', -(r.get('req') or r.get('gw-req') or r.get('ing-req') or 0)))
+    rows.sort(key=lambda r: (-SEV_RANK.get(r['status'], -1), r['kind'] != 'app', -(r.get('req') or r.get('gw-req') or r.get('ing-req') or 0)))
     return rows
 
 

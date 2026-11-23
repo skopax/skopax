@@ -44,7 +44,8 @@ async function main() {
     console.log('FAIL SKOPAX_TEST_SHARD must look like 2/4');
     process.exit(1);
   }
-  const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.test.js') && (!only.length || only.some((o) => f.includes(o)))).sort().filter((f, i) => i % Number(shard[2]) === Number(shard[1]) - 1);
+  const matched = fs.readdirSync(DIR).filter((f) => f.endsWith('.test.js') && (!only.length || only.some((o) => f.includes(o)))).sort();
+  const files = matched.filter((f, i) => i % Number(shard[2]) === Number(shard[1]) - 1);
   const queue = files.slice();
   const results = [];
   await Promise.all(Array.from({length: PARALLEL}, async () => {
@@ -58,7 +59,7 @@ async function main() {
   const bad = results.filter((r) => r.failed);
   const total = results.reduce((n, r) => n + r.passed, 0);
   console.log('\n' + (results.length - bad.length) + '/' + results.length + ' suites ok, ' + total + ' checks passed');
-  process.exit(bad.length || !results.length ? 1 : 0);
+  process.exit(bad.length || !matched.length ? 1 : 0);
 }
 
 main();

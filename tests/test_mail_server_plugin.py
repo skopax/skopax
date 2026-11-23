@@ -40,8 +40,10 @@ def test_the_mail_server_plugin_describes_itself():
     # then
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['category'], manifest['maxInstances']) == ('mail-server', 'Mail server', 'chat', 1)
-    assert manifest['capabilities']['secrets'] == ['password'] and mail.PLUGIN_ID == mail_server.ID
-    assert list(fields) == ['host', 'port', 'security', 'username', 'password', 'from', 'reply-to']
+    assert manifest['capabilities']['secrets'] == ['password', 'client-cert', 'client-secret'] and mail.PLUGIN_ID == mail_server.ID
+    assert manifest['capabilities']['hosts'] == ['@authority', '@graph-url']
+    assert list(fields) == ['method', 'host', 'port', 'security', 'tenant-id', 'username', 'password', 'client-id', 'client-cert', 'client-secret', 'from', 'sender', 'reply-to', 'authority', 'graph-url']
+    assert (fields['method'].choices, fields['method'].default, fields['method'].choice_labels['graph']) == (('smtp', 'graph'), 'smtp', 'Microsoft 365 (Graph)')
     assert fields['host'].required and fields['from'].required and fields['password'].kind == 'secret'
     assert (fields['port'].kind, fields['port'].default, fields['port'].low, fields['port'].high) == ('int', '587', 1, 65535)
     assert (fields['security'].choices, fields['security'].default) == (('starttls', 'tls', 'none'), 'starttls')
@@ -187,4 +189,5 @@ def test_the_password_is_never_shown_in_an_instance_read(store):
     shown = json.dumps(runtime.instances.get('mail-server', 'main').view())
 
     # then
-    assert PASSWORD not in shown and json.loads(shown)['secrets'] == {'password': {'set': True, 'from': None}}
+    assert PASSWORD not in shown and json.loads(shown)['secrets']['password'] == {'set': True, 'from': None}
+    assert not json.loads(shown)['secrets']['client-cert']['set'] and not json.loads(shown)['secrets']['client-secret']['set']

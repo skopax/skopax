@@ -23,7 +23,7 @@ var TYPE_NAMES = {'page-typos': 'Typos', 'page-layout': 'Layout', log: 'Log erro
   'umami-redirect': 'Umami events', 'umami-pageviews': 'Umami pageviews', crux: 'Page speed',
   safebrowsing: 'Safe Browsing', 'ga-drop': 'GA4 drops', 'gtm-publish': 'GTM publishes', 'ad-disapproved': 'Disapproved ads', 'browser-down': 'Screenshot browser',
   'store-rating': 'Store ratings', 'play-vitals': 'Play vitals', 'crash-rate': 'Crash rate', 'crash-new': 'New crashes', 'ab-test': 'A/B tests', 'ab-verdict': 'A/B verdicts'};
-var LINK_FILTERS = ['open', 'stale', 'progress', 'taken', 'muted', 'cleared', 'all', 'investigating', 'dived', 'crit', 'warn', 'recurring', 'archived', 'closed'];
+var LINK_FILTERS = ['open', 'stale', 'progress', 'taken', 'muted', 'cleared', 'all', 'investigating', 'dived', 'crit', 'high', 'warn', 'recurring', 'archived', 'closed'];
 var TYPE_ALIAS = {access: 'no-access', 'umami-access': 'no-access'};
 var CORE_TYPE_NAMES = Object.assign({}, TYPE_NAMES), CORE_TYPE_ALIAS = Object.assign({}, TYPE_ALIAS), TYPE_SIG = /^[a-z0-9-]{1,30}$/;
 function useTypes(tiles) {
@@ -123,7 +123,9 @@ function clearSearchUnless(list) {
   var box = document.getElementById('card-search');
   if (box) box.value = '';
 }
-var SEV = {crit: ['Critical', 'k-crit'], warn: ['Warning', 'k-warn'], info: ['Info', 'k-info'], ok: ['Healthy', 'k-ok']};
+var SEV = {crit: ['Critical', 'k-crit'], high: ['High', 'k-high'], warn: ['Warning', 'k-warn'], info: ['Info', 'k-info'], ok: ['Healthy', 'k-ok']};
+var CARD_SEVS = ['crit', 'high', 'warn'];
+function cardSev(s) { return CARD_SEVS.indexOf(s) >= 0; }
 var SERVER_TZ = '';
 var JIRA_BASE = '';
 function setJiraBase(u) { var next = String(u || '').replace(/\/+$/, ''); if (next !== JIRA_BASE) bumpRender(); JIRA_BASE = next; }
@@ -297,7 +299,7 @@ function muteAt(a) {
 function lastChange(a) { return Math.max(stamp(a.clearedAt), stamp(a.triagedAt), stamp(muteAt(a))); }
 function archivedCard(a) {
   if (a.status === 'open' && !a.muted) return false;
-  if (a.status === 'cleared' && !a.muted && !done(a) && (a.sev === 'warn' || a.sev === 'crit')) return false;
+  if (a.status === 'cleared' && !a.muted && !done(a) && cardSev(a.sev)) return false;
   var last = lastChange(a);
   return last > 0 && Date.now() - last > archiveHours() * 3600000;
 }
@@ -305,9 +307,9 @@ function healthCard(a) { return !a.noHealth; }
 function bySev(s) { return open.filter(function (a) { return a.sev === s && healthCard(a); }); }
 function openAll() { return open.concat(stale.filter(function (a) { return open.indexOf(a) < 0; })); }
 function openBySev(s) { return openAll().filter(function (a) { return a.sev === s; }); }
-var SEV_ORD = {crit: 0, warn: 1, info: 2};
-function bySevOrd(x, y) { return (x.sev in SEV_ORD ? SEV_ORD[x.sev] : 3) - (y.sev in SEV_ORD ? SEV_ORD[y.sev] : 3); }
-var SVC_RANK = {crit: 3, warn: 2, info: 1, ok: 0};
+var SEV_ORD = {crit: 0, high: 1, warn: 2, info: 3};
+function bySevOrd(x, y) { return (x.sev in SEV_ORD ? SEV_ORD[x.sev] : 4) - (y.sev in SEV_ORD ? SEV_ORD[y.sev] : 4); }
+var SVC_RANK = {crit: 4, high: 3, warn: 2, info: 1, ok: 0};
 var ROW_NS = {};
 function ownedBy(a, s) { return a.svc === s.svc && (!ROW_NS[a.ns] || a.ns === s.ns); }
 function reqOf(s) { return s.req || s['gw-req'] || s['ing-req'] || 0; }
@@ -389,12 +391,12 @@ function derive(data) {
   CARDS = A.concat(ARCHIVED);
   open = A.filter(function (a) { return a.status === 'open' && !a.muted && !done(a); });
   muted = A.filter(function (a) { return (a.status === 'open' || a.status === 'cleared') && a.muted && !done(a); });
-  stale = A.filter(function (a) { return !a.muted && !done(a) && ((a.status === 'cleared' && (a.sev === 'warn' || a.sev === 'crit')) || (a.status === 'open' && a.triage === 'dived')); });
+  stale = A.filter(function (a) { return !a.muted && !done(a) && ((a.status === 'cleared' && cardSev(a.sev)) || (a.status === 'open' && a.triage === 'dived')); });
   cleared = A.filter(function (a) { return a.status === 'cleared' && !done(a) && stale.indexOf(a) < 0; });
   inprog = A.filter(function (a) { return a.triage === 'progress'; });
   taken = A.filter(function (a) { return a.triage === 'handled'; });
   recurringL = A.filter(recurs);
-  worst = bySev('crit').length ? 'crit' : bySev('warn').length ? 'warn' : 'ok';
+  worst = CARD_SEVS.filter(function (s) { return bySev(s).length; })[0] || 'ok';
   src = D.sources || {};
   down = SOURCES.filter(function (k) { return srcState(k) === 'error'; });
   var live = Array.isArray(D.anomalies);

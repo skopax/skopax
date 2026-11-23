@@ -500,13 +500,13 @@ def test_apm_flags_slow_and_failing_services_except_freshly_deployed_ones():
     assert [x['key'] for x in found] == ['apm|orders_service|p95', 'apm|cart-service|fail']
 
 
-def test_apm_p95_cards_are_info_while_failure_cards_stay_warn():
+def test_apm_p95_cards_are_info_while_failure_cards_are_high():
     # when
     found = {x['key']: x for x in checks.evaluate_apm(APM_ROWS, set(), DEFAULT_RULES)}
 
     # then
     assert found['apm|orders_service|p95']['sev'] == 'info' and found['apm|checkout-service|p95']['sev'] == 'info'
-    assert found['apm|cart-service|fail']['sev'] == 'warn' and found['apm|checkout-service|fail']['sev'] == 'warn'
+    assert found['apm|cart-service|fail']['sev'] == 'high' and found['apm|checkout-service|fail']['sev'] == 'high'
     assert 'HTTP requests' in found['apm|orders_service|p95']['what']
 
 

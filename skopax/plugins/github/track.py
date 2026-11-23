@@ -88,7 +88,7 @@ def failed_cards(github, repo: dict, rows: list[dict], now: float) -> list[dict]
         what = (f"GitHub deployment {d['id']} of {repo['full']} to {d['env']} ended {d['state']}: commit {d['sha'][:8]} from {d.get('ref') or '?'}"
                 + (f", by {d['by']}" if d.get('by') else '') + (f", pull request #{d['pull']}" if d.get('pull') else '')
                 + (f", previous deployment {d['from'][:8]}" if d.get('from') else '') + '. The commit and pull request links are on the card; github_compare from the previous deployment lists what went out.')
-        x = anomaly(CHECK, 'github-deploy', NS, repo['name'], env, 'warn', 1, None, None, '', 'deployment failed', what, short=f"WARN {repo['name']} {d['env']} deployment {d['state']}")
+        x = anomaly(CHECK, 'github-deploy', NS, repo['name'], env, 'high', 1, None, None, '', 'deployment failed', what, short=f"HIGH {repo['name']} {d['env']} deployment {d['state']}")
         x['github'] = {'repo': repo['full'], 'sha': d['sha'], 'pull': d['pull'] or None, 'deployment': d['id']}
         cards.append(x)
     return cards

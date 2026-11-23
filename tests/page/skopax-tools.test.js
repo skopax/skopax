@@ -19,6 +19,8 @@ const usage = {days: 7, since: iso(7 * 1440), runs: 5, runsWithTools: 4, calls: 
     byCheck: {'wingify': {runs: 3, errors: 0}, 'wingify-verdict': {runs: 1, errors: 1}}, recentErrors: [{at: iso(5), check: 'wingify-verdict', trigger: 'check', error: 'error: HTTP 401'}]}),
   tool('argo')]};
 
+let langfuse = null;
+
 async function boot(pack) {
   const errors = [];
   const vc = new VirtualConsole();
@@ -35,7 +37,7 @@ async function boot(pack) {
       w.fetch = async (path) => {
         const p = String(path);
         const ok = (body) => ({ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body)), text: async () => JSON.stringify(body)});
-        if (p.startsWith('/api/tool-usage')) return ok(usage);
+        if (p.startsWith('/api/tool-usage')) return ok(Object.assign({}, usage, {langfuse}));
         if (p.startsWith('/api/server')) return ok({plugins: [{id: 'kubernetes', name: 'Kubernetes', icon: '/plugins/kubernetes/icon.svg', tab: null, passes: [], instances: [{name: 'prod', primary: true, pass: null, status: null}, {name: 'east', primary: false, pass: null, status: null}]}]});
         if (p.startsWith('/api/me')) return ok({loginEnabled: true, user: null});
         if (p.startsWith('/api/actions') || p.startsWith('/api/deploy-reports')) return ok([]);
@@ -214,7 +216,39 @@ async function heldAndRefusedHaveTheirOwnColumnsAndTheHelpExplainsThem() {
   console.log('PASS held and refused have their own Tools columns and the help explains them');
 }
 
+async function theLangfuseLinkShowsOnlyWhenTheServerKnowsTheProject() {
+  //given
+  const link = (doc) => doc.getElementById('tools-langfuse');
+
+  //when
+  langfuse = null;
+  const without = await boot();
+  const hidden = link(without.doc).hidden;
+  without.w.close();
+  langfuse = 'javascript:alert(1)';
+  const unsafe = await boot();
+  const unsafeHidden = link(unsafe.doc).hidden;
+  unsafe.w.close();
+  langfuse = 'https://langfuse.example.com/project/p1/traces';
+  const shown = await boot();
+  const a = link(shown.doc);
+  langfuse = null;
+
+  //then
+  assert.ok(hidden && !link(without.doc).getAttribute('href'), 'no project known, no link');
+  assert.ok(unsafeHidden, 'a link that is not http(s) is not shown');
+  assert.ok(!a.hidden && a.getAttribute('href') === 'https://langfuse.example.com/project/p1/traces', 'the link points to the project traces');
+  assert.strictEqual(a.target, '_blank');
+  assert.ok(/noopener/.test(a.rel));
+  assert.strictEqual(a.textContent, 'Open in Langfuse');
+  assert.strictEqual(a.title, 'Every investigator run, model call and tool call, traced in Langfuse');
+  assert.deepStrictEqual(shown.errors, []);
+  shown.w.close();
+  console.log('PASS the Open in Langfuse link shows only when the server knows the project');
+}
+
 (async () => {
+  await theLangfuseLinkShowsOnlyWhenTheServerKnowsTheProject();
   await kubeCallsSplitByCluster();
   await checksCountAndASearchNarrowsTheList();
   await anUnreachableToolSaysWhyInItsOpenedRow();

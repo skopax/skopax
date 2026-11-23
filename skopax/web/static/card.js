@@ -1,5 +1,5 @@
 (function () {
-  var SEV = {crit: ['Critical', 'crit'], warn: ['Warning', 'warn'], info: ['Info', 'info']};
+  var SEV = {crit: ['Critical', 'crit'], high: ['High', 'high'], warn: ['Warning', 'warn'], info: ['Info', 'info']};
   var WAITING = 'waiting to be addressed', INVESTIGATION = {investigating: 'investigating', dived: 'investigated'};
   var TAGS = {};
   var POLL_MS = 60000, STATUS_WAIT_MS = 5000;
@@ -91,7 +91,7 @@
     return ['Open', sev, [since, INVESTIGATION[c.triage], waiting(c) ? WAITING : '']];
   }
   function afterEvent(c) { return !!(c.cause && c.cause.kind === 'event' && c.cause.what); }
-  function waiting(c) { return (c.status === 'cleared' && (c.sev === 'warn' || c.sev === 'crit')) || (c.status === 'open' && c.triage === 'dived'); }
+  function waiting(c) { return (c.status === 'cleared' && (c.sev === 'warn' || c.sev === 'high' || c.sev === 'crit')) || (c.status === 'open' && c.triage === 'dived'); }
   function tech(c) {
     var parts = [];
     if (c.what) parts.push('<p data-no-tx>' + esc(c.what) + '</p>');
@@ -370,6 +370,12 @@
         (b.text ? '<p class="m-todo"><b>' + (b.kind === 'info' ? 'Info' : 'Recommended') + ':</b> <span data-no-tx>' + esc(b.text) + '</span></p>' : k.what ? '<p class="m-what" data-no-tx>' + esc(k.what) + '</p>' : '') + '</li>';
     }).join('') + '</ul></section>';
   }
+  function wasResolved(c) {
+    var p = c.previousResolution;
+    if (!p || typeof p !== 'object' || c.triage === 'handled' || !p.at) return '';
+    if (p.kind === 'fixed' && c.cameBack) return 'Fixed on ' + when(p.at) + ', came back';
+    return p.kind === 'handled' ? 'Resolved as no action needed on ' + when(p.at) : '';
+  }
   function render(c) {
     var b = c.business || {}, sev = SEV[c.sev] || SEV.info, st = state(c), said = line(st[2]);
     document.title = '#' + c.num + ' \u00b7 ' + title(c) + ' \u00b7 ' + brandName();
@@ -387,6 +393,7 @@
     box.innerHTML = '<div class="head"><span class="state-pill ' + st[1] + '" id="state">' + esc(st[0]) + '</span><span class="pill ' + sev[1] + '">' + sev[0] + '</span>' + tags + '</div>' +
       '<h1 data-no-tx>' + esc(title(c)) + '</h1>' +
       (said ? '<p class="status">' + said + '</p>' : '') +
+      (wasResolved(c) ? '<p class="status was">' + esc(wasResolved(c)) + '</p>' : '') +
       runBanner(c.key) +
       (b.text ? '<section class="todo"><h2>' + (b.kind === 'info' ? 'Info' : 'Recommended') + '</h2>' + (b.why ? '<p class="why"><b>Why:</b> <span data-no-tx>' + esc(b.why) + '</span></p>' : '') + '<p class="rec" data-no-tx>' + esc(b.text) + '</p></section>' : '') +
       actions(c) +

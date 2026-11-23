@@ -63,11 +63,11 @@ def test_only_allowlisted_fields_come_back(store: Store):
                                        slackDraft={'text': 'draft'}, internal='x'))
 
     # when
-    [row], _ = call(box(store, keys=(KEY,)), {'key': KEY})
+    [row], _ = call(box(store, keys=(KEY,)), {'key': KEY, 'detail': True, 'firstSeen': ago(2 * DAY)})
 
     # then
     assert set(row) <= {'key', 'svc', 'label', 'sub', 'ns', 'src', 'sev', 'unit', 'firstSeen', 'lastSeen', 'clearedAt', 'peak', 'outcome', 'triage', 'ticket', 'owner',
-                        'triagedBy', 'muted', 'note', 'recommend', 'runId', 'recap', 'reopens', 'asks', 'backfill', 'match', 'resolution', 'outcomeText'}
+                        'triagedBy', 'muted', 'note', 'recommend', 'runId', 'recap', 'reopens', 'asks', 'backfill', 'match', 'resolution', 'outcomeText', 'decidedBy'}
     assert row['asks'] == [{'at': ago(DAY), 'by': 'adam.baker', 'question': 'Why?', 'answer': 'ShipCorp', 'thread': 'https://example.slack.com/archives/C1/p1', 'usd': 0.1, 'runId': 'r2'}]
 
 
@@ -120,7 +120,7 @@ def test_the_brief_and_past_cards_say_how_an_earlier_occurrence_was_resolved(sto
 
     # when
     brief, legacy = prompt.card_brief(fixed, 'https://skopax.example.com'), prompt.card_brief(old, 'https://skopax.example.com')
-    [row], _ = call(box(store, keys=(KEY,)), {'key': KEY})
+    [row], _ = call(box(store, keys=(KEY,)), {'key': KEY, 'detail': True, 'firstSeen': ago(2 * DAY)})
 
     # then
     assert 'seen before: once, last 24 Oct 11:05 UTC, ended Fixed (OPS-120) · via page · nina.white;' in brief
@@ -192,7 +192,7 @@ def test_what_people_said_in_the_thread_comes_back_with_the_card(store: Store):
     store.card_history.insert_one(past(KEY, 1, said=[{'at': ago(3600), 'by': 'gary.cole@example.com', 'text': 'ShipCorp added the IP, fixed now', 'kind': 'resolve', 'agreed': True}]))
 
     # when
-    rows, _ = call(box(store, keys=(KEY,)), {'key': KEY})
+    rows, _ = call(box(store, keys=(KEY,)), {'key': KEY, 'detail': True, 'firstSeen': ago(DAY)})
 
     # then
     assert rows[0]['said'] == [{'at': ago(3600), 'by': 'gary.cole@example.com', 'text': 'ShipCorp added the IP, fixed now', 'kind': 'resolve', 'agreed': True}]

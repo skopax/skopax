@@ -1305,3 +1305,16 @@ def ignore_problems(entries: list) -> list[str]:
         if unknown:
             problems.append(f'entry {n} has keys Grype does not know: {unknown}')
     return problems
+
+
+@pytest.mark.skipif(shutil.which('node') is None, reason='node is not installed')
+@pytest.mark.parametrize('shard, filters, code', [('500/500', [], 0), ('1/1', ['no-such-suite-name'], 1), ('3/2', [], 1)])
+def test_the_page_runner_exits_clean_on_an_empty_shard_and_fails_when_nothing_matches_or_the_shard_is_bad(shard, filters, code):
+    # given
+    env = {'PATH': str(Path(shutil.which('node')).parent), 'SKOPAX_TEST_SHARD': shard}
+
+    # when
+    ran = subprocess.run(['node', 'run.js', *filters], cwd=ROOT / 'tests' / 'page', env=env, capture_output=True, text=True, timeout=60)
+
+    # then
+    assert ran.returncode == code, ran.stdout + ran.stderr

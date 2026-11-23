@@ -73,7 +73,7 @@ def test_an_admin_adds_lists_changes_and_deletes_a_check_and_each_change_lands_i
     assert [i['id'] for i in listed['items']] == ['redis-memory'] and listed['items'][0]['run'] is None
     assert listed['sources'] == {'prometheus': ['main'], 'grafana': [], 'elasticsearch': []}
     assert listed['limits']['cards'] == promqlchecks.CARDS_MAX and listed['limits']['series'] == promqlchecks.SERIES_MAX
-    assert listed['choices']['op'] == list(promqlchecks.COMPARISONS) and listed['choices']['severity'] == ['info', 'warn', 'crit']
+    assert listed['choices']['op'] == list(promqlchecks.COMPARISONS) and listed['choices']['severity'] == ['info', 'warn', 'high', 'crit']
     assert changed.status_code == 200 and (changed.json()['id'], changed.json()['name'], changed.json()['threshold']) == ('redis-memory', 'Cache memory', 95.0)
     assert gone.status_code == 204 and missing == [404, 404] and empty['items'] == []
     lines = [a['text'] for a in store.list_activity(None, 50) if a['kind'] == 'admin']

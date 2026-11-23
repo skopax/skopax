@@ -122,7 +122,7 @@ def test_certificate_and_relay_fields_of_a_built_in_plugin_sit_under_advanced(pa
 @pytest.mark.parametrize('path, key, labels', [
     ('skopax.plugins.kubernetes', 'mode', {'in-cluster': 'This cluster', 'agent': 'Through an agent'}),
     ('skopax.plugins.argocd', 'mode', {'api': 'Argo CD API', 'in-cluster': 'This cluster'}),
-    ('skopax.plugins.teams', 'min-sev', {'warn': 'Warning', 'crit': 'Critical'}),
+    ('skopax.plugins.teams', 'min-sev', {'warn': 'Warning', 'high': 'High', 'crit': 'Critical'}),
 ])
 def test_mode_and_severity_choices_read_as_words(path, key, labels):
     # when

@@ -150,3 +150,23 @@ def test_admin_switches_tracing_on_picks_a_configured_instance_and_the_note_goes
     assert cached and traced == 'main', 'the target is built once per settings revision, not per call'
     assert len(http.hits(URL + OTLP)) == 1
     assert tracing.installed() is None, 'the app takes its tracer out when it stops'
+
+
+def test_the_tool_usage_page_data_carries_the_langfuse_project_link_only_when_tracing_knows_it(store: Store):
+    # given
+    http = FakeHttp({('POST', URL + OTLP): {}, ('GET', URL + PROJECTS): {'data': [{'id': PROJECT}]}})
+    with served(store, http) as c:
+        tracer = c.app.state.tracer
+        before = c.get('/api/tool-usage').json()['langfuse']
+        c.put('/api/admin/features/langfuse-tracing', json={'on': True}, headers=AUTH)
+        c.put('/api/admin/settings', json={'key': 'langfuse.trace-instance', 'value': 'main'}, headers=AUTH)
+        unknown = c.get('/api/tool-usage').json()['langfuse']
+        with tracing.opened('check') as trace:
+            trace.generation('anthropic', 'once', 'claude-haiku-5-5', 1.0, 2.0)
+        tracer.drain()
+        known = c.get('/api/tool-usage').json()['langfuse']
+        c.put('/api/admin/features/langfuse-tracing', json={'on': False}, headers=AUTH)
+        off = c.get('/api/tool-usage').json()['langfuse']
+
+    # then
+    assert (before, unknown, known, off) == (None, None, f'{URL}/project/{PROJECT}/traces', None)

@@ -33,6 +33,8 @@ The login page shows the password form, an "or" divider and the SSO button, all 
 
 The built-in marks are files under `skopax/web/icons/sso/`, served at `/icons/sso/<name>.svg`; THIRD_PARTY_NOTICES.md lists their sources.
 
+Icon API (admin role for the first two): `PUT /api/admin/sso/icon` takes the raw image as the request body (PNG, WebP or SVG, at most 64 KiB; 413 when too big, 422 when the file is not an accepted image) and answers with the single sign-on settings; `DELETE /api/admin/sso/icon` removes it. `GET /login/sso-icon` serves the stored image without a session; `?v=<version>` pins the version the page was rendered with (a stale version answers 404) and makes the answer cacheable, no `v` answers with `no-cache`.
+
 ## Who may sign in with SSO
 
 Two settings on the Single sign-on card decide who an SSO sign-in lets in. Both are checked before any account is made, changed or linked, and a refused page sign-in shows the same "The login could not be completed." as every other refusal, so the page sign-in never tells whether an account exists.
@@ -81,7 +83,7 @@ In Slack, a local account acts with its stored role, and an SSO user with the re
 - **Slack.** The last answer of the operator check is used while it is younger than the same limit; after that, the person is not an operator in Slack.
 - **0** turns this off: a failing resolver refuses everyone, on every channel.
 
-API tokens have their own role, never above their creator's, and stop working when their creator is disabled. A token can also get an expiry when it is made (Never, 7, 30 or 90 days, or 1 year; the API takes `expiresDays`, 1 to 3650): from then on it is refused. The token list shows a warning chip from 7 days before the expiry and a red chip after it, and the API tokens tab of Admin > Access & sign-in flags API tokens while one of them does.
+API tokens have their own role, never above their creator's, and stop working when their creator is disabled. A token can also get an expiry when it is made (Never, 7, 30 or 90 days, or 1 year; `POST /api/admin/tokens` takes `name`, `role` and an optional `expiresDays`, a whole number from 1 to 3650; leave it out for a token that never expires): from then on it is refused. The token list shows a warning chip from 7 days before the expiry and a red chip after it, and the API tokens tab of Admin > Access & sign-in flags API tokens while one of them does.
 
 ## Adding people
 
@@ -125,7 +127,7 @@ Then the same rules as the page apply: the email must be there and not unverifie
 
 The role of each call follows [Roles](#roles), read from that call's token; a linked local account keeps its stored role. A viewer gets the read tools only: `list_cards`, `get_card`, `get_investigation`, `investigator_status`, `list_deploy_reports`, `list_my_asks`, `get_ask`, `list_notifications` and `about`. An operator or admin also gets `investigate_card`, `ask`, `take_card`, `resolve_card`, `mute_card`, `reopen_card`, `assign_card` and `link_ticket`. An ask over MCP runs with the role of that MCP call. API tokens and the bootstrap `SKOPAX_TOKEN` never open MCP.
 
-The MCP handshake names the server (the display name, or Skopax) and carries the Skopax version, and the instructions open with one sentence that says who it is: "Skopax 0.5.7." for a plain install, or "Acme Ops, powered by Skopax 0.5.7, extended by acme-layer 2.3." once a display name is set and plug-ins from another package are loaded. The `about` tool gives the detail for any signed-in MCP user: the version, the edition, skopax.io and the server address, which packages extend the install and which of their plug-ins they bring, and every loaded plug-in with its version and state (ok, off, incompatible, locked or failed), capped at 40 with "and N more". Admins also see why a plug-in is not ok; viewers and operators do not. It shows no paths, settings or secrets. When the Enterprise switch hides "powered by Skopax", the sentence and `about` drop the Skopax name, version and site and keep the edition, the extending packages and the plug-ins. The sentence is read again for every new MCP session, so a changed display name or extension shows without a restart.
+The MCP handshake names the server (the display name, or Skopax) and carries the Skopax version, and the instructions open with one sentence that says who it is: "Skopax 0.5.8." for a plain install, or "Acme Ops, powered by Skopax 0.5.8, extended by acme-layer 2.3." once a display name is set and plug-ins from another package are loaded. The `about` tool gives the detail for any signed-in MCP user: the version, the edition, skopax.io and the server address, which packages extend the install and which of their plug-ins they bring, and every loaded plug-in with its version and state (ok, off, incompatible, locked or failed), capped at 40 with "and N more". Admins also see why a plug-in is not ok; viewers and operators do not. It shows no paths, settings or secrets. When the Enterprise switch hides "powered by Skopax", the sentence and `about` drop the Skopax name, version and site and keep the edition, the extending packages and the plug-ins. The sentence is read again for every new MCP session, so a changed display name or extension shows without a restart.
 
 ## Headless setup
 

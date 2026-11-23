@@ -538,7 +538,8 @@ def test_annotate_puts_the_seen_before_line_on_the_live_card(store: Store):
 
     # then
     seen = store.anomaly(KEY)['seenBefore']
-    assert seen == {'count': 2, 'lastAt': ago(DAY), 'outcome': 'handled', 'ticket': 'OPS-120', 'slack': {'at': ago(600), 'line': 'one client, 40 lines'}}
+    assert seen == {'count': 2, 'lastAt': ago(DAY), 'outcome': 'handled', 'decidedBy': 'person', 'ticket': 'OPS-120', 'slack': {'at': ago(600), 'line': 'one client, 40 lines'},
+                    'ruled': {'kind': 'handled', 'at': ago(DAY)}}
 
 
 def test_annotate_drops_the_line_when_nothing_was_seen_before(store: Store):

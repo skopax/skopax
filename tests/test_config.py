@@ -295,7 +295,7 @@ def test_admin_lists_the_hours_setting_in_the_cards_group_and_hides_the_deprecat
         live.set('core.auto-resolve-hours', '2', 'alice@example.com')
 
 
-def test_post_at_once_from_defaults_to_warning_and_takes_each_severity_or_off(monkeypatch, caplog):
+def test_post_at_once_from_defaults_to_high_and_takes_each_severity_or_off(monkeypatch, caplog):
     # given
     from skopax import config
     monkeypatch.setattr(config, 'TOLD', set())
@@ -303,16 +303,16 @@ def test_post_at_once_from_defaults_to_warning_and_takes_each_severity_or_off(mo
 
     # when
     default = load_settings(lambda: {})
-    chosen = [load_settings(lambda: {'slack.post-sev': f' {v.upper()} '}).slack_post_sev for v in ('crit', 'warn', 'info', 'off')]
+    chosen = [load_settings(lambda: {'slack.post-sev': f' {v.upper()} '}).slack_post_sev for v in ('crit', 'high', 'warn', 'info', 'off')]
     odd = load_settings(lambda: {'slack.post-sev': 'loud'})
     monkeypatch.setenv('SLACK_POST_SEV', 'crit')
     env = load_settings(lambda: {})
 
     # then
-    assert (default.slack_post_sev, default.slack_post_sev_set) == ('warn', False)
-    assert chosen == ['crit', 'warn', 'warn', 'off'], 'the retired info reads as warn'
-    assert (odd.slack_post_sev, env.slack_post_sev, env.slack_post_sev_set) == ('warn', 'crit', True)
-    assert [r.getMessage() for r in caplog.records] == ['slack.post-sev info is retired: information is never posted; using warn', "slack.post-sev 'loud' is not one of crit, warn, off; using warn"]
+    assert (default.slack_post_sev, default.slack_post_sev_set) == ('high', False)
+    assert chosen == ['crit', 'high', 'warn', 'warn', 'off'], 'the retired info reads as warn'
+    assert (odd.slack_post_sev, env.slack_post_sev, env.slack_post_sev_set) == ('high', 'crit', True)
+    assert [r.getMessage() for r in caplog.records] == ['slack.post-sev info is retired: information is never posted; using warn', "slack.post-sev 'loud' is not one of crit, high, warn, off; using high"]
 
 
 def test_the_old_critical_at_once_switch_still_counts_until_post_at_once_from_is_set(monkeypatch, caplog):
@@ -330,7 +330,7 @@ def test_the_old_critical_at_once_switch_still_counts_until_post_at_once_from_is
 
     # then
     assert old_off == ['off'] * 5, 'anything but true turned the old switch off, as before'
-    assert (old_on.slack_post_sev, old_on.slack_crit_now, both.slack_post_sev, env_off.slack_post_sev) == ('warn', True, 'crit', 'off')
+    assert (old_on.slack_post_sev, old_on.slack_crit_now, both.slack_post_sev, env_off.slack_post_sev) == ('high', True, 'crit', 'off')
     told = [r.getMessage() for r in caplog.records if 'slack.crit-now' in r.getMessage()]
     assert len(told) == 1 and 'replaced by slack.post-sev' in told[0], 'one line per process names the new key'
     assert 'SLACK_CRIT_NOW' in settings_env_names() and 'SLACK_POST_SEV' in settings_env_names()
@@ -348,7 +348,7 @@ def test_a_stored_admin_critical_at_once_switch_maps_to_off_unless_post_at_once_
     env_old_admin_new = apply(load_settings(lambda: {'slack.crit-now': 'false'}), {'slack.post-sev': 'warn'})
 
     # then
-    assert (stored_off.slack_post_sev, stored_on.slack_post_sev, stored_both.slack_post_sev) == ('off', 'warn', 'crit')
+    assert (stored_off.slack_post_sev, stored_on.slack_post_sev, stored_both.slack_post_sev) == ('off', 'high', 'crit')
     assert (config_new.slack_post_sev, env_old_admin_new.slack_post_sev) == ('crit', 'warn')
 
 
@@ -368,9 +368,9 @@ def test_admin_offers_post_at_once_from_with_named_choices_and_hides_the_old_swi
 
     # then
     entry = listed['slack.post-sev']
-    assert (entry['group'], entry['label'], entry['kind'], entry['default']) == ('Slack', 'Post immediately from', 'choice', 'warn')
-    assert entry['choices'] == ['crit', 'warn', 'off']
-    assert entry['choiceLabels'] == {'crit': 'Critical', 'warn': 'Warning', 'off': 'Off'}
+    assert (entry['group'], entry['label'], entry['kind'], entry['default']) == ('Slack', 'Post immediately from', 'choice', 'high')
+    assert entry['choices'] == ['crit', 'high', 'warn', 'off']
+    assert entry['choiceLabels'] == {'crit': 'Critical', 'high': 'High', 'warn': 'Warning', 'off': 'Off'}
     assert (entry['value'], entry['source'], entry['by'], entry['oldSwitch']) == ('off', 'admin', 'alice@example.com', 'slack.crit-now'), 'the row says the value comes from the old switch'
     assert 'slack.crit-now' not in listed
     assert old == 'off' and live.current().slack_post_sev == 'crit'
@@ -394,8 +394,8 @@ def test_reset_on_post_at_once_from_clears_the_old_switch_and_a_config_old_switc
     from_config = {e['key']: e for e in Live(load_settings(lambda: {'slack.crit-now': 'no'}), TunableStore(store.db)).entries()}['slack.post-sev']
 
     # then
-    assert (reset['value'], reset['source'], 'oldSwitch' in reset) == ('warn', 'default', False)
-    assert store.db['tunables'].find_one({'_id': 'slack.crit-now'}) is None and live.current().slack_post_sev == 'warn'
+    assert (reset['value'], reset['source'], 'oldSwitch' in reset) == ('high', 'default', False)
+    assert store.db['tunables'].find_one({'_id': 'slack.crit-now'}) is None and live.current().slack_post_sev == 'high'
     assert (from_config['value'], from_config['source'], from_config['oldSwitch']) == ('off', 'config', 'slack.crit-now')
 
 
@@ -430,7 +430,7 @@ def test_reset_with_only_the_old_switch_stored_writes_no_empty_post_at_once_row(
 
     # then
     assert [(r['key'], r['old'], r['new']) for r in rows] == [('slack.crit-now', 'false', None)]
-    assert change['key'] == 'slack.crit-now' and live.current().slack_post_sev == 'warn'
+    assert change['key'] == 'slack.crit-now' and live.current().slack_post_sev == 'high'
 
 
 def test_slack_fallback_minutes_default_to_fifteen_and_zero_turns_it_off(monkeypatch):

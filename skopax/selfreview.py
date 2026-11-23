@@ -14,7 +14,7 @@ from skopax.aikey import ClientBox
 from skopax.config import Setting
 from skopax import toolusage
 from skopax.engine import iso, mute_for, parse_iso
-from skopax import clock, tracing
+from skopax import clock, severity, tracing
 from skopax.errkind import kind as error_kind
 from skopax.investigator import pricing, prompt
 from skopax.kit.elastic import LOG_DEFAULTS, level_filter, quoted
@@ -109,7 +109,7 @@ def runs_facts(runs: list[dict], card_cap: int | None = None, slack_cap: int | N
 
 def state_facts(anomalies: list[dict], since: str) -> dict:
     live = [a for a in anomalies if a.get('status') == 'open' and not a.get('parent') and not a.get('muted')]
-    stopped = [a for a in anomalies if a.get('status') == 'cleared' and not a.get('triage') and not a.get('muted') and a.get('sev') in ('warn', 'crit')]
+    stopped = [a for a in anomalies if a.get('status') == 'cleared' and not a.get('triage') and not a.get('muted') and a.get('sev') in severity.CARD_LEVELS]
     recurring = [a for a in anomalies if a.get('recurringCount') and not a.get('muted') and not (a.get('triage') == 'progress' and a.get('ticket'))]
     posted = [a for a in anomalies if ((a.get('slackPost') or {}).get('at') or '') >= since]
     return {'open': dict(collections.Counter(a.get('sev') for a in live)),

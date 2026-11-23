@@ -1,4 +1,5 @@
 import base64
+import math
 import posixpath
 import re
 import time
@@ -73,6 +74,10 @@ def rate_wait(e: HttpError, now: float) -> float | None:
     limited = e.code == 429 or (e.code == 403 and (head.get('x-ratelimit-remaining') == '0' or 'retry-after' in head or 'rate limit' in body))
     if not limited:
         return None
+    return reset_wait(head, now)
+
+
+def reset_wait(head: dict, now: float) -> float:
     wait = None
     retry = head.get('retry-after', '').strip()
     if retry.isdigit():
@@ -161,8 +166,9 @@ class GitHub:
         return {'Authorization': f'Bearer {self.token}', 'Accept': accept, 'X-GitHub-Api-Version': API_VERSION}
 
     def _held(self) -> None:
-        if self.clock() < self._paused:
-            raise SourceDown(msg('github.rate_limited', seconds=self._wait))
+        left = self._paused - self.clock()
+        if left > 0:
+            raise SourceDown(msg('github.rate_limited', seconds=max(1, math.ceil(left))))
 
     def _limit(self, e: HttpError) -> None:
         wait = rate_wait(e, self.wall())
@@ -306,6 +312,13 @@ class GitHub:
             raise Missing(path)
         return body
 
+    def listing(self, repo, path: str, ref: str) -> list[dict]:
+        folder = str(path).strip('/')
+        body = self._get(f'{self._at(repo)}/contents' + (f'/{quote(folder, safe="/")}' if folder else ''), ref=ref).body
+        if not isinstance(body, list):
+            raise Missing(folder)
+        return [r for r in body if isinstance(r, dict)]
+
     def file(self, repo, path: str, ref: str) -> str:
         return self.decoded(self.raw_file(repo, path, ref), path)
 
@@ -320,8 +333,9 @@ class GitHub:
         body = reply.body if isinstance(reply.body, dict) else {}
         kinds = {str(e.get('type') or '') for e in body.get('errors') or [] if isinstance(e, dict)}
         if 'RATE_LIMITED' in kinds:
-            self._wait, self._paused = RATE_PAUSE_S, self.clock() + RATE_PAUSE_S
-            raise SourceDown(msg('github.rate_limited', seconds=RATE_PAUSE_S))
+            wait = reset_wait(reply.headers or {}, self.wall())
+            self._wait, self._paused = int(round(wait)), self.clock() + wait
+            raise SourceDown(msg('github.rate_limited', seconds=self._wait))
         if 'FORBIDDEN' in kinds:
             raise Denied(denied_text('code', 403), 'code', PERMISSIONS['code'])
         found = (((body.get('data') or {}).get('repository') or {}).get('object') or {}).get('blame')

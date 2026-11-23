@@ -473,7 +473,7 @@ def test_task_buttons_and_deploy_report_words_follow_the_outbound_language():
     assert (plain, named) == ('Aufgabe anlegen', 'WEB-Aufgabe anlegen')
     assert (confirm['title']['text'], confirm['confirm']['text']) == ('Aufgabe anlegen?', 'Anlegen')
     assert one == ':large_green_circle: *Deploy-Bericht* \u00b7 Pruefung nach dem Deploy \u00b7 ALL CLEAR \u00b7 1 Dienst \u00b7 sauber'
-    assert many['text'] == ':large_orange_circle: *Deploy-Bericht* \u00b7 Pruefung nach dem Deploy \u00b7 WARNING \u00b7 10 Dienste \u00b7 10 markiert'
+    assert many['text'] == ':large_yellow_circle: *Deploy-Bericht* \u00b7 Pruefung nach dem Deploy \u00b7 WARNING \u00b7 10 Dienste \u00b7 10 markiert'
     assert blocks[0].endswith('_+2 weitere im Bericht_') and blocks[1].endswith('_+2 weitere im Bericht_')
 
 

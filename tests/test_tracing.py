@@ -475,3 +475,44 @@ def test_a_failing_fail_mark_never_hides_the_original_error(installed):
 
     # then
     assert raised.value.args == ('original',) and tracing.current() is None
+
+
+def test_the_project_url_needs_tracing_on_a_picked_instance_and_a_known_project(installed):
+    # given
+    found, http = make()
+    installed(found)
+    off, _ = make(on=False)
+    unpicked, _ = make(picked=False)
+    bad, _ = make()
+    bad.target = lambda: Target('main', 'javascript:x', PUBLIC, SECRET, http)
+    bad.projects[('javascript:x', PUBLIC)] = (PROJECT, 0)
+
+    # when
+    unknown = found.project_url()
+    one_call(found)
+    found.drain()
+    known = found.project_url()
+
+    # then
+    assert unknown is None
+    assert known == f'{URL}/project/{PROJECT}/traces'
+    assert (off.project_url(), unpicked.project_url(), bad.project_url()) == (None, None, None)
+    assert len(http.hits(URL + PROJECTS)) == 1
+
+
+def test_an_unknown_project_is_read_in_the_background_once_when_the_page_asks():
+    # given
+    found, http = make()
+    found.threaded = True
+
+    # when
+    first = found.project_url()
+    for _ in range(100):
+        if found.project_url():
+            break
+        time.sleep(0.02)
+
+    # then
+    assert first is None
+    assert found.project_url() == f'{URL}/project/{PROJECT}/traces'
+    assert len(http.hits(URL + PROJECTS)) == 1

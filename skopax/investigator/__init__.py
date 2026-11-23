@@ -60,12 +60,14 @@ def via_mcp(action: dict | None) -> bool:
 
 def without_outcome(card: dict) -> dict:
     seen = card.get('seenBefore')
-    return card | {'seenBefore': {k: v for k, v in seen.items() if k not in ('outcome', 'resolution')}} if isinstance(seen, dict) else card
+    return card | {'seenBefore': {k: v for k, v in seen.items() if k not in ('outcome', 'resolution', 'verdicts')}} if isinstance(seen, dict) else card
 
 
 def scan_parts(cards: list[dict], base: str) -> tuple[str, str]:
     strict, soft = [], []
     for c in cards:
+        if isinstance(c.get('seenBefore'), dict):
+            soft.append(prompt.verdict_text(c['seenBefore']))
         c = without_outcome(c)
         seen = c.get('seenBefore')
         line = (seen.get('slack') or {}).get('line') if isinstance(seen, dict) else None
@@ -87,6 +89,16 @@ def clip(text: str, limit: int) -> str:
     if not text[limit].isspace():
         head = URL_TAIL.sub('', head)
     return head.rstrip()
+
+
+def with_verdicts(cards: list[dict], ruled: dict[str, list[dict]]) -> list[dict]:
+    out = []
+    for c in cards:
+        seen = c.get('seenBefore')
+        if isinstance(seen, dict):
+            c = c | {'seenBefore': {k: v for k, v in seen.items() if k != 'verdicts'} | ({'verdicts': ruled[c['key']]} if ruled.get(c.get('key')) else {})}
+        out.append(c)
+    return out
 
 
 class Investigator:
@@ -472,6 +484,7 @@ class Investigator:
                 keys = list(claimed)
                 cards = [c for c in cards if c['key'] in keys]
             report = self.store.deploy_report(report_id) if report_id else None
+            cards = self._with_verdicts(cards)
             record = {'id': run_id, 'mode': mode, 'trigger': trigger, 'actionId': action['id'] if action else None,
                       'keys': keys, 'pod': self.owner, 'room': (lease or (LEASE_ID, self.owner))[0], 'startedAt': epoch_iso(now), 'model': quick_model if quick else self.model, 'effort': (self.chat_effort if chat_ask else self.slack_effort) if quick else self.effort, 'outcome': 'running'}
             if ask:
@@ -545,6 +558,10 @@ class Investigator:
     @property
     def label(self) -> str:
         return pricing.LABELS.get(self.provider, pricing.LABELS[pricing.ANTHROPIC])
+
+    def _with_verdicts(self, cards: list[dict]) -> list[dict]:
+        seen = [c for c in cards if isinstance(c.get('seenBefore'), dict)]
+        return with_verdicts(cards, self.store.history_verdicts(seen) if seen else {})
 
     def _announced(self, cards: list[dict], now: float) -> dict[str, dict]:
         others = self.store.load().get('anomalies') or []

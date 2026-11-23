@@ -281,7 +281,7 @@ def test_a_replaced_head_on_a_taken_card_firing_again_names_who_took_it(store: S
     posts.run_batch()
 
     # then
-    assert head_of(rewrites(posts.api)[0]) == ':large_orange_circle: alice took #20'
+    assert head_of(rewrites(posts.api)[0]) == ':large_yellow_circle: alice took #20'
     assert stored_head(store)['kind'] == 'took'
 
 
@@ -348,7 +348,7 @@ def test_a_triaged_took_head_names_the_owner(store: Store):
     posts.run_batch()
 
     # then
-    assert head_of(rewrites(posts.api)[0]) == ':large_orange_circle: alice took #20'
+    assert head_of(rewrites(posts.api)[0]) == ':large_yellow_circle: alice took #20'
 
 
 def test_who_is_resolved_once_per_draw():
@@ -605,6 +605,18 @@ def test_the_reason_a_card_sits_in_another_cards_thread_speaks_the_post_language
     # then
     assert grouped == f"#3 {CARD['svc']} / {CARD['label']} alt\u0131nda grupland\u0131"
     assert gone == f"{host['key']} ile ayn\u0131 servis"
+
+
+def test_the_host_name_in_the_thread_reason_carries_no_slack_marks():
+    # given
+    from skopax.slack import thread_why
+    host = CARD | {'key': 'log|checkout-service|ERROR|first', 'num': 3, 'label': 'ERROR_rate_high *now*'}
+
+    # when
+    said = thread_why(CARD, host, host['key'], 'svc')
+
+    # then
+    assert said.startswith('Same service as #3 ') and not any(mark in said for mark in '*_~`')
 
 
 def test_a_card_taken_out_of_its_group_no_longer_says_grouped_and_an_unknown_reason_says_nothing():

@@ -2,7 +2,7 @@ import concurrent.futures
 from urllib.parse import quote, urlencode
 
 from skopax import clock
-from skopax.contract import HttpError, InstanceInfo, PassResult, ReadError, Sweep, Transport, Unreachable, anomaly, call, iso, send
+from skopax.contract import HttpError, InstanceInfo, PassResult, ReadError, Sweep, Transport, Unreachable, alert_sev, anomaly, call, iso, send
 from skopax.errkind import kind
 from skopax.kit import access
 from skopax.kit.alerts import ALERT_KEEP, QUIET_ALERTS
@@ -25,8 +25,7 @@ SILENT = ('no firing or pending ALERTS series and no Watchdog: either nothing fi
           'it does not prove the source is healthy')
 NOT_SUCCESS = 'the answer is not a Prometheus success'
 FIRING = 'ALERTS{alertstate="firing"}'
-SEVERITY = {'critical': 'crit', 'warning': 'warn'}
-RANK = {'info': 0, 'warn': 1, 'crit': 2}
+RANK = {'info': 0, 'warn': 1, 'high': 2, 'crit': 3}
 NAME_LIMIT = 60
 STATUS_LIMIT = 100
 MAX_CARDS = 50
@@ -269,13 +268,13 @@ def since_text(since: str | None) -> str:
 
 def alert_card(source: str, m: dict, since: str | None) -> dict:
     name = str(m.get('alertname') or '?')
-    sev = SEVERITY.get(str(m.get('severity') or ''), 'info')
+    sev = alert_sev(m.get('severity'))
     ident = ','.join([f'cluster={source}'] + [f'{k}={m[k]}' for k in ALERT_KEEP if k in m])
     svc = m.get('job') or m.get('service') or m.get('deployment') or m.get('ingress') or m.get('consumergroup') or m.get('domain') or '-'
     labels = ', '.join(f'{k}={v}' for k, v in labels_of(m).items() if k not in ('alertname', 'severity'))
     x = anomaly('grafana', 'alert', str(m.get('namespace') or '-'), str(svc), name, sev, 1, None, None, '', name[:NAME_LIMIT],
                 f'Prometheus alert {name} is firing in {source} (read through Grafana){since_text(since)}' + (f': {labels}' if labels else ''))
-    x.update(key=f'alert|{name}|{ident}', datasource=source, ranKey=f'{PASS}:{source}',
+    x.update(key=f'alert|{name}|{ident}', datasource=source, ranKey=f'{PASS}:{source}', alertName=name, alertLabel=str(m.get('severity') or '').strip().lower(),
              short=f'{sev.upper()} alert {name[:NAME_LIMIT]} in {source}' + (f' {svc}' if svc != '-' else ''))
     return x
 
