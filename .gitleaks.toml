@@ -77,3 +77,10 @@ condition = "AND"
 targetRules = ["generic-api-key"]
 paths = ['''^tests/page/skopax-access-page\.test\.js$''']
 regexes = ['''^skopax_0a1b2c3d_SECRETSECRETSECRETSECRET$''']
+
+[[allowlists]]
+description = "Made-up Graph error body used to prove answer bodies never reach errors or logs."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^tests/test_mail_graph\.py$''']
+regexes = ['''^planted-body-detail-91$''']

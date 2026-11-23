@@ -32,7 +32,7 @@ SECRET = 'client-secret-word-58'
 TOKEN_URL = f'https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/token'
 SEND_URL = 'https://graph.microsoft.com/v1.0/users/alerts@example.com/sendMail'
 NOW = 1_794_240_000.0
-BODY_SECRET = 'planted-body-detail-91'
+PLANTED_DETAIL = 'planted-body-detail-91'
 
 
 def made_credential(name: str = 'skopax-test') -> tuple[str, x509.Certificate]:
@@ -405,7 +405,7 @@ def test_a_second_throttle_after_the_wait_is_mail_down(fresh_tokens):
 
 
 @pytest.mark.parametrize(('error', 'kind', 'shown'), [
-    (http_error(401, {'error': 'invalid_client', 'error_codes': [7000215], 'error_description': BODY_SECRET}), mail.MailRefused, 'invalid_client AADSTS7000215'),
+    (http_error(401, {'error': 'invalid_client', 'error_codes': [7000215], 'error_description': PLANTED_DETAIL}), mail.MailRefused, 'invalid_client AADSTS7000215'),
     (http_error(400, {'error': 'unauthorized_client', 'error_codes': [700016]}), mail.MailRefused, 'unauthorized_client AADSTS700016'),
     (http_error(500, {'error': 'temporarily_unavailable'}), mail.MailDown, 'temporarily_unavailable'),
     (http_error(429), mail.MailDown, 'HTTP 429'),
@@ -420,14 +420,14 @@ def test_a_refused_or_failed_token_says_only_the_error_kind(error, kind, shown):
         mail.Mailer(GRAPH, transport=fake).send(['alice@example.com'], 'Hi', 'plain')
 
     # then
-    assert type(failed.value) is kind and shown in failed.value.text and BODY_SECRET not in failed.value.text and fake.send_calls() == []
+    assert type(failed.value) is kind and shown in failed.value.text and PLANTED_DETAIL not in failed.value.text and fake.send_calls() == []
 
 
 def test_no_secret_token_or_answer_body_reaches_the_logs(caplog):
     # given
     caplog.set_level(logging.DEBUG)
-    fake = FakeGraph(sends=[http_error(403, {'error': {'code': 'ErrorAccessDenied', 'message': BODY_SECRET}})])
-    refused = FakeGraph(tokens=http_error(401, {'error': 'invalid_client', 'error_description': BODY_SECRET}))
+    fake = FakeGraph(sends=[http_error(403, {'error': {'code': 'ErrorAccessDenied', 'message': PLANTED_DETAIL}})])
+    refused = FakeGraph(tokens=http_error(401, {'error': 'invalid_client', 'error_description': PLANTED_DETAIL}))
 
     # when
     with pytest.raises(mail.MailRefused) as first:
@@ -440,7 +440,7 @@ def test_no_secret_token_or_answer_body_reaches_the_logs(caplog):
     signed = form_of(fake.token_calls()[0])['client_assertion']
     logged = ' '.join(r.getMessage() for r in caplog.records) + first.value.text + second.value.text
     key_line = PEM.splitlines()[1]
-    assert logged and all(part not in logged for part in (SECRET, token, signed, BODY_SECRET, key_line, 'alice@example.com'))
+    assert logged and all(part not in logged for part in (SECRET, token, signed, PLANTED_DETAIL, key_line, 'alice@example.com'))
     assert repr(mail.Mailer(CERT_CONFIG)) == 'Mailer(graph:alerts@example.com)'
 
 

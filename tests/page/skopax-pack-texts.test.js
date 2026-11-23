@@ -14,7 +14,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
 
 function english(key, values) {
-  const m = new RegExp("^    '" + key.replace(/\./g, '\\.') + "': '((?:[^'\\\\]|\\\\.)*)',$", 'm').exec(MESSAGES);
+  const m = new RegExp("^    '" + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "': '((?:[^'\\\\]|\\\\.)*)',$", 'm').exec(MESSAGES);
   assert.ok(m, 'messages.py holds ' + key);
   return m[1].replace(/\{(\w+)\}/g, (all, k) => (k in values ? String(values[k]) : all));
 }
