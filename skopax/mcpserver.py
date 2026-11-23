@@ -17,7 +17,7 @@ from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from skopax import __version__, brand, information, severity
+from skopax import __version__, brand, followup, information, severity
 from skopax.actors import shown
 from skopax.assign import Invalid as AssignInvalid, slug
 from skopax.errkind import Authored, kind as error_kind
@@ -447,6 +447,9 @@ class Tools:
             lines.append('suspects: ' + '; '.join(clip(s, 200) for s in v['suspects']))
         if v.get('recommend'):
             lines.append(f"next: {clip(v['recommend'], 800)}")
+        follow = next((x for x in (v.get('followUp'), (card or {}).get('followUp')) if isinstance(x, dict)), None)
+        if follow and followup.line(follow):
+            lines.append(f'follow-up: {followup.line(follow)}')
         if v.get('tags'):
             lines.append('tags: ' + ', '.join(str(t.get('id') if isinstance(t, dict) else t) for t in v['tags']))
         if v.get('url'):

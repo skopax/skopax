@@ -2,6 +2,41 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.10 (2026-11-23)
+
+Routes wait for the investigation and never back-fill, tag responsibles get their part by mail, waiting cards are re-checked and closed with a short announcement, a Vault settings source, and a confirmation before a Teams test card. Read the upgrade notes under Changed.
+
+**Added:**
+
+- Tag responsibles get their part by mail through the Mail server, apart from Slack. Each responsible gets one mail a day with the open cards of their tags (the daily tag report), one with the waiting Warning cards of their tags (the daily warnings digest), and the plug-in digests that name one of their tags. The switch is Mail responsibles their part (`tags.mail`, `SKOPAX_TAGS_MAIL`, on by default) in Admin > Settings > Card tags. The mails go out even while Slack is not set up or Slack auto-send is off, once a day across all pods. A responsible with nothing in their tags gets no mail. Mails show each card once, with a coloured severity label and an Open the board button.
+- Follow-up checks: when the investigator's next step is for a person outside Skopax (a redirect, an ad link), it can record a done-condition. Skopax re-checks the waiting card with read tools an hour later and then every few hours (`investigate.follow-up-hours`), and gives up after `investigate.follow-up-days`. Until then the card is not auto-resolved as No action needed.
+- Settle review of waiting cards (Admin > Features > Settle waiting cards, on by default): stopped cards that people took or were assigned to (investigated or not), and that are past their auto-resolve window, get a short investigator review with one of four verdicts: fixed, no action, keep or ticket.
+- Announced auto-close: a fixed or no-action verdict posts one line in the card's Slack thread (when it has one), mentions the assignee, adds a Closes soon notification and shows the close time on the card page, with the day when it is not today. The card closes after `investigate.follow-up-close-hours` (business hours) as Fixed or No action needed, unless it fires again, a person acts on it or writes a note on it, or someone presses the new Keep open button on the card page or in Slack. A card with nobody to tell keeps the earlier auto-resolve rule.
+- Follow-up checks never close a card on a done-condition written by a run that read planted text, and a verdict must rest on a successful read in that run that matches its claim.
+- The card page shows a Follow-up check line and the pending close. History lists checks, announced and cancelled closes, and Keep open. MCP `get_card` shows the follow-up line.
+- New settings: `investigate.follow-up-hours`, `investigate.follow-up-days`, `investigate.follow-up-close-hours`, `investigate.settle-max-per-day` (the daily cap on checks and reviews, which also count against the daily limit) and `routes.wait-minutes`.
+- Vault settings source: a built-in plug-in reads Skopax settings and integration instances, secrets included, from HashiCorp Vault or OpenBao (KV version 2), with token, Kubernetes or AppRole sign-in. It is set by `VAULT_*` environment variables only, only reads from Vault, and keeps its last good data when Vault is down or refuses the read. Admin shows the fields Vault owns as read-only and never shows its secrets. See docs/plugins.md, Vault.
+- Test connection on a Microsoft Teams route asks first, since it posts a real card to the channel that people there see.
+
+**Changed:**
+
+- Teams, Email and other routes now wait for the investigation. A card below Post immediately from is sent once the investigator has finished it, with a "Finding:" line. With no finished investigation after `routes.wait-minutes` (default 30, 5 to 240, Admin > Settings > Slack) the plain card is sent. Cards at or above Post immediately from, and every card while the investigator is off, paused, capped or not live, go at once. A held card that stops firing while still unresolved is sent as the plain card at once.
+- Also post to Slack follows the same timing, so a route no longer posts a bare card to the main channel early; an investigated card's Slack post is filled with the finding at once.
+- Every mail ends with the address of your install (the host of the base URL, linked), then the "Sent automatically" line, and, smaller, the "powered by Skopax" line, which the Enterprise switch still hides.
+- Upgrading to 0.5.10: routes hold cards as above; long-waiting taken or assigned cards are reviewed gradually under the daily cap, oldest first. The auto-resolve rule for cards nobody acted on is unchanged.
+
+**Fixed:**
+
+- A route sends only cards that are new, escalated or fire again after it is set up or changed. Creating or editing a route, or the one-time High re-score, no longer mails or posts every open card that newly matches. A post that failed is still retried after the route is edited.
+- Route sends show in the History tab of every card they covered.
+- Slack reminders and the assigned note mention an assignee known only by name (for example picked from Jira) when exactly one Slack member has that name; otherwise the name stays plain text.
+
+**Plug-ins:**
+
+- `Digest(title, lines, tags=(...))` can name card tags; the digest is then also mailed to the responsibles of those tags, one mail per person, with the subject "[Skopax] <title>", and shows in Activity as `check-digest-mail`. Unknown tag ids are left out with one warning; tags that are not a tuple of texts fail the pass.
+- `skopax.remote.pem_sender(pem, follow, limit, proxied)` gives a transport that trusts a given PEM certificate authority.
+- `Plugin(test_posts=True)` marks a plug-in whose test posts a message others see; the page asks before running it.
+
 ## 0.5.9 (2026-11-23)
 
 More cards lean to High, a daily Warnings digest, Batch jobs built in, Turkish identity and phone masking, MCP servers over plain http inside the cluster, email notifications on by default, and fixes for several pods. Read the upgrade notes under Changed: Warning cards that today's rules make High become High once, and personal notification mails are now on for everyone who has signed in.

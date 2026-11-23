@@ -1,9 +1,12 @@
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
 from tests.conftest import AUTH, settings, state
 from skopax import tags
 from skopax.app import create_app
+from skopax.engine import PassResult
 from skopax.config import tags_rules_of
 from tests.test_investigator_tools import box
 from skopax.kube import Kube
@@ -82,15 +85,23 @@ def test_a_tag_change_a_person_made_while_a_pass_ran_survives_the_pass_save():
     assert newer['tags'] == incoming['tags']
 
 
+
+def fired(c, *cards: dict) -> None:
+    found = [a | {'src': 'log', 'sig': a['key'], 'ns': 'shop', 'sub': '', 'now': 5, 'd1': None, 'd7': None, 'unit': '', 'short': 'x', 'slack': 1, 'ranKey': 'log'} for a in cards]
+    c.app.state.server_apply([PassResult('log', True, 'ok', found, {}, ('log',))], time.time(), None)
+    assert c.app.state.routes.drain(5)
+
+
 def test_operators_tag_untag_and_write_the_sentence_and_the_card_goes_to_its_channel(store: Store, tmp_path):
     # given
     t = Transport()
-    store.save({**state(open_card('log|checkout-service|ERROR|boom')), 'initialized': True}, None)
+    store.save({**state(), 'initialized': True}, None)
     key = 'log|checkout-service|ERROR|boom'
 
     # when
     with TestClient(create_app(settings(), store, kube=Kube(root=tmp_path), transport=t)) as c:
         add_route(c, 'bizdev', BIZDEV, tags='bizdev')
+        fired(c, open_card(key))
         tagged = c.post('/api/tags', json={'key': key, 'tag': 'bizdev', 'on': True}, headers=AUTH)
         early = list(t.calls)
         said = c.put('/api/business', json={'key': key, 'text': '  The garden chair   price in the admin tool is out of date.  '}, headers=AUTH)
@@ -251,12 +262,13 @@ def test_the_investigator_adds_the_tech_tag_without_a_sentence_and_a_business_ta
 def test_an_operator_tags_a_card_tech_and_it_goes_to_the_tech_tag_route_and_by_hand_only_when_tagged(store: Store, tmp_path):
     # given
     t = Transport()
-    store.save({**state(open_card('log|checkout-service|ERROR|boom'), open_card('log|a|ERROR|bare')), 'initialized': True}, None)
+    store.save({**state(), 'initialized': True}, None)
     key = 'log|checkout-service|ERROR|boom'
 
     # when
     with TestClient(create_app(settings(), store, kube=Kube(root=tmp_path), transport=t)) as c:
         add_route(c, 'eng', TECH, tags='developer')
+        fired(c, open_card(key), open_card('log|a|ERROR|bare'))
         tagged = c.post('/api/tags', json={'key': key, 'tag': 'developer', 'on': True}, headers=AUTH)
         assert c.app.state.routes.drain(5)
         untagged = c.post('/api/routes/send', json={'key': 'log|a|ERROR|bare', 'route': 'teams/eng'}, headers=AUTH)

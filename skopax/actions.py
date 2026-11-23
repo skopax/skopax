@@ -16,7 +16,7 @@ from skopax.store import NotFound, Store, iso, utc_now
 
 log = logging.getLogger('skopax.actions')
 ANY_RECORD = frozenset({'severity', 'assess', 'postdeploy', 'unmute'})
-INSTANT = frozenset({'mute', 'unmute', 'reopen', 'link', 'severity', 'known', 'resolve', 'take', 'group', 'ticket'})
+INSTANT = frozenset({'mute', 'unmute', 'reopen', 'link', 'severity', 'known', 'resolve', 'take', 'group', 'ticket', 'keep'})
 DEFAULT_MUTE_HOURS = 24
 RESULT_WHY = 160
 SEV_NAMES = {**severity.NAMES, 'auto': 'auto'}
@@ -121,6 +121,11 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
     if kind == 'known':
         store.mute(key, action.get('reason') or default_reason(action), None, 'known', preset=preset_reason(action))
         return 'known noise'
+    if kind == 'keep':
+        if store.anomaly(key).get('triage') == 'handled':
+            return 'already closed'
+        store.keep_open(key, action.get('requestedBy'))
+        return 'kept open'
     if kind == 'unmute':
         store.unmute(key)
         return 'unmuted'

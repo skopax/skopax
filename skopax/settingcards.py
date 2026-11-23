@@ -24,10 +24,11 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
                               'investigate.max-tool-calls', 'investigate.assess-max-tool-calls', 'investigate.slack-max-tool-calls', 'chat.max-tool-calls', 'screenshot.max-per-day')),
         ('Web', ('core.own-sites', 'investigate.web-domains', 'investigate.web-searches', 'investigate.web-fetches')),
         ('Behaviour', ('investigate.mode', 'investigate.language', 'investigate.refire-hours', 'investigate.strict-tools', 'core.org-about', 'mcp.wait-seconds')),
+        ('Follow-up checks', ('investigate.follow-up-hours', 'investigate.follow-up-days', 'investigate.follow-up-close-hours', 'investigate.settle-max-per-day')),
         ('Langfuse tracing', ('langfuse.trace-instance', 'langfuse.trace-content', 'langfuse.trace-sample')),
     ),
     'Slack': (
-        ('Channel and posting', ('slack.channel', 'slack.post-sev', 'slack.fallback-minutes', 'routes.slack-echo', 'slack.attach-screenshots', 'slack.push-user')),
+        ('Channel and posting', ('slack.channel', 'slack.post-sev', 'slack.fallback-minutes', 'routes.wait-minutes', 'routes.slack-echo', 'slack.attach-screenshots', 'slack.push-user')),
         ('Questions', ('slack.ask-cap', 'slack.user-ask-cap', 'slack.ask-channels', 'slack.dm-chats', 'slack.listen', 'slack.operator-cache-seconds')),
         ('Threads and reminders', ('slack.thread-hours', 'slack.remind-hours', 'slack.clear-note-minutes', 'slack.state-notes', 'slack.great-emoji')),
         ('Daily warnings', ('slack.warn-digest-at',)),
@@ -52,6 +53,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     ),
     'Card tags': (
         ('Daily report', ('tags.report-at',)),
+        ('Mail', ('tags.mail',)),
     ),
 }
 SECTION_CARD = {'Card tags': 'Tag rules', 'Features': 'Switches'}
@@ -59,7 +61,7 @@ UNITS = {
     'investigate.daily-usd': '$', 'page.ask-cap': 'per hour', 'slack.ask-cap': 'per hour', 'slack.user-ask-cap': 'per hour', 'mcp.dive-cap': 'per hour', 'chat.daily-cap': 'per day',
     'screenshot.max-per-day': 'per day', 'investigate.web-searches': 'per run', 'investigate.web-fetches': 'per run', 'investigate.max-cards': 'cards',
     'investigate.max-tool-calls': 'calls', 'investigate.assess-max-tool-calls': 'calls', 'investigate.slack-max-tool-calls': 'calls', 'chat.max-tool-calls': 'calls', 'investigate.rooms': 'rooms',
-    'chat.max-chars': 'chars', 'investigate.refire-hours': 'h', 'jira.points': 'points', 'slack.operator-cache-seconds': 's', 'langfuse.trace-sample': '%',
+    'chat.max-chars': 'chars', 'investigate.refire-hours': 'h', 'investigate.follow-up-hours': 'h', 'investigate.follow-up-close-hours': 'h', 'investigate.settle-max-per-day': 'per day', 'investigate.follow-up-days': 'days', 'jira.points': 'points', 'slack.operator-cache-seconds': 's', 'langfuse.trace-sample': '%',
 }
 LABEL_UNITS = {'h': 'h', 'hours': 'h', 'min': 'min', 'minutes': 'min', 's': 's', 'seconds': 's', 'days': 'days', '$': '$', 'times': 'times', 'characters': 'chars'}
 LABEL_UNIT = re.compile(r'\(([^()]+)\)\s*$')

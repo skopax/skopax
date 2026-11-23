@@ -12,6 +12,7 @@ import threading
 from collections.abc import Mapping
 from email.headerregistry import Address
 from email.message import EmailMessage
+from urllib.parse import urlsplit
 
 from skopax import brand, graphmail
 from skopax.errkind import Authored
@@ -455,11 +456,40 @@ def line_cell(content: str) -> str:
     return cell(content, f'padding-bottom:8px;{SIDE}font-size:15px;line-height:1.5;color:{INK};background-color:{PAPER};')
 
 
-def footer_cell(footer: str, attribution: dict | None) -> str:
-    tail = esc(footer)
-    if attribution is not None:
-        tail += f'<br><a href="{esc(attribution["href"])}" style="color:{MUTED};">{esc(attribution["text"])}</a>'
-    return cell(tail, f'padding-top:12px;padding-bottom:12px;{SIDE}border-top:1px solid {EDGE};font-size:12px;color:{MUTED};background-color:{PAPER};')
+_site = ['']
+
+
+def use_site(base_url: str) -> None:
+    _site[0] = str(base_url or '').strip().rstrip('/')
+
+
+def site() -> tuple[str, str] | None:
+    base = _site[0]
+    if not WEB_LINK.fullmatch(base):
+        return None
+    host = urlsplit(base).netloc.rpartition('@')[2]
+    return (host, base) if host else None
+
+
+def footer_lines(lines: list[str], attribution: dict | None) -> list[str]:
+    found = site()
+    return ['-- '] + ([found[1]] if found else []) + list(lines) + ([f"{attribution['text']} {attribution['href']}"] if attribution is not None else [])
+
+
+def site_html() -> str:
+    found = site()
+    return f'<a href="{esc(found[1])}" style="color:{INK};">{esc(found[0])}</a><br>' if found else ''
+
+
+def attribution_html(attribution: dict | None) -> str:
+    if attribution is None:
+        return ''
+    return f'<div style="padding-top:8px;font-size:11px;color:{MUTED};"><a href="{esc(attribution["href"])}" style="color:{MUTED};">{esc(attribution["text"])}</a></div>'
+
+
+def footer_cell(footer: str, attribution: dict | None, extra: str = '') -> str:
+    return cell(site_html() + esc(footer) + extra + attribution_html(attribution),
+                f'padding-top:12px;padding-bottom:12px;{SIDE}border-top:1px solid {EDGE};font-size:12px;color:{MUTED};background-color:{PAPER};')
 
 
 def card_html(title: str, head: str, sev: str, sev_text: str, status: str, lines: list[str], link: str | None, footer: str, attribution: dict | None) -> str:
@@ -489,9 +519,7 @@ def card_text(title: str, head: str, sev_text: str, status: str, lines: list[str
         parts += [''] + lines
     if link:
         parts += ['', f"{msg('mail.open')}: {link}"]
-    parts += ['', '-- ', footer]
-    if attribution is not None:
-        parts.append(f"{attribution['text']} {attribution['href']}")
+    parts += [''] + footer_lines([footer], attribution)
     return '\n'.join(parts) + '\n'
 
 
@@ -517,6 +545,6 @@ def trial_mail(instance: str, at: str) -> tuple[str, str, str]:
     lines = [msg('mail.test.line'), msg('mail.test.instance', instance=instance), msg('mail.test.at', at=at)]
     attribution = brand.attribution_line()
     subject = flat(msg('mail.test.subject'))[:SUBJECT_MAX]
-    parts = [head, '', title, ''] + lines + ['', '-- ', footer] + ([f"{attribution['text']} {attribution['href']}"] if attribution is not None else [])
+    parts = [head, '', title, ''] + lines + [''] + footer_lines([footer], attribution)
     rows = head_cells(head, title) + [line_cell(esc(line)) for line in lines] + [footer_cell(footer, attribution)]
     return subject, '\n'.join(parts) + '\n', framed(title, ''.join(rows))

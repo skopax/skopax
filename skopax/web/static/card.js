@@ -9,9 +9,10 @@
   var techOpen = null;
   var me = {operator: false, user: null, loginEnabled: false};
   var current = null;
-  var ACT_NAMES = {dive: 'Investigation', take: 'Start progress', resolve: 'Resolve', mute: 'Mute', unmute: 'Unmute', known: 'Known noise', group: 'Group', ticket: 'Create task', link: 'Link Jira ticket', reopen: 'Reopen', severity: 'Severity change'};
+  var ACT_NAMES = {dive: 'Investigation', take: 'Start progress', resolve: 'Resolve', mute: 'Mute', unmute: 'Unmute', known: 'Known noise', group: 'Group', ticket: 'Create task', link: 'Link Jira ticket', reopen: 'Reopen', severity: 'Severity change', keep: 'Keep open'};
   var ACT_STATES = {requested: 'queued', processing: 'processing', done: 'done', failed: 'failed', cancelled: 'cancelled'};
   var RES_NAMES = {fixed: 'Fixed', handled: 'No action needed', duplicate: 'Duplicate'};
+  var FOLLOW_RESULTS = {not_done: 'Not done yet', fixed: 'Looks fixed', no_action: 'Looks over', keep: 'Keep open', ticket: 'Ticket still open'};
   var RES_VIA = {page: 'from the page', chat: 'from chat', slack: 'from Slack'};
   RES_VIA[SYSTEM_ACTOR] = 'by ' + brandName();
   var RES_BY = {pod: 'investigator', auto: 'automatic', 'jira-links': 'Jira link sweep'};
@@ -102,8 +103,28 @@
     if (c.clearNote && c.clearNote.text) parts.push('<h3>Stopped firing \u00b7 <span data-no-tx>' + esc(isInvestigatorBy(c.clearNote.by) ? investigatorName() : c.clearNote.by || '') + '</span> \u00b7 ' + esc(when(c.clearNote.at)) + '</h3><p data-no-tx>' + esc(c.clearNote.text) + '</p>');
     if ((c.suspects || []).length) parts.push('<h3>Suspects</h3><ul data-no-tx>' + c.suspects.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>');
     if (c.recommend) parts.push('<h3>Recommended step</h3><p data-no-tx>' + esc(c.recommend) + '</p>');
+    parts.push(followUp(c));
     parts.push('<p class="key" data-no-tx>' + esc(c.key || '') + '</p>');
     return parts.join('');
+  }
+  function followUp(c) {
+    var f = c.followUp;
+    if (!f || typeof f !== 'object') return '';
+    var parts = [];
+    if (f.doneWhen) parts.push('<span>Done when</span> <span data-no-tx>' + esc(f.doneWhen) + '</span>');
+    if (f.checkedAt) parts.push('<span>Last check ' + esc(when(f.checkedAt)) + '</span>' + (f.lastResult ? ': <span>' + esc(FOLLOW_RESULTS[f.lastResult] || f.lastResult) + '</span>' : '') + (f.lastEvidence ? ' \u00b7 <span data-no-tx>' + esc(f.lastEvidence) + '</span>' : ''));
+    if (f.closeAt) parts.push('<b>Closes as ' + esc(RES_NAMES[f.closeKind] || RES_NAMES.fixed) + ' at ' + esc(when(f.closeAt)) + '</b>');
+    if (f.owner) parts.push('<span>Pending with</span> <span data-no-tx>' + esc(f.owner) + '</span>');
+    if (f.keptBy) parts.push('<span>Kept open by</span> <span data-no-tx>' + esc(String(f.keptBy).split('@')[0]) + '</span>');
+    if (f.gaveUp) parts.push('<span>Gave up</span>');
+    if (!parts.length) return '';
+    return '<h3>Follow-up check</h3><p class="follow" id="follow-up">' + parts.join(' \u00b7 ') + '</p>';
+  }
+  function closing(c) {
+    var f = c.followUp;
+    if (!f || typeof f !== 'object' || !f.closeAt) return '';
+    var keep = me.operator ? ' <button type="button" class="btn lnk" id="act-keep" title="Stops the announced close; the card stays with people">Keep open</button>' : '';
+    return '<p class="status follow-close" id="follow-close"><b>Closes as ' + esc(RES_NAMES[f.closeKind] || RES_NAMES.fixed) + ' at ' + esc(when(f.closeAt)) + '</b>' + (f.lastEvidence ? ' \u00b7 <span data-no-tx>' + esc(f.lastEvidence) + '</span>' : '') + keep + '</p>';
   }
   function busy(c) { return !!(c.last && (c.last.status === 'requested' || c.last.status === 'processing')); }
   function lastLine(c) {
@@ -291,6 +312,7 @@
       if (navigator.clipboard) navigator.clipboard.writeText(link).then(function () { done('Copied'); }, function () { done(link); }); else done(link);
     });
     on('act-dive', function (b) { queue(Object.assign({type: 'dive', label: 'Investigate ' + name}, base), b); });
+    on('act-keep', function (b) { queue(Object.assign({type: 'keep', label: 'Keep open ' + name}, base), b); });
     on('act-take', function () { form('form-take'); });
     var tk = document.getElementById('take-ticket');
     if (tk && me.jira && typeof ticketSuggest === 'function') ticketSuggest(tk, {none: 'No open ticket matches', fail: 'The Jira search failed; type the key'});
@@ -395,7 +417,7 @@
       '<h1 data-no-tx>' + esc(title(c)) + '</h1>' +
       (said ? '<p class="status">' + said + '</p>' : '') +
       (wasResolved(c) ? '<p class="status was">' + esc(wasResolved(c)) + '</p>' : '') +
-      runBanner(c.key) +
+      runBanner(c.key) + closing(c) +
       (b.text ? '<section class="todo"><h2>' + (b.kind === 'info' ? 'Info' : 'Recommended') + '</h2>' + (b.why ? '<p class="why"><b>Why:</b> <span data-no-tx>' + esc(b.why) + '</span></p>' : '') + '<p class="rec" data-no-tx>' + esc(b.text) + '</p></section>' : '') +
       actions(c) +
       '<div class="cd-tabs" role="tablist" aria-label="Card #' + esc(c.num) + '"><button type="button" class="cd-tab" role="tab" id="cdt-d" aria-controls="cd-details" data-tab="details" aria-selected="' + !histOn + '" tabindex="' + (histOn ? -1 : 0) + '">Details</button>' +

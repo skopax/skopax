@@ -15,7 +15,7 @@ from tools import release_version
 ROOT = Path(__file__).resolve().parent.parent
 SIDEBAR = (ROOT / 'skopax' / 'web' / 'static' / 'sidebar.js').read_text(encoding='utf-8')
 NUMBERS = dict(enumerate(('zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve')))
-VENDOR_DOCS = ('argo-cd.readthedocs.io', 'dev.dengage.com', 'developer.chrome.com', 'developers.cloudflare.com', 'developers.google.com', 'docs.airbyte.com', 'docs.github.com', 'docs.gitlab.com',
+VENDOR_DOCS = ('argo-cd.readthedocs.io', 'dev.dengage.com', 'developer.chrome.com', 'developer.hashicorp.com', 'developers.cloudflare.com', 'developers.google.com', 'docs.airbyte.com', 'docs.github.com', 'docs.gitlab.com',
                'docs.percona.com', 'docs.slack.dev', 'docs.sonarsource.com', 'docs.spring.io', 'docs.umami.is', 'firebase.google.com', 'grafana.com', 'help.wingify.com',
                'kubernetes.io', 'langfuse.com', 'learn.microsoft.com', 'modelcontextprotocol.io', 'prometheus.io', 'support.atlassian.com', 'support.google.com',
                'support.microsoft.com', 'www.elastic.co')

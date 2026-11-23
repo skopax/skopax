@@ -1193,6 +1193,8 @@
   "Responsibles not saved, try again": "Sorumlular kaydedilemedi, tekrar deneyin",
   "Slack app is missing users:read.email; responsibles are named without a ping": "Slack uygulamasında users:read.email eksik; sorumlular bildirim gönderilmeden anılıyor",
   "Needs Slack auto-send on (Admin › Features).": "Slack otomatik gönderiminin açık olması gerekir (Admin › Features).",
+  "The Slack post needs the Slack bot token and a channel (Connect › Integrations › Slack, Admin › Settings › Slack › Channel); the mail to responsibles needs a Mail server and Mail responsibles their part (Admin › Settings › Card tags).": "Slack gönderisi için Slack bot tokenı ve bir kanal gerekir (Connect › Integrations › Slack, Admin › Settings › Slack › Channel); sorumlulara e-posta için bir posta sunucusu ve sorumlulara e-posta ayarı gerekir (Admin › Settings › Card tags).",
+  "The Slack post needs Slack auto-send on (Admin › Features); the mail to responsibles needs a Mail server and Mail responsibles their part (Admin › Settings › Card tags).": "Slack gönderisi için Slack otomatik gönderiminin açık olması gerekir (Admin › Features); sorumlulara e-posta için bir posta sunucusu ve sorumlulara e-posta ayarı gerekir (Admin › Settings › Card tags).",
   "No longer an active user": "Artık etkin bir kullanıcı değil",
   "Who may sign in": "Kimler oturum açabilir",
   "Roles from groups": "Gruplardan roller",
@@ -1637,9 +1639,34 @@
   "Ruled": "Karar verildi",
   "A person decided an earlier occurrence of this card; the investigator starts from it": "Bu kartın önceki bir oluşumuna bir kişi karar verdi; Investigator bundan başlar",
   "Known cause": "Bilinen neden",
-  "On, but no instance is on: open it and turn an instance on": "Açık, ancak hiçbir instance açık değil: açın ve bir instance'ı açın"
+  "On, but no instance is on: open it and turn an instance on": "Açık, ancak hiçbir instance açık değil: açın ve bir instance'ı açın",
+  "Follow-up check": "Takip kontrolü",
+  "Done when": "Bitti sayılma koşulu",
+  "Not done yet": "Henüz yapılmadı",
+  "Looks fixed": "Düzelmiş görünüyor",
+  "Looks over": "Bitmiş görünüyor",
+  "Keep open": "Açık tut",
+  "Ticket still open": "Ticket hâlâ açık",
+  "Kept open by": "Açık tutan",
+  "Gave up": "Bırakıldı",
+  "Kept open": "Açık tutuldu",
+  "Stops the announced close; the card stays with people": "Duyurulan kapanmayı durdurur; kart kişilerde kalır",
+  "Closes soon": "Yakında kapanacak",
+  "Pending with": "Bekleyen taraf"
  },
  "rules": [
+  [
+   "^Last check (.+)$",
+   "Son kontrol $1"
+  ],
+  [
+   "^Closes as Fixed at (.+)$",
+   "$1 saatinde Düzeltildi olarak kapanacak"
+  ],
+  [
+   "^Closes as No action needed at (.+)$",
+   "$1 saatinde Aksiyon gerekmiyor olarak kapanacak"
+  ],
   [
    "^Cleared (.+), nobody acted in (\\d+) hour$",
    "$1 normale döndü, $2 saat boyunca kimse ilgilenmedi"

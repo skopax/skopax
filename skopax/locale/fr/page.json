@@ -1193,6 +1193,8 @@
   "Responsibles not saved, try again": "Responsables non enregistrés, réessayez",
   "Slack app is missing users:read.email; responsibles are named without a ping": "Il manque users:read.email à l’app Slack ; les responsables sont nommés sans mention",
   "Needs Slack auto-send on (Admin › Features).": "Nécessite l’envoi automatique Slack activé (Admin › Features).",
+  "The Slack post needs the Slack bot token and a channel (Connect › Integrations › Slack, Admin › Settings › Slack › Channel); the mail to responsibles needs a Mail server and Mail responsibles their part (Admin › Settings › Card tags).": "La publication Slack nécessite le jeton du bot Slack et un canal (Connect › Integrations › Slack, Admin › Settings › Slack › Channel) ; le mail aux responsables nécessite un serveur mail et l’envoi aux responsables activé (Admin › Settings › Card tags).",
+  "The Slack post needs Slack auto-send on (Admin › Features); the mail to responsibles needs a Mail server and Mail responsibles their part (Admin › Settings › Card tags).": "La publication Slack nécessite l’envoi automatique Slack activé (Admin › Features) ; le mail aux responsables nécessite un serveur mail et l’envoi aux responsables activé (Admin › Settings › Card tags).",
   "No longer an active user": "N’est plus un utilisateur actif",
   "Who may sign in": "Qui peut se connecter",
   "Roles from groups": "Rôles depuis les groupes",
@@ -1637,9 +1639,34 @@
   "Ruled": "Décidé",
   "A person decided an earlier occurrence of this card; the investigator starts from it": "Une personne a tranché une occurrence précédente de cette carte ; l'enquêteur part de là",
   "Known cause": "Cause connue",
-  "On, but no instance is on: open it and turn an instance on": "Activé, mais aucune instance n'est activée : ouvrez-le et activez une instance"
+  "On, but no instance is on: open it and turn an instance on": "Activé, mais aucune instance n'est activée : ouvrez-le et activez une instance",
+  "Follow-up check": "Vérification de suivi",
+  "Done when": "Fait quand",
+  "Not done yet": "Pas encore fait",
+  "Looks fixed": "Semble corrigé",
+  "Looks over": "Semble terminé",
+  "Keep open": "Garder ouverte",
+  "Ticket still open": "Ticket encore ouvert",
+  "Kept open by": "Gardée ouverte par",
+  "Gave up": "Abandonnée",
+  "Kept open": "Gardée ouverte",
+  "Stops the announced close; the card stays with people": "Arrête la fermeture annoncée ; la carte reste aux personnes",
+  "Closes soon": "Se ferme bientôt",
+  "Pending with": "En attente de"
  },
  "rules": [
+  [
+   "^Last check (.+)$",
+   "Dernière vérification $1"
+  ],
+  [
+   "^Closes as Fixed at (.+)$",
+   "Se ferme comme Corrigé à $1"
+  ],
+  [
+   "^Closes as No action needed at (.+)$",
+   "Se ferme comme Aucune action nécessaire à $1"
+  ],
   [
    "^Cleared (.+), nobody acted in (\\d+) hour$",
    "Rétablie $1, personne n'a agi en $2 heure"

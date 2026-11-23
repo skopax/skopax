@@ -34,11 +34,16 @@ def lead(message: dict) -> str:
     return msg('routes.urgent') + DOT if message.get('urgent') else ''
 
 
+def finding_rows(row: dict) -> list[dict]:
+    lines = [line.strip() for line in str(row.get('finding') or '').splitlines() if line.strip()]
+    return [text_block(f"**{msg('routes.finding')}:** {escaped(line)}" if i == 0 else escaped(line), size='Small') for i, line in enumerate(lines)]
+
+
 def card_rows(message: dict) -> list[dict]:
     blocks = []
     for c in message.get('cards') or []:
         head = f"{sev_label(c.get('sev'))}{DOT}**{escaped(c.get('svc') or '-')} / {escaped(c.get('label') or '?')}**" + (f"{DOT}#{c['number']}" if c.get('number') else '')
-        blocks += [text_block(head, separator=True)] + ([text_block(escaped(c['cameBack']), weight='Bolder', size='Small')] if c.get('cameBack') else []) + [text_block(escaped(c.get('what')), isSubtle=True, size='Small'),
+        blocks += [text_block(head, separator=True)] + ([text_block(escaped(c['cameBack']), weight='Bolder', size='Small')] if c.get('cameBack') else []) + [text_block(escaped(c.get('what')), isSubtle=True, size='Small')] + finding_rows(c) + [
                    text_block(link(msg('routes.open'), c.get('link') or '') + DOT + link(msg('routes.chat'), c.get('chat') or ''), size='Small')]
     if message.get('more'):
         blocks.append(text_block(msg('routes.more', count=message['more']) + DOT + link(msg('routes.all'), message.get('board') or ''), size='Small'))

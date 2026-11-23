@@ -1,7 +1,7 @@
 var HIST_ACTS = {take: 'Started progress', resolve: 'Resolved', ticket: 'Ticket created', link: 'Ticket linked', mute: 'Muted', unmute: 'Unmuted', known: 'Marked known noise', reopen: 'Reopened',
-  dive: 'Investigation queued', group: 'Grouped', severity: 'Severity changed', ask: 'Asked the investigator'};
+  dive: 'Investigation queued', group: 'Grouped', severity: 'Severity changed', ask: 'Asked the investigator', keep: 'Kept open'};
 var HIST_TRIED = {take: 'Start progress', resolve: 'Resolve', ticket: 'Create task', link: 'Link ticket', mute: 'Mute', unmute: 'Unmute', known: 'Mark as known noise', reopen: 'Reopen',
-  dive: 'Investigate', group: 'Group', severity: 'Change severity', ask: 'Ask the investigator'};
+  dive: 'Investigate', group: 'Group', severity: 'Change severity', ask: 'Ask the investigator', keep: 'Keep open'};
 var HIST_SEV = {crit: 'Critical', high: 'High', warn: 'Warning', info: 'Info'};
 var HIST_CUT = 160;
 function svcReal(v) { v = String(v == null ? '' : v).trim(); return v === '-' ? '' : v; }
@@ -58,7 +58,11 @@ function cardHistoryRows(c, data, runs, names) {
     }
     add(at, who, HIST_ACTS[x.type], x.result ? histCut(x.result) : '', {kind: 'action'});
   });
-  log.forEach(function (r) { add(r.t, histWho(r.who), '', histCut(plain(r.text)), {kind: r.kind}); });
+  function routeRecorded(r) {
+    var at = Date.parse(r.t || '');
+    return (c.teamsPosts || []).some(function (p) { return p && p.route && String(r.text || '').indexOf(' \u00b7 ' + p.route + ' \u00b7 ') >= 0 && Math.abs(Date.parse(p.at || '') - at) <= 120000; });
+  }
+  log.forEach(function (r) { if (r.kind === 'routes' && routeRecorded(r)) return; add(r.t, histWho(r.who), '', histCut(plain(r.text)), {kind: r.kind}); });
   (runs || []).forEach(function (r) {
     if (!r || !r.id) return;
     var line = histFirst(r.recap);

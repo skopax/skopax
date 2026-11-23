@@ -148,9 +148,11 @@ def merged(card: dict, by_key: dict) -> bool:
 
 class StateNotes:
     def __init__(self, store: Store, slack: Slack, flag: bool = True, clock: Callable[[], float] = time.time, jira_site: str | Callable[[], str] = '',
-                 mention: Callable[[str], str | None] = lambda email: None, name_of: Callable[[str], str] = lambda email: ''):
+                 mention: Callable[[str], str | None] = lambda email: None, name_of: Callable[[str], str] = lambda email: '',
+                 by_name: Callable[[str], str | None] = lambda name: None):
         self.store = store
         self.mention = mention
+        self.by_name = by_name
         self.name_of = name_of
         self.jira_site = jira_site
         self.slack = slack
@@ -225,7 +227,11 @@ class StateNotes:
 
     def _mention(self, name: str, email: str | None, sure: bool) -> str | None:
         if not email:
-            return None
+            try:
+                return self.by_name(name) if '@' not in name else None
+            except Exception as e:
+                log.warning('the assignee mention by name was skipped: %s', error_kind(e))
+                return None
         try:
             found = self.mention(email)
             if found and not sure and not same_person(name, self.name_of(email)):

@@ -65,6 +65,7 @@ BUILTIN: tuple[str, ...] = (
     'skopax.plugins.dengage',
     'skopax.plugins.mcp_tools',
     'skopax.plugins.spring_config',
+    'skopax.plugins.vault',
     'skopax.plugins.sonarqube',
     'skopax.plugins.sharepoint',
     'skopax.plugins.mail_server',
@@ -1280,6 +1281,7 @@ def describe(plugin: Plugin, icon: bool | None = None) -> dict:
         'setup': None if plugin.setup is None else {'steps': list(plugin.setup.steps), 'docs': plugin.setup.docs, 'docsLabel': plugin.setup.docs_label},
         'companyKnowledge': plugin.company_knowledge,
         'knowledgeAlso': plugin.knowledge_also,
+        'testPosts': plugin.test_posts,
     }
 
 

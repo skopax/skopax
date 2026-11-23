@@ -64,7 +64,7 @@ PLUGIN = Plugin(
               Setting('min-sev', 'Teams lowest severity', 'Cards below this severity are not posted to a Teams channel on their own; it is also the default of a key route with no lowest severity of its own, and a key route\'s own lowest severity replaces it, higher or lower. While it is not set, tag routes take cards from Warning up and key routes from High up',
                       'choice', 'high', choices=SEVS),
               Setting('fixed-posts', 'Teams fixed posts', 'Posts a fixed message to a business channel when a card it was told about as info closes after that post', 'bool', 'false')),
-    test=test, outbound=Outbound(post, 'tags', 'mentions', link_field='webhook', keys_field='keys', sev_field='min-sev'),
+    test=test, test_posts=True, outbound=Outbound(post, 'tags', 'mentions', link_field='webhook', keys_field='keys', sev_field='min-sev'),
     setup=Setup(steps=(
         "In Teams open Workflows (the Workflows app, or a channel's More options > Workflows) and create a flow that receives a webhook request and posts to a channel. Pick the team and channel, then Save.",
         'Each flow type has its own rule for who may trigger it; pick one that lets the Skopax server post.',

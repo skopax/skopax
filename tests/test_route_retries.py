@@ -245,23 +245,23 @@ def test_a_due_retry_posts_once_when_two_tag_changes_both_ask_for_delivery(store
                                                     'ranKey': 'log'}
     store.save({**state(), 'initialized': True}, None)
     posting, release = threading.Event(), threading.Event()
-    record = store.teams_posted
+    record = store.teams_delivered
 
     def held(key, post):
         if not posting.is_set():
             posting.set()
             release.wait(5)
-        record(key, post)
+        return record(key, post)
 
     # when
     with TestClient(create_app(settings(), store, kube=Kube(root=tmp_path), transport=t)) as c:
         add_route(c, 'tech', TECH, keys='log|*')
-        c.app.state.server_apply([PassResult('log', True, 'ok', [found], {}, ('log',))], NOW, None)
+        c.app.state.server_apply([PassResult('log', True, 'ok', [found], {}, ('log',))], time.time(), None)
         assert c.app.state.routes.drain(5)
         failed = len(t.calls)
         store.route_tries.update_many({}, {'$set': {'due': 0}})
         t.down = False
-        monkeypatch.setattr(store, 'teams_posted', held)
+        monkeypatch.setattr(store, 'teams_delivered', held)
         first = threading.Thread(target=lambda: c.post('/api/tags', json={'key': found['key'], 'tag': 'developer', 'on': True}, headers=AUTH))
         first.start()
         assert posting.wait(5)

@@ -944,6 +944,8 @@ def test_each_run_type_is_offered_only_the_write_tools_that_work_in_it(store: St
     assessment = offered(Toolbox(sources(), store, effects, [], 'live', NOW, 'https://skopax.example.com', report_id='r1'))
     telling = Effects(lambda key, by: {}, lambda key, text, by, *_, notice=None: {}, tell=lambda *a: {})
     page_ask_by = offered(Toolbox(sources(), store, telling, [], 'live', NOW, 'https://skopax.example.com', ask=True, asker='oscar.green@example.com'))
+    verify = offered(Toolbox(sources(), store, effects, [KEY], 'live', NOW, 'https://skopax.example.com', review='verify'))
+    settle = offered(Toolbox(sources(), store, effects, [KEY], 'live', NOW, 'https://skopax.example.com', review='settle'))
 
     # then
     assert card_run == sorted(reads + ['assess', 'note', 'triage', 'group', 'tag', 'slack_draft', 'slack_send', 'slack_update'])
@@ -951,7 +953,8 @@ def test_each_run_type_is_offered_only_the_write_tools_that_work_in_it(store: St
     assert page_ask_no_card == sorted(reads)
     assert page_ask_by == sorted(reads + ['slack_tell'])
     assert assessment == sorted(reads + ['report_brief', 'report_slack_draft'])
-    assert set(card_run + page_ask + page_ask_by + assessment) - set(reads) == WRITE_NAMES
+    assert (verify, settle) == (sorted(reads + ['follow_up_verdict']), sorted(reads + ['settle_verdict']))
+    assert set(card_run + page_ask + page_ask_by + assessment + verify + settle) - set(reads) == WRITE_NAMES
 
 
 def test_gitlab_file_and_blame_read_master_unless_a_ref_is_given(store: Store):

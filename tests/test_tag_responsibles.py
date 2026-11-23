@@ -207,7 +207,7 @@ def test_the_app_registers_the_report_job_gated_by_its_switch_and_slack_auto_sen
     # then
     assert held == {'developer': [NINA, 'dana.gray@example.com']}
     assert 'tag-report' in on and 'tag-report' not in autosend_off and 'tag-report' not in switch_off
-    assert needs == ['Needs Slack auto-send on (Admin \u203a Features).']
+    assert needs == ['The Slack post needs Slack auto-send on (Admin \u203a Features); the mail to responsibles needs a Mail server and Mail responsibles their part (Admin \u203a Settings \u203a Card tags).']
     assert NINA in names and OSCAR not in names
 
 

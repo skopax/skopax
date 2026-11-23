@@ -180,6 +180,29 @@ async function emailPostsReadAsEmailAndTeamsPostsStillReadTeams() {
   console.log('PASS email posts read as email and Teams posts still read Teams');
 }
 
+async function aRouteSendInTheActivityShowsOnceInTheHistoryTab() {
+  //given
+  const sentLine = (route, at) => ({id: 'r-' + route, kind: 'routes', who: 'server', t: at, keys: [KEY], text: 'Email route post \u00b7 ' + route + ' \u00b7 1 card(s)'});
+  const c = card(KEY, {num: 12, firstSeen: T(300), teamsPosts: [{at: T(100), route: 'ops', plugin: 'email', by: 'server'}]});
+  const data = {actions: [], activity: [sentLine('ops', T(100)), sentLine('oncall', T(80))]};
+  const {w, doc, errors} = await boot([c], {history: data});
+  const a = () => article(doc, KEY);
+  expand(a());
+  //when
+  const rows = JSON.parse(JSON.stringify(w.cardHistoryRows(c, data, []))).filter((r) => r.kind === 'teams' || r.kind === 'routes');
+  a().querySelectorAll('[role="tablist"] [role="tab"]')[1].click();
+  await until(() => a().querySelector('.cd-hist li'));
+  await wait(30);
+  const shown = [...a().querySelectorAll('.cd-hist li .h-what')].map((x) => x.textContent);
+  //then
+  assert.deepStrictEqual(rows.map((r) => r.what), ['Email route post \u00b7 oncall \u00b7 1 card(s)', 'Sent by email: ops'], 'a send the card also records reads once, a send only the activity has still shows');
+  assert.ok(shown.indexOf('Email route post \u00b7 oncall \u00b7 1 card(s)') >= 0, shown.join('|'));
+  assert.strictEqual(shown.filter((x) => x.indexOf('ops') >= 0).length, 1, shown.join('|'));
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS a route send from the activity shows in the History tab once, next to the posts the card records');
+}
+
 async function anUnknownRoutePluginNamesItsIdAsARouteInTheReadersLanguage() {
   //given
   const posts = [{at: T(100), route: 'ops', plugin: 'pager', by: 'server'}];
@@ -210,7 +233,7 @@ async function anUnknownRoutePluginNamesItsIdAsARouteInTheReadersLanguage() {
 }
 
 (async () => {
-  for (const t of [anUnknownRoutePluginNamesItsIdAsARouteInTheReadersLanguage, emailPostsReadAsEmailAndTeamsPostsStillReadTeams, failedAndCancelledActionsReadInTheReadersLanguage, anAssignmentRowReadsAssignedToNameWithNoColon, historyRowsComeNewestFirstWithWhoWhenAndOldToNew, historyRowsAreTranslatedButTheirDataStaysAsWritten, theDetailsAndHistoryTabsSwitchByClickAndKeyboardAndStayAcrossARepaint]) {
+  for (const t of [aRouteSendInTheActivityShowsOnceInTheHistoryTab, anUnknownRoutePluginNamesItsIdAsARouteInTheReadersLanguage, emailPostsReadAsEmailAndTeamsPostsStillReadTeams, failedAndCancelledActionsReadInTheReadersLanguage, anAssignmentRowReadsAssignedToNameWithNoColon, historyRowsComeNewestFirstWithWhoWhenAndOldToNew, historyRowsAreTranslatedButTheirDataStaysAsWritten, theDetailsAndHistoryTabsSwitchByClickAndKeyboardAndStayAcrossARepaint]) {
     try { await t(); } catch (e) { console.error('FAIL ' + t.name + ': ' + e.message.replace(/\x1b\[[0-9;]*m/g, '').split('\n').slice(0, 30).join(' | ')); process.exitCode = 1; }
   }
   process.exit(process.exitCode || 0);

@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from skopax.app import create_app
 from skopax.contract import Outbound
-from skopax.engine import PassResult
+from skopax.engine import PassResult, iso as iso_at
 from skopax.kube import Kube
 from skopax.messages import msg
 from skopax.plugins import teams
@@ -209,7 +209,7 @@ def test_a_webhook_never_leaves_the_server(store: Store, tmp_path, caplog):
     hooks = {'first': 'https://hooks.example.com/workflows/a/invoke?sig=SECRET', 'second': 'https://hooks.example.com/workflows/b/invoke?sig=SECRET2',
              'third': 'https://hooks.example.com/workflows/c/invoke?sig=SECRET3'}
     t = Leaky()
-    store.save({**state(open_card(KEY, 'crit', tags=tag('seo'), business=SAID)), 'initialized': True}, None)
+    store.save({**state(open_card(KEY, 'crit', tags=tag('seo'), business=SAID, pushedAt=iso_at(NOW))), 'initialized': True}, None)
 
     # when
     with caplog.at_level(logging.DEBUG):

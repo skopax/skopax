@@ -189,6 +189,7 @@ class TestResult:
 class Digest:
     title: str
     lines: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -374,7 +375,7 @@ class Outbound:
 ECHO_FIELD = 'slack-echo'
 ROUTE_ECHO = Field(ECHO_FIELD, 'Also post to Slack', 'choice', choices=('default', 'on', 'off'),
                    choice_labels={'default': 'Use the default', 'on': 'On', 'off': 'Off'},
-                   help='On posts a card this route takes to Slack too, when Slack has not posted it yet, and says in its Slack thread which channel got it; Off never does; Use the default (or not set) follows the install-wide Slack echo setting.')
+                   help='On posts a card to Slack too when this route sends it, if Slack has not posted it yet, and says in its Slack thread which channel got it; Off never does; Use the default (or not set) follows the install-wide Slack echo setting.')
 
 
 @dataclass(frozen=True)
@@ -626,3 +627,4 @@ class Plugin:
     setup: Setup | None = None
     company_knowledge: str = ''
     knowledge_also: bool = False
+    test_posts: bool = False
