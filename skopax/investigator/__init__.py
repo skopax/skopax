@@ -9,7 +9,7 @@ from collections.abc import Callable
 
 import anthropic
 
-from skopax import history, information
+from skopax import history, information, tracing
 from skopax.ai import ModelSetting, key_for, maker
 from skopax.aikey import ClientBox
 from skopax.config import Setting, Settings
@@ -50,6 +50,8 @@ LIMIT_WINDOW_S = 3600
 GATE_HOURLY_CAP = 60
 SOURCE_OF = {'cards': 'pod', 'action': 'pod', 'ask': 'page', 'slack': 'slack', 'chat': 'chat', 'assess': 'assess'}
 MCP = 'mcp'
+TRACE_NAMES = {'cards': 'card run', 'action': 'investigate click', 'ask': 'page question', 'slack': 'slack question', 'chat': 'chat answer', 'assess': 'deploy assessment'}
+TRACE_OK = ('done', 'skipped')
 
 
 def via_mcp(action: dict | None) -> bool:
@@ -201,6 +203,7 @@ class Investigator:
         recent = [r for r in self.store.list_investigations(None, BOARD_RECENT + len(runs), page=True) if r.get('outcome') != 'running'][:BOARD_RECENT]
         errors = self.store.run_errors([r['id'] for r in recent if r.get('outcome') != 'done'])
         recent = [r | ({'error': errors[r['id']]} if r['id'] in errors else {}) for r in recent]
+        recent = [r | ({'traceUrl': link} if (link := tracing.trace_link(r.get('trace'))) else {}) for r in recent]
         since = epoch_iso(now - LIMIT_WINDOW_S)
         limits = {'slackAsks': self.store.count_actions('ask', since, source='slack'), 'slackAskCap': self.slack_ask_cap, 'gateCalls': self.store.count_gate_calls(since), 'gateCap': GATE_HOURLY_CAP,
                   'spentToday': round(self.store.spent(clock.day(now)), 2), 'cap': self.cap, 'askers': self.store.askers(since)}
@@ -456,9 +459,12 @@ class Investigator:
         toolbox = None
         result = None
         crash = None
+        trigger = 'assess' if report_id else 'slack' if slack_ask else 'chat' if chat_ask else 'ask' if ask else 'action' if action else 'cards'
+        trace = tracing.Handle(None, None, None)
         with self._lock:
             self._runs[run_id] = {'claimed': claimed, 'action': action, 'lease': lease or (LEASE_ID, self.owner)}
         try:
+            trace = self._trace(run_id, trigger, keys, mode, action, ask)
             if mode == 'live' and action is None:
                 for k in keys:
                     if self.store.claim_card(k, run_id):
@@ -466,7 +472,7 @@ class Investigator:
                 keys = list(claimed)
                 cards = [c for c in cards if c['key'] in keys]
             report = self.store.deploy_report(report_id) if report_id else None
-            record = {'id': run_id, 'mode': mode, 'trigger': 'assess' if report_id else 'slack' if slack_ask else 'chat' if chat_ask else 'ask' if ask else 'action' if action else 'cards', 'actionId': action['id'] if action else None,
+            record = {'id': run_id, 'mode': mode, 'trigger': trigger, 'actionId': action['id'] if action else None,
                       'keys': keys, 'pod': self.owner, 'room': (lease or (LEASE_ID, self.owner))[0], 'startedAt': epoch_iso(now), 'model': quick_model if quick else self.model, 'effort': (self.chat_effort if chat_ask else self.slack_effort) if quick else self.effort, 'outcome': 'running'}
             if ask:
                 record['ask'] = {'text': ask, 'by': action.get('requestedBy')}
@@ -518,9 +524,12 @@ class Investigator:
             log.error('investigation %s crashed: %s', run_id, error_kind(e))
             raise
         finally:
-            with self._lock:
-                self._runs.pop(run_id, None)
-            done = self._finish(run_id, claimed, action, record is not None, toolbox, result, crash, mode)
+            try:
+                with self._lock:
+                    self._runs.pop(run_id, None)
+                done = self._finish(run_id, claimed, action, record is not None, toolbox, result, crash, mode, trace.trace)
+            finally:
+                tracing.end(trace)
         log.info('investigation %s (%s, %s): %s, %d turns, %d tool calls, $%.2f', run_id, mode, ', '.join(keys), done['outcome'], done['turns'],
                  len(toolbox.calls) if toolbox else 0, done['usd'])
         return record | done
@@ -541,7 +550,8 @@ class Investigator:
         others = self.store.load().get('anomalies') or []
         return {c['key']: twin for c in cards if (twin := select.announced(c, others, now))}
 
-    def _finish(self, run_id: str, claimed: list[str], action: dict | None, recorded: bool, toolbox, result, crash: BaseException | None, mode: str) -> dict:
+    def _finish(self, run_id: str, claimed: list[str], action: dict | None, recorded: bool, toolbox, result, crash: BaseException | None, mode: str,
+                trace: tracing.Trace | None = None) -> dict:
         ended = epoch_iso(self.clock())
         if result is None:
             outcome, error = ('failed', error_kind(crash)) if crash is not None else ('skipped', None)
@@ -550,6 +560,8 @@ class Investigator:
         done = {'outcome': outcome, 'endedAt': ended, 'turns': result.turns, 'models': result.models, 'usage': result.usage, 'usd': round(result.usd, 4),
                 'toolCalls': toolbox.calls if toolbox else [], 'writes': toolbox.writes if toolbox else [], 'flags': toolbox.flags if toolbox else [],
                 'recap': result.recap, 'error': error}
+        if trace is not None:
+            self._traced(trace, outcome, error, result.recap)
         if toolbox is not None and toolbox.proposal:
             done['ticketProposal'] = toolbox.proposal
         if toolbox is not None and toolbox.plugin_proposal and outcome == 'done':
@@ -590,6 +602,25 @@ class Investigator:
                 if recorded:
                     self._notify(claimed, action, outcome, result.recap)
         return done
+
+    def _trace(self, run_id: str, trigger: str, keys: list[str], mode: str, action: dict | None, ask: str) -> tracing.Handle:
+        handle = tracing.begin(TRACE_NAMES[trigger], runId=run_id, cards=', '.join(keys), provider=self.provider, trigger=trigger, mode=mode, source=MCP if via_mcp(action) else None)
+        if handle.trace is not None:
+            handle.trace.on_sent = lambda sent: self.store.update_investigation(run_id, {'trace': sent})
+            try:
+                handle.trace.given(ask or ', '.join(keys))
+            except Exception as e:
+                log.warning('run trace input not kept: %s', error_kind(e))
+        return handle
+
+    @staticmethod
+    def _traced(trace: tracing.Trace, outcome: str, error: str | None, recap: str) -> None:
+        try:
+            if outcome not in TRACE_OK:
+                trace.fail(f'{outcome}: {error}' if error else outcome)
+            trace.answered(recap)
+        except Exception as e:
+            log.warning('run trace not finished: %s', error_kind(e))
 
     def _notify(self, keys: list[str], action: dict | None, outcome: str, recap: str) -> None:
         if self.notices is None:

@@ -35,6 +35,8 @@ FEATURES: tuple[Feature, ...] = (
     Feature('update-check', 'core.update-check', 'Check for new versions', 'Asks GitHub once a day for the latest Skopax release and shows an admin notice when a newer one exists', 'tag'),
     Feature('tag-report', 'core.tag-report', 'Daily tag report',
             'Posts one message a day, Monday to Friday, to the main Slack channel that names the responsibles of each tag with open cards; it needs Slack auto-send on and a time in Card tags', 'tag'),
+    Feature('langfuse-tracing', 'core.langfuse-tracing', 'Langfuse tracing',
+            'Sends every AI call of {product} (runs, chat answers, topic checks, self-review and plug-in AI helpers) to a Langfuse project as a trace with its model calls, tool calls, tokens, cost and timing; pick the Langfuse instance in Admin \u203a Investigator \u203a Langfuse tracing', 'pulse'),
     Feature('hide-attribution', 'core.hide-attribution', 'Hide "powered by Skopax"', 'Hides the "powered by Skopax" line on every page, in the chat and on Slack and Teams posts', 'badge', edition='enterprise'),
 )
 KEYS = frozenset(f.key for f in FEATURES)

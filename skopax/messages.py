@@ -1127,6 +1127,7 @@ MESSAGES: dict[str, str] = {
     'features.needs.push_users': 'Needs at least one Slack DM person (Admin \u203a Settings \u203a Slack \u203a Slack DM people, or SLACK_PUSH_USER in the environment).',
     'features.needs.prometheus': 'Needs a Prometheus instance that is on and watches errors, latency, restarts and alerts (Connect \u203a Integrations).',
     'features.needs.slack_autosend': 'Needs Slack auto-send on (Admin \u203a Features).',
+    'features.needs.trace_instance': 'Needs a Langfuse instance picked in Admin \u203a Investigator \u203a Langfuse tracing, from a Langfuse integration that is on and has a URL, a public key and a secret key.',
     'features.needs.self_project': 'Needs the self project and its log index (SKOPAX_SELF_PROJECT and SKOPAX_SELF_LOG_INDEX in the environment).',
     'sweeps.retired_check': '{what} no longer runs {check}: {count} open card(s) closed',
     'sweeps.outputs_dropped': 'pass {check}: dropped {what}',

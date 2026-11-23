@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 from pymongo import DESCENDING, ReturnDocument
 
 from skopax import brand, clock as zone_clock, logs, settingcards, tags
-from skopax.config import AI_PROVIDERS, DEFAULT_ROLES, JIRA_BACKLINK_MODES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
+from skopax.config import AI_PROVIDERS, DEFAULT_ROLES, JIRA_BACKLINK_MODES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve, TRACE_CONTENTS
 from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
@@ -91,6 +91,18 @@ def offered_tag(t: Tunable, text: str) -> str:
     if not callable(t.choices) or not text:
         return text
     return next((choice for choice in choices_of(t) if choice.lower() == text.lower()), text)
+
+
+TRACE_INSTANCE_KEY = 'langfuse.trace-instance'
+TRACE_NAMES: list[Callable[[], tuple[str, ...]]] = [tuple]
+
+
+def trace_instances() -> tuple[str, ...]:
+    try:
+        return ('',) + tuple(n for n in TRACE_NAMES[0]() if n)
+    except Exception as e:
+        log.warning('the Langfuse instances were not listed: %s', error_kind(e))
+        return ('',)
 
 
 def card_languages() -> tuple[str, ...]:
@@ -248,6 +260,12 @@ STATIC = (
     T('investigate.web-searches', 'investigate_web_searches', INV, 'Web searches per run', 'Web searches one run may make, $0.01 each; 0 turns search off', 'int', 0, 10),
     T('investigate.web-fetches', 'investigate_web_fetches', INV, 'Web pages per run', 'Web pages one run may read; 0 turns page reads off', 'int', 0, 10),
     T('screenshot.max-per-day', 'screenshot_max_per_day', INV, 'Screenshots per day', 'Screenshots plug-in tools may store per day, all runs together; it resets at local midnight', 'int', 0, 500),
+    T(TRACE_INSTANCE_KEY, 'langfuse_trace_instance', INV, 'Langfuse instance', 'The Langfuse integration (Connect \u203a Integrations) that Langfuse tracing sends to; '
+      'its keys must be allowed to write traces. None sends nothing. Turn tracing on in Admin \u203a Features', 'choice', choices=trace_instances, choice_labels={'': 'None'}),
+    T('langfuse.trace-content', 'langfuse_trace_content', INV, 'Trace content', 'metadata sends names, models, tokens, cost, timing, status, card keys and run ids only. '
+      'full also sends prompts, questions, answers and tool output, redacted and cut; Warning: they can hold customer data and pass to the Langfuse project and everyone who can read it',
+      'choice', choices=TRACE_CONTENTS),
+    T('langfuse.trace-sample', 'langfuse_trace_sample', INV, 'Traces sampled', 'The share of runs, answers and checks sent to Langfuse, decided once per trace; failed ones are always sent', 'int', 0, 100),
     T('investigate.mode', 'investigate_mode', INV, 'Mode', 'off, shadow (records what it would write) or live; a change applies from the next run, and a run already started keeps its mode. To stop it at once use the Stop investigator button, or a daily limit of 0', 'choice', choices=INVESTIGATE_MODES),
     T(SLACK_CHANNEL_KEY, 'slack_channel', SLACK, 'Channel', 'The channel new cards and deploy reports are posted to: its name, like #ops, or its id (C…, Slack › the channel › About shows it at the bottom). A name is looked up in Slack and saved as the channel id, so renaming the channel later does not break it. Slack is asked before saving whether the channel exists and the bot is in it. Reset goes back to the config value', 'text'),
     T('slack.ask-cap', 'slack_ask_cap', SLACK, 'Slack asks per hour', 'Questions to the bot per hour, everyone together', 'int', 0, 100),
@@ -306,6 +324,7 @@ STATIC = (
     feature_tunable('core.push', 'push_on'),
     feature_tunable('core.update-check', 'update_check'),
     feature_tunable('core.tag-report', 'tag_report_on'),
+    feature_tunable('core.langfuse-tracing', 'langfuse_tracing_on'),
     feature_tunable('core.hide-attribution', 'hide_attribution'),
 ) + tuple(T(key, field, RULES, label, 'Thresholds of the ' + label + ' cards; an empty field uses the default', 'rules', defaults=dict(defaults)) for key, field, label, defaults in RULE_SETS) + (
     T(CERT_SKIP_KEY, 'cert_skip', RULES, 'Certificates not watched', 'Hosts whose certificate expiry raises no card, separated by commas: shop.example.com also covers its subdomains, '

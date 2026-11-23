@@ -315,6 +315,7 @@ class Runtime:
         self.instances = instances
         self.transport = transport
         self.clients = dict(clients or {})
+        self.shared: dict[str, Callable[[], object]] = {}
         self.reader: Callable[[Plugin], object] | None = None
         self.ai: Callable[[Plugin, object, InstanceInfo | None, str], object | None] | None = None
         self.memos: Callable[[str, str | None, str], dict | None] | None = None
@@ -421,7 +422,8 @@ class Runtime:
             await asyncio.sleep(every)
 
     def setting(self, plugin_id: str, key: str) -> object:
-        return self.live.plugin_value(f'{plugin_id}.{key}')
+        found = self.shared.get(f'{plugin_id}.{key}')
+        return found() if found is not None else self.live.plugin_value(f'{plugin_id}.{key}')
 
     def rules(self, plugin_id: str, set_id: str) -> dict:
         return self.live.rules_of(f'{plugin_id}.{set_id}')

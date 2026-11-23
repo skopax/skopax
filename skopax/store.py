@@ -99,7 +99,7 @@ REQUEST_FIELDS = {'source': 1, 'text': 1, 'status': 1, 'requestedAt': 1, 'reques
                   'slack.channel': 1, 'slack.channelName': 1, 'slack.outside': 1, 'slack.permalink': 1, 'slack.where': 1, 'slack.threadTs': 1}
 REQUEST_RUN_FIELDS = {'actionId': 1, 'outcome': 1, 'mode': 1, 'startedAt': 1, 'usd': 1, 'recap': 1, 'toolCalls.name': 1}
 RUN_PAGE_FIELDS = {'mode': 1, 'trigger': 1, 'actionId': 1, 'ask': 1, 'keys': 1, 'startedAt': 1, 'outcome': 1, 'usd': 1, 'recap': 1, 'writes': 1, 'flags': 1, 'toolCalls.name': 1, 'screenshots': 1,
-                   'proposal': 1}
+                   'proposal': 1, 'trace': 1}
 BACKFILL_RUN_FIELDS = {'keys': 1, 'startedAt': 1, 'endedAt': 1, 'trigger': 1, 'outcome': 1, 'recap': 1, 'writes': 1, 'ask': 1, 'usd': 1}
 BACKFILL_ACTION_FIELDS = {'type': 1, 'key': 1, 'status': 1, 'requestedAt': 1, 'requestedBy': 1, 'reason': 1, 'ticket': 1, 'result': 1}
 INDEX_OPTIONS_CONFLICT = 85

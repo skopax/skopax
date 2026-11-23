@@ -272,7 +272,37 @@ async function anAdminSeesTheNoticesOnTheIntegrationsPage() {
   return 'the admin notices strip shows on Connect > Integrations for admins only';
 }
 
+async function anAdminCanPreviewThePageAsReadOnlyFromTheSameDataOthersGet() {
+  //given
+  const t = await boot('admin', '#t=integrations');
+  const btn = () => t.doc.getElementById('int-preview');
+  const viewer = await boot('viewer', '#t=integrations');
+
+  //when
+  const before = {text: btn().textContent, pressed: btn().getAttribute('aria-pressed'), add: !!t.doc.querySelector('#int-add-btn, #int-add-mcp'), note: !!t.doc.querySelector('#integrations .int-ro-note')};
+  t.calls.length = 0;
+  btn().click();
+  await wait(200);
+  const on = {text: btn().textContent, pressed: btn().getAttribute('aria-pressed'), note: (t.doc.querySelector('#integrations .int-ro-note') || {}).textContent, read: t.calls.some((c) => c[1] === '/api/integrations'), admin: t.calls.some((c) => c[1] === '/api/admin/plugins'),
+    edits: t.doc.querySelectorAll('#int-add-btn, #int-add-mcp').length};
+  t.calls.length = 0;
+  btn().click();
+  await wait(200);
+  const off = {text: btn().textContent, admin: t.calls.some((c) => c[1] === '/api/admin/plugins'), note: !!t.doc.querySelector('#integrations .int-ro-note')};
+
+  //then
+  assert.deepStrictEqual(before, {text: 'View as read-only', pressed: 'false', add: true, note: false});
+  assert.deepStrictEqual(on, {text: 'Back to editing', pressed: 'true', note: 'Preview: this is the page people without the admin role see. Only admins can change integrations.', read: true, admin: false, edits: 0},
+    'the preview loads the readers\' data and drops every edit control');
+  assert.deepStrictEqual(off, {text: 'View as read-only', admin: true, note: false});
+  assert.strictEqual(viewer.doc.getElementById('int-preview'), null, 'only an admin gets the toggle');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  viewer.w.close();
+  return 'an admin can switch Integrations to the read-only view, loaded from the same data viewers get, and back';
+}
+
 (async () => {
   for (const t of [theConnectRowShowsForEverySignedInRoleOnly, aViewerOpensTheSamePageReadOnly, theReadOnlyPanelShowsInstancesChecksThresholdsAndSecretsAsSet, anAdminStillGetsTheEditablePage,
-    aVisitorWithoutLoginCannotOpenIt, everyKnowledgeSourceCarriesABadgeInItsOwnCategoryAndSitsOnceInTheChip, aJiraOnlyInstallKeepsThePlainGridAndTheChip, theAddCustomMcpButtonShowsForAnAdminOnlyWhileTheMcpPluginServes, anAdminSeesTheNoticesOnTheIntegrationsPage]) console.log('PASS ' + await t());
+    aVisitorWithoutLoginCannotOpenIt, everyKnowledgeSourceCarriesABadgeInItsOwnCategoryAndSitsOnceInTheChip, aJiraOnlyInstallKeepsThePlainGridAndTheChip, theAddCustomMcpButtonShowsForAnAdminOnlyWhileTheMcpPluginServes, anAdminSeesTheNoticesOnTheIntegrationsPage, anAdminCanPreviewThePageAsReadOnlyFromTheSameDataOthersGet]) console.log('PASS ' + await t());
 })().catch((e) => { console.log('FAIL ' + e.message); console.error(e); process.exit(1); });

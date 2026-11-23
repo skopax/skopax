@@ -2,6 +2,19 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.6 (2026-11-23)
+
+Skopax can trace its own AI calls to Langfuse, and admins can see Integrations as everyone else does.
+
+**Added:**
+
+- Langfuse tracing: Skopax can send its own AI calls to a Langfuse project as traces. Each investigator run, chat answer, topic check, self-review and plug-in AI call becomes a trace, with every model call (model, tokens, cost, time, error) and every tool call of the investigator inside it. Switch it on in Admin > Features and pick the Langfuse instance in Admin > Investigator > Langfuse tracing; it is off by default and sends nothing until both are set. Trace content is `metadata` by default, or `full` with the prompts and tool output redacted and cut; a sample setting sends a share of traces, and failed ones are always sent. Recent runs on the Investigator page show Open trace. Traces go out in the background to Langfuse's OpenTelemetry endpoint and never slow down or fail a run; switching tracing off stops sending at once. The Langfuse instance that receives the traces is not watched by the Langfuse check, so Skopax opens no cards about itself. See [Langfuse tracing](docs/plugins.md#langfuse-tracing).
+- Connect > Integrations has a View as read-only button for admins. It shows the page as operators and viewers see it, loaded from the same data they get, and Back to editing returns to the editable page.
+
+**Fixed:**
+
+- A test of the investigator's Slack send read the result before the background post finished, and failed now and then on slow machines.
+
 ## 0.5.5 (2026-11-23)
 
 Card links you can share, a workspace icon, Jira issues that link back to their card, and a Slack channel you can give by name.

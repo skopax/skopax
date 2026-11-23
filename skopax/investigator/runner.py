@@ -3,6 +3,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Callable
 
+from skopax import tracing
 from skopax.ai import wrap
 from skopax.ai.anthropic_ai import CACHE, FALLBACK_BETA, answer_text, cache_marked
 from skopax.errkind import kind as error_kind
@@ -171,7 +172,9 @@ class Runner:
                 elif b.broken:
                     content, is_error = BROKEN_TEXT, True
                 else:
+                    began = tracing.now()
                     content, is_error = toolbox.call(b.name, b.input or {})
+                    tracing.tool(b.name, began, not is_error, b.input or {}, content)
                 results.append({'type': 'tool_result', 'tool_use_id': b.id, 'content': content, 'is_error': is_error})
             if halted:
                 break

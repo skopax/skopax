@@ -42,6 +42,8 @@ from skopax.kube import Kube
 from skopax import locales as core_locales
 from skopax import mcpserver
 from skopax import mutemarks
+from skopax import tracing
+from skopax import tunables as tunable_defs
 from skopax import sections
 from skopax.mcpauth import McpAuth
 from skopax.mcptools import PLUGIN_ID as MCPTOOLS_ID
@@ -543,6 +545,25 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     probe = probe or Probe(runtime.probe_targets)
     features = Features(live, registry.edition, needs=lambda feature_id: needs_of(feature_id), started=lambda what: started_at_boot(what))
     brand.use_hidden(lambda: features.on('hide-attribution'))
+    tunable_defs.TRACE_NAMES[0] = lambda: tuple(i.name for i in instances.all(tracing.PLUGIN))
+
+    trace_targets: list[tuple[Settings, float, tracing.Target | None]] = []
+
+    def trace_target() -> tracing.Target | None:
+        current, now = live.current(), time.monotonic()
+        if trace_targets and trace_targets[0][0] is current and now - trace_targets[0][1] < tracing.TARGET_CACHE_S:
+            return trace_targets[0][2]
+        name = current.langfuse_trace_instance
+        plugin = next((p for p in runtime.active() if p.id == tracing.PLUGIN), None) if name else None
+        found = next((i for i in runtime.instances_of(tracing.PLUGIN) if i.name == name), None) if plugin is not None else None
+        target = tracing.target_of(plugin, found.info(), runtime.transport_for) if found is not None else None
+        trace_targets[:] = [(current, now, target)]
+        return target
+
+    tracer = tracing.Tracer(lambda: features.on('langfuse-tracing'), trace_target, lambda: settings.langfuse_trace_content, lambda: settings.langfuse_trace_sample,
+                            lambda: current_instance(settings))
+    tracing.install(tracer)
+    runtime.shared[tracing.TRACED_SETTING] = lambda: settings.langfuse_trace_instance if features.on('langfuse-tracing') and trace_target() is not None else ''
 
     def chat_attribution() -> dict | None:
         return brand.attribution_line()
@@ -1575,7 +1596,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             log.warning('API token names are not unique, so the unique name index was not built: %s. Rename or delete the duplicates in the api_tokens collection.', kind(e))
 
     def investigator_shutdown() -> None:
-        investigator.shutdown()
+        try:
+            investigator.shutdown()
+        finally:
+            tracer.shutdown()
+            tracing.uninstall(tracer)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -1726,6 +1751,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         'mcp': (('sso', lambda: not signon.active()),),
         'push': (('bot_token', lambda: link.token() == ''), ('push_users', lambda: not pusher.users)),
         'postdeploy': (('prometheus', lambda: not prom_watching()),),
+        'langfuse-tracing': (('trace_instance', lambda: trace_target() is None),),
         'self-review': (('anthropic_key', lambda: settings.ai_provider != OPENAI and no_ai_key()), ('openai_key', lambda: settings.ai_provider == OPENAI and no_ai_key()), ('self_project', lambda: not (settings.self_project and settings.self_log_index))),
     }
 
@@ -1744,6 +1770,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     app = FastAPI(title=brand.product(), version=__version__, lifespan=lifespan)
     app.state.features = features
+    app.state.tracer = tracer
     app.state.feature_needs = feature_needs
     app.state.auto_send = auto
     app.state.tag_report = tag_report

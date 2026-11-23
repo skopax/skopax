@@ -49,7 +49,8 @@ function invWaiting(w, i) {
 function invRecentRow(r) {
   var ok = r.outcome === 'done', ask = r.ask || {};
   var what = ask.private ? '<span class="muted">private chat message</span>' : ask.text ? esc(ask.text) : (r.keys || []).length ? invCards(r.keys) : '<span class="muted">–</span>';
-  return '<tr><td>' + esc(dayhm(r.startedAt)) + '</td><td>' + esc(INV_TRIGGER[r.trigger] || r.trigger || '') + '</td><td class="inv-rw">' + what + '</td>' +
+  var trace = /^https?:\/\//.test(r.traceUrl || '') ? ' <a class="inv-trace" href="' + esc(r.traceUrl) + '" target="_blank" rel="noopener">Open trace \u2197</a>' : '';
+  return '<tr><td>' + esc(dayhm(r.startedAt)) + '</td><td>' + esc(INV_TRIGGER[r.trigger] || r.trigger || '') + '</td><td class="inv-rw">' + what + trace + '</td>' +
     '<td><span class="tag ' + (ok ? 'k-ok' : 'k-warn') + '">' + esc(r.outcome || '?') + '</span></td><td class="num">' + esc(String(r.toolCalls || 0)) + '</td><td class="num">' + (r.usd != null ? esc(usdText(r.usd)) : '–') + '</td></tr>';
 }
 function invMeter(label, used, cap, title) {

@@ -606,6 +606,9 @@
   "Open Google Tag Manager": "Abrir Google Tag Manager",
   "Open image ↗": "Abrir imagen ↗",
   "Open in": "Abrir en",
+  "Langfuse tracing": "Trazas de Langfuse",
+  "sends each AI call of the investigator, the chat and the topic checks to a Langfuse project as a trace, with an Open trace link on the Investigator page. Switch it on in Admin > Features and pick the Langfuse instance in Admin > Investigator.": "envía cada llamada de IA del investigador, del chat y de las comprobaciones de tema a un proyecto de Langfuse como una traza, con un enlace Abrir traza en la página Investigador. Actívalo en Admin > Funciones y elige la instancia de Langfuse en Admin > Investigator.",
+  "Open trace ↗": "Abrir traza ↗",
   "Open in Slack ↗": "Abrir en Slack ↗",
   "Open menu": "Abrir menú",
   "Open page": "Abrir página",
@@ -1582,7 +1585,12 @@
   "cards that are not firing, or muted, with no change for a while; they are hidden everywhere else.": "tarjetas que no se disparan, o silenciadas, sin cambios desde hace un tiempo; ocultas en todo lo demás.",
   "cards that are not firing, or muted, with no change for {0} hours; they are hidden everywhere else.": "tarjetas que no se disparan, o silenciadas, sin cambios desde hace {0} horas; ocultas en todo lo demás.",
   "mute the card for {0} hours or {1} days. Unmute undoes it.": "silencian la tarjeta durante {0} horas o {1} días. Dejar de silenciar lo deshace.",
-  "silence a card for a while or for good; see Card actions.": "silencian una tarjeta un tiempo o para siempre; mira Acciones de la tarjeta."
+  "silence a card for a while or for good; see Card actions.": "silencian una tarjeta un tiempo o para siempre; mira Acciones de la tarjeta.",
+  "View as read-only": "Ver como solo lectura",
+  "Back to editing": "Volver a editar",
+  "Preview: this is the page people without the admin role see. Only admins can change integrations.": "Vista previa: así ven esta página las personas sin el rol de administrador. Solo los administradores pueden cambiar las integraciones.",
+  "Show the page you can edit again": "Volver a mostrar la página editable",
+  "Shows this page as operators and viewers see it, from the same data they get": "Muestra esta página como la ven operadores y lectores, con los mismos datos que reciben"
  },
  "rules": [
   [

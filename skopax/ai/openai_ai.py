@@ -2,6 +2,7 @@ import json
 
 import openai
 
+from skopax import tracing
 from skopax.ai import FETCH_TYPE, OPENAI, SEARCH_TYPE, THINK_OFF, ToolCall, Turn, Usage
 
 EFFORTS = {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'xhigh', 'max': 'max'}
@@ -188,13 +189,13 @@ class OpenAiAi:
     def turn(self, model: str, effort: str, system: str, tools: list[dict], messages: list[dict], max_tokens: int, cache_ttl: str | None = None) -> Turn:
         offered, left = tools_of(tools, messages)
         extra = {'max_tool_calls': left} if left else {}
-        resp = self.client.responses.create(model=model, instructions=system, input=input_of(messages), tools=offered, max_output_tokens=max_tokens,
-                                            reasoning={'effort': reasoning_effort(model, effort, 'auto')}, store=False, include=[REASONING] + ([SOURCES] if left else []), **extra)
-        return turn_of(resp, model)
+        return tracing.generation(self.provider, 'turn', model, system, messages, lambda: turn_of(self.client.responses.create(
+            model=model, instructions=system, input=input_of(messages), tools=offered, max_output_tokens=max_tokens, reasoning={'effort': reasoning_effort(model, effort, 'auto')},
+            store=False, include=[REASONING] + ([SOURCES] if left else []), **extra), model))
 
     def once(self, model: str, system: str, messages: list[dict], max_tokens: int, effort: str, thinking: str = THINK_OFF, schema: dict | None = None) -> Turn:
         level = reasoning_effort(model, effort, thinking)
         extra = {'text': {'format': {'type': 'json_schema', 'name': 'answer', 'schema': schema, 'strict': closed(schema)}}} if schema is not None else {}
-        resp = self.client.responses.create(model=model, instructions=system, input=input_of(messages), max_output_tokens=max_tokens + (0 if level == 'none' else REASONING_ROOM),
-                                            reasoning={'effort': level}, store=False, **extra)
-        return turn_of(resp, model)
+        return tracing.generation(self.provider, 'once', model, system, messages, lambda: turn_of(self.client.responses.create(
+            model=model, instructions=system, input=input_of(messages), max_output_tokens=max_tokens + (0 if level == 'none' else REASONING_ROOM), reasoning={'effort': level},
+            store=False, **extra), model))
