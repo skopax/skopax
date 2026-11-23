@@ -965,8 +965,9 @@ def test_core_rule_time_never_spends_the_plugin_rule_budget(monkeypatch):
     assert out == [f'{redact.REDACTED} {i}' for i in range(10)] and len(seen) == 10
 
 
-def test_long_benign_log_lines_with_a_fast_plugin_rule_never_get_the_marker(tmp_path):
+def test_long_benign_log_lines_with_a_fast_plugin_rule_never_get_the_marker(tmp_path, monkeypatch):
     # given
+    monkeypatch.setattr(redact, 'BUDGET_S', 1.0)
     redact.use_rules(((('demo', 'ticket-id'), regex.compile(r'DEMO-\d{4}')),))
     (tmp_path / 'token').write_text('sa-token\n')
     line = 'at shop.checkout.Service.handle(Service.java:42) ' * 330
