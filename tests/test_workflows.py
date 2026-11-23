@@ -70,6 +70,7 @@ PIPED_SHELL = re.compile(r'\|\s*(?:sudo\s+)?(?:ba|z)?sh\b')
 GITLEAKS_FIXTURES = {
     'tests/page/skopax-access.test.js': 'generic-api-key',
     'tests/page/skopax-access-page.test.js': 'generic-api-key',
+    'tests/test_mail_graph.py': 'generic-api-key',
     'tests/test_admin_plugins.py': 'generic-api-key',
     'tests/test_instances.py': 'private-key',
     'tests/test_mcp_access.py': 'jwt',
