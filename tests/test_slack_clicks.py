@@ -637,3 +637,22 @@ def test_a_post_from_before_the_new_layout_keeps_its_attachment_when_a_button_is
     assert att['color'] == '#e08a00' and 'blocks' not in update
     assert not any(str(e.get('action_id')).startswith(CARD_ACTION) for b in att['blocks'] if b['type'] == 'actions' for e in b['elements'])
     assert att['blocks'][-1]['elements'][0]['text'] == 'Take · adam.baker@example.com'
+
+
+def test_keep_open_on_the_close_announcement_applies_the_keep_action(store: Store):
+    # given
+    card_with_post(store)
+    call = {'key': KEY, 'action': 'keep'}
+    offer = store.add_action({'type': 'follow-up', 'source': 'slack', 'key': KEY, 'target': f'follow-up:{KEY}', 'label': 'offer', 'requestedBy': 'server', 'cardAction': call,
+                              'slack': {'where': 'card', 'channel': 'C1', 'threadTs': CARD_TS}}, 'done', 'Looks fixed')
+    box, applier, api = clicks(store)
+    blocks = take_offer_blocks('Looks fixed', offer['id'], call)
+
+    # when
+    got = box.handle({'type': 'block_actions', 'user': {'id': 'U1'}, 'channel': {'id': 'C1'}, 'message': {'ts': ANSWER_TS, 'thread_ts': CARD_TS, 'text': 'Looks fixed', 'blocks': blocks},
+                      'actions': [{'action_id': CARD_ACTION, 'value': offer['id']}]})
+
+    # then
+    assert got == 'applied'
+    assert [(c['type'], c['key'], c['requestedBy']) for c in applier.calls] == [('keep', KEY, 'adam.baker@example.com')]
+    assert blocks[1]['elements'][0]['text']['text'] == 'Keep open'

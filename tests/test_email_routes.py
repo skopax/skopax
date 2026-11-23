@@ -401,14 +401,15 @@ def test_the_app_shows_email_needs_the_mail_server_until_one_is_added_and_refuse
 
 def test_a_refused_list_gives_up_at_once_and_the_notice_says_one_try(store: Store, tmp_path):
     # given
-    store.save({**state(open_card('log|checkout-service|ERROR|boom', tags=tag('developer'))), 'initialized': True}, None)
+    now = time.time()
+    store.save({**state(open_card('log|checkout-service|ERROR|boom', tags=tag('developer'), pushedAt=iso_at(now))), 'initialized': True}, None)
     Box.refuse = {ALICE}
 
     # when
     with TestClient(create_app(settings(), store, kube=Kube(root=tmp_path), transport=Transport())) as c:
         add(c, 'mail-server', 'mail', dict(CONFIG))
         add(c, 'email', 'ops', {'recipients': ALICE, 'tags': 'developer'})
-        c.app.state.routes.deliver(store.load()['anomalies'], time.time())
+        c.app.state.routes.deliver(store.load()['anomalies'], now)
         notices = c.get('/api/admin/notices', headers=AUTH).json()['items']
         tile = tiles(c)['ops']
 

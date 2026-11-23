@@ -1235,7 +1235,7 @@ def card_action_label(call: dict) -> str:
     if call.get('action') == 'resolve' and call.get('kind') in ('fixed', 'duplicate'):
         return cut(msg('slack.label.resolve_as', kind=history.kind_text({'kind': call['kind'], 'ref': call.get('ref') if call['kind'] == 'duplicate' else None})), 75)
     action = call.get('action')
-    return msg(f'slack.label.{action}') if action in POST_ACTIONS else str(action)
+    return msg(f'slack.label.{action}') if action in POST_ACTIONS + ('keep',) else str(action)
 
 
 def task_label(draft: dict | None) -> str:

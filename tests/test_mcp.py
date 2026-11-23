@@ -249,6 +249,20 @@ def test_list_and_get_cards_read_like_the_page(store: Store):
     assert failed and 'no card #99' in missing
 
 
+def test_get_card_shows_the_follow_up_check(store: Store):
+    # given
+    board(store, *cards())
+    store.set_tagging(CARD, {'followUp': {'doneWhen': 'GET https://example.com/old returns 301', 'checkedAt': '2026-11-09T16:00:00Z', 'lastResult': 'fixed', 'lastEvidence': 'answered 301',
+                                          'closeAt': '2026-11-09T22:00:00Z', 'closeKind': 'fixed'}})
+
+    # when
+    with mcp_client(store) as c:
+        one, _ = call(c, token(), 'get_card', {'card': '#14'})
+
+    # then
+    assert 'follow-up: done when GET https://example.com/old returns 301 \u00b7 last check 2026-11-09T16:00:00Z: fixed (answered 301) \u00b7 closes as Fixed at 2026-11-09T22:00:00Z' in one
+
+
 def test_list_cards_offers_and_filters_the_high_severity(store: Store):
     # given
     board(store, *cards(), anomaly('5xx|shop/orders-service', sev='high', num=17, svc='orders-service', label='5xx', what='5xx went up'))

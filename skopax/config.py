@@ -148,6 +148,7 @@ class Settings:
     slack_post_sev: str = SLACK_POST_SEV
     slack_post_sev_set: bool = False
     routes_slack_echo: bool = False
+    routes_wait_minutes: int = 30
     release_settle: bool = False
     jira_links: bool = True
     assign_dm: bool = True
@@ -165,6 +166,7 @@ class Settings:
     update_check: bool = True
     tag_report_on: bool = True
     warn_digest_on: bool = True
+    settle_on: bool = True
     langfuse_tracing_on: bool = False
     langfuse_trace_instance: str = ''
     langfuse_trace_content: str = 'metadata'
@@ -195,6 +197,10 @@ class Settings:
     investigate_daily_usd: float = 25.0
     investigate_max_cards: int = 5
     investigate_refire_hours: float = 72.0
+    investigate_follow_up_hours: int = 6
+    investigate_follow_up_days: int = 7
+    investigate_follow_up_close_hours: int = 6
+    investigate_settle_max_per_day: int = 20
     investigate_rooms: int = 2
     investigate_max_tool_calls: int = 30
     investigate_assess_max_tool_calls: int = 16
@@ -242,6 +248,7 @@ class Settings:
     slack_thread_hours: float = 6
     tag_rules: tuple = ()
     tag_report_at: str = '10:00'
+    tags_mail: bool = True
     warn_digest_at: str = '09:30'
     mcp_issuer: str = ''
     mcp_client_id: str = MCP_CLIENT_ID
@@ -687,6 +694,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         slack_operator_cache_s=int(get('slack.operator-cache-seconds', 'SLACK_OPERATOR_CACHE_SECONDS', '600')),
         slack_fallback_minutes=int(get('slack.fallback-minutes', 'SLACK_FALLBACK_MINUTES', '15').strip() or 15),
         routes_slack_echo=get('routes.slack-echo', 'ROUTES_SLACK_ECHO', 'false').strip().lower() == 'true',
+        routes_wait_minutes=max(5, min(240, int(get('routes.wait-minutes', 'ROUTES_WAIT_MINUTES', '30').strip() or 30))),
         slack_crit_now=crit_now,
         slack_post_sev=post_sev,
         slack_post_sev_set=post_sev_set,
@@ -707,6 +715,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         update_check=get('core.update-check', 'SKOPAX_UPDATE_CHECK', 'true').strip().lower() == 'true',
         tag_report_on=get('core.tag-report', 'SKOPAX_FEATURE_TAG_REPORT', 'true').strip().lower() == 'true',
         warn_digest_on=get('core.warn-digest', 'SKOPAX_FEATURE_WARN_DIGEST', 'true').strip().lower() == 'true',
+        settle_on=get('core.settle', 'SKOPAX_FEATURE_SETTLE', 'true').strip().lower() == 'true',
         langfuse_tracing_on=get('core.langfuse-tracing', 'SKOPAX_FEATURE_LANGFUSE_TRACING', 'false').strip().lower() == 'true',
         langfuse_trace_instance=get('langfuse.trace-instance', 'LANGFUSE_TRACE_INSTANCE', '').strip(),
         langfuse_trace_content=trace_content(get('langfuse.trace-content', 'LANGFUSE_TRACE_CONTENT', 'metadata')),
@@ -737,6 +746,10 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         investigate_daily_usd=float(get('investigate.daily-usd', 'INVESTIGATE_DAILY_USD', '25')),
         investigate_max_cards=int(get('investigate.max-cards', 'INVESTIGATE_MAX_CARDS', '5')),
         investigate_refire_hours=float(get('investigate.refire-hours', 'INVESTIGATE_REFIRE_HOURS', '72').strip() or 72),
+        investigate_follow_up_hours=clamped('investigate.follow-up-hours', get('investigate.follow-up-hours', 'INVESTIGATE_FOLLOW_UP_HOURS', '6').strip(), 1, 72, 6),
+        investigate_follow_up_days=clamped('investigate.follow-up-days', get('investigate.follow-up-days', 'INVESTIGATE_FOLLOW_UP_DAYS', '7').strip(), 1, 30, 7),
+        investigate_follow_up_close_hours=clamped('investigate.follow-up-close-hours', get('investigate.follow-up-close-hours', 'INVESTIGATE_FOLLOW_UP_CLOSE_HOURS', '6').strip(), 1, 48, 6),
+        investigate_settle_max_per_day=clamped('investigate.settle-max-per-day', get('investigate.settle-max-per-day', 'INVESTIGATE_SETTLE_MAX_PER_DAY', '20').strip(), 0, 200, 20),
         investigate_rooms=max(1, int(get('investigate.rooms', 'INVESTIGATE_ROOMS', '2').strip() or 2)),
         investigate_max_tool_calls=int(get('investigate.max-tool-calls', 'INVESTIGATE_MAX_TOOL_CALLS', '30')),
         investigate_assess_max_tool_calls=int(get('investigate.assess-max-tool-calls', 'INVESTIGATE_ASSESS_MAX_TOOL_CALLS', '16')),
@@ -785,6 +798,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         slack_thread_hours=float(get('slack.thread-hours', 'SLACK_THREAD_HOURS', '6').strip() or 6),
         tag_rules=tags_rules_of(config),
         tag_report_at=get('tags.report-at', 'SKOPAX_TAG_REPORT_AT', '10:00').strip(),
+        tags_mail=get('tags.mail', 'SKOPAX_TAGS_MAIL', 'true').strip().lower() == 'true',
         warn_digest_at=get('slack.warn-digest-at', 'SLACK_WARN_DIGEST_AT', '09:30').strip(),
         mcp_issuer=get('mcp.issuer', 'MCP_ISSUER', '').strip().rstrip('/'),
         mcp_client_id=get('mcp.client-id', 'MCP_CLIENT_ID', MCP_CLIENT_ID).strip() or MCP_CLIENT_ID,

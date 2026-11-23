@@ -101,8 +101,9 @@ from skopax import mail as mail_out, noticemail
 from skopax.noticemail import NoticeMail
 from skopax.versioncheck import OFFSET_S as VERSION_OFFSET, PERIOD_S as VERSION_PERIOD, START_DELAY_S as VERSION_START_DELAY, VersionCheck, jitter_of
 from skopax.reminders import Reminders
-from skopax import tagreport, warndigest
-from skopax.routes import TRIES, Echo, Refused as RouteRefused, Routes
+from skopax import followup, partmail, tagreport, warndigest
+from skopax.followup import FollowUps
+from skopax.routes import TRIES, Echo, Refused as RouteRefused, Routes, finished as investigation_finished
 from skopax.models import NoticeMailIn, RouteSendIn, SsoIn, SsoTestIn, TestMailIn
 from skopax.mailtrial import MailTrials, PER_HOUR as TRIALS_PER_HOUR
 from skopax.statenotes import StateNotes, who_of
@@ -715,6 +716,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     store.row_links = runtime.row_links
     store.release_ignore = settings.release_ignore
     base_url = public_base(settings)
+    mail_out.use_site(base_url)
     odd_stamp: list[str] = []
 
     def site_hosts() -> tuple[str, ...]:
@@ -733,9 +735,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     mcp_auth = McpAuth(settings, signon, signin, base_url, clock=clock, sessions_after=stop_time)
     pusher = Pusher(slack, settings.slack_push_user, base_url, on=lambda: features.on('push'))
-    routes = Routes(store, runtime, settings, attribution=chat_attribution, base=lambda: base_url, autostart=True)
+    routes = Routes(store, runtime, settings, attribution=chat_attribution, base=lambda: base_url, autostart=True, only_new=True)
     enricher = Enricher(store, gitlab, jira, live_projects)
-    notes = StateNotes(store, slack, settings.slack_state_notes, jira_site=jira_site, mention=lambda email: slack_ids.mention(email), name_of=lambda email: slack_ids.name(email))
+    notes = StateNotes(store, slack, settings.slack_state_notes, jira_site=jira_site, mention=lambda email: slack_ids.mention(email), name_of=lambda email: slack_ids.name(email),
+                       by_name=lambda name: tagreport.name_mentions(slack_people, slack_ids)(name))
     def user_name(email: str) -> str:
         known = str((users.get(email) or {}).get('name') or '').strip()
         return known if known and '@' not in known else ''
@@ -757,7 +760,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     mail_trials = MailTrials(db, clock=clock)
     notices = Notices(store, mail=notice_mail)
     versions = VersionCheck(store, transport, lambda: features.on('update-check'), clock=clock)
-    reminders = Reminders(store, slack, settings.slack_remind_hours, base_url, mention=lambda email: slack_ids.mention(email), name_of=lambda email: slack_ids.name(email))
+    reminders = Reminders(store, slack, settings.slack_remind_hours, base_url, mention=lambda email: slack_ids.mention(email), name_of=lambda email: slack_ids.name(email),
+                          by_name=lambda name: tagreport.name_mentions(slack_people, slack_ids)(name))
     slack_people = tagreport.SlackPeople(slack)
     slack_ids = tagreport.SlackIds(slack, on_scope=lambda missing: store.note_email_scope(missing, iso(utc_now())), flagged=lambda: store.email_scope() is not None)
 
@@ -767,9 +771,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def disabled_people() -> set[str]:
         return {u['email'] for u in users.list() if u and u.get('email') and u.get('disabled')}
 
+    part_mail = partmail.PartMail(lambda: mail_out.mailer(runtime), lambda: settings.tags_mail, store.tag_owners, left_out=disabled_people)
     tag_report = tagreport.TagReport(store, slack, slack_ids, store.tag_owners, active_people,
-                                     lambda: settings.tag_report_at, lambda: features.on(tagreport.FEATURE) and features.on('slack-autosend'), base_url, left_out=disabled_people)
-    warn_digest = warndigest.WarnDigest(store, slack, lambda: settings.warn_digest_at, lambda: features.on(warndigest.FEATURE) and features.on('slack-autosend'), base_url)
+                                     lambda: settings.tag_report_at, lambda: features.on(tagreport.FEATURE) and features.on('slack-autosend'), base_url, left_out=disabled_people,
+                                     mail=part_mail, mail_on=lambda: features.on(tagreport.FEATURE))
+    warn_digest = warndigest.WarnDigest(store, slack, lambda: settings.warn_digest_at, lambda: features.on(warndigest.FEATURE) and features.on('slack-autosend'), base_url,
+                                        mail=part_mail, mail_on=lambda: features.on(warndigest.FEATURE))
     clear_notes = ClearNotes(store, slack, settings.slack_clear_note_minutes, title_prefix=settings.jira_title_prefix)
     jira_links = JiraLinks(store, jira, settings.jira_links, notes, base_url, settings.jira_developer_field)
     backlinks = Backlinks(store, jira, base_url, mode=lambda: settings.jira_backlink, projects=live_projects,
@@ -894,15 +901,20 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if not echo_ready(card):
             return None
         send_anomaly_to_slack(key, SERVER_BY, skip_kept=True)
-        posted = store.anomaly(key).get('slackPost') or None
+        now_card = store.anomaly(key)
+        posted = now_card.get('slackPost') or None
         if posted is None:
             raise RuntimeError('the Slack post was not recorded on the card')
+        if investigation_finished(now_card):
+            card_posts.refresh(key)
         return posted
 
     def echo_in_thread(post: dict, text: str) -> None:
         slack.post({'text': text, 'channel': post['channel'], 'thread_ts': post['ts']}, sign=False)
 
     routes.echo = Echo(echo_to_slack, echo_in_thread, echo_ready)
+    routes.investigating = lambda: investigator_ready() and settings.investigate_mode == 'live' and investigator.available()
+    routes.check = post_check
 
     def post_fixes(key: str, base: str = '') -> int:
         if not slack.enabled:
@@ -1068,6 +1080,16 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                               bridge=mcptools_bridge, own_sites=lambda: live.own_sites()[0]),
         Effects(pod_slack_send, functools.partial(slack_thread_update, linked=True), replier.reply, state_note, tell=slack_tell, fixes=lambda key: post_fixes(key), slack_file=slack.file, autopost=lambda: auto.on(), wake=lambda: auto.wake()), settings, client=anthropic_client, base_url=base_url, talk=talk, key=ai_keys.current)
 
+    def after_follow_close(key: str, before: dict) -> None:
+        notes.triaged(key, before)
+        card_posts.triaged(key, before)
+        backlinks.triaged(key, before)
+
+    follow_ups = FollowUps(store, lambda: settings, investigator, slack, features.on, notices, base_url=base_url, windows=lambda: runtime.auto_windows(),
+                           mention=lambda email: slack_ids.mention(email), name_of=lambda email: slack_ids.name(email), after_close=after_follow_close)
+    if isinstance(getattr(investigator, 'effects', None), Effects):
+        investigator.effects.follow_up = follow_ups.verdict
+
     if isinstance(investigator, Investigator):
         investigator.notices = notices
         investigator.on = lambda: features.on('investigator')
@@ -1201,7 +1223,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         applied = apply(store, results, now, links, dm=pusher.enabled, after=after, auto_resolve_hours=settings.auto_resolve_hours,
                         recurring_count=settings.recurring_count, recurring_days=settings.recurring_days, tag_rules=tags.rules(settings.tag_rules), alert_twins=settings.alert_twins, screen=screen, clusters=clusters, kind_windows=runtime.auto_windows(),
                         severity_hours={'crit': settings.auto_resolve_hours_crit, 'high': settings.auto_resolve_hours_high, 'warn': settings.auto_resolve_hours_warn},
-                        business=clocks.zone() if settings.business_days else None, alerts_warn=settings.alerts_warn)
+                        business=clocks.zone() if settings.business_days else None, alerts_warn=settings.alerts_warn, follow_up_days=settings.investigate_follow_up_days)
         if applied and applied.resolved:
             for r in applied.resolved:
                 notes.auto_resolved([r['key']], r.get('hours') or settings.auto_resolve_hours, r.get('since'), {r['key']} if r.get('event') else (), bool(r.get('businessTime')))
@@ -1218,7 +1240,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if applied and investigator.enabled and any(a.get('sev') == 'crit' for a in applied.push):
             investigator.kick(time.time())
         if applied:
-            routes.later(applied.cards, time.time(), applied.push)
+            routes.later(applied.cards, now, applied.push)
         card_posts.swept(applied)
         return applied
 
@@ -1350,7 +1372,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except Exception as e:
             log.warning('%s', msg('probe.start_failed', error=kind(e)))
 
-    sweeper = Sweeper(runtime, store, server_apply, enrich=enrich_keys, outputs=Outputs(store, slack, attacher, base_url, lambda: settings.screenshot_max_per_day, auto=lambda: features.on('slack-autosend'), posting=posting_cards))
+    sweeper = Sweeper(runtime, store, server_apply, enrich=enrich_keys, outputs=Outputs(store, slack, attacher, base_url, lambda: settings.screenshot_max_per_day, auto=lambda: features.on('slack-autosend'), posting=posting_cards, mail=part_mail))
     custom_checks = CustomChecks(store, runtime, server_apply)
 
     def refresh_languages() -> None:
@@ -1391,8 +1413,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         Job('probe', PROBE_PERIOD, PROBE_OFFSET, probe_run, enabled=lambda: settings.probe),
         Job('version-check', VERSION_PERIOD, VERSION_OFFSET + jitter_of(base_settings.mongo_uri + base_settings.mongo_db), versions.scheduled, lambda: features.on('update-check')),
         Job(CUSTOM_CHECKS, CUSTOM_CHECKS_PERIOD, CUSTOM_CHECKS_OFFSET, custom_checks.run_once, custom_checks.enabled),
-        Job(tagreport.RUN, tagreport.PERIOD, tagreport.OFFSET, tag_report.run_once, lambda: tag_report.enabled),
-        Job(warndigest.RUN, warndigest.PERIOD, warndigest.OFFSET, warn_digest.run_once, lambda: warn_digest.enabled),
+        Job(tagreport.RUN, tagreport.PERIOD, tagreport.OFFSET, tag_report.run_once, lambda: tag_report.scheduled),
+        Job(warndigest.RUN, warndigest.PERIOD, warndigest.OFFSET, warn_digest.run_once, lambda: warn_digest.scheduled),
+        Job(followup.RUN, followup.PERIOD, followup.OFFSET, follow_ups.run_once, lambda: follow_ups.enabled),
         Job('notice-mail', noticemail.PERIOD, noticemail.OFFSET, notice_mail.run_once, notice_mail.ready),
     ]
     scheduler = Scheduler(store, boot=investigator.owner, jobs=lambda: core_jobs + [Job('postdeploy', POSTDEPLOY_PERIOD, POSTDEPLOY_OFFSET, lambda now: postdeploy.run_once(now), postdeploy.enabled)] + sweeper.jobs())
@@ -1795,8 +1818,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                          ('mode', lambda: investigator.mode == 'off')),
         'chat': (('investigator', lambda: not investigator_ready()), ('chat_ui', lambda: not (settings.chat_ui and signon.active()))),
         'slack-autosend': (('slack_token', lambda: not slack.enabled),),
-        'tag-report': (('slack_token', lambda: not slack.enabled), ('slack_autosend', lambda: not features.on('slack-autosend'))),
-        'warn-digest': (('slack_token', lambda: not slack.enabled), ('slack_autosend', lambda: not features.on('slack-autosend'))),
+        'tag-report': (('slack_post', lambda: not slack.enabled), ('slack_post_autosend', lambda: not features.on('slack-autosend'))),
+        'warn-digest': (('slack_post', lambda: not slack.enabled), ('slack_post_autosend', lambda: not features.on('slack-autosend'))),
         'slack-listener': (('slack_app_token', lambda: link.app_token() == ''), ('slack_token', lambda: not slack.enabled), ('investigator', lambda: not investigator_ready()),
                            ('listen_mode', lambda: settings.slack_listen == 'off')),
         'mcp': (('sso', lambda: not signon.active()),),
@@ -1826,6 +1849,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     app.state.auto_send = auto
     app.state.tag_report = tag_report
     app.state.warn_digest = warn_digest
+    app.state.follow_ups = follow_ups
     app.state.slack_people = slack_people
     app.state.auto_assign = auto_assign
     app.state.slack_fallback = fallback

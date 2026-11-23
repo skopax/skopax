@@ -256,6 +256,13 @@ STATIC = (
     T('investigate.max-cards', 'investigate_max_cards', INV, 'Cards per run', 'How many open cards one investigator run takes at most', 'int', 1, 20),
     T('investigate.refire-hours', 'investigate_refire_hours', INV, 'Hours before a reopened card is investigated again',
       'A warning card that clears and comes back keeps its earlier finding for this long instead of being investigated again. Critical cards and cards that got worse are always investigated', 'float', 1, 720),
+    T('investigate.follow-up-hours', 'investigate_follow_up_hours', INV, 'Hours between follow-up checks',
+      'How long a waiting card waits before the investigator checks its follow-up again: the done-condition of a fix outside {product}, or the settle review of a card past its auto-resolve window', 'int', 1, 72),
+    T('investigate.follow-up-days', 'investigate_follow_up_days', INV, 'Days of follow-up checks', 'After this many days of checks that found the fix not done yet, the follow-up check gives up and leaves the card to people', 'int', 1, 30),
+    T('investigate.follow-up-close-hours', 'investigate_follow_up_close_hours', INV, 'Hours before an announced close',
+      'After a check finds a waiting card fixed or over, {product} says so in its Slack thread and closes it this many hours later unless it fires again, a person acts on it or someone presses Keep open', 'int', 1, 48),
+    T('investigate.settle-max-per-day', 'investigate_settle_max_per_day', INV, 'Follow-up checks per day',
+      'Follow-up checks and settle reviews the investigator runs per day, all cards together; they also count against the daily limit; 0 turns them off', 'int', 0, 200),
     T('investigate.rooms', 'investigate_rooms', INV, 'Parallel rooms', 'How many asks, clicks and assessments run at once next to the card run', 'int', 1, 6),
     T('investigate.max-tool-calls', 'investigate_max_tool_calls', INV, 'Tool calls per card run', 'Tool call budget of a card run', 'int', 5, 60),
     T('investigate.assess-max-tool-calls', 'investigate_assess_max_tool_calls', INV, 'Tool calls per assessment', 'Tool call budget of a deploy-report assessment', 'int', 5, 40),
@@ -286,8 +293,10 @@ STATIC = (
     T('slack.great-emoji', 'slack_great_emoji', SLACK, 'Thank-you emoji', 'The reaction the bot puts on a thank-you', 'text'),
     T('slack.remind-hours', 'slack_remind_hours', SLACK, 'Reminder after (h)', 'Reminds a posted card nobody acted on after N hours; 0 turns reminders off', 'float', 0, 168, live=False),
     T('slack.clear-note-minutes', 'slack_clear_note_minutes', SLACK, 'Cleared note after (min)', 'Says in the thread that a posted card cleared after N minutes', 'float', 0, 240, live=False),
-    T(WARN_DIGEST_KEY, 'warn_digest_at', SLACK, 'Warnings digest at', 'Time of day (HH:MM, install time zone) of the Slack post that lists the open Warning cards nobody is assigned to or working on; '
-      'it posts Monday to Friday only, never on Saturday or Sunday, and nothing on a day with no such card. The latest time is 23:55; empty turns it off', 'text'),
+    T(WARN_DIGEST_KEY, 'warn_digest_at', SLACK, 'Warnings digest at', 'Time of day (HH:MM, install time zone) of the daily warnings digest, the Slack post and the mail to responsibles that list the open Warning cards nobody is assigned to or working on; '
+      'both run Monday to Friday only, never on Saturday or Sunday, and send nothing on a day with no such card. The latest time is 23:55; empty turns it off', 'text'),
+    T('routes.wait-minutes', 'routes_wait_minutes', SLACK, 'Routes wait for the investigation (min)', 'A route (Teams, Email) holds a card below Post immediately from until the investigator has finished it, '
+      'then sends it with the finding; with no finished investigation after N minutes it sends the plain card. Business routes keep waiting for their business sentence', 'int', 5, 240),
     T('routes.slack-echo', 'routes_slack_echo', SLACK, 'Echo route posts to Slack', 'Also posts a card a route (such as a Teams channel) takes to the Slack channel when Slack has not posted it yet, and says in its thread which route got it; a route can override this with its own Also post to Slack field', 'bool'),
     T(POST_SEV_KEY, 'slack_post_sev', SLACK, 'Post immediately from', 'Posts a card of this severity or higher to the main channel with its numbers when it is pushed (new, escalated or reopened; information is never posted); the investigator\'s findings follow as a reply in its thread. '
       'Many cards opening together are not posted at once, and the investigator, when it runs, groups them. Off leaves every card to the investigator\'s posts and to people', 'choice', choices=SLACK_POST_SEVS, choice_labels=POST_SEV_LABELS),
@@ -341,6 +350,7 @@ STATIC = (
     feature_tunable('core.update-check', 'update_check'),
     feature_tunable('core.tag-report', 'tag_report_on'),
     feature_tunable('core.warn-digest', 'warn_digest_on'),
+    feature_tunable('core.settle', 'settle_on'),
     feature_tunable('core.langfuse-tracing', 'langfuse_tracing_on'),
     feature_tunable('core.hide-attribution', 'hide_attribution'),
 ) + tuple(T(key, field, RULES, label, 'Thresholds of the ' + label + ' cards; an empty field uses the default', 'rules', defaults=dict(defaults)) for key, field, label, defaults in RULE_SETS) + (
@@ -351,8 +361,11 @@ STATIC = (
       f'at most {EXTRA_MAX}. A name is 1 to {EXTRA_NAME_MAX} letters, digits, spaces, dots, dashes or underscores, and an address is http:// or https:// without a user name or password. '
       'Only reachability is checked, and no credentials are sent', 'text'),
 ) + (
-    T(TAG_REPORT_KEY, 'tag_report_at', TAGS, 'Daily report at', 'Time of day (HH:MM, install time zone) of the Slack report that names the responsibles of each tag with open cards; '
-      'it posts Monday to Friday only, never on Saturday or Sunday. The latest time is 23:55; empty turns it off', 'text'),
+    T(TAG_REPORT_KEY, 'tag_report_at', TAGS, 'Daily report at', 'Time of day (HH:MM, install time zone) of the daily tag report, the Slack post and the mail to responsibles: the post names the responsibles of each tag with open cards, the mail gives each of them their part; '
+      'both run Monday to Friday only, never on Saturday or Sunday. The latest time is 23:55; empty turns it off', 'text'),
+    T('tags.mail', 'tags_mail', TAGS, 'Mail responsibles their part', 'Mails each responsible with an email address their part, apart from Slack: the daily tag report with the open cards of their tags, '
+      'the daily warnings digest with the waiting Warning cards of their tags, and the plug-in digests that name one of their tags. It needs a Mail server that is on, and goes out even while Slack is not set up '
+      'or Slack auto-send is off; a responsible with nothing in their tags gets no mail', 'bool'),
 ) + tuple(
     tag_tunable(tag, label) for tag, label in tags.TAGS.items()) + SIGN_IN_ROLES + MCP_ACCESS
 

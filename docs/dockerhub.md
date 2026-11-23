@@ -4,7 +4,7 @@
 
 ![Skopax board](https://raw.githubusercontent.com/skopax/skopax/main/docs/images/board-dark.png)
 
-- **30+ built-in plug-ins:** Prometheus, Kubernetes, Elasticsearch, Grafana, Kafka, Redis, Cloudflare, GitHub, GitLab, Jira, Confluence and more, plus custom PromQL and ES|QL checks.
+- **35+ built-in plug-ins:** Prometheus, Kubernetes, Elasticsearch, Grafana, Kafka, Redis, Cloudflare, GitHub, GitLab, Jira, Confluence and more, plus custom PromQL and ES|QL checks.
 - **One board for the team:** cards with owners, tags, a full history and links; info findings stay on a separate Information page.
 - **Tag responsibles:** pick people per tag, new cards are auto-assigned to them in turn, and a daily Slack report names them.
 - **Slack and Teams:** cards posted to the right channel as they happen, a daily tag report, business-day timers.

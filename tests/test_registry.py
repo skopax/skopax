@@ -175,7 +175,7 @@ def test_core_version_range_is_checked():
 
     # then
     assert loaded.state == 'incompatible'
-    assert skopax.__version__ == '0.5.9' and '0.5.9' in loaded.reason and '>=9' in loaded.reason
+    assert skopax.__version__ == '0.5.10' and '0.5.10' in loaded.reason and '>=9' in loaded.reason
     assert [p.id for p in reg.usable()] == ['demo']
 
 
@@ -1116,3 +1116,25 @@ def test_every_builtin_plugin_says_how_to_set_it_up():
     # then
     assert missing == []
     assert unlinked == []
+
+
+def test_only_the_teams_test_posts_where_everyone_sees_it():
+    # given
+    from skopax.plugins import email_route, mail_server, slack, teams
+
+    # when
+    shown = {p.id: registry.describe(p)['testPosts'] for p in (teams.PLUGIN, email_route.PLUGIN, slack.PLUGIN, mail_server.PLUGIN, DEMO)}
+
+    # then
+    assert shown == {teams.PLUGIN.id: True, email_route.PLUGIN.id: False, slack.PLUGIN.id: False, mail_server.PLUGIN.id: False, DEMO.id: False}
+
+
+def test_no_other_built_in_plugin_with_a_test_is_marked_as_posting():
+    # given
+    plugins = [getattr(importlib.import_module(path), registry.ATTR) for path in registry.BUILTIN]
+
+    # when
+    marked = sorted(p.id for p in plugins if p.test is not None and p.test_posts)
+
+    # then
+    assert marked == ['teams']

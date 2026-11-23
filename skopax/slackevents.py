@@ -955,7 +955,7 @@ class Clicks:
         return msg('slackevents.click.resolve_check_failed_bare')
 
     def _card_action(self, channel: str, user: str, login: str, ask: dict, call: dict, message: dict, thread_ts: str | None, swap: bool = True) -> str:
-        if call.get('action') not in CARD_ACTIONS:
+        if call.get('action') not in CARD_ACTIONS + ('keep',):
             return self._tell(channel, user, msg('slackevents.click.gone'), thread_ts, 'gone')
         label = card_action_label(call)
         with messages.speaking(messages.ENGLISH):

@@ -3,12 +3,12 @@ var NT_LABELS = {
   assigned: 'Assigned to you', unassigned: 'No longer assigned to you', progress: 'In progress', resolved: 'Resolved', reopened: 'Reopened', ticket: 'Jira ticket linked',
   severity: 'Severity changed', merged: 'Merged into another card', ungrouped: 'Taken out of its group', muted: 'Muted', known: 'Marked as known noise', unmuted: 'Unmuted',
   auto: 'Auto-resolved', fired: 'Fired again', escalated: 'Got worse', stopped: 'Stopped firing', run: 'Investigation finished', slack: 'Posted to Slack',
-  thread: 'Slack thread update', reminder: 'Reminder sent', answer: 'Chat answer ready'
+  thread: 'Slack thread update', reminder: 'Reminder sent', answer: 'Chat answer ready', closing: 'Closes soon'
 };
 var NT_TONE = {
   assigned: 'k-warn', unassigned: 'plain', progress: 'k-info', resolved: 'k-good', reopened: 'k-warn', ticket: 'k-info', severity: 'k-warn', merged: 'plain', ungrouped: 'plain',
   muted: 'k-muted', known: 'k-muted', unmuted: 'plain', auto: 'k-good', fired: 'k-crit', escalated: 'k-crit', stopped: 'k-cleared', run: 'k-act', slack: 'k-act', thread: 'k-act',
-  reminder: 'k-warn', answer: 'k-act'
+  reminder: 'k-warn', answer: 'k-act', closing: 'k-good'
 };
 var NT = {on: false, ready: false, tab: false, mark: false, items: [], unread: 0, more: false, busy: false};
 

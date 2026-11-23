@@ -20,6 +20,7 @@ SUMMARY_LIMIT = 300
 CARD_WRITES = ('assess', 'note', 'triage', 'group', 'tag')
 SLACK_WRITES = ('slack_draft', 'slack_send', 'slack_update')
 REPORT_WRITES = ('report_brief', 'report_slack_draft')
+REVIEW_VERDICTS = {'verify': 'follow_up_verdict', 'settle': 'settle_verdict'}
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class Run:
     asker: bool
     shadow: bool
     role: str | None = None
+    review: str | None = None
 
 
 def _core(name: str, kind: str, per_run: int | None = None, scan: bool = False, needs: str | None = None) -> Spec:
@@ -70,6 +72,8 @@ CORE: dict[str, Spec] = {s.name: s for s in (
     _core('slack_send', 'write'),
     _core('slack_update', 'write'),
     _core('slack_tell', 'write'),
+    _core('follow_up_verdict', 'write'),
+    _core('settle_verdict', 'write'),
     _core(TAG, 'write'),
     _core('propose_ticket', 'propose', needs='jira'),
     _core('propose_card_action', 'propose'),
@@ -158,6 +162,9 @@ class ToolSet:
 
     def offered(self, run: Run) -> list[str]:
         names = [n for n, s in CORE.items() if s.kind == 'read']
+        if run.review:
+            serving = self.serving()
+            return [n for n in names + [REVIEW_VERDICTS[run.review]] if self.needed(n, serving)] + [tool.name for _, tool, _ in runnable(self.runtime) if tool.kind == 'read']
         if run.read_only:
             names += ['propose_card_action'] + (['propose_investigation'] if run.chat else ['propose_ticket'] if run.keys else [])
         elif run.report:

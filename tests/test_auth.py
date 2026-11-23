@@ -32,7 +32,7 @@ THREE_DAYS = 3 * DAY
 ISSUER = 'https://idp.example.com'
 ROLE = 'SKOPAX_OPERATOR'
 FEATURES_ON = {'investigator': True, 'chat': True, 'slack-autosend': True, 'slack-listener': True, 'mcp': True, 'public-read': True, 'push': True, 'postdeploy': True,
-               'self-review': False, 'update-check': True, 'tag-report': True, 'warn-digest': True, 'langfuse-tracing': False, 'hide-attribution': False}
+               'self-review': False, 'update-check': True, 'tag-report': True, 'warn-digest': True, 'settle': True, 'langfuse-tracing': False, 'hide-attribution': False}
 FEATURES_OFF = {f: off_text(f) for f, on in FEATURES_ON.items() if not on}
 INSTANCES = {'current': {'name': 'skopax.example.com', 'letter': 'S'}, 'links': []}
 

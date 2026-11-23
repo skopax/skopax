@@ -1226,6 +1226,13 @@ function intForm(slot, p, inst) {
     intFocusFirst();
   });
   form.querySelector('.int-test').addEventListener('click', async function () {
+    var testBtn = this, ask = window.__skopaxConfirm;
+    if (p.testPosts && typeof ask === 'function') {
+      var go = await ask('Post a test card?', 'This posts a test card to the channel, where everyone in it sees it. Teams does not let you delete it unless an admin allows owners to delete messages.', 'Post test card');
+      if (!go) { if (testBtn.isConnected) testBtn.focus(); return; }
+      if (!testBtn.isConnected) return;
+      testBtn.focus();
+    }
     var pressed = document.activeElement;
     form.querySelectorAll('.int-field-msg').forEach(function (m) { intSay(m, '', false); });
     intSay(form.querySelector('.int-form-msg'), '', false);

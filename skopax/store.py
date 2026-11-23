@@ -400,6 +400,7 @@ class Store:
         self.quality = db['quality']
         self.route_tries = db['route_retries']
         self.route_health = db['route_health']
+        self.route_marks = db['route_since']
         self.plugin_memos = db['plugin_memos']
 
     def ensure_indexes(self) -> None:
@@ -408,6 +409,7 @@ class Store:
         self.activity.create_index('at', expireAfterSeconds=ACTIVITY_KEEP_DAYS * 86400)
         self.activity.create_index([('t', DESCENDING), ('_id', DESCENDING)])
         self.activity.create_index([('key', ASCENDING), ('t', DESCENDING)], sparse=True)
+        self.activity.create_index([('keys', ASCENDING), ('t', DESCENDING)], sparse=True)
         self.actions.create_index([('target', ASCENDING), ('requestedAt', DESCENDING)])
         self.actions.create_index([('requestedBy', ASCENDING), ('requestedAt', DESCENDING)])
         self.anomalies.create_index([('pos', ASCENDING)])
@@ -505,6 +507,13 @@ class Store:
 
     def warn_digest_at(self) -> float | None:
         at = (self.db['meta'].find_one({'_id': WARN_DIGEST_ID}) or {}).get('at')
+        return float(at) if isinstance(at, (int, float)) and not isinstance(at, bool) else None
+
+    def note_daily_mail(self, name: str, at: float) -> None:
+        self.db['meta'].replace_one({'_id': f'{name}-last'}, {'_id': f'{name}-last', 'at': float(at)}, upsert=True)
+
+    def daily_mail_at(self, name: str) -> float | None:
+        at = (self.db['meta'].find_one({'_id': f'{name}-last'}) or {}).get('at')
         return float(at) if isinstance(at, (int, float)) and not isinstance(at, bool) else None
 
     def tag_owners(self) -> dict[str, list[str]]:
@@ -1413,7 +1422,7 @@ class Store:
         return [{'by': r['_id'], 'asks': r['asks']} for r in rows]
 
     def recent_investigations(self, mode: str, since: str) -> list[dict]:
-        return [self._run(d) for d in self.investigations.find({'mode': mode, 'startedAt': {'$gte': since}}, RUN_FIELDS, sort=[('startedAt', ASCENDING)])]
+        return [self._run(d) for d in self.investigations.find({'mode': mode, 'startedAt': {'$gte': since}, 'trigger': {'$ne': 'review'}}, RUN_FIELDS, sort=[('startedAt', ASCENDING)])]
 
     def add_screenshot(self, doc: dict) -> None:
         self.screenshots.insert_one(doc)
@@ -1472,7 +1481,7 @@ class Store:
         return [{k: v for k, v in _with_id(d).items() if k != 'at'} for d in self.activity.find(query, sort=[('t', DESCENDING), ('_id', DESCENDING)], limit=limit)]
 
     def card_activity(self, key: str, limit: int, hide: tuple[str, ...] = ()) -> list[dict]:
-        query = {'key': key} | ({'kind': {'$nin': list(hide)}} if hide else {})
+        query = {'$or': [{'key': key}, {'keys': key}]} | ({'kind': {'$nin': list(hide)}} if hide else {})
         return [{k: v for k, v in _with_id(d).items() if k != 'at'} for d in self.activity.find(query, sort=[('t', DESCENDING), ('_id', DESCENDING)], limit=min(limit, CARD_HISTORY_MAX))]
 
     def card_actions(self, key: str, limit: int) -> list[dict]:
@@ -1715,6 +1724,20 @@ class Store:
     def route_retries_before(self, at: str) -> None:
         self.route_tries.delete_many({'at': {'$lt': at}})
 
+    def route_since(self) -> dict[str, dict]:
+        return {d['_id']: d for d in self.route_marks.find({})}
+
+    def route_since_set(self, route: str, sig: str, at: str) -> None:
+        if self.route_marks.update_one({'_id': route, '$or': [{'sig': {'$ne': sig}}, {'gone': True}]}, {'$set': {'sig': sig, 'since': at, 'gone': False}}).matched_count:
+            return
+        try:
+            self.route_marks.insert_one({'_id': route, 'sig': sig, 'since': at, 'gone': False})
+        except DuplicateKeyError:
+            return
+
+    def route_since_gone(self, route: str) -> None:
+        self.route_marks.update_one({'_id': route}, {'$set': {'gone': True}})
+
     def route_outcome(self, route: str, reason: str | None, link: str | None, at: str) -> None:
         self.route_health.replace_one({'_id': route}, {'_id': route, 'reason': reason, 'link': link, 'at': at}, upsert=True)
 
@@ -1760,6 +1783,52 @@ class Store:
         with self._locked():
             self._claim(None)
             self.anomalies.update_one({'_id': key, 'ticketOffered.ts': ts}, {'$unset': {'ticketOffered': ''}})
+
+    def follow_up_set(self, key: str, fields: dict) -> int:
+        doc = self._anomaly(key)
+        update = {}
+        for field, value in fields.items():
+            update.setdefault('$unset' if value is None else '$set', {})[f'followUp.{field}'] = '' if value is None else value
+        with self._locked():
+            rev, _ = self._claim(None)
+            self.anomalies.update_one({'_id': doc['_id'], '$or': [{'followUp': None}, {'followUp': {'$not': {'$type': 'object'}}}]}, {'$set': {'followUp': {}}})
+            if update:
+                self.anomalies.update_one({'_id': doc['_id']}, update)
+            return rev
+
+    def follow_up_if(self, key: str, close_at: str, fields: dict) -> bool:
+        update = {}
+        for field, value in fields.items():
+            update.setdefault('$unset' if value is None else '$set', {})[field] = '' if value is None else value
+        with self._locked():
+            self._claim(None)
+            return bool(self.anomalies.update_one({'_id': key, 'followUp.closeAt': close_at}, update).modified_count)
+
+    def close_follow_up(self, key: str, close_at: str, resolution: dict, basis: dict | None = None) -> bool:
+        at = iso(utc_now())
+        query = {'_id': key, 'followUp.closeAt': close_at, 'status': 'cleared', 'triage': {'$nin': ['handled', 'investigating']}, 'muted': {'$in': [None, False, '']}}
+        if isinstance(basis, dict):
+            query['triage'] = basis['triage'] if basis.get('triage') else {'$nin': ['handled', 'investigating', 'progress']}
+            for field, kept in (('owner', basis.get('owner')), ('assigned.at', basis.get('assigned')), ('ticket', basis.get('ticket')), ('parent', basis.get('parent'))):
+                query[field] = kept if kept else {'$in': [None, '']}
+        update = {'$set': {'triage': 'handled', 'triagedAt': at, 'resolution': {'at': at} | {k: v for k, v in resolution.items() if v not in (None, '')}, 'followUp.closedAt': at},
+                  '$unset': {'triagedBy': '', 'cameBack': '', 'previousResolution': '', 'followUp.closeAt': ''}}
+        with self._locked():
+            self._claim(None)
+            if not self.anomalies.update_one(query, update).modified_count:
+                return False
+            self.record_card(self.anomalies.find_one({'_id': key}) or {}, 'handled')
+            return True
+
+    def person_asked_since(self, key: str, since: str) -> bool:
+        if not since:
+            return False
+        query = {'type': {'$in': ['dive', 'ask']}, 'requestedAt': {'$gt': since}, 'requestedBy': {'$nin': [None, '', 'server', POD_BY, 'pod']},
+                 '$or': [{'key': key}, {'target': key}, {'cards': key}]}
+        return self.actions.find_one(query, {'_id': 1}) is not None
+
+    def keep_open(self, key: str, by: str | None) -> int:
+        return self.follow_up_set(key, {'keptAt': iso(utc_now()), 'keptBy': by or 'someone', 'closeAt': None})
 
     def slack_reminded(self, key: str, post_ts: str, reminder: dict) -> bool:
         with self._locked():
@@ -2038,6 +2107,11 @@ class Store:
     def action_done_at(self, kind: str, target: str) -> str | None:
         doc = next(iter(self.actions.find({'type': kind, 'target': target, 'status': 'done'}, {'doneAt': 1}, sort=[('doneAt', DESCENDING), ('_id', DESCENDING)], limit=1)), None)
         return doc.get('doneAt') if doc else None
+
+    def action_tried_at(self, kind: str, target: str) -> str | None:
+        doc = next(iter(self.actions.find({'type': kind, 'target': target, 'status': {'$in': ['done', 'failed']}}, {'doneAt': 1, 'failedAt': 1},
+                                          sort=[('requestedAt', DESCENDING), ('_id', DESCENDING)], limit=1)), None)
+        return (doc.get('doneAt') or doc.get('failedAt')) if doc else None
 
     def add_action(self, action: dict, status: str = 'requested', result: str | None = None) -> dict:
         now = iso(utc_now())

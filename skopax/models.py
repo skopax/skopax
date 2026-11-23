@@ -14,7 +14,7 @@ IssueKey = Annotated[str, StringConstraints(pattern=r'^[A-Z][A-Z0-9]{1,9}-\d{1,7
 SignalName = Annotated[str, StringConstraints(pattern=r'^[a-z0-9-]{1,40}$')]
 CheckId = Annotated[str, StringConstraints(min_length=1, max_length=64)]
 WebLink = Annotated[str, StringConstraints(pattern=r'^https://\S+$', max_length=4000)]
-ActionType = Literal['dive', 'ask', 'mute', 'unmute', 'reopen', 'link', 'severity', 'known', 'resolve', 'take', 'group', 'ticket', 'postdeploy', 'assess']
+ActionType = Literal['dive', 'ask', 'mute', 'unmute', 'reopen', 'link', 'severity', 'known', 'resolve', 'take', 'group', 'ticket', 'postdeploy', 'assess', 'keep']
 ActionStatus = Literal['requested', 'processing', 'done', 'failed', 'cancelled']
 
 

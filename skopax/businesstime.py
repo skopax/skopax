@@ -38,3 +38,19 @@ def business_elapsed(start: float, end: float, zone: tzinfo) -> float:
 
 def elapsed(start: float, end: float, zone: tzinfo | None) -> float:
     return end - start if zone is None else business_elapsed(start, end, zone)
+
+
+def business_add(start: float, seconds: float, zone: tzinfo | None) -> float:
+    if zone is None:
+        return start + seconds
+    t, left = start, max(seconds, 0)
+    while True:
+        monday = _monday(t, zone)
+        week_end = _midnight(monday + WORKDAYS, zone)
+        if t >= week_end:
+            t = _midnight(monday + WEEK, zone)
+            continue
+        if t + left <= week_end:
+            return t + left
+        left -= week_end - t
+        t = _midnight(monday + WEEK, zone)

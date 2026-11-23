@@ -20,7 +20,7 @@ LABELS = {
     'ticket': 'Jira ticket linked', 'severity': 'Severity changed', 'merged': 'Merged into another card', 'ungrouped': 'Taken out of its group',
     'muted': 'Muted', 'known': 'Marked as known noise', 'unmuted': 'Unmuted', 'auto': 'Auto-resolved', 'fired': 'Fired again', 'escalated': 'Got worse',
     'stopped': 'Stopped firing', 'run': 'Investigation finished', 'slack': 'Posted to Slack', 'thread': 'Slack thread update', 'reminder': 'Reminder sent',
-    'answer': 'Chat answer ready',
+    'answer': 'Chat answer ready', 'closing': 'Closes soon',
 }
 BURST_S = 60
 FLAP_S = 3600

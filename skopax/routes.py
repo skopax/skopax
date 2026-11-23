@@ -11,10 +11,13 @@ from dataclasses import dataclass
 
 from skopax import information, severity, tags
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
+from skopax.cardposts import summary_body
 from skopax.cardlink import card_url, chat_url
 from skopax.contract import ECHO_FIELD
 from skopax.engine import iso as epoch_iso, parent_name, parse_iso
 from skopax.errkind import Authored, kind
+from skopax.investigator.select import own_findings
+from skopax.investigator.tools import draft_problem
 from skopax.kit.links import sendable
 from skopax.messages import msg
 from skopax.slack import ENTITY_CUT, SLACK_MARKS, cut, esc, thread_why
@@ -51,6 +54,13 @@ ECHO_WAIT_MAX_S = 21600.0
 ECHO_TRIES = 5
 MD_LINK = re.compile(r'\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\(([^)]*)\)')
 REASON_MAX = 300
+SLACK_LINK = re.compile(r'<(https?://[^|>\s]+)\|([^>]*)>')
+SLACK_URL = re.compile(r'<(https?://[^|>\s]+)>')
+SLACK_BOLD = re.compile(r'(?<![\w*])\*([^*\n]+)\*(?![\w*])')
+WAIT_MINUTES = 30
+INVESTIGATING = 'waiting for the investigation'
+SINCE_SLACK_S = 2 * PASS_S
+HELD_MARGIN_S = 3600
 
 
 def came_back_line(card: dict) -> str:
@@ -96,6 +106,32 @@ def grouped(card: dict, by_key: dict | None) -> bool:
 
 def said(card: dict) -> str:
     return str((card.get('business') or {}).get('text') or '').strip()
+
+
+class Unread(dict):
+    pass
+
+
+def stamp_of(value: object) -> float | None:
+    try:
+        return parse_iso(str(value)) if value else None
+    except (TypeError, ValueError):
+        return None
+
+
+def finished(card: dict) -> bool:
+    note = card.get('note') if isinstance(card.get('note'), dict) else {}
+    at, since = stamp_of(note.get('at')), stamp_of(card.get('firstSeen'))
+    return card.get('noteBy') == 'pod' and bool(str(note.get('text') or '').strip()) and at is not None and (since is None or at >= since)
+
+
+def signature(route: 'Route') -> str:
+    given = [route.plugin, route.instance, sorted(route.tags), list(route.keys), route.min_sev, route.link or '']
+    return hashlib.sha256(repr(given).encode()).hexdigest()[:LINK_HASH]
+
+
+def unslacked(text: str) -> str:
+    return SLACK_BOLD.sub(r'\1', SLACK_URL.sub(r'\1', SLACK_LINK.sub(r'\2 (\1)', text)))
 
 
 def unlinked(text: str) -> str:
@@ -271,7 +307,7 @@ def route_of(plugin, item) -> Parsed:
 
 class Routes:
     def __init__(self, store, runtime, settings, clock: Callable[[], float] = time.time, attribution: Callable[[], dict | None] = lambda: None,
-                 timeout: float = HOOK_TIMEOUT_S, base: Callable[[], str] | None = None, autostart: bool = False):
+                 timeout: float = HOOK_TIMEOUT_S, base: Callable[[], str] | None = None, autostart: bool = False, only_new: bool = False):
         self.store = store
         self.runtime = runtime
         self.settings = settings
@@ -290,6 +326,9 @@ class Routes:
         self._queued_at = 0.0
         self._running = False
         self._flying: dict[str, tuple[float, list[dict]]] = {}
+        self.investigating: Callable[[], bool] = lambda: False
+        self.only_new = only_new
+        self.check: Callable[[], Callable[[str], str | None]] = lambda: draft_problem
 
     def setting(self, plugin_id: str, key: str) -> object:
         default = DEFAULTS[key]
@@ -330,6 +369,78 @@ class Routes:
 
     def echoing(self, route: Route) -> bool:
         return route.echo == 'on' or (route.echo != 'off' and getattr(self.settings, 'routes_slack_echo', False) is True)
+
+    def marks(self, live: list[Route], now: float, cards: Iterable[dict] = ()) -> dict[str, float] | None:
+        if not self.only_new:
+            return None
+        mark = epoch_iso(now - SINCE_SLACK_S)
+        try:
+            rows = self.store.route_since()
+            for route in live:
+                row = rows.get(route.id) or {}
+                sig = signature(route)
+                if row.get('sig') != sig or row.get('gone'):
+                    self.store.route_since_set(route.id, sig, mark)
+            ids = {r.id for r in live}
+            for route_id, row in rows.items():
+                if route_id not in ids and not row.get('gone'):
+                    self.store.route_since_gone(route_id)
+            rows = self.store.route_since()
+        except Exception as e:
+            log.warning('the moments routes were set up were not read, so this pass routes only new pushes and held cards: %s', kind(e))
+            return Unread()
+        return {route_id: at for route_id, row in rows.items() if not row.get('gone') and (at := stamp_of(row.get('since'))) is not None}
+
+    def fresh(self, since: dict[str, float] | None, route: Route, card: dict) -> bool:
+        if since is None:
+            return True
+        if isinstance(since, Unread):
+            return False
+        pushed, begun = stamp_of(card.get('pushedAt')), since.get(route.id)
+        return pushed is not None and begun is not None and pushed >= begun
+
+    def holding(self, records: dict, route: Route, card: dict, now: float) -> bool:
+        row = records.get((route.id, card['key'])) or {}
+        return row.get('reason') == INVESTIGATING and self.young(row, now)
+
+    def young(self, row: dict, now: float) -> bool:
+        at = stamp_of(row.get('at'))
+        return at is not None and at >= now - self.wait_s() - HELD_MARGIN_S
+
+    def stopped(self, card: dict) -> bool:
+        return card.get('status') == 'cleared' and not card.get('muted') and not card.get('expired') and card.get('triage') != 'handled'
+
+    def wait_s(self) -> float:
+        value = getattr(self.settings, 'routes_wait_minutes', WAIT_MINUTES)
+        return 60.0 * (value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else WAIT_MINUTES)
+
+    def at_once(self, card: dict) -> bool:
+        floor = getattr(self.settings, 'slack_post_sev', '')
+        return floor in SEV_RANK and SEV_RANK.get(card.get('sev'), -1) >= SEV_RANK[floor]
+
+    def live(self) -> bool:
+        try:
+            return self.investigating() is True
+        except Exception as e:
+            log.warning('the investigator state was not read, so route posts do not wait for it: %s', kind(e))
+            return False
+
+    def ready(self, card: dict, now: float) -> bool:
+        if self.at_once(card) or finished(card) or card.get('triage') == 'progress' or card.get('src') in own_findings() or not self.live():
+            return True
+        begun = stamp_of(card.get('pushedAt') or card.get('firstSeen'))
+        return begun is None or now - begun >= self.wait_s()
+
+    def finding(self, card: dict) -> str:
+        if not finished(card):
+            return ''
+        try:
+            check = self.check()
+        except Exception as e:
+            log.warning('the link rules for route findings could not be read: %s', kind(e))
+            return ''
+        body = summary_body(card, check) or {}
+        return unlinked(unslacked('\n'.join(t for t in (str(body.get('headline') or '').strip(), str(body.get('text') or '').strip()) if t)))
 
     def inert(self, text: object) -> str:
         return esc(text).translate(SLACK_MARKS)
@@ -506,7 +617,8 @@ class Routes:
     def cards_message(self, cards: list[dict], mention: Iterable[str], label: str | None) -> dict:
         base = self._base()
         shown = cards[:MAX_CARDS]
-        rows = [self._card(a) | {'what': tags.clip(a.get('what'), WHAT_LIMIT), 'link': card_url(base, a['key'], number(a)), 'chat': chat_url(base, a['key'], number(a))} for a in shown]
+        rows = [self._card(a) | {'what': tags.clip(a.get('what'), WHAT_LIMIT), 'link': card_url(base, a['key'], number(a)), 'chat': chat_url(base, a['key'], number(a))}
+                | ({'finding': found} if (found := self.finding(a)) else {}) for a in shown]
         title = msg('routes.title', label=label) if label else msg('routes.title_one') if len(cards) == 1 else msg('routes.title_many', count=len(cards))
         return self._message('card', title, shown[0], mention, text=rows[0]['what'], cards=rows, more=max(0, len(cards) - MAX_CARDS))
 
@@ -668,6 +780,24 @@ class Routes:
             log.warning('route post of %s to %s not claimed: %s', card['key'], route.id, kind(e))
             return False
 
+    def claim_since(self, card: dict, route: Route, since: str, post: dict) -> bool:
+        try:
+            return self.store.teams_claim(card['key'], route.instance, since, post, plugin=route.plugin, rev=False)
+        except Exception as e:
+            log.warning('route post of %s to %s not claimed: %s', card['key'], route.id, kind(e))
+            return False
+
+    def claim_push(self, card: dict, route: Route, post: dict) -> bool:
+        if self.claim_since(card, route, str(card.get('pushedAt') or card.get('firstSeen') or ''), post):
+            return True
+        try:
+            self.store.anomaly(card['key'])
+        except NotFound:
+            return True
+        except Exception as e:
+            log.warning('route post of %s to %s not claimed: %s', card['key'], route.id, kind(e))
+        return False
+
     def delivered(self, card: dict, post: dict) -> None:
         try:
             self.store.teams_delivered(card['key'], post)
@@ -764,12 +894,15 @@ class Routes:
                 out[r.id + suffix] = self.noted(r, mine, by)
         return out
 
-    def tagged(self, cards: list[dict], by: str = 'server', now: float | None = None, live: list[Route] | None = None, records: dict | None = None) -> dict[str, list[str]]:
+    def tagged(self, cards: list[dict], by: str = 'server', now: float | None = None, live: list[Route] | None = None, records: dict | None = None,
+               since: dict[str, float] | None = None) -> dict[str, list[str]]:
         now = self.clock() if now is None else now
         records = self._records(now) if records is None else records
         sent: dict[str, list[str]] = {}
         by_key = {c.get('key'): c for c in cards}
-        for group in self.shared(self.routes() if live is None else live):
+        live = self.routes() if live is None else live
+        since = self.marks(live, now, cards) if since is None else since
+        for group in self.shared(live):
             plugin = group[0].plugin
             floor = SEV_RANK[self.floor(plugin, True)]
             days = self.setting(plugin, 'repeat-days')
@@ -788,32 +921,77 @@ class Routes:
                 done, cleared, claims = self.together(group, cards, by, now, lambda r, a: loud(a) and r.fixed_due(a, now, by_key) and self.closed_after_told(a, r)
                                                       and not held(records, r.id + FIXED, r.link, a['key'], now), self.claim_fixed, True)
                 sent.update(self.one_by_one(group, done, cleared, claims, lambda a: self.fixed_message(a, named(a, team_tags)), by, records, now, FIXED))
-            due, taken, claims = self.together(group, cards, by, now, lambda r, a: loud(a) and r.due(a, by_key) and not self.recent(group, r, a, now, days)
-                                               and not held(records, r.id, r.link, a['key'], now), self.claim, False)
+            def due_now(r: Route, a: dict) -> bool:
+                kept = not r.business and self.holding(records, r, a, now)
+                row = records.get((r.id, a['key'])) or {}
+                retrying = bool(row) and not row.get('gaveUp') and row.get('reason') != INVESTIGATING
+                if kept and self.stopped(a):
+                    return loud(a) and r.due(a | {'status': 'open'}, by_key) and not self.recent(group, r, a, now, days)
+                if not (loud(a) and r.due(a, by_key) and (kept or retrying or self.fresh(since, r, a)) and not self.recent(group, r, a, now, days) and not held(records, r.id, r.link, a['key'], now)):
+                    return False
+                if r.business or self.ready(a, now):
+                    return True
+                if not kept:
+                    self._waits(records, r.id, r.link, a['key'], now, INVESTIGATING)
+                return False
+
+            due, taken, claims = self.together(group, cards, by, now, due_now, self.claim, False)
+            for r in group:
+                for a in cards:
+                    row = records.get((r.id, a['key'])) or {}
+                    if row.get('reason') == INVESTIGATING and (not self.young(row, now) or a.get('muted') or a.get('triage') == 'handled' or a.get('status') not in ('open', 'cleared') or a.get('expired')):
+                        self._done(records, [r.id], a['key'])
             plain = {a['key'] for r in group if r.business for a in taken.get(r.id, [])}
             sent.update(self.one_by_one(group, due, taken, claims, lambda a: self.business_message(a, named(a, team_tags), mention, self.kids(a, cards), teams_of(a, team_tags))
                                         if a['key'] in plain else self.cards_message([a], mention, named(a, tech_tags)), by, records, now))
         return sent
 
     def push(self, items: list[dict], routes: list[Route] | None = None, by: str = 'server', now: float | None = None, live: list[Route] | None = None,
-             records: dict | None = None, failed: dict[str, str] | None = None) -> dict[str, list[str]]:
+             records: dict | None = None, failed: dict[str, str] | None = None, since: dict[str, float] | None = None) -> dict[str, list[str]]:
         now = self.clock() if now is None else now
         sent = {}
         chosen = [r for r in (self.routes() if live is None else live) if not r.tagged] if routes is None else list(routes)
         if routes is None and records is None:
             records = self._records(now)
+        since = (self.marks(self.routes() if live is None else live, now, items) if since is None else since) if routes is None else None
+        since = None if isinstance(since, Unread) else since
         for route in chosen:
             cards = [a for a in items if not a.get('muted') and route.takes(a) and not held(records, route.id, route.link, a['key'], now)] if routes is None else list(items)
+            if routes is None:
+                cards = [a for a in cards if self.fresh(since, route, a)]
+            if routes is None and not route.business:
+                later = {a['key'] for a in cards if not self.ready(a, now)}
+                for key in later:
+                    self._waits(records, route.id, route.link, key, now, INVESTIGATING)
+                cards = [a for a in cards if a['key'] not in later]
             if route.business:
                 among = ordered(route.tags)
                 answers = [(a, self.attempt(route, self.business_message(a, ', '.join(teams_of(a, among)) or route.label, route.mentions, self.kids(a, items), teams_of(a, among))))
                            for a in cards]
                 cards = [a for a, why in answers if why is None]
                 missed = next((why for _, why in answers if why is not None), None)
+            elif cards and routes is None:
+                post = self._stamp(route, by, now)
+                cards = [a for a in cards if self.claim_push(a, route, post)]
+                missed = self.attempt(route, self.cards_message(cards, route.mentions, route.title)) if cards else None
+                for a in cards:
+                    if missed is None:
+                        self.delivered(a, post)
+                    else:
+                        self.unclaim(a, post)
+                if missed is not None:
+                    self._retry_later(records, route, cards, missed, now)
+                    cards = []
+                elif cards:
+                    self._changed()
+                    sent[route.id] = self.noted(route, cards, by)
+                    for a in cards:
+                        self._done(records, [route.id], a['key'])
+                    cards = []
             elif cards:
                 missed = self.attempt(route, self.cards_message(cards, route.mentions, route.title))
                 if missed is not None:
-                    self._retry_later(records if routes is None else None, route, cards, missed, now)
+                    self._retry_later(None, route, cards, missed, now)
                     cards = []
             else:
                 missed = None
@@ -845,7 +1023,7 @@ class Routes:
     def told_since(self, card: dict, route: Route, since: str) -> bool:
         return any(ours(p, {route.instance}, route.plugin) and not p.get('fixed') and str(p.get('at') or '') >= since for p in card.get('teamsPosts') or [])
 
-    def _again(self, live: list[Route], by: str, now: float, records: dict) -> dict[str, list[str]]:
+    def _again(self, live: list[Route], by: str, now: float, records: dict, since: dict[str, float] | None = None) -> dict[str, list[str]]:
         known = {r.id: r for r in live if not r.tagged}
         waiting: dict[str, list[dict]] = {}
         for (route_id, key), row in list(records.items()):
@@ -863,19 +1041,35 @@ class Routes:
                 if getattr(e, 'status', None) == 404:
                     self._done(records, [route_id], key)
                 continue
-            if card.get('status') != 'open' or card.get('muted') or self.told_since(card, route, str(row.get('at') or '')):
+            waited = row.get('reason') == INVESTIGATING
+            if waited and not self.young(row, now) and isinstance(since, Unread):
+                continue
+            stopped = waited and self.stopped(card)
+            if ((card.get('status') != 'open' and not stopped) or card.get('muted') or card.get('triage') == 'handled' or grouped(card, None) or card.get('noRoutes') is True
+                    or not route.takes(card) or (waited and not self.young(row, now) and not self.fresh(since, route, card))
+                    or self.told_since(card, route, str(row.get('at') or ''))):
                 self._done(records, [route_id], key)
                 continue
-            waiting.setdefault(route_id, []).append(card)
+            if not stopped and not self.ready(card, now):
+                continue
+            post = self._stamp(route, by, now)
+            if not self.claim_since(card, route, str(row.get('at') or ''), post):
+                continue
+            waiting.setdefault(route_id, []).append((card, post))
         sent = {}
-        for route_id, cards in waiting.items():
+        for route_id, claimed in waiting.items():
             route = known[route_id]
+            cards = [card for card, _ in claimed]
             failed = self.attempt(route, self.cards_message(cards, route.mentions, route.title))
             if failed is None:
-                sent[route_id] = self._posted(route, cards, by, now)
-                for a in cards:
-                    self._done(records, [route_id], a['key'])
+                for card, post in claimed:
+                    self.delivered(card, post)
+                    self._done(records, [route_id], card['key'])
+                self._changed()
+                sent[route_id] = self.noted(route, cards, by)
                 continue
+            for card, post in claimed:
+                self.unclaim(card, post)
             self._retry_later(records, route, cards, failed, now)
         return sent
 
@@ -888,9 +1082,12 @@ class Routes:
         try:
             live = self.routes()
             if not live:
+                self.marks(live, now)
                 return 0
             records = self._records(now)
-            sent = joined(self._again(live, by, now, records), self.push(list(pushed), by=by, now=now, live=live, records=records) if pushed else {}, self.tagged(list(changed), by, now, live, records))
+            since = self.marks(live, now, list(changed) + list(pushed))
+            sent = joined(self._again(live, by, now, records, since), self.push(list(pushed), by=by, now=now, live=live, records=records, since=since) if pushed else {},
+                          self.tagged(list(changed), by, now, live, records, since))
             self._pend(sent, live, now)
         except Exception as e:
             log.warning('route delivery skipped: %s', kind(e))

@@ -35,8 +35,9 @@ AGE_UNITS = ('dur', 'min', 'h')
 KEPT_WARNING = 'Warning: listed in Alerts kept at Warning.'
 FIXED = 'fixed'
 NO_ACTION = 'handled'
-CARRY = ('note', 'suspects', 'recommend', 'assessedAt', 'triage', 'ticket', 'owner', 'absorb', 'code', 'slackDraft', 'slackPost', 'autoSend', 'slackFallback', 'triagedBy', 'investigator', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'num', 'assigned', 'sevSet', 'resolution', 'cause', 'noteBy', 'recommendBy', 'noteFlagged', 'recommendFlagged', 'autoAssigned', 'handAssigned', 'ownerName', LIFTED, 'sevBefore', 'previousResolution', 'cameBack')
+CARRY = ('note', 'suspects', 'recommend', 'assessedAt', 'triage', 'ticket', 'owner', 'absorb', 'code', 'slackDraft', 'slackPost', 'autoSend', 'slackFallback', 'triagedBy', 'investigator', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'num', 'assigned', 'sevSet', 'resolution', 'cause', 'noteBy', 'recommendBy', 'noteFlagged', 'recommendFlagged', 'autoAssigned', 'handAssigned', 'ownerName', LIFTED, 'sevBefore', 'previousResolution', 'cameBack', 'followUp')
 POST_LISTS = ('teamsPosts', 'fixPosts')
+WHEN_SET = POST_LISTS + ('followUp',)
 SHOTS = 'screenshots'
 NO_SERVICE = (None, '', '-', '?')
 PUSH_LIMIT = 200
@@ -44,6 +45,9 @@ PUSH_FRESH_S = 3600
 SERVER_PUSH_KEEP = 10
 APPLY_ATTEMPTS = 5
 AUTO_RESOLVE_HOURS = 6
+FOLLOW_UP_DAYS = 7
+FOLLOW_CLOSE = ('closedAt', 'closeAt', 'closeKind', 'closeRef', 'announcedAt', 'announced', 'basis', 'cancelled')
+DAY_S = 24 * 3600
 RESOLVED_KEEP_S = 24 * 3600
 AUTO_RESOLVED_BY = 'auto'
 SYSTEM_VIA = SYSTEM
@@ -220,7 +224,7 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
             prev[k] = a
             ev = 'new'
         elif a['status'] == 'cleared':
-            carried = {x: a.get(x) for x in CARRY if x not in POST_LISTS or a.get(x) is not None}
+            carried = {x: a.get(x) for x in CARRY if x not in WHEN_SET or a.get(x) is not None}
             carried['cause'] = flap_cause(a, now, t)
             pushed = (a.get('pushedAt'), a.get('pushedSev'), a.get('pushedPeak'))
             closed_at = a.get('triagedAt')
@@ -242,10 +246,12 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
                 a['resolution'] = None
             if back:
                 reopened_after(a, back, t)
+            if isinstance(a.get('followUp'), dict) and a['followUp'].get('closedAt'):
+                a['followUp'] = {x: v for x, v in a['followUp'].items() if x not in FOLLOW_CLOSE}
             ev = 'reopened'
         else:
             keep = {x: a.get(x) for x in ('firstSeen', 'pushedAt', 'pushedSev', 'pushedPeak', 'peak', 'parent', BACK_AFTER_RESOLVE, SHOTS) + OFFER_MARKS + CARRY
-                    if x not in POST_LISTS + OFFER_MARKS + (BACK_AFTER_RESOLVE, SHOTS) or a.get(x) is not None}
+                    if x not in WHEN_SET + OFFER_MARKS + (BACK_AFTER_RESOLVE, SHOTS) or a.get(x) is not None}
             a.clear()
             a.update(f, **keep)
             a['lastSeen'] = t
@@ -511,14 +517,25 @@ def auto_resolve_kinds(state: dict, now: float, windows: tuple, business: tzinfo
     return out
 
 
-def auto_resolve(state: dict, now: float, hours: int, windows: tuple = (), by_severity: Mapping[str, int] | None = None, business: tzinfo | None = None) -> list[dict]:
+def pending_done(a: dict, now: float, days: int) -> bool:
+    fu = a.get('followUp')
+    if not isinstance(fu, dict) or not fu.get('doneWhen') or fu.get('flagged') or fu.get('gaveUp') or fu.get('untold') or fu.get('closedAt'):
+        return False
+    try:
+        return now - parse_iso(str(fu.get('setAt'))) < days * DAY_S
+    except ValueError:
+        return False
+
+
+def auto_resolve(state: dict, now: float, hours: int, windows: tuple = (), by_severity: Mapping[str, int] | None = None, business: tzinfo | None = None,
+                 follow_up_days: int = FOLLOW_UP_DAYS) -> list[dict]:
     t = iso(now)
     out = []
     cards = state.get('anomalies') or []
     by_key = {a['key']: a for a in cards}
     for a in summary.waiting_cards(cards):
         window = (by_severity or {}).get(a.get('sev'), hours)
-        if window <= 0 or a.get('triage') == 'investigating' or a.get('autoResolvedAt') or not a.get('clearedAt') or window_for(a, windows):
+        if window <= 0 or a.get('triage') == 'investigating' or a.get('autoResolvedAt') or not a.get('clearedAt') or window_for(a, windows) or pending_done(a, now, follow_up_days):
             continue
         window *= OWNED_WINDOWS if has_owner(a) else 1
         cleared = parse_iso(a['clearedAt'])
@@ -691,7 +708,7 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
           recurring_count: int = history.RECURRING_COUNT, recurring_days: int = history.RECURRING_DAYS, tag_rules: tuple | None = None,
           alert_twins: tuple[str, ...] = (), screen: Callable[[dict, list[PassResult]], list[PassResult]] | None = None,
           clusters: Mapping[str, tuple[str | None, ...]] | None = None, kind_windows: tuple = (),
-          severity_hours: Mapping[str, int] | None = None, business: tzinfo | None = None, alerts_warn: tuple[str, ...] = ()) -> Applied | None:
+          severity_hours: Mapping[str, int] | None = None, business: tzinfo | None = None, alerts_warn: tuple[str, ...] = (), follow_up_days: int = FOLLOW_UP_DAYS) -> Applied | None:
     all_results = results
     hooks = tags.text_hooks() if tag_rules is not None else []
     texts = None
@@ -726,7 +743,7 @@ def apply(store: Store, results: list[PassResult], now: float, links: Callable[[
         given = dict(severity_hours or {})
         given.setdefault(severity.HIGH, given.get(severity.WARN, auto_resolve_hours))
         by_severity = {sev: given.get(sev, auto_resolve_hours) for sev in SEVERITIES}
-        resolved = (auto_resolve_kinds(state, now, kind_windows, business) + auto_resolve(state, now, auto_resolve_hours, kind_windows, by_severity, business)
+        resolved = (auto_resolve_kinds(state, now, kind_windows, business) + auto_resolve(state, now, auto_resolve_hours, kind_windows, by_severity, business, follow_up_days)
                     + (follow_parents(state, now) if any(h > 0 for h in by_severity.values()) else []))
         rows = store.history_rows([a['key'] for a in state['anomalies']])
         if rows is not None:

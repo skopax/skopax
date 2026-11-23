@@ -535,6 +535,10 @@ def sender(context: ssl.SSLContext | None = None, follow: bool = True, limit: in
     return send
 
 
+def pem_sender(pem: str, follow: bool = True, limit: int | None = None, proxied: bool = True) -> Transport:
+    return sender(tls_context(pem), follow=follow, limit=limit, proxied=proxied)
+
+
 send = sender()
 direct = sender(proxied=False)
 relay_send = sender(follow=False, limit=ANSWER_LIMIT)

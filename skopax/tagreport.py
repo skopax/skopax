@@ -4,10 +4,11 @@ import threading
 import time
 from collections.abc import Callable
 
-from skopax import clock, information, severity, tags
+from skopax import clock, information, partmail, severity, tags
 from skopax.cardlink import card_url
 from skopax.engine import parse_iso
 from skopax.errkind import kind as error_kind
+from skopax.mail import flat
 from skopax.messages import fold, msg
 from skopax.slack import BLOCK_LIMIT, EMOJI, SCOPE_ERRORS, SECTION_LIMIT, SlackDown, SlackError, cut, esc, never_sent
 from skopax.store import Store
@@ -15,6 +16,8 @@ from skopax.store import Store
 log = logging.getLogger('skopax.tagreport')
 
 RUN = 'tag-report'
+MAIL_RUN = 'tag-report-mail'
+MAIL_SHOWN = 25
 FEATURE = 'tag-report'
 KEY = 'tags.report-at'
 PERIOD = 300
@@ -32,6 +35,7 @@ SCOPE = 'users:read.email'
 OWNERS_MAX = 20
 PEOPLE_TTL_S = 6 * 3600
 PEOPLE_MAX = 20
+NAME_WARN_S = 3600
 QUERY_MIN = 2
 QUERY_MAX = 100
 SOURCES = ('skopax', 'responsible', 'slack')
@@ -211,6 +215,53 @@ def build(cards: list[dict], owners: dict[str, list[str]], names: dict[str, str]
     return {'text': text, 'blocks': blocks}
 
 
+def mail_name(a: dict) -> str:
+    title = cut(flat(a.get('label') or a.get('key') or '?'), NAME_LIMIT)
+    return f"#{a['num']} {title}" if a.get('num') else title
+
+
+def mail_row(a: dict, base_url: str, now: float, also: list[str] = ()) -> partmail.Row:
+    sev = a.get('sev') if a.get('sev') in SEV_ORDER else 'info'
+    name, sev_text = mail_name(a), msg(f'mail.sev.{sev}')
+    rest = f" \u00b7 {cut(flat(a.get('svc') or '-'), NAME_LIMIT)} \u00b7 {age(now - seen_at(a, now))}" + (f" \u00b7 {msg('mail.tagreport.also', tags=', '.join(also))}" if also else '')
+    return partmail.Row(f'{name} \u00b7 {sev_text}{rest}', card_url(base_url, a['key'], a.get('num')), lead=name, sev=sev, sev_text=sev_text, rest=rest)
+
+
+def build_mails(cards: list[dict], people: dict[str, list[str]], base_url: str, now: float, labels: dict[str, str]) -> list[tuple[str, tuple[str, str, str]]]:
+    pool = information.cards_only(cards)
+    shown = [a for a in board_open(pool) if a.get('sev') in information.CARD_SEVS]
+    taken = [a for a in board_taken(pool) if a.get('sev') in information.CARD_SEVS]
+    by_tag: dict[str, list[dict]] = {}
+    for tag in {t for owned in people.values() for t in owned}:
+        by_tag[tag] = sorted((a for a in shown if tag in tags.ids(a)), key=lambda a: (SEV_ORDER.get(a.get('sev'), 3), seen_at(a, now)))
+    out = []
+    head = msg('mail.tagreport.head', date=clock.date(now, hm=False))
+    for email, owned in people.items():
+        rows = [(tag, by_tag[tag]) for tag in owned if by_tag.get(tag)]
+        if not rows:
+            continue
+        rows.sort(key=lambda r: (-of_sev(r[1], 'crit'), -of_sev(r[1], 'high'), -len(r[1]), labels.get(r[0], r[0]).lower(), r[0]))
+        order = [tag for tag, _ in rows]
+        listed: set[str] = set()
+        sections = []
+        for tag, all_mine in rows:
+            mine = [a for a in all_mine if a['key'] not in listed]
+            listed.update(a['key'] for a in mine)
+            if not mine:
+                continue
+            busy = sum(1 for a in taken if tag in tags.ids(a))
+            found = counts(len(mine), of_sev(mine, 'crit'), of_sev(mine, 'warn'), of_sev(mine, 'high'))
+            said = msg('tagreport.with_progress', counts=found, progress=msg('tagreport.progress', n=busy)) if busy else found
+            link = board_link(base_url, tag)
+            more = (partmail.Row(msg('mail.tagreport.more', n=len(mine) - MAIL_SHOWN), link),) if len(mine) > MAIL_SHOWN else ()
+            shown_rows = tuple(mail_row(a, base_url, now, [flat(labels.get(t, t)) for t in order if t != tag and t in tags.ids(a)]) for a in mine[:MAIL_SHOWN])
+            sections.append((tag, partmail.Section(f'{flat(labels.get(tag, tag))} \u00b7 {said}', link, shown_rows + more)))
+        board = board_link(base_url, sections[0][0]) if len(sections) == 1 else open_link(base_url)
+        title = msg(f'mail.tagreport.title.{"one" if len(listed) == 1 else "many"}', n=len(listed))
+        out.append((email, partmail.compose(partmail.product_subject(title), head, title, [sec for _, sec in sections], board=board)))
+    return out
+
+
 class SlackIds:
     def __init__(self, slack, ttl: float = LOOKUP_TTL_S, clock: Callable[[], float] = time.monotonic, on_scope: Callable[[bool], None] = lambda missing: None,
                  flagged: Callable[[], bool] = lambda: False):
@@ -375,6 +426,23 @@ class SlackPeople:
         self._for: str | None = None
         self._busy = False
         self._down_until = -FAILURE_TTL_S
+        self._told: dict[str, float] = {}
+
+    def email_of(self, name: str) -> str | None:
+        wanted = folded_name(name)
+        if not wanted or '@' in wanted:
+            return None
+        people, state = self.lookup()
+        found = {p['email'] for p in people if wanted in (folded_name(p.get('name')), folded_name(p.get('display')))}
+        if len(found) == 1:
+            return found.pop()
+        now = self.clock()
+        last = self._told.get(wanted)
+        if last is None or now - last >= NAME_WARN_S:
+            self._told[wanted] = now
+            why = 'several Slack members have that name' if found else 'no Slack member has that name' if state == 'ok' else f'the Slack member list is {state}'
+            log.warning('an assignee name of %d characters stays plain text in Slack, without a mention: %s', len(wanted), why)
+        return None
 
     def lookup(self) -> tuple[list[dict], str]:
         token = self.slack.token
@@ -410,6 +478,18 @@ class SlackPeople:
         log.info('%d Slack members kept for the responsible picker', len(found))
 
 
+def folded_name(text) -> str:
+    return ' '.join(fold(str(text or '')).split())
+
+
+def name_mentions(people: SlackPeople, ids: SlackIds) -> Callable[[str], str | None]:
+    def found(name: str) -> str | None:
+        email = people.email_of(name)
+        return ids.mention(email) if email else None
+
+    return found
+
+
 def find_people(query: str, rows: list[dict], limit: int = PEOPLE_MAX) -> list[dict]:
     wanted = fold(str(query or '').strip())
     merged: dict[str, dict] = {}
@@ -429,8 +509,10 @@ def find_people(query: str, rows: list[dict], limit: int = PEOPLE_MAX) -> list[d
 class TagReport:
     def __init__(self, store: Store, slack, ids: SlackIds, owners: Callable[[], dict[str, list[str]]], names: Callable[[], dict[str, str]], at: Callable[[], str],
                  on: Callable[[], bool], base_url: str, labels: Callable[[], dict[str, str]] = tags.all_tags, clock: Callable[[], float] = time.time,
-                 left_out: Callable[[], set[str]] = set):
+                 left_out: Callable[[], set[str]] = set, mail: partmail.PartMail | None = None, mail_on: Callable[[], bool] = lambda: True):
         self.store = store
+        self.mail = mail
+        self.mail_on = mail_on
         self.slack = slack
         self.ids = ids
         self.owners = owners
@@ -460,10 +542,51 @@ class TagReport:
     def enabled(self) -> bool:
         return bool(self.slack.enabled and self.wanted)
 
+    @property
+    def mailing(self) -> bool:
+        return self.mail is not None and bool(self.mail_on() and valid_at(self.at()) and self.mail.held() and self.mail.ready())
+
+    @property
+    def scheduled(self) -> bool:
+        return self.enabled or self.mailing
+
     def run_once(self, now: float | None = None) -> dict | None:
         now = self.clock() if now is None else now
-        if not self.enabled:
-            return None
+        try:
+            return self._post(now) if self.enabled else None
+        finally:
+            try:
+                self._mail(now)
+            except Exception as e:
+                log.warning('daily tag report mails stopped: %s', error_kind(e))
+
+    def _mail(self, now: float) -> int:
+        sender = self.mail.sender() if self.mail is not None and self.mail_on() and valid_at(self.at()) else None
+        when = slot(self.at(), now) if sender is not None else None
+        if when is None:
+            return 0
+        last = self.store.daily_mail_at(MAIL_RUN)
+        if last is not None and 0 <= now - last < REPEAT_GAP_S:
+            return 0
+        day = f'{MAIL_RUN}:{when}'
+        if not self.store.claim_run(day):
+            return 0
+        try:
+            mails = build_mails(self.store.load().get('anomalies') or [], self.mail.people(), self.base_url, now, self.labels())
+        except Exception as e:
+            self.store.drop_run(day)
+            log.warning('daily tag report mails not built, tried again on the next pass: %s', error_kind(e))
+            return 0
+        self.store.note_daily_mail(MAIL_RUN, now)
+        if not mails:
+            log.info('daily tag report: no responsible has an open card in their tags, nothing mailed')
+            return 0
+        sent = self.mail.send(sender, mails, 'daily tag report')
+        self.store.add_activity('mail', 'server', f'Daily tag report mailed \u00b7 {sent} of {len(mails)} responsible{"" if len(mails) == 1 else "s"}')
+        log.info('daily tag report mailed to %d of %d responsibles', sent, len(mails))
+        return sent
+
+    def _post(self, now: float) -> dict | None:
         when = slot(self.at(), now)
         if when is None:
             self._skip(now)

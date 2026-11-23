@@ -940,6 +940,45 @@ async function aRefusedCheckShowsByWhatItWatchesAsText() {
   console.log('PASS Integrations: a refused check id shows by What it watches, as text');
 }
 
+async function aTestThatPostsPublicAsksFirstAndOthersSendAtOnce() {
+  //given
+  const c = catalog();
+  c.plugins.push({id: 'hook', name: 'Hook route', version: '1.0.0', category: 'chat', description: 'Posts.', edition: 'community', icon: false, state: 'ok', reason: null, enabled: true, testPosts: true, fields: FIELDS, checks: [], instances: [instance('east')], health: health('ok', 'Healthy', iso(2))});
+  const t = await boot({catalog: c});
+  await open(t);
+  const tests = () => t.calls.filter((x) => x[1].endsWith('/test')).length;
+  const cf = t.doc.getElementById('cf-wrap');
+
+  //when
+  openInstance(t, 'hook', 'east');
+  inPanel(t.doc, '.int-test').focus();
+  inPanel(t.doc, '.int-test').click();
+  await wait(30);
+  const asked = [cf.hidden, t.doc.getElementById('cf-title').textContent, t.doc.getElementById('cf-text').textContent, t.doc.getElementById('cf-yes').textContent, tests()];
+  t.doc.getElementById('cf-no').click();
+  await wait(30);
+  const cancelled = [tests(), t.doc.activeElement === inPanel(t.doc, '.int-test')];
+  inPanel(t.doc, '.int-test').click();
+  await wait(30);
+  t.doc.getElementById('cf-yes').click();
+  await wait(80);
+  const confirmed = tests();
+  inPanel(t.doc, '.int-close').click();
+  await wait(30);
+  openInstance(t, 'acme', 'east');
+  inPanel(t.doc, '.int-test').click();
+  await wait(80);
+
+  //then
+  assert.deepStrictEqual(asked, [false, 'Post a test card?', 'This posts a test card to the channel, where everyone in it sees it. Teams does not let you delete it unless an admin allows owners to delete messages.', 'Post test card', 0]);
+  assert.deepStrictEqual(cancelled, [0, true], 'Cancel sends nothing and gives focus back to the button');
+  assert.strictEqual(confirmed, 1, 'OK sends one test');
+  assert.strictEqual(tests(), 2, 'a plug-in that does not post sends at once with no dialog');
+  assert.ok(t.doc.getElementById('cf-wrap').hidden);
+  t.w.close();
+  console.log('PASS Integrations: a test that posts where everyone sees it asks first, Cancel sends nothing, OK sends one, and other tests send at once');
+}
+
 async function instanceControlsSwitchPromoteAndDeleteWithConfirmation() {
   //given
   const t = await boot();
@@ -2559,6 +2598,7 @@ async function anAgentInstanceShowsItsOwnGreenHealthWithTheAgeAndADownOneShowsIt
   await aPluginSetUpOutsideAdminIsNeitherConnectedNorNeedingAttention();
   await escAndFocusStayWithThePanelWhateverHasFocus();
   await instanceControlsSwitchPromoteAndDeleteWithConfirmation();
+  await aTestThatPostsPublicAsksFirstAndOthersSendAtOnce();
   await droppedPackTextsShowOneWarningLinePerLanguageOnTheCardAndInThePanel();
   await everyValueIsEscaped();
   await instanceNamesSourcesFieldsAndNotesAreEscapedToo();

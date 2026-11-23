@@ -81,7 +81,8 @@ def mails_of(message: dict) -> list[tuple[str, tuple[str, str, str]]]:
         rows = [c for c in message.get('cards') or [] if isinstance(c, dict)]
         out = []
         for index, row in enumerate(rows):
-            lines = [str(row.get('what') or ''), link_line(msg('routes.chat'), row.get('chat'))]
+            found = [line.strip() for line in str(row.get('finding') or '').splitlines() if line.strip()]
+            lines = [str(row.get('what') or '')] + ([f"{msg('routes.finding')}: {found[0]}"] + found[1:] if found else []) + [link_line(msg('routes.chat'), row.get('chat'))]
             if index == len(rows) - 1 and message.get('more'):
                 lines.append(link_line(msg('routes.more', count=message['more']), message.get('board')))
             out.append((str(row.get('key') or ''), mail.card_mail(row | {'status': 'open'}, str(row.get('link') or ''), head=head, body_lines=lines)))

@@ -9,7 +9,7 @@ from collections.abc import Callable
 
 import anthropic
 
-from skopax import history, information, tracing
+from skopax import followup, history, information, tracing
 from skopax.ai import ModelSetting, key_for, maker
 from skopax.aikey import ClientBox
 from skopax.config import Setting, Settings
@@ -48,9 +48,9 @@ ASK_LINE = 100
 URL_TAIL = re.compile(r'https://\S*$')
 LIMIT_WINDOW_S = 3600
 GATE_HOURLY_CAP = 60
-SOURCE_OF = {'cards': 'pod', 'action': 'pod', 'ask': 'page', 'slack': 'slack', 'chat': 'chat', 'assess': 'assess'}
+SOURCE_OF = {'cards': 'pod', 'action': 'pod', 'ask': 'page', 'slack': 'slack', 'chat': 'chat', 'assess': 'assess', 'review': 'pod'}
 MCP = 'mcp'
-TRACE_NAMES = {'cards': 'card run', 'action': 'investigate click', 'ask': 'page question', 'slack': 'slack question', 'chat': 'chat answer', 'assess': 'deploy assessment'}
+TRACE_NAMES = {'cards': 'card run', 'action': 'investigate click', 'ask': 'page question', 'slack': 'slack question', 'chat': 'chat answer', 'assess': 'deploy assessment', 'review': 'follow-up check'}
 TRACE_OK = ('done', 'skipped')
 
 
@@ -366,7 +366,7 @@ class Investigator:
         before = epoch_iso(now - STALE_AFTER_S)
         claims = self.store.release_stale_claims(before)
         runs = self.store.abandon_stale_runs(before)
-        acts = self.store.fail_stale_actions(before) + self._fail_stale_asks(before)
+        acts = self.store.fail_stale_actions(before, ('dive', 'ask', followup.REVIEW)) + self._fail_stale_asks(before)
         if claims or runs or acts:
             log.warning('reaped %d stale claims, %d runs, %d actions', claims, runs, acts)
             self.store.add_activity('reap', 'investigator', f'reaped {claims} stale claims · {runs} runs · {acts} actions')
@@ -390,7 +390,7 @@ class Investigator:
     def pick_action(self) -> tuple[list[dict], dict] | None:
         if self.mode in ('live', 'shadow'):
             for act in reversed(self.store.list_actions('requested', ACTION_SCAN)):
-                if act.get('type') not in ('dive', 'ask', 'assess') or self._waits(act):
+                if act.get('type') not in ('dive', 'ask', 'assess', followup.REVIEW) or self._waits(act):
                     continue
                 try:
                     self.store.update_action(act['id'], 'processing', None, 'requested')
@@ -469,12 +469,13 @@ class Investigator:
         quick = slack_ask or chat_ask
         quick_model = self.chat_model if chat_ask else self.slack_model
         report_id = str(action.get('reportId') or '') if action and action.get('type') == 'assess' else ''
+        review = str(action.get('flavor') or '') if action and action.get('type') == followup.REVIEW else ''
         claimed: list[str] = []
         record: dict | None = None
         toolbox = None
         result = None
         crash = None
-        trigger = 'assess' if report_id else 'slack' if slack_ask else 'chat' if chat_ask else 'ask' if ask else 'action' if action else 'cards'
+        trigger = 'review' if review else 'assess' if report_id else 'slack' if slack_ask else 'chat' if chat_ask else 'ask' if ask else 'action' if action else 'cards'
         trace = tracing.Handle(None, None, None)
         with self._lock:
             self._runs[run_id] = {'claimed': claimed, 'action': action, 'lease': lease or (LEASE_ID, self.owner)}
@@ -489,7 +490,7 @@ class Investigator:
             report = self.store.deploy_report(report_id) if report_id else None
             cards = self._with_verdicts(cards)
             record = {'id': run_id, 'mode': mode, 'trigger': trigger, 'actionId': action['id'] if action else None,
-                      'keys': keys, 'pod': self.owner, 'room': (lease or (LEASE_ID, self.owner))[0], 'startedAt': epoch_iso(now), 'model': quick_model if quick else self.model, 'effort': (self.chat_effort if chat_ask else self.slack_effort) if quick else self.effort, 'outcome': 'running'}
+                      'keys': keys, 'pod': self.owner, 'room': (lease or (LEASE_ID, self.owner))[0], 'startedAt': epoch_iso(now), 'model': quick_model if quick else self.slack_model if review else self.model, 'effort': (self.chat_effort if chat_ask else self.slack_effort) if quick else self.slack_effort if review else self.effort, 'outcome': 'running'}
             if ask:
                 record['ask'] = {'text': ask, 'by': action.get('requestedBy')}
                 if slack_ask:
@@ -498,19 +499,26 @@ class Investigator:
                     record['ask'] |= {'source': 'chat', 'chat': (action.get('chat') or {}).get('id')}
             if report:
                 record['report'] = {'id': report_id, 'summary': report.get('summary')}
+            if review:
+                record['review'] = review
             mcp = via_mcp(action)
             if mcp:
                 record['source'] = MCP
             self.store.add_investigation(record)
-            self.store.add_activity('run', 'investigator', f"assessing deploy report · {report.get('summary')}" if report else 'chat message · private' + (' · via MCP' if mcp else '') if chat_ask else f"{'slack ' if slack_ask else ''}ask by {action.get('requestedBy')} · {prompt.flat(ask)[:ASK_LINE]}" if ask else f"run started · {mode} · {', '.join(keys)}" + (f" · via MCP by {action.get('requestedBy')}" if mcp else ''), runId=run_id)
+            self.store.add_activity('run', 'investigator', f"{'follow-up check' if review == followup.VERIFY else 'settle review'} \u00b7 {', '.join(keys)}" if review else f"assessing deploy report · {report.get('summary')}" if report else 'chat message · private' + (' · via MCP' if mcp else '') if chat_ask else f"{'slack ' if slack_ask else ''}ask by {action.get('requestedBy')} · {prompt.flat(ask)[:ASK_LINE]}" if ask else f"run started · {mode} · {', '.join(keys)}" + (f" · via MCP by {action.get('requestedBy')}" if mcp else ''), runId=run_id)
             if keys or ask or report:
                 sections, index = self.sources.plugin_tools.knowledge_parts(() if chat_ask else cards) if self.sources.plugin_tools is not None else ([], [])
                 pack = self.pack()
                 readable = [k for _, k in index] if pack is None or pack.plugin_sections else []
                 toolbox = Toolbox(self.sources, self.store, self.effects, keys, mode, now, self.base_url, run_id=run_id, ask=bool(ask), report_id=report_id or None, read_only=quick,
                                   strict=self.strict_tools, asker=action.get('requestedBy') if ask and not quick else None, chat=chat_ask, language=self.language,
-                                  web=web_from(self.web_domains, self.web_searches, self.web_fetches if self.provider != pricing.OPENAI else 0, self.own_domains()), settings=self.settings, role=self.role_of(action), knowledge=readable)
-                if quick:
+                                  web=web_from(self.web_domains, self.web_searches, self.web_fetches if self.provider != pricing.OPENAI else 0, self.own_domains()), settings=self.settings, role=self.role_of(action), knowledge=readable,
+                                  review=review or None)
+                if review:
+                    config = RunConfig(self.slack_model, self.slack_effort, self.slack_max_tool_calls)
+                    brief = prompt.review_brief(cards[0], review, self.base_url, config.max_tool_calls) + prompt.language_note(self.language)
+                    toolbox.flags += scan('brief', prompt.review_soft(cards[0]), skip=SOFT)
+                elif quick:
                     config = RunConfig(quick_model, self.chat_effort if chat_ask else self.slack_effort, self.chat_max_tool_calls if chat_ask else self.slack_max_tool_calls, cache_ttl='1h', role='chat' if chat_ask else 'slack')
                     blocks, images = self._images(action) if action.get('images') else ([], '')
                     brief = (prompt.slack_brief(cards, action, self.base_url, config.max_tool_calls, self.limits(now), images) if slack_ask

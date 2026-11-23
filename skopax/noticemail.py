@@ -12,7 +12,7 @@ from skopax import brand
 from skopax.assign import slug
 from skopax.cardlink import card_url
 from skopax.errkind import kind as error_kind
-from skopax.mail import BUTTON, EDGE, FONT, INK, MUTED, PAGE, PAPER, SUBJECT_MAX, WEB_LINK, MailDown, MailRefused, Mailer, card_mail, esc, flat
+from skopax.mail import BUTTON, EDGE, FONT, INK, MUTED, PAGE, PAPER, SUBJECT_MAX, WEB_LINK, MailDown, MailRefused, Mailer, attribution_html, card_mail, esc, flat, footer_lines, site_html
 from skopax.messages import msg
 from skopax.notices import LABELS
 from skopax.store import NotFound, Store, new_id
@@ -84,8 +84,8 @@ def why_text(prefs: str) -> str:
 def with_why(mailed: tuple[str, str, str], prefs: str) -> tuple[str, str, str]:
     subject, text, html = mailed
     footer = msg('mail.footer')
-    mark_text, mark_html = f'-- \n{footer}', esc(footer)
-    if mark_text not in text or mark_html not in html:
+    mark_text, mark_html = f'\n{footer}', esc(footer)
+    if '\n-- \n' not in text or mark_text not in text or mark_html not in html:
         return subject, text.rstrip('\n') + '\n' + why_text(prefs) + '\n', html.replace('</body>', f'<p style="color:{MUTED};">{why_html(prefs)}</p></body>', 1)
     head, _, tail = text.rpartition(mark_text)
     start, _, end = html.rpartition(mark_html)
@@ -96,9 +96,7 @@ def plain_mail(title: str, head: str, lines: list[str], link: str | None, button
     web = link if link and WEB_LINK.fullmatch(link) else None
     attribution = brand.attribution_line()
     subject = flat(f'[{brand.product()}] {head}' + (f': {title}' if title else ''))[:SUBJECT_MAX]
-    parts = [head, ''] + ([title] if title else []) + lines + ([f'{button}: {web}'] if web else []) + ['', '-- ', msg('mail.footer'), why_text(prefs)]
-    if attribution is not None:
-        parts.append(f"{attribution['text']} {attribution['href']}")
+    parts = [head, ''] + ([title] if title else []) + lines + ([f'{button}: {web}'] if web else []) + [''] + footer_lines([msg('mail.footer'), why_text(prefs)], attribution)
     side = 'padding-left:24px;padding-right:24px;'
     rows = [f'<tr><td style="padding-top:20px;padding-bottom:8px;{side}font-size:14px;color:{MUTED};background-color:{PAPER};">{esc(head)}</td></tr>']
     if title:
@@ -108,8 +106,7 @@ def plain_mail(title: str, head: str, lines: list[str], link: str | None, button
         rows.append(f'<tr><td style="padding-top:16px;padding-bottom:24px;{side}background-color:{PAPER};"><a href="{esc(web)}" style="display:inline-block;background-color:{BUTTON};'
                     f'color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold;">{esc(button)}</a></td></tr>')
     rows.append(f'<tr><td style="padding-top:12px;padding-bottom:12px;{side}border-top:1px solid {EDGE};font-size:12px;color:{MUTED};background-color:{PAPER};">'
-                f'{esc(msg("mail.footer"))}<br>{why_html(prefs)}'
-                + (f'<br><a href="{esc(attribution["href"])}" style="color:{MUTED};">{esc(attribution["text"])}</a>' if attribution is not None else '') + '</td></tr>')
+                f'{site_html()}{esc(msg("mail.footer"))}<br>{why_html(prefs)}{attribution_html(attribution)}</td></tr>')
     html = ('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">'
             f'<title>{esc(subject)}</title></head><body style="margin:0;padding:0;background-color:{PAGE};color:{INK};">'
             f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{PAGE};"><tr><td align="center" style="padding:24px 12px;">'

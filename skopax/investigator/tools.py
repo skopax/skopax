@@ -13,7 +13,7 @@ from urllib.parse import quote, urlsplit
 from bson import Binary
 from pymongo.errors import PyMongoError
 
-from skopax import brand, causes, clock, drafts, history, information, tags
+from skopax import brand, causes, clock, drafts, followup, history, information, tags
 from skopax.actors import POD_BY, SYSTEM
 from skopax.engine import iso as epoch_iso, parse_iso, sibling_stem
 from skopax.config import Settings
@@ -24,7 +24,7 @@ from skopax.errkind import Authored, kind as error_kind, text_of
 from skopax.investigator.flags import PHRASES, SOFT, scan
 from skopax.investigator.prompt import announced_hint, announced_text, card_link, shown_key
 from skopax.investigator.select import NO_SERVICE, announced
-from skopax.investigator.toolset import CORE, KNOWLEDGE, Run, ToolSet
+from skopax.investigator.toolset import CORE, KNOWLEDGE, REVIEW_VERDICTS, Run, ToolSet
 from skopax.investigator.web import NAMES as WEB_NAMES, RESULTS as WEB_RESULTS, Web, part as block_part, result_of as web_result
 from skopax.jiralinks import ticket_finder, ticket_pattern, ticket_projects
 from skopax.messages import msg
@@ -45,6 +45,8 @@ NO_TOOL = 'no tool named {name}'
 MAX_FILE_LINES = 400
 JIRA_FIELDS = ('summary', 'status', 'assignee', 'fixVersions', 'created')
 SOURCE_TOOLS = tuple(name for name, spec in CORE.items() if spec.scan)
+EVIDENCE_HOST = re.compile(r'https?://([A-Za-z0-9.-]+)|(?<![\w@.-])((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})/')
+BOARD_READS = frozenset({'card', 'open_cards', 'past_cards', 'past_runs', 'self_review', KNOWLEDGE, 'pass_table'})
 RUN_CALLS = {name: spec.per_run for name, spec in CORE.items() if spec.per_run is not None}
 JIRA_DESCRIPTION_LIMIT = 2000
 JIRA_COMMENT_LIMIT = 500
@@ -163,6 +165,7 @@ class Effects:
     slack_file: Callable[[str], tuple[bytes, str]] | None = None
     autopost: Callable[[], bool] | None = None
     wake: Callable[[], None] | None = None
+    follow_up: Callable[..., str] | None = None
 
 
 def schema(props: dict, required: list[str]) -> dict:
@@ -244,8 +247,21 @@ WRITE_TOOLS = [
                                       'A code link is {repo, path, lines, what, ref, suggestion}: ref is the commit the lines were read at (a deployed image\'s sha, branch or tag; default: the default branch), '
                                       'the file and the lines must exist there, the link points at that commit with the line anchors, and the card lists who last changed those lines. '
                                       f'suggestion (optional) is the replacement text for exactly those lines; the server reads the current lines itself at ref. A code link with a suggestion spans at most {FIX_LINES} lines, '
-                                      f'a suggestion is at most {FIX_CHARS:,} characters, and an assess takes at most {FIX_PER_CARD} suggestions.',
-     'input_schema': schema({'key': STR, 'suspects': {'type': 'array', 'items': STR, 'maxItems': 5}, 'recommend': STR, 'code': {'type': 'array', 'items': CODE_ITEM, 'maxItems': 5}}, ['key', 'suspects', 'recommend'])},
+                                      f'a suggestion is at most {FIX_CHARS:,} characters, and an assess takes at most {FIX_PER_CARD} suggestions. '
+                                      f'done_when (optional, at most {followup.DONE_WHEN_LIMIT} characters) is a check you could run with your own read tools that shows the next step was done, '
+                                      'only when that step is for a person outside the product (a redirect in a back-office list, the landing link of an ad): for example "GET https://example.com/old-path returns 301 to /new-path". '
+                                      'done_tools names the read tools for it. The server then checks it every few hours while the card waits and closes the card after an announcement once it is done.',
+     'input_schema': schema({'key': STR, 'suspects': {'type': 'array', 'items': STR, 'maxItems': 5}, 'recommend': STR, 'code': {'type': 'array', 'items': CODE_ITEM, 'maxItems': 5},
+                             'done_when': {'type': 'string', 'maxLength': 2000}, 'done_tools': {'type': 'array', 'items': STR, 'maxItems': 5}}, ['key', 'suspects', 'recommend'])},
+    {'name': 'follow_up_verdict', 'description': 'Only in a follow-up check: say whether the done-condition of the card holds now. done true needs a read tool call in this run that shows it '
+                                                 f'(a board read such as card is not enough); evidence is one line (at most {followup.EVIDENCE_LIMIT} characters) quoting what that read returned. '
+                                                 'done true does not close the card at once: the server announces the close in its Slack thread and closes it later unless a person acts. Call it once, as your last tool call.',
+     'input_schema': schema({'done': {'type': 'boolean'}, 'evidence': STR}, ['done', 'evidence'])},
+    {'name': 'settle_verdict', 'description': 'Only in a settle review: say what should happen to this stopped card. fixed = a read tool call in this run confirms the fix; '
+                                              'no_action = a one-off that is over and needs nothing, with no open step owned by a person or a ticket; keep = an action is still pending (evidence says what and owner says who); '
+                                              'ticket = a linked ticket is still open. A person who wrote to keep it open, or whose latest verdict keeps it, wins: then keep. '
+                                              f'evidence is one line (at most {followup.EVIDENCE_LIMIT} characters). fixed and no_action are announced in the Slack thread and close later unless a person acts. Call it once, as your last tool call.',
+     'input_schema': schema({'kind': {'type': 'string', 'enum': list(followup.SETTLE_KINDS)}, 'evidence': STR, 'owner': STR}, ['kind', 'evidence'])},
     {'name': 'note', 'description': f"Replace the card's investigation note (3-6 lines: what you found, with numbers and local times (the zone named next to each time); at most {DRAFT_LIMIT:,} characters, longer text is cut). Sets the card to investigated. "
                                     'cause (optional) says what the signal followed: kind event when you showed it was caused by a one-off trigger (a push or campaign send, a batch job, a deploy, a traffic burst, a migration), '
                                     f'kind recurring when the cause stays and fires again; what = the trigger in a few words (at most {causes.WHAT_LIMIT} characters, no links outside the allowed hosts, no mentions), '
@@ -952,8 +968,10 @@ def past_run_row(d: dict, searched: Callable[[object], bool], full: bool = False
 class Toolbox:
     def __init__(self, sources: Sources, store, effects: Effects, keys: list[str], mode: str, now: float, base_url: str, run_id: str | None = None, ask: bool = False, report_id: str | None = None, read_only: bool = False, strict: bool = False,
                  asker: str | None = None, chat: bool = False, language: str = 'en', web: Web | None = None, settings: Settings | None = None, role: str | None = None,
-                 knowledge: Sequence[Knowledge] = ()):
+                 knowledge: Sequence[Knowledge] = (), review: str | None = None):
         self.sources = sources
+        self.review = review if review in REVIEW_VERDICTS else None
+        self.verdict: str | None = None
         self.knowledge: dict[str, Knowledge] = {}
         for k in knowledge:
             if (k.slack or not read_only) and k.id not in self.knowledge:
@@ -1010,7 +1028,7 @@ class Toolbox:
 
     def run_kind(self) -> Run:
         return Run(read_only=self.read_only, ask=self.ask, report=bool(self.report_id), chat=self.chat, keys=bool(self.keys), asker=bool(self.asker), shadow=self.mode == 'shadow',
-                   role=self.role)
+                   role=self.role, review=self.review)
 
     def start_bridge(self):
         if self.bridged is None:
@@ -1066,7 +1084,7 @@ class Toolbox:
             kind = block_part(b, 'type')
             if kind == 'server_tool_use' and block_part(b, 'name') in WEB_NAMES:
                 entry = {'name': block_part(b, 'name'), 'input': json.dumps(block_part(b, 'input') or {}, ensure_ascii=False, default=str)[:INPUT_LIMIT],
-                         'rows': None, 'truncated': False, 'error': None, 'ms': 0}
+                         'rows': None, 'truncated': False, 'error': None, 'ms': 0, 'pending': True}
                 self.calls.append(entry)
                 self.web_open[block_part(b, 'id')] = entry
             elif kind in WEB_RESULTS:
@@ -1074,6 +1092,7 @@ class Toolbox:
                 if entry is None:
                     continue
                 rows, error, text = web_result(b)
+                entry.pop('pending', None)
                 entry.update(rows=rows, error=error)
                 self.flags += scan(entry['name'], text)
                 if self.run_id:
@@ -1125,6 +1144,8 @@ class Toolbox:
             kind = found[1].kind if found is not None else None
             if self.read_only and (name in WRITE_NAMES or kind == 'write'):
                 raise ToolError(f'{name} is not available here: this run can only read')
+            if self.review and (name in WRITE_NAMES or kind in ('write', 'propose')) and name != REVIEW_VERDICTS[self.review]:
+                raise ToolError(f'{name} is not available here: this run reads and ends with {REVIEW_VERDICTS[self.review]}')
             if not self.toolset.needed(name):
                 raise ToolError(off_reason(name, self.sources))
             if kind is not None and name not in self.offered():
@@ -1619,10 +1640,18 @@ class Toolbox:
         code = [code_link(self.sources.gitlab, c, code_ref(c, i)) for i, c in enumerate(items)]
         summary = (suspects[0] + ' \u2192 ' if suspects else '') + recommend
         flagged = bool(self._flag_hold())
-        return self._write('assess', key, summary, lambda: self._assessed(key, suspects, recommend, code, flagged))
+        done = followup.done_when(a.get('done_when'), a.get('done_tools'), epoch_iso(self.now), flagged)
+        held = self._card(key).get(followup.FIELD)
+        if not done.get('doneWhen') and not (isinstance(held, dict) and held.get('doneWhen')):
+            done = None
+        if done and isinstance(held, dict) and held.get('closeAt'):
+            done = {k: v for k, v in done.items() if k not in followup.PENDING_CLOSE}
+        return self._write('assess', key, summary, lambda: self._assessed(key, suspects, recommend, code, flagged, done))
 
-    def _assessed(self, key: str, suspects: list[str], recommend: str, code: list[dict], flagged: bool = False) -> None:
+    def _assessed(self, key: str, suspects: list[str], recommend: str, code: list[dict], flagged: bool = False, done: dict | None = None) -> None:
         self.store.assess(key, suspects, recommend, code or None, by='pod', flagged=flagged)
+        if done:
+            self.store.follow_up_set(key, done)
         if self.effects.fixes and any(c.get('suggestion') is not None for c in code):
             hold = self._flag_hold()
             if hold:
@@ -1632,6 +1661,61 @@ class Toolbox:
                 self.effects.fixes(key)
             except Exception as e:
                 log.warning('suggested fix of %s not posted in its thread: %s', key, error_kind(e))
+
+    def _t_follow_up_verdict(self, a: dict):
+        return self._verdict('follow_up_verdict', followup.VERIFY, 'fixed' if a.get('done') is True else followup.NOT_DONE, a)
+
+    def _t_settle_verdict(self, a: dict):
+        kind = req(a, 'kind')
+        if kind not in followup.SETTLE_KINDS:
+            raise ToolError('kind is one of ' + ', '.join(followup.SETTLE_KINDS))
+        return self._verdict('settle_verdict', followup.SETTLE, kind, a)
+
+    def _verdict(self, tool: str, flavor: str, kind: str, a: dict):
+        if self.review != flavor:
+            raise ToolError(f'{tool} is only for a follow-up review run of the server, not this run')
+        if self.verdict is not None:
+            raise ToolError(f'this run already gave its verdict ({self.verdict})')
+        key = next(iter(sorted(self.keys)), None)
+        if key is None or self.effects.follow_up is None:
+            raise ToolError(f'{tool} has no card to record on in this run')
+        evidence = followup.flat(req(a, 'evidence'), followup.EVIDENCE_LIMIT)
+        if not evidence:
+            raise ToolError('evidence is required: one line with what the read showed')
+        if kind in followup.CLOSING:
+            reads = [c for c in self.calls if not c.get('error') and not c.get('pending') and c['name'] not in WRITE_NAMES and (kind == 'no_action' or c['name'] not in BOARD_READS)]
+            if not reads:
+                raise ToolError('no successful read tool call in this run backs this verdict: check it with a read tool first' + ('' if kind == 'no_action' else ' (board reads such as card do not count)'))
+            if kind == 'fixed':
+                reads = self._backing(reads, key, evidence)
+            planted = scan(tool, evidence)
+            hold = self._flag_hold()
+            if planted or hold:
+                raise Held(f"this run read {hold or 'planted text in the evidence'}, so it closes no card: give keep, or not done, and say why", 'verdict', self.flags + planted)
+            if PING.search(evidence):
+                raise ToolError('evidence: no Slack mentions or channel pings; it goes to the Slack thread as written')
+            problem = draft_problem(evidence, self.link_hosts, self.code_rule())
+            if problem:
+                raise ToolError(f'evidence: {problem}')
+        owner = followup.flat(a.get('owner'), followup.OWNER_LIMIT) or None
+        said: list[str] = []
+        result = self._write(tool, key, f'{kind} \u00b7 {evidence}', lambda: said.append(self.effects.follow_up(key, flavor, kind, evidence, owner, self.run_id)))
+        self.verdict = kind
+        return said[0] if said else result
+
+    def _backing(self, reads: list[dict], key: str, evidence: str) -> list[dict]:
+        held = self._card(key).get(followup.FIELD)
+        named = [t for t in ((held or {}).get('tools') or []) if t in set(self.offered()) | set(WEB_NAMES) and (t not in WEB_NAMES or self.web is not None)] if isinstance(held, dict) else []
+        if named:
+            reads = [c for c in reads if c['name'] in named]
+            if not reads:
+                raise ToolError('the done-condition names ' + ', '.join(named) + ': check it with one of them in this run before done true')
+        hosts = {h.lower() for pair in EVIDENCE_HOST.findall(evidence) for h in pair if h}
+        if hosts:
+            reads = [c for c in reads if all(h in str(c.get('input') or '').lower() for h in hosts)]
+            if not reads:
+                raise ToolError('the evidence names ' + ', '.join(sorted(hosts)) + ', but no successful read in this run was made for it: read that address, then quote what came back')
+        return reads
 
     def _t_note(self, a: dict):
         key = req(a, 'key')
