@@ -8,7 +8,7 @@ import time
 import urllib.error
 import urllib.request
 from typing import Callable
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from cryptography import x509
 
@@ -36,6 +36,15 @@ TIMED_OUT = 'timeout'
 BAD_URL = 'url'
 NAMED = ('name', 'plugin', 'instance', 'url')
 PUBLIC = ('name', 'plugin', 'instance', 'ok', 'status', 'ms', 'certDays')
+EXTRA_KEY = 'core.probe-extra'
+EXTRA_MAX = 20
+EXTRA_NAME_MAX = 40
+EXTRA_NAME = re.compile(r'[A-Za-z0-9 ._-]{1,%d}' % EXTRA_NAME_MAX)
+SLACK_URL = 'https://slack.com/api/api.test'
+PROVIDER_URLS = {'anthropic': ('Anthropic API', 'https://api.anthropic.com/', 'ANTHROPIC_BASE_URL'), 'openai': ('OpenAI API', 'https://api.openai.com/', 'OPENAI_BASE_URL')}
+GOOGLE_SUFFIXES = ('.googleapis.com', '.google.com')
+BUILT_IN_NAMES = ('slack api', 'anthropic api', 'openai api')
+PROBE_PLUGIN = 'probe'
 
 
 def http_status(url: str, context: ssl.SSLContext | None, timeout: float, opener: Callable = urllib.request.urlopen) -> int:
@@ -249,3 +258,68 @@ def cert_pass(report: dict, now: float, rules: dict, skip: tuple[str, ...] = ())
         x['ranKey'] = f'{PASS}:{host}'
         found.append(x)
     return [PassResult(PASS, True, 'ok', found, {}, tuple(f'{PASS}:{h}' for h in sorted(seen)))]
+
+
+def url_rule(url: str) -> str | None:
+    if any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
+        return 'url'
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+        parts.port
+    except ValueError:
+        return 'url'
+    if parts.scheme.lower() not in ('http', 'https') or not host:
+        return 'url'
+    if '@' in parts.netloc:
+        return 'userinfo'
+    return None
+
+
+def read_extra(raw) -> tuple[list[dict], tuple[int, str] | None]:
+    out, seen = [], set()
+    for entry, text in enumerate((p.strip() for p in str(raw or '').splitlines() if p.strip()), 1):
+        name, sep, url = (part.strip() for part in text.partition('='))
+        if entry > EXTRA_MAX:
+            problem = msg('probe.extra.count', max=EXTRA_MAX)
+        elif not sep or not url:
+            problem = msg('probe.extra.pair')
+        elif not EXTRA_NAME.fullmatch(name):
+            problem = msg('probe.extra.name', max=EXTRA_NAME_MAX)
+        elif name.casefold() in BUILT_IN_NAMES or name.casefold().endswith(GOOGLE_SUFFIXES):
+            problem = msg('probe.extra.reserved')
+        elif rule := url_rule(url):
+            problem = msg(f'probe.extra.{rule}')
+        elif name.casefold() in seen:
+            problem = msg('probe.extra.repeat')
+        else:
+            seen.add(name.casefold())
+            out.append({'name': name, 'url': url, 'plugin': PROBE_PLUGIN, 'instance': 'extra'})
+            continue
+        return out, (entry, problem)
+    return out, None
+
+
+def google_hosts(plugins: list) -> list[str]:
+    found: dict[str, None] = {}
+    for plugin in plugins:
+        for host in getattr(getattr(plugin, 'capabilities', None), 'hosts', ()) or ():
+            h = str(host).lower()
+            if h.endswith(GOOGLE_SUFFIXES):
+                found[h] = None
+    return sorted(found)
+
+
+def core_targets(slack_on: bool, provider: str, ai_key: bool, env: dict, google: list[str], extra: str) -> list[dict]:
+    out = []
+    if slack_on:
+        out.append({'name': 'Slack API', 'url': SLACK_URL, 'plugin': PROBE_PLUGIN, 'instance': 'slack'})
+    if ai_key and provider in PROVIDER_URLS:
+        name, url, var = PROVIDER_URLS[provider]
+        custom = str(env.get(var) or '').strip()
+        if custom:
+            url = '' if url_rule(custom) else urlunsplit(urlsplit(custom)._replace(query='', fragment=''))
+        out.append({'name': name, 'url': url, 'plugin': PROBE_PLUGIN, 'instance': provider})
+    out.extend({'name': host, 'url': f'https://{host}/', 'plugin': PROBE_PLUGIN, 'instance': 'google'} for host in google)
+    out.extend(read_extra(extra)[0])
+    return out

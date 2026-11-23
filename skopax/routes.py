@@ -25,7 +25,6 @@ log = logging.getLogger('skopax.routes')
 SEV_RANK = severity.RANK
 DEFAULTS: dict[str, object] = {'repeat-days': 7.0, 'min-sev': 'high', 'fixed-posts': False}
 TAG_FLOOR = 'warn'
-TAG = 'tag:'
 MAX_CARDS = 10
 WHAT_LIMIT = 300
 WHY_LIMIT = 300
@@ -164,8 +163,7 @@ def split(raw: object) -> list[str]:
 
 
 def tag_id(term: str) -> str:
-    term = term.strip().lower()
-    return term[len(TAG):].strip() if term.startswith(TAG) else term
+    return tags.term_of(term)
 
 
 def number(card: dict) -> int | None:
@@ -256,9 +254,9 @@ def route_of(plugin, item) -> Parsed:
             return Parsed(None, msg('integrations.route_target'), (), 0)
         link = link_of(target)
     known = tags.all_tags()
-    wanted = list(dict.fromkeys(tag_id(t) for t in split(values.get(hook.tags_field))))
-    unknown = tuple(t for t in wanted if t not in known)
-    kept = frozenset(t for t in wanted if t in known)
+    resolved = [(tag_id(t), tags.resolve(t, known)) for t in split(values.get(hook.tags_field))]
+    unknown = tuple(dict.fromkeys(t for t, r in resolved if r is None))
+    kept = frozenset(r for _, r in resolved if r is not None)
     keys = tuple(dict.fromkeys(split(values.get(hook.keys_field)))) if hook.keys_field else ()
     given = split(values.get(hook.mentions_field)) if hook.mentions_field else []
     mentions = tuple(dict.fromkeys(e.lower() for e in given if EMAIL.fullmatch(e)))[:MENTION_MAX]

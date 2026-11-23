@@ -90,12 +90,12 @@ def test_website_identity_and_manifest():
         'website', 'Website', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url', '@browser-url', '*'], 'secrets': ['scan-headers'], 'agentReads': False}
     assert manifest['uses'] == ['umami', 'browser']
-    assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('pagescan', 3600, 2700, ['pagescan']), ('pagescan-digest', 3600, 75, ['pagescan-digest'])]
+    assert [(c['id'], c['period'], c['offset'], c['ran']) for c in manifest['checks']] == [('pagescan', 300, 0, ['pagescan']), ('pagescan-digest', 3600, 75, ['pagescan-digest'])]
     assert [t['name'] for t in manifest['tools']] == ['page', 'screenshot', 'page_scan']
     assert [(f['key'], f['kind'], f['required']) for f in manifest['fields']] == [
         ('url', 'url', True), ('hosts', 'text', False), ('login-hosts', 'text', False), ('login-paths', 'text', False), ('api-paths', 'text', False),
         ('refused-paths', 'text', False), ('browser', 'instance', False), ('browser-url', 'url', False), ('description', 'text', False), ('umami', 'instance', False), ('scan-headers', 'secret', False),
-        ('tracking-params', 'text', False), ('kept-headers', 'text', False), ('scan-skip', 'text', False), ('user-agent', 'text', False), ('internal-subdomains', 'bool', False)]
+        ('tracking-params', 'text', False), ('kept-headers', 'text', False), ('scan-skip', 'text', False), ('release-services', 'text', False), ('user-agent', 'text', False), ('internal-subdomains', 'bool', False)]
     assert next(f for f in website.PLUGIN.fields if f.key == 'url').ui is True and next(f for f in website.PLUGIN.fields if f.key == 'umami').choices == ('umami',)
     assert website.PLUGIN.client is not None and website.PLUGIN.test is not None and website.PLUGIN.probe_targets is not None and website.PLUGIN.links is not None
     assert len((Path(website.__file__).parent / 'website.md').read_text(encoding='utf-8').splitlines()) <= 40
@@ -104,10 +104,10 @@ def test_website_identity_and_manifest():
 def test_website_defaults_are_neutral():
     # then
     assert {f.key: f.default for f in website.PLUGIN.fields} == {'url': '', 'hosts': '', 'login-hosts': '', 'login-paths': '', 'api-paths': '', 'refused-paths': '',
-                                                                  'browser': '', 'browser-url': '', 'description': '', 'umami': '', 'scan-headers': '', 'tracking-params': '', 'kept-headers': '', 'scan-skip': '',
+                                                                  'browser': '', 'browser-url': '', 'description': '', 'umami': '', 'scan-headers': '', 'tracking-params': '', 'kept-headers': '', 'scan-skip': '', 'release-services': '',
                                                                   'user-agent': '', 'internal-subdomains': 'false'}
     assert {s.key: s.default for s in website.PLUGIN.settings} == {'page-scan': 'false', 'scan-hours': '1', 'recheck-days': '7', 'pages': '50', 'extra': '', 'ignore': '',
-                                                                  'model': 'claude-opus-5-5', 'digest-hour': '10', 'scan-prompt': ''}
+                                                                  'model': 'claude-opus-5-5', 'release-delay': '10', 'digest-hour': '10', 'scan-prompt': ''}
     assert website.PLUGIN.rules == ()
 
 

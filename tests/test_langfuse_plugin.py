@@ -1194,7 +1194,7 @@ def test_the_instance_that_receives_skopax_traces_is_not_watched_while_tracing_i
     assert (picked.status_code, switched.status_code) == (200, 200)
     if traced:
         assert keys == ['lf-errors|-/langfuse'] and east_reads == []
-        assert (sources['langfuse-east'], sources['langfuse']) == (langfuse.TRACED_STATUS, 'ok') and langfuse.TRACED_STATUS == "Receives Skopax's own traces, so it is not watched"
+        assert (sources['langfuse-east'], sources['langfuse']) == (langfuse.TRACED_STATUS, 'ok') and langfuse.TRACED_STATUS == "ok \u00b7 receives Skopax's own traces, so it is not watched"
     else:
         assert keys == ['lf-errors|-/langfuse', 'lf-errors|-/langfuse@east'] and east_reads and sources['langfuse-east'] == 'ok'
 

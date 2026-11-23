@@ -137,7 +137,7 @@ async function rendersValuesWithSourceLabels() {
   assert.strictEqual(field(t.doc, 'require-verified-email').querySelector('input[type=checkbox]').checked, false);
   const adv = card(t.doc).querySelector('details.sso-adv');
   assert.ok(adv && !adv.open && /Advanced: endpoints/.test(adv.querySelector('summary').textContent), 'the endpoints fold is closed');
-  assert.deepStrictEqual([...adv.querySelectorAll('.sso-f')].map((f) => f.dataset.field), ['authorize-url', 'token-url', 'jwks-url', 'client-auth']);
+  assert.deepStrictEqual([...adv.querySelectorAll('.sso-f')].map((f) => f.dataset.field), ['authorize-url', 'token-url', 'jwks-url', 'client-auth', 'extra-token-headers']);
   assert.deepStrictEqual([...field(t.doc, 'role-map').querySelectorAll('.sso-map-row')].map((r) => [r.querySelector('.sso-map-v').value, r.querySelector('.sso-map-r').value]),
     [['ops-admins', 'admin'], ['ops-operators', 'operator']]);
   assert.strictEqual(field(t.doc, 'client-secret').querySelector('.sso-in').placeholder, 'not set');

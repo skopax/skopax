@@ -5,6 +5,7 @@ import urllib.parse
 
 from collections.abc import Mapping
 
+from skopax import severity
 from skopax.contract import alert_sev, anomaly, fmt, iso
 from skopax.kit.alerts import ALERT_KEEP, QUIET_ALERTS
 from skopax.kit.promql import POD, WATCHED, Prometheus, out_err, prom_link, scoped
@@ -203,8 +204,11 @@ def evaluate_prom(now, data, hard, alerts, deploys, image_by=None, floors: Mappi
             base = max(bases)
             if v > 2 * base and v - base >= spec['delta']:
                 d1, d7 = b1.get(k), b7.get(k)
-                found.append(anomaly('prom', spec['sig'], k[0], k[1], k[2], 'warn', ms, None if d1 is None else d1 * 1000, None if d7 is None else d7 * 1000, 'ms', spec['label'],
-                                     f'{spec["label"]} {fmt(ms, "ms")} over {fmt(n)} requests in the last 60 min, the baseline is {fmt(base * 1000, "ms")}', spec['delta'] * 1000))
+                count = round(n)
+                x = anomaly('prom', spec['sig'], k[0], k[1], k[2], severity.latency(ms, base * 1000, count), ms, None if d1 is None else d1 * 1000, None if d7 is None else d7 * 1000, 'ms', spec['label'],
+                            f'{spec["label"]} {fmt(ms, "ms")} over {count} requests in the last 60 min, the baseline is {fmt(base * 1000, "ms")}', spec['delta'] * 1000)
+                x['requests'] = count
+                found.append(x)
     cur, b1, b7 = trio(LAG['sig'])
     for k, v in cur.items():
         r = row(k[0], k[1])

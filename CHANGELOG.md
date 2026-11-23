@@ -2,6 +2,51 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.9 (2026-11-23)
+
+More cards lean to High, a daily Warnings digest, Batch jobs built in, Turkish identity and phone masking, MCP servers over plain http inside the cluster, email notifications on by default, and fixes for several pods. Read the upgrade notes under Changed: Warning cards that today's rules make High become High once, and personal notification mails are now on for everyone who has signed in.
+
+**Added:**
+
+- Daily warnings digest: on business days Skopax posts one message to the main Slack channel listing the open Warning cards nobody is assigned to or working on, grouped by service, up to 15 with "+N more", and a link to the board's Warning view. Time in Warnings digest at (`slack.warn-digest-at`, `SLACK_WARN_DIGEST_AT`, default `09:30`; empty turns it off), switch Daily warnings digest (`core.warn-digest`, `SKOPAX_FEATURE_WARN_DIGEST`); it also needs Slack auto-send on. Cards with a ticket or in progress are left out.
+- Batch jobs ships built in: failing, missed and slow scheduled jobs read from one timer per job in Prometheus every 10 minutes (formerly the batch-jobs example, which ran every 5 minutes; instances and cards carry over).
+- Batch jobs: optional Job graph link and Job logs link templates with `{job}` and `{namespace}`, shown on each job's cards and given to the investigator, and Known causes, short notes per job pattern that show on the card as Known cause and reach the investigator as a hint from the team.
+- Redaction masks Turkish national identity numbers (11 digits that pass the official checksum) and Turkish mobile numbers in the national format, such as 0532 123 45 67, (0532) 123 45 67 and +90 532 123 45 67. Numbers written as `532 1234567` or `0 532 1234567` stay visible, since they look the same as metric and table rows.
+- Secret values are also found by secret words in other languages (for example sifre, parola, Passwort, contrasena, mot de passe), read from a secret-words.txt file in each built-in language pack.
+- The MCP server plug-in accepts plain http for a service in the same Kubernetes cluster (`name.namespace.svc` or `name.namespace.svc.cluster.local`). Such a name is looked up as an absolute cluster name, must resolve to private addresses only, and redirects stay off; everything else stays https.
+- MCP server setting Calls to MCP servers per run (`mcp-tools.run-calls`, default 20, 1 to 60); calls refused before they reach a server do not count.
+- Extra token request headers (`sso.extra-token-headers`) on the Single sign-on card: up to 10 checked `Name: value` headers sent only on the sign-in token request; plain settings, not for secrets. `SSO_TOKEN_HEADERS` keeps working as before.
+- The reachability probe also checks Slack, the AI provider in use (its custom base URL when one is set) and the Google API hosts of switched-on Google plug-ins, with no credentials sent, plus Extra probe targets (`core.probe-extra`, `SKOPAX_PROBE_EXTRA`): up to 20 `name=url` lines.
+- Website: Scan after release of (instance field) and `website.release-delay` (minutes, 1 to 120, default 10): one extra page scan after a recorded deploy of a listed service.
+- An optional `filter` placeholder on the CSP reports preset, a checked ES|QL condition added after the time condition, and a new `condition` placeholder kind for presets.
+- A route's Card tags field takes tag ids or names in any case (`infra`, `Infrastructure`) and offers the tag ids as you type; a term that matches no tag, or the names of several tags, is refused on save with a message naming it.
+- Admin > Settings > Card tags shows each tag's id, the empty rules box says "Add rules, such as ...", and the plug-in rules read "Also tagged by plug-ins (fixed, added to yours)".
+- On Connect > Integrations, a plug-in that is on but has no instance switched on shows a hollow switch that says to open it and turn an instance on.
+
+**Changed:**
+
+- More cards lean to High: a new WARN log pattern with at least 100 lines in an hour, or one at least 10 times its day or its week baseline with at least 50 lines, is High, and a Prometheus latency card (average, gateway route p95, ingress p95) is High at 3 times its baseline over at least 500 requests.
+- On upgrade, Warning cards that the current rules make High become High once: open cards and stopped cards still waiting to be addressed. Resolved, archived and hand-set cards, stopped cards that are taken or muted, and alerts kept at Warning are left alone; Slack posts are redrawn, not posted again. A re-scored card stays High while it is open. See Upgrading to 0.5.9 in the configuration docs.
+- High is a brighter orange on the page, the card page, mail, the Slack bar and the tab icon, clearly apart from Warning yellow, with AA text contrast in light and dark.
+- Personal notification mails are now on by default, every kind, for everyone who has signed in, once a Mail server is on (they were opt-in). Anyone can switch it off or narrow the kinds in Preferences > Email. Without a Mail server the switch shows off and disabled.
+- The batch-jobs example now registers as example-batch-jobs, so it runs next to the built-in Batch jobs.
+- The Website page scan job wakes every 5 minutes (was hourly); the scan interval is unchanged. A failed scan shows `error: pages (tried <time>)` and waits one scan interval before the next try, on every pod.
+- The Langfuse instance that receives Skopax's own traces counts as healthy; its status line starts with "ok".
+- A read tool answer also has Turkish national identity numbers and national-format mobile numbers masked.
+
+**Plug-ins:**
+
+- Cards can carry a known cause (`knownCause`); the card page and the board show it, and the investigator reads it as person-written text.
+- `ctx.last_status()` returns the status a check stored for this instance at its last pass.
+- `skopax.severity.warn_log` and `skopax.severity.latency` hold the lean rules and their thresholds; Prometheus latency cards carry `requests`.
+
+**Fixed:**
+
+- With several pods, an integration added or changed on another pod shows at once in Admin > Integrations and Connect > Integrations, and Test connection and field suggestions on it use its current values.
+- Preferences > Email notices a Mail server set up meanwhile when you open it again, without a reload.
+- A background instance refresh that stopped is noticed again by the sweeps even while pages keep reading the integration list.
+- The one-time move of open Warning cards to High (0.5.8) no longer skips a card whose hand-set or earlier severity field is stored empty.
+
 ## 0.5.8 (2026-11-23)
 
 A High severity, Microsoft 365 mail through Graph, Dengage back in core, a Slack resolve window, an investigator that leans on people's earlier verdicts, and a long list of fixes. Read the upgrade notes under Changed before you upgrade: every pod at once, and warning alerts become High.

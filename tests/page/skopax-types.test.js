@@ -15,7 +15,7 @@ function state() {
   return {rev: 1, updatedAt: iso(0), sweptIso: iso(1), nextIso: new Date(Date.now() + 59 * 60000).toISOString(), sources: {prom: 'ok'},
     summary: {level: 'warn', headline: 'Typos', points: [], at: iso(1)},
     anomalies: [
-      card('page-typos|pages//shipping-calculator', 'pagescan', 'page-typos', {url: 'https://shop.example.com/shipping-calculator?amount=1000', what: '1 typo on https://shop.example.com/shipping-calculator?amount=1000: "bettter" \u2192 "better". Found by the page scan.'}),
+      card('page-typos|pages//shipping-calculator', 'pagescan', 'page-typos', {url: 'https://shop.example.com/shipping-calculator?amount=1000', what: '1 typo on https://shop.example.com/shipping-calculator?amount=1000: "bettter" \u2192 "better". Found by the page scan.', knownCause: 'the <b>CMS</b> team fixes typos on Fridays'}),
       card('page-typos|pages//gift-cards', 'pagescan', 'page-typos', {status: 'cleared', clearedAt: iso(30), sev: 'info'}),
       card('page-layout|pages//garden-chairs', 'pagescan', 'page-layout', {gone: {status: 404, since: '2026-11-09T12:45:00Z'}}),
       card('log|members/sms-sender|ERROR', 'logs', 'log', {sev: 'crit'}),
@@ -197,6 +197,8 @@ async function aPageCardOpensItsPageFromTheHeadAndFromItsText() {
   assert.ok(!page.classList.contains('open'), 'clicking the link does not unfold the card');
   const inText = page.querySelector('.what a');
   assert.strictEqual(inText && inText.getAttribute('href'), 'https://shop.example.com/shipping-calculator?amount=1000', 'the URL in the card text is a link');
+  assert.strictEqual(page.querySelector('.known').textContent, 'Known cause \u00b7 the <b>CMS</b> team fixes typos on Fridays', 'a known cause from the plug-in shows as text');
+  assert.ok(!cardOf('log|members/sms-sender|ERROR').querySelector('.known'), 'a card without one shows none');
   assert.ok(!cardOf('page-layout|pages//garden-chairs').querySelector('a.open-page'), 'a card without a url gets no link');
   assert.ok(!cardOf('log|members/sms-sender|ERROR').querySelector('a.open-page'));
   const gone = cardOf('page-layout|pages//garden-chairs');

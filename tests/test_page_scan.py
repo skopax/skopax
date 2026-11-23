@@ -121,7 +121,7 @@ def ledger(store: Store) -> list[dict]:
 def test_website_settings_and_the_scan_headers_field_are_declared_with_neutral_defaults():
     # then
     assert {s.key: s.default for s in website.PLUGIN.settings} == {'page-scan': 'false', 'scan-hours': '1', 'recheck-days': '7', 'pages': '50', 'extra': '', 'ignore': '',
-                                                                  'model': 'claude-opus-5-5', 'digest-hour': '10', 'scan-prompt': ''}
+                                                                  'model': 'claude-opus-5-5', 'release-delay': '10', 'digest-hour': '10', 'scan-prompt': ''}
     found = {s.key: s for s in website.PLUGIN.settings}
     assert set(found['model'].choices) == set(pricing.ALL_MODELS)
     assert found['model'].default == settings().investigate_model
@@ -129,7 +129,7 @@ def test_website_settings_and_the_scan_headers_field_are_declared_with_neutral_d
     assert next(f for f in website.PLUGIN.fields if f.key == 'scan-headers').kind == 'secret' and website.PLUGIN.capabilities.secrets == ('scan-headers',)
     checks = {c.id: c for c in website.PLUGIN.checks}
     scan, digest = checks['pagescan'], checks['pagescan-digest']
-    assert (scan.period, scan.offset, scan.ran, scan.sections, scan.tool, scan.timeout, scan.background) == (3600, 2700, ('pagescan',), (ps.SECTION,), 'page_scan', 3000, True)
+    assert (scan.period, scan.offset, scan.ran, scan.sections, scan.tool, scan.timeout, scan.background) == (300, 0, ('pagescan',), (ps.SECTION,), 'page_scan', 3000, True)
     assert (digest.period, digest.offset, digest.ran, digest.sections, digest.background) == (3600, 75, ('pagescan-digest',), (ps.DIGEST_SECTION,), False)
     tool = next(t for t in website.PLUGIN.tools if t.name == 'page_scan')
     assert (tool.kind, tool.scan, tool.image, tool.per_run) == ('read', True, True, 3) and 'pagescan' in OUTBOUND
@@ -484,3 +484,31 @@ def test_a_switched_off_instance_or_check_is_never_scanned_and_offers_no_tools(s
     # then
     assert seen[0] == ([], 0, [])
     assert seen[1][0] == [] and seen[1][1] == 0
+
+
+def test_a_failed_scan_on_one_pod_holds_the_next_wake_of_another_pod_on_the_same_store(store: Store, tmp_path):
+    # given
+    down = FakeChrome({CHAIRS: Site(status=503, probe=probe('Garden chairs'))})
+    try:
+        with site_app(store, tmp_path, down) as a:
+            switched_on(a)
+            a.app.state.sweeper.run('website', 'pagescan', NOW)
+        failed = status(store)
+        navigations = len(down.params('Page.navigate'))
+        s = dataclasses.replace(settings(), anthropic_api_key='sk-test')
+
+        # when
+        with TestClient(create_app(s, store, transport=transport, kube=Kube(root=tmp_path), anthropic_client=FakeAnthropic([]))) as b:
+            b.app.state.sweeper.run('website', 'pagescan', NOW + 300)
+            held = status(store)
+            held_navigations = len(down.params('Page.navigate'))
+            b.app.state.sweeper.run('website', 'pagescan', NOW + 3600)
+            retried = status(store)
+            retried_navigations = len(down.params('Page.navigate'))
+    finally:
+        down.close()
+
+    # then
+    assert failed.startswith(f'error: pages (tried {ps.iso(NOW)}):')
+    assert held == failed and held_navigations == navigations
+    assert retried != failed and retried.startswith(f'error: pages (tried {ps.iso(NOW + 3600)}):') and retried_navigations > navigations

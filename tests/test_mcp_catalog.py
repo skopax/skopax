@@ -166,7 +166,9 @@ def test_mcp_tools_identity_and_defaults_are_neutral():
     assert fields['preset'].choices == tuple(p.id for p in presets.load() if not p.soon)
     assert {k for k, f in fields.items() if f.show_if == ('auth', 'oauth')} == {'oauth-scopes', 'oauth-client-id', 'oauth-client-secret'}
     assert (plugin.checks, plugin.tools, plugin.test, plugin.env_instances, plugin.knowledge) == ((), (), None, None, ())
-    assert plugin.settings == (Setting('allow-local-http', 'Allow plain http to this machine', 'Lets a connection use http://localhost; for local testing only', 'bool', 'false'),)
+    assert plugin.settings == (Setting('allow-local-http', 'Allow plain http to this machine', 'Lets a connection use http://localhost; for local testing only', 'bool', 'false'),
+                               Setting('run-calls', 'Calls to MCP servers per run', 'How many calls one investigator run or chat answer may make to all MCP servers together; '
+                                       'a call refused before it reaches a server does not count', 'int', '20', 1, 60))
     assert '<g ' in (HOME / plugin.icon).read_text(encoding='utf-8')
 
 

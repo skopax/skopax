@@ -601,6 +601,31 @@ def test_plugin_script_tags_escape_the_path():
     assert plugin_script_tags(['/plugins/x/a"b.js']) == '<script src="/plugins/x/a&quot;b.js"></script>'
 
 
+def test_page_rereads_do_not_hide_a_background_refresh_that_stopped(store, caplog):
+    # given
+    now, ran = [1000.0], []
+    registry = Registry.of(prometheus.PLUGIN)
+    instances = Instances(store.db, registry, lambda: Sealer(KIT_KEY), clock=lambda: now[0])
+    runtime = Runtime(registry, PluginState(store.db), instances, fake_transport(FakeProm([])))
+    add_instance(store, prometheus.PLUGIN, 'main', sealer_key=KIT_KEY, primary=True, url=PROM_URL)
+    sweeper = Sweeper(runtime, store, lambda results, *args, **kwargs: ran.extend(r.name for r in results))
+    runtime.refresh()
+    sweeper.run('prometheus', 'prom', NOW)
+
+    # when
+    with caplog.at_level(logging.WARNING, logger='skopax.sweeps'):
+        for _ in range(int(WINDOW_S // 5) + 2):
+            now[0] += 5
+            instances.reread()
+            instances.fresh('prometheus', 'main')
+        skipped = sweeper.run('prometheus', 'prom', NOW)
+
+    # then
+    assert ran == ['prom'] and skipped is None
+    assert instances.age() < WINDOW_S and instances.live_age() > WINDOW_S
+    assert [r.getMessage() for r in caplog.records if r.name == 'skopax.sweeps'] == [msg('sweeps.stale_instances', plugin='prometheus', seconds=int(instances.live_age()))]
+
+
 def test_a_hook_that_hangs_does_not_stop_the_prometheus_pass(store, caplog):
     # given
     release, calls, now, ran = threading.Event(), [], [1000.0], []

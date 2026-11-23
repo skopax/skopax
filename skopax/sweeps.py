@@ -150,6 +150,14 @@ class Reads:
         segment = _segment(inst)
         return copy.deepcopy([r for r in rows if isinstance(r, dict) and sections.plugin_of(r) == self.plugin.id and (r.get('cluster') or None) == segment])
 
+    def last_status(self, inst: InstanceInfo | None) -> str | None:
+        if self.check is None:
+            return None
+        runs = self._loaded().get('serverPasses')
+        found = runs.get(pass_name(self.check, inst)) if isinstance(runs, dict) else None
+        status = found.get('status') if isinstance(found, dict) else None
+        return status if isinstance(status, str) else None
+
     def deploys(self, since: float) -> list[dict]:
         if not _number(since):
             return []
@@ -279,7 +287,7 @@ class Sweeper:
         check = next((c for c in plugin.checks if c.id == check_id), None) if plugin else None
         if check is None or not targets:
             return None
-        age = self.runtime.instances.age()
+        age = self.runtime.instances.live_age()
         if plugin.fields and age is not None and age > WINDOW_S:
             if plugin.id not in self._stale:
                 self._stale.add(plugin.id)
@@ -446,7 +454,7 @@ class Sweeper:
         raise Conflict(self.store.rev()['rev'])
 
     def heal(self) -> None:
-        age = self.runtime.instances.age()
+        age = self.runtime.instances.live_age()
         if age is None or age > WINDOW_S:
             return
         plugins = [p for p in self.runtime.registry.usable() if p.checks and p.fields and self.runtime.instances.all(p.id)]

@@ -1,7 +1,7 @@
 import threading
 import time
 
-from skopax import mail
+from skopax import mail, tags
 from skopax.contract import Capabilities, Context, Field, Outbound, Plugin, ReadError, Setting, Setup, TestResult
 from skopax.kit import connection
 from skopax.messages import msg
@@ -195,7 +195,7 @@ PLUGIN = Plugin(
     author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community', capabilities=Capabilities(), uses=(mail.PLUGIN_ID,),
     fields=(Field('recipients', 'Recipients', 'text', required=True, check=recipients_problem,
                   help='Comma or space list of 1 to 50 email addresses, such as alice@example.com, ops@example.com. Each address gets a mail of its own, so no one sees the others.'),
-            Field('tags', 'Card tags', 'text', help='Comma list of card tags this route takes, such as seo, developer. A route needs card tags or card keys.'),
+            Field('tags', 'Card tags', 'text', check=tags.terms_problem, suggest=tags.suggested, separator=',', help='Comma list of card tag ids or names this route takes, such as infra, developer. A route needs card tags or card keys.'),
             Field('keys', 'Card keys', 'text', help='Comma list of card key patterns this route takes, with * and ?, such as log|checkout-*|*.'),
             Field('min-sev', 'Lowest severity', 'choice', choices=SEVS, choice_labels={'warn': 'Warning', 'high': 'High', 'crit': 'Critical'}, help='Cards below it are not mailed on their own; empty uses the Email route lowest severity setting.')),
     settings=(Setting('repeat-days', 'Email route repeat days', 'Days before a card already mailed to a list is mailed to it again when it fires again or gets another tag; 0 mails every time',

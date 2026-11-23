@@ -13,7 +13,7 @@ from mcp.shared.exceptions import McpError
 
 from skopax.messages import msg
 from skopax.mcptools import CONNECT_TIMEOUT_S, READ_TIMEOUT_S, RESPONSE_BYTES_MAX
-from skopax.mcptools.client import Capped, GuardedBackend, McpClient, McpFailure, Refused, TooLarge, client_for, failure_text, guard_url
+from skopax.mcptools.client import PLAIN_HTTP, Capped, GuardedBackend, McpClient, McpFailure, Refused, TooLarge, client_for, failure_text, guard_url
 from tests.mcp_fake import SERVER_SECRET, FakeResolver, FakeServer, tool
 
 URL = 'https://mcp.example.com/mcp'
@@ -294,6 +294,26 @@ def test_a_cause_further_than_three_steps_is_not_read():
     ('https://localhost/token', False, True, 'mcptools.url.blocked'),
     ('https://127.0.0.1/token', True, True, None),
     ('https://169.254.169.254/token', True, True, 'mcptools.url.blocked'),
+    ('http://mcp.tools.svc.cluster.local/mcp', False, False, None),
+    ('http://mcp.tools.svc.cluster.local:8080/mcp', False, False, None),
+    ('http://mcp.tools.svc/mcp', False, False, None),
+    ('http://MCP.Tools.SVC/mcp', False, False, None),
+    ('http://pod-0.mcp.tools.svc.cluster.local/mcp', False, False, None),
+    ('http://mcp.svc/mcp', False, False, 'mcptools.url.https'),
+    ('http://svc/mcp', False, False, 'mcptools.url.https'),
+    ('http://mcp.svc.cluster.local/mcp', False, False, 'mcptools.url.https'),
+    ('http://mcp.tools.svc.cluster.local./mcp', False, False, 'mcptools.url.https'),
+    ('http://mcp.tools.svc.example.com/mcp', False, False, 'mcptools.url.https'),
+    ('http://mcp.toolssvc/mcp', False, False, 'mcptools.url.https'),
+    ('http://mcp.tools.svc.corp.local/mcp', False, False, 'mcptools.url.https'),
+    ('http://-bad.tools.svc/mcp', False, False, 'mcptools.url.https'),
+    ('http://10.0.0.5/mcp', False, False, 'mcptools.url.https'),
+    ('http://192.168.1.5:8080/mcp', True, False, 'mcptools.url.https'),
+    ('http://[fd00::5]/mcp', False, False, 'mcptools.url.https'),
+    ('http://u:p' + '@mcp.tools.svc.cluster.local/mcp', False, False, 'mcptools.url.shape'),
+    ('http://mcp.tools.svc.cluster.local/mcp#part', False, False, 'mcptools.url.shape'),
+    ('http://mcp.tools.svc.cluster.local/token', False, True, 'mcptools.url.https'),
+    ('https://mcp.tools.svc.cluster.local/mcp', False, False, None),
 ])
 def test_url_guard_rules(url, local, discovered, key):
     # when
@@ -332,6 +352,141 @@ def test_a_name_that_resolves_to_a_refused_address_is_never_connected(connects):
     assert refused == [msg('mcptools.url.resolved')] * 8
     assert before == []
     assert connects.hosts == ['127.0.0.1', '203.0.113.10']
+
+
+def test_a_cluster_name_is_dialled_only_at_a_private_address(connects):
+    # given
+    names = {'mcp.tools.svc.cluster.local.': '10.96.0.12', 'six.tools.svc.cluster.local.': 'fd00:10::12', 'shared.tools.svc.cluster.local.': '100.64.3.4',
+             'lan.tools.svc.cluster.local.': '192.168.4.4', 'pods.tools.svc.cluster.local.': '172.20.0.9', 'outside.tools.svc.cluster.local.': '203.0.113.10',
+             'mixed.tools.svc.cluster.local.': ('10.96.0.13', '203.0.113.11'), 'mapped.tools.svc.cluster.local.': '::ffff:203.0.113.12',
+             'loop.tools.svc.cluster.local.': '127.0.0.1', 'public.example.com': '203.0.113.20'}
+
+    async def over_http(host: str, port: int):
+        PLAIN_HTTP.set(True)
+        return await GuardedBackend().connect_tcp(host, port, timeout=5)
+
+    def connect_to(host: str, port: int):
+        return asyncio.run(over_http(host, port))
+
+    # when
+    with FakeResolver(names):
+        for host in ('mcp.tools.svc.cluster.local', 'six.tools.svc', 'shared.tools.svc', 'lan.tools.svc', 'pods.tools.svc'):
+            connect_to(host, 80)
+        refused = []
+        for host in ('outside.tools.svc.cluster.local', 'mixed.tools.svc', 'mapped.tools.svc', 'loop.tools.svc'):
+            with pytest.raises(Refused) as caught:
+                connect_to(host, 80)
+            refused.append(caught.value.text)
+        connect_to('public.example.com', 443)
+
+    # then
+    assert refused == [msg('mcptools.url.resolved')] * 4
+    assert connects.hosts == ['10.96.0.12', 'fd00:10::12', '100.64.3.4', '192.168.4.4', '172.20.0.9', '203.0.113.20']
+
+
+def test_only_plain_http_to_a_cluster_name_needs_a_private_address(connects):
+    # given
+    names = {'outside.tools.svc.cluster.local.': '203.0.113.10', 'outside.tools.svc.cluster.local': '203.0.113.10', 'inside.tools.svc.cluster.local.': '10.96.0.12'}
+
+    async def get(url: str) -> BaseException | None:
+        async with client_for() as client:
+            try:
+                await client.get(url)
+            except BaseException as e:
+                return e
+        return None
+
+    def sent(url: str) -> BaseException | None:
+        return asyncio.run(get(url))
+
+    # when
+    with FakeResolver(names):
+        public_http = sent('http://outside.tools.svc.cluster.local/mcp')
+        dialled_before = list(connects.hosts)
+        public_https = sent('https://outside.tools.svc.cluster.local/mcp')
+        private_http = sent('http://inside.tools.svc.cluster.local/mcp')
+
+    # then
+    assert isinstance(public_http, Refused) and public_http.text == msg('mcptools.url.resolved')
+    assert dialled_before == []
+    assert not isinstance(public_https, Refused) and not isinstance(private_http, Refused)
+    assert connects.hosts == ['203.0.113.10', '10.96.0.12']
+
+
+def test_a_backend_used_outside_the_capped_client_checks_a_cluster_name_as_plain_http(connects):
+    # given
+    names = {'outside.tools.svc.cluster.local.': '203.0.113.10', 'inside.tools.svc.cluster.local.': '10.96.0.12'}
+
+    # when
+    with FakeResolver(names):
+        with pytest.raises(Refused) as caught:
+            asyncio.run(GuardedBackend().connect_tcp('outside.tools.svc.cluster.local', 80, timeout=5))
+        asyncio.run(GuardedBackend().connect_tcp('inside.tools.svc.cluster.local', 80, timeout=5))
+
+    # then
+    assert caught.value.text == msg('mcptools.url.resolved')
+    assert connects.hosts == ['10.96.0.12']
+
+
+def test_a_cluster_name_is_resolved_as_an_absolute_cluster_name_so_search_domains_never_apply(connects):
+    # given
+    resolver = FakeResolver({'mcp.tools.svc.cluster.local.': '10.96.0.12', 'short.tools.svc.cluster.local.': '10.96.0.13', 'mcp.tools.svc.example.com': '203.0.113.10',
+                             'public.example.com': '203.0.113.20'})
+
+    # when
+    with resolver:
+        for host in ('mcp.tools.svc.cluster.local', 'short.tools.svc', 'public.example.com'):
+            asyncio.run(GuardedBackend().connect_tcp(host, 80, timeout=5))
+
+    # then
+    assert resolver.asked == ['mcp.tools.svc.cluster.local.', 'short.tools.svc.cluster.local.', 'public.example.com']
+    assert connects.hosts == ['10.96.0.12', '10.96.0.13', '203.0.113.20']
+
+
+def test_an_https_cluster_name_is_resolved_as_written_through_the_search_list(connects):
+    # given
+    resolver = FakeResolver({'short.tools.svc': '10.96.0.13', 'mcp.tools.svc.cluster.local': '10.96.0.12'})
+
+    async def over_https(host: str):
+        PLAIN_HTTP.set(False)
+        return await GuardedBackend().connect_tcp(host, 443, timeout=5)
+
+    async def get(url: str) -> BaseException | None:
+        async with client_for() as client:
+            try:
+                await client.get(url)
+            except BaseException as e:
+                return e
+        return None
+
+    # when
+    with resolver:
+        asyncio.run(over_https('mcp.tools.svc.cluster.local'))
+        sent = asyncio.run(get('https://short.tools.svc/mcp'))
+
+    # then
+    assert resolver.asked == ['mcp.tools.svc.cluster.local', 'short.tools.svc']
+    assert not isinstance(sent, Refused)
+    assert connects.hosts == ['10.96.0.12', '10.96.0.13']
+
+
+def test_a_plain_http_cluster_server_is_listed_and_its_redirects_are_not_followed():
+    # given
+    url = 'http://mcp.tools.svc.cluster.local/mcp'
+    fake = FakeServer(tools=tools(2))
+    moved = FakeServer(tools=tools(1), redirect='http://mcp.example.com/mcp')
+
+    # when
+    listing = McpClient(url, {'Authorization': 'Bearer t'}, False, http=fake.client).listing()
+    text = failed(McpClient(url, {}, False, http=moved.client).listing)
+    public = failed(McpClient('http://mcp.example.com/mcp', {}, False, http=fake.client).listing)
+
+    # then
+    assert [t.name for t in listing.tools] == ['tool_0', 'tool_1']
+    assert {s['host'] for s in fake.seen} == {'mcp.tools.svc.cluster.local'}
+    assert text == msg('connection.status', status=307)
+    assert [s for s in moved.seen if s['host'] != 'mcp.tools.svc.cluster.local'] == []
+    assert public == msg('mcptools.url.https')
 
 
 def test_each_checked_address_is_tried_in_order(connects):

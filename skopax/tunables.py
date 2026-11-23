@@ -16,7 +16,7 @@ from pymongo import DESCENDING, ReturnDocument
 
 from skopax import brand, clock as zone_clock, logs, settingcards, tags
 from skopax.config import ALERT_GLOB, ALERT_GLOBS_MAX, AI_PROVIDERS, DEFAULT_ROLES, JIRA_BACKLINK_MODES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve, TRACE_CONTENTS
-from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS
+from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS, read_token_headers, token_headers_reason
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import BY_KEY as FEATURE_OF
@@ -25,7 +25,7 @@ from skopax.investigator import web as web_sites
 from skopax.investigator.prompt import writing_languages
 from skopax.messages import languages, msg
 from skopax.oidc import url_problem
-from skopax.probe import CERT_RULES, SKIP_ENTRY, skip_entry_ok
+from skopax.probe import CERT_RULES, EXTRA_KEY, EXTRA_MAX, EXTRA_NAME_MAX, SKIP_ENTRY, read_extra, skip_entry_ok
 from skopax.rulehelp import RULE_HELP
 from skopax.store import iso, utc_now
 
@@ -41,9 +41,9 @@ EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
 SEVS = ('info', 'warn', 'high', 'crit')
 REFRESH_S = 15
 TEXT_LIMIT = 1000
-TEXT_LIMITS = {'core.org-about': ORG_ABOUT_MAX}
+TEXT_LIMITS = {'core.org-about': ORG_ABOUT_MAX, EXTRA_KEY: 4000}
 TEXT_LIMITS['sso.button-text'] = SSO_BUTTON_TEXT_MAX
-TEXT_LINES = {'core.org-about': 8}
+TEXT_LINES = {'core.org-about': 8, EXTRA_KEY: 6}
 INPUT_LIMIT = 4000
 TEXT_BOXES = ('text', 'list', 'tagrules')
 TERM_LIMIT = 200
@@ -122,6 +122,8 @@ SEV_HOURS_KEYS = {'core.auto-resolve-hours-crit': ('auto_resolve_hours_crit', 'c
 INFO_DAYS_KEY = 'core.info-auto-close-days'
 TIMEZONE_KEY = 'general.timezone'
 TAG_REPORT_KEY = 'tags.report-at'
+WARN_DIGEST_KEY = 'slack.warn-digest-at'
+DAILY_AT_KEYS = (TAG_REPORT_KEY, WARN_DIGEST_KEY)
 RELEASE_NAME_KEY = 'jira.release-name'
 LINKS_KEY = 'core.workspace-links'
 OLD_LINKS_KEY = 'core.instance-links'
@@ -161,6 +163,7 @@ MCP_URL_KEYS = ('mcp.issuer', 'mcp.resource-url')
 MCP_RESOURCE_KEY = 'mcp.resource-url'
 SESSIONS_AFTER_KEY = 'sso.sessions-after'
 SSO_SWITCH_KEY = 'sso.enabled'
+TOKEN_HEADERS_KEY = 'sso.extra-token-headers'
 RULE_SETS = (('core.certs', 'cert_rules', 'Certificates', CERT_RULES),)
 CERT_SKIP_KEY = 'core.cert-skip'
 SKIP_SHOWN = 80
@@ -225,6 +228,9 @@ STATIC = (
     T('sso.require-verified-email', 'sso_require_verified_email', SIGNIN, 'Require verified email', 'Refuses a sign-in whose token does not say email_verified is true; when off, only an email_verified of false is refused. The first sign-in to an account added in Admin, and every sign-in while Allowed email domains or New accounts limits who gets in, always needs a verified email', 'bool'),
     T('sso.authorize-url', 'sso_authorize_url', SIGNIN, 'Authorize URL', 'Replaces the authorization endpoint the provider lists; empty uses the listed one', 'text'),
     T('sso.token-url', 'sso_token_url', SIGNIN, 'Token URL', 'Replaces the token endpoint the provider lists; empty uses the listed one', 'text'),
+    T('sso.extra-token-headers', 'sso_extra_token_headers', SIGNIN, 'Extra token request headers', 'Headers added to the token request only, such as an API gateway key name or a channel, '
+      'as Name: value pairs separated by semicolons; at most 10. Authorization, Proxy-Authorization, Cookie, Host, Content-Length, Content-Type, Accept, Accept-Encoding, '
+      'Transfer-Encoding, Connection, Expect, TE, Upgrade, Keep-Alive, Trailer, Forwarded, Origin and X-Forwarded-* headers cannot be set. The values are shown in Admin and kept in plain text, so a secret does not belong here', 'text'),
     T('sso.jwks-url', 'sso_jwks_url', SIGNIN, 'Keys (JWKS) URL', 'Replaces the signing keys (JWKS) address the provider lists; empty uses the listed one', 'text'),
     T('sso.button-text', 'sso_button_text', SIGNIN, 'Button text', 'The text of the single sign-on button on the login page, at most 40 characters, such as Sign in with Acme; empty uses Sign in with SSO', 'text'),
     T('sso.button-icon', 'sso_button_icon', SIGNIN, 'Button icon', 'The icon of the single sign-on button: auto picks a mark from the issuer host, company shows the image uploaded on the Single sign-on card, none shows the text only', 'choice', choices=SSO_BUTTON_ICONS),
@@ -280,6 +286,8 @@ STATIC = (
     T('slack.great-emoji', 'slack_great_emoji', SLACK, 'Thank-you emoji', 'The reaction the bot puts on a thank-you', 'text'),
     T('slack.remind-hours', 'slack_remind_hours', SLACK, 'Reminder after (h)', 'Reminds a posted card nobody acted on after N hours; 0 turns reminders off', 'float', 0, 168, live=False),
     T('slack.clear-note-minutes', 'slack_clear_note_minutes', SLACK, 'Cleared note after (min)', 'Says in the thread that a posted card cleared after N minutes', 'float', 0, 240, live=False),
+    T(WARN_DIGEST_KEY, 'warn_digest_at', SLACK, 'Warnings digest at', 'Time of day (HH:MM, install time zone) of the Slack post that lists the open Warning cards nobody is assigned to or working on; '
+      'it posts Monday to Friday only, never on Saturday or Sunday, and nothing on a day with no such card. The latest time is 23:55; empty turns it off', 'text'),
     T('routes.slack-echo', 'routes_slack_echo', SLACK, 'Echo route posts to Slack', 'Also posts a card a route (such as a Teams channel) takes to the Slack channel when Slack has not posted it yet, and says in its thread which route got it; a route can override this with its own Also post to Slack field', 'bool'),
     T(POST_SEV_KEY, 'slack_post_sev', SLACK, 'Post immediately from', 'Posts a card of this severity or higher to the main channel with its numbers when it is pushed (new, escalated or reopened; information is never posted); the investigator\'s findings follow as a reply in its thread. '
       'Many cards opening together are not posted at once, and the investigator, when it runs, groups them. Off leaves every card to the investigator\'s posts and to people', 'choice', choices=SLACK_POST_SEVS, choice_labels=POST_SEV_LABELS),
@@ -332,11 +340,16 @@ STATIC = (
     feature_tunable('core.push', 'push_on'),
     feature_tunable('core.update-check', 'update_check'),
     feature_tunable('core.tag-report', 'tag_report_on'),
+    feature_tunable('core.warn-digest', 'warn_digest_on'),
     feature_tunable('core.langfuse-tracing', 'langfuse_tracing_on'),
     feature_tunable('core.hide-attribution', 'hide_attribution'),
 ) + tuple(T(key, field, RULES, label, 'Thresholds of the ' + label + ' cards; an empty field uses the default', 'rules', defaults=dict(defaults)) for key, field, label, defaults in RULE_SETS) + (
     T(CERT_SKIP_KEY, 'cert_skip', RULES, 'Certificates not watched', 'Hosts whose certificate expiry raises no card, separated by commas: shop.example.com also covers its subdomains, '
       '*.example.com covers only the subdomains', 'list', items='host'),
+) + (
+    T('core.probe-extra', 'probe_extra', RULES, 'Extra probe targets', 'More addresses the reachability probe calls, one per line as name=url, such as status=https://status.example.com; '
+      f'at most {EXTRA_MAX}. A name is 1 to {EXTRA_NAME_MAX} letters, digits, spaces, dots, dashes or underscores, and an address is http:// or https:// without a user name or password. '
+      'Only reachability is checked, and no credentials are sent', 'text'),
 ) + (
     T(TAG_REPORT_KEY, 'tag_report_at', TAGS, 'Daily report at', 'Time of day (HH:MM, install time zone) of the Slack report that names the responsibles of each tag with open cards; '
       'it posts Monday to Friday only, never on Saturday or Sunday. The latest time is 23:55; empty turns it off', 'text'),
@@ -457,14 +470,21 @@ def parse(t: Tunable, raw, base: Settings, loading: bool = False):
                 zone_clock.check(text)
             except ValueError:
                 raise Invalid(f'{t.label} must be an IANA timezone name, such as UTC or Europe/Berlin') from None
-        if t.key == TAG_REPORT_KEY and text and not tags.report_at_ok(text):
+        if t.key in DAILY_AT_KEYS and text and not tags.report_at_ok(text):
             raise Invalid(f'{t.label} must be a time as HH:MM from 00:00 to {tags.REPORT_LAST}, such as 10:00, or empty for off')
         if t.key == LINKS_KEY:
             instance_links(text)
+        if t.key == EXTRA_KEY and (refused := read_extra(text)[1]):
+            raise Invalid(msg('probe.extra.invalid', entry=refused[0], rule=refused[1]))
         if t.items and not loading:
             check_items(t, item_entries(t, text))
         if t.key == RELEASE_NAME_KEY and (problem := release_problem(text)):
             raise Invalid(problem)
+        if t.key == TOKEN_HEADERS_KEY and (reason := read_token_headers(text)[1]):
+            said = msg('sso.token_headers_invalid', reason=token_headers_reason(reason))
+            if loading:
+                log.warning('admin setting %s dropped: %s', t.key, said)
+            raise Invalid(said)
         if t.key in SSO_URL_KEYS + MCP_URL_KEYS and text and (problem := url_problem(text)):
             raise Invalid(msg(problem, field=t.label))
         if t.key == MCP_RESOURCE_KEY and not loading and urlsplit(text).path.rstrip('/').lower().endswith('/mcp'):

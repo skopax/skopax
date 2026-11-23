@@ -1180,6 +1180,9 @@
   "Slack names unavailable": "Slack adları alınamadı",
   "Pick a suggestion or type a full e-mail": "Bir öneri seçin veya tam bir e-posta yazın",
   "Auto-assign new cards": "Yeni kartları otomatik ata",
+  "Tag id: use it in a route's Card tags": "Etiket kimliği: bir rotanın Card tags alanında kullanın",
+  "Add rules, such as type:log, log|checkout-*": "Kural ekleyin, örneğin type:log, log|checkout-*",
+  "Also tagged by plug-ins (fixed, added to yours):": "Eklentiler de etiketler (sabit, sizinkilere eklenir):",
   "Auto-assign needs a responsible with a Skopax account": "Otomatik atama için Skopax hesabı olan bir sorumlu gerekir",
   "Auto-assign on": "Otomatik atama açık",
   "Auto-assign off": "Otomatik atama kapalı",
@@ -1519,7 +1522,7 @@
   "The Activity rail shows what the server and the investigator are doing, as it happens.": "Aktivite paneli sunucunun ve Investigator'ın ne yaptığını anında gösterir.",
   "Notifications and messages": "Bildirimler ve mesajlar",
   "The bell in the top bar opens Notifications: what happened on the cards you hold and on your chat answers. Opening the page marks them read.": "Üst çubuktaki zil Bildirimler'i açar: sizdeki kartlarda ve sohbet yanıtlarınızda olanlar. Sayfayı açmak onları okundu sayar.",
-  "Preferences > Email: switch on Email me my notifications and pick the kinds. It needs a Mail server, set up by an admin. Mail goes only to the address of your own account.": "Tercihler > E-posta: Bildirimlerimi e-postayla gönder'i açın ve türleri seçin. Bunun için bir yöneticinin kurduğu bir Mail server gerekir. E-posta yalnızca kendi hesabınızın adresine gider.",
+  "Preferences > Email: Email me my notifications is on for every kind once an admin sets up a Mail server. Switch it off, or untick the kinds you do not want. Mail goes only to the address of your own account.": "Tercihler > E-posta: Bir admin Mail server kurduğunda Bildirimlerimi e-postayla gönder her tür için açıktır. Kapatın ya da istemediğiniz türlerin işaretini kaldırın. E-posta yalnızca kendi hesabınızın adresine gider.",
   "While Slack auto-send is on, cards from Warning up are posted to the Slack channel on their own.": "Slack auto-send açıkken Uyarı ve üstündeki kartlar Slack kanalına kendiliğinden gönderilir.",
   "While Slack auto-send is on, Critical cards are posted to the Slack channel on their own.": "Slack auto-send açıkken Kritik kartlar Slack kanalına kendiliğinden gönderilir.",
   "Post immediately from is Off: no card is posted to Slack on its own. Send to Slack posts one by hand.": "Post immediately from Off durumda: hiçbir kart Slack'e kendiliğinden gönderilmez. Slack'e gönder ile elle gönderilir.",
@@ -1601,7 +1604,7 @@
   "Switch it on": "Aç",
   "in Admin > Features, switch on Langfuse tracing. While something is missing, the switch says what.": "Admin > Özellikler'de Langfuse izleme anahtarını açın. Bir şey eksikken anahtar neyin eksik olduğunu söyler.",
   "Check it": "Kontrol et",
-  "the instance now reads Receives Skopax's own traces, so it is not watched. Run Investigate on a card, find its trace under Traces in the Langfuse project, and open it from Open trace on the Investigator page.": "instance artık Receives Skopax's own traces, so it is not watched yazar. Bir kartta İncele'yi çalıştırın, trace'i Langfuse projesinde Traces altında bulun ve Investigator sayfasındaki Open trace ile açın.",
+  "the instance now says it receives Skopax's own traces, so it is not watched. Run Investigate on a card, find its trace under Traces in the Langfuse project, and open it from Open trace on the Investigator page.": "instance artık Skopax'ın kendi trace'lerini aldığını ve bu yüzden izlenmediğini söyler. Bir kartta İncele'yi çalıştırın, trace'i Langfuse projesinde Traces altında bulun ve Investigator sayfasındaki Open trace ile açın.",
   "Nothing shows up": "Hiçbir şey görünmüyor",
   "check that the keys come from the right project and may write, that Traces sampled is 100, and that the run made a model call. Traces go out within seconds after a run ends.": "key'lerin doğru projeden geldiğini ve yazabildiğini, Traces sampled'ın 100 olduğunu ve çalışmanın bir model çağırdığını kontrol edin. Trace'ler bir çalışma bittikten birkaç saniye sonra gönderilir.",
   "{0} open": "{0} açık",
@@ -1632,7 +1635,9 @@
   "A card resolved as Fixed that fires again came back: it is posted at once as at least High and goes back to the person who resolved it. A card resolved as No action needed reopens on the board only, unless it got worse.": "Düzeltildi olarak çözülen ve yeniden tetiklenen bir kart geri gelmiştir: hemen en az Yüksek olarak gönderilir ve onu çözen kişiye geri döner. İşlem gerekmez olarak çözülen bir kart, kötüleşmedikçe yalnızca panoda yeniden açılır.",
   "No open warning, high or critical card to attach.": "Eklenecek açık uyarı, yüksek ya da kritik kart yok.",
   "Ruled": "Karar verildi",
-  "A person decided an earlier occurrence of this card; the investigator starts from it": "Bu kartın önceki bir oluşumuna bir kişi karar verdi; Investigator bundan başlar"
+  "A person decided an earlier occurrence of this card; the investigator starts from it": "Bu kartın önceki bir oluşumuna bir kişi karar verdi; Investigator bundan başlar",
+  "Known cause": "Bilinen neden",
+  "On, but no instance is on: open it and turn an instance on": "Açık, ancak hiçbir instance açık değil: açın ve bir instance'ı açın"
  },
  "rules": [
   [

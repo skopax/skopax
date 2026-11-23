@@ -547,6 +547,36 @@ def test_calls_are_bounded_and_counted(store, monkeypatch):
     assert capped['outcome'] == 'capped' and after == before + 1, 'the call that spent the day stops the next one'
 
 
+def test_the_run_call_cap_is_a_setting_and_refused_calls_do_not_spend_it(store):
+    # given
+    fake = Server(tools=[read('search'), read('get')])
+    with app(store, fake) as c:
+        connect(c, on=['search', 'get'])
+        saved = c.put('/api/admin/settings', json={'key': 'mcp-tools.run-calls', 'value': '3'})
+        too_high = c.put('/api/admin/settings', json={'key': 'mcp-tools.run-calls', 'value': '61'})
+        too_low = c.put('/api/admin/settings', json={'key': 'mcp-tools.run-calls', 'value': '0'})
+        many = [use('mcp_main_get', {'query': 'q'}, tid=f'g{i}') for i in range(2)] + [use('mcp_main_search', {'query': 'q'}, tid=f's{i}') for i in range(3)]
+
+        # when
+        capped = results(ran(c, store, reply(*many), reply(text('done'), stop='end_turn'))[1])
+
+        def switched_off():
+            assert c.put('/api/admin/mcp-tools/instances/main/tools', json={'on': ['search'], 'understood': False}).status_code == 200
+            return reply(*[use('mcp_main_get', {'query': 'q'}, tid=f'g{i}') for i in range(2)])
+
+        before = len(fake.calls())
+        after_refusals = results(ran(c, store, switched_off, reply(*[use('mcp_main_search', {'query': 'q'}, tid=f's{i}') for i in range(4)]),
+                                     reply(text('done'), stop='end_turn'))[1])
+        sent = len(fake.calls()) - before
+
+    # then
+    assert saved.status_code == 200 and (too_high.status_code, too_low.status_code) == (422, 422)
+    assert [e for _, e in capped] == [False] * 3 + [True] * 2
+    assert capped[3][0] == capped[4][0] == msg('mcptools.cap.run', limit=3)
+    assert [e for _, e in after_refusals] == [True, True, False, False, False, True], 'a call refused before it reached the server leaves the cap whole'
+    assert after_refusals[5][0] == msg('mcptools.cap.run', limit=3) and sent == 3
+
+
 def test_the_activity_line_has_no_argument_value(store):
     # given
     fake = Server(tools=[read('search')])
@@ -1505,3 +1535,15 @@ def test_a_read_hinted_execute_write_is_never_offered_or_called_in_a_shadow_chat
     assert [c_['name'] for c_ in fake.calls()] == [], 'the outside server never receives the call'
     assert results(model)[0][1] is True
     assert (rows['executeWrite']['kind'], rows['executeWrite']['on']) == ('write', False)
+
+
+def test_the_plugin_calls_setting_matches_the_bridge_limits():
+    # given
+    from skopax.mcptools import RUN_CALLS_HIGH, RUN_CALLS_KEY, RUN_CALLS_LOW, RUN_CALLS_MAX
+    from skopax.plugins.mcp_tools import PLUGIN
+
+    # when
+    [setting] = [s for s in PLUGIN.settings if s.key == RUN_CALLS_KEY]
+
+    # then
+    assert (setting.default, setting.low, setting.high) == (str(RUN_CALLS_MAX), RUN_CALLS_LOW, RUN_CALLS_HIGH)

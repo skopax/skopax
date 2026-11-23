@@ -15,7 +15,7 @@ Behind it, alerts and errors are grouped into one card per problem, so the team 
 
 The name comes from the Greek *skopos*, "lookout": the one who stands on a high place, scans the horizon and calls out what is coming.
 
-Status: 0.5.8 is the current release; 0.1.0 was the first stable one. Since 0.1.0, settings and the plug-in contract follow semantic versioning: before 1.0, no breaking change ships without a note in [CHANGELOG.md](CHANGELOG.md).
+Status: 0.5.9 is the current release; 0.1.0 was the first stable one. Since 0.1.0, settings and the plug-in contract follow semantic versioning: before 1.0, no breaking change ships without a note in [CHANGELOG.md](CHANGELOG.md).
 
 ## What it looks like
 
@@ -54,7 +54,7 @@ Everything Skopax watches comes through plug-ins, and more than 30 of them ship 
 | Area | Plug-ins |
 |---|---|
 | Metrics, logs and alerts | Prometheus, Elasticsearch, Grafana |
-| Infrastructure | Kubernetes, Argo CD, Kafka, Redis, PMM (Postgres, MongoDB), Airbyte, Capacity |
+| Infrastructure | Kubernetes, Argo CD, Kafka, Redis, PMM (Postgres, MongoDB), Airbyte, Capacity, Batch jobs |
 | Web and edge | Website, Cloudflare, Varnish, Chrome UX Report, CSP reports, Safe Browsing |
 | Apps | App stores, Crashlytics |
 | Marketing and analytics | Google Ads, Google Analytics 4, Google Tag Manager, Umami, VWO, Dengage |
@@ -80,7 +80,7 @@ The investigator calls the AI provider you pick, Anthropic or OpenAI, with your 
 
 ## Quickstart
 
-Skopax ships as a ready image, so there is nothing to clone or build: `ghcr.io/skopax/skopax:0.5.8`, built for `linux/amd64` and `linux/arm64`. Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. [Operations](docs/operations.md#the-image) has more on the image.
+Skopax ships as a ready image, so there is nothing to clone or build: `ghcr.io/skopax/skopax:0.5.9`, built for `linux/amd64` and `linux/arm64`. Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. [Operations](docs/operations.md#the-image) has more on the image.
 
 Run it with a MongoDB of your own. The first line makes the secret key once:
 
@@ -91,7 +91,7 @@ Run it with a MongoDB of your own. The first line makes the secret key once:
       -e MONGO_URI=mongodb://skopax-mongo:27017/skopax \
       -e SKOPAX_BASE_URL=http://localhost:8080 \
       -e SKOPAX_SECRET_KEY="$SKOPAX_SECRET_KEY" \
-      ghcr.io/skopax/skopax:0.5.8
+      ghcr.io/skopax/skopax:0.5.9
 
 Then open http://localhost:8080. Keep that key, for example in your password manager (`echo "$SKOPAX_SECRET_KEY"` prints it), and pass the same value on every start. With another key, Skopax cannot open the integration secrets sealed with the old one, so each has to be entered again, and everyone has to sign in again (see [Settings](docs/configuration.md#settings)).
 
@@ -110,7 +110,7 @@ Save this as `compose.yml` in an empty folder:
           interval: 10s
           retries: 10
       skopax:
-        image: ghcr.io/skopax/skopax:0.5.8
+        image: ghcr.io/skopax/skopax:0.5.9
         restart: unless-stopped
         ports:
           - "127.0.0.1:8080:8080"

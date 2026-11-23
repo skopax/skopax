@@ -33,6 +33,7 @@ RESERVED_HEADERS = ('authorization',)
 SECRET_ID = 'sso.client-secret'
 SECRET_MAX = 2000
 FIELDS: tuple[str, ...] = ('issuer', 'client-id', 'client-secret', 'scope', 'claims', 'client-auth', 'require-verified-email', 'authorize-url', 'token-url', 'jwks-url',
+                           'extra-token-headers',
                            'roles-claim', 'role-map', 'default-role', 'new-accounts', 'allowed-domains', 'button-text', 'button-icon')
 SECRET_FIELD = 'client-secret'
 VALUE_MAX = 4000
@@ -112,7 +113,7 @@ class SsoConfig:
         return cls(on=bool(settings.sso_on), issuer=(settings.sso_issuer or '').strip(), client_id=(settings.sso_client_id or '').strip(), secret=secret or '',
                    scope=(settings.sso_scope or '').strip(), claims=settings.sso_claims, client_auth=settings.sso_client_auth,
                    require_verified=bool(settings.sso_require_verified_email), overrides={k: v.strip() for k, v in given.items() if v and v.strip()},
-                   redirect_uri=redirect, token_headers=dict(settings.token_headers), secret_unreadable=bool(unreadable and not secret))
+                   redirect_uri=redirect, token_headers=joined_headers(settings.token_headers, settings.extra_token_headers), secret_unreadable=bool(unreadable and not secret))
 
     def problem(self) -> str | None:
         if not self.issuer or url_problem(self.issuer):
@@ -139,6 +140,11 @@ class SsoConfig:
         values |= {'secret': digest(self.secret), 'overrides': sorted(self.overrides.items()),
                    'token_headers': sorted((name, digest(value)) for name, value in self.token_headers.items())}
         return hmac.new(key, json.dumps(values, sort_keys=True).encode(), hashlib.sha256).hexdigest()[:16]
+
+
+def joined_headers(base: Mapping[str, str], extra: Mapping[str, str]) -> dict[str, str]:
+    named = {k.lower() for k in extra}
+    return {k: v for k, v in base.items() if k.lower() not in named} | dict(extra)
 
 
 def digest(text: str) -> str:

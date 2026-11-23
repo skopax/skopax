@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, Busy, TimedOut
 from skopax.errkind import Authored, kind as error_kind
+from skopax.messages import msg
 
 log = logging.getLogger('skopax.tags')
 
@@ -85,18 +86,67 @@ def use_tags(defs: dict[str, str] | Callable[[], dict[str, str]]) -> None:
     DEFS[0] = defs
 
 
-def plugin_tags() -> dict[str, str]:
+def plugin_read() -> tuple[dict[str, str], bool]:
     given = DEFS[0]
     try:
         found = given() if callable(given) else given
     except Exception as e:
         log.warning('plug-in tags not read (%s)', type(e).__name__)
-        return {}
-    return {k: v for k, v in found.items() if k not in TAGS}
+        return {}, False
+    return {k: v for k, v in found.items() if k not in TAGS}, True
+
+
+def plugin_tags() -> dict[str, str]:
+    return plugin_read()[0]
 
 
 def all_tags() -> dict[str, str]:
     return {**TAGS, **plugin_tags()}
+
+
+PREFIX = 'tag:'
+SHOWN_MAX = 200
+
+
+def term_of(term: str) -> str:
+    term = ' '.join(str(term).split()).lower()
+    return term[len(PREFIX):].strip() if term.startswith(PREFIX) else term
+
+
+def flat(text: object) -> str:
+    return ' '.join(str(text).split()).lower()
+
+
+def matches(term: str, known: dict[str, str] | None = None) -> list[str]:
+    known = all_tags() if known is None else known
+    wanted = term_of(term)
+    if wanted in known:
+        return [wanted]
+    return [k for k, v in known.items() if flat(v) == wanted]
+
+
+def resolve(term: str, known: dict[str, str] | None = None) -> str | None:
+    found = matches(term, known)
+    return found[0] if len(found) == 1 else None
+
+
+def terms_problem(raw: object) -> str | None:
+    plugin, read = plugin_read()
+    known = {**TAGS, **plugin}
+    parts = [p.strip() for p in str(raw or '').split(',') if p.strip()]
+    found = {p: matches(p, known) for p in dict.fromkeys(parts)}
+    vague = [(p, m) for p, m in found.items() if len(m) > 1]
+    if vague:
+        term, ids = vague[0]
+        return msg('integrations.route_tags_ambiguous', tag=term[:SHOWN_MAX], ids=', '.join(ids)[:SHOWN_MAX])
+    unknown = [p for p, m in found.items() if not m]
+    if not unknown or not read:
+        return None
+    return msg('integrations.route_tags_unknown', tags=', '.join(unknown)[:SHOWN_MAX], known=', '.join(known)[:SHOWN_MAX])
+
+
+def suggested(ctx) -> list[str]:
+    return list(all_tags())
 
 
 def info() -> list[dict]:

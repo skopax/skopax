@@ -1,5 +1,5 @@
 (function () {
-  var TAB = 'batch-jobs';
+  var TAB = 'example-batch-jobs';
   var SEV = {crit: ['Critical', 'k-crit', 0], warn: ['Warning', 'k-warn', 1], info: ['Info', 'k-info', 2]};
   var NOTE = 'Each row is one batch job, read from Prometheus over the last 60 minutes: its runs, failed runs, average and longest run against the same window ' +
     '1 and 7 days earlier, when it last ran and its interval (24 hours divided by its runs in 24 hours). The status follows the open batch job cards.';

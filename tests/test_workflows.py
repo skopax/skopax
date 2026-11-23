@@ -397,7 +397,7 @@ def image_problems(image: dict) -> list[str]:
                    '--build-arg BASE_IMAGE=skopax-hello --build-arg SKOPAX_VERSION=smoke -t skopax-couchbase:smoke examples/couchbase-plugin',
                    '--build-arg BASE_IMAGE=skopax-couchbase --build-arg SKOPAX_VERSION=smoke -t skopax-managed-redis:smoke examples/managed-redis-plugin',
                    '--build-arg BASE_IMAGE=skopax-managed-redis --build-arg SKOPAX_VERSION=smoke -t skopax-examples:smoke examples/batch-jobs-plugin',
-                   '-e SKOPAX_SECRET_KEY skopax-examples:smoke', 'for i in ("couchbase", "managed-redis", "batch-jobs")', 'for plugin in couchbase managed-redis batch-jobs; do',
+                   '-e SKOPAX_SECRET_KEY skopax-examples:smoke', 'for i in ("couchbase", "managed-redis", "batch-jobs", "example-batch-jobs")', 'for plugin in couchbase managed-redis batch-jobs example-batch-jobs; do',
                    '/plugins/$plugin/icon.svg'):
         if needle not in script:
             problems.append(f'layer-smoke lacks {needle}')

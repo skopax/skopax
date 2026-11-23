@@ -252,7 +252,7 @@ async function theCardPageFollowsTheAttributionRule() {
   assert.strictEqual(slot.getAttribute('href'), null);
   slotted.w.close();
   assert.deepStrictEqual(missing.errors, []);
-  assert.strictEqual(missing.doc.getElementById('attribution').textContent, 'Skopax 0.5.8 \u00b7 skopax.io');
+  assert.strictEqual(missing.doc.getElementById('attribution').textContent, 'Skopax 0.5.9 \u00b7 skopax.io');
   assert.strictEqual(missing.doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
   hidden.w.close();
   missing.w.close();
@@ -337,8 +337,27 @@ async function aClearedNoteFromAPluginShowsAsTextOnTheCard() {
   console.log('PASS a cleared note a plug-in wrote shows on the card as plain text with who wrote it and when');
 }
 
+async function aKnownCauseFromAPluginShowsAsTextOnTheCard() {
+  //given
+  const card = {num: 23, key: 'batch-jobs|shop-jobs|shop/export-orders|failing', svc: 'export-orders', label: 'failed runs', sev: 'warn', status: 'open', firstSeen: AT, live: true, what: 'x',
+    knownCause: 'usually the <b>warehouse</b> lock, retry after 02:00'};
+  const plain = Object.assign({}, card, {num: 24, knownCause: undefined});
+  const noted = await boot(23, () => card);
+  const bare = await boot(24, () => plain);
+
+  //then
+  const line = noted.doc.querySelector('.tech-body .known');
+  assert.strictEqual(line.textContent, 'Known cause \u00b7 usually the <b>warehouse</b> lock, retry after 02:00');
+  assert.strictEqual(noted.doc.querySelector('.tech-body b'), null, 'the team note stays text');
+  assert.strictEqual(bare.doc.querySelector('.tech-body .known'), null);
+  assert.deepStrictEqual(noted.errors.concat(bare.errors), []);
+  noted.w.close(); bare.w.close();
+  console.log('PASS a known cause a plug-in set from its settings shows on the card as plain text');
+}
+
 (async () => {
   await theCardPageShowsTimesInTheViewersOwnZone();
+  await aKnownCauseFromAPluginShowsAsTextOnTheCard();
   await theCardPageHasAHistoryTabWithTheTimeline();
   await aClearedNoteFromAPluginShowsAsTextOnTheCard();
   await operatorsGetTheCardActionsAndOthersAReadOnlyCard();

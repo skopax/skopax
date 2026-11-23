@@ -20,7 +20,7 @@ from skopax.messages import msg
 from skopax.redact import redact_secrets, redact_text
 from skopax.users import ROLES
 from skopax.mcptools import (CALL_DEADLINE_S, CALL_THREAD_S, ERROR_TEXT_MAX, KNOWLEDGE_SECTION, LABEL_MAX, LIVE_CACHE_S, ON_MAX, OUTPUT_MAX, PER_TOOL_CALLS, PLUGIN_ID,
-                             RUN_CALLS_MAX, RUN_DEFINITIONS_MAX, RUN_LIST_DEADLINE_S, RUN_OUTPUT_MAX, RUN_TOOLS_MAX, TEARDOWN_S, Moved, Reconnect, left, scrub, secrets_of,
+                             RUN_CALLS_HIGH, RUN_CALLS_KEY, RUN_CALLS_LOW, RUN_CALLS_MAX, RUN_DEFINITIONS_MAX, RUN_LIST_DEADLINE_S, RUN_OUTPUT_MAX, RUN_TOOLS_MAX, TEARDOWN_S, Moved, Reconnect, left, scrub, secrets_of,
                              within)
 from skopax.mcptools.adapters import Adapter, ReadRefused, Scope, ScopeRefused, rendered
 from skopax.mcptools.catalog import NAME_MAX, STALE, tool_hash
@@ -173,10 +173,19 @@ class ToolBridge:
 
     def start(self, run: Run, run_id: str | None = None) -> 'RunTools':
         try:
-            return RunTools(self, self._start(run, run_id), run)
+            return RunTools(self, self._start(run, run_id), run, self.run_calls())
         except Exception as e:
             log.warning('MCP server tools were left out of run %s: %s', run_id, kind(e))
             return RunTools(self, (), run)
+
+    def run_calls(self) -> int:
+        try:
+            found = self.deps.setting(RUN_CALLS_KEY)
+        except KeyError:
+            return RUN_CALLS_MAX
+        if isinstance(found, bool) or not isinstance(found, (int, float)) or not RUN_CALLS_LOW <= found <= RUN_CALLS_HIGH:
+            return RUN_CALLS_MAX
+        return int(found)
 
     def _start(self, run: Run, run_id: str | None) -> list[Bridged]:
         found = sorted(self.runtime.instances_of(PLUGIN_ID), key=lambda i: i.name)
@@ -379,10 +388,11 @@ class ToolBridge:
 
 
 class RunTools:
-    def __init__(self, bridge: ToolBridge, tools: Iterable[Bridged], run: Run):
+    def __init__(self, bridge: ToolBridge, tools: Iterable[Bridged], run: Run, limit: int = RUN_CALLS_MAX):
         self.bridge = bridge
         self.tools = {t.exposed: t for t in tools}
         self.run = run
+        self.limit = limit
         self.used: Counter = Counter()
         self.calls = 0
         self.read = 0
@@ -462,8 +472,8 @@ class RunTools:
     def _spend(self, tool: Bridged) -> None:
         if self.used[tool.exposed] >= PER_TOOL_CALLS:
             raise ToolError(msg('mcptools.cap.tool', tool=tool.exposed, limit=PER_TOOL_CALLS))
-        if self.calls >= RUN_CALLS_MAX:
-            raise ToolError(msg('mcptools.cap.run', limit=RUN_CALLS_MAX))
+        if self.calls >= self.limit:
+            raise ToolError(msg('mcptools.cap.run', limit=self.limit))
         if self.read >= RUN_OUTPUT_MAX:
             raise ToolError(msg('mcptools.cap.output', limit=f'{RUN_OUTPUT_MAX:,}'))
         self.used[tool.exposed] += 1

@@ -168,6 +168,9 @@ PLUGIN = Plugin(
             Field('scan-skip', 'Page scan skips', 'text',
                   help='Path prefixes, separated by commas, that the page scan never reads on top of its built-in ones (/_next, /api, /static and the like), for example /checkout, /account; '
                        'a prefix also skips the paths below it.'),
+            Field('release-services', 'Scan after release of', 'text', check=pagescan.release_problem,
+                  help='Service names, separated by commas, that may use * and ? (for example shop-*, web/cart), or namespace/service. After a deploy or release of one of them is recorded, '
+                       'the page scan runs once more after the Scan after release delay, even inside the scan interval. Empty means no extra scan.'),
             Field('user-agent', 'User-Agent', 'text',
                   help='Sent by the page tool and Test connection instead of the built-in one; the screenshot browser keeps its own browser identity and takes this as its closing product token. '
                        'Plain printable ASCII, at most 200 characters. Empty keeps the built-in one.'),
@@ -184,7 +187,7 @@ PLUGIN = Plugin(
         ),
         docs='https://github.com/chromedp/docker-headless-shell', docs_label='chromedp headless-shell image'),
     test=test,
-    checks=(Check(pagescan.PASS, 'Page scan', 3600, 2700, (pagescan.PASS,), pagescan.scan, tool=pagescan.TOOL, sections=(pagescan.SECTION,), section_help=SCAN_HELP,
+    checks=(Check(pagescan.PASS, 'Page scan', 300, 0, (pagescan.PASS,), pagescan.scan, tool=pagescan.TOOL, sections=(pagescan.SECTION,), section_help=SCAN_HELP,
                   timeout=pagescan.TIMEOUT_S, background=True),
             Check(pagescan.DIGEST, 'Page scan digest', 3600, 75, (pagescan.DIGEST,), pagescan.digest, sections=(pagescan.DIGEST_SECTION,), section_help=DIGEST_HELP)),
     settings=(Setting('page-scan', 'Page scan', 'Reads the busiest pages with the screenshot browser for typos and layout problems; needs a Headless browser', 'bool', 'false'),
@@ -194,6 +197,7 @@ PLUGIN = Plugin(
               Setting('extra', 'Extra pages', 'Pages read on every scan: paths such as /pricing or full https addresses on the site, separated by commas', 'list', ''),
               Setting('ignore', 'Ignored words', 'Words never reported as typos, separated by commas', 'list', ''),
               Setting('model', 'Model', 'Model that reads pages for typos and layout problems', 'choice', 'claude-opus-5-5', choices=MODELS),
+              Setting('release-delay', 'Scan after release (min)', 'Minutes after a release of a service named in the Website instance field Scan after release of before the extra page scan runs', 'int', '10', 1, 120),
               Setting('digest-hour', 'Digest hour', 'Local hour of the daily page scan digest in Slack; -1 posts no digest', 'int', '10', -1, 23),
               Setting('scan-prompt', 'Scan prompt', 'Replaces the built-in page scan instructions to the model; empty uses the built-in ones', 'text', '', high=20000)),
     tools=(Tool('page', PAGE_DESCRIPTION, PAGE_SCHEMA, page_tool, per_run=PAGE_CALLS, scan=True),

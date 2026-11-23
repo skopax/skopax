@@ -223,6 +223,9 @@ class RunContext:
     def deploys(self, since: float) -> list[dict]:
         return [] if self._reads is None else self._reads.deploys(since)
 
+    def last_status(self) -> str | None:
+        return None if self._reads is None else self._reads.last_status(self.instance)
+
     def open_cards(self, plugin_wide: bool = False) -> list[dict]:
         return [] if self._reads is None else self._reads.open_cards(self.instance, plugin_wide)
 
@@ -514,7 +517,7 @@ class Runtime:
         return [i for i in self.instances.all(plugin_id) if i.enabled and not i.problem]
 
     def _resolved(self, plugin: Plugin, name: str | None, given: Mapping[str, str | None], picker: bool = False) -> tuple:
-        stored = self.instances.get(plugin.id, name) if name else None
+        stored = self.instances.fresh(plugin.id, name) if name else None
         if name and stored is None:
             raise InstanceMissing(msg('instances.unknown', name=name))
         extra = self.instances.extra_fields(plugin.id)

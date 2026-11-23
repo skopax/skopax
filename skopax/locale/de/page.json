@@ -1180,6 +1180,9 @@
   "Slack names unavailable": "Slack-Namen nicht verfügbar",
   "Pick a suggestion or type a full e-mail": "Vorschlag wählen oder vollständige E-Mail eingeben",
   "Auto-assign new cards": "Neue Karten automatisch zuweisen",
+  "Tag id: use it in a route's Card tags": "Tag-ID: in den Card tags einer Route verwenden",
+  "Add rules, such as type:log, log|checkout-*": "Regeln hinzufügen, zum Beispiel type:log, log|checkout-*",
+  "Also tagged by plug-ins (fixed, added to yours):": "Zusätzlich von Plug-ins getaggt (fest, zu Ihren hinzugefügt):",
   "Auto-assign needs a responsible with a Skopax account": "Automatische Zuweisung braucht eine verantwortliche Person mit Skopax-Konto",
   "Auto-assign on": "Automatische Zuweisung an",
   "Auto-assign off": "Automatische Zuweisung aus",
@@ -1519,7 +1522,7 @@
   "The Activity rail shows what the server and the investigator are doing, as it happens.": "Die Aktivitätsleiste zeigt live, was der Server und der Investigator gerade tun.",
   "Notifications and messages": "Benachrichtigungen und Nachrichten",
   "The bell in the top bar opens Notifications: what happened on the cards you hold and on your chat answers. Opening the page marks them read.": "Die Glocke oben öffnet Benachrichtigungen: was auf Ihren Karten und bei Ihren Chat-Antworten passiert ist. Das Öffnen der Seite markiert sie als gelesen.",
-  "Preferences > Email: switch on Email me my notifications and pick the kinds. It needs a Mail server, set up by an admin. Mail goes only to the address of your own account.": "Einstellungen > E-Mail: schalten Sie Meine Benachrichtigungen per E-Mail senden ein und wählen Sie die Arten. Dafür braucht es einen Mail server, den ein Admin einrichtet. Mails gehen nur an die Adresse Ihres eigenen Kontos.",
+  "Preferences > Email: Email me my notifications is on for every kind once an admin sets up a Mail server. Switch it off, or untick the kinds you do not want. Mail goes only to the address of your own account.": "Einstellungen > E-Mail: Meine Benachrichtigungen per E-Mail senden ist für alle Arten eingeschaltet, sobald ein Admin einen Mail server einrichtet. Schalten Sie es aus oder entfernen Sie die Haken bei den Arten, die Sie nicht möchten. Mails gehen nur an die Adresse Ihres eigenen Kontos.",
   "While Slack auto-send is on, cards from Warning up are posted to the Slack channel on their own.": "Solange Slack auto-send an ist, werden Karten ab Warnung von selbst in den Slack-Kanal gepostet.",
   "While Slack auto-send is on, Critical cards are posted to the Slack channel on their own.": "Solange Slack auto-send an ist, werden kritische Karten von selbst in den Slack-Kanal gepostet.",
   "Post immediately from is Off: no card is posted to Slack on its own. Send to Slack posts one by hand.": "Post immediately from ist Off: keine Karte wird von selbst in Slack gepostet. An Slack senden postet eine von Hand.",
@@ -1601,7 +1604,7 @@
   "Switch it on": "Einschalten",
   "in Admin > Features, switch on Langfuse tracing. While something is missing, the switch says what.": "schalten Sie unter Admin > Funktionen Langfuse-Tracing ein. Solange etwas fehlt, sagt der Schalter, was.",
   "Check it": "Prüfen",
-  "the instance now reads Receives Skopax's own traces, so it is not watched. Run Investigate on a card, find its trace under Traces in the Langfuse project, and open it from Open trace on the Investigator page.": "die Instanz zeigt jetzt Receives Skopax's own traces, so it is not watched. Starten Sie Untersuchen auf einer Karte, suchen Sie den Trace unter Traces im Langfuse-Projekt und öffnen Sie ihn über Open trace auf der Investigator-Seite.",
+  "the instance now says it receives Skopax's own traces, so it is not watched. Run Investigate on a card, find its trace under Traces in the Langfuse project, and open it from Open trace on the Investigator page.": "die Instanz zeigt jetzt an, dass sie die eigenen Traces von Skopax empfängt und daher nicht überwacht wird. Starten Sie Untersuchen auf einer Karte, suchen Sie den Trace unter Traces im Langfuse-Projekt und öffnen Sie ihn über Open trace auf der Investigator-Seite.",
   "Nothing shows up": "Nichts zu sehen",
   "check that the keys come from the right project and may write, that Traces sampled is 100, and that the run made a model call. Traces go out within seconds after a run ends.": "prüfen Sie, ob die Keys aus dem richtigen Projekt stammen und schreiben dürfen, ob Traces sampled 100 ist und ob der Lauf ein Modell aufgerufen hat. Traces gehen wenige Sekunden nach dem Ende eines Laufs hinaus.",
   "{0} open": "{0} offen",
@@ -1632,7 +1635,9 @@
   "A card resolved as Fixed that fires again came back: it is posted at once as at least High and goes back to the person who resolved it. A card resolved as No action needed reopens on the board only, unless it got worse.": "Eine als Behoben gelöste Karte, die wieder auslöst, ist zurückgekommen: Sie wird sofort mindestens als Hoch gepostet und geht an die Person zurück, die sie gelöst hat. Eine als kein Handlungsbedarf gelöste Karte öffnet sich nur auf dem Board wieder, außer sie wurde schlimmer.",
   "No open warning, high or critical card to attach.": "Keine offene Warnungs-, hohe oder kritische Karte zum Anhängen.",
   "Ruled": "Entschieden",
-  "A person decided an earlier occurrence of this card; the investigator starts from it": "Eine Person hat ein früheres Auftreten dieser Karte entschieden; der Investigator geht davon aus"
+  "A person decided an earlier occurrence of this card; the investigator starts from it": "Eine Person hat ein früheres Auftreten dieser Karte entschieden; der Investigator geht davon aus",
+  "Known cause": "Bekannte Ursache",
+  "On, but no instance is on: open it and turn an instance on": "Eingeschaltet, aber keine Instanz ist eingeschaltet: öffnen Sie es und schalten Sie eine Instanz ein"
  },
  "rules": [
   [

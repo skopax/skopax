@@ -4,6 +4,7 @@ import threading
 import time
 from collections.abc import Callable
 from html.parser import HTMLParser
+from pathlib import Path
 
 import regex
 
@@ -21,7 +22,52 @@ IBAN_GROUPS = 9
 BEARER = re.compile(r'\bBearer\s+[\w.~+/=-]{8,}', re.I)
 JWT = re.compile(r'(?<![\w-])eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]{5,}')
 DIGIT_RUN = re.compile(r'(?<![\d.])(?:\d[ -]?){10,18}\d(?!\d)(?!\.\d)')
-SECRET_WORDS = r'pass(?:word|wd|phrase)?|pwd|secret|client[ _-]?secret|api[ _-]?key|access[ _-]?key|secret[ _-]?key|private[ _-]?key|token|credentials?'
+NATIONAL_ID = re.compile(r'(?<![\w.])[1-9]\d{10}(?!\w)(?!\.\d)(?!,\d{1,2}(?!\d))')
+MOBILE = r'5(?:0[15-9]|[3-6]\d)'
+COUNTRY = r'(?:00)?90[ .-]?'
+GROUPS = r'[ .-]\d{3}[ .-](?:\d{2}[ .-]\d{2}|\d{4})'
+SPLIT = rf'{GROUPS}|[ .-]\d{{7}}'
+NATIONAL_PHONE = re.compile(r'(?<![\w+./])(?<!\d-)(?:'
+                            rf'(?:(?:{COUNTRY})?\((?:0[ .-]?)?{MOBILE}\)|0[ .-]?\({MOBILE}\))[ .-]?(?:\d{{3}}[ .-]?\d{{2}}[ .-]?\d{{2}}|\d{{3}}[ .-]?\d{{4}})'
+                            rf'|0{MOBILE}(?:\d{{7}}|{SPLIT})'
+                            rf'|0[ .-]{MOBILE}(?:{GROUPS})'
+                            rf'|{COUNTRY}{MOBILE}(?:{SPLIT})'
+                            rf'|(?<!\d[ .-]){MOBILE}(?:{GROUPS})'
+                            r')(?!\w)(?![.:/-]\d)(?! \d{1,3}(?!\d))')
+LOCALE_ROOT = Path(__file__).with_name('locale')
+SECRET_WORDS_FILE = 'secret-words.txt'
+SECRET_WORD = re.compile(r'[^\W\d_]+(?: [^\W\d_]+)*')
+SECRET_WORD_MAX = 40
+
+
+def language_secret_words(root: Path = LOCALE_ROOT) -> tuple[str, ...]:
+    words: dict[str, str] = {}
+    try:
+        files = sorted(root.glob(f'*/{SECRET_WORDS_FILE}'))
+    except OSError as e:
+        log.warning('language secret words not read (%s)', type(e).__name__)
+        return ()
+    for path in files:
+        try:
+            lines = path.read_text(encoding='utf-8').splitlines()
+        except (OSError, UnicodeError) as e:
+            log.warning('secret words of language %s not read (%s)', path.parent.name, type(e).__name__)
+            continue
+        for line in lines:
+            word = ' '.join(line.split())
+            if word and len(word) <= SECRET_WORD_MAX and SECRET_WORD.fullmatch(word):
+                words.setdefault(word.casefold(), word)
+            elif word:
+                log.warning('a secret word in %s is left out: use letters and spaces, at most %d characters', path.parent.name, SECRET_WORD_MAX)
+    return tuple(sorted(words.values(), key=lambda w: (-len(w), w.casefold())))
+
+
+def _word_pattern(word: str) -> str:
+    return r'[ _-]?'.join(re.escape(part) for part in word.split(' '))
+
+
+SECRET_WORDS = '|'.join([r'pass(?:word|wd|phrase)?|pwd|secret|client[ _-]?secret|api[ _-]?key|access[ _-]?key|secret[ _-]?key|private[ _-]?key|token|credentials?']
+                        + [_word_pattern(w) for w in language_secret_words()])
 SECRET_KEY = (r'(?:\b|(?<=_)|(?-i:(?<=[a-z\d])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])))'
               rf'(?:(?:{SECRET_WORDS})s?)(?:[\'\u2019][^\W\d_]{{1,8}})?')
 SECRET_VALUE = re.compile(rf'(?i)({SECRET_KEY}["\'\u2019\u201d`]?)([ \t]*(?:[:=]|\||=>|->)[ \t]*)("(?:[^"\\\n]|\\.)*"|\'[^\'\n]*\'|\u201c[^\u201d\n]*\u201d|\S+)')
@@ -80,6 +126,17 @@ def luhn(d: str) -> bool:
     return total % 10 == 0
 
 
+def national_id_ok(d: str) -> bool:
+    if len(d) != 11 or not d.isdecimal() or d[0] == '0':
+        return False
+    n = [int(c) for c in d]
+    return n[9] == (sum(n[0:9:2]) * 7 - sum(n[1:8:2])) % 10 and n[10] == sum(n[:10]) % 10
+
+
+def _national_id(m: re.Match) -> str:
+    return REDACTED if national_id_ok(m.group(0)) else m.group(0)
+
+
 def _sensitive(d: str) -> bool:
     return 13 <= len(d) <= 19 and d[0] in '23456789' and luhn(d)
 
@@ -133,6 +190,8 @@ def _core(text: str, cards: bool = True) -> str:
         text = pattern.sub(REDACTED, text)
     text = WORDS.sub(_ibans, text)
     text = PHONE.sub(REDACTED, text)
+    text = NATIONAL_PHONE.sub(REDACTED, text)
+    text = NATIONAL_ID.sub(_national_id, text)
     return DIGIT_RUN.sub(_digit_run, text) if cards else text
 
 

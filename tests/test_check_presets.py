@@ -53,7 +53,7 @@ def test_the_longest_allowed_placeholder_values_still_fit_every_check():
         for p in preset.placeholders:
             most = p['max']
             longest[p['key']] = {'matchers': 'a="' + 'x' * (most - 4) + '"', 'prefix': 'p' * most, 'label': 'l' * most, 'name': 'n' * most,
-                                 'instance': 'i' * most, 'datasource': 'd' * most, 'index': 'x' * most}[p['kind']]
+                                 'instance': 'i' * most, 'datasource': 'd' * most, 'index': 'x' * most, 'condition': 'x' * most}[p['kind']]
 
         # when
         values, checks = preset.fill(longest)

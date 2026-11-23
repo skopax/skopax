@@ -9,8 +9,8 @@ from skopax.kit import access, connection
 from skopax.kit.promql import Late, PrometheusError, bounded, client_for, credential, instant, prom_link, ui_of
 from skopax.kit.text import duration
 
-ID = 'batch-jobs'
-NAME = 'Batch jobs'
+ID = 'example-batch-jobs'
+NAME = 'Example batch jobs'
 PART = 'metrics'
 PART_NAME = 'batch job metrics'
 BUDGET_S = 120
@@ -42,9 +42,9 @@ NOW_ONLY = dict(
     day='sum by ({by}) (increase({m}_count{sel}[1d]))',
 )
 LINK = {
-    'batch-jobs-failing': 'sum by ({by}) (increase({m}_count{failed}[60m]))',
-    'batch-jobs-missed': 'sum by ({by}) (increase({m}_count{sel}[60m]))',
-    'batch-jobs-slow': 'sum by ({by}) (increase({m}_sum{sel}[60m])) / sum by ({by}) (increase({m}_count{sel}[60m]))',
+    'example-batch-jobs-failing': 'sum by ({by}) (increase({m}_count{failed}[60m]))',
+    'example-batch-jobs-missed': 'sum by ({by}) (increase({m}_count{sel}[60m]))',
+    'example-batch-jobs-slow': 'sum by ({by}) (increase({m}_sum{sel}[60m])) / sum by ({by}) (increase({m}_count{sel}[60m]))',
 }
 RULES = dict(fail_crit=3, fail_min=2, fail_share=20, rare_runs=4, miss_runs=1, miss_often=4, drift_min=10, miss_group=3, slow_x=2, slow_s=60, slow_warn=50,
              slow_info=10)
@@ -337,11 +337,11 @@ def links(card: dict, info) -> list[dict] | None:
             if isinstance(u, dict) and isinstance(u.get('label'), str) and isinstance(u.get('url'), str) and u['url'].startswith('https://')]
 
 
-CARD_TYPES = (CardType('batch-jobs-failing', 'Batch job failing'), CardType('batch-jobs-missed', 'Batch job missed'), CardType('batch-jobs-slow', 'Batch job slow'))
+CARD_TYPES = (CardType('example-batch-jobs-failing', 'Example batch job failing'), CardType('example-batch-jobs-missed', 'Example batch job missed'), CardType('example-batch-jobs-slow', 'Example batch job slow'))
 
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='infrastructure',
-    description='Example plug-in: scheduled batch jobs read through a Prometheus instance: failing, missed and slow jobs against the same hour 1 and 7 days earlier.',
+    description='Example plug-in, a simpler copy of the built-in Batch jobs: scheduled batch jobs read through a Prometheus instance: failing, missed and slow jobs against the same hour 1 and 7 days earlier.',
     icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.2,<0.6', uses=('prometheus',),
     fields=(Field('prometheus', 'Prometheus', 'instance', required=True, choices=('prometheus',), help='The Prometheus instance that holds the batch job timers.'),
             Field('metric', 'Metric', 'text', default=DEFAULTS['metric'],
@@ -353,10 +353,10 @@ PLUGIN = Plugin(
             Field('selector', 'Selector', 'text', default=DEFAULTS['selector'],
                   help='Optional label matchers that every query adds, such as env="prod". Each one is label, operator, quoted value; empty reads every job.')),
     test=test,
-    checks=(Check(ID, 'Batch jobs', 300, 90, (ID,), run, sections=(ID,), section_help=SECTION_HELP),),
+    checks=(Check(ID, 'Example batch jobs', 300, 90, (ID,), run, sections=(ID,), section_help=SECTION_HELP),),
     rules=(RuleSet('rules', 'Batch job thresholds', dict(RULES), RULE_HELP),),
     links=links,
     card_types=CARD_TYPES,
     knowledge=(Knowledge(ID, NAME, KNOWLEDGE, slack=True),),
-    panels=(Panel(ID, 'panel.js', label='Batch jobs', group='observe'),),
+    panels=(Panel(ID, 'panel.js', label='Example batch jobs', group='observe'),),
 )

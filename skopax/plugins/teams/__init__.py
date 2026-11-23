@@ -1,3 +1,4 @@
+from skopax import tags
 from skopax.contract import Capabilities, Context, Field, HttpError, Outbound, Plugin, Setup, ReadError, Setting, TestResult, call
 from skopax.kit import connection
 from skopax.kit.links import sendable
@@ -54,7 +55,7 @@ PLUGIN = Plugin(
     description='Posts the cards a route takes to a Microsoft Teams channel through the Workflows URL configured for it.', icon='icon.svg',
     author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community', capabilities=Capabilities(hosts=(), secrets=('webhook',)),
     fields=(Field('webhook', 'Webhook', 'secret', required=True, help='The https address Teams Workflows gives for posting to the channel; it is kept secret.'),
-            Field('tags', 'Card tags', 'text', help='Comma list of card tags this route takes, such as seo, developer. A route needs card tags or card keys.'),
+            Field('tags', 'Card tags', 'text', check=tags.terms_problem, suggest=tags.suggested, separator=',', help='Comma list of card tag ids or names this route takes, such as infra, developer. A route needs card tags or card keys.'),
             Field('mentions', 'Mentions', 'text', help='Comma list of email addresses mentioned in each post.'),
             Field('keys', 'Card keys', 'text', help='Comma list of card key patterns this route takes, with * and ?, such as log|checkout-*|*.'),
             Field('min-sev', 'Lowest severity', 'choice', choices=SEVS, choice_labels={'warn': 'Warning', 'high': 'High', 'crit': 'Critical'}, help='Cards below it are not posted on their own; empty uses the Teams lowest severity setting.')),

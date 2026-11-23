@@ -9,8 +9,9 @@ import pytest
 from tests.conftest import ADMIN_EMAIL, AUTH, anomaly
 from tests.mail_kit import CONFIG, FakeSMTP, faked
 from tests.test_login import make_client, post_login, with_password
+from tests.plugin_kit import add_instance
 from tests.test_notifications import board
-from skopax import mail, messages, noticemail
+from skopax import instances, mail, messages, noticemail
 from skopax.mail import Mailer
 from skopax.noticemail import GIVE_UP_S, HOUR_S, LEASE_S, PER_HOUR, NoticeMail
 from skopax.notices import LABELS, Notices, addresses
@@ -38,6 +39,7 @@ def people(store: Store, **choices) -> Users:
     for name, choice in choices.items():
         address = f'{name}@example.com'
         users.create(address, name.title(), 'operator', PASSWORD)
+        users.touch_login(address)
         if choice is not None:
             users.update(address, {'mailNotices': choice})
     return users
@@ -60,7 +62,7 @@ def assign(notices: Notices, key: str = CARD, to: str = ALICE) -> int:
     return notices.assigned({'key': key, 'num': 14, 'svc': 'checkout-service', 'label': 'ERROR lines'}, 'Alice', to, BOB)
 
 
-def test_off_by_default_and_off_sends_nothing(store: Store, monkeypatch):
+def test_on_by_default_and_a_person_who_switched_it_off_gets_nothing(store: Store, monkeypatch):
     # given
     smtp = faked(monkeypatch)
     people(store, alice=None, carol={'on': False, 'kinds': list(LABELS)})
@@ -75,8 +77,48 @@ def test_off_by_default_and_off_sends_nothing(store: Store, monkeypatch):
     done = sender.run_once()
 
     # then
-    assert done == 0 and sent(smtp) == []
-    assert store.db['notice_mail'].count_documents({}) == 0
+    assert done == 1 and [m['To'] for m in sent(smtp)] == [ALICE]
+    assert store.db['notice_mail'].count_documents({'email': 'carol@example.com'}) == 0
+
+
+def test_only_accounts_that_have_signed_in_get_mail_by_default(store: Store, monkeypatch):
+    # given
+    smtp = faked(monkeypatch)
+    users = people(store, alice=None)
+    users.add_sso('dana@example.com', 'Dana', 'operator')
+    users.create('erin@example.com', 'Erin', 'operator', PASSWORD)
+    clock = Clock()
+    notices, sender = wired(store, clock)
+    board(store, anomaly(CARD, num=14))
+
+    # when
+    for to in (ALICE, 'dana@example.com', 'erin@example.com'):
+        assign(notices, to=to)
+    clock.now += 120
+    sender.run_once()
+
+    # then
+    assert [m['To'] for m in sent(smtp)] == [ALICE]
+    assert [noticemail.choice(users.get(e))['on'] for e in (ALICE, 'dana@example.com', 'erin@example.com')] == [True, False, False]
+    assert noticemail.choice({'lastLogin': None, 'mailNotices': {'on': True, 'kinds': []}})['on'] is True
+
+
+def test_a_null_choice_and_null_kinds_count_as_no_choice(store: Store, monkeypatch):
+    # given
+    smtp = faked(monkeypatch)
+    people(store, alice={'on': None, 'kinds': None}, carol={'on': True, 'kinds': None})
+    clock = Clock()
+    notices, sender = wired(store, clock)
+    board(store, anomaly(CARD, num=14))
+
+    # when
+    assign(notices)
+    assign(notices, to='carol@example.com')
+    clock.now += 120
+    sender.run_once()
+
+    # then
+    assert sorted(m['To'] for m in sent(smtp)) == [ALICE, 'carol@example.com']
 
 
 def test_an_opted_in_kind_mails_once_after_the_worker_pass_never_in_the_request(store: Store, monkeypatch):
@@ -264,7 +306,7 @@ def test_the_app_queues_the_mail_of_a_real_action_and_sends_nothing_in_the_reque
 def test_mail_refused_is_dropped_and_recorded_on_the_persons_own_notice(store: Store, monkeypatch):
     # given
     smtp = faked(monkeypatch, send=smtplib.SMTPRecipientsRefused({ALICE: (550, b'no such user')}))
-    people(store, alice={'on': True, 'kinds': ['assigned']}, dora=None)
+    people(store, alice={'on': True, 'kinds': ['assigned']}, dora={'on': False, 'kinds': []})
     clock = Clock()
     notices, sender = wired(store, clock)
     board(store, anomaly(CARD, num=14), anomaly('log|payments|ERROR|x', num=15))
@@ -852,7 +894,7 @@ def test_the_api_reads_and_saves_only_your_own_choice(store: Store, monkeypatch)
     bad = client.put('/api/me/notice-mail', json={'on': True, 'kinds': ['nope']})
 
     # then
-    assert first == {'on': False, 'kinds': list(LABELS), 'all': list(LABELS), 'email': ADMIN_EMAIL, 'ready': True}
+    assert first == {'on': True, 'kinds': list(LABELS), 'all': list(LABELS), 'email': ADMIN_EMAIL, 'ready': True}
     assert saved.status_code == 200 and saved.json()['on'] is True
     assert (after['on'], after['kinds']) == (True, ['assigned', 'reminder'])
     assert other.status_code == 422 and bad.status_code == 422
@@ -878,11 +920,38 @@ def test_the_api_needs_a_signed_in_person_and_a_mail_server_to_turn_on(store: St
 
     # then
     assert (read.status_code, write.status_code, token.status_code) == (401, 401, 401)
-    assert shown['ready'] is False and shown['on'] is False
+    assert shown['ready'] is False and shown['on'] is True
     assert refused.status_code == 409 and off.status_code == 200
     assert admin.status_code == 422, 'the admin user form has no field for it'
     assert Users(store.db).get(BOB)['mailNotices'] == {'on': True, 'kinds': ['reminder']}
     assert 'mailNotices' not in str(listed)
+
+
+def test_a_mail_server_another_pod_just_added_reads_as_ready_at_once(store: Store, monkeypatch):
+    # given
+    monkeypatch.setattr(instances, 'REREAD_S', 0)
+    client = own(store)
+    before = client.get('/api/me/notice-mail').json()
+    add_instance(store, 'mail-server', 'main', primary=True, enabled=True, host='smtp.example.com', port='587', security='starttls', **{'from': 'Alerts <alerts@example.com>'})
+
+    # when
+    after = client.get('/api/me/notice-mail').json()
+
+    # then
+    assert before['ready'] is False and after['ready'] is True
+
+
+def test_turning_on_right_after_another_pod_added_a_mail_server_is_not_refused(store: Store):
+    # given
+    client = own(store)
+    before = client.get('/api/me/notice-mail').json()
+    add_instance(store, 'mail-server', 'main', primary=True, enabled=True, host='smtp.example.com', port='587', security='starttls', **{'from': 'Alerts <alerts@example.com>'})
+
+    # when
+    saved = client.put('/api/me/notice-mail', json={'on': True, 'kinds': ['assigned']})
+
+    # then
+    assert before['ready'] is False and saved.status_code == 200 and saved.json()['ready'] is True
 
 
 @pytest.mark.parametrize('kind', list(LABELS))

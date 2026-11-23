@@ -26,6 +26,14 @@
       "max": 200,
       "help": "The index or data stream that holds only the CSP report logs, such as logs-csp-*. A wide pattern such as logs-* makes every pass scan all logs of the last 8 days.",
       "example": "logs-csp-*"
+    },
+    {
+      "key": "filter",
+      "kind": "condition",
+      "label": "Filter",
+      "optional": true,
+      "help": "Optional ES|QL condition that keeps only some of the log lines, such as kubernetes.namespace == \"shop\". It goes in parentheses after the time condition. No pipe, semicolon, comment or line break. Empty reads every line of the index.",
+      "example": "kubernetes.namespace == \"shop\""
     }
   ],
   "checks": [
@@ -35,7 +43,7 @@
       "name": "CSP ${name} new blocked host",
       "source": "elasticsearch",
       "instance": "${instance}",
-      "query": "FROM ${index}\n| WHERE @timestamp >= TO_DATETIME(?end) - 24 hours - 7 days AND @timestamp < TO_DATETIME(?end)\n| WHERE message LIKE \"*blockedURL*\" OR message LIKE \"*blocked-uri*\"\n| EVAL m = REPLACE(REPLACE(message, \"\"\"\\\\[\"]\"\"\", \"\\\"\"), \"\"\"[\"]\\s*:\\s*[\"]\"\"\", \"\\\":\\\"\")\n| DISSECT m \"\"\"%{}\"blockedURL\":\"%{b1}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"blocked-uri\":\"%{b2}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"effectiveDirective\":\"%{d1}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"effective-directive\":\"%{d2}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"sourceFile\":\"%{s1}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"source-file\":\"%{s2}\"%{}\"\"\"\n| EVAL blocked = COALESCE(b1, b2, \"\"), directive = COALESCE(d1, d2, \"?\"), source = COALESCE(s1, s2, \"\")\n| WHERE NOT (blocked LIKE \"*-extension*\" OR source LIKE \"*-extension*\")\n| DISSECT blocked \"%{}://%{rest}\"\n| EVAL h = REPLACE(MV_FIRST(SPLIT(MV_FIRST(SPLIT(rest, \"/\")), \"?\")), \":443$\", \"\")\n| EVAL host = CASE(blocked == \"\", \"inline\", h IS NULL OR h == \"\", blocked, h)\n| STATS seen = MIN(@timestamp), value = SUM(CASE(@timestamp >= TO_DATETIME(?start), 1, 0)) BY host\n| WHERE seen >= TO_DATETIME(?end) - 24 hours\n| KEEP host, value",
+      "query": "FROM ${index}\n| WHERE @timestamp >= TO_DATETIME(?end) - 24 hours - 7 days AND @timestamp < TO_DATETIME(?end)${filter}\n| WHERE message LIKE \"*blockedURL*\" OR message LIKE \"*blocked-uri*\"\n| EVAL m = REPLACE(REPLACE(message, \"\"\"\\\\[\"]\"\"\", \"\\\"\"), \"\"\"[\"]\\s*:\\s*[\"]\"\"\", \"\\\":\\\"\")\n| DISSECT m \"\"\"%{}\"blockedURL\":\"%{b1}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"blocked-uri\":\"%{b2}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"effectiveDirective\":\"%{d1}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"effective-directive\":\"%{d2}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"sourceFile\":\"%{s1}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"source-file\":\"%{s2}\"%{}\"\"\"\n| EVAL blocked = COALESCE(b1, b2, \"\"), directive = COALESCE(d1, d2, \"?\"), source = COALESCE(s1, s2, \"\")\n| WHERE NOT (blocked LIKE \"*-extension*\" OR source LIKE \"*-extension*\")\n| DISSECT blocked \"%{}://%{rest}\"\n| EVAL h = REPLACE(MV_FIRST(SPLIT(MV_FIRST(SPLIT(rest, \"/\")), \"?\")), \":443$\", \"\")\n| EVAL host = CASE(blocked == \"\", \"inline\", h IS NULL OR h == \"\", blocked, h)\n| STATS seen = MIN(@timestamp), value = SUM(CASE(@timestamp >= TO_DATETIME(?start), 1, 0)) BY host\n| WHERE seen >= TO_DATETIME(?end) - 24 hours\n| KEEP host, value",
       "window": 60,
       "op": ">=",
       "threshold": 10,
@@ -52,7 +60,7 @@
       "name": "CSP ${name} report jump",
       "source": "elasticsearch",
       "instance": "${instance}",
-      "query": "FROM ${index}\n| WHERE (@timestamp >= TO_DATETIME(?start) AND @timestamp < TO_DATETIME(?end)) OR (@timestamp >= TO_DATETIME(?start) - 1 day AND @timestamp < TO_DATETIME(?end) - 1 day) OR (@timestamp >= TO_DATETIME(?start) - 7 days AND @timestamp < TO_DATETIME(?end) - 7 days)\n| WHERE message LIKE \"*blockedURL*\" OR message LIKE \"*blocked-uri*\"\n| EVAL m = REPLACE(REPLACE(message, \"\"\"\\\\[\"]\"\"\", \"\\\"\"), \"\"\"[\"]\\s*:\\s*[\"]\"\"\", \"\\\":\\\"\")\n| DISSECT m \"\"\"%{}\"blockedURL\":\"%{b1}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"blocked-uri\":\"%{b2}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"effectiveDirective\":\"%{d1}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"effective-directive\":\"%{d2}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"sourceFile\":\"%{s1}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"source-file\":\"%{s2}\"%{}\"\"\"\n| EVAL blocked = COALESCE(b1, b2, \"\"), directive = COALESCE(d1, d2, \"?\"), source = COALESCE(s1, s2, \"\")\n| WHERE NOT (blocked LIKE \"*-extension*\" OR source LIKE \"*-extension*\")\n| EVAL slot = CASE(@timestamp >= TO_DATETIME(?start), \"now\", @timestamp >= TO_DATETIME(?start) - 1 day, \"day\", \"week\")\n| STATS value = SUM(CASE(slot == \"now\", 1, 0)), day_ago = SUM(CASE(slot == \"day\", 1, 0)), week_ago = SUM(CASE(slot == \"week\", 1, 0))\n| EVAL usual = GREATEST(day_ago, week_ago, TO_LONG(1))\n| WHERE value >= 100 AND value >= 5 * usual\n| KEEP value, day_ago, week_ago",
+      "query": "FROM ${index}\n| WHERE (@timestamp >= TO_DATETIME(?start) AND @timestamp < TO_DATETIME(?end)) OR (@timestamp >= TO_DATETIME(?start) - 1 day AND @timestamp < TO_DATETIME(?end) - 1 day) OR (@timestamp >= TO_DATETIME(?start) - 7 days AND @timestamp < TO_DATETIME(?end) - 7 days)${filter}\n| WHERE message LIKE \"*blockedURL*\" OR message LIKE \"*blocked-uri*\"\n| EVAL m = REPLACE(REPLACE(message, \"\"\"\\\\[\"]\"\"\", \"\\\"\"), \"\"\"[\"]\\s*:\\s*[\"]\"\"\", \"\\\":\\\"\")\n| DISSECT m \"\"\"%{}\"blockedURL\":\"%{b1}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"blocked-uri\":\"%{b2}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"effectiveDirective\":\"%{d1}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"effective-directive\":\"%{d2}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"sourceFile\":\"%{s1}\"%{}\"\"\"\n| DISSECT m \"\"\"%{}\"source-file\":\"%{s2}\"%{}\"\"\"\n| EVAL blocked = COALESCE(b1, b2, \"\"), directive = COALESCE(d1, d2, \"?\"), source = COALESCE(s1, s2, \"\")\n| WHERE NOT (blocked LIKE \"*-extension*\" OR source LIKE \"*-extension*\")\n| EVAL slot = CASE(@timestamp >= TO_DATETIME(?start), \"now\", @timestamp >= TO_DATETIME(?start) - 1 day, \"day\", \"week\")\n| STATS value = SUM(CASE(slot == \"now\", 1, 0)), day_ago = SUM(CASE(slot == \"day\", 1, 0)), week_ago = SUM(CASE(slot == \"week\", 1, 0))\n| EVAL usual = GREATEST(day_ago, week_ago, TO_LONG(1))\n| WHERE value >= 100 AND value >= 5 * usual\n| KEEP value, day_ago, week_ago",
       "window": 60,
       "op": ">=",
       "threshold": 100,

@@ -155,6 +155,7 @@ class Settings:
     probe: bool = False
     cert_rules: str = ''
     cert_skip: tuple[str, ...] = ()
+    probe_extra: str = ''
     investigator_on: bool = True
     chat_on: bool = True
     slack_autosend: bool = True
@@ -163,6 +164,7 @@ class Settings:
     push_on: bool = True
     update_check: bool = True
     tag_report_on: bool = True
+    warn_digest_on: bool = True
     langfuse_tracing_on: bool = False
     langfuse_trace_instance: str = ''
     langfuse_trace_content: str = 'metadata'
@@ -240,6 +242,7 @@ class Settings:
     slack_thread_hours: float = 6
     tag_rules: tuple = ()
     tag_report_at: str = '10:00'
+    warn_digest_at: str = '09:30'
     mcp_issuer: str = ''
     mcp_client_id: str = MCP_CLIENT_ID
     mcp_audience: str = ''
@@ -263,6 +266,7 @@ class Settings:
     self_log_index: str = ''
     self_deploy: str = ''
     sso_token_headers: str = ''
+    sso_extra_token_headers: str = ''
     jira_developer_field: str = ''
     alert_twins: tuple[str, ...] = ()
     alerts_warn: tuple[str, ...] = ()
@@ -280,11 +284,21 @@ class Settings:
     def token_headers(self) -> dict[str, str]:
         return headers_of(self.sso_token_headers)
 
+    @property
+    def extra_token_headers(self) -> dict[str, str]:
+        return read_token_headers(self.sso_extra_token_headers)[0]
+
 
 def csv_of(raw: str) -> tuple[str, ...]:
     return tuple(p for p in (part.strip() for part in (raw or '').split(',')) if p)
 
 
+TOKEN_HEADERS_MAX = 10
+TOKEN_HEADER_NAME = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+TOKEN_HEADER_VALUE = re.compile(r'[\t\x20-\x7e\xa0-\xff]+')
+TOKEN_HEADERS_RESERVED = ('authorization', 'proxy-authorization', 'cookie', 'host', 'content-length', 'content-type', 'accept', 'accept-encoding', 'transfer-encoding',
+                          'connection', 'expect', 'te', 'upgrade', 'keep-alive', 'trailer', 'forwarded', 'origin')
+TOKEN_HEADERS_RESERVED_PREFIX = 'x-forwarded-'
 ALERT_GLOB = re.compile(r'[A-Za-z0-9_:.*?\[\]!-]{1,100}')
 ALERT_GLOBS_MAX = 100
 ALERTS_WARN_TOLD = 'alerts.warn'
@@ -339,6 +353,44 @@ def headers_of(raw: str) -> dict[str, str]:
         if sep and name.strip():
             out[name.strip()] = value.strip()
     return out
+
+
+def read_token_headers(raw: str) -> tuple[dict[str, str], str | None]:
+    out: dict[str, str] = {}
+    parts = [p for p in (raw or '').split(';') if p.strip(' \t')]
+    if len(parts) > TOKEN_HEADERS_MAX:
+        return {}, 'count'
+    for part in parts:
+        name, sep, value = part.partition(':')
+        name, value = name.strip(' \t'), value.strip(' \t')
+        if not sep or not name or not value:
+            return {}, 'pair'
+        if not TOKEN_HEADER_NAME.fullmatch(name):
+            return {}, 'name'
+        if not TOKEN_HEADER_VALUE.fullmatch(value):
+            return {}, 'value'
+        if name.lower() in TOKEN_HEADERS_RESERVED or name.lower().startswith(TOKEN_HEADERS_RESERVED_PREFIX):
+            return {}, 'reserved'
+        if name.lower() in {k.lower() for k in out}:
+            return {}, 'repeat'
+        out[name] = value
+    return out, None
+
+
+def token_headers_reason(reason: str) -> str:
+    return msg(f'sso.token_headers.{reason}', limit=TOKEN_HEADERS_MAX)
+
+
+def extra_headers_of(raw: str) -> dict[str, str]:
+    found, reason = read_token_headers(raw)
+    if reason is not None:
+        raise ConfigurationError(msg('config.sso_token_headers_invalid', reason=token_headers_reason(reason)))
+    return found
+
+
+def checked_token_headers(raw: str) -> str:
+    extra_headers_of(raw)
+    return raw
 
 
 def origin_of(url: str) -> str:
@@ -645,6 +697,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         probe=get('core.probe', 'SKOPAX_PROBE', 'true').strip().lower() == 'true',
         cert_rules=get('core.certs', 'SKOPAX_CERT_RULES', '').strip(),
         cert_skip=csv_of(get('core.cert-skip', 'SKOPAX_CERT_SKIP', '')),
+        probe_extra=get('core.probe-extra', 'SKOPAX_PROBE_EXTRA', '').strip(),
         investigator_on=get('core.investigator', 'SKOPAX_FEATURE_INVESTIGATOR', 'true').strip().lower() == 'true',
         chat_on=get('core.chat', 'SKOPAX_FEATURE_CHAT', 'true').strip().lower() == 'true',
         slack_autosend=get('core.slack-autosend', 'SKOPAX_FEATURE_SLACK_AUTOSEND', 'true').strip().lower() == 'true',
@@ -653,6 +706,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         push_on=get('core.push', 'SKOPAX_FEATURE_PUSH', 'true').strip().lower() == 'true',
         update_check=get('core.update-check', 'SKOPAX_UPDATE_CHECK', 'true').strip().lower() == 'true',
         tag_report_on=get('core.tag-report', 'SKOPAX_FEATURE_TAG_REPORT', 'true').strip().lower() == 'true',
+        warn_digest_on=get('core.warn-digest', 'SKOPAX_FEATURE_WARN_DIGEST', 'true').strip().lower() == 'true',
         langfuse_tracing_on=get('core.langfuse-tracing', 'SKOPAX_FEATURE_LANGFUSE_TRACING', 'false').strip().lower() == 'true',
         langfuse_trace_instance=get('langfuse.trace-instance', 'LANGFUSE_TRACE_INSTANCE', '').strip(),
         langfuse_trace_content=trace_content(get('langfuse.trace-content', 'LANGFUSE_TRACE_CONTENT', 'metadata')),
@@ -731,6 +785,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         slack_thread_hours=float(get('slack.thread-hours', 'SLACK_THREAD_HOURS', '6').strip() or 6),
         tag_rules=tags_rules_of(config),
         tag_report_at=get('tags.report-at', 'SKOPAX_TAG_REPORT_AT', '10:00').strip(),
+        warn_digest_at=get('slack.warn-digest-at', 'SLACK_WARN_DIGEST_AT', '09:30').strip(),
         mcp_issuer=get('mcp.issuer', 'MCP_ISSUER', '').strip().rstrip('/'),
         mcp_client_id=get('mcp.client-id', 'MCP_CLIENT_ID', MCP_CLIENT_ID).strip() or MCP_CLIENT_ID,
         mcp_audience=get('mcp.audience', 'MCP_AUDIENCE', '').strip(),
@@ -754,6 +809,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         self_log_index=get('core.self-log-index', 'SKOPAX_SELF_LOG_INDEX', '').strip(),
         self_deploy=get('core.self-deploy', 'SKOPAX_SELF_DEPLOY', '').strip(),
         sso_token_headers=get('sso.token-headers', 'SSO_TOKEN_HEADERS', '').strip(),
+        sso_extra_token_headers=checked_token_headers(get('sso.extra-token-headers', 'SSO_EXTRA_TOKEN_HEADERS', '').strip()),
         jira_developer_field=get('jira.developer-field', 'JIRA_DEVELOPER_FIELD', '').strip(),
         alert_twins=csv_of(get('core.alert-twins', 'SKOPAX_ALERT_TWINS', '')),
         alerts_warn=alert_globs(csv_of(get('alerts.warn', 'SKOPAX_ALERTS_WARN', ''))),

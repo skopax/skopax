@@ -43,6 +43,7 @@ BUILTIN: tuple[str, ...] = (
     'skopax.plugins.grafana',
     'skopax.plugins.kafka',
     'skopax.plugins.redis',
+    'skopax.plugins.batch_jobs',
     'skopax.plugins.airbyte',
     'skopax.plugins.langfuse',
     'skopax.plugins.pmm',

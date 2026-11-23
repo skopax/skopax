@@ -334,4 +334,4 @@ def test_about_your_company_is_a_live_setting(store: Store):
     assert {k: entry[k] for k in ('group', 'label', 'kind', 'limit', 'lines', 'value')} == {'group': 'Investigator', 'label': 'About your company', 'kind': 'text', 'limit': 2000, 'lines': 8, 'value': 'Shop team'}
     assert entry['help'] == 'A few sentences about the company and what Skopax watches: products, main services, who uses them. Given to the investigator and the topic gate'
     assert (boxes['general.timezone'], boxes['jira.projects'], boxes['core.org-about']) == (1000, 1000, 2000)
-    assert {k: limit for k, limit in boxes.items() if limit not in (2000, 1000)} == {'website.scan-prompt': SETTING_TEXT_MAX, 'sso.button-text': 40} and any(k.startswith('tags.') for k in boxes)
+    assert {k: limit for k, limit in boxes.items() if limit not in (2000, 1000)} == {'website.scan-prompt': SETTING_TEXT_MAX, 'sso.button-text': 40, 'core.probe-extra': 4000} and any(k.startswith('tags.') for k in boxes)
