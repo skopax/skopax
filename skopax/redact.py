@@ -37,7 +37,7 @@ NATIONAL_PHONE = re.compile(r'(?<![\w+./])(?<!\d-)(?:'
 LOCALE_ROOT = Path(__file__).with_name('locale')
 SECRET_WORDS_FILE = 'secret-words.txt'
 SECRET_WORD = re.compile(r'[^\W\d_]+(?: [^\W\d_]+)*')
-SECRET_WORD_MAX = 40
+WORD_LENGTH_MAX = 40
 
 
 def language_secret_words(root: Path = LOCALE_ROOT) -> tuple[str, ...]:
@@ -55,10 +55,10 @@ def language_secret_words(root: Path = LOCALE_ROOT) -> tuple[str, ...]:
             continue
         for line in lines:
             word = ' '.join(line.split())
-            if word and len(word) <= SECRET_WORD_MAX and SECRET_WORD.fullmatch(word):
+            if word and len(word) <= WORD_LENGTH_MAX and SECRET_WORD.fullmatch(word):
                 words.setdefault(word.casefold(), word)
             elif word:
-                log.warning('a secret word in %s is left out: use letters and spaces, at most %d characters', path.parent.name, SECRET_WORD_MAX)
+                log.warning('a secret word in %s is left out: use letters and spaces, at most %d characters', path.parent.name, WORD_LENGTH_MAX)
     return tuple(sorted(words.values(), key=lambda w: (-len(w), w.casefold())))
 
 

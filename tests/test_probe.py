@@ -1256,7 +1256,7 @@ def test_the_app_wires_slack_openai_and_real_google_plugins_into_the_probe(store
     # then
     assert rows['Slack API'] == 'https://slack.com/api/api.test'
     assert rows['OpenAI API'] == 'https://api.openai.com/'
-    assert 'sheets.googleapis.com' in rows and 'itunes.apple.com' not in rows
+    assert {'sheets.googleapis.com'} <= set(rows) and not {'itunes.apple.com'} & set(rows)
     assert 'Anthropic API' not in rows
 
 
