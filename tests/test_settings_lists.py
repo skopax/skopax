@@ -52,7 +52,7 @@ def test_other_instances_is_its_own_section_and_card_not_part_of_general(store: 
     # then
     assert known.group == 'Workspaces' and 'Workspaces' in GROUPS
     assert (listed['core.workspace-links']['group'], listed['core.workspace-links']['card']) == ('Workspaces', 'Other workspaces')
-    assert [k for k, i in listed.items() if i['group'] == 'Workspaces'] == ['core.workspace-links']
+    assert [k for k, i in listed.items() if i['group'] == 'Workspaces'] == ['core.workspace-links', 'core.workspace-icon']
     assert settingcards.CARD_OF['core.workspace-links'][:2] == ('Workspaces', 'Other workspaces')
     assert 'core.workspace-links' not in [k for _, keys in settingcards.CARDS['General'] for k in keys]
 
@@ -80,7 +80,7 @@ def test_the_deployment_name_falls_back_to_the_host_and_has_no_source_without_a_
         body = c.get('/api/admin/settings', headers=AUTH).json()
 
     # then
-    assert body['instance'] == {'name': 'skopax.example.com', 'label': '', 'from': ''}
+    assert {k: v for k, v in body['instance'].items() if k != 'icon'} == {'name': 'skopax.example.com', 'label': '', 'from': ''}
 
 
 def test_every_comma_list_tunable_declares_its_item_kind(store: Store):

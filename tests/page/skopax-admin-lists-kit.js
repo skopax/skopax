@@ -38,10 +38,12 @@ async function boot(template, hash, items, opts) {
       w.Element.prototype.scrollIntoView = function () {};
       if (o.lang) { w.SKOPAX_I18N = {[o.lang]: pack(template, o.lang)}; w.document.cookie = 'skopax_lang=' + o.lang + '; path=/'; }
       w.fetch = async (p0, opts2) => {
-        const p = String(p0), method = (opts2 && opts2.method) || 'GET', body = opts2 && opts2.body ? JSON.parse(opts2.body) : null;
+        const p = String(p0), method = (opts2 && opts2.method) || 'GET', raw = opts2 && opts2.body, body = typeof raw === 'string' ? JSON.parse(raw) : raw || null;
         const ok = (b) => ({ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(b)), text: async () => JSON.stringify(b)});
         if (p.startsWith('/api/admin')) {
           calls.push([method, p, body]);
+          const own = o.route && o.route(method, p, body);
+          if (own) return own.ok === false ? own : ok(own);
           if (p.startsWith('/api/admin/history')) return ok([]);
           if (p === '/api/admin/notices') return ok({items: []});
           if (p === '/api/admin/features') return ok({edition: 'community', items: []});
@@ -59,7 +61,7 @@ async function boot(template, hash, items, opts) {
           }
           return {ok: false, status: 404, json: async () => ({})};
         }
-        if (p.startsWith('/api/me')) return ok({loginEnabled: true, user: ADMIN_USER, operator: true, admin: true, teams: [], tags: []});
+        if (p.startsWith('/api/me')) { return ok(Object.assign({loginEnabled: true, user: ADMIN_USER, operator: true, admin: true, teams: [], tags: []}, o.me ? o.me() : {})); }
         if (p.startsWith('/api/actions') || p.startsWith('/api/deploy-reports') || p.startsWith('/api/requests')) return ok([]);
         if (p.startsWith('/api/rev')) return ok({rev: 1});
         return {ok: false, status: 404, json: async () => ({})};

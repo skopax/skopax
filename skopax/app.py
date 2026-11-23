@@ -37,6 +37,7 @@ from skopax.auth import LOGIN_COOKIE, LOGIN_SECONDS, SESSION_COOKIE, bearer_toke
 from skopax import actions as page_actions
 from skopax import __version__, backfill, brand, causes, clock as clocks, costs, drafts, history, information, messages, redact as redaction, tags, toolusage
 from skopax.jiralinks import JiraLinks
+from skopax.backlink import Backlinks
 from skopax.kube import Kube
 from skopax import locales as core_locales
 from skopax import mcpserver
@@ -103,7 +104,7 @@ from skopax.routes import TRIES, Echo, Refused as RouteRefused, Routes
 from skopax.models import NoticeMailIn, RouteSendIn, SsoIn, SsoTestIn, TestMailIn
 from skopax.mailtrial import MailTrials, PER_HOUR as TRIALS_PER_HOUR
 from skopax.statenotes import StateNotes, who_of
-from skopax.slack import stopped_who, thread_why, anomaly_message, fix_hash, fix_message, AUTO_BY, same_person, built_link, cut, esc, esc_keep_mentions, link_addresses, menu_kinds, NoThread, opening, public_hosts, reason_of, recurring_line, report_message, Slack, SlackError, SECTION_LIMIT
+from skopax.slack import CHANNEL_ID, stopped_who, thread_why, anomaly_message, fix_hash, fix_message, AUTO_BY, same_person, built_link, cut, esc, esc_keep_mentions, link_addresses, menu_kinds, NoThread, opening, public_hosts, reason_of, recurring_line, report_message, Slack, SlackError, SECTION_LIMIT
 from skopax.setup import BadCode, SetupDone, SetupGate, render_form
 from skopax import migrations
 from skopax.errkind import NoAccess, Refusal, kind, text_of
@@ -126,7 +127,7 @@ from skopax.remote import Transport
 from skopax.sessions import LOGIN_KIND, SESSION_KIND, Sessions, User, role_at_least, session_secret
 from skopax.roles import Resolvers, role_map
 from skopax.signin import Refused, SignIn, domain_refused
-from skopax import ssobutton
+from skopax import ssobutton, workspaceicon
 from skopax.ssoicon import ICON_MAX as SSO_ICON_MAX, IconRefused, SsoIcon, check as icon_check
 from skopax.sso import FIELDS as SSO_FIELDS, SECRET_FIELD as SSO_SECRET_FIELD, SECRET_ID as SSO_SECRET_ID, SECRET_MAX as SSO_SECRET_MAX, InvalidSecret, SignOn, SourceOwned as SecretOwned, SsoConfig, SsoHttp, SsoSecret, TestBusy as SsoTestBusy
 from skopax.throttle import Throttle
@@ -631,6 +632,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     signin = SignIn(users, settings, resolvers, clock=clock, on_bound=note_bound)
     api_tokens = ApiTokens(db, clock=clock)
     sso_icon = SsoIcon(db)
+    workspace_icon = workspaceicon.store(db)
     setup_gate = SetupGate(db, users)
     sessions_box: list[Sessions] = []
     user_cache: dict[str, tuple] = {}
@@ -738,6 +740,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                                      lambda: settings.tag_report_at, lambda: features.on(tagreport.FEATURE) and features.on('slack-autosend'), base_url, left_out=disabled_people)
     clear_notes = ClearNotes(store, slack, settings.slack_clear_note_minutes, title_prefix=settings.jira_title_prefix)
     jira_links = JiraLinks(store, jira, settings.jira_links, notes, base_url, settings.jira_developer_field)
+    backlinks = Backlinks(store, jira, base_url, mode=lambda: settings.jira_backlink, projects=live_projects,
+                          pool=lambda: ThreadPoolExecutor(max_workers=1, thread_name_prefix='skopax-jira-backlink'))
     assigner = Assigner(store, slack, settings, base_url, notes, notices, posts=card_posts)
     auto_pool: list[ThreadPoolExecutor] = []
     auto_guard = threading.Lock()
@@ -1008,6 +1012,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         notes.triaged(key, before)
         notices.triaged(key, before)
         card_posts.triaged(key, before)
+        backlinks.triaged(key, before)
 
     aikey = AiKey(db, get_sealer, lambda: live.base.anthropic_api_key, lambda: stored_key(db), live.tunables, factory=ai_factory)
     openai_key = AiKey(db, get_sealer, lambda: live.base.openai_api_key, lambda: stored_key(db), live.tunables, factory=openai_factory, provider=OPENAI)
@@ -1053,10 +1058,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def apply_card_action(action: dict) -> str:
         before = notes.watch(action)
         seen = notices.watch(action)
+        linked = backlinks.watch(action)
         result = page_actions.apply(store, action, jira, settings, notify=task_notice, extra_projects=plugin_projects(), name_of=user_name)
         notes.applied(action, before)
         notices.applied(action, seen)
         card_posts.after(action)
+        backlinks.applied(action, linked)
         return result
 
     def apply_from_slack(action: dict) -> str:
@@ -1265,7 +1272,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             jira_card['open'] = False
             return []
         try:
-            linked = and_notify(and_notify(jira_links.run_once(now), card_posts.jira), notices.jira_swept)
+            linked = and_notify(and_notify(and_notify(jira_links.run_once(now), card_posts.jira), notices.jira_swept), backlinks.swept)
         except SourceDown as e:
             log.warning('jira-links run failed: %s', kind(e))
             server_apply([PassResult(JIRA_ACCESS, False, msg('jira.links_failed', part='issues', reason=text_of(e)), [], {}, ())], now, lambda a: None)
@@ -1685,6 +1692,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                     await asyncio.to_thread(stop_auto_pool)
                 except Exception as e:
                     log.warning('the auto-assign messages did not finish: %s', kind(e))
+            try:
+                await asyncio.to_thread(backlinks.stop)
+            except Exception as e:
+                log.warning('the Jira back-links did not stop: %s', kind(e))
             if proxy_pool:
                 try:
                     await asyncio.to_thread(proxy_pool[0].shutdown)
@@ -1758,6 +1769,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     app.state.chat_attribution = chat_attribution
     app.state.card_posts = card_posts
     app.state.jira_links = jira_links
+    app.state.backlinks = backlinks
     app.state.state_notes = notes
     app.state.enricher = enricher
     app.state.settle = settle
@@ -2193,6 +2205,35 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         cache = SSO_ICON_CACHE if v == version else 'no-cache'
         return Response(held[0], media_type=held[1], headers={'Cache-Control': cache, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': SSO_ICON_CSP})
 
+    def workspace_icon_source() -> SsoIcon | None:
+        return {'company': sso_icon, 'upload': workspace_icon}.get(settings.workspace_icon)
+
+    def workspace_icon_url() -> str | None:
+        source = workspace_icon_source()
+        if source is None:
+            return None
+        try:
+            return workspaceicon.url(source.status()['version'])
+        except PyMongoError as e:
+            log.warning('the workspace icon could not be read: %s', kind(e))
+            return None
+
+    @app.get(workspaceicon.PATH)
+    def workspace_icon_image(v: str = '') -> Response:
+        source = workspace_icon_source()
+        if source is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, 'no icon')
+        try:
+            version = source.status()['version']
+            held = source.data(version) if version and (not v or v == version) else None
+        except PyMongoError as e:
+            log.warning('the workspace icon could not be read: %s', kind(e))
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, msg('sso.icon_unavailable')) from None
+        if held is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, 'no icon')
+        cache = workspaceicon.CACHE if v == version else 'no-cache'
+        return Response(held[0], media_type=held[1], headers={'Cache-Control': cache, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': SSO_ICON_CSP})
+
     @app.get('/login', response_model=None)
     def login_form(next_page: Annotated[str | None, Query(alias='next')] = None) -> HTMLResponse:
         return login_page(next_page=next_page)
@@ -2513,7 +2554,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         }
         out['features'] = {f.id: features.on(f.id) for f in FEATURES}
         out['featureOff'] = {f.id: off_text(f.id) for f in FEATURES if not features.on(f.id)}
-        out['instances'] = instance_menu(settings, live.instance_links())
+        out['instances'] = instance_menu(settings, live.instance_links(), workspace_icon_url())
         return out
 
     @app.get('/api/state')
@@ -2825,7 +2866,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except Locked as e:
             raise HTTPException(status.HTTP_409_CONFLICT, e.detail) from None
         if key == SLACK_CHANNEL_KEY and value is not None:
-            problem = slack.check_channel(str(value).strip())
+            found, problem = slack.find_channel(str(value))
+            value = found or str(value).strip()
+            problem = problem or slack.check_channel(value)
             if problem:
                 raise HTTPException(status_code=422, detail=f'Channel: {problem}')
         if key == SSO_SWITCH_KEY and turns_sso_off(value):
@@ -3078,14 +3121,27 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return items
         return [i | {'problem': msg('tags.scope_missing')} if i.get('key') == tagreport.KEY else i for i in items]
 
+    def instance_icon_view() -> dict:
+        try:
+            return {'mode': settings.workspace_icon, 'company': sso_icon.status(), 'upload': workspace_icon.status(), 'max': SSO_ICON_MAX}
+        except PyMongoError as e:
+            log.warning('the workspace icon could not be read: %s', kind(e))
+            return {'mode': settings.workspace_icon, 'company': None, 'upload': None, 'max': SSO_ICON_MAX, 'problem': msg('sso.icon_unavailable')}
+
     def instance_name_view() -> dict:
         label = (settings.workspace_label or '').strip()
         source = live.labels.get('core.workspace-label') or live.labels.get('core.env-label', 'environment')
-        return {'name': current_instance(settings), 'label': label, 'from': source if label else ''}
+        return {'name': current_instance(settings), 'label': label, 'from': source if label else '', 'icon': instance_icon_view()}
+
+    def channel_named(item: dict) -> dict:
+        if item.get('key') != SLACK_CHANNEL_KEY or not CHANNEL_ID.fullmatch(str(item.get('value') or '')) or not slack.token:
+            return item
+        name = slack.channel_name(item['value'])
+        return {**item, 'channelName': name} if name else item
 
     @app.get('/api/admin/settings')
     def get_admin_settings(by: Annotated[str, Depends(require_admin)]) -> dict:
-        return {'items': scope_marked(live.entries()), 'rev': live.tunables.rev(), 'refreshSeconds': live.every, 'instance': instance_name_view()}
+        return {'items': [channel_named(i) for i in scope_marked(live.entries())], 'rev': live.tunables.rev(), 'refreshSeconds': live.every, 'instance': instance_name_view()}
 
     def responsible_email(email: str) -> bool:
         domain = email.rpartition('@')[2]
@@ -3327,8 +3383,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             log.info('single sign-on switched %s by %s', 'on' if switch else 'off', by)
         return sso_view()
 
-    @app.put('/api/admin/sso/icon')
-    async def put_admin_sso_icon(request: Request, by: Annotated[str, Depends(require_admin)]) -> dict:
+    async def icon_upload(request: Request) -> tuple[bytes, str]:
         declared = request.headers.get('content-length', '')
         if declared.isdigit() and int(declared) > SSO_ICON_MAX:
             raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, msg('sso.icon_too_big', max=SSO_ICON_MAX // 1024))
@@ -3338,12 +3393,16 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, msg('sso.icon_too_big', max=SSO_ICON_MAX // 1024))
             raw += chunk
         try:
-            kind_of = await run_in_threadpool(icon_check, bytes(raw))
+            return bytes(raw), await run_in_threadpool(icon_check, bytes(raw))
         except IconRefused as e:
             raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE if e.key == 'sso.icon_too_big' else status.HTTP_422_UNPROCESSABLE_CONTENT,
                                 msg(e.key, max=SSO_ICON_MAX // 1024) if e.key == 'sso.icon_too_big' else msg(e.key)) from None
+
+    @app.put('/api/admin/sso/icon')
+    async def put_admin_sso_icon(request: Request, by: Annotated[str, Depends(require_admin)]) -> dict:
+        raw, kind_of = await icon_upload(request)
         try:
-            await run_in_threadpool(sso_icon.set, bytes(raw), kind_of, by)
+            await run_in_threadpool(sso_icon.set, raw, kind_of, by)
         except PyMongoError as e:
             log.warning('the single sign-on button icon was not stored: %s', kind(e))
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, msg('sso.icon_unavailable')) from None
@@ -3368,6 +3427,36 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             except PyMongoError as e:
                 log.warning('the single sign-on button icon removal was not written to the history: %s', kind(e))
         return sso_view()
+
+    @app.put('/api/admin/workspace/icon')
+    async def put_admin_workspace_icon(request: Request, by: Annotated[str, Depends(require_admin)]) -> dict:
+        raw, kind_of = await icon_upload(request)
+        try:
+            await run_in_threadpool(workspace_icon.set, raw, kind_of, by)
+        except PyMongoError as e:
+            log.warning('the workspace icon was not stored: %s', kind(e))
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, msg('sso.icon_unavailable')) from None
+        try:
+            await run_in_threadpool(store.add_activity, ACCESS_KIND, by, msg('workspace.icon_saved', type=kind_of, size=len(raw)))
+        except PyMongoError as e:
+            log.warning('the workspace icon upload was not written to the history: %s', kind(e))
+        log.info('workspace icon uploaded by %s (%s, %d bytes)', by, kind_of, len(raw))
+        return {'icon': await run_in_threadpool(instance_icon_view)}
+
+    @app.delete('/api/admin/workspace/icon')
+    def delete_admin_workspace_icon(by: Annotated[str, Depends(require_admin)]) -> dict:
+        try:
+            gone = workspace_icon.clear()
+        except PyMongoError as e:
+            log.warning('the workspace icon was not removed: %s', kind(e))
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, msg('sso.icon_unavailable')) from None
+        if gone:
+            log.info('workspace icon removed by %s', by)
+            try:
+                store.add_activity(ACCESS_KIND, by, msg('workspace.icon_removed'))
+            except PyMongoError as e:
+                log.warning('the workspace icon removal was not written to the history: %s', kind(e))
+        return {'icon': instance_icon_view()}
 
     @app.post('/api/admin/sso/test')
     def post_admin_sso_test(body: SsoTestIn, by: Annotated[str, Depends(require_admin)]) -> dict:

@@ -103,7 +103,7 @@ def test_a_closed_ticket_reopens_a_card_that_still_fires_and_resolves_one_that_c
     assert out == [{'card': 'log|a|ERROR|x', 'issue': 'OPS-126', 'closed': 'Live'}, {'card': 'log|b|ERROR|y', 'issue': 'OPS-127', 'closed': 'Done'}]
     assert 'triage' not in a and a['ticket'] == 'OPS-126' and a['note']['text'].startswith('OPS-126 is Live but the card still fires'), a
     assert [(d['key'], d['requestedBy'], d['label']) for d in dives] == [('log|a|ERROR|x', SWEEP_BY, 'OPS-126 Live, still firing')]
-    assert (b['triage'], b['ticket'], b['triagedAt']) == ('handled', 'OPS-127', iso(NOW)), 'the resolve is stamped with the sweep time, so the card shows 24 h under Action taken'
+    assert (b['triage'], b['ticket'], b['triagedAt']) == ('handled', 'OPS-127', iso(NOW)), 'the resolve is stamped with the sweep time, so the card shows 24 h under Done'
     assert 'triagedAt' not in a, 'the reopen clears the stamp with the triage'
     assert (c['triage'], c['ticket']) == ('progress', 'OPS-128'), 'an open ticket changes nothing'
     assert store.anomaly('log|e|ERROR|v')['triage'] == 'progress', 'a ticket closed 30 min ago gets its 2 h grace: the card still shows the hour before the fix'

@@ -452,12 +452,12 @@ async function anAutoResolvedCardSaysSoUnderActionTaken() {
   const group = card && card.closest('.grp');
   //then
   assert.ok(card, 'the auto-resolved card is on the page');
-  assert.strictEqual(group.querySelector('.grp-h h3').textContent, 'Action taken', 'it sits under Action taken');
+  assert.strictEqual(group.querySelector('.grp-h h3').textContent, 'Done', 'it sits under Done');
   assert.ok([...card.querySelectorAll('.tag')].some((t) => t.textContent === 'No action needed \u00b7 auto-resolved'), 'the triage tag says it was auto-resolved');
   assert.ok(!doc.querySelector('#anoms details.grp.wait article.inc[data-key="' + AUTO_KEY + '"]'), 'not waiting any more');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-  console.log('PASS an auto-resolved card reads No action needed \u00b7 auto-resolved and sits under Action taken');
+  console.log('PASS an auto-resolved card reads No action needed \u00b7 auto-resolved and sits under Done');
 }
 
 async function aStoppedCardNobodyActedOnIsJustOpen() {
@@ -563,7 +563,8 @@ async function aCardLinkCutByACharacterStillOpensTheCard() {
   const card = [...doc.querySelectorAll('#anoms article.inc')].find((c) => c.dataset.key === KEY);
   //then
   assert.ok(card, 'the card is on the page');
-  assert.ok(!doc.getElementById('link-note') && !w.location.hash.startsWith('#a='), 'the cut key resolved to the one card whose key starts with it: no "no longer on the page" note, the #a= link consumed (the address then shows the open tab)');
+  assert.ok(!doc.getElementById('link-note'), 'the cut key resolved to the one card whose key starts with it: no "no longer on the page" note');
+  assert.strictEqual(w.location.hash, w.cardHash(w.ALL.filter((x) => x.key === KEY)[0]), 'and the address shows the full link of the card it opened');
   assert.strictEqual(w.linkKey('a|b.(c)!'), 'a%7Cb.%28c%29%21', 'Copy link percent-encodes parentheses and the other characters encodeURIComponent leaves');
   assert.deepStrictEqual(errors, []);
   dom.window.close();

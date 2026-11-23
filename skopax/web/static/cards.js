@@ -151,10 +151,10 @@ function teamsTag(posts) {
 function goneText(a) { return 'The page answers HTTP ' + a.gone.status + ' since ' + dayhm(a.gone.since) + ': if it was taken down on purpose, Resolve this card.'; }
 function draftTag(a) {
   var d = draftOf(a), p = a.slackPost;
-  if (!d) return a.slackSkipped && !p ? '<span class="tag k-muted slack-rec not-posted" title="' + esc(skippedTip(a)) + '">' + ICON_SEND + esc(skippedText(a)) + '</span>' : '';
+  if (!d) return a.slackSkipped && !p ? '<span class="tag k-muted slack-rec not-posted" title="' + esc(skippedTip(a)) + '">' + ICON_SEND + '<span class="tag-t">' + esc(skippedText(a)) + '</span></span>' : '';
   if (draftSent(a)) return '<span class="tag k-good slack-rec sent" title="' + esc('Posted to Slack ' + dayhm(p.at) + ' by ' + draftBy(p.by, d.by) + '\n\n' + d.text) + '">' + ICON_SEND + slackLink(p.permalink, 'Sent to Slack ' + dayhm(p.at)) + '</span>';
   var why = notPosted(a);
-  if (why) return '<span class="tag k-warn slack-rec not-posted" title="' + esc(draftTip(d, a)) + '">' + ICON_SEND + esc(why) + '</span>';
+  if (why) return '<span class="tag k-warn slack-rec not-posted" title="' + esc(draftTip(d, a)) + '">' + ICON_SEND + '<span class="tag-t">' + esc(why) + '</span></span>';
   return '';
 }
 function draftHtml(a, i) {
@@ -570,7 +570,10 @@ function anomCard(a, i) {
     if (e.target.closest('a, input, select, textarea, label, button:not(.fold)')) return;
     var s = window.getSelection && window.getSelection();
     if (s && !s.isCollapsed && card.contains(s.anchorNode)) return;
-    cardOpen(card, !card.classList.contains('open'));
+    var on = !card.classList.contains('open');
+    cardOpen(card, on);
+    if (card.closest('.card-drawer')) return;
+    if (on) cardUrl(a, true); else cardUrlOff(a.key);
   });
   if (OPENK[a.key]) cardOpen(card, true);
   return card;
@@ -770,7 +773,7 @@ function tile(a) {
     if (t.dataset.move) tileMove(a, t);
     else if (t.classList.contains('ta-copy')) tileCopy(a, t);
   });
-  b.addEventListener('click', function (e) { if (!e.target.closest('.tile-acts')) openDrawer(a.key); });
+  b.addEventListener('click', function (e) { if (!e.target.closest('.tile-acts')) { openDrawer(a.key); cardUrl(a, true); } });
   b.addEventListener('dragstart', function (e) {
     if (!b.draggable || tileBusy(a.key)) { e.preventDefault(); return; }
     DRAG = a;
@@ -1108,9 +1111,39 @@ function closeDrawer() {
   var d = root && root.querySelector('.card-drawer');
   if (d) d.remove();
   if (key) delete OPENK[key];
+  cardUrlOff(key);
   var t = root && [].filter.call(root.querySelectorAll('.tile'), function (x) { return x.dataset.key === key; })[0];
   if (root) root.querySelectorAll('.tile.on').forEach(function (x) { x.classList.remove('on'); });
   if (t) (t.querySelector('.tile-open') || t).focus();
+}
+var CARD_URL = null;
+function cardHash(a) { return a.num ? '#c=' + a.num : '#a=' + linkKey(a.key); }
+function cardShown(key) { return CARD_VIEW === 'board' ? DRAWER === key : !!OPENK[key]; }
+function cardUrlHeld() { return !!CARD_URL && curTab === 'anoms' && CARD_URL.path === tabPath(curTab) && cardShown(CARD_URL.key); }
+function cardUrl(a, push) {
+  var same = CARD_URL && CARD_URL.key === a.key;
+  CARD_URL = {key: a.key, path: tabPath(curTab)};
+  if (same && push) return;
+  history[push ? 'pushState' : 'replaceState'](null, '', location.pathname + location.search + cardHash(a));
+}
+function cardUrlOff(key) {
+  if (CARD_URL && (!key || CARD_URL.key === key)) tabUrl();
+}
+function tabUrl() {
+  CARD_URL = null;
+  history.replaceState(null, '', location.pathname + location.search + '#t=' + tabPath(curTab || 'anoms'));
+}
+function dropCard() {
+  var key = CARD_URL && CARD_URL.key;
+  if (!key) return;
+  CARD_URL = null;
+  delete OPENK[key];
+  if (DRAWER === key) { closeDrawer(); return; }
+  [].forEach.call(document.querySelectorAll('#anoms article.inc'), function (c) {
+    if (c.dataset.key !== key || c.closest('.card-drawer')) return;
+    c.classList.remove('linked');
+    cardOpen(c, false);
+  });
 }
 var SHOWN_KEYS = null, HIDE_WATCH = {}, TOAST_MS = 8000, TOAST_MAX = 3, HIDE_WATCH_MS = 15000;
 function watchHide(key) { if (SHOWN_KEYS && SHOWN_KEYS[key]) HIDE_WATCH[key] = Date.now(); }
@@ -1169,7 +1202,7 @@ function hiddenToast(key) {
   t.querySelector('.toast-x').addEventListener('click', gone);
   t.querySelector('.toast-view').addEventListener('click', function () {
     gone();
-    if (CARD_VIEW === 'board' && a) openDrawer(key);
+    if (CARD_VIEW === 'board' && a) { openDrawer(key); cardUrl(a, true); }
     else if (a && a.num) window.open('/c/' + a.num, '_blank', 'noopener');
     else if (a) { clearCardFilters(); setFilter('all'); OPENK[key] = 1; renderAnoms(); }
   });
@@ -1220,7 +1253,7 @@ function paintAnoms() {
   if (filter === 'open' || filter === 'all') g('open', 'Open', 'critical first; a card that stopped firing or was investigated stays here until someone takes, resolves or mutes it, and its tags say which', SEV[worst][1], openAll());
   if (['crit', 'warn'].indexOf(filter) >= 0) g('open', SEV[filter][0], 'open: firing, or stopped with nobody acting on it yet', SEV[filter][1], openBySev(filter));
   if (filter === 'progress' || filter === 'all') g('progress', TRI.progress[0], 'a ticket or hand-off is underway; pushes again only if it doubles or gets worse. A card with a Jira ticket stays until the ticket closes, one with free text drops off 24 hours after it cleared', TRI.progress[1], inprog);
-  if (filter === 'taken' || filter === 'all') g('taken', 'Action taken', 'no action needed; pushes again only if it doubles or gets worse, and comes back under Open when it stops and fires again. Drops off 24 hours after it cleared or was resolved, whichever is later', 'k-good', taken);
+  if (filter === 'taken' || filter === 'all') g('taken', 'Done', 'no action needed; pushes again only if it doubles or gets worse, and comes back under Open when it stops and fires again. Drops off 24 hours after it cleared or was resolved, whichever is later', 'k-good', taken);
   if (filter === 'muted' || filter === 'all') g('muted', 'Muted', 'no pushes while the mute lasts, open or already cleared; unmute to get them again', 'k-muted', muted);
   if (filter === 'cleared' || filter === 'all') g('cleared', 'Stopped firing \u00b7 no action needed', 'the signal went back to normal and nothing needs doing (info or muted); drops off 24 hours after it cleared', 'k-cleared', filter === 'all' ? cleared.filter(function (a) { return muted.indexOf(a) < 0; }) : cleared);
   if (filter === 'archived') g('archived', 'Archived', 'cards that are not firing (or are muted) and had no change for ' + archiveHours() + ' hours (Admin \u203a Settings, Archive after); they show nowhere else', 'k-cleared', ARCHIVED, 'Nothing archived.');
@@ -1228,7 +1261,7 @@ function paintAnoms() {
   if (TRI[filter] && (filter === 'investigating' || filter === 'dived')) g(filter, TRI[filter][0], 'open, muted and cleared', TRI[filter][1], A.filter(function (a) { return a.triage === filter; }));
   if (filter === 'svc' && svcF) {
     var sc = svcCards(svcF);
-    g('svc', svcF.svc + ' \u00b7 ' + sc.tier, 'the cards behind this service\u2019s status on Services: the open ones, or when none is open, the ones already stopped, action taken or muted', sc.k, sc.list, 'Nothing on ' + svcF.svc + ' any more: its cards cleared and dropped off.');
+    g('svc', svcF.svc + ' \u00b7 ' + sc.tier, 'the cards behind this service\u2019s status on Services: the open ones, or when none is open, the ones already stopped, done or muted', sc.k, sc.list, 'Nothing on ' + svcF.svc + ' any more: its cards cleared and dropped off.');
   }
   shownN = groups.reduce(function (n, gr) { return n + gr.list.length; }, 0);
   SHOWN_KEYS = {};

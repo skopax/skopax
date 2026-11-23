@@ -28,7 +28,7 @@ log = logging.getLogger('skopax.slack')
 
 POST_URL = 'https://slack.com/api/chat.postMessage'
 API_URL = 'https://slack.com/api/'
-READ_METHODS = frozenset({'auth.test', 'chat.getPermalink', 'conversations.history', 'conversations.info', 'conversations.replies', 'users.info', 'users.list', 'users.lookupByEmail'})
+READ_METHODS = frozenset({'auth.test', 'chat.getPermalink', 'conversations.history', 'conversations.info', 'conversations.list', 'conversations.replies', 'users.info', 'users.list', 'users.lookupByEmail'})
 FORM_METHODS = frozenset({'files.getUploadURLExternal', 'files.completeUploadExternal'})
 SCOPES_KEY = '_scopes'
 CALL_TIMEOUT_S = 10
@@ -87,6 +87,9 @@ FLAG_SIG = {'unavail': 'unavailable'}
 AUTO_BY = 'auto · Claude draft'
 CHANNEL_NOT_FOUND = 'channel_not_found'
 CHANNEL_ID = re.compile(r'[CG][A-Z0-9]{8,12}')
+CHANNEL_NAME = re.compile(r'#?([a-z0-9][a-z0-9_-]{0,79})')
+CHANNEL_PAGE = 1000
+CHANNEL_PAGES_MAX = 20
 SCOPE_ERRORS = ('missing_scope', 'not_allowed_token_type')
 SCOPE_NAME = re.compile(r'[a-z][a-z0-9.:_,-]{0,200}')
 MACHINE_BY = frozenset({SYSTEM, SERVER_BY, 'pod', 'auto', AUTO_BY, ''})
@@ -281,9 +284,47 @@ class Slack:
     def enabled(self) -> bool:
         return bool(self.token and self.channel)
 
+    def find_channel(self, text: str) -> tuple[str | None, str | None]:
+        given = (text or '').strip()
+        if CHANNEL_ID.fullmatch(given):
+            return given, None
+        named = CHANNEL_NAME.fullmatch(given.lower())
+        if not named:
+            return None, 'give the channel name, like #ops, or its id, like C0123ABCD'
+        if not self.token:
+            return None, 'Slack has no bot token yet, so only a channel id can be taken'
+        try:
+            return self.channel_id_of(named.group(1), 'public_channel,private_channel')
+        except SlackError as e:
+            if e.code not in SCOPE_ERRORS:
+                return None, f'Slack did not list the channels ({e.text})'
+        try:
+            return self.channel_id_of(named.group(1), 'public_channel')
+        except SlackDown:
+            return None, 'Slack did not answer, try again'
+        except SlackError as e:
+            if e.code in SCOPE_ERRORS:
+                return None, 'the bot may not list channels (add the channels:read scope), so give the channel id instead'
+            return None, f'Slack did not list the channels ({e.text})'
+
+    def channel_id_of(self, name: str, types: str) -> tuple[str | None, str | None]:
+        cursor = None
+        try:
+            for _ in range(CHANNEL_PAGES_MAX):
+                body = self.call('conversations.list', {'types': types, 'exclude_archived': 'true', 'limit': CHANNEL_PAGE, 'cursor': cursor})
+                for c in body.get('channels') or []:
+                    if c.get('name') == name and c.get('id'):
+                        return str(c['id']), None
+                cursor = str((body.get('response_metadata') or {}).get('next_cursor') or '')
+                if not cursor:
+                    break
+        except SlackDown:
+            return None, 'Slack did not answer, try again'
+        return None, f'Slack has no open channel #{name} the bot can see; for a private channel, invite the bot first or give the channel id'
+
     def check_channel(self, channel: str) -> str | None:
         if not CHANNEL_ID.fullmatch(channel or ''):
-            return 'give the channel id, like C0123ABCD (Slack › the channel › About, at the bottom)'
+            return 'give the channel name, like #ops, or its id, like C0123ABCD (Slack › the channel › About, at the bottom)'
         if not self.token:
             return None
         try:

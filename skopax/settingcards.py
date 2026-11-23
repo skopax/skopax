@@ -12,6 +12,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     ),
     'Workspaces': (
         ('Other workspaces', ('core.workspace-links',)),
+        ('Workspace icon', ('core.workspace-icon',)),
     ),
     'Access': (
         ('Reading', ('access.public-read',)),
@@ -40,6 +41,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
         ('Projects', ('jira.projects', 'jira.project', 'jira.parent', 'jira.tech-project', 'jira.tech-assignee')),
         ('New tasks', ('jira.points', 'jira.dev-scope')),
         ('Releases', ('jira.release-name',)),
+        ('Back-links', ('jira.backlink',)),
     ),
     'Monitor rules': (
         ('Certificates', ('core.certs', 'core.cert-skip')),

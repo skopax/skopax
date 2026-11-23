@@ -154,8 +154,8 @@ def status_of(doc: dict | None) -> dict:
 
 
 class SsoIcon:
-    def __init__(self, db, clock: Callable[[], float] = time.monotonic):
-        self.col = db[COLLECTION]
+    def __init__(self, db, clock: Callable[[], float] = time.monotonic, collection: str = COLLECTION):
+        self.col = db[collection]
         self.clock = clock
         self.meta: tuple[float, dict] | None = None
         self.held: tuple[str, bytes, str] | None = None

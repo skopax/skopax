@@ -1,5 +1,5 @@
 (function () {
-  var COLOUR = /^#[0-9a-f]{6}$/i, FALLBACK = '#e3a744', CURRENT = '#3cc8f0', WEB = /^https?:\/\//i;
+  var COLOUR = /^#[0-9a-f]{6}$/i, FALLBACK = '#e3a744', CURRENT = '#3cc8f0', WEB = /^https?:\/\//i, ICON = /^\/api\/workspace-icon\?v=[A-Za-z0-9]{1,64}$/;
   var GROUPS = ['Tickets', 'Cards', 'Services', 'Pages', 'Settings', 'Actions'], MAX = 8, TICKET_PICKS = 6, FIRST_CARDS = 4, FIRST_PAGES = 6;
   var FIND_TABS = ['settings'];
   var MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
@@ -14,9 +14,19 @@
 
   function hostOf(url) { try { return new URL(url).host; } catch (e) { return ''; } }
   function first(letter, name) { return (Array.from(String(letter || name || ''))[0] || '?').toUpperCase(); }
-  function paint(tile, letter, colour) {
+  function paint(tile, letter, colour, icon) {
     tile.textContent = letter;
     tile.style.backgroundColor = colour;
+    tile.classList.remove('has-img');
+    if (typeof icon !== 'string' || !ICON.test(icon)) return;
+    var img = document.createElement('img');
+    img.alt = '';
+    img.addEventListener('error', function () { if (img.parentNode === tile) paint(tile, letter, colour); });
+    img.src = icon;
+    tile.textContent = '';
+    tile.style.backgroundColor = 'transparent';
+    tile.classList.add('has-img');
+    tile.appendChild(img);
   }
   function menuItems() { return [].slice.call(menu.querySelectorAll('[role^="menuitem"]')); }
   function outside(e) { if (!box.contains(e.target)) shut(false); }
@@ -63,9 +73,9 @@
     if (box) box.value = '';
     if (typeof adminFilter === 'function') adminFilter();
   }
-  function entry(url, name, letter, colour, host) {
+  function entry(url, name, letter, colour, host, icon) {
     var it = el(url ? 'a' : 'button', 'mi', '<span class="inst-tile" aria-hidden="true"></span><span class="mi-t" data-no-tx><span class="mi-n"></span><small></small></span>' + navIcon('tick', 'chk'));
-    paint(it.querySelector('.inst-tile'), letter, colour);
+    paint(it.querySelector('.inst-tile'), letter, colour, icon);
     it.querySelector('.mi-n').textContent = name;
     it.querySelector('small').textContent = host;
     it.setAttribute('role', 'menuitemradio');
@@ -86,12 +96,12 @@
     me = given || {};
     var inst = me.instances || {}, cur = inst.current || {};
     var name = String(cur.name || location.hostname || 'local'), letter = first(cur.letter, name);
-    paint(btn.querySelector('.inst-tile'), letter, CURRENT);
+    paint(btn.querySelector('.inst-tile'), letter, CURRENT, cur.icon);
     btn.querySelector('.inst-name').textContent = name;
     btn.setAttribute('aria-label', 'Workspace: ' + name + '. Switch workspace');
     btn.title = 'Workspace: ' + name;
     menu.innerHTML = '';
-    menu.appendChild(entry('', name, letter, CURRENT, location.host));
+    menu.appendChild(entry('', name, letter, CURRENT, location.host, cur.icon));
     (Array.isArray(inst.links) ? inst.links : []).forEach(function (l) {
       if (!l || typeof l.name !== 'string' || !l.name || typeof l.url !== 'string' || !WEB.test(l.url) || !hostOf(l.url)) return;
       menu.appendChild(entry(l.url, l.name, first(l.letter, l.name), COLOUR.test(l.colour || '') ? l.colour : FALLBACK, hostOf(l.url)));

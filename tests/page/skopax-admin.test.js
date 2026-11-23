@@ -291,7 +291,7 @@ async function settingsStartFoldedAndChangesShowTenAtATime() {
 
 async function aChoiceWithNamedValuesShowsTheNamesAndSavesTheValue() {
   //given
-  const postSev = {key: 'slack.post-sev', group: 'Slack', label: 'Post at once from', help: 'Cards at or above this severity post at once', kind: 'choice', live: true, value: 'warn', base: 'warn', default: 'warn',
+  const postSev = {key: 'slack.post-sev', group: 'Slack', label: 'Post immediately from', help: 'Cards at or above this severity post at once', kind: 'choice', live: true, value: 'warn', base: 'warn', default: 'warn',
     source: 'default', by: null, at: null, choices: ['crit', 'warn', 'info', 'off'], choiceLabels: {crit: 'Critical', warn: 'Warning', info: 'Info', off: 'Off'}};
   const {w, doc, errors, calls} = await boot(true, '#t=settings', null, [postSev]);
   const select = () => row(doc, 'slack.post-sev').querySelector('select');
@@ -346,7 +346,7 @@ async function aChoiceWithNamedValuesShowsTheNamesAndSavesTheValue() {
   assert.deepStrictEqual(rows.map((r) => !!r.querySelector('.adm-revert')), [false, true], 'the cleared old switch row offers no Revert, the post-sev row does');
   assert.deepStrictEqual(changes.errors, []);
   changes.w.close();
-  console.log('PASS a choice setting with named values, such as Post at once from, shows Critical, Warning, Info and Off and saves crit, warn, info or off; a value from the old switch is tagged old switch and Reset clears it');
+  console.log('PASS a choice setting with named values, such as Post immediately from, shows Critical, Warning, Info and Off and saves crit, warn, info or off; a value from the old switch is tagged old switch and Reset clears it');
 }
 
 async function aHistoryRowOfTheOldWorkspacesKeyShowsTheNewLabel() {

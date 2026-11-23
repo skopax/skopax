@@ -12,7 +12,7 @@ function item(key, group, label, kind, value, extra) {
 
 function items() {
   return [
-    item('slack.channel', 'Slack', 'Channel', 'text', 'C0123', {card: 'Channel and posting', order: 0}),
+    item('slack.channel', 'Slack', 'Channel', 'text', 'C0123', {card: 'Channel and posting', order: 0, channelName: 'alerts'}),
     item('slack.thread-hours', 'Slack', 'Thread window (h)', 'float', '6', {card: 'Threads and reminders', order: 200, unit: 'h', shortLabel: 'Thread window', default: '2', base: '2', source: 'admin', by: 'dora.lane@example.com', at: iso(5), low: 0, high: 72}),
     item('slack.ask-cap', 'Slack', 'Slack requests per hour', 'int', '10', {card: 'Questions', order: 100, unit: 'per hour', low: 0, high: 100}),
     item('slack.dm-chats', 'Slack', 'Direct message chats', 'bool', 'true', {card: 'Questions', order: 103}),
@@ -99,6 +99,7 @@ async function rowsShowUnitsSwitchesAChangedDotAndOneMetaColumn() {
   assert.ok(sw.getAttribute('aria-labelledby') === 'adm-slack-dm-chats-l', 'the switch is named by its label');
   assert.ok(row('slack.thread-hours').querySelector('.adm-n .adm-dot').getAttribute('aria-label').endsWith(': 2'), 'a value changed from the default has a dot');
   assert.ok(!row('slack.channel').querySelector('.adm-dot'), 'a default value has none');
+  assert.strictEqual(row('slack.channel').querySelector('.adm-channel-name').textContent, 'Posts to #alerts', 'a channel id shows the channel name under it');
   const meta = row('slack.thread-hours').querySelector('.adm-m');
   assert.ok(meta.querySelector('.tag.k-act') && meta.querySelector('.adm-reset'), 'source tag and Reset sit in one column');
   assert.ok(row('slack.channel').querySelector('.adm-m .tag.plain'), 'a default row has its source tag there too');

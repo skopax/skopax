@@ -188,7 +188,7 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
         if host.get('triage') == 'handled' and not information.calm(kid):
             raise Refused(f'{parent} is handled and {key} is critical; a critical card stays open for a human, also under a parent')
         if host.get('triage') == 'handled' and kid.get('triage') != 'handled':
-            raise Refused(f'{parent} is already resolved (Action taken), so {key} would disappear from Open under it; pick an open card as the parent')
+            raise Refused(f'{parent} is already resolved (Done), so {key} would disappear from Open under it; pick an open card as the parent')
         store.group(parent, [key])
         return f"grouped under {parent_name(host) if host else parent}"
     raise ValueError(f'{kind} is not an instant action')

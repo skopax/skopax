@@ -25,7 +25,7 @@ FEATURES: tuple[Feature, ...] = (
             'Investigates new cards, Investigate clicks, questions from the page and Slack, and deploy-report assessments. Off stops new work at once; queued work waits', 'spark'),
     Feature('chat', 'core.chat', 'Chat', 'The Chat page, Slack direct-message chats and MCP questions', 'chat', started='chat-ui'),
     Feature('slack-autosend', 'core.slack-autosend', 'Slack auto-send',
-            'Posts what the investigator sends to Slack, and new cards from the Post at once from severity up, to the channel on their own; while it is off nothing posts on its own, a post the investigator wanted is dropped with a note on the card, and Send to Slack still works', 'send'),
+            'Posts what the investigator sends to Slack, and new cards from the Post immediately from severity up, to the channel on their own; while it is off nothing posts on its own, a post the investigator wanted is dropped with a note on the card, and Send to Slack still works', 'send'),
     Feature('slack-listener', 'core.slack-listener', 'Slack listener', 'Answers questions, direct messages and button clicks in Slack', 'ear', started='slack-socket'),
     Feature('mcp', 'core.mcp', 'MCP server', 'Lets AI assistants read and triage cards over MCP', 'plug'),
     Feature('public-read', 'access.public-read', 'Read without login', 'Lets anyone who can reach the page read the board without logging in. Changes still need a login', 'eye'),

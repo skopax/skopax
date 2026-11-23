@@ -368,7 +368,7 @@ def test_admin_offers_post_at_once_from_with_named_choices_and_hides_the_old_swi
 
     # then
     entry = listed['slack.post-sev']
-    assert (entry['group'], entry['label'], entry['kind'], entry['default']) == ('Slack', 'Post at once from', 'choice', 'warn')
+    assert (entry['group'], entry['label'], entry['kind'], entry['default']) == ('Slack', 'Post immediately from', 'choice', 'warn')
     assert entry['choices'] == ['crit', 'warn', 'off']
     assert entry['choiceLabels'] == {'crit': 'Critical', 'warn': 'Warning', 'off': 'Off'}
     assert (entry['value'], entry['source'], entry['by'], entry['oldSwitch']) == ('off', 'admin', 'alice@example.com', 'slack.crit-now'), 'the row says the value comes from the old switch'
@@ -694,7 +694,7 @@ def test_skopax_env_names_are_read(name):
     base = dataclasses.asdict(load_settings(env={}))
 
     # when
-    seen = [value for value in ('7', 'true', 'false', 'x', 'openai', 'example.com') if differs(base, name, value)]
+    seen = [value for value in ('7', 'true', 'false', 'x', 'openai', 'example.com', 'upload') if differs(base, name, value)]
 
     # then
     assert seen, f'{name} changes no setting'

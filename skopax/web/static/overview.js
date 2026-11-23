@@ -368,6 +368,8 @@ function markTab() {
   if (!urlReady || !curTab) return;
   var h = '#t=' + tabPath(curTab), b = document.getElementById('tab-' + curTab);
   if (b) b.setAttribute('href', h);
+  if (cardUrlHeld()) return;
+  CARD_URL = null;
   history.replaceState(null, '', location.pathname + location.search + h);
 }
 function defaultTab() { var s = load('skopax-tab'); return ADMIN_TABS.indexOf(s) < 0 && TABS.some(function (t) { return t.id === s; }) ? s : 'anoms'; }
@@ -492,7 +494,7 @@ function renderFilters() {
     {id: 'all', label: 'All', k: 'k-act', n: A.length, seg: 'anom-chips'},
     {id: 'open', label: 'Open', k: SEV[worst][1], n: openAll().length, seg: 'anom-chips', tip: 'firing, or stopped with nobody acting on it yet'},
     {id: 'progress', label: TRI.progress[0], k: TRI.progress[1], n: inprog.length, seg: 'anom-chips'},
-    {id: 'taken', label: 'Action taken', k: 'k-good', n: taken.length, seg: 'anom-chips'},
+    {id: 'taken', label: 'Done', k: 'k-good', n: taken.length, seg: 'anom-chips'},
     {id: 'muted', label: 'Muted', k: 'k-muted', n: muted.length, seg: 'anom-chips'},
     {id: 'cleared', label: 'Stopped firing', k: 'k-cleared', n: cleared.length, seg: 'anom-chips'},
     {id: 'investigating', label: 'Investigating', k: 'k-act', n: triCount('investigating'), seg: 'tri-chips'},
@@ -516,7 +518,7 @@ function renderFilterNote(c) {
   var note = document.getElementById('filter-note');
   var f = c ? c.id : 'open', refocus = document.activeElement && document.activeElement.id === 'filter-menu';
   note.className = 'filter-note ' + (c ? c.k : SEV[worst][1]) + (f !== 'open' || typeF || searchQ ? ' on' : '');
-  note.title = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning'], [inprog.length, 'in progress'], [taken.length, 'action taken'], [muted.length, 'muted'], [cleared.length, 'stopped firing'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
+  note.title = [[openBySev('crit').length, 'critical'], [openBySev('warn').length, 'warning'], [inprog.length, 'in progress'], [taken.length, 'done'], [muted.length, 'muted'], [cleared.length, 'stopped firing'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
   note.innerHTML = '<span class="fn-cur">Showing <b>' + esc(c ? c.label : 'Open') + '</b>' + (typeF ? ' · <b>' + esc(typeName(typeF)) + '</b>' : '') +
     '<span class="count">' + esc(typeF ? shownN : c ? c.n : openAll().length) + '</span></span>' +
     (f === 'svc' ? '<button class="xlink" type="button" id="back-svcs">← Back to Services</button>' : '') +

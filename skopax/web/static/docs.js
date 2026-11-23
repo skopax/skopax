@@ -1,7 +1,7 @@
 var DOCS_SEQ = 0, DOCS_FOLDS = null;
 var DOCS_SEV = {warn: 'While Slack auto-send is on, cards from Warning up are posted to the Slack channel on their own.',
   crit: 'While Slack auto-send is on, Critical cards are posted to the Slack channel on their own.',
-  off: 'Post at once from is Off: no card is posted to Slack on its own. Send to Slack posts one by hand.'};
+  off: 'Post immediately from is Off: no card is posted to Slack on its own. Send to Slack posts one by hand.'};
 var DOCS_MODE = {live: 'It runs in live mode now.', shadow: 'It runs in shadow mode now.', off: 'It is off now.'};
 var DOCS_HALT = {off: 'The AI investigator is turned off in Admin > Features now.', stopped: 'It is stopped now: nothing runs until someone turns it back on.',
   capped: 'It reached today\'s spend limit and starts again tomorrow.'};

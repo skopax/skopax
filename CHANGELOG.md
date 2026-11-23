@@ -2,6 +2,29 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.5 (2026-11-23)
+
+Card links you can share, a workspace icon, Jira issues that link back to their card, and a Slack channel you can give by name.
+
+**Added:**
+
+- Opening a card puts it in the address bar (`#c=<number>`, or `#a=<key>` for a card without a number), so the link can be shared and opens that card. Back closes it, Forward opens it again, and Back after a second card returns to the first. Live refreshes add no history entries.
+- A workspace icon in Admin > Workspaces: Letter (as before), Company icon (the one uploaded for the single sign-on button) or Upload (an SVG, PNG or WebP up to 64 KiB, checked like the sign-on icon). It shows on the workspace tile in the sidebar, its menu and the collapsed rail; links to other workspaces keep their letters.
+- Jira back-links: when a Jira ticket is linked to a card (on the page, over MCP or Slack, by Create task, by the investigator or by the Jira link sweep), the Jira issue gets a link back to the card. Admin > Settings > Jira tasks > Back-links (`jira.backlink`, `JIRA_BACKLINK`) chooses `link` (default, a web link on the issue), `comment` (one short comment) or `off`. The token then needs `write:jira-work` (Link issues, or Add comments); with a read-only token, set it to off. A refused back-link adds a line to the card's activity and is tried again the next time the ticket is set; the ticket stays linked in Skopax either way.
+- Linking a Jira ticket to a card is its own notification, "Jira ticket linked - OPS-40 - in progress", from every path that links one, the Jira link sweep included. Before, a ticket linked while the card moved to In progress only read "In progress".
+- Admin > Settings > Slack > Channel takes a channel name like `#alerts`. It is looked up in Slack (this needs `channels:read`, and `groups:read` for a private channel), saved as the channel id so a later rename does not break it, and the page shows "Posts to #alerts" under the id.
+
+**Changed:**
+
+- "Action taken" is called "Done": the card filter, the list heading, the filter tooltip and the Services status.
+- The Slack setting "Post at once from" is called "Post immediately from".
+- The new-version dot in the sidebar has a tooltip with the new version and the one the server runs; the Admin row and the user menu show the same text.
+
+**Fixed:**
+
+- A long Slack status tag on a card row, such as "Not posted: the run read suspicious text", ends in an ellipsis instead of being cut at the column edge.
+- On Admin > Access, a row note such as "Role set to admin" sits under the row menu instead of wrapping beside it, and a note that says a change saved goes away after 5 seconds.
+
 ## 0.5.4 (2026-11-23)
 
 A Docs page that helps, and a calmer top bar.
