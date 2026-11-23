@@ -2,6 +2,19 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.4 (2026-11-23)
+
+A Docs page that helps, and a calmer top bar.
+
+**Changed:**
+
+- The Docs page (More > Docs) is a guide you can search: Get started, A card's life, Card actions, The investigator, Notifications and messages, Links and keyboard, For admins (with links to the full docs) and a short glossary. Each section folds open, and the search box filters them as you type. Where the page knows your settings it shows them, such as auto-resolve hours for admins and the investigator's mode and daily limit for everyone, and it says plainly when the investigator cannot run and why.
+- "Last check" and its green dot left the top bar, together with the "Updated" flash after a refresh. The time of the last check is in the tooltip of each source pill on Overview.
+
+**Fixed:**
+
+- The Docs page said held Slack posts were under Notifications; they are on the Activity page since 0.5.1.
+
 ## 0.5.3 (2026-11-22)
 
 Send a real test mail through the Mail server, a wider card drawer, proper dialogs for passwords and names on Admin > Access with a password generator, and an Untagged quick filter.

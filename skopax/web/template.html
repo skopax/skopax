@@ -267,11 +267,6 @@ body:not(.is-rail) .s-grp.folded > a.tab:not([aria-current="page"]):not(.k-crit)
 .crumb { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 0.85rem; color: var(--muted); }
 .crumb b { color: var(--fg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .top-r { margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
-.last-check { display: flex; align-items: center; gap: 10px; font: 0.75rem var(--font-data); color: var(--muted); white-space: nowrap; }
-.last-check::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
-.last-check b { font-weight: 500; color: var(--fg); margin-left: 6px; }
-.last-check .upd, .last-check .upd b { color: var(--ring); }
-.last-check .upd { animation: upd 6s ease-out forwards; }
 .run-ind { position: relative; flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--info); box-shadow: 0 0 0 2px color-mix(in srgb, var(--info) 25%, transparent); }
 .run-ind::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--info); animation: run-pulse 1.6s ease-out infinite; }
 .run-ind.run-q { background: transparent; border: 2px solid var(--info); box-sizing: border-box; box-shadow: none; }
@@ -304,7 +299,6 @@ article.inc:not(.open) .run-banner { display: none; }
 .run-pill .run-mark { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--info); color: var(--surface); font: 700 0.68rem var(--font-ui); }
 @media (max-width: 900px) {
   .top-find { min-width: 140px; }
-  .top .last-check { display: none; }
 }
 @media (max-width: 760px) {
   .top-find { display: none; }
@@ -405,7 +399,6 @@ td.any-wrap, td.any-wrap .svc { overflow-wrap: anywhere; white-space: normal; }
 .src-q { font-size: 0.6875rem; color: var(--fg-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
 .src-i-error { color: var(--c); font-weight: 600; }
 .src-i-warn { color: var(--warn); font-weight: 600; }
-@keyframes upd { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 .off-tag { font-family: var(--font-data); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; color: var(--warn); white-space: nowrap; }
 
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
@@ -2453,10 +2446,22 @@ a.lnk + a.lnk { margin-left: 10px; }
 .check .p { font-family: var(--font-data); font-size: 0.78rem; color: var(--muted); overflow-wrap: anywhere; }
 h3.sec-t { margin: 4px 0 0; font-size: 0.95rem; font-weight: 600; }
 
-details.foot { border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: 0.82rem; }
-details.foot > summary { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: var(--fg-2); }
-.foot-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 12px 28px; padding-top: 10px; }
-.foot-body strong { display: block; color: var(--fg-2); font-size: 0.8rem; font-weight: 600; margin-bottom: 2px; }
+.docs-head { display: grid; gap: 8px; max-width: 760px; }
+.docs-head .panel-note { margin: 0; }
+.docs-find { font: inherit; font-size: 0.9rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 7px 10px; width: 100%; max-width: 420px; box-sizing: border-box; }
+.docs-find:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.docs-none { margin: 12px 0 0; }
+.docs-secs { display: grid; gap: 10px; max-width: 760px; margin-top: 12px; }
+.docs-sec { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.docs-sec > summary { list-style: none; cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 8px; }
+.docs-sec > summary::-webkit-details-marker { display: none; }
+.docs-sec > summary h3 { margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--fg); }
+.docs-sec > ul { margin: 0; padding: 0 14px 12px 34px; display: grid; gap: 6px; font-size: 0.88rem; line-height: 1.45; color: var(--fg-2); }
+.docs-sec li > b, .docs-sec li > code, .docs-sec li > kbd { color: var(--fg); margin-right: 6px; }
+.docs-sec li > span + b { margin-left: 6px; }
+.docs-sec li > span + span:not(:empty) { margin-left: 4px; }
+.docs-sec li > a { margin-left: 6px; white-space: nowrap; }
+.docs-foot { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; }
 
 @container content (max-width: 1000px) {
   .inc-body { grid-template-columns: minmax(0, 1fr); }
@@ -2508,7 +2513,6 @@ details.foot > summary { display: inline-flex; align-items: center; gap: 4px; fo
   body.drawer-open .side { visibility: visible; transform: none; box-shadow: 0 0 40px rgba(0, 0, 0, 0.35); transition: transform .2s ease, visibility 0s; }
   .top .hamb { display: inline-grid; margin-left: -6px; }
   .top { padding: 0 12px 0 16px; gap: 8px; }
-  .last-check { display: none; }
   .end-attr { display: block; }
 }
 @media (max-width: 640px), (max-height: 500px) and (pointer: coarse) {
@@ -2578,7 +2582,7 @@ details.foot > summary { display: inline-flex; align-items: center; gap: 4px; fo
 @media (prefers-reduced-motion: reduce) {
   .side, body.drawer-open .side, .g-chev .i,
   .chev::before, .inc-title::before, .inc, .btn, .sg-pill, .tabs, body.nav-open .tabs, .layout.nav-anim .tabs, .layout.nav-anim.nav-off .tabs { transition: none; }
-  .last-check .upd, .nav-backdrop, .modal-wrap, .modal { animation: none; }
+  .nav-backdrop, .modal-wrap, .modal { animation: none; }
   .chat-frame, .chat-loading { transition: none; }
   .tile, .cd-backdrop, .cd-panel { transition: none; animation: none; }
   .chat-spin { animation-duration: 2.4s; }
@@ -2631,7 +2635,6 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <div class="top-r">
         <button type="button" class="ibtn" id="top-find-btn" aria-label="Search" aria-haspopup="dialog" aria-controls="pal"></button>
         <a class="run-pill" id="run-pill" hidden></a>
-        <span class="last-check" id="last-check"></span>
         <div class="inv-menu" id="inv-menu"><button type="button" class="btn sec small" id="inv-btn" aria-haspopup="true" aria-expanded="false" title="Investigator: ask it a question, stop or resume it" hidden>Investigator</button><div class="inv-pop" id="inv-pop" hidden><p class="inv-state" id="inv-state"></p><button type="button" class="btn small op-btn" id="inv-chat">Chat with [[brand]]</button><button type="button" class="btn sec small op-btn" id="inv-ask">Ask the investigator&hellip;</button><button type="button" class="btn sec small op-btn admin-only" id="inv-stop">Stop investigator</button><a class="inv-link" href="#t=acts" id="inv-more">Runs, usage and actions on History</a></div></div>
         <button type="button" class="ibtn top-bell" id="top-bell" aria-label="Notifications"></button>
         <button type="button" class="ibtn" id="theme-btn"></button>
@@ -2866,14 +2869,131 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
   </div>
 
   <section class="panel" id="panel-docs" hidden>
-    <h2 class="sub-h first">How this works</h2>
-    <div class="foot-body">
-      <div><strong>Sources</strong>Every 30 minutes, read only: Prometheus and the other sources that are configured. Each source on the overview card opens its page.</div>
-      <div><strong>Rules</strong>Each hour is compared with the same hour 1 d and 7 d earlier: a count is flagged above twice that level plus a minimum gap, latency also needs +250 ms, and a service stays quiet 30 minutes after a deploy. Alerts, restarts, volumes and other pod checks have their own floors. Only new or worse critical and warning items notify. Times are in your browser's time zone.</div>
-      <div><strong>Actions</strong>Investigate, Mute, Known noise and Post-deploy check queue an action. Investigate goes to the investigator, which starts it within about two minutes (in shadow mode it only proposes); a queued one can be cancelled until it starts. Mute, Known noise and Resolve apply at once. Post-deploy check waits for the next manual check. Resolve closes an anomaly as Fixed, No action needed or a Duplicate of another card (its number or key), and the card history shows how, via the page, chat, Slack or [[brand]] itself, and who; a stopped anomaly stays under Open until it is resolved, marked known noise or muted. Send to Slack posts the anomaly to the channel right away, from the service's own Slack app; when the card has a Slack draft, the draft is the message and the anomaly card goes under it. Deploy reports have the same Send to Slack for the whole report. Copy link gives a link that opens that anomaly, release or deploy report. Ask the investigator (operators, in the Investigator menu at the top or on Requests) opens a private chat with the question; the answer lands in that chat. Ask about this card, under Runs on this card in an expanded card, asks about that card alone and shows the answer there.</div>
-      <div><strong>Links and Slack</strong>Pages, anomalies, releases and reports each have a link (#t=, #a=, #rel=, #r=). A coloured row in the sidebar has something to look at; hover it for why. Send to Slack posts from [[brand]]'s own Slack app; drafts on cards and deploy reports go out within 30 s unless held (Notifications). The Activity rail shows what the server and the investigator are doing, as it happens.</div>
+    <div class="docs-head">
+      <h2 class="sub-h first">Guide</h2>
+      <p class="panel-note">How [[brand]] works, in short. Open a section, or search.</p>
+      <input type="search" id="docs-find" class="docs-find" maxlength="80" placeholder="Search the guide" aria-label="Search the guide" aria-controls="docs-secs" autocomplete="off">
     </div>
-    <p class="panel-note">Every endpoint the page uses is listed in the <a href="/docs">API reference</a>, with its parameters and answers.</p>
+    <p class="muted docs-none" id="docs-none" role="status" hidden>Nothing matches</p>
+    <div class="docs-secs" id="docs-secs">
+      <details class="docs-sec" open>
+        <summary class="chev"><h3>Get started</h3></summary>
+        <ul>
+          <li><span>A card is one problem in production. Alerts and errors about the same thing are grouped on one card, so the team can see who is on it.</span></li>
+          <li><span>The Board lists the cards. The filters under Board in the sidebar pick which ones you see.</span></li>
+          <li><b>Open</b><span>firing, or stopped with nobody acting on it yet. The Board starts here.</span></li>
+          <li><b>Stopped firing</b><span>the problem went quiet, but the card stays open until it is resolved.</span></li>
+          <li><b>In progress</b><span>someone started work on the card.</span></li>
+          <li><b>Muted</b><span>cards someone muted.</span></li>
+          <li><b>Critical</b><span>and</span><b>Warning</b><span>open cards of that severity.</span></li>
+          <li><b>Recurring</b><span>cards that keep coming back with no Jira ticket on them.</span></li>
+          <li id="docs-arch"><b>Archived</b><span>cards that are not firing, or muted, with no change for a while; they are hidden everywhere else.</span></li>
+          <li><b>Closed</b><span>cards that already left the page, kept for a year.</span></li>
+          <li><span>With a new card, read it first: what fired, its numbers and the investigator's note. Then choose Start progress, Assign, Investigate or Resolve.</span></li>
+        </ul>
+      </details>
+      <details class="docs-sec">
+        <summary class="chev"><h3>A card's life</h3></summary>
+        <ul>
+          <li><span>A card fires while the problem is there. When it goes quiet it reads Stopped firing and stays under Open until someone resolves it, or it closes by itself.</span></li>
+          <li id="docs-auto"><span>A stopped card that nobody acted on closes by itself after a set time per severity (Admin &gt; Settings).</span><span class="docs-days"></span></li>
+          <li><span>A card assigned to someone waits three times as long before it closes by itself, so its person has time to act.</span></li>
+          <li><b>Mute</b><span>and</span><b>Known noise</b><span>silence a card for a while or for good; see Card actions.</span></li>
+          <li><b>Group</b><span>merges a card under another open card, the one that explains it. The other card becomes its parent.</span></li>
+          <li><b>Reopen</b><span>puts a card back to Open, like dragging its tile to the Open column.</span></li>
+          <li id="docs-remind"><span>A card posted to Slack that nobody has started, resolved or muted gets a reminder in its Slack thread after a set number of hours.</span></li>
+          <li><span>For an assigned card, the reminder names the person who has it.</span></li>
+        </ul>
+      </details>
+      <details class="docs-sec">
+        <summary class="chev"><h3>Card actions</h3></summary>
+        <ul>
+          <li><b>Start progress</b><span>the card goes In progress with you as owner. With Jira connected you can add a ticket.</span></li>
+          <li><b>Assign</b><span>pick the person who owns the card; its status does not change. With Slack and the Assignee message switch on, they get a Slack message with the link.</span></li>
+          <li><b>Investigate</b><span>the investigator takes the card within about two minutes. If it ran before, you are asked first.</span></li>
+          <li><b>Resolve</b><span>closes the card with one of three choices:</span></li>
+          <li><b>Fixed</b><span>the cause is gone because something was changed, such as a deploy, a config change or a rollback.</span></li>
+          <li><b>No action needed</b><span>harmless or a one-off, nothing was changed.</span></li>
+          <li><b>Duplicate</b><span>the same problem as another card. Give its number, like 12, or its key.</span></li>
+          <li><b>Mute 24 h</b><span>and</span><b>Mute 1 w</b><span>mute the card for 24 hours or 7 days. Unmute undoes it.</span></li>
+          <li><b>Known noise</b><span>mutes a card for good, with a reason. Use it for something you expect.</span></li>
+          <li><b>Post-deploy check</b><span>on Deploy reports, starts a check of the recent deploys and writes a deploy report when there are any.</span></li>
+          <li><b>Send to Slack</b><span>posts the card to the Slack channel right away. After that the button reads Send again.</span></li>
+          <li><b>Copy link</b><span>copies a link that opens this card alone.</span></li>
+          <li><b>Ask about this card</b><span>the question box on a card. It starts a private chat about the card on the Chat page.</span></li>
+          <li><b>Open alone</b><span>in the side panel, opens the card on a page of its own in a new tab.</span></li>
+          <li><b>Expand</b><span>and</span><b>Shrink</b><span>make the side panel larger or smaller.</span></li>
+        </ul>
+      </details>
+      <details class="docs-sec">
+        <summary class="chev"><h3>The investigator</h3></summary>
+        <ul>
+          <li><span>The investigator reads your metrics, logs and recent deploys through the connected integrations. It writes why a card fired and what to do next.</span></li>
+          <li><span>Its mode is off, shadow or live. In shadow mode it only records what it would write. In live mode it writes.</span></li>
+          <li id="docs-mode"><span>Admin &gt; Investigator sets the mode.</span></li>
+          <li><b>Ask the investigator</b><span>operators find it in the Investigator menu at the top or on Requests. It opens a private chat with the question, and the answer lands in that chat.</span></li>
+          <li><span>The Chat page answers questions about prod from the connected integrations and names what it read. It needs Chat on in Admin &gt; Features.</span></li>
+          <li id="docs-slack"><span>With Slack connected and the Slack listener on (Admin &gt; Features), you can ask in Slack too.</span></li>
+          <li id="docs-cap"><span>A daily dollar limit, shared with the self-review, stops the investigator until the next day once it is reached (Admin &gt; Investigator).</span></li>
+          <li><span>The Investigator page shows what runs now and what waits. History, under Activity in the sidebar, lists the investigator runs, and Costs shows what they cost.</span></li>
+          <li><span>The Activity rail shows what the server and the investigator are doing, as it happens.</span></li>
+        </ul>
+      </details>
+      <details class="docs-sec">
+        <summary class="chev"><h3>Notifications and messages</h3></summary>
+        <ul>
+          <li><span>The bell in the top bar opens Notifications: what happened on the cards you hold and on your chat answers. Opening the page marks them read.</span></li>
+          <li><span>Preferences &gt; Email: switch on Email me my notifications and pick the kinds. It needs a Mail server, set up by an admin. Mail goes only to the address of your own account.</span></li>
+          <li id="docs-postsev"><span>While Slack auto-send is on, new and worse cards from a set severity up are posted to the Slack channel on their own.</span></li>
+          <li><span>When the investigator finds a card or a deploy report worth telling, it posts to Slack itself.</span></li>
+          <li id="docs-held"><span>A Slack post that did not go out is listed under Not posted to Slack on History, under Activity in the sidebar, with Send now and View.</span></li>
+          <li><span>A Microsoft Teams route or an Email route sends chosen cards, by tag or key, to a Teams channel or a mail list. Send one by hand from each card's Notify row.</span></li>
+        </ul>
+      </details>
+      <details class="docs-sec">
+        <summary class="chev"><h3>Links and keyboard</h3></summary>
+        <ul>
+          <li><code>#t=</code><span>opens a page, such as the Board.</span></li>
+          <li><code>#a=</code><span>opens a card on the Board.</span></li>
+          <li><code>#rel=</code><span>opens a release.</span></li>
+          <li><code>#r=</code><span>opens a deploy report.</span></li>
+          <li><code>/c/12</code><span>opens card 12 alone, on a page of its own.</span></li>
+          <li><kbd data-no-tx>Ctrl K</kbd><span>opens the search for pages and cards, and for admins settings (Cmd K on a Mac). Up and Down move, Enter opens, Esc closes.</span></li>
+          <li><kbd data-no-tx>Esc</kbd><span>on the Board, clears its filters.</span></li>
+          <li><kbd data-no-tx>/</kbd><span>on Connect &gt; Integrations, jumps to its search.</span></li>
+          <li><kbd data-no-tx>Enter</kbd><span>in the question box of a card, sends the question.</span></li>
+          <li><kbd data-no-tx>&larr; &rarr;</kbd><span>move between the parts of an open card. Home and End jump to the first and the last.</span></li>
+          <li><span>A coloured row in the sidebar has something to look at. Hover it to see why.</span></li>
+        </ul>
+      </details>
+      <details class="docs-sec">
+        <summary class="chev"><h3>For admins</h3></summary>
+        <ul>
+          <li><b>Connect &gt; Integrations</b><span>add an integration, test it and switch it on. Each one can have several instances.</span><a href="https://github.com/skopax/skopax/blob/main/docs/plugins.md#plug-ins" target="_blank" rel="noopener">Read more</a></li>
+          <li><b>Admin &gt; Settings</b><span>the tunable settings, in cards per section, with a filter.</span><a href="https://github.com/skopax/skopax/blob/main/docs/setup.md#admin" target="_blank" rel="noopener">Read more</a></li>
+          <li><b>Admin &gt; Features</b><span>one switch per feature, such as Chat or Slack auto-send.</span><a href="https://github.com/skopax/skopax/blob/main/docs/setup.md#feature-switches" target="_blank" rel="noopener">Read more</a></li>
+          <li><b>Admin &gt; Investigator</b><span>the AI provider and its key, the models, the mode and the spend limits.</span><a href="https://github.com/skopax/skopax/blob/main/docs/setup.md#the-ai-provider-and-its-key" target="_blank" rel="noopener">Read more</a></li>
+          <li><b>Admin &gt; Access &amp; sign-in</b><span>people, roles, API tokens and MCP sign-in. Reset password, Set a password and Edit name are here too.</span><a href="https://github.com/skopax/skopax/blob/main/docs/sign-in.md#adding-people" target="_blank" rel="noopener">Read more</a></li>
+          <li><b>Admin &gt; Workspaces</b><span>the other workspaces the switcher at the top of the sidebar opens, such as a staging copy.</span><a href="https://github.com/skopax/skopax/blob/main/docs/setup.md#other-workspaces" target="_blank" rel="noopener">Read more</a></li>
+          <li><b>Set up email</b><span>add a Mail server on Connect &gt; Integrations and try it with Send test mail. Then add Email routes, and people switch on their own mail.</span><a href="https://github.com/skopax/skopax/blob/main/docs/setup.md#set-up-email" target="_blank" rel="noopener">Read more</a></li>
+          <li><b>SSO</b><span>sign in with single sign-on: Admin &gt; Access &amp; sign-in &gt; Single sign-on.</span><a href="https://github.com/skopax/skopax/blob/main/docs/sign-in.md#sign-in-with-sso" target="_blank" rel="noopener">Read more</a></li>
+        </ul>
+      </details>
+      <details class="docs-sec">
+        <summary class="chev"><h3>Words</h3></summary>
+        <ul>
+          <li><b>Card</b><span>one problem in production, with its alerts, errors and history.</span></li>
+          <li><b>Instance</b><span>one connection of an integration, such as one Prometheus per cluster.</span></li>
+          <li><b>Integration</b><span>a plug-in connected on Connect &gt; Integrations, such as Prometheus or Slack.</span></li>
+          <li><b>Route</b><span>an integration that sends chosen cards to a Teams channel or a mail list.</span></li>
+          <li><b>Workspace</b><span>a whole other deployment, such as a staging copy. It is not an instance.</span></li>
+          <li><b>Known noise</b><span>a card muted for good, with a reason, because it is expected.</span></li>
+          <li><b>Shadow mode</b><span>the investigator only records what it would write.</span></li>
+          <li><b>Responsible</b><span>a person who looks after the cards with a given tag. The daily report names them.</span></li>
+        </ul>
+      </details>
+    </div>
+    <p class="panel-note docs-foot"><a href="/docs">API reference</a><a href="https://github.com/skopax/skopax/tree/main/docs" target="_blank" rel="noopener">Full docs on GitHub</a></p>
   </section>
 
   <section class="panel" id="panel-prefs" hidden>
@@ -3020,4 +3140,5 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
 <script src="/static/chat.js"></script>
 <script src="/static/activity.js"></script>
 <script src="/static/notifications.js"></script>
+<script src="/static/docs.js"></script>
 <script src="/static/main.js"></script>

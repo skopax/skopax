@@ -230,14 +230,15 @@ async function theChatAndDocsNotesPointWhereThingsLiveNow() {
 
   //when
   const chatNote = doc.querySelector('#panel-chat .panel-note .q').getAttribute('title');
-  const actions = [...doc.querySelectorAll('#panel-docs .foot-body > div')].find((d) => d.querySelector('strong').textContent === 'Actions').textContent;
+  const ask = [...doc.querySelectorAll('#panel-docs li')].find((li) => li.textContent.indexOf('Ask the investigator') === 0);
 
   //then
   assert.ok(chatNote.indexOf('A daily message cap per person applies (Admin \u203a Investigator).') >= 0, 'the chat cap is set in Admin \u203a Investigator, not on the personal Settings page');
   assert.ok(chatNote.indexOf('(Settings)') < 0);
-  assert.ok(actions.indexOf('Ask the investigator (operators, in the Investigator menu at the top or on Requests) opens a private chat with the question; the answer lands in that chat.') >= 0, 'Docs says where Ask the investigator is and where its answer lands');
-  assert.ok(actions.indexOf('under Investigator below') < 0 && actions.indexOf('in Activity') < 0, 'not the old board layout, and not Activity, which leaves private chats out');
-  assert.ok([...doc.querySelectorAll('#panel-docs .foot-body > div')].every((d) => !/\b[A-Z][a-z]+(?: [a-z]+)? tabs?\b|Tabs,|its tab\b/.test(d.textContent)), 'Docs names sidebar pages, not tabs');
+  assert.ok(ask, 'Docs has a line for Ask the investigator');
+  assert.ok(ask.textContent.indexOf('the Investigator menu at the top or on Requests') >= 0 && ask.textContent.indexOf('private chat') >= 0, 'Docs says where Ask the investigator is and where its answer lands: ' + ask.textContent);
+  assert.ok(ask.textContent.indexOf('under Investigator below') < 0 && ask.textContent.indexOf('Activity') < 0, 'not the old board layout, and not Activity, which leaves private chats out');
+  assert.ok([...doc.querySelectorAll('#panel-docs li')].every((d) => !/\b[A-Z][a-z]+(?: [a-z]+)? tabs?\b|Tabs,|its tab\b/.test(d.textContent)), 'Docs names sidebar pages, not tabs');
   assert.deepStrictEqual(errors, []);
   w.close();
   console.log('PASS the chat note puts the daily cap under Admin \u203a Investigator, and Docs puts Ask the investigator in the Investigator menu or on Requests with its answer in a private chat');

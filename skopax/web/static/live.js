@@ -58,12 +58,6 @@ function initLive() {
     return typing || !!document.querySelector('[data-confirm]');
   }
   function flash(fresh) {
-    var times = document.getElementById('last-check');
-    if (times) {
-      var u = el('span', 'upd', 'Updated<b>' + esc(hm(D.updatedAt || new Date().toISOString())) + '</b>');
-      times.appendChild(u);
-      setTimeout(function () { u.remove(); }, 6500);
-    }
     fresh.forEach(function (c) { c.classList.add('linked'); });
     setTimeout(function () { fresh.forEach(function (c) { c.classList.remove('linked'); }); }, 4000);
   }

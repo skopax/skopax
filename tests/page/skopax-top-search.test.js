@@ -485,7 +485,8 @@ async function theTopBarNarrowsAndSwitchesToTheIconBelowTheWidthsItFits() {
   const css = require('fs').readFileSync(TEMPLATE, 'utf8');
 
   //then
-  assert.ok(/@media \(max-width: 900px\) \{[^@]*\.top-find \{[^}]*min-width: 140px[^}]*\}[^@]*\.top \.last-check \{ display: none; \}/.test(css), 'below 900 px the field narrows and the last check hides');
+  assert.ok(/@media \(max-width: 900px\) \{[^@]*\.top-find \{[^}]*min-width: 140px[^}]*\}/.test(css), 'below 900 px the field narrows');
+  assert.ok(!/last-check/.test(css), 'no Last check styles are left');
   assert.ok(/@media \(max-width: 760px\) \{[^@]*\.top-find \{ display: none; \}[^@]*#top-find-btn \{ display: inline-grid; \}/.test(css), 'below 760 px the icon replaces the field');
   console.log('PASS the top bar narrows below 900 px and uses the icon below 760 px');
 }
