@@ -54,7 +54,9 @@ async function aNewerVersionPutsAnInfoDotOnTheVersionLineAndALinkInTheNotice() {
   const link = note.querySelector('a');
 
   //then
-  assert.ok(dot && !dot.hidden && dot.getAttribute('role') === 'img' && dot.getAttribute('aria-label') === 'Update available', 'the version line has an accessible dot');
+  assert.ok(dot && !dot.hidden && dot.getAttribute('role') === 'img' && dot.getAttribute('aria-label') === INFO.text, 'the version line has an accessible dot');
+  assert.strictEqual(dot.title, INFO.text, 'hovering the dot names the new version and the running one');
+  assert.ok(dot.parentNode.title.endsWith('\n' + INFO.text), 'the version line tooltip names them too: ' + dot.parentNode.title);
   assert.ok(!dot.classList.contains('k-warn'), 'an information notice gives the plain dot');
   assert.ok(note.classList.contains('k-info') && note.querySelector('.adm-notice-t').textContent === INFO.text);
   assert.strictEqual(link.textContent, 'Release notes');
@@ -73,7 +75,7 @@ async function aSecurityUpdateGivesAWarningDotAndNotice() {
   const note = doc.querySelector('#adm-notices .adm-notice[data-id="update"]');
 
   //then
-  assert.ok(!dot.hidden && dot.classList.contains('k-warn') && dot.getAttribute('aria-label') === 'Security update available');
+  assert.ok(!dot.hidden && dot.classList.contains('k-warn') && dot.getAttribute('aria-label') === WARN.text && dot.title === WARN.text);
   assert.ok(note.classList.contains('k-warn') && note.querySelector('.adm-notice-t').textContent === WARN.text);
   assert.ok(!doc.getElementById('side-admin').querySelector('.a-dot').hidden, 'a warning notice also marks the Admin row');
   assert.deepStrictEqual(errors, []);
@@ -114,11 +116,11 @@ async function theRailMarkCarriesTheDotAndAHiddenLineMovesItToTheMenuOrAdminRow(
   const menu = (t) => t.doc.querySelector('#user-btn .u-dot');
 
   //then
-  assert.ok(mark && !mark.hidden && mark.classList.contains('k-warn') && mark.getAttribute('aria-label') === 'Security update available', 'the collapsed rail mark has the same dot');
-  assert.ok(phone && !phone.hidden && phone.getAttribute('aria-label') === 'Security update available', 'the phone line has the dot too');
+  assert.ok(mark && !mark.hidden && mark.classList.contains('k-warn') && mark.getAttribute('aria-label') === WARN.text && mark.title === WARN.text, 'the collapsed rail mark has the same dot');
+  assert.ok(phone && !phone.hidden && phone.getAttribute('aria-label') === WARN.text, 'the phone line has the dot too');
   assert.strictEqual(info.doc.querySelectorAll('.attr-up').length, 0, 'a hidden attribution has no version line');
-  assert.ok(!menu(info).hidden && menu(info).classList.contains('plain') && menu(info).getAttribute('aria-label') === 'Update available', 'the user menu shows a plain dot for an information update');
-  assert.ok(!info.doc.querySelector('#um-admin').hidden && info.doc.querySelector('#um-admin').title === 'Admin \u00b7 Update available');
+  assert.ok(!menu(info).hidden && menu(info).classList.contains('plain') && menu(info).getAttribute('aria-label') === INFO.text, 'the user menu shows a plain dot for an information update');
+  assert.ok(!info.doc.querySelector('#um-admin').hidden && info.doc.querySelector('#um-admin').title === 'Admin \u00b7 ' + INFO.text);
   assert.ok(!menu(secure).hidden && !menu(secure).classList.contains('plain') && menu(secure).getAttribute('aria-label') === '1 warning', 'a security update is a warning and is not plain');
   assert.deepStrictEqual(shown.errors.concat(info.errors, secure.errors), []);
   shown.dom.window.close();

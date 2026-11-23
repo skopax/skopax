@@ -42,31 +42,33 @@ showTab(TABS.some(function (t) { return t.id === hash; }) ? hash : defaultTab())
 setFilter('open');
 window.addEventListener('hashchange', function () { followHash((location.hash || '').replace('#', '')); });
 function followHash(h) {
-  var m = /^(a|r|rel|t)=(.*)$/.exec(h);
+  var m = /^(a|c|r|rel|t)=(.*)$/.exec(h);
+  if (!m || m[1] === 't') dropCard();
   if (!m) return;
   if (m[1] === 't') openTabPath(m[2]);
-  else if (m[1] === 'a') showLinked(m[2]);
+  else if (m[1] === 'a' || m[1] === 'c') showLinked(m[2], m[1] === 'c');
   else reports.link(m[1], m[2]);
 }
 
-function showLinked(raw) {
+function showLinked(raw, byNum) {
   var key;
   try { key = decodeURIComponent(raw); } catch (e) { return; }
   var note = document.getElementById('link-note');
   if (note) note.remove();
   document.querySelectorAll('#anoms article.inc.linked').forEach(function (c) { c.classList.remove('linked'); });
-  var a = ALL.filter(function (x) { return x.key === key; })[0];
-  if (!a) {
+  var a = ALL.filter(function (x) { return byNum ? x.num != null && String(x.num) === key : x.key === key; })[0];
+  if (!a && !byNum) {
     var near = ALL.filter(function (x) { return x.key !== key + '@' + x.cluster && (x.key.indexOf(key) === 0 || key.indexOf(x.key) === 0); });
     if (near.length === 1) a = near[0];
   }
   if (a && A.indexOf(a) < 0 && ARCHIVED.indexOf(a) < 0 && a.parent) a = A.concat(ARCHIVED).filter(function (x) { return x.key === a.parent; })[0];
+  if (CARD_URL && (!a || CARD_URL.key !== a.key)) dropCard();
   showTab('anoms');
   if (!a || (A.indexOf(a) < 0 && ARCHIVED.indexOf(a) < 0)) {
     note = el('p', 'panel-note', 'The linked anomaly is no longer on the page: cleared items drop off after 24 hours, In progress ones with a Jira ticket 24 hours after the ticket closes.');
     note.id = 'link-note';
     document.getElementById('anoms').before(note);
-    history.replaceState(null, '', location.pathname + location.search);
+    tabUrl();
     return;
   }
   if (typeF && !typeIs(a, typeF)) { typeF = ''; renderAnomSub(); }
@@ -74,13 +76,13 @@ function showLinked(raw) {
   setFilter(ARCHIVED.indexOf(a) >= 0 ? 'archived' : open.indexOf(a) >= 0 || stale.indexOf(a) >= 0 ? 'open' : muted.indexOf(a) >= 0 ? 'muted' : cleared.indexOf(a) >= 0 ? 'cleared' : inprog.indexOf(a) >= 0 ? 'progress' : taken.indexOf(a) >= 0 ? 'taken' : 'all');
   if (CARD_VIEW === 'board') {
     openDrawer(a.key);
-    history.replaceState(null, '', location.pathname + location.search);
+    cardUrl(a, false);
     return;
   }
   var card = [].filter.call(document.querySelectorAll('#anoms article.inc'), function (c) { return c.dataset.key === a.key; })[0];
-  if (!card) return;
+  if (!card) { tabUrl(); return; }
   ring(card);
-  history.replaceState(null, '', location.pathname + location.search);
+  cardUrl(a, false);
 }
 function ring(card) {
   document.querySelectorAll('#anoms article.inc.linked').forEach(function (c) { c.classList.remove('linked'); });

@@ -185,7 +185,7 @@ async function handledCardsClearTheRowOnLiveUpdate() {
   //then
   assert.strictEqual(serve.state.services[0].status, 'warn', 'the stored status still says warn');
   assert.ok(!doc.getElementById('filter-note').hidden && /pricing-service cards/.test(doc.getElementById('filter-note').textContent), 'the service filter survives the live update');
-  assert.match(doc.querySelector('#anoms .grp-h h3').textContent, /^pricing-service \u00b7 in progress, action taken or muted$/, 'no open card left, so it shows where they went');
+  assert.match(doc.querySelector('#anoms .grp-h h3').textContent, /^pricing-service \u00b7 in progress, done or muted$/, 'no open card left, so it shows where they went');
   assert.deepStrictEqual(cards(doc), [parent], 'the handled parent that holds the merged pricing cards');
   doc.getElementById('back-svcs').click();
   assert.ok(rows(doc).every((r) => !r.classList.contains('clk') && /Healthy/.test(r.querySelector('td').textContent)), 'both rows healthy without waiting for a check');
@@ -284,8 +284,8 @@ async function inProgressSplitsFromActionTaken() {
   const seg = (f) => statusGroup.querySelector('button[data-f="' + f + '"]');
 
   //then
-  assert.deepStrictEqual([...statusGroup.querySelectorAll('button:not(.child)')].map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['All 3', 'Open 1', 'In progress 1', 'Action taken 1', 'Muted 0', 'Stopped firing 0'], 'All first, the default; In progress is its own filter, after Open, before Action taken');
-  assert.match(doc.getElementById('filter-note').title, /1 in progress \u00b7 1 action taken/, 'the filter line tooltip counts the two buckets apart');
+  assert.deepStrictEqual([...statusGroup.querySelectorAll('button:not(.child)')].map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['All 3', 'Open 1', 'In progress 1', 'Done 1', 'Muted 0', 'Stopped firing 0'], 'All first, the default; In progress is its own filter, after Open, before Done');
+  assert.match(doc.getElementById('filter-note').title, /1 in progress \u00b7 1 done/, 'the filter line tooltip counts the two buckets apart');
 
   //when
   seg('progress').click();
@@ -299,11 +299,11 @@ async function inProgressSplitsFromActionTaken() {
   seg('taken').click();
 
   //then
-  assert.deepStrictEqual(cards(doc), ['err|identity/auth-service'], 'Action taken keeps the handled card and drops the in-progress one');
-  assert.strictEqual(doc.querySelector('#anoms .grp-h h3').textContent, 'Action taken');
+  assert.deepStrictEqual(cards(doc), ['err|identity/auth-service'], 'Done keeps the handled card and drops the in-progress one');
+  assert.strictEqual(doc.querySelector('#anoms .grp-h h3').textContent, 'Done');
   assert.ok(!navigated(errors) && !errors.length, 'no errors: ' + errors.join(' | '));
   dom.window.close();
-  return 'In progress is its own chip and group beside Action taken: a progress card sits there with its ticket, Action taken holds only the handled ones, and the folded filter line counts both apart';
+  return 'In progress is its own chip and group beside Done: a progress card sits there with its ticket, Done holds only the handled ones, and the folded filter line counts both apart';
 }
 
 async function sameServiceInSeveralNamespaces() {

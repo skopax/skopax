@@ -497,7 +497,7 @@ def test_a_channel_is_checked_with_slack_before_it_is_saved():
 
     # then
     assert checks['C0OK000001'] is None
-    assert checks['#ops'].startswith('give the channel id') and checks[''].startswith('give the channel id'), 'a name can stop resolving, so only an id is taken'
+    assert checks['#ops'].startswith('give the channel name') and checks[''].startswith('give the channel name'), 'a name can stop resolving, so only an id is checked; a name is looked up first'
     assert checks['C0GONE0001'] == 'Slack does not know that channel (channel_not_found)'
     assert checks['C0OLD00001'] == '#old-ops is archived'
     assert checks['C0OUT00001'] == 'the Skopax bot is not in #general: invite it there first'
@@ -509,6 +509,8 @@ def test_an_admin_sets_the_channel_on_the_page_only_after_slack_knows_it(store: 
     from skopax.kube import Kube
 
     def api(token, method, payload):
+        if method == 'conversations.list':
+            return {'ok': True, 'channels': [{'id': 'C0CHAN0001', 'name': 'ops'}]}
         if payload.get('channel') != 'C0CHAN0001':
             raise SlackError('channel_not_found')
         return {'ok': True, 'channel': {'id': payload['channel'], 'name': 'ops', 'is_member': True}}
@@ -519,15 +521,17 @@ def test_an_admin_sets_the_channel_on_the_page_only_after_slack_knows_it(store: 
     with TestClient(create_app(settings(), store, slack=Slack('xoxb-test', '#ops', api=api), kube=Kube(root=tmp_path))) as c:
         wrong = c.put('/api/admin/settings', json={'key': 'slack.channel', 'value': 'C0NOPE0001'}, headers=AUTH)
         named = c.put('/api/admin/settings', json={'key': 'slack.channel', 'value': '#ops'}, headers=AUTH)
+        unknown = c.put('/api/admin/settings', json={'key': 'slack.channel', 'value': '#nope'}, headers=AUTH)
         saved = c.put('/api/admin/settings', json={'key': 'slack.channel', 'value': ' C0CHAN0001 '}, headers=AUTH)
         items = {i['key']: i for i in c.get('/api/admin/settings', headers=AUTH).json()['items']}
         reset = c.delete('/api/admin/settings', params={'key': 'slack.channel'}, headers=AUTH)
 
     # then
     assert (wrong.status_code, wrong.json()['detail']) == (422, 'Channel: Slack does not know that channel (channel_not_found)')
-    assert named.status_code == 422
+    assert named.status_code == 200 and named.json()['change']['after'] == 'C0CHAN0001', 'a name is looked up and saved as the channel id'
+    assert (unknown.status_code, unknown.json()['detail']) == (422, 'Channel: Slack has no open channel #nope the bot can see; for a private channel, invite the bot first or give the channel id')
     assert saved.status_code == 200 and saved.json()['change']['after'] == 'C0CHAN0001'
-    assert items['slack.channel']['live'] is True
+    assert items['slack.channel']['live'] is True and items['slack.channel']['channelName'] == 'ops', 'the page shows which channel the id is'
     assert reset.status_code == 200 and reset.json()['change']['after'] == '#skopax', 'Reset goes back to the config value'
 
 
@@ -590,3 +594,33 @@ def test_a_card_link_uses_the_configured_base_and_the_request_host_only_without_
     assert res.status_code == 201
     text = transport.calls[0][1]['blocks'][1]['text']['text']
     assert text.startswith(f'*<{shown}/#a=log%7Cweb-bff%7CWARN')
+
+
+def test_a_channel_name_is_found_across_pages_and_falls_back_to_public_channels_without_the_private_scope():
+    # given
+    calls = []
+
+    def api(token, method, payload):
+        calls.append((method, payload.get('types'), payload.get('cursor')))
+        if 'private_channel' in payload['types']:
+            raise SlackError('missing_scope', code='missing_scope')
+        if not payload.get('cursor'):
+            return {'ok': True, 'channels': [{'id': 'C0FIRST001', 'name': 'general'}], 'response_metadata': {'next_cursor': 'p2'}}
+        return {'ok': True, 'channels': [{'id': 'C0ALERT001', 'name': 'alerts'}], 'response_metadata': {'next_cursor': ''}}
+
+    s = Slack('xoxb-test', '#ops', api=api)
+
+    # when
+    found = s.find_channel(' #Alerts ')
+    gone = s.find_channel('missing')
+    by_id = s.find_channel('C0GIVEN001')
+    bad = s.find_channel('two words')
+    no_token = Slack('', '#ops', api=api).find_channel('#alerts')
+
+    # then
+    assert found == ('C0ALERT001', None)
+    assert calls[:3] == [('conversations.list', 'public_channel,private_channel', None), ('conversations.list', 'public_channel', None), ('conversations.list', 'public_channel', 'p2')]
+    assert gone[0] is None and gone[1].startswith('Slack has no open channel #missing')
+    assert by_id == ('C0GIVEN001', None), 'an id is taken as it is, and checked later'
+    assert bad[0] is None and bad[1].startswith('give the channel name')
+    assert no_token[0] is None and 'only a channel id' in no_token[1]

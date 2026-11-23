@@ -15,8 +15,8 @@ from urllib.parse import urlsplit
 from pymongo import DESCENDING, ReturnDocument
 
 from skopax import brand, clock as zone_clock, logs, settingcards, tags
-from skopax.config import AI_PROVIDERS, DEFAULT_ROLES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
-from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX
+from skopax.config import AI_PROVIDERS, DEFAULT_ROLES, JIRA_BACKLINK_MODES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve
+from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import BY_KEY as FEATURE_OF
@@ -192,6 +192,8 @@ STATIC = (
     T(LINKS_KEY, 'workspace_links', INSTANCES, 'Other workspaces', 'Other workspaces of {product} that the workspace switcher at the top of the sidebar offers, as name=url pairs separated by commas, '
       f'such as staging=https://staging.example.com; at most {LINKS_MAX}. A name is 1 to {LINK_NAME_MAX} letters, digits, spaces, dots, dashes or underscores, '
       'and an address is http:// or https:// without a user name or password', 'text'),
+    T('core.workspace-icon', 'workspace_icon', INSTANCES, 'Workspace icon', 'The picture on the workspace tile at the top of the sidebar: letter shows the first letter of the workspace name, company shows the image uploaded on the Single sign-on card, '
+      'upload shows the image uploaded on the Workspaces page. Without an image the letter is shown', 'choice', choices=WORKSPACE_ICONS),
     T('core.log-format', 'log_format', GENERAL, 'Log format', 'How {product} writes its log lines: text (one readable line per record), json (one flat JSON object per line, for a log store) '
       'or log4j (the Log4j JSON layout). Lines written at start, before the settings are read, follow SKOPAX_LOG_FORMAT', 'choice', choices=logs.FORMATS),
     T('core.log-color', 'log_color', GENERAL, 'Log colour', 'Colour of text log lines: always, auto (only when the log goes to a terminal) or never. The JSON formats never carry colour', 'choice',
@@ -247,7 +249,7 @@ STATIC = (
     T('investigate.web-fetches', 'investigate_web_fetches', INV, 'Web pages per run', 'Web pages one run may read; 0 turns page reads off', 'int', 0, 10),
     T('screenshot.max-per-day', 'screenshot_max_per_day', INV, 'Screenshots per day', 'Screenshots plug-in tools may store per day, all runs together; it resets at local midnight', 'int', 0, 500),
     T('investigate.mode', 'investigate_mode', INV, 'Mode', 'off, shadow (records what it would write) or live; a change applies from the next run, and a run already started keeps its mode. To stop it at once use the Stop investigator button, or a daily limit of 0', 'choice', choices=INVESTIGATE_MODES),
-    T(SLACK_CHANNEL_KEY, 'slack_channel', SLACK, 'Channel', 'The channel id (C…) new cards and deploy reports are posted to; Slack › the channel › About shows it at the bottom. Slack is asked before saving whether the channel exists and the bot is in it. Reset goes back to the config value', 'text'),
+    T(SLACK_CHANNEL_KEY, 'slack_channel', SLACK, 'Channel', 'The channel new cards and deploy reports are posted to: its name, like #ops, or its id (C…, Slack › the channel › About shows it at the bottom). A name is looked up in Slack and saved as the channel id, so renaming the channel later does not break it. Slack is asked before saving whether the channel exists and the bot is in it. Reset goes back to the config value', 'text'),
     T('slack.ask-cap', 'slack_ask_cap', SLACK, 'Slack asks per hour', 'Questions to the bot per hour, everyone together', 'int', 0, 100),
     T('slack.user-ask-cap', 'slack_user_ask_cap', SLACK, 'Slack asks per person per hour', 'Questions one person can ask the bot per hour', 'int', 0, 50),
     T('slack.ask-channels', 'slack_ask_channels', SLACK, 'Channels that take questions', 'all, main (the channel cards are posted to), or channel ids separated by commas', 'text', items='channel'),
@@ -257,9 +259,9 @@ STATIC = (
     T('slack.remind-hours', 'slack_remind_hours', SLACK, 'Reminder after (h)', 'Reminds a posted card nobody acted on after N hours; 0 turns reminders off', 'float', 0, 168, live=False),
     T('slack.clear-note-minutes', 'slack_clear_note_minutes', SLACK, 'Cleared note after (min)', 'Says in the thread that a posted card cleared after N minutes', 'float', 0, 240, live=False),
     T('routes.slack-echo', 'routes_slack_echo', SLACK, 'Echo route posts to Slack', 'Also posts a card a route (such as a Teams channel) takes to the Slack channel when Slack has not posted it yet, and says in its thread which route got it; a route can override this with its own Also post to Slack field', 'bool'),
-    T(POST_SEV_KEY, 'slack_post_sev', SLACK, 'Post at once from', 'Posts a card of this severity or higher to the main channel with its numbers when it is pushed (new, escalated or reopened; information is never posted); the investigator\'s findings follow as a reply in its thread. '
+    T(POST_SEV_KEY, 'slack_post_sev', SLACK, 'Post immediately from', 'Posts a card of this severity or higher to the main channel with its numbers when it is pushed (new, escalated or reopened; information is never posted); the investigator\'s findings follow as a reply in its thread. '
       'Many cards opening together are not posted at once, and the investigator, when it runs, groups them. Off leaves every card to the investigator\'s posts and to people', 'choice', choices=SLACK_POST_SEVS, choice_labels=POST_SEV_LABELS),
-    T(CRIT_NOW_KEY, 'slack_crit_now', SLACK, 'Critical cards at once', 'Deprecated: use Post at once from. false turns posting at once off while Post at once from is not set', 'bool', live=False, hidden=True),
+    T(CRIT_NOW_KEY, 'slack_crit_now', SLACK, 'Critical cards at once', 'Deprecated: use Post immediately from. false turns posting at once off while Post immediately from is not set', 'bool', live=False, hidden=True),
     T('slack.fallback-minutes', 'slack_fallback_minutes', SLACK, 'Numbers fallback after (min)', 'Posts the numbers of a critical card when no investigation finished in N minutes; 0 turns it off', 'int', 0, 240, live=False),
     T('slack.state-notes', 'slack_state_notes', SLACK, 'Status notes in threads', 'Posts a short line in the thread when a posted card is taken, resolved or muted', 'bool', live=False),
     T('slack.listen', 'slack_listen', SLACK, 'Listening', 'off, shadow (reads only) or live (answers)', 'choice', choices=SLACK_LISTEN_MODES, live=False),
@@ -285,6 +287,8 @@ STATIC = (
     T('jira.dev-scope', 'jira_dev_scope', JIRA, 'Scope value', 'Value set in the scope field (jira.scope-field) of new tasks; empty sends no scope', 'text'),
     T('jira.tech-project', 'jira_tech_project', JIRA, 'Infra project', 'Project for infrastructure tasks', 'text'),
     T('jira.tech-assignee', 'jira_tech_assignee', JIRA, 'Infra assignee', 'Jira account id that gets infrastructure tasks', 'text'),
+    T('jira.backlink', 'jira_backlink', JIRA, 'Back-link on the issue', 'When a card gets a Jira ticket, {product} adds the card link to that issue: link adds a web link (Link issues permission), '
+      'comment posts one short comment per card and issue (Add comments permission), off adds nothing', 'choice', choices=JIRA_BACKLINK_MODES),
     T(RELEASE_NAME_KEY, 'jira_release_name', JIRA, 'Release name', 'Name of the Jira release of a deploy day, from {project}, {yyyy}, {mm} and {dd} in the local time zone, such as '
       '{project} {yyyy}-{mm}-{dd}. It needs {project}, {mm} and {dd} once each; deploy reports look up the issues of these releases', 'text'),
     T('core.release-settle', 'release_settle', FEATURES, 'Release settle', 'Settles releases from deploy events', 'bool', live=False),
@@ -589,9 +593,9 @@ def current_instance(settings: Settings) -> str:
     return host or 'local'
 
 
-def instance_menu(settings: Settings, links: list[dict]) -> dict:
+def instance_menu(settings: Settings, links: list[dict], icon: str | None = None) -> dict:
     name = current_instance(settings)
-    return {'current': {'name': name, 'letter': name[:1].upper()},
+    return {'current': {'name': name, 'letter': name[:1].upper()} | ({'icon': icon} if icon else {}),
             'links': [{'name': link['name'], 'url': link['url'], 'letter': link['name'][:1].upper(), 'colour': link_colour(link['name'])} for link in links]}
 
 

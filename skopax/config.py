@@ -15,6 +15,7 @@ log = logging.getLogger('skopax.config')
 
 INVESTIGATE_MODES = ('off', 'shadow', 'live')
 SLACK_LISTEN_MODES = ('off', 'shadow', 'live')
+JIRA_BACKLINK_MODES = ('link', 'comment', 'off')
 SLACK_POST_SEVS = ('crit', 'warn', 'off')
 SLACK_POST_SEV = 'warn'
 CRIT_NOW_TOLD = 'slack.crit-now'
@@ -34,6 +35,7 @@ SSO_SCOPE = 'openid email profile'
 SSO_CLAIM_MODES = ('id-token', 'access-token')
 SSO_CLIENT_AUTH = ('auto', 'post', 'basic')
 SSO_BUTTON_ICONS = ('auto', 'company', 'none')
+WORKSPACE_ICONS = ('letter', 'company', 'upload')
 SSO_BUTTON_TEXT_MAX = 40
 SSO_NEW_ACCOUNTS = ('anyone', 'added-only')
 OWN_SITE = re.compile(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}')
@@ -176,6 +178,7 @@ class Settings:
     jira_tech_project: str = ''
     jira_tech_assignee: str = ''
     jira_title_prefix: str = ''
+    jira_backlink: str = 'link'
     jira_release_name: str = RELEASE_NAME
     anthropic_api_key: str = field(default='', repr=False)
     openai_api_key: str = field(default='', repr=False)
@@ -244,6 +247,7 @@ class Settings:
     base_url: str = ''
     workspace_label: str = ''
     workspace_links: str = ''
+    workspace_icon: str = 'letter'
     timezone: str = 'UTC'
     language: str = 'en'
     org_about: str = ''
@@ -478,6 +482,11 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         log.warning('slack.listen %r is not one of %s; Slack listening stays off', listen, ', '.join(SLACK_LISTEN_MODES))
         listen = 'off'
 
+    backlink = get('jira.backlink', 'JIRA_BACKLINK', 'link').strip().lower() or 'link'
+    if backlink not in JIRA_BACKLINK_MODES:
+        log.warning('jira.backlink %r is not one of %s; Jira back-links stay links', backlink, ', '.join(JIRA_BACKLINK_MODES))
+        backlink = 'link'
+
     max_days = bounded('sso.session-max-days', get('sso.session-max-days', 'SSO_SESSION_MAX_DAYS', str(SESSION_MAX_DAYS)), 1, 30, SESSION_MAX_DAYS)
     idle_hours = bounded('sso.session-idle-hours', get('sso.session-idle-hours', 'SSO_SESSION_IDLE_HOURS', str(SESSION_IDLE_HOURS)), 1, 168, SESSION_IDLE_HOURS)
     if idle_hours > max_days * 24:
@@ -627,6 +636,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         jira_tech_project=get('jira.tech-project', 'JIRA_TECH_PROJECT', '').strip(),
         jira_tech_assignee=get('jira.tech-assignee', 'JIRA_TECH_ASSIGNEE', '').strip(),
         jira_title_prefix=get('jira.title-prefix', 'JIRA_TITLE_PREFIX', ''),
+        jira_backlink=backlink,
         jira_release_name=release_template,
         anthropic_api_key=get('anthropic.api-key', 'ANTHROPIC_API_KEY', '').strip(),
         openai_api_key=get('openai.api-key', 'OPENAI_API_KEY', '').strip(),
@@ -695,6 +705,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         mcp_dive_cap=bounded('mcp.dive-cap', get('mcp.dive-cap', 'MCP_DIVE_CAP', str(MCP_DIVE_CAP)).strip() or str(MCP_DIVE_CAP), 0, 50, MCP_DIVE_CAP),
         base_url=get('core.base-url', 'SKOPAX_BASE_URL', '').strip(),
         workspace_label=workspace_label,
+        workspace_icon=choice('core.workspace-icon', get('core.workspace-icon', 'SKOPAX_WORKSPACE_ICON', WORKSPACE_ICONS[0]), WORKSPACE_ICONS),
         workspace_links=get('core.workspace-links', 'SKOPAX_WORKSPACE_LINKS', '').strip() or get('core.instance-links', 'SKOPAX_INSTANCE_LINKS', '').strip(),
         timezone=get('core.timezone', 'SKOPAX_TIMEZONE', 'UTC').strip() or 'UTC',
         language=get('core.language', 'SKOPAX_LANGUAGE', 'en').strip() or 'en',

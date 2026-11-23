@@ -214,7 +214,7 @@ function sideAdmin() {
   var found = notes.filter(function (n) { return n && n.id === 'update'; })[0];
   var said = warn + (warn === 1 ? ' warning' : ' warnings');
   sideUpdate(found);
-  var plain = found && !warn && !document.querySelector('.attr-up') ? 'Update available' : '';
+  var plain = found && !warn && !document.querySelector('.attr-up') ? (found.text ? String(found.text) : 'Update available') : '';
   dot.hidden = !(warn || plain);
   dot.classList.toggle('plain', !!plain);
   if (warn || plain) { dot.setAttribute('aria-label', plain || said); row.title = 'Admin \u00b7 ' + (plain || said); }
@@ -223,11 +223,14 @@ function sideAdmin() {
   sideAdminItem(on, go, warn, said, plain);
 }
 function sideUpdate(found) {
-  var secure = !!found && found.level === 'warn', said = secure ? 'Security update available' : 'Update available';
+  var secure = !!found && found.level === 'warn', said = found && found.text ? String(found.text) : secure ? 'Security update available' : 'Update available';
   Array.prototype.forEach.call(document.querySelectorAll('.attr-up'), function (dot) {
+    var link = dot.parentNode;
+    if (link.dataset.tip === undefined) link.dataset.tip = link.title || '';
     dot.hidden = !found;
     dot.classList.toggle('k-warn', secure);
-    if (found) dot.setAttribute('aria-label', said); else dot.removeAttribute('aria-label');
+    if (found) { dot.setAttribute('aria-label', said); dot.title = said; link.title = (link.dataset.tip ? link.dataset.tip + '\n' : '') + said; }
+    else { dot.removeAttribute('aria-label'); dot.removeAttribute('title'); link.title = link.dataset.tip; }
   });
 }
 function sideAdminItem(on, go, warn, said, plain) {

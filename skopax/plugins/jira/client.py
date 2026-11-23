@@ -13,10 +13,13 @@ JIRA_GATEWAY = 'https://api.atlassian.com/ex/jira'
 JIRA_BATCH = 100
 TENANT_TIMEOUT_S = 15
 CALL_TIMEOUT_S = 30
+BACKLINK_TIMEOUT_S = 10
 NO_CLOUD = 'Jira cloud id: tenant_info answered without a cloudId'
 CREATE_MISSING = 'Jira answered HTTP 404 to the create: check the site and the cloud id of the Jira instance'
 DENIED = (401, 403)
 PERMISSIONS = {'issues': 'the Browse projects permission (scope read:jira-work)', 'users': 'the Browse users and groups permission (scope read:jira-user)'}
+WRITES = {'links': 'the Link issues permission (scope write:jira-work)', 'comments': 'the Add comments permission (scope write:jira-work)'}
+APP_TYPE = 'skopax'
 
 
 def denied_text(part: str, status: int) -> str:
@@ -106,6 +109,26 @@ class Jira:
         if not key:
             raise Refused('Jira created nothing: no key in the answer')
         return str(key)
+
+    def _write(self, part: str, path: str, body: dict) -> remote.Reply:
+        base = self.base
+        try:
+            return remote.call(self.transport, 'POST', f'{base}{path}', self._auth(), body, timeout=BACKLINK_TIMEOUT_S)
+        except HttpError as e:
+            if e.code == 404:
+                raise Missing(path) from None
+            if e.code in DENIED:
+                raise Denied(msg('jira.write_denied', status=e.code, permission=WRITES[part]), part, WRITES[part]) from None
+            raise SourceDown(f'Jira HTTP {e.code}') from None
+        except Unreachable:
+            raise SourceDown(msg('enrich.unreachable', source='Jira')) from None
+
+    def remote_link(self, key: str, url: str, title: str, global_id: str, icon: str = '', name: str = 'Skopax') -> None:
+        target = {'url': url, 'title': title} | ({'icon': {'url16x16': icon, 'title': name}} if icon else {})
+        self._write('links', f'/rest/api/3/issue/{quote(key, safe="")}/remotelink', {'globalId': global_id, 'application': {'type': APP_TYPE, 'name': name}, 'object': target})
+
+    def add_comment(self, key: str, body: dict) -> None:
+        self._write('comments', f'/rest/api/3/issue/{quote(key, safe="")}/comment', {'body': body})
 
     def find_user(self, query: str) -> str | None:
         if not query:

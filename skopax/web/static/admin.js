@@ -375,6 +375,7 @@ function adminRow(i, card) {
   if (i.ownFrom) adminOwnFrom(i, row);
   var chipIn = i.items && i.kind !== 'rules' ? row.querySelector('.adm-in') : null;
   if (chipIn && chipIn.tagName === 'INPUT') admChipsMount(chipIn, i.items, i.label);
+  if (i.channelName) row.querySelector('.adm-c').insertBefore(accText('p', 'adm-help adm-channel-name', 'Posts to #' + i.channelName), row.querySelector('.adm-c .adm-acts'));
   if (i.problem) {
     var note = el('p', 'adm-help adm-problem');
     note.textContent = i.problem;
@@ -1426,8 +1427,11 @@ function accRowMsg(kind, key) {
 function accFormMsg(cls) { return document.querySelector('#access .' + cls + ' .adm-msg'); }
 function accLive(msg, fallback) { return msg && msg.isConnected ? msg : fallback; }
 function accNote(msg, text, bad) {
-  if (msg) accMsg(msg, text, bad);
+  if (!msg) return;
+  accMsg(msg, text, bad);
+  if (text && !bad && msg.closest && msg.closest('.acc-ctl')) setTimeout(function () { if (msg.textContent === text) accMsg(msg, '', false); }, ACC_NOTE_MS);
 }
+var ACC_NOTE_MS = 5000;
 function clearAccessSecret() {
   var slot = document.querySelector('#access .acc-secret-slot');
   if (slot) slot.textContent = '';

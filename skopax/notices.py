@@ -95,14 +95,15 @@ def resolved_note(card: dict) -> str:
 def changes(old: dict, new: dict, by_key: dict | None = None) -> list[tuple[str, str]]:
     out = []
     was, now = old.get('triage'), new.get('triage')
+    linked = bool(new.get('ticket')) and new.get('ticket') != old.get('ticket')
     if now != was:
         if now == 'progress':
-            out.append(('progress', str(new.get('ticket') or '')))
+            out.append(('ticket', f"{new['ticket']} · in progress") if linked else ('progress', str(new.get('ticket') or '')))
         elif now == 'handled':
             out.append(('resolved', resolved_note(new)))
         elif was in ('progress', 'handled') and not now:
             out.append(('reopened', ''))
-    elif new.get('ticket') and new.get('ticket') != old.get('ticket'):
+    elif linked:
         out.append(('ticket', str(new['ticket'])))
     if new.get('sev') and old.get('sev') and new['sev'] != old['sev']:
         out.append(('severity', f"{old['sev']} → {new['sev']}"))
@@ -233,7 +234,7 @@ class Notices:
             if card is None:
                 continue
             if 'closed' not in r:
-                sent += self.add({holder(card)}, 'progress', 'jira-links', card, str(r.get('issue') or ''))
+                sent += self.add({holder(card)}, 'ticket', 'jira-links', card, f"{r.get('issue')} · in progress" if r.get('issue') else '')
             else:
                 kind = 'resolved' if card.get('triage') == 'handled' else 'reopened'
                 sent += self.add({holder(card)}, kind, 'jira-links', card, f"{r.get('issue')} {r.get('closed')}")

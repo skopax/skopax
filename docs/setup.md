@@ -44,7 +44,7 @@ Each switch has an environment name, which sets the starting value. A value save
 |---|---|---|
 | AI investigator | `SKOPAX_FEATURE_INVESTIGATOR` | investigates cards and answers questions |
 | Chat | `SKOPAX_FEATURE_CHAT` | the Chat page, Slack direct messages and MCP questions; needs `CHAT_UI` and SSO at boot |
-| Slack auto-send | `SKOPAX_FEATURE_SLACK_AUTOSEND` | posts the investigator's Slack posts and new cards from Post at once from up (warnings and critical cards by default) on its own; while it is off nothing posts on its own, a post the investigator wanted is dropped with a note on the card, and Send to Slack posts by hand |
+| Slack auto-send | `SKOPAX_FEATURE_SLACK_AUTOSEND` | posts the investigator's Slack posts and new cards from Post immediately from up (warnings and critical cards by default) on its own; while it is off nothing posts on its own, a post the investigator wanted is dropped with a note on the card, and Send to Slack posts by hand |
 | Slack listener | `SKOPAX_FEATURE_SLACK_LISTENER` | answers questions and button clicks in Slack |
 | MCP server | `SKOPAX_FEATURE_MCP` | lets AI assistants read and triage cards |
 | Read without login | `SKOPAX_PUBLIC_READ` | anyone who can reach the page may read |
@@ -100,6 +100,8 @@ The strip shows, for admins only: a generated secret key (set `SKOPAX_SECRET_KEY
 ### Other workspaces
 
 A workspace here means a whole deployment, such as a staging copy; it is not a plug-in instance. `SKOPAX_WORKSPACE_LABEL` (setting key `core.workspace-label`) names this workspace in the switcher (otherwise its host is shown); the deprecated name `SKOPAX_ENV_LABEL` (`core.env-label`) is also accepted and logs a deprecation line, and `SKOPAX_WORKSPACE_LABEL` wins when both are set. `SKOPAX_WORKSPACE_LINKS` (setting key `core.workspace-links`) lists the others as `name=url` pairs separated by commas, for example `staging=https://staging.example.com,eu=https://eu.example.com`. At most 10 are listed, URLs must be http or https and carry no user name or password. Picking one opens that deployment. Admins can also edit the list in Admin > Workspaces, a section of its own with one row per workspace (name, address, Open, Remove, move up and down) and "+ Add workspace". Each row shows the rule it breaks as you type, and one Save stores the list as the same `name=url` text the environment uses, so Revert in Changes works on it too. The rows are always editable: a list that comes from the service configuration or the environment shows its source tag, and a list saved here wins over it. This workspace's name shows at the top of the section, read-only, with its source, because it is set by `SKOPAX_WORKSPACE_LABEL`. A bad value from the environment is ignored and logged.
+
+The workspace tile at the top of the sidebar shows the first letter of this workspace's name. Under Workspace icon in Admin > Workspaces an admin can pick Letter (the default), Company icon, which reuses the image uploaded for the single sign-on button in Admin > Access & sign-in, or Upload, which takes a PNG, WebP or SVG of its own with the same checks and 64 KiB limit as that image, with Remove next to it. The choice is the setting `core.workspace-icon` (`SKOPAX_WORKSPACE_ICON`: `letter`, `company` or `upload`), so it shows in Changes with Revert; an upload or removal shows there too. When the chosen image is missing the tile keeps the letter. The image is served to everyone who can read the board, and other workspaces in the switcher keep their letter tiles.
 
 ## Add Prometheus
 

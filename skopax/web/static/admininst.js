@@ -1,5 +1,8 @@
 var INST_KEY = 'core.workspace-links', INST_SEQ = 0, INST_DRAFT = null, INST_TOLD = null;
 var INST_FROM = null;
+var INST_ICON_KEY = 'core.workspace-icon', INST_ICON_TOLD = null, INST_ICON_MAX = 64 * 1024, INST_ICON_ACCEPT = ['image/png', 'image/webp', 'image/svg+xml'];
+var INST_ICON_TYPES = {'image/png': 'PNG', 'image/webp': 'WebP', 'image/svg+xml': 'SVG'};
+var INST_ICON_MODES = [['letter', 'Letter'], ['company', 'Company icon'], ['upload', 'Upload']];
 var INST_COMMA = 'An address cannot hold a comma, which separates the entries';
 var INST_DEFAULTS = {max: 10, nameMax: 40, rules: {}};
 function instItem() { return adminItems().filter(function (i) { return i.key === INST_KEY; })[0] || null; }
@@ -60,6 +63,7 @@ async function loadInstances() {
     ADMIN = r;
     INST_DRAFT = null;
         INST_TOLD = null;
+    INST_ICON_TOLD = null;
     markAdminCount();
     renderInstances();
     adminReveal('workspaces');
@@ -168,6 +172,8 @@ function renderInstances(saved, focusKind, focusAt) {
   me.appendChild(nameLine);
   me.appendChild(accText('p', 'adm-help', info.label ? 'Set by SKOPAX_WORKSPACE_LABEL in the service configuration; this page shows it and does not change it.' : 'Named after its address. Set SKOPAX_WORKSPACE_LABEL in the service configuration to give it a name.'));
   card.appendChild(me);
+  var icon = instIconBlock();
+  if (icon) card.appendChild(icon);
   var wrap = el('div', 'adm-row ws-list' + (item.source === 'admin' ? ' set' : ''));
   wrap.dataset.key = INST_KEY;
   wrap.dataset.find = (item.label + ' ' + item.key).toLowerCase();
@@ -251,4 +257,159 @@ async function instReset(b) {
     instTold(e && e.detail ? e.detail : 'Not reset, try again', true);
     renderInstances();
   }
+}
+function instIconItem() { return adminItems().filter(function (i) { return i.key === INST_ICON_KEY; })[0] || null; }
+function instIconInfo() {
+  var i = ADMIN && ADMIN.instance && ADMIN.instance.icon ? ADMIN.instance.icon : {}, none = {set: false, type: null, size: 0, version: null};
+  return {company: i.company || none, upload: i.upload || none, max: i.max || INST_ICON_MAX, problem: i.problem || ''};
+}
+function instIconMode() {
+  var item = instIconItem(), v = item && typeof item.value === 'string' ? item.value : 'letter';
+  return INST_ICON_MODES.some(function (m) { return m[0] === v; }) ? v : 'letter';
+}
+function instIconSize(n) { return n < 1024 ? n + ' bytes' : Math.round(n / 102.4) / 10 + ' KiB'; }
+function instIconTold(text, bad) { INST_ICON_TOLD = text ? {text: text, bad: !!bad} : null; }
+function instIconNote(text, bad) {
+  instIconTold(text, bad);
+  var m = document.querySelector('#workspaces .ws-icon-msg');
+  if (!m) return;
+  m.textContent = text || '';
+  m.className = 'adm-msg ws-icon-msg' + (text ? (bad ? ' bad' : ' ok') : '');
+}
+function instIconPreview(mode, info) {
+  var tile = accText('span', 'inst-tile ws-icon-pv', ''), shown = mode === 'company' ? info.company : mode === 'upload' ? info.upload : null;
+  tile.setAttribute('aria-hidden', 'true');
+  var name = ADMIN && ADMIN.instance && ADMIN.instance.name ? String(ADMIN.instance.name) : location.hostname;
+  var letter = (Array.from(name)[0] || '?').toUpperCase();
+  if (shown && shown.set && shown.version) {
+    var img = document.createElement('img');
+    img.alt = '';
+    img.addEventListener('error', function () { if (img.parentNode === tile) { tile.classList.remove('has-img'); tile.textContent = letter; } });
+    img.src = '/api/workspace-icon?v=' + encodeURIComponent(shown.version);
+    tile.classList.add('has-img');
+    tile.appendChild(img);
+  } else tile.textContent = letter;
+  return tile;
+}
+function instIconBlock() {
+  var item = instIconItem();
+  if (!item) return null;
+  var mode = instIconMode(), info = instIconInfo();
+  var box = el('div', 'adm-row ws-icon');
+  box.dataset.key = INST_ICON_KEY;
+  var head = el('div', 'ws-head');
+  var title = accText('h3', 'ws-h', 'Workspace icon');
+  title.id = 'ws-icon-h';
+  head.appendChild(instIconPreview(mode, info));
+  head.appendChild(title);
+  box.appendChild(head);
+  var group = el('div', 'ws-icon-modes');
+  group.setAttribute('role', 'radiogroup');
+  group.setAttribute('aria-labelledby', 'ws-icon-h');
+  INST_ICON_MODES.forEach(function (m) {
+    var lab = el('label', 'ws-icon-mode'), radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'ws-icon-mode';
+    radio.value = m[0];
+    radio.checked = m[0] === mode;
+    radio.addEventListener('change', function () { if (radio.checked) instIconSave(m[0]); });
+    lab.appendChild(radio);
+    lab.appendChild(accText('span', null, m[1]));
+    group.appendChild(lab);
+  });
+  box.appendChild(group);
+  if (info.problem) box.appendChild(accText('p', 'adm-help adm-problem', info.problem));
+  if (mode === 'company') {
+    if (info.company.set) box.appendChild(accText('p', 'adm-help ws-icon-state', 'The icon uploaded for the single sign-on button under Access & sign-in.'));
+    else {
+      var none = el('p', 'adm-help ws-icon-state');
+      none.appendChild(accText('span', null, 'No company icon uploaded yet, so the tile shows the letter.'));
+      none.appendChild(document.createTextNode(' '));
+      var go = accText('button', 'btn sec small ws-icon-go', 'Upload it under Access & sign-in');
+      go.type = 'button';
+      go.addEventListener('click', function () { if (typeof pickTab === 'function') pickTab('access'); });
+      none.appendChild(go);
+      box.appendChild(none);
+    }
+  }
+  if (mode === 'upload') {
+    var up = info.upload, pick = el('div', 'sso-icon-box ws-icon-up');
+    pick.appendChild(accText('p', 'adm-help ws-icon-state', up.set ? (INST_ICON_TYPES[up.type] || 'Image') + ', ' + instIconSize(up.size) : 'None uploaded, so the tile shows the letter.'));
+    var acts = el('div', 'sso-icon-acts');
+    var lab2 = accText('label', 'btn sec small sso-icon-pick', 'Upload image'), file = document.createElement('input');
+    file.type = 'file';
+    file.className = 'sso-icon-file ws-icon-file';
+    file.accept = INST_ICON_ACCEPT.join(',');
+    file.addEventListener('change', function () { instIconPut(file.files && file.files[0]); });
+    lab2.appendChild(file);
+    acts.appendChild(lab2);
+    if (up.set) {
+      var rm = accText('button', 'btn sec small ws-icon-del', 'Remove');
+      rm.type = 'button';
+      rm.addEventListener('click', function () { instIconRemove(rm); });
+      acts.appendChild(rm);
+    }
+    pick.appendChild(acts);
+    pick.appendChild(accText('p', 'adm-help', 'PNG, WebP or SVG, at most ' + Math.round(info.max / 1024) + ' KiB, shown at 24 px. An SVG may hold only shapes, gradients, clip paths and masks: styles, text, scripts and links outside the file are refused.'));
+    box.appendChild(pick);
+  }
+  var msg = accText('p', 'adm-msg ws-icon-msg' + (INST_ICON_TOLD ? (INST_ICON_TOLD.bad ? ' bad' : ' ok') : ''), INST_ICON_TOLD ? INST_ICON_TOLD.text : '');
+  msg.setAttribute('role', 'status');
+  box.appendChild(msg);
+  return box;
+}
+async function instIconMe() {
+  if (typeof instRender !== 'function') return;
+  try { instRender(await adminApi('GET', '/api/me')); } catch (e) {}
+}
+async function instIconSave(mode, said) {
+  instIconNote('Saving\u2026');
+  try {
+    var r = await adminApi('PUT', '/api/admin/settings', {key: INST_ICON_KEY, value: mode});
+    instIconTold(said || 'Saved');
+    await adminDone(r, INST_ICON_TOLD.text);
+    instIconMe();
+  } catch (e) {
+    instIconTold(e && e.detail ? e.detail : 'Not saved, try again', true);
+    renderInstances();
+  }
+}
+async function instIconPut(file) {
+  var info = instIconInfo();
+  if (!file) return;
+  if (file.size > info.max) { instIconNote('The icon is at most ' + Math.round(info.max / 1024) + ' KiB.', true); return; }
+  if (INST_ICON_ACCEPT.indexOf(file.type) < 0) { instIconNote('The icon must be a PNG, WebP or SVG image.', true); return; }
+  instIconNote('Uploading\u2026');
+  var r;
+  try {
+    r = await adminApi('PUT', '/api/admin/workspace/icon', file, undefined, file.type);
+  } catch (e) {
+    instIconNote(e && e.detail ? e.detail : 'Not uploaded, try again', true);
+    return;
+  }
+  if (ADMIN && ADMIN.instance) ADMIN.instance.icon = r.icon;
+  try { ADMIN_HIST = await adminApi('GET', '/api/admin/history?limit=' + ADMIN_HIST_MAX); } catch (e) {}
+  instIconTold('Icon uploaded');
+  renderInstances();
+  renderChanges();
+  instIconMe();
+}
+async function instIconRemove(b) {
+  var ask = window.__skopaxConfirm;
+  if (typeof ask !== 'function') return;
+  var ok = await ask('Remove the workspace icon?', 'The workspace tile shows the letter until another image is uploaded.', 'Remove icon');
+  if (!ok) { if (b.isConnected) b.focus(); return; }
+  var r;
+  try {
+    r = await adminApi('DELETE', '/api/admin/workspace/icon');
+  } catch (e) {
+    instIconNote(e && e.detail ? e.detail : 'Not removed, try again', true);
+    return;
+  }
+  if (ADMIN && ADMIN.instance) ADMIN.instance.icon = r.icon;
+  try { ADMIN_HIST = await adminApi('GET', '/api/admin/history?limit=' + ADMIN_HIST_MAX); } catch (e) {}
+  instIconTold('Icon removed');
+  renderInstances();
+  renderChanges();
+  instIconMe();
 }

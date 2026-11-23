@@ -227,7 +227,7 @@ def test_grouping_a_card_that_holds_others_moves_them_along_and_a_resolved_card_
     # then
     assert (card(client, a)['parent'], card(client, b)['parent']) == (c, c), 'no chain: a moved along with b'
     assert 'parent' not in card(client, c)
-    assert (under_resolved['status'], under_resolved['result']) == ('failed', f'{resolved} is already resolved (Action taken), so {d} would disappear from Open under it; pick an open card as the parent')
+    assert (under_resolved['status'], under_resolved['result']) == ('failed', f'{resolved} is already resolved (Done), so {d} would disappear from Open under it; pick an open card as the parent')
     assert 'parent' not in card(client, d)
 
 

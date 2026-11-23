@@ -89,7 +89,8 @@ PLUGIN = Plugin(
     knowledge=(Knowledge('jira', 'Jira', (Path(__file__).parent / 'jira.md').read_text(encoding='utf-8'), slack=True, inline=True),),
     setup=Setup(steps=(
         'Sign in as the account Skopax will use and open https://id.atlassian.com/manage-profile/security/api-tokens. Choose Create API token with scopes, name it and set an expiry (1 to 365 days).',
-        'Pick Jira as the app and select the scopes read:jira-work and read:jira-user. The account also needs Browse projects and Browse users and groups in Jira.',
+        'Pick Jira as the app and select the scopes read:jira-work, read:jira-user and write:jira-work. The account also needs Browse projects and Browse users and groups in Jira, and for Create task and back-links '
+        'Create issues and Link issues (Add comments when Back-link on the issue is comment). For a read-only token leave out write:jira-work and set Back-link on the issue to off.',
         "Create the token, copy it and paste it into API token. Enter that account's address in Email.",
         'In Site give your Jira Cloud address, such as https://example.atlassian.net. Leave Cloud id empty unless asked, then choose Test connection.',
         "A token made with the plain Create API token button also works, but it carries all the account's access.",

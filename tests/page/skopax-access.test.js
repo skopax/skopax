@@ -507,6 +507,12 @@ const rowOf = (doc, email) => [...doc.querySelectorAll('#access .acc-user')].fil
   assert.deepStrictEqual([carolNow.querySelector('.adm-msg').textContent, carolNow.querySelector('.adm-msg').classList.contains('bad')], ['Carol cannot change right now.', true],
     'the error lands on the row on screen, not on the one the redraw dropped');
   assert.strictEqual(rowOf(k.doc, 'bob@example.com').querySelector('.adm-msg').textContent, 'Role set to operator');
+  k.w.ACC_NOTE_MS = 50;
+  const daveSel = rowOf(k.doc, 'bob@example.com').querySelector('select.acc-role');
+  daveSel.value = 'viewer';
+  change(daveSel);
+  await wait(250);
+  assert.strictEqual(rowOf(k.doc, 'bob@example.com').querySelector('.adm-msg').textContent, '', 'a row note that says a change saved goes away on its own');
   k.close();
   console.log('PASS an error from an edit that finishes after another edit redrew the list shows on the visible row');
 
