@@ -60,7 +60,10 @@ async function theButtonToggles() {
   assert.ok(btn.getAttribute('aria-label') && btn.title, 'it has an aria-label and a title');
   assert.ok(!drawer.classList.contains('wide'));
   const kids = [...drawer.querySelector('.cd-bar').children].map((c) => c.className.split(' ').find((x) => x.startsWith('cd-')));
-  assert.deepStrictEqual(kids.slice(-3), ['cd-link', 'cd-expand', 'cd-close'], 'between Open alone and Close');
+  assert.deepStrictEqual(kids, ['cd-expand', 'cd-t', 'cd-link', 'cd-close'], 'first in the bar, on the left side the drawer grows to');
+  assert.strictEqual(btn.querySelectorAll('svg.cd-x-i').length, 1, 'Expand carries an arrow icon');
+  const arrowOf = () => [...btn.querySelectorAll('polyline')].map((p) => p.getAttribute('points')).join(' ');
+  const expandArrow = arrowOf();
 
   //when
   btn.click();
@@ -68,6 +71,7 @@ async function theButtonToggles() {
   //then
   assert.ok(drawer.classList.contains('wide'));
   assert.strictEqual(btn.textContent, 'Shrink');
+  assert.ok(btn.querySelector('svg.cd-x-i') && arrowOf() !== expandArrow, 'Shrink carries the opposite arrow');
   assert.strictEqual(btn.getAttribute('aria-pressed'), 'true');
 
   //when

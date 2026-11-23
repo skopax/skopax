@@ -1051,10 +1051,13 @@ function boardSearchHint() {
   if (panel && window.MutationObserver) new MutationObserver(function () { if (!panel.hidden) boardSync(false); }).observe(panel, {attributes: true, attributeFilter: ['hidden']});
 })();
 var DRAWER_WIDE_KEY = 'skopax.drawer.wide';
+var ICON_EXPAND = '<svg class="cd-x-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>';
+var ICON_SHRINK = '<svg class="cd-x-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>';
 function drawerWide(wrap, on) {
   var b = wrap.querySelector('.cd-expand'), label = on ? 'Shrink' : 'Expand', hint = on ? 'Shrink the card to the narrow view' : 'Expand the card to the wide view';
   wrap.classList.toggle('wide', on);
-  b.textContent = label;
+  b.innerHTML = (on ? ICON_SHRINK : ICON_EXPAND) + '<span class="cd-x-l"></span>';
+  b.querySelector('.cd-x-l').textContent = label;
   b.setAttribute('aria-label', hint);
   b.title = hint;
   b.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -1073,8 +1076,8 @@ function openDrawer(key, quiet) {
   wrap.setAttribute('role', 'dialog');
   wrap.setAttribute('aria-modal', 'true');
   wrap.setAttribute('aria-label', svcName(a) + ' / ' + a.label);
-  wrap.innerHTML = '<div class="cd-backdrop"></div><div class="cd-panel"><div class="cd-bar"><span class="cd-t">' + (a.num ? 'Card #' + esc(a.num) : 'Card') + '</span>' +
-    (a.num ? '<a class="cd-link" href="/c/' + esc(a.num) + '" target="_blank" rel="noopener">Open alone ↗</a>' : '') + '<button type="button" class="btn sec small cd-expand"></button><button type="button" class="btn sec small cd-close">Close</button></div></div>';
+  wrap.innerHTML = '<div class="cd-backdrop"></div><div class="cd-panel"><div class="cd-bar"><button type="button" class="btn sec small cd-expand"></button><span class="cd-t">' + (a.num ? 'Card #' + esc(a.num) : 'Card') + '</span>' +
+    (a.num ? '<a class="cd-link" href="/c/' + esc(a.num) + '" target="_blank" rel="noopener">Open alone ↗</a>' : '') + '<button type="button" class="btn sec small cd-close">Close</button></div></div>';
   var card = anomCard(a, CARDS.indexOf(a));
   wrap.querySelector('.cd-panel').appendChild(card);
   root.appendChild(wrap);

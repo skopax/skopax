@@ -22,6 +22,8 @@ SECRET = 'sk-lf-secret-value'
 PUBLIC = 'pk-lf-public'
 DAY = '2026-11-23'
 PROJECT = 'proj-42'
+SUMMARY_KEYS = {'kind', 'trigger', 'cards', 'outcome', 'model_calls', 'tool_calls', 'messages', 'system_chars', 'prompt_chars', 'input_tokens', 'tools_offered', 'stop_reason',
+                'answer_chars', 'tool', 'args', 'other', 'ok', 'error', 'result_chars'}
 
 
 class Clock:
@@ -43,20 +45,6 @@ def make(http=None, on=True, picked=True, content=METADATA, sample=100, chance=0
     found = Tracer(lambda: on, lambda: target if picked else None, lambda: content, lambda: sample, lambda: 'shop-prod', clock=Clock(), chance=lambda: chance,
                    queue_max=queue_max, threaded=False, version='9.9.9')
     return found, http
-
-
-@pytest.fixture
-def installed():
-    made = []
-
-    def put(found: Tracer) -> Tracer:
-        tracing.install(found)
-        made.append(found)
-        return found
-
-    yield put
-    for found in made:
-        tracing.uninstall(found)
 
 
 def spans(http: FakeHttp) -> list[dict]:
@@ -238,7 +226,8 @@ def test_metadata_mode_sends_no_content_and_full_mode_sends_it_redacted_and_cut(
         sent = spans(http)
         values = [attrs(s) for s in sent]
         if content == METADATA:
-            assert all('langfuse.observation.input' not in a and 'langfuse.observation.output' not in a for a in values)
+            assert all(set(json.loads(a['langfuse.observation.input'])) <= SUMMARY_KEYS and set(json.loads(a['langfuse.observation.output'])) <= SUMMARY_KEYS for a in values)
+            assert 'checkout' not in str(sent) and 'the answer' not in str(sent) and 'result ' not in str(sent)
             assert 'alice@example.com' not in str(sent) and SECRET not in str(sent)
         else:
             assert SECRET not in str(sent) and 'alice@example.com' not in str(sent)
@@ -356,7 +345,7 @@ def test_the_runner_traces_each_turn_and_each_tool_call_but_not_a_call_that_neve
     assert result.outcome == 'done'
     sent = spans(http)
     kinds = [(attrs(s)['langfuse.observation.type'], s['name'], s['status']['code']) for s in sent if 'parentSpanId' in s]
-    assert kinds == [('generation', 'anthropic turn', 1), ('tool', 'promql', 1), ('tool', 'esql', 2), ('generation', 'anthropic turn', 1), ('generation', 'anthropic turn', 1)]
+    assert kinds == [('generation', 'anthropic turn', 1), ('tool', 'promql', 1), ('tool', 'unknown', 2), ('generation', 'anthropic turn', 1), ('generation', 'anthropic turn', 1)]
     assert BROKEN_TEXT not in str(sent)
 
 

@@ -7,7 +7,7 @@ const {JSDOM, VirtualConsole} = require('jsdom');
 const TEMPLATE = process.argv[2];
 const ROOT = path.join(__dirname, '..', '..');
 const DOCS_BASE = 'https://github.com/skopax/skopax/blob/main/docs/';
-const SECTIONS = ['Get started', "A card's life", 'Card actions', 'The investigator', 'Notifications and messages', 'Links and keyboard', 'For admins', 'Words'];
+const SECTIONS = ['Get started', "A card's life", 'Card actions', 'The investigator', 'Notifications and messages', 'Links and keyboard', 'For admins', 'Trace Skopax with Langfuse', 'Words'];
 const LANGS = ['de', 'es', 'fr', 'tr'];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
@@ -81,7 +81,7 @@ function texts(root) {
   return out;
 }
 
-async function theGuideHasItsEightSectionsInOrderEachAFoldWithAHeading() {
+async function theGuideHasItsNineSectionsInOrderEachAFoldWithAHeading() {
   //given
   const {w, doc, errors} = await boot('#t=docs');
 
@@ -100,7 +100,7 @@ async function theGuideHasItsEightSectionsInOrderEachAFoldWithAHeading() {
   assert.strictEqual(panel.querySelector('.foot-body'), null, 'the old four dense paragraphs are gone');
   assert.deepStrictEqual(errors, []);
   w.close();
-  console.log('PASS the guide has its eight sections in order, each a fold with a heading, and a footer with the API reference and the full docs');
+  console.log('PASS the guide has its nine sections in order, each a fold with a heading, and a footer with the API reference and the full docs');
 }
 
 async function theSearchKeepsOnlyMatchingItemsAndSaysWhenNothingMatches() {
@@ -382,10 +382,41 @@ async function aTranslatedPageFiltersOnTheTranslatedText() {
   console.log('PASS under a language pack the guide is translated and the search matches the translated text');
 }
 
+async function searchingLangfuseFindsTheTracingStepsAndTheirDocs() {
+  //given
+  const {w, doc, errors} = await boot('#t=docs');
+  const find = doc.getElementById('docs-find');
+  const trace = [...doc.querySelectorAll('#panel-docs details.docs-sec')].find((d) => d.querySelector('h3').textContent.trim() === 'Trace Skopax with Langfuse');
+
+  //then
+  assert.ok(trace, 'the guide has a Trace Skopax with Langfuse section');
+  assert.ok(trace.previousElementSibling.querySelector('h3').textContent.trim() === 'For admins', 'it comes right after For admins');
+  assert.ok(trace.querySelectorAll('li').length >= 6, 'it walks through the setup in steps');
+  ['separate Langfuse project', 'Settings > API Keys', 'Connect > Integrations', 'Admin > Investigator', 'Admin > Features', 'not watched', 'Open trace'].forEach((said) => assert.ok(trace.textContent.indexOf(said) >= 0, 'the steps say ' + said));
+  const more = trace.querySelector('a[href^="https://github.com/"]');
+  assert.strictEqual(more && more.getAttribute('href'), DOCS_BASE + 'plugins.md#langfuse-tracing');
+  assert.ok(slugs('plugins.md').indexOf('langfuse-tracing') >= 0, 'the Read more anchor is a heading of plugins.md');
+  const admin = [...doc.querySelectorAll('#panel-docs details.docs-sec')][6];
+  const short = [...admin.querySelectorAll('li')].find((li) => li.querySelector('b') && li.querySelector('b').textContent === 'Langfuse tracing');
+  assert.ok(short && short.textContent.indexOf('Trace Skopax with Langfuse') >= 0, 'For admins points at the new section: ' + (short && short.textContent));
+
+  //when
+  find.value = 'langfuse';
+  find.dispatchEvent(new w.Event('input'));
+
+  //then
+  assert.ok(shown(trace) && trace.open, 'searching langfuse shows and opens the section');
+  assert.ok([...trace.querySelectorAll('li')].some(shown), 'with its steps');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS searching langfuse finds the tracing steps after For admins, and their Read more points at the tracing docs');
+}
+
 (async () => {
-  await theGuideHasItsEightSectionsInOrderEachAFoldWithAHeading();
+  await theGuideHasItsNineSectionsInOrderEachAFoldWithAHeading();
   await theSearchKeepsOnlyMatchingItemsAndSaysWhenNothingMatches();
   await theAdminLinksPointAtHeadingsThatExistInTheDocs();
+  await searchingLangfuseFindsTheTracingStepsAndTheirDocs();
   await heldSlackPostsPointAtHistoryNotNotifications();
   await anAdminSeesTheLiveAutoResolveHoursAndOthersSeeNoMadeUpNumber();
   await theInvestigatorLinesShowItsModeAndDailyCapForEveryone();

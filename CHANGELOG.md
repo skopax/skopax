@@ -2,6 +2,16 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.7 (2026-11-23)
+
+A step-by-step guide to tracing Skopax with Langfuse, and traces that explain themselves without sending any text.
+
+**Changed:**
+
+- Langfuse tracing in `metadata` mode sends a short summary as the input and output of each step instead of leaving them empty, which Langfuse showed as "undefined". Model calls show the message count, prompt and system sizes, input tokens and the tools offered, then the stop reason, the tools called and the answer length. Tool steps show the tool and the argument names it declares, then whether it worked and the result length. Traces show the kind and card count, then the outcome and the model and tool call counts. No prompt, answer or tool text is sent, and a tool name or argument the model made up shows as unknown or other.
+- A step-by-step guide to tracing Skopax's own AI calls with Langfuse: a separate Langfuse project, a key pair that may write, which instance fields to fill, how to check it and what to do when nothing shows up. It is in the plug-in docs (Langfuse tracing) and in a new "Trace Skopax with Langfuse" section of the Docs page. The help of the Langfuse instance setting says to pick a separate project, because the picked instance is no longer watched.
+- The card drawer's Expand and Shrink button sits at the left of its top bar, on the side the drawer grows to, with an arrow pointing the way it moves.
+
 ## 0.5.6 (2026-11-23)
 
 Skopax can trace its own AI calls to Langfuse, and admins can see Integrations as everyone else does.

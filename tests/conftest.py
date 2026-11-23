@@ -13,7 +13,7 @@ import mongomock
 import pytest
 from fastapi.testclient import TestClient
 
-from skopax import agent, app as app_module, brand, clock, engine, locales, messages, probe, redact, sections, tags, versioncheck
+from skopax import agent, app as app_module, brand, clock, engine, locales, messages, probe, redact, sections, tags, tracing, versioncheck
 from skopax.remote import Unreachable
 from skopax.app import create_app
 from skopax.chatui.text import reset as reset_chat_texts
@@ -179,3 +179,15 @@ def no_google_retry_pause(monkeypatch):
     monkeypatch.setattr(google, 'RETRY_PAUSE', 0)
 
 
+@pytest.fixture
+def installed():
+    made = []
+
+    def put(found: tracing.Tracer) -> tracing.Tracer:
+        tracing.install(found)
+        made.append(found)
+        return found
+
+    yield put
+    for found in made:
+        tracing.uninstall(found)

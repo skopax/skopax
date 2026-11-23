@@ -191,7 +191,7 @@ class OpenAiAi:
         extra = {'max_tool_calls': left} if left else {}
         return tracing.generation(self.provider, 'turn', model, system, messages, lambda: turn_of(self.client.responses.create(
             model=model, instructions=system, input=input_of(messages), tools=offered, max_output_tokens=max_tokens, reasoning={'effort': reasoning_effort(model, effort, 'auto')},
-            store=False, include=[REASONING] + ([SOURCES] if left else []), **extra), model))
+            store=False, include=[REASONING] + ([SOURCES] if left else []), **extra), model), tools)
 
     def once(self, model: str, system: str, messages: list[dict], max_tokens: int, effort: str, thinking: str = THINK_OFF, schema: dict | None = None) -> Turn:
         level = reasoning_effort(model, effort, thinking)
