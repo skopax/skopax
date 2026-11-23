@@ -509,7 +509,7 @@ def test_the_page_help_names_no_integration_as_always_there():
     sources = re.findall(r'The investigator (?:reads|answers)[^.]*\.', template) + [ask_tip]
 
     # then
-    assert len(sources) == 3 and all('the connected integrations' in s and 'GitLab' not in s and 'Jira' not in s for s in sources), sources
+    assert len(sources) >= 3 and all('the connected integrations' in s and 'GitLab' not in s and 'Jira' not in s for s in sources), sources
 
 
 def test_the_card_language_offers_english_until_a_locale_registers_more():

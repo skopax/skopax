@@ -110,7 +110,7 @@ async function liveUpdateKeepsTheView() {
   assert.ok(form && !form.closest('.reason').hidden && form.value === 'nightly batch', 'known-noise form and its text kept');
   assert.ok(card(doc, 'restart|payments-api|restarts').classList.contains('linked'), 'new card highlighted');
   assert.ok(!orders.classList.contains('linked'), 'existing card not highlighted');
-  assert.match(doc.querySelector('#last-check .upd').textContent, /^Updated\d\d:\d\d$/, 'Updated HH:MM flash beside Last check in the top bar');
+  assert.strictEqual(doc.getElementById('last-check'), null, 'no Last check or Updated flash in the top bar');
   assert.deepStrictEqual(scrolls[scrolls.length - 1], [0, 420], 'scroll position restored');
   assert.strictEqual(before.anomsCount, '2');
   assert.strictEqual(doc.getElementById('count-anoms').textContent, '3', 'tab count updated');

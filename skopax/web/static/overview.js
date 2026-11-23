@@ -44,7 +44,7 @@ function renderMeta() {
     var kk = bad.some(function (k) { return srcState(k) === 'error'; }) ? 'k-crit' : bad.length ? 'k-warn' : ks.every(function (k) { return srcState(k) === 'none'; }) ? 'k-muted' : 'k-ok';
     var on = srcOpen[g.id] != null ? srcOpen[g.id] : kk === 'k-crit';
     var badTxt = bad.slice(0, 2).map(function (k) { return SRC_TAB[k][0] + ' ' + srcText(k); }).join(', ') + (bad.length > 2 ? ' +' + (bad.length - 2) : '');
-    var title = g.label + ': ' + ks.map(function (k) { return SRC_TAB[k][0] + ' ' + srcText(k); }).join(' \u00b7 ');
+    var title = g.label + ': ' + ks.map(function (k) { return SRC_TAB[k][0] + ' ' + srcText(k); }).join(' \u00b7 ') + ' \u00b7 Last check ' + lastPassAt();
     pills += '<button type="button" class="sg-pill ' + kk + '" data-grp="' + g.id + '" aria-expanded="' + on + '" aria-controls="sg-' + g.id + '" title="' + esc(title) + '">' + esc(g.label) +
       ' <span class="count">' + (ks.length - bad.length) + '/' + ks.length + '</span>' + (bad.length ? '<span class="sg-bad">' + esc(badTxt) + '</span>' : '') + '</button>';
     bodies += '<div class="sg-body" id="sg-' + g.id + '" data-grp="' + g.id + '"' + (on ? '' : ' hidden') + '><span class="sg-l">' + esc(g.label) + '</span>' + ks.map(srcTile).join('') + '</div>';
@@ -52,8 +52,6 @@ function renderMeta() {
   var meta = document.getElementById('meta');
   meta.innerHTML = pills ? '<div class="sources"><div class="sg-pills">' + pills + '</div>' + bodies + '</div>' : '';
   meta.hidden = !pills;
-  var last = document.getElementById('last-check');
-  if (last) last.innerHTML = '<span>Last check<b>' + esc(lastPassAt()) + '</b></span>';
   document.querySelectorAll('#meta .sg-pill').forEach(function (b) {
     b.addEventListener('click', function () {
       var body = document.getElementById('sg-' + b.dataset.grp), on = body.hidden;
@@ -483,6 +481,7 @@ function showTab(id) {
   if (id === 'inv') loadInvestigator();
   if (id === 'chat') loadChat();
   if (id === 'review') loadReview();
+  if (id === 'docs' && typeof docsShow === 'function') docsShow();
   if (ADMIN_TABS.indexOf(id) >= 0 && typeof adminShow === 'function') adminShow(id);
   if (id === 'integrations' && typeof intShow === 'function') intShow();
 }

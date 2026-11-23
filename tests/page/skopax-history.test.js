@@ -632,14 +632,14 @@ async function historyNamesTheCardsAndKeepsTheHowToInTheFoot() {
   //when
   const names = (id) => [...doc.querySelectorAll('#pod-list > li.hrow')].find((li) => li.textContent.includes(id)).querySelectorAll('summary .hk');
   const shown = (t) => [...names(t)].map((s) => [s.textContent, s.getAttribute('title')]);
-  const foot = doc.querySelector('#panel-docs .foot-body').textContent;
+  const foot = [...doc.querySelectorAll('#panel-docs details.docs-sec')].find((d) => d.querySelector('h3').textContent.trim() === 'Card actions').textContent;
   //then
   assert.deepStrictEqual(shown('two cards'), [['reports-service / ShipCorp 456 invalid client ip', KEY], ['checkout-service / ERROR', NEW]], 'a card still on the page reads svc / message or svc / label, the raw key in the tooltip');
   assert.deepStrictEqual(shown('gone cards'), [['x-service \u00b7 ERROR \u00b7 gone thing', GONE], ['platform/audit-service', FIVE]], 'a card no longer in the state shows its key parts without the source prefix');
   assert.deepStrictEqual(shown('answer'), [['reports-service / ShipCorp 456 invalid client ip', KEY]], 'an ask names its attached card the same way');
   assert.ok(!doc.querySelector('#pod-list summary').textContent.includes('log|'), 'no raw key in a summary');
   assert.strictEqual(doc.getElementById('q-hint').textContent, '', 'the Actions section opens without the long explanation');
-  assert.ok(foot.includes('Investigate, Mute, Known noise and Post-deploy check queue an action'), 'the explanation lives in How this works on the Docs page');
+  assert.ok(['Investigate', 'Mute 24 h', 'Known noise', 'Post-deploy check'].every((t) => foot.includes(t)), 'the explanation lives in Card actions on the Docs page');
   assert.deepStrictEqual(errors, []);
   close(dom);
   console.log('PASS historyNamesTheCardsAndKeepsTheHowToInTheFoot');

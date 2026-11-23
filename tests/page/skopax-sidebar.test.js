@@ -162,12 +162,12 @@ async function moreFoldsAndOpensForItsRows() {
   assert.ok(review.doc.getElementById('side-more-list').classList.contains('folded') && review.doc.getElementById('tab-review').getAttribute('aria-current') === 'page', 'opening Review keeps More folded; the active row stays visible by the fold rule');
   assert.deepStrictEqual(current(review.doc), ['tab-review']);
   assert.ok(!docs.doc.getElementById('panel-docs').hidden, 'Docs has its own page');
-  assert.match(docs.doc.getElementById('panel-docs').textContent, /How this works/);
+  assert.match(docs.doc.getElementById('panel-docs').textContent, /Get started/);
   assert.strictEqual(docs.doc.querySelector('#panel-docs a[href="/docs"]').textContent.trim(), 'API reference', 'with a link to the API reference');
   assert.strictEqual(docs.doc.querySelector('details.foot'), null, 'the foot of the page no longer holds the explainer');
   assert.deepStrictEqual(errors.concat(review.errors, docs.errors), []);
   review.dom.window.close(); docs.dom.window.close();
-  return 'More starts folded, a click unfolds and folds it, opening Review leaves it folded with the row current, and Docs is a page with How this works and the API reference link';
+  return 'More starts folded, a click unfolds and folds it, opening Review leaves it folded with the row current, and Docs is a page with the guide and the API reference link';
 }
 
 async function openingMoreScrollsItsRowsIntoView() {
@@ -514,8 +514,9 @@ async function theTopBarHoldsTheCrumbAndTheLastCheck() {
   assert.ok(top, 'the content column starts with the top bar');
   assert.deepStrictEqual([...top.children].map((c) => c.id || c.className), ['side-open', 'crumb', 'off-tag', 'top-find', 'top-r'], 'hamburger, crumb, stopped tag, the search field, then the right cluster');
   assert.strictEqual(doc.getElementById('env-tag'), null, 'the environment label moved into the instance switcher');
-  assert.deepStrictEqual([...doc.querySelector('.top-r').children].map((c) => c.id), ['top-find-btn', 'run-pill', 'last-check', 'inv-menu', 'top-bell', 'theme-btn'], 'the search icon leads the right cluster, and the bell sits before the theme button');
-  assert.match(doc.getElementById('last-check').textContent, /^Last check(\d\d:\d\d|\u2013)$/);
+  assert.deepStrictEqual([...doc.querySelector('.top-r').children].map((c) => c.id), ['top-find-btn', 'run-pill', 'inv-menu', 'top-bell', 'theme-btn'], 'the search icon leads the right cluster, the bell sits before the theme button, and there is no Last check');
+  assert.strictEqual(doc.getElementById('last-check'), null, 'no Last check in the top bar');
+  assert.ok([...doc.querySelectorAll('#meta .sg-pill')].every((b) => /Last check (\d\d:\d\d|\u2013)$/.test(b.title)), 'the source pills say when the last check ran');
   assert.strictEqual(doc.querySelector('.top .live'), null, 'the Activity rail keeps the live class to itself');
   assert.ok(doc.getElementById('meta').parentNode.classList.contains('overview'), 'the source pills sit in the overview card');
   assert.deepStrictEqual(errors, []);
