@@ -378,15 +378,60 @@ Errors, traffic, latency and cost of the turns an AI app traces to Langfuse.
 
 #### Langfuse tracing
 
-Skopax can also send its own AI calls to a Langfuse project, so you can see what each run, chat answer and check did, what it cost and where it failed. It is off by default.
+Skopax can also send its own AI calls to Langfuse, so you can see what each investigator run, chat answer and check did, what it cost and where it failed. It is off by default.
 
-1. Add a Langfuse instance as above, with a project key pair that may also write traces (a Viewer key can only read).
-2. In Admin > Investigator > Langfuse tracing, pick it as Langfuse instance (`langfuse.trace-instance`).
-3. Switch on Langfuse tracing in Admin > Features (`SKOPAX_FEATURE_LANGFUSE_TRACING`). While no instance is picked, or the picked one is off, has a problem or lacks a URL or a key, nothing is sent and the switch says what it needs.
+##### Two ways Skopax uses Langfuse
+
+Skopax talks to Langfuse in two different ways, and each way needs its own Langfuse project and its own Skopax instance:
+
+- **Watching an AI app.** Your app sends its traces to its own Langfuse project. A Langfuse instance in Skopax reads that project and raises `lf-*` cards when the app's errors, traffic, latency or cost look wrong. This is the plug-in described above.
+- **Receiving Skopax's own traces.** Skopax sends the traces of its own AI calls to a second Langfuse project. You pick the instance for that project in Admin > Investigator > Langfuse tracing. While tracing is on, Skopax only writes to that instance and does not watch it.
+
+| Langfuse project | Skopax instance | Role |
+| --- | --- | --- |
+| The project of your AI app, such as `shop-assistant` | A Langfuse instance, such as `shop-assistant`, with a Viewer key | Watched: raises `lf-*` cards |
+| A project of its own for Skopax, such as `skopax` | A second Langfuse instance, such as `skopax-traces`, with a Full access key | Receives Skopax's traces: not watched |
+
+In Langfuse, each project has its own API key pair, and the keys decide the project. Skopax has no project field: it sends to the project the keys belong to, and reads the project id from the keys (`GET /api/public/projects`) for the Open trace link. To send to another project, use the keys of that project.
+
+##### Set up tracing step by step
+
+1. **Create a project for Skopax in Langfuse.** In Langfuse, create a new project for Skopax's traces, for example named `skopax`. Do not use the project of an app that Skopax watches, for two reasons: the instance you pick for tracing stops being watched, so if it is the instance that watches your app, the app raises no more `lf-*` cards; and Skopax's traces would mix into the app's numbers, its traffic, latency and cost.
+2. **Create a key pair in that project.** In the new project open Settings > API Keys and choose Create new API keys. Keep Full access, the default, under Permissions. The keys must be allowed to write traces: a Viewer (read-only) key cannot send traces, and neither can a Scores ingestion key. Test connection also reads from the project, so a key that may only send traces can fail it. Copy both keys; the secret key is shown only once, and a key cannot be changed later.
+3. **Add the instance in Skopax.** Open Connect > Integrations. Choose + Add integration and then Langfuse, or, when Langfuse is already set up for an app, open Langfuse and add an instance. Fill in:
+   - `Name`: a name that says what the instance is for, such as `skopax-traces`.
+   - `URL`: the address of Langfuse. Langfuse Cloud has one address per region: `https://cloud.langfuse.com` (EU, the default), `https://us.cloud.langfuse.com` (US), `https://jp.cloud.langfuse.com` (Japan) and `https://hipaa.cloud.langfuse.com` (HIPAA). For your own Langfuse server, enter its address.
+   - `Public key` (it starts with `pk-lf-`) and `Secret key`: the key pair from step 2.
+
+   Leave `Environment`, `Namespace` and `Turn name` empty, and leave `Service` as it is: they only matter for watching an app, and Skopax does not watch a tracing instance. Press Test connection: it names the Langfuse project the keys belong to, so check that it says `skopax` (or the name you chose) and not the project of your app. Then choose Save & turn on. The instance must be on.
+4. **Pick the instance.** In Admin > Investigator > Langfuse tracing, set:
+   - `Langfuse instance` (`langfuse.trace-instance`): the instance from step 3.
+   - `Trace content` (`langfuse.trace-content`): `metadata`, the default, sends names, models, tokens, cost, timing, status, card keys and run ids, and no text. `full` also sends the prompts, questions, answers and tool output. Warning: even redacted, full content can hold customer data, and everyone who can read the Langfuse project sees it.
+   - `Traces sampled` (`langfuse.trace-sample`): the share of traces sent, from 0 to 100. Keep 100 while you set it up.
+5. **Switch it on.** In Admin > Features, switch on Langfuse tracing (`SKOPAX_FEATURE_LANGFUSE_TRACING`). While no instance is picked, or the picked one is off, has a problem or lacks a URL or a key, nothing is sent and the switch says what it needs.
+6. **Check that it works.**
+   1. On Connect > Integrations, the status line of the picked instance reads "Receives Skopax's own traces, so it is not watched".
+   2. Open a card and choose Investigate. The investigator takes the card within about two minutes, and the trace goes out within seconds after the run ends.
+   3. In Langfuse, open the `skopax` project and its Traces list. The trace is named after the run type; a run started with Investigate is named `investigate click`.
+   4. Open the trace. It holds one generation per model call, with the model, the tokens and the cost, and one tool step per tool the investigator called.
+   5. On the Investigator page, the run shows Open trace, which opens the same trace in Langfuse.
+
+##### If nothing shows up
+
+- **The switch says what is missing.** Read the note of Langfuse tracing in Admin > Features: it names what it still needs, such as an instance to pick, an instance that is off, or a missing URL or key.
+- **The instance is off or fails Test connection.** Turn it on, and press Test connection on Connect > Integrations to see the error.
+- **The keys belong to another project.** The traces land in the project the keys belong to. If Test connection names your app's project, create keys in the Skopax project and paste those.
+- **The keys are read-only.** A Viewer key passes Test connection, since that only reads, but Langfuse refuses its traces. Create a key with Full access.
+- **The sample is below 100.** `Traces sampled` below 100 leaves some traces out on purpose. Failed runs and failed AI calls are always sent.
+- **The run made no model call.** A run that made no model call and did not fail sends nothing. Start a run that reads something, such as Investigate on a firing card.
+- **It is not there yet.** Traces go out in the background, within seconds after a run, answer or check ends. Refresh the Traces list in Langfuse.
+- **Tracing was switched off.** Switched off, sending stops at once, and traces still waiting are dropped.
+
+##### What tracing sends
 
 - **What is sent:** one trace per investigator run (named card run, investigate click, page question, slack question, chat answer or deploy assessment), per topic check, small-talk reply, self-review and plug-in AI call, and a trace named model call for any other AI call. In each trace, every model call is a generation with the model, the provider, the tokens (input, output, cache read and cache write), the cost in USD, the time it took and, when it failed, the error kind; every tool call of the investigator is a tool step with its name, time and whether it worked. Each step carries the metadata of its trace: the card keys, the run id, the workspace name, the provider, the run's trigger and mode, and the Skopax version (also sent as the release).
 - **Plug-in AI calls:** every plug-in AI call, including one made in a hook thread such as a check, shows as a separate trace named plug-in AI, not inside a run's trace.
-- **Content** (`langfuse.trace-content`): `metadata` (the default) sends no prompts, questions, answers or tool output. `full` sends them too, through the same redaction as plug-in output (e-mail addresses, phone numbers, card and account numbers, keys and tokens, and the redaction patterns of the serving plug-ins), and cut to 4000 characters each; only the text of a tool answer is sent, never an image. Warning: full content can still hold customer data, and anyone who can read the Langfuse project sees it.
+- **Content** (`langfuse.trace-content`): `metadata` (the default) sends no prompts, questions, answers or tool output. `full` sends them too, through the same redaction as plug-in output (e-mail addresses, phone numbers, card and account numbers, keys and tokens, and the redaction patterns of the serving plug-ins), and cut to 4000 characters each; only the text of a tool answer is sent, never an image. Warning: full content can still hold customer data, and anyone who can read the Langfuse project sees it. In `metadata` mode each step still gets a short input and output: counts, sizes, token totals and names only (the tools offered and called, the argument names a tool declares, stop reason, outcome), never the text of a prompt, answer or tool result. A tool name or argument the model made up shows as unknown or other.
 - **Sampling** (`langfuse.trace-sample`): the share of traces sent, 0 to 100, default 100, decided once per trace. A run that ended other than done or skipped, and an AI call that failed, are always sent. A run that made no model call and did not fail sends nothing.
 - **Not watched:** while tracing is on, the picked instance receives Skopax's own traces, so the `langfuse` check skips it: it makes no reads and raises no `lf-*` cards for it (cards it had close at the next pass), and its status on Connect > Integrations reads "Receives Skopax's own traces, so it is not watched". Other Langfuse instances are still watched, and with tracing off the picked one is watched again. Give Skopax's traces a project of their own, so the check still watches your app.
 - **Open trace:** on the Investigator page, a recent run whose trace went out shows Open trace, which opens the trace in Langfuse. The run keeps the Langfuse address and project the trace was sent to, so the link keeps pointing there after the picked instance changes. The project id is read once from `GET /api/public/projects` after the first traces went out; if it cannot be read, or the batch with the trace was dropped, the run shows no link.

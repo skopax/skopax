@@ -608,6 +608,7 @@ class Investigator:
         if handle.trace is not None:
             handle.trace.on_sent = lambda sent: self.store.update_investigation(run_id, {'trace': sent})
             try:
+                handle.trace.note_brief(trigger=trigger, cards=len(keys))
                 handle.trace.given(ask or ', '.join(keys))
             except Exception as e:
                 log.warning('run trace input not kept: %s', error_kind(e))
@@ -618,6 +619,7 @@ class Investigator:
         try:
             if outcome not in TRACE_OK:
                 trace.fail(f'{outcome}: {error}' if error else outcome)
+            trace.finished(outcome)
             trace.answered(recap)
         except Exception as e:
             log.warning('run trace not finished: %s', error_kind(e))

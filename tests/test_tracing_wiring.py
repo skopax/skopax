@@ -9,7 +9,7 @@ from tests.fake_anthropic import reply, text
 from tests.fake_http import FakeHttp
 from tests.plugin_kit import add_instance
 from tests.test_investigator import KEY, NOW, investigator, note_and_recap, seed
-from tests.test_tracing import PROJECT, URL, attrs, installed, make, spans
+from tests.test_tracing import PROJECT, URL, attrs, make, spans
 from skopax import tracing
 from skopax.app import create_app
 from skopax.config import load_settings
@@ -26,8 +26,6 @@ PK, SK = 'pk-lf-trace', 'sk-lf-trace-SECRET'
 VALUES = {'url': URL, 'public-key': PK, 'secret-key': SK}
 NEEDS = msg('features.needs.trace_instance')
 OTHER = 'log|b|ERROR|y'
-
-__all__ = ['installed']
 
 
 def boom() -> Exception:

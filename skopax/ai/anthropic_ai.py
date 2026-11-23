@@ -60,7 +60,7 @@ class AnthropicAi:
         return tracing.generation(self.provider, 'turn', model, system, messages, lambda: turn_of(self.client.beta.messages.create(
             model=model, max_tokens=max_tokens, system=[{'type': 'text', 'text': system, 'cache_control': cache}], tools=tools, messages=cache_marked(messages),
             thinking={'type': 'adaptive'}, output_config={'effort': effort}, betas=[FALLBACK_BETA],
-            extra_body={'fallbacks': 'default'}), model))
+            extra_body={'fallbacks': 'default'}), model), tools)
 
     def once(self, model: str, system: str, messages: list[dict], max_tokens: int, effort: str, thinking: str = THINK_OFF, schema: dict | None = None) -> Turn:
         output = {'effort': effort} | ({'format': {'type': 'json_schema', 'schema': schema}} if schema is not None else {})

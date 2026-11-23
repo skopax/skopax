@@ -41,6 +41,12 @@ JOIN_S = 1.0
 CONTENT_MAX = 4000
 RAW_MAX = 4 * CONTENT_MAX
 META_MAX = 200
+OFFERED_MAX = 50
+CALLS_MAX = 20
+UNKNOWN = 'unknown'
+OTHER = 'other'
+STOPS = frozenset({'end_turn', 'tool_use', 'max_tokens', 'stop_sequence', 'refusal', 'pause_turn', 'stop', 'length', 'tool_calls', 'content_filter', 'model_context_window_exceeded'})
+OUTCOMES = frozenset({'done', 'skipped', 'failed', 'capped', 'refused', 'stopped', 'off', 'abandoned'})
 SYSTEM_MAX = 1000
 LAST_MAX = 2600
 LOG_EVERY = 100
@@ -116,6 +122,8 @@ class Span:
     error: str | None = None
     input: str | None = None
     output: str | None = None
+    brief_in: dict | None = None
+    brief_out: dict | None = None
 
 
 class Trace:
@@ -136,6 +144,9 @@ class Trace:
         self.calls = 0
         self.closed = False
         self.on_sent: Callable[[dict], None] | None = None
+        self.brief: dict = {}
+        self.outcome: str | None = None
+        self.offered: dict[str, frozenset[str]] = {}
 
     @property
     def failed(self) -> bool:
@@ -147,6 +158,23 @@ class Trace:
 
     def fail(self, why: str) -> None:
         self.error = cut(str(why or 'failed'), META_MAX)
+
+    def note_brief(self, **fields) -> None:
+        self.brief.update({k: v for k, v in fields.items() if isinstance(v, (str, int, float, bool))})
+
+    def finished(self, outcome: str) -> None:
+        self.outcome = outcome if outcome in OUTCOMES else OTHER
+
+    def offer(self, tools) -> None:
+        self.offered.update(offered_schemas(tools))
+
+    def root_brief_in(self) -> dict | None:
+        return None if self.full else {'kind': self.name} | self.brief
+
+    def root_brief_out(self) -> dict | None:
+        if self.full:
+            return None
+        return {'outcome': self.outcome or ('failed' if self.failed else 'done'), 'model_calls': self.calls, 'tool_calls': sum(1 for s in self.spans if s.kind == TOOL)}
 
     def given(self, value) -> None:
         if self.full and value not in (None, ''):
@@ -163,7 +191,7 @@ class Trace:
         self.spans.append(span)
 
     def generation(self, provider: str, kind: str, model: str, started: float, ended: float, usage=None, cost: float | None = None, stop: str | None = None,
-                   error: str | None = None, given=None, said=None) -> None:
+                   error: str | None = None, given=None, said=None, brief_in: dict | None = None, brief_out: dict | None = None) -> None:
         self.calls += 1
         attrs = {'langfuse.observation.model.name': model, 'langfuse.observation.metadata.provider': provider, 'langfuse.observation.metadata.call': kind}
         if usage is not None:
@@ -174,11 +202,115 @@ class Trace:
         if stop:
             attrs['langfuse.observation.metadata.stop'] = stop
         self.add(Span(span_id(), self.root, f'{provider} {kind}', GENERATION, started, ended, attrs, error,
-                      raw_of(given) if self.full and given is not None else None, raw_of(said) if self.full and said is not None else None))
+                      raw_of(given) if self.full and given is not None else None, raw_of(said) if self.full and said is not None else None,
+                      None if self.full else brief_in, None if self.full else brief_out))
 
     def tool(self, name: str, started: float, ended: float, ok: bool, given=None, said=None) -> None:
-        self.add(Span(span_id(), self.root, str(name)[:META_MAX], TOOL, started, ended, {}, None if ok else TOOL_FAILED,
-                      raw_of(given) if self.full and given is not None else None, raw_of(plain_text(said)) if self.full and said is not None else None))
+        if self.full:
+            self.add(Span(span_id(), self.root, str(name)[:META_MAX], TOOL, started, ended, {}, None if ok else TOOL_FAILED,
+                          raw_of(given) if given is not None else None, raw_of(plain_text(said)) if said is not None else None))
+            return
+        try:
+            brief_in = tool_input_brief(name, given, self.offered)
+        except Exception as e:
+            log.warning('tool call brief not made: %s', error_kind(e))
+            brief_in = {'tool': UNKNOWN, 'args': []}
+        self.add(Span(span_id(), self.root, brief_in['tool'], TOOL, started, ended, {}, None if ok else TOOL_FAILED, None, None, brief_in, tool_output_brief(ok, said)))
+
+
+def brief_text(found: dict | None) -> str | None:
+    if found is None:
+        return None
+    try:
+        return cut(json.dumps(found, default=str))
+    except Exception:
+        return None
+
+
+def count(value) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def capped_names(names: list[str], most: int) -> list[str]:
+    return names if len(names) <= most else names[:most] + [f'+{len(names) - most}']
+
+
+def name_of(tool) -> str | None:
+    if not isinstance(tool, dict):
+        return None
+    name = tool.get('name')
+    if isinstance(name, str) and name:
+        return name[:META_MAX]
+    kind = tool.get('type')
+    return kind[:META_MAX] if isinstance(kind, str) and kind else None
+
+
+def tool_names(tools) -> list[str]:
+    return [n for n in (name_of(t) for t in (tools if isinstance(tools, (list, tuple)) else [])) if n]
+
+
+def offered_schemas(tools) -> dict[str, frozenset[str]]:
+    out = {}
+    for t in tools if isinstance(tools, (list, tuple)) else []:
+        name = name_of(t)
+        if not name:
+            continue
+        schema = t.get('input_schema') if isinstance(t.get('input_schema'), dict) else {}
+        props = schema.get('properties') if isinstance(schema.get('properties'), dict) else {}
+        out[name] = frozenset(k for k in props if isinstance(k, str))
+    return out
+
+
+def safe_name(name, allowed) -> str:
+    return name if isinstance(name, str) and name in allowed else UNKNOWN
+
+
+def prompt_chars(messages) -> int:
+    rows = messages if isinstance(messages, (list, tuple)) else []
+    total = 0
+    for m in rows:
+        try:
+            total += len(plain_text(m.get('content') if isinstance(m, dict) else m))
+        except Exception:
+            continue
+    return total
+
+
+def asked_brief(system, messages, tools, usage) -> dict:
+    rows = messages if isinstance(messages, (list, tuple)) else []
+    found = {'messages': len(rows), 'system_chars': len(system) if isinstance(system, str) else 0, 'prompt_chars': prompt_chars(rows)}
+    if usage is not None:
+        try:
+            found['input_tokens'] = count(usage.input) + count(usage.cache_read) + count(usage.cache_write) + count(usage.cache_write_long)
+        except Exception:
+            pass
+    return found | {'tools_offered': capped_names(tool_names(tools), OFFERED_MAX)}
+
+
+def answer_brief(turn, tools=None) -> dict:
+    allowed = set(tool_names(tools))
+    calls = getattr(turn, 'calls', None)
+    names = [safe_name(getattr(c, 'name', None), allowed) for c in calls] if isinstance(calls, (list, tuple)) else []
+    said = getattr(turn, 'text', None)
+    stop = getattr(turn, 'stop', None)
+    return {'stop_reason': None if stop is None else stop if stop in STOPS else OTHER, 'tool_calls': capped_names(names, CALLS_MAX), 'answer_chars': len(said) if isinstance(said, str) else 0}
+
+
+def tool_input_brief(name, args, offered: dict | None = None) -> dict:
+    offered = offered or {}
+    known = isinstance(name, str) and name in offered
+    allowed = offered.get(name, frozenset()) if known else frozenset()
+    keys = [k for k in args if isinstance(k, str) and k in allowed] if isinstance(args, dict) else []
+    other = (len(args) - len(keys)) if isinstance(args, dict) else 0
+    return {'tool': name if known else UNKNOWN, 'args': sorted(keys)} | ({'other': other} if other else {})
+
+
+def tool_output_brief(ok: bool, said) -> dict:
+    try:
+        size = len(plain_text(said))
+    except Exception:
+        size = 0
+    return {'ok': bool(ok)} | ({} if ok else {'error': TOOL_FAILED}) | {'result_chars': size}
 
 
 def shown(text: str | None) -> str | None:
@@ -203,8 +335,8 @@ def otlp_span(trace: Trace, span: Span, common: dict) -> dict:
     attrs = dict(common) | {'langfuse.observation.type': span.kind} | span.attrs
     if span.error:
         attrs |= {'langfuse.observation.level': 'ERROR', 'langfuse.observation.status_message': span.error}
-    attrs['langfuse.observation.input'] = shown(span.input)
-    attrs['langfuse.observation.output'] = shown(span.output)
+    attrs['langfuse.observation.input'] = shown(span.input) if span.input is not None else brief_text(span.brief_in)
+    attrs['langfuse.observation.output'] = shown(span.output) if span.output is not None else brief_text(span.brief_out)
     out = {'traceId': trace.id, 'spanId': span.id, 'name': span.name, 'kind': 1, 'startTimeUnixNano': nanos(span.start), 'endTimeUnixNano': nanos(max(span.end, span.start)),
            'attributes': attributes(attrs), 'status': {'code': ERROR, 'message': span.error} if span.error else {'code': OK}}
     if span.parent:
@@ -216,7 +348,7 @@ def encoded(traces: list[Trace], version: str = __version__) -> dict:
     spans = []
     for trace in traces:
         common = {'langfuse.trace.name': trace.name, 'langfuse.release': version} | {f'langfuse.trace.metadata.{k}': v for k, v in trace.meta.items()}
-        root = Span(trace.root, None, trace.name, SPAN, trace.started, trace.ended or trace.started, {}, trace.error, trace.input, trace.output)
+        root = Span(trace.root, None, trace.name, SPAN, trace.started, trace.ended or trace.started, {}, trace.error, trace.input, trace.output, trace.root_brief_in(), trace.root_brief_out())
         if trace.dropped:
             root.attrs['langfuse.observation.metadata.droppedSpans'] = trace.dropped
         spans += [otlp_span(trace, s, common) for s in [root] + trace.spans]
@@ -525,7 +657,7 @@ def priced(model: str, usage) -> float | None:
         return None
 
 
-def generation(provider: str, kind: str, model: str, system: str, messages: list, call_model: Callable[[], object]):
+def generation(provider: str, kind: str, model: str, system: str, messages: list, call_model: Callable[[], object], tools: list | None = None):
     trace = CURRENT.get()
     if trace is None:
         found = TRACER[0]
@@ -535,18 +667,24 @@ def generation(provider: str, kind: str, model: str, system: str, messages: list
         if handle.trace is None:
             return call_model()
         try:
-            return generation(provider, kind, model, system, messages, call_model)
+            return generation(provider, kind, model, system, messages, call_model, tools)
         except BaseException as e:
             failed(handle.trace, e)
             raise
         finally:
             end(handle)
+    if tools and not trace.full:
+        try:
+            trace.offer(tools)
+        except Exception as e:
+            log.warning('offered tools not noted: %s', error_kind(e))
     started = now()
     try:
         turn = call_model()
     except Exception as e:
         try:
-            trace.generation(provider, kind, model, started, now(), error=error_kind(e), given=asked(system, messages) if trace.full else None)
+            trace.generation(provider, kind, model, started, now(), error=error_kind(e), given=asked(system, messages) if trace.full else None,
+                             brief_in=None if trace.full else asked_brief(system, messages, tools, None), brief_out=None if trace.full else {'error': error_kind(e)})
         except Exception as bad:
             log.warning('model call not traced: %s', error_kind(bad))
         raise
@@ -554,7 +692,8 @@ def generation(provider: str, kind: str, model: str, system: str, messages: list
         served = getattr(turn, 'model', None) or model
         usage = getattr(turn, 'usage', None)
         trace.generation(provider, kind, served, started, now(), usage, priced(served, usage) if usage is not None else None, getattr(turn, 'stop', None),
-                         given=asked(system, messages) if trace.full else None, said=answer(turn) if trace.full else None)
+                         given=asked(system, messages) if trace.full else None, said=answer(turn) if trace.full else None,
+                         brief_in=None if trace.full else asked_brief(system, messages, tools, usage), brief_out=None if trace.full else answer_brief(turn, tools))
     except Exception as e:
         log.warning('model call not traced: %s', error_kind(e))
     return turn

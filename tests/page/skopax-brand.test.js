@@ -129,13 +129,13 @@ async function theDefaultNameGivesTheShortAttributionLine() {
 async function theScriptFallbackBuildsTheFullAttributionAndNeverShortensAServerLine() {
   //given
   const blank = (name) => ({name, slug: 'x', version: '0.1.0', attribution: {text: '', href: 'https://skopax.io'}});
-  const custom = await boot(blank('Acme Ops'), {name: 'Acme Ops', slug: 'acme-ops', version: '0.5.6'});
-  const plain = await boot(blank('Skopax'), {name: 'Skopax', slug: 'skopax', version: '0.5.6'});
+  const custom = await boot(blank('Acme Ops'), {name: 'Acme Ops', slug: 'acme-ops', version: '0.5.7'});
+  const plain = await boot(blank('Skopax'), {name: 'Skopax', slug: 'skopax', version: '0.5.7'});
   const kept = await boot(PLAIN, {name: 'Skopax', slug: 'skopax', version: '0.1.0'});
 
   //then
-  assert.strictEqual(custom.doc.getElementById('attribution').textContent, 'Acme Ops \u00b7 powered by Skopax 0.5.6');
-  assert.strictEqual(plain.doc.getElementById('attribution').textContent, 'Skopax 0.5.6 \u00b7 skopax.io');
+  assert.strictEqual(custom.doc.getElementById('attribution').textContent, 'Acme Ops \u00b7 powered by Skopax 0.5.7');
+  assert.strictEqual(plain.doc.getElementById('attribution').textContent, 'Skopax 0.5.7 \u00b7 skopax.io');
   assert.strictEqual(kept.doc.getElementById('attribution').textContent, PLAIN.attribution.text);
   for (const page of [custom, plain, kept]) { assert.deepStrictEqual(page.errors, []); page.w.close(); }
   console.log('PASS the script fallback builds the full attribution and keeps a correct server line');
@@ -181,7 +181,7 @@ async function aMissingOrUnreadableBrandBlobStillGetsTheFallbackLine() {
   //then
   for (const page of [missing, unreadable]) {
     assert.deepStrictEqual(page.errors, []);
-    assert.strictEqual(page.doc.getElementById('attribution').textContent, 'Skopax 0.5.6 \u00b7 skopax.io');
+    assert.strictEqual(page.doc.getElementById('attribution').textContent, 'Skopax 0.5.7 \u00b7 skopax.io');
     assert.strictEqual(page.doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
     page.w.close();
   }

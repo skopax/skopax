@@ -260,8 +260,9 @@ STATIC = (
     T('investigate.web-searches', 'investigate_web_searches', INV, 'Web searches per run', 'Web searches one run may make, $0.01 each; 0 turns search off', 'int', 0, 10),
     T('investigate.web-fetches', 'investigate_web_fetches', INV, 'Web pages per run', 'Web pages one run may read; 0 turns page reads off', 'int', 0, 10),
     T('screenshot.max-per-day', 'screenshot_max_per_day', INV, 'Screenshots per day', 'Screenshots plug-in tools may store per day, all runs together; it resets at local midnight', 'int', 0, 500),
-    T(TRACE_INSTANCE_KEY, 'langfuse_trace_instance', INV, 'Langfuse instance', 'The Langfuse integration (Connect \u203a Integrations) that Langfuse tracing sends to; '
-      'its keys must be allowed to write traces. None sends nothing. Turn tracing on in Admin \u203a Features', 'choice', choices=trace_instances, choice_labels={'': 'None'}),
+    T(TRACE_INSTANCE_KEY, 'langfuse_trace_instance', INV, 'Langfuse instance', 'The Langfuse instance (Connect \u203a Integrations) that {product} sends its own traces to. Pick one for a separate Langfuse project, for example one named skopax, '
+      'not the project of an app {product} watches: the picked instance stops being watched. Its keys must be allowed to write traces; a read-only key cannot. '
+      'None sends nothing. Turn tracing on in Admin \u203a Features', 'choice', choices=trace_instances, choice_labels={'': 'None'}),
     T('langfuse.trace-content', 'langfuse_trace_content', INV, 'Trace content', 'metadata sends names, models, tokens, cost, timing, status, card keys and run ids only. '
       'full also sends prompts, questions, answers and tool output, redacted and cut; Warning: they can hold customer data and pass to the Langfuse project and everyone who can read it',
       'choice', choices=TRACE_CONTENTS),
