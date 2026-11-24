@@ -99,7 +99,7 @@ def display_name(owner: str | None, name_of) -> str | None:
     return name if name and '@' not in name else None
 
 
-def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = '', notify=None, extra_projects=(), name_of=None) -> str:
+def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = '', notify=None, extra_projects=(), name_of=None, meta=None, field_kind=None) -> str:
     kind, key = action['type'], action['key']
     if kind not in ANY_RECORD and information_item(store, key):
         raise Refused(msg('cards.information_item', key=key))
@@ -108,11 +108,13 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
             raise Refused('Jira is not set up on this service')
         by = (action.get('requestedBy') or '').strip()
         try:
-            new_key, warning = tickets.create_task(store, jira, settings, key, action.get('title'), by, (action.get('reason') or '').strip(), base_url or settings.base_url, action.get('description'), action.get('points'), action.get('project'), action.get('epic'), tuple(extra_projects), display_name(by, name_of))
+            new_key, warning, scope = tickets.create_task(store, jira, settings, key, action.get('title'), by, (action.get('reason') or '').strip(), base_url or settings.base_url, action.get('description'), action.get('points'),
+                                                          action.get('project'), action.get('epic'), tuple(extra_projects), display_name(by, name_of), scope=action.get('scope'), sprint=action.get('sprint'),
+                                                          fields=action.get('fields'), meta=meta, field_kind=field_kind)
         except (ClientRefused, SourceDown) as e:
             raise Refused(e.text) from None
         told = notify(key, new_key, by) if notify else []
-        return f'{new_key} created · In progress · {by}' + (f" · notified: {', '.join(told)}" if told else '') + (f' · {warning}' if warning else '')
+        return f'{new_key} created · In progress · {by}' + (f" · scope {', '.join(scope)}" if scope else '') + (f" · notified: {', '.join(told)}" if told else '') + (f' · {warning}' if warning else '')
     if kind == 'mute':
         hours = action.get('hours') or DEFAULT_MUTE_HOURS
         until = utc_now() + dt.timedelta(hours=hours)
@@ -165,7 +167,7 @@ def apply(store: Store, action: dict, jira=None, settings=None, base_url: str = 
         ticket = (action.get('ticket') or '').strip()
         why = (action.get('reason') or '').strip()
         held = store.anomaly(key).get('owner')
-        owner = (action.get('owner') or '').strip() or (None if held else (action.get('requestedBy') or '').strip() or None)
+        owner = (action.get('owner') or '').strip() or (action.get('requestedBy') or '').strip() or None
         if why:
             store.note(key, note_under(store.anomaly(key).get('note'), why, action.get('requestedBy'), 'Taken'), by=history.PERSON)
         store.triage(key, 'progress', ticket=ticket or None, owner=owner, owner_name=display_name(owner, name_of))

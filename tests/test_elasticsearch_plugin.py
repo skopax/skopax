@@ -43,6 +43,8 @@ PRIVILEGES = f'{ES_URL}/_security/user/_has_privileges'
 APM_QUERY = f'{APM_URL}/_query'
 USER = 'alice@example.com'
 V1_KEYS = ('elastic.logging-url', 'elastic.logging-api-key', 'elastic.apm-url', 'elastic.apm-api-key')
+OTEL_INDEX = 'traces-*.otel-*'
+DEFAULT_APM = f'traces-apm*,{OTEL_INDEX}'
 NS_PATTERN = r'(?:\.ds-)?app-(?P<ns>.+)-logs-.*'
 
 LOG_ROWS = [
@@ -81,7 +83,7 @@ def missing_index(index: str = 'traces-apm*') -> HttpError:
 
 def by_query(logs=None, apm=None):
     def answer(params, body):
-        apm_asked = 'traces-apm' in body['query']
+        apm_asked = 'traces-apm' in body['query'] or OTEL_INDEX in body['query']
         got = (apm if apm is not None else esql(APM_ROWS)) if apm_asked else (logs if logs is not None else esql(LOG_ROWS))
         return got
 
@@ -89,7 +91,9 @@ def by_query(logs=None, apm=None):
 
 
 def searched(url: str, *patterns: str, shards: int = 3) -> dict:
-    return {('POST', f'{url}/{p}/_search'): {'_shards': {'total': shards}, 'hits': {'hits': []}} for p in patterns}
+    found = {('POST', f'{url}/{p}/_search'): {'_shards': {'total': shards}, 'hits': {'hits': []}} for p in patterns}
+    empty = {('POST', f'{url}/{OTEL_INDEX}/_search'): {'_shards': {'total': 0}, 'hits': {'hits': []}}} if 'traces-apm*' in patterns and OTEL_INDEX not in patterns else {}
+    return empty | found
 
 
 def es_http(logs=None, apm=None, url: str = QUERY) -> FakeHttp:
@@ -178,7 +182,7 @@ def test_elasticsearch_defaults_are_neutral():
     kinds = {f.key: f.kind for f in elasticsearch.PLUGIN.fields}
 
     # then
-    assert defaults == {'url': '', 'api-key': '', 'apm-url': '', 'apm-api-key': '', 'ca': '', 'ca-pinned': 'false', 'ui-url': '', 'data-view': '', 'log-index': 'logs-*', 'apm-index': 'traces-apm*',
+    assert defaults == {'url': '', 'api-key': '', 'apm-url': '', 'apm-api-key': '', 'ca': '', 'ca-pinned': 'false', 'ui-url': '', 'data-view': '', 'log-index': 'logs-*', 'apm-index': DEFAULT_APM,
                         'index-namespace': '', 'namespace-field': 'kubernetes.namespace', 'service-field': 'service.name', 'level-field': 'log.level', 'message-field': 'message',
                         'error-field': 'error.message', 'logflow-index': '', 'message-mask': '', 'apm-p95-overrides': '', 'discover-columns': ''}
     assert kinds == {'url': 'url', 'api-key': 'secret', 'apm-url': 'url', 'apm-api-key': 'secret', 'ca': 'pem', 'ca-pinned': 'bool', 'ui-url': 'url', 'data-view': 'text', 'log-index': 'text', 'apm-index': 'text',
@@ -245,7 +249,7 @@ def test_the_elasticsearch_test_reads_each_index_and_names_a_missing_read_privil
     no_monitor = FakeHttp({('GET', root): HttpError(403, root, es_error('security_exception', 'action [cluster:monitor/main] is unauthorized')), **searched(ES_URL, 'logs-*', 'traces-apm*')})
     hidden = FakeHttp({('GET', root): {'version': {'number': '8.15.0'}}, **searched(ES_URL, 'traces-apm*'), ('POST', f'{ES_URL}/logs-*/_search'): {'_shards': {'total': 0}},
                        ('POST', PRIVILEGES): {'has_all_requested': False, 'index': {'logs-*': {'read': False}}}})
-    fresh = FakeHttp({('GET', root): {'version': {'number': '8.15.0'}}, **searched(ES_URL, 'logs-*'), ('POST', f'{ES_URL}/traces-apm*/_search'): {'_shards': {'total': 0}},
+    fresh = FakeHttp({('GET', root): {'version': {'number': '8.15.0'}}, **searched(ES_URL, 'logs-*'), **searched(ES_URL, 'traces-apm*', OTEL_INDEX, shards=0),
                       ('POST', PRIVILEGES): {'has_all_requested': True, 'index': {'traces-apm*': {'read': True}}}})
 
     def check(http, **values):
@@ -260,7 +264,7 @@ def test_the_elasticsearch_test_reads_each_index_and_names_a_missing_read_privil
     assert (refused.ok, refused.summary) == (False, said)
     assert (unseen.ok, unseen.summary) == (False, said)
     assert (monitor.ok, monitor.summary) == (True, 'Elasticsearch (no version without the monitor privilege)')
-    assert (empty.ok, empty.summary) == (True, 'Elasticsearch 8.15.0, no index matches traces-apm* yet')
+    assert (empty.ok, empty.summary) == (True, f'Elasticsearch 8.15.0, no index matches {DEFAULT_APM} yet (the API key would also need read on {OTEL_INDEX})')
     assert no_read.hits(f'{ES_URL}/logs-*/_search')[0][3] == {'size': 0}
     assert hidden.hits(PRIVILEGES)[0][3] == {'index': [{'names': ['logs-*'], 'privileges': ['read']}]}
     assert not any('secret-key' in r.summary for r in (refused, monitor, unseen, empty))
@@ -293,7 +297,7 @@ def test_logs_and_apm_refused_for_permission_are_never_no_data(store: Store):
     access = {a['ranKey']: a for a in cards.values() if a['sig'] == 'no-access'}
     assert set(access) == {'logs:access:logs', 'apm:access:apm'}
     assert access['logs:access:logs']['label'] == 'Elasticsearch cannot read logs: the API key lacks the read privilege on logs-*'
-    assert access['apm:access:apm']['label'] == 'Elasticsearch cannot read apm: the API key lacks the read privilege on traces-apm*'
+    assert access['apm:access:apm']['label'] == f'Elasticsearch cannot read apm: the API key lacks the read privilege on {DEFAULT_APM}'
     assert all(a['sev'] == 'warn' and 'key-0042' not in a['what'] + a['label'] for a in access.values())
     assert {k for k, a in after.items() if a['status'] == 'open' and a['sig'] == 'no-access'} == set()
     assert access['logs:access:logs']['key'] == 'no-access|-/logs|logs'
@@ -1184,7 +1188,7 @@ def test_the_elasticsearch_test_reads_only_what_the_switched_on_checks_need(stor
     # given
     root = f'{ES_URL}/'
     denied = HttpError(403, f'{ES_URL}/traces-apm*/_search', es_error('security_exception', 'unauthorized'))
-    http = FakeHttp({('GET', root): {'version': {'number': '8.15.0'}}, **searched(ES_URL, 'logs-*'), ('POST', f'{ES_URL}/traces-apm*/_search'): denied, ('POST', QUERY): esql([])})
+    http = FakeHttp({('GET', root): {'version': {'number': '8.15.0'}}, **searched(ES_URL, 'logs-*'), **searched(ES_URL, OTEL_INDEX, shards=0), ('POST', f'{ES_URL}/traces-apm*/_search'): denied, ('POST', QUERY): esql([])})
 
     def tested(off: set[str], **values):
         runtime = es_runtime(store, {'main': {'api-key': 'secret-key', **values}}, http)

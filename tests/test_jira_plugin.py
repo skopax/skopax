@@ -1,3 +1,4 @@
+import logging
 import base64
 import dataclasses
 import datetime as dt
@@ -350,6 +351,39 @@ def test_a_refusal_from_the_plugin_client_fails_the_page_action_with_its_text(st
     assert not isinstance(raw.value, JiraRefused) and raised == raw.value.text
     assert raised.startswith('Jira answered HTTP 400 to the create')
     assert 'triage' not in store.anomaly('log|checkout-service|ERROR|boom')
+
+
+def test_a_400_on_create_names_the_fields_jira_refused_without_their_values(caplog):
+    # given
+    caplog.set_level(logging.WARNING)
+    body = json.dumps({'errorMessages': ['Sprint is closed'], 'errors': {'customfield_10016': "Field 'customfield_10016' cannot be set. It is not on the appropriate screen, or unknown.",
+                                                                      'parent': 'Given parent work item does not belong to appropriate hierarchy.'}})
+    http = FakeHttp({('POST', CREATE): HttpError(400, CREATE, body)})
+    client = Jira('bot@example.com', 'jt', http, cloud_id='cid', site=SITE)
+
+    # when
+    with pytest.raises(contract.Refused) as raised:
+        client.create_issue({'summary': 'x', 'customfield_10016': 3})
+    text = raised.value.text
+
+    # then
+    assert text.startswith('Jira answered HTTP 400 to the create: ')
+    assert "customfield_10016: Field 'customfield_10016' cannot be set" in text and 'parent: Given parent work item' in text and 'Sprint is closed' in text
+    assert len(text) <= 600
+    assert any('customfield_10016' in r.getMessage() and 'parent' in r.getMessage() for r in caplog.records)
+
+
+def test_a_400_on_create_without_a_readable_body_keeps_the_old_sentence():
+    # given
+    http = FakeHttp({('POST', CREATE): HttpError(400, CREATE, '<html>bad</html>')})
+    client = Jira('bot@example.com', 'jt', http, cloud_id='cid', site=SITE)
+
+    # when
+    with pytest.raises(contract.Refused) as raised:
+        client.create_issue({'summary': 'x'})
+
+    # then
+    assert raised.value.text == 'Jira answered HTTP 400 to the create; check the project, parent, sprint and the field values the server sends'
 
 
 def test_a_jira_link_in_a_slack_draft_needs_the_serving_instance(store: Store):

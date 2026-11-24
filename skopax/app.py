@@ -37,6 +37,7 @@ from skopax.auth import LOGIN_COOKIE, LOGIN_SECONDS, SESSION_COOKIE, bearer_toke
 from skopax import actions as page_actions
 from skopax import __version__, backfill, brand, causes, clock as clocks, costs, drafts, history, information, messages, redact as redaction, tags, toolusage
 from skopax.jiralinks import JiraLinks
+from skopax.jirafields import ROLES as JIRA_FIELD_ROLES, JiraFields, dialog_view, field_choices
 from skopax.backlink import Backlinks
 from skopax.kube import Kube
 from skopax import locales as core_locales
@@ -736,6 +737,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     mcp_auth = McpAuth(settings, signon, signin, base_url, clock=clock, sessions_after=stop_time)
     pusher = Pusher(slack, settings.slack_push_user, base_url, on=lambda: features.on('push'))
     routes = Routes(store, runtime, settings, attribution=chat_attribution, base=lambda: base_url, autostart=True, only_new=True)
+    jira_fields = JiraFields(jira)
     enricher = Enricher(store, gitlab, jira, live_projects)
     notes = StateNotes(store, slack, settings.slack_state_notes, jira_site=jira_site, mention=lambda email: slack_ids.mention(email), name_of=lambda email: slack_ids.name(email),
                        by_name=lambda name: tagreport.name_mentions(slack_people, slack_ids)(name))
@@ -1113,7 +1115,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         before = notes.watch(action)
         seen = notices.watch(action)
         linked = backlinks.watch(action)
-        result = page_actions.apply(store, action, jira, settings, notify=task_notice, extra_projects=plugin_projects(), name_of=user_name)
+        result = page_actions.apply(store, action, jira, settings, notify=task_notice, extra_projects=plugin_projects(), name_of=user_name, meta=jira_fields.create_meta, field_kind=jira_fields.field_kind)
         notes.applied(action, before)
         notices.applied(action, seen)
         card_posts.after(action)
@@ -1872,6 +1874,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     app.state.chat_attribution = chat_attribution
     app.state.card_posts = card_posts
     app.state.jira_links = jira_links
+    app.state.jira_fields = jira_fields
     app.state.backlinks = backlinks
     app.state.state_notes = notes
     app.state.enricher = enricher
@@ -2651,7 +2654,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             'gitlab': gitlab.enabled,
             'codeHost': ' and '.join(n for n, h in zip(('GitLab', 'GitHub'), gitlab.hosts) if h.enabled),
             'workspaceLabel': settings.workspace_label,
-            'task': {'project': settings.jira_project, 'projects': list(dict.fromkeys([*projects_of(settings), *(k for k in plugin_projects() if PROJECT_KEY.fullmatch(k) and k != settings.jira_tech_project)])), 'parent': settings.jira_parent, 'points': settings.jira_points, 'techProject': settings.jira_tech_project, 'techAssignee': bool(settings.jira_tech_assignee), 'titlePrefix': settings.jira_title_prefix},
+            'task': {'project': settings.jira_project, 'projects': list(dict.fromkeys([*projects_of(settings), *(k for k in plugin_projects() if PROJECT_KEY.fullmatch(k) and k != settings.jira_tech_project)])), 'parent': settings.jira_parent, 'points': settings.jira_points, 'techProject': settings.jira_tech_project, 'techAssignee': bool(settings.jira_tech_assignee), 'titlePrefix': settings.jira_title_prefix,
+                     'scopeField': bool(settings.jira_scope_field), 'scope': settings.jira_dev_scope, 'sprintField': bool(settings.jira_sprint_field), 'sprint': settings.jira_sprint_default},
             'slack': slack.enabled,
             'slackChannel': slack.channel,
             'tags': tag_info(),
@@ -4122,6 +4126,27 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, 'Jira did not answer') from None
         return [{'key': i.get('key'), 'summary': (i.get('fields') or {}).get('summary'), 'status': ((i.get('fields') or {}).get('status') or {}).get('name'),
                  'developer': ((i.get('fields') or {}).get(settings.jira_developer_field) or {}).get('displayName') if settings.jira_developer_field else None} for i in issues if i.get('key')]
+
+    @app.get('/api/jira/create-fields')
+    def jira_create_fields(project: Annotated[str, Query(max_length=20)], by: Annotated[str, Depends(require_operator)]) -> dict:
+        if not jira.enabled:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, 'Jira is not set up on this service')
+        wanted = project.strip().upper()
+        offered = [*projects_of(settings), *(k for k in plugin_projects() if PROJECT_KEY.fullmatch(k) and k != settings.jira_tech_project)]
+        if wanted not in offered:
+            raise HTTPException(status_code=422, detail='project must be one of ' + ', '.join(dict.fromkeys(offered)))
+        return dialog_view(jira_fields.create_meta(wanted, dict(settings.jira_issue_types).get(wanted, 'Task')), settings)
+
+    @app.get('/api/admin/jira/fields')
+    def admin_jira_fields(role: Annotated[str, Query(max_length=20)], by: Annotated[str, Depends(require_admin)]) -> dict:
+        if role not in JIRA_FIELD_ROLES:
+            raise HTTPException(status_code=422, detail='role is one of ' + ', '.join(JIRA_FIELD_ROLES))
+        if not jira.enabled:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, 'Jira is not set up on this service')
+        found = jira_fields.all()
+        if found is None:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, 'The Jira fields could not be read; type the field id')
+        return field_choices(found, role)
 
     @app.get('/api/requests')
     def get_requests(limit: Annotated[int, Query(ge=1, le=200)] = 100) -> list[dict]:

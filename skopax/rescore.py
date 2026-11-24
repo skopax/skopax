@@ -8,6 +8,7 @@ HIGH_CHECKS = frozenset({('prom', 'err'), ('prom', '5xx'), ('prom', 'gw-err'), (
                          ('cf', 'edge-conn'), ('cf', 'edge-5xx'), ('gads', 'ad-link')})
 LATENCY_CHECKS = frozenset({('prom', 'avg-latency'), ('prom', 'p95-route'), ('prom', 'p95-ingress')})
 ALERT_SOURCES = ('alert', 'grafana')
+LOG_SOURCES = ('logs', 'loki')
 REQUESTS = re.compile(r'over (\d+) requests')
 
 
@@ -46,7 +47,7 @@ def current(card: dict, kept: tuple[str, ...] = ()) -> str:
         return alert_level(card, kept)
     if (src, sig) in HIGH_CHECKS or (src == 'pagescan' and card.get('gone')):
         return severity.HIGH
-    if src == 'logs' and sig == 'log':
+    if src in LOG_SOURCES and sig == 'log':
         level = (str(card.get('key') or '').split('|') + ['', '', ''])[2]
         if level == 'ERROR':
             return severity.HIGH

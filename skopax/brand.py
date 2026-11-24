@@ -151,7 +151,7 @@ def chat_logo_svg(theme: str) -> str:
     label = html.escape(_current)
     width = max(40, round(len(_current) * 12.5) + 8)
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} 32" width="{width}" height="32" role="img" aria-label="{label}">'
-            f'<text x="0" y="23" font-family="system-ui, sans-serif" font-size="20" font-weight="700" fill="{TEXT_INK[theme]}">{label}</text></svg>')
+            f'<text x="0" y="23" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="{TEXT_INK[theme]}">{label}</text></svg>')
 
 
 def mark_svg() -> str:

@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StrictInt, StringConstraints, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StrictFloat, StrictInt, StringConstraints, field_validator, model_validator
 
 from skopax.config import SETTING_TEXT_MAX
 from skopax.history import REF_LIMIT, resolve_problem
@@ -61,6 +61,9 @@ class ActionIn(BaseModel):
     points: float | None = Field(default=None, ge=0, le=100)
     project: str | None = Field(default=None, max_length=20)
     epic: str | None = Field(default=None, max_length=30)
+    scope: list[Annotated[str, StringConstraints(min_length=1, max_length=1000)]] | None = Field(default=None, max_length=20)
+    sprint: bool | None = None
+    fields: dict[Annotated[str, StringConstraints(pattern=r'^[A-Za-z][A-Za-z0-9_]{0,63}$')], StrictInt | StrictFloat | Annotated[str, StringConstraints(max_length=4000)] | Annotated[list[Annotated[str, StringConstraints(max_length=1000)]], Field(max_length=50)]] | None = Field(default=None, max_length=30)
     sev: Literal['crit', 'high', 'warn', 'info', 'auto'] | None = None
     reportId: str | None = Field(default=None, max_length=100)
     kind: str | None = Field(default=None, max_length=20)

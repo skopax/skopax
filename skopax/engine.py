@@ -10,7 +10,7 @@ from typing import Callable, Mapping
 
 from pymongo.errors import PyMongoError
 
-from skopax import causes, clock, history, information, severity, summary, tags
+from skopax import causes, clock, history, information, rescore, severity, summary, tags
 from skopax.actors import SYSTEM
 from skopax.businesstime import elapsed
 from skopax.errkind import kind as error_kind
@@ -212,7 +212,7 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
             recent[group] = max(recent.get(group, -1), SEV_RANK[p['pushedSev']])
     for f in found:
         k = f['key']
-        if k in seen:
+        if k in seen or log_owned_elsewhere(prev.get(k), f):
             continue
         seen.add(k)
         a = prev.get(k)
@@ -337,6 +337,12 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
     state['history'] = (events[::-1] + state.get('history', []))[:HISTORY_KEEP]
     state['initialized'] = True
     return events, push, first
+
+
+def log_owned_elsewhere(a: dict | None, f: dict) -> bool:
+    if a is None or a.get('src') not in rescore.LOG_SOURCES or f.get('src') not in rescore.LOG_SOURCES or a.get('src') == f.get('src'):
+        return False
+    return a.get('status') == 'open'
 
 
 def clearing_key(a: dict) -> str:

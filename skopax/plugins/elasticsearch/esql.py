@@ -23,6 +23,15 @@ DAY_STAMP = re.compile(r'(\d{4})([.\-])(\d{2})\2(\d{2})')
 ANSWER_MAX = 300
 HINT_ROOM = 1600
 ROWS = 1000
+FIELD = r'`?([A-Za-z_@][\w.@-]{0,79})`?'
+NUMBERS = r'(?:integer|long|double|float|unsigned_long|short|byte|half_float|scaled_float)'
+STRINGS = r'(?:text|keyword)'
+COMPARE = r'(?:==|!=|<=|>=|<|>)'
+FIELD_FIRST = re.compile(rf'first argument of \[\s*{FIELD}\s*{COMPARE}[^\]]*\] is \[({STRINGS})\] so second argument must also be \[{STRINGS}\] but was \[{NUMBERS}\]')
+NUMBER_FIRST = re.compile(rf'first argument of \[[^\]]*?{COMPARE}\s*{FIELD}\s*\] is \[{NUMBERS}\] so second argument must also be \[{NUMBERS}\] but was \[({STRINGS})\]')
+POSITION = re.compile(r'line (\d+):(\d+):')
+PATTERN_COMMAND = re.compile(r'\b(GROK|DISSECT)\s+`?[\w.@-]+`?\s+("(?!"")[^\n]*)', re.I)
+PATTERN_LITERAL = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
 QUERY_LIMIT = 8000
 TIMEOUT_S = 75
 AGENT_QUERY_S = 70
@@ -59,10 +68,39 @@ def hints(config: Mapping[str, str]) -> tuple[tuple[re.Pattern, str], ...]:
             (re.compile(r'Unknown column \[(log|log\.message|msg|text|line|log_message)\]'), msg('esql.hint.log_column', message=named['message'], fields=fields)))
 
 
-def answer(text: str, status: int, config: Mapping[str, str]) -> str:
+def mismatch_hint(text: str) -> str:
+    m = FIELD_FIRST.search(text)
+    if m:
+        return msg('esql.hint.type_mismatch', field=m.group(1), kind=m.group(2))
+    m = NUMBER_FIRST.search(text)
+    return msg('esql.hint.type_mismatch', field=m.group(1), kind=m.group(2)) if m else ''
+
+
+def grok_hint(text: str, query: str) -> str:
+    if 'parsing_exception' not in text:
+        return ''
+    at = POSITION.search(text)
+    lines = query.split('\n')
+    if not at or not 0 < int(at.group(1)) <= len(lines):
+        return ''
+    line, column = lines[int(at.group(1)) - 1], int(at.group(2))
+    for m in PATTERN_COMMAND.finditer(line):
+        literal = PATTERN_LITERAL.match(m.group(2))
+        if not literal or column <= m.start():
+            continue
+        rest = m.group(2)[literal.end():].strip()
+        if (rest and not rest.startswith('|')) or '\\"' in literal.group(1):
+            return msg('esql.hint.grok_quotes', command=m.group(1).upper())
+    return ''
+
+
+def answer(text: str, status: int, config: Mapping[str, str], query: str = '') -> str:
     if status == 504:
         return msg('esql.slow')
-    tail = ''.join(f' - {hint}' for pattern, hint in hints(config) if pattern.search(text))
+    named = mismatch_hint(text)
+    found = [hint for pattern, hint in hints(config) if pattern.search(text) and not (named and hint == msg('esql.hint.text_field'))]
+    found += [h for h in (named, grok_hint(text, query)) if h]
+    tail = ''.join(f' - {hint}' for hint in found)
     return text[:max(0, ANSWER_MAX - len(tail))] + tail
 
 
@@ -125,7 +163,7 @@ def run_esql(ctx: Context, args: dict) -> object:
     except ElasticError as e:
         if e.denied:
             raise ReadError(e.status if e.status in REJECTED else 403, refused_text(e.status, sources_of(query))) from None
-        first = answer(e.text, e.status, config)
+        first = answer(e.text, e.status, config, query)
         status = e.status if 400 <= e.status <= 599 else 502
         if e.missing:
             earlier = yesterday(query, ctx.now, missing_names(e.detail), es) if DAY_STAMP.search(query) else None

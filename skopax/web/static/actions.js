@@ -296,10 +296,99 @@ async function initActions() {
     if (a.recommend) lines.push('Recommended: ' + a.recommend);
     return lines.join('\n');
   }
+  function taskOpts(id, kind, options, picked, label) {
+    var box = el('div', 'task-opts'), multi = kind === 'options';
+    box.setAttribute('data-no-tx', '');
+    if (id) box.dataset.field = id;
+    box.dataset.kind = kind;
+    box.setAttribute('role', 'group');
+    if (label) box.setAttribute('aria-label', label);
+    var put = function (node) { if (label) node.setAttribute('aria-label', label); box.appendChild(node); return node; };
+    if (!options) {
+      var free = put(document.createElement('input'));
+      free.type = 'text';
+      free.className = 'task-scope-text';
+      free.maxLength = 1000;
+      free.value = (picked || []).join(', ');
+      free.placeholder = tx('Values separated by commas');
+      box.dataset.kind = 'free';
+      return box;
+    }
+    if (!multi) {
+      var sel = put(document.createElement('select')), none = document.createElement('option');
+      none.value = '';
+      none.textContent = tx('Choose\u2026');
+      sel.appendChild(none);
+      options.forEach(function (o) {
+        var opt = document.createElement('option');
+        opt.value = o;
+        opt.textContent = o;
+        if ((picked || []).indexOf(o) >= 0) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      return box;
+    }
+    options.forEach(function (o) {
+      var lab = document.createElement('label'), tick = document.createElement('input');
+      tick.type = 'checkbox';
+      tick.value = o;
+      tick.checked = (picked || []).indexOf(o) >= 0;
+      lab.appendChild(tick);
+      lab.appendChild(document.createTextNode(' ' + o));
+      box.appendChild(lab);
+    });
+    return box;
+  }
+  function taskOptsValue(box) {
+    if (box.dataset.kind === 'free') return box.querySelector('input').value.split(',').map(function (v) { return v.trim(); }).filter(Boolean);
+    if (box.dataset.kind === 'option') { var v = box.querySelector('select').value; return v ? [v] : []; }
+    return [].filter.call(box.querySelectorAll('input[type=checkbox]'), function (c) { return c.checked; }).map(function (c) { return c.value; });
+  }
+  function taskExtra(f) {
+    var lab, ctl;
+    if (f.kind === 'option' || f.kind === 'options') {
+      ctl = taskOpts(f.id, f.kind, f.options || [], [], f.name);
+      ctl.dataset.name = f.name;
+      lab = el('div', 'f');
+      var head = el('span');
+      head.setAttribute('data-no-tx', '');
+      head.textContent = f.name;
+      lab.appendChild(head);
+      lab.appendChild(ctl);
+      return lab;
+    }
+    lab = el('label', 'f');
+    lab.setAttribute('data-no-tx', '');
+    lab.appendChild(document.createTextNode(f.name));
+    ctl = document.createElement(f.kind === 'textarea' ? 'textarea' : 'input');
+    if (f.kind !== 'textarea') ctl.type = f.kind === 'number' ? 'number' : 'text';
+    if (f.kind === 'number') ctl.step = 'any';
+    ctl.maxLength = f.kind === 'textarea' ? 4000 : 255;
+    if (f.kind === 'user') ctl.placeholder = tx('E-mail of the person');
+    ctl.dataset.field = f.id;
+    ctl.dataset.kind = f.kind;
+    ctl.dataset.name = f.name;
+    ctl.id = 'task-x-' + String(f.id).replace(/[^A-Za-z0-9_]/g, '');
+    lab.appendChild(ctl);
+    if (f.kind === 'user' && me.jira && typeof ticketSuggest === 'function') ticketSuggest(ctl, {url: '/api/people', none: tx('No person matches'), fail: tx('Jira search failed; type the e-mail'), picked: function (it) { if (it && it.email) ctl.value = it.email; }});
+    return lab;
+  }
+  function taskExtraValues(box) {
+    var out = {}, empty = [];
+    [].forEach.call(box.querySelectorAll('[data-field]'), function (c) {
+      var k = c.dataset.kind, v;
+      if (c.classList.contains('task-opts')) { v = taskOptsValue(c); v = k === 'option' ? v[0] : v; if (!v || (Array.isArray(v) && !v.length)) { empty.push(c.dataset.name); return; } }
+      else if (k === 'number') { v = parseFloat(c.value); if (isNaN(v)) { empty.push(c.dataset.name); return; } }
+      else { v = c.value.trim(); if (!v) { empty.push(c.dataset.name); return; } }
+      out[c.dataset.field] = v;
+    });
+    return {values: out, empty: empty};
+  }
   function taskDialog(a, name) {
     var wrap = document.getElementById('task-wrap'), title = document.getElementById('task-title'), pts = document.getElementById('task-points'), desc = document.getElementById('task-desc');
     var yes = document.getElementById('task-yes'), no = document.getElementById('task-no'), err = document.getElementById('task-err'), meta = document.getElementById('task-meta');
     var proj = document.getElementById('task-project'), ptsF = document.getElementById('task-points-f'), epic = document.getElementById('task-epic'), epicF = document.getElementById('task-epic-f');
+    var scopeF = document.getElementById('task-scope-f'), scopeBox = document.getElementById('task-scope-opts'), sprintF = document.getElementById('task-sprint-f'), sprint = document.getElementById('task-sprint'), extra = document.getElementById('task-extra');
     if (!wrap || wrap.dataset.open) return;
     wrap.dataset.open = '1';
     var d = me.task || {}, pfx = d.titlePrefix || '';
@@ -318,6 +407,37 @@ async function initActions() {
       epic.dataset.suggest = '1';
       ticketSuggest(epic, {params: function () { return '&type=epic' + (proj.value ? '&project=' + encodeURIComponent(proj.value) : ''); }, none: 'No open epic matches; type its key or leave it empty'});
     }
+    var views = {}, asking = 0, view = null, scopeDefault = d.scope ? [d.scope] : [];
+    if (sprint) sprint.checked = d.sprint !== false;
+    function paintScreen() {
+      var isTech = !!(tech && proj.value === tech), on = !!proj.value && !isTech;
+      if (sprintF) sprintF.hidden = !(on && d.sprintField);
+      if (!scopeF) return;
+      scopeF.hidden = !(on && d.scopeField) || !!(view && view.readable && !view.scope);
+      var sc = view && view.scope;
+      scopeBox.replaceWith(scopeBox = taskOpts('', sc ? (sc.multi ? 'options' : 'option') : 'free', sc ? sc.options : null, scopeDefault, sc ? sc.name : 'Scope'));
+      scopeBox.id = 'task-scope-opts';
+      var scopeL = document.getElementById('task-scope-l');
+      scopeL.textContent = sc ? (sc.required ? sc.name : tx('{0} (optional)').replace('{0}', function () { return sc.name; })) : 'Scope';
+      if (sc) scopeL.setAttribute('data-no-tx', ''); else scopeL.removeAttribute('data-no-tx');
+      extra.textContent = '';
+      var asked = on && view ? view.asked || [] : [], missing = on && view ? view.unsupported || [] : [];
+      asked.forEach(function (f) { extra.appendChild(taskExtra(f)); });
+      missing.forEach(function (n) { var line = el('p', 'task-meta muted task-cannot'); line.setAttribute('data-no-tx', ''); line.textContent = tx('Jira needs {0}, which the dialog cannot fill; set a default in Jira').replace('{0}', function () { return n; }); extra.appendChild(line); });
+      extra.hidden = !asked.length && !missing.length;
+    }
+    async function readScreen() {
+      var isTech = !!(tech && proj.value === tech), chosen = proj.value, n = ++asking;
+      view = views[chosen] || null;
+      paintScreen();
+      if (!chosen || isTech || !me.jira || views[chosen]) return;
+      var got;
+      try { got = await api('GET', '/api/jira/create-fields?project=' + encodeURIComponent(chosen)); } catch (e) { got = {readable: false, scope: null, asked: [], unsupported: []}; }
+      views[chosen] = got;
+      if (n !== asking || proj.value !== chosen) return;
+      view = got;
+      paintScreen();
+    }
     function showProject() {
       var isTech = !!(tech && proj.value === tech);
       if (ptsF) ptsF.hidden = isTech;
@@ -326,10 +446,12 @@ async function initActions() {
       if (pfx && !isTech && title.value.indexOf(pfx) !== 0) title.value = pfx + title.value;
       meta.textContent = (!proj.value ? ['Pick the project this task goes to', tail]
         : isTech ? ['Project ' + tech + ' (Infra)', d.techAssignee ? 'Assigned to the Infra owner' : 'No assignee', 'No sprint or points', tail]
-        : ['Project ' + proj.value, epic.value.trim() ? 'Epic ' + epic.value.trim().toUpperCase() : 'No epic', 'Active sprint', 'You as assignee and Developer', tail]).filter(Boolean).join(' · ');
+        : ['Project ' + proj.value, epic.value.trim() ? 'Epic ' + epic.value.trim().toUpperCase() : 'No epic', d.sprintField && sprint && sprint.checked ? 'Active sprint' : 'No sprint', 'You as assignee and Developer', tail]).filter(Boolean).join(' · ');
     }
     showProject();
-    proj.onchange = function () { epic.value = ''; showProject(); };
+    readScreen();
+    if (sprint) sprint.onchange = showProject;
+    proj.onchange = function () { epic.value = ''; showProject(); readScreen(); };
     epic.oninput = showProject;
     epic.onblur = function () { setTimeout(showProject, 200); };
     err.hidden = true;
@@ -348,13 +470,18 @@ async function initActions() {
       var t = title.value.trim();
       if (!proj.value) { err.textContent = 'Pick the project this task goes to.'; err.hidden = false; proj.focus(); return; }
       if (!t) { err.textContent = 'The task needs a title.'; err.hidden = false; title.focus(); return; }
+      var techPick = !!(tech && proj.value === tech), scopeOn = !techPick && d.scopeField && scopeF && !scopeF.hidden, picked = scopeOn ? taskOptsValue(scopeBox) : [];
+      var sc = view && view.scope, extras = !techPick && view && (view.asked || []).length ? taskExtraValues(extra) : null;
+      if (scopeOn && sc && sc.required && !picked.length) { err.textContent = tx('Pick the {0} of this task.').replace('{0}', function () { return sc.name; }); err.hidden = false; return; }
+      if (extras && extras.empty.length) { err.textContent = tx('Jira needs {0}.').replace('{0}', function () { return extras.empty.join(', '); }); err.hidden = false; return; }
       var p = parseFloat(pts.value);
       yes.disabled = true;
       yes.textContent = 'Creating\u2026';
       try {
         var isTech = !!(tech && proj.value === tech), chosen = proj.value, parent = isTech ? '' : epic.value.trim();
         var made = await api('POST', '/api/actions', {type: 'ticket', target: a.key, key: a.key, title: t, description: desc.value.trim() || undefined, points: isTech || isNaN(p) ? undefined : p,
-          project: chosen, epic: parent || undefined, label: 'Create ' + chosen + ' task for ' + name});
+          project: chosen, epic: parent || undefined, scope: scopeOn ? picked : (!techPick && d.scopeField && view && view.readable && !view.scope ? [] : undefined), sprint: !isTech && d.sprintField && sprint ? sprint.checked : undefined,
+          fields: extras ? extras.values : undefined, label: 'Create ' + chosen + ' task for ' + name});
         if (made.status === 'failed') { err.textContent = made.result || 'Jira refused the task.'; err.hidden = false; yes.disabled = false; yes.textContent = 'Create task'; return; }
         save(TASK_PROJECT_KEY, chosen);
         close();
