@@ -1,9 +1,11 @@
 import base64
+import json
 import logging
 from urllib.parse import quote, urlencode
 
 from skopax import remote
 from skopax.contract import Denied, Missing, Refused, SourceDown
+from skopax.redact import redact_text
 from skopax.messages import msg
 from skopax.remote import HttpError, Transport, Unreachable
 
@@ -20,6 +22,8 @@ DENIED = (401, 403)
 PERMISSIONS = {'issues': 'the Browse projects permission (scope read:jira-work)', 'users': 'the Browse users and groups permission (scope read:jira-user)'}
 WRITES = {'links': 'the Link issues permission (scope write:jira-work)', 'comments': 'the Add comments permission (scope write:jira-work)'}
 APP_TYPE = 'skopax'
+META_PAGE = 50
+META_PAGES = 10
 
 
 def denied_text(part: str, status: int) -> str:
@@ -102,6 +106,10 @@ class Jira:
                 raise Refused(CREATE_MISSING) from None
             if e.code in DENIED:
                 raise Refused(msg('jira.create_denied_invalid' if e.code == 401 else 'jira.create_denied', status=e.code)) from None
+            said, fields = refusal_of(e.body)
+            if said:
+                log.warning('Jira refused the create with HTTP %d on the fields %s', e.code, ', '.join(fields) or '-')
+                raise Refused(f'Jira answered HTTP {e.code} to the create: {said}') from None
             raise Refused(f'Jira answered HTTP {e.code} to the create; check the project, parent, sprint and the field values the server sends') from None
         except Unreachable:
             raise SourceDown(msg('enrich.unreachable', source='Jira')) from None
@@ -148,6 +156,30 @@ class Jira:
         users = self._call('GET', f'/rest/api/3/user/search?{urlencode({"query": query, "maxResults": limit})}', part='users').body
         return users if isinstance(users, list) else []
 
+    def fields(self) -> list[dict]:
+        found = self._call('GET', '/rest/api/3/field').body
+        return [f for f in found if isinstance(f, dict)] if isinstance(found, list) else []
+
+    def _pages(self, path: str, keys: tuple[str, ...]) -> list[dict]:
+        out: list[dict] = []
+        for _ in range(META_PAGES):
+            body = self._call('GET', f'{path}?{urlencode({"startAt": len(out), "maxResults": META_PAGE})}').body
+            body = body if isinstance(body, dict) else {}
+            got = next((body[k] for k in keys if isinstance(body.get(k), list)), [])
+            out += [item for item in got if isinstance(item, dict)]
+            total = body.get('total')
+            if not got or not isinstance(total, int) or len(out) >= total:
+                break
+        return out
+
+    def create_fields(self, project: str, issue_type: str) -> list[dict] | None:
+        where = f'/rest/api/3/issue/createmeta/{quote(project, safe="")}/issuetypes'
+        wanted = issue_type.strip().lower()
+        found = next((t for t in self._pages(where, ('issueTypes', 'values')) if str(t.get('name') or '').strip().lower() == wanted and t.get('id')), None)
+        if found is None:
+            return None
+        return self._pages(f'{where}/{quote(str(found["id"]), safe="")}', ('fields', 'results'))
+
     def active_sprint(self, project: str, field: str) -> int | None:
         try:
             issues = self.search(f'project = {project} AND sprint in openSprints()', [field], 1)
@@ -177,3 +209,21 @@ class Jira:
             for issue in (reply.body or {}).get('issues') or []:
                 out[issue['key']] = [v['name'] for v in (issue.get('fields') or {}).get('fixVersions') or [] if v.get('name')]
         return out
+
+
+REFUSAL_PART = 200
+REFUSAL_TOTAL = 500
+
+
+def refusal_of(body: str) -> tuple[str, list[str]]:
+    try:
+        found = json.loads(body or '')
+    except ValueError:
+        return '', []
+    if not isinstance(found, dict):
+        return '', []
+    errors = found.get('errors') if isinstance(found.get('errors'), dict) else {}
+    fields = [redact_text(str(k), 60) for k in list(errors)[:10]]
+    parts = [f'{f}: {redact_text(str(v), REFUSAL_PART)}' for f, v in zip(fields, list(errors.values())[:10])]
+    parts += [redact_text(str(m), REFUSAL_PART) for m in (found.get('errorMessages') or [])[:5] if isinstance(m, str) and m.strip()]
+    return redact_text('; '.join(parts), REFUSAL_TOTAL), fields

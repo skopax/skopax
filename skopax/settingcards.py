@@ -43,7 +43,8 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     ),
     'Jira tasks': (
         ('Projects', ('jira.projects', 'jira.project', 'jira.parent', 'jira.tech-project', 'jira.tech-assignee')),
-        ('New tasks', ('jira.points', 'jira.dev-scope')),
+        ('New tasks', ('jira.points', 'jira.dev-scope', 'jira.sprint-default')),
+        ('Fields', ('jira.scope-field', 'jira.points-field', 'jira.developer-field', 'jira.sprint-field')),
         ('Releases', ('jira.release-name',)),
         ('Back-links', ('jira.backlink',)),
     ),

@@ -478,6 +478,13 @@ td.any-wrap, td.any-wrap .svc { overflow-wrap: anywhere; white-space: normal; }
 .modal label.f textarea { min-height: 7.5rem; font-weight: 400; }
 .modal label.f select { font: inherit; font-size: 0.9rem; font-weight: 400; color: var(--fg); background: var(--bg); border: 1px solid var(--line-2); border-radius: 4px; padding: 7px 10px; width: 100%; box-sizing: border-box; }
 .modal p.task-meta { font-size: 0.78rem; }
+.modal .task-scope, .modal .task-extra { display: grid; gap: 4px; font-size: 0.78rem; font-weight: 600; color: var(--muted); min-width: 0; }
+.modal .task-extra { gap: 10px; }
+.modal .task-opts { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.9rem; font-weight: 400; color: var(--fg); }
+.modal .task-opts label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.modal .task-opts input[type=text], .modal .task-opts select { flex: 1 1 100%; font: inherit; font-size: 0.9rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line-2); border-radius: 4px; padding: 7px 10px; min-width: 0; box-sizing: border-box; width: 100%; }
+.modal .task-check { display: flex; gap: 8px; align-items: center; font-size: 0.85rem; color: var(--fg); cursor: pointer; }
+.modal .task-extra p { margin: 0; font-weight: 400; }
 .modal textarea { width: 100%; box-sizing: border-box; min-height: 5.5rem; resize: vertical; font: inherit; font-size: 0.9rem; line-height: 1.45; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 4px; background: var(--bg); color: var(--fg); }
 .ask-cards { display: grid; gap: 4px; max-height: 11rem; overflow: auto; font-size: 0.85rem; }
 .ask-cards label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
@@ -3125,6 +3132,9 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <label class="f pts" id="task-points-f">Points<select id="task-points"><option>1</option><option>2</option><option>3</option><option>5</option><option>8</option><option>13</option><option>21</option></select></label>
     </div>
     <label class="f" id="task-epic-f">Epic<input type="text" id="task-epic" maxlength="30" placeholder="Optional: search an epic by name or key"></label>
+    <div class="f task-scope" id="task-scope-f" hidden><span id="task-scope-l">Scope</span><div class="task-opts" id="task-scope-opts" role="group" aria-labelledby="task-scope-l"></div></div>
+    <label class="task-check" id="task-sprint-f" hidden><input type="checkbox" id="task-sprint"> Add to the current sprint</label>
+    <div class="task-extra" id="task-extra" hidden></div>
     <label class="f">Description<textarea id="task-desc" maxlength="4000" rows="7"></textarea></label>
     <p class="task-meta muted" id="task-meta"></p>
     <p class="ask-err" id="task-err" hidden></p>

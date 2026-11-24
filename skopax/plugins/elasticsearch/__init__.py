@@ -5,7 +5,7 @@ from skopax.contract import AgentRead, Capabilities, Check, Context, Field, Http
 from skopax.kit import connection
 from skopax.kit.elastic import TEST_TIMEOUT, Budget, Elastic, ElasticError, client_for, cluster_of, index_of, indices_of, namespace_problem, native, no_read, quoted
 from skopax.messages import msg
-from skopax.plugins.elasticsearch.checks import APM_HELP, APM_RULES, LOG_HELP, MASKED, links, literal, mask_of, mask_problem, p95_overrides, row_links, run_apm, run_logs
+from skopax.plugins.elasticsearch.checks import APM_HELP, APM_RULES, CLASSIC, LOG_HELP, MASKED, SHAPE_NAMES, families, links, literal, mask_of, mask_problem, p95_overrides, row_links, run_apm, run_logs
 from skopax.plugins.elasticsearch.esql import AGENT_FIELDS, DESCRIPTION, KEYS, SCHEMA, TIMEOUT_S, agent_esql, agent_sources, run_esql
 from skopax.plugins.elasticsearch.logflow import HELP as FLOW_HELP, RULES as FLOW_RULES, SECTION_HELP as FLOW_SECTION_HELP, run_logflow
 
@@ -32,7 +32,7 @@ def version(transport: Transport, url: str, key: str, budget: Budget) -> str:
     return f"Elasticsearch {number if isinstance(number, str) and number else 'unknown version'}"
 
 
-def readable(client: Elastic, index: str, who: str, budget: Budget) -> str | None:
+def shard_count(client: Elastic, index: str, who: str, budget: Budget) -> int:
     try:
         shards = client.shards(index, budget.left(TEST_TIMEOUT))
     except ElasticError as e:
@@ -40,18 +40,48 @@ def readable(client: Elastic, index: str, who: str, budget: Budget) -> str | Non
             raise SourceDown(no_read(index, who)) from None
         if not e.missing:
             raise native(e)
-        shards = 0
-    if shards:
-        return None
+        return 0
+    return shards
+
+
+def readable(client: Elastic, index: str, who: str, budget: Budget) -> str | None:
+    return None if shard_count(client, index, who, budget) else empty_index(client, index, who, budget)
+
+
+def hidden_of(client: Elastic, index: str, budget: Budget) -> list[str]:
     try:
-        hidden = client.unreadable(indices_of(index), budget.left(TEST_TIMEOUT))
+        return client.unreadable(indices_of(index), budget.left(TEST_TIMEOUT))
     except ElasticError as e:
         if not e.denied:
             raise
-        hidden = []
-    if hidden:
+        return []
+
+
+def empty_index(client: Elastic, index: str, who: str, budget: Budget) -> str:
+    if hidden_of(client, index, budget):
         raise SourceDown(no_read(index, who))
     return f'no index matches {index} yet'
+
+
+def apm_shapes(client: Elastic, config: Mapping[str, str], budget: Budget) -> str | None:
+    found, quiet, refused = [], [], []
+    for shape, index in families(config):
+        try:
+            (found if shard_count(client, index, 'APM check reads', budget) else quiet).append((shape, index))
+        except SourceDown:
+            refused.append(index)
+    if not found:
+        if refused:
+            raise SourceDown(no_read(','.join(refused), 'APM check reads'))
+        every = ','.join(index for _, index in quiet)
+        hidden = hidden_of(client, every, budget)
+        unread = [index for _, index in quiet if set(indices_of(index)) & set(hidden)]
+        if unread and len(unread) == len(quiet):
+            raise SourceDown(no_read(every, 'APM check reads'))
+        return f'no index matches {every} yet' + (f" (the API key would also need read on {','.join(unread)})" if unread else '')
+    if [shape for shape, _ in found] == [CLASSIC]:
+        return None
+    return 'APM data: ' + ' and '.join(SHAPE_NAMES[shape] for shape, _ in found)
 
 
 def error_field(client: Elastic, config: Mapping[str, str], budget: Budget) -> str | None:
@@ -117,7 +147,7 @@ def test(ctx: Context) -> TestResult:
         shared = logs_index == flow_index
         notes = [readable(client_for(ctx.instance, ctx.http()), logs_index, 'logs and log flow checks read' if shared else 'logs check reads', budget) if (logs or flow) and (shared or logs) else None,
                  readable(client_for(ctx.instance, ctx.http()), flow_index, 'log flow check reads', budget) if flow and not shared else None,
-                 readable(client_for(ctx.instance, ctx.http(), 'apm'), index_of(config, 'apm'), 'APM check reads', budget) if apm else None,
+                 apm_shapes(client_for(ctx.instance, ctx.http(), 'apm'), config, budget) if apm else None,
                  error_field(client_for(ctx.instance, ctx.http()), config, budget) if logs else None]
         if logs:
             mask_accepted(client_for(ctx.instance, ctx.http()), config, budget)
@@ -140,7 +170,7 @@ PLUGIN = Plugin(
     setup=Setup(
         steps=(
             'In Kibana open the API keys page, choose Create API key and pick a user key. Creating it needs the manage_own_api_key or manage_api_key privilege.',
-            'Under access configuration use custom privileges: read on the Log index (default logs-*), the APM index (default traces-apm*) and the Log flow index if you set one. Add the cluster privilege monitor if you want Test connection to show the version.',
+            'Under access configuration use custom privileges: read on the Log index (default logs-*), the APM index (default traces-apm*,traces-*.otel-*, which covers classic APM and OTel-native traces) and the Log flow index if you set one. Add the cluster privilege monitor if you want Test connection to show the version.',
             'Copy the encoded key and paste it into API key. If the APM data is in another cluster, enter its address in APM URL and its own key in APM API key; empty means the log cluster and its key.',
             'Enter the cluster address in URL. A cluster without security needs no key. Press Test connection.',
         ),
@@ -160,7 +190,7 @@ PLUGIN = Plugin(
             Field('ui-url', 'Kibana URL', 'url', ui=True, help='Address of Kibana, for the Discover links on cards and rows.'),
             Field('data-view', 'Data view', 'text', help='Id of the Kibana data view the Discover links open.'),
             Field('log-index', 'Log index', 'text', default='logs-*', help='Index pattern that holds the logs.'),
-            Field('apm-index', 'APM index', 'text', default='traces-apm*', help='Index pattern that holds the APM transactions.'),
+            Field('apm-index', 'APM index', 'text', default='traces-apm*,traces-*.otel-*', help='Comma-separated index patterns that hold the APM data: classic APM transactions (traces-apm*) and OpenTelemetry spans stored OTel-native (traces-*.otel-*).'),
             Field('index-namespace', 'Namespace from index', 'regex', help='Pattern with a group named ns that takes the namespace from the index name. Empty means the namespace field.'),
             Field('namespace-field', 'Namespace field', 'text', default='kubernetes.namespace', help='Log field that holds the namespace.'),
             Field('service-field', 'Service field', 'text', default='service.name', help='Log field that holds the service name.'),

@@ -275,7 +275,7 @@ async function takeReticketsAnInProgressCardAndResolveMarksItDone() {
   assert.ok(dialogOpen && dialogClosed, 'Create task opens its dialog and closes it after the post');
   assert.strictEqual(title, 'web-bff integrity off', 'the task title starts from the card');
   assert.ok(desc.startsWith('info \u00b7 web-bff \u00b7 integrity off \u00b7 now 235 vs 1 d 230 / 7 d 200 \u00b7 since '), desc);
-  assert.ok(meta.startsWith('Project OPS \u00b7 No epic \u00b7 Active sprint'), meta);
+  assert.ok(meta.startsWith('Project OPS \u00b7 No epic \u00b7 No sprint'), 'no sprint field set, so no sprint is promised: ' + meta);
   assert.deepStrictEqual(ticketBody, {type: 'ticket', target: K, key: K, title: 'Android nonce fix', description: desc, points: 2, project: 'OPS', label: 'Create OPS task for web-bff integrity off'});
   assert.deepStrictEqual(takeBody, {type: 'take', target: K, key: K, ticket: 'WEB-95', reason: 'nonce fix shipped in WEB-95', label: 'Take web-bff integrity off with WEB-95'});
   assert.deepStrictEqual(bodies[bodies.length - 1], {type: 'resolve', target: K, key: K, kind: 'fixed', reason: 'done', label: 'Resolve web-bff integrity off (fixed)'}, 'Resolve sends Fixed unless another kind is picked');

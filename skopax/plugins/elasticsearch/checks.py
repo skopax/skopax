@@ -29,6 +29,13 @@ ID_RUN = re.compile(r'[0-9a-f]{8}-[0-9a-f-]{4,}')
 MASKED = '<masked>'
 MASK_CHARS = 400
 MASK_HINT = ' (check message-mask: Elasticsearch may not accept it)'
+CLASSIC = 'classic'
+OTEL = 'otel'
+OTEL_PATTERN = re.compile(r'\.otel(?:-|\*|$)', re.I)
+SHAPES = {CLASSIC: {'tx': 'processor.event == "transaction"', 'ms': 'transaction.duration.us / 1000.0', 'fail': 'event.outcome == "failure"', 'rq': 'transaction.type == "request"', 'svc': 'service.name'},
+          OTEL: {'tx': '(kind IN ("Server", "Consumer") OR parent_span_id IS NULL OR parent_span_id == "")', 'ms': 'duration / 1000000.0', 'fail': 'status.code == "Error"', 'rq': 'kind == "Server"',
+                 'svc': 'resource.attributes.service.name'}}
+SHAPE_NAMES = {CLASSIC: 'classic APM', OTEL: 'OTel-native'}
 
 
 def window() -> str:
@@ -94,14 +101,29 @@ def per_service(default: float, own: Mapping[str, float]) -> str:
     return f'CASE({cases}, {float(default)!r})'
 
 
-def apm_query(config: Mapping[str, str], rules: Mapping[str, float]) -> str:
+def shape_of(pattern: str) -> str:
+    return OTEL if OTEL_PATTERN.search(pattern) else CLASSIC
+
+
+def families(config: Mapping[str, str]) -> list[tuple[str, str]]:
+    parts = indices_of(index_of(config, 'apm'))
+    grouped = {shape: ','.join(p for p in parts if shape_of(p) == shape) for shape in (CLASSIC, OTEL)}
+    return [(shape, index) for shape, index in grouped.items() if index]
+
+
+def family_index(config: Mapping[str, str], shape: str) -> str:
+    return dict(families(config)).get(shape) or index_of(config, 'apm')
+
+
+def apm_query(config: Mapping[str, str], rules: Mapping[str, float], shape: str = CLASSIC, index: str | None = None) -> str:
     times, floor = rules.get('p95_times', APM_RULES['p95_times']), rules.get('p95_floor_ms', APM_RULES['p95_floor_ms'])
     over = p95_overrides(config)[0]
     times, floor = per_service(times, {s: t for s, (t, _) in over.items() if t is not None}), per_service(floor, {s: f for s, (_, f) in over.items() if f is not None})
-    return f'''FROM {index_of(config, 'apm')}
-| WHERE processor.event == "transaction" AND ({window()})
-| EVAL w = CASE(@timestamp >= NOW() - 60 minutes, "now", @timestamp >= NOW() - 2 days, "d1", "d7"), ms = transaction.duration.us / 1000.0, f = CASE(event.outcome == "failure", 1, 0), rq = transaction.type == "request"
-| STATS n_now = COUNT(CASE(w == "now", 1, null)), n_d1 = COUNT(CASE(w == "d1", 1, null)), n_d7 = COUNT(CASE(w == "d7", 1, null)), r_now = COUNT(CASE(w == "now" AND rq, 1, null)), r_d1 = COUNT(CASE(w == "d1" AND rq, 1, null)), r_d7 = COUNT(CASE(w == "d7" AND rq, 1, null)), p95_now = PERCENTILE(CASE(w == "now" AND rq, ms, null), 95), p95_d1 = PERCENTILE(CASE(w == "d1" AND rq, ms, null), 95), p95_d7 = PERCENTILE(CASE(w == "d7" AND rq, ms, null), 95), f_now = SUM(CASE(w == "now", f, 0)), f_d1 = SUM(CASE(w == "d1", f, 0)), f_d7 = SUM(CASE(w == "d7", f, 0)) BY svc = service.name
+    named = SHAPES[shape]
+    return f'''FROM {index or family_index(config, shape)}
+| WHERE {named['tx']} AND ({window()})
+| EVAL w = CASE(@timestamp >= NOW() - 60 minutes, "now", @timestamp >= NOW() - 2 days, "d1", "d7"), ms = {named['ms']}, f = CASE({named['fail']}, 1, 0), rq = {named['rq']}
+| STATS n_now = COUNT(CASE(w == "now", 1, null)), n_d1 = COUNT(CASE(w == "d1", 1, null)), n_d7 = COUNT(CASE(w == "d7", 1, null)), r_now = COUNT(CASE(w == "now" AND rq, 1, null)), r_d1 = COUNT(CASE(w == "d1" AND rq, 1, null)), r_d7 = COUNT(CASE(w == "d7" AND rq, 1, null)), p95_now = PERCENTILE(CASE(w == "now" AND rq, ms, null), 95), p95_d1 = PERCENTILE(CASE(w == "d1" AND rq, ms, null), 95), p95_d7 = PERCENTILE(CASE(w == "d7" AND rq, ms, null), 95), f_now = SUM(CASE(w == "now", f, 0)), f_d1 = SUM(CASE(w == "d1", f, 0)), f_d7 = SUM(CASE(w == "d7", f, 0)) BY svc = {named['svc']}
 | WHERE n_now >= 100 AND n_d1 >= 50 AND n_d7 >= 50
 | EVAL p95_base = GREATEST(p95_d1, p95_d7), fr_now = f_now * 1.0 / n_now, fr_base = GREATEST(f_d1 * 1.0 / n_d1, f_d7 * 1.0 / n_d7)
 | EVAL slow = r_now >= 100 AND r_d1 >= 50 AND r_d7 >= 50 AND p95_now > {times} * p95_base AND p95_now - p95_base >= {floor}, failing = f_now >= 10 AND fr_now > 2 * fr_base + 0.005
@@ -215,8 +237,31 @@ def row_links(row: dict, span: dict, info: InstanceInfo) -> dict[str, str]:
     return {'logs': service_logs_link(config, svc, iso(start - REPORT_PAD_S), iso(until))}
 
 
-def apm_count(config: Mapping[str, str]) -> str:
-    return f'FROM {index_of(config, "apm")}\n| WHERE processor.event == "transaction" AND @timestamp >= NOW() - 60 minutes\n| STATS n = COUNT(*)'
+def apm_count(config: Mapping[str, str], shape: str = CLASSIC, index: str | None = None) -> str:
+    return f'FROM {index or family_index(config, shape)}\n| WHERE {SHAPES[shape]["tx"]} AND @timestamp >= NOW() - 60 minutes\n| STATS n = COUNT(*)'
+
+
+def svc_of(row: Mapping[str, object]) -> str:
+    return str(row.get('svc') or '-')
+
+
+def merged(answers: list[list[dict]]) -> list[dict]:
+    if len(answers) < 2:
+        return [r for rows in answers for r in rows if isinstance(r, dict)]
+    out = []
+    for signal, other in (('slow', 'failing'), ('failing', 'slow')):
+        sizes = [{} for _ in answers]
+        for i, rows in enumerate(answers):
+            for r in rows:
+                if isinstance(r, dict) and r.get(signal):
+                    sizes[i][svc_of(r)] = max(sizes[i].get(svc_of(r), 0), r.get('n_now') or 0)
+        owner = {}
+        for i, sized in enumerate(sizes):
+            for svc, n in sized.items():
+                if svc not in owner or n > sizes[owner[svc]][svc]:
+                    owner[svc] = i
+        out += [dict(r, **{other: False}) for i, rows in enumerate(answers) for r in rows if isinstance(r, dict) and r.get(signal) and owner[svc_of(r)] == i]
+    return out
 
 
 def run_logs(ctx: Context) -> Sweep:
@@ -257,17 +302,26 @@ def run_apm(ctx: Context) -> Sweep:
     warm = warm_services(ctx.deploys(ctx.now - WARM_S))
     budget = Budget()
     client = client_for(ctx.instance, ctx.http(), 'apm')
-    index = index_of(config, 'apm')
     quiet = Sweep(PassResult('apm', True, 'ok \u00b7 no data', [], {}, (NO_DATA, APM_ACCESS)))
-    try:
-        rows = client.query(apm_query(config, rules), timeout=budget.left())
-        counted = None if rows else client.query(apm_count(config), timeout=budget.left())
-    except ElasticError as e:
-        if refusal(client, e, indices_of(index), budget):
-            return no_access('apm', access_card('apm', 'Elasticsearch', 'apm', index, refused_status(e), bool(client.api_key)))
-        if e.missing or e.unknown:
-            return quiet
-        return Sweep(PassResult('apm', False, f'error: {e.reason}'))
-    if counted is not None and not any(isinstance(r, dict) and r.get('n') for r in counted):
+    answers: list[list[dict]] = []
+    absent: list[tuple[str, ElasticError]] = []
+    live = False
+    for shape, index in families(config):
+        try:
+            rows = client.query(apm_query(config, rules, shape, index), timeout=budget.left())
+            counted = None if rows else client.query(apm_count(config, shape, index), timeout=budget.left())
+        except ElasticError as e:
+            if e.denied or e.missing or e.unknown:
+                absent.append((index, e))
+                continue
+            return Sweep(PassResult('apm', False, f'error: {e.reason}'))
+        answers.append(rows)
+        live = live or bool(rows) or any(isinstance(r, dict) and r.get('n') for r in counted or [])
+    if not live:
+        denied = [(index, e) for index, e in absent if e.denied]
+        hidden = [] if answers else [(index, e) for index, e in absent if not e.denied and refusal(client, e, indices_of(index), budget)]
+        if denied or (hidden and len(hidden) == len(absent)):
+            refused = denied + hidden
+            return no_access('apm', access_card('apm', 'Elasticsearch', 'apm', ','.join(index for index, _ in refused), refused_status(refused[0][1]), bool(client.api_key)))
         return quiet
-    return Sweep(PassResult('apm', True, 'ok', evaluate_apm(rows, warm, rules, p95_overrides(config)[0]), {}, ('apm', APM_ACCESS)))
+    return Sweep(PassResult('apm', True, 'ok', evaluate_apm(merged(answers), warm, rules, p95_overrides(config)[0]), {}, ('apm', APM_ACCESS)))

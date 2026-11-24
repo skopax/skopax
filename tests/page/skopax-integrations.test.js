@@ -970,7 +970,7 @@ async function aTestThatPostsPublicAsksFirstAndOthersSendAtOnce() {
   await wait(80);
 
   //then
-  assert.deepStrictEqual(asked, [false, 'Post a test card?', 'This posts a test card to the channel, where everyone in it sees it. Teams does not let you delete it unless an admin allows owners to delete messages.', 'Post test card', 0]);
+  assert.deepStrictEqual(asked, [false, 'Post a test card?', 'This posts a real test card through Hook route, where everyone in the channel sees it, and it may not be possible to delete it afterwards.', 'Post test card', 0]);
   assert.deepStrictEqual(cancelled, [0, true], 'Cancel sends nothing and gives focus back to the button');
   assert.strictEqual(confirmed, 1, 'OK sends one test');
   assert.strictEqual(tests(), 2, 'a plug-in that does not post sends at once with no dialog');

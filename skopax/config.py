@@ -181,6 +181,7 @@ class Settings:
     jira_scope_field: str = ''
     jira_points_field: str = ''
     jira_sprint_field: str = ''
+    jira_sprint_default: bool = True
     jira_issue_types: tuple[tuple[str, str], ...] = ()
     jira_accounts: str = ''
     jira_tech_project: str = ''
@@ -730,6 +731,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         jira_scope_field=get('jira.scope-field', 'JIRA_SCOPE_FIELD', '').strip(),
         jira_points_field=get('jira.points-field', 'JIRA_POINTS_FIELD', '').strip(),
         jira_sprint_field=get('jira.sprint-field', 'JIRA_SPRINT_FIELD', '').strip(),
+        jira_sprint_default=get('jira.sprint-default', 'JIRA_SPRINT_DEFAULT', 'true').strip().lower() == 'true',
         jira_issue_types=tuple((k.upper(), v) for k, v in pairs_of(get('jira.issue-types', 'JIRA_ISSUE_TYPES', ''))),
         jira_accounts=get('jira.accounts', 'JIRA_ACCOUNTS', '').strip(),
         jira_tech_project=get('jira.tech-project', 'JIRA_TECH_PROJECT', '').strip(),

@@ -138,7 +138,7 @@ def test_take_is_in_progress_with_the_operator_as_owner_and_resolve_is_no_action
     assert card(client, OTHER)['note']['text'] == 'one phone retried, nothing for us' and 'triagedBy' not in card(client, OTHER)
 
 
-def test_take_keeps_the_person_the_card_is_assigned_to(client: TestClient):
+def test_take_moves_an_assigned_card_to_the_person_who_took_it(client: TestClient):
     # given
     seed(client)
     client.put('/api/assignee', json={'key': KEY, 'name': 'Dora Lane', 'email': 'dora.lane@example.com'}, headers=AUTH)
@@ -146,12 +146,13 @@ def test_take_keeps_the_person_the_card_is_assigned_to(client: TestClient):
     # when
     taken = client.post('/api/actions', json={'type': 'take', 'key': KEY, 'label': 'Take'}, headers=AUTH).json()
     other = client.post('/api/actions', json={'type': 'take', 'key': OTHER, 'label': 'Take'}, headers=AUTH).json()
+    mine = card(client)
 
     # then
-    assert (taken['status'], taken['result']) == ('done', 'In progress · Dora Lane'), 'starting progress on an assigned card does not take it over'
-    assert (card(client)['triage'], card(client)['owner'], card(client)['assigned']['email']) == ('progress', 'Dora Lane', 'dora.lane@example.com')
-    assert card(client, OTHER)['owner'] and card(client, OTHER)['owner'] != 'Dora Lane', 'a card nobody holds goes to whoever started it'
-    assert other['status'] == 'done'
+    assert taken['status'] == 'done' and mine['triage'] == 'progress'
+    assert mine['owner'] and mine['owner'] != 'Dora Lane' and 'assigned' not in mine, 'whoever presses Take holds the card'
+    assert taken['result'] == f"In progress \u00b7 {mine['owner']}"
+    assert card(client, OTHER)['owner'] == mine['owner'] and other['status'] == 'done'
 
 
 def test_take_and_resolve_reasons_go_under_the_services_finding_instead_of_replacing_it(client: TestClient):

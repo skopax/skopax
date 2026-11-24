@@ -92,7 +92,7 @@ def test_status_changes_on_a_held_card_reach_its_holder_from_the_page_mcp_and_th
     assert {(n['kind'], n['note']) for n in inbox(store, 'paul.stone')} == {('known', ''), ('merged', '#14')}
 
 
-def test_a_page_action_tells_the_holder_through_the_same_path_as_the_buttons(store: Store):
+def test_taking_a_card_tells_the_last_holder_and_the_new_holder_hears_nothing_of_their_own_mute(store: Store):
     # given
     board(store, anomaly(CARD, num=14, sev='warn', owner='Nina White', assigned={'by': SARA, 'at': '2026-11-12T08:00:00Z', 'email': NINA}))
 
@@ -102,9 +102,9 @@ def test_a_page_action_tells_the_holder_through_the_same_path_as_the_buttons(sto
         call(c, token(sub=PAUL), 'mute_card', {'card': 14, 'hours': 2})
 
     # then
-    assert sorted(kinds(store, 'nina.white')) == ['muted', 'progress'], 'Paul started progress on Nina\'s card, it stays hers, so she hears of both changes'
+    assert kinds(store, 'nina.white') == ['progress'], 'Paul took Nina\'s card, so she hears it moved to him; the mute is his own card now'
     assert kinds(store, 'paul.stone') == []
-    assert store.anomaly(CARD)['owner'] == 'Nina White'
+    assert store.anomaly(CARD)['owner'] in ('Paul Stone', PAUL)
 
 
 def test_a_burst_is_one_notification_and_a_flapping_card_tells_its_holder_once_an_hour(store: Store):

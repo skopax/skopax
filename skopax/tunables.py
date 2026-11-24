@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 from pymongo import DESCENDING, ReturnDocument
 
-from skopax import brand, clock as zone_clock, logs, settingcards, tags
+from skopax import brand, clock as zone_clock, jirafields, logs, settingcards, tags
 from skopax.config import ALERT_GLOB, ALERT_GLOBS_MAX, AI_PROVIDERS, DEFAULT_ROLES, JIRA_BACKLINK_MODES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve, TRACE_CONTENTS
 from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS, read_token_headers, token_headers_reason
 from skopax.contract import Plugin
@@ -93,6 +93,7 @@ def offered_tag(t: Tunable, text: str) -> str:
     return next((choice for choice in choices_of(t) if choice.lower() == text.lower()), text)
 
 
+JIRA_FIELD_KEYS = ('jira.scope-field', 'jira.points-field', 'jira.developer-field', 'jira.sprint-field')
 TRACE_INSTANCE_KEY = 'langfuse.trace-instance'
 TRACE_NAMES: list[Callable[[], tuple[str, ...]]] = [tuple]
 
@@ -327,7 +328,13 @@ STATIC = (
     T('jira.project', 'jira_project', JIRA, 'Default project', 'Project of a task created from the Slack button, where nobody picks one', 'text'),
     T('jira.parent', 'jira_parent', JIRA, 'Default epic', 'Epic of a new task in the default project when none is picked; empty means no epic', 'text'),
     T('jira.points', 'jira_points', JIRA, 'Story points', 'Story points of new tasks', 'float', 0, 21),
-    T('jira.dev-scope', 'jira_dev_scope', JIRA, 'Scope value', 'Value set in the scope field (jira.scope-field) of new tasks; empty sends no scope', 'text'),
+    T('jira.dev-scope', 'jira_dev_scope', JIRA, 'Scope value', 'Value set in the scope field (jira.scope-field) of new tasks, and the one the Create task dialog picks first; empty sends no scope', 'text'),
+    T('jira.sprint-default', 'jira_sprint_default', JIRA, 'Add to the current sprint', 'Whether a new task goes into the active sprint of its project: the Create task dialog starts with the box ticked or not, '
+      'and tasks from Slack and MCP follow it. It needs the sprint field', 'bool'),
+    T('jira.scope-field', 'jira_scope_field', JIRA, 'Scope field', 'Id of the Jira option field that holds the scope of a task, such as customfield_10100; the Create task dialog offers its values. Empty sends no scope', 'text'),
+    T('jira.points-field', 'jira_points_field', JIRA, 'Story points field', 'Id of the Jira number field for story points, such as customfield_10200; empty sends no points', 'text'),
+    T('jira.developer-field', 'jira_developer_field', JIRA, 'Developer field', 'Id of a Jira user field set to whoever creates the task, next to the assignee; empty leaves it out', 'text'),
+    T('jira.sprint-field', 'jira_sprint_field', JIRA, 'Sprint field', 'Id of the Jira sprint field (Jira Software), such as customfield_10020; empty puts no task in a sprint', 'text'),
     T('jira.tech-project', 'jira_tech_project', JIRA, 'Infra project', 'Project for infrastructure tasks', 'text'),
     T('jira.tech-assignee', 'jira_tech_assignee', JIRA, 'Infra assignee', 'Jira account id that gets infrastructure tasks', 'text'),
     T('jira.backlink', 'jira_backlink', JIRA, 'Back-link on the issue', 'When a card gets a Jira ticket, {product} adds the card link to that issue: link adds a web link (Link issues permission), '
@@ -491,6 +498,8 @@ def parse(t: Tunable, raw, base: Settings, loading: bool = False):
             raise Invalid(msg('probe.extra.invalid', entry=refused[0], rule=refused[1]))
         if t.items and not loading:
             check_items(t, item_entries(t, text))
+        if t.key in JIRA_FIELD_KEYS and not jirafields.field_id_ok(text):
+            raise Invalid(f'{t.label} is a Jira field id, such as customfield_10200')
         if t.key == RELEASE_NAME_KEY and (problem := release_problem(text)):
             raise Invalid(problem)
         if t.key == TOKEN_HEADERS_KEY and (reason := read_token_headers(text)[1]):

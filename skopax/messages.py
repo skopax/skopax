@@ -1352,6 +1352,8 @@ MESSAGES: dict[str, str] = {
     'esql.hint.index_missing': "daily index names follow UTC dates and today's may not exist yet: use the pattern with a * and a @timestamp bound, logs {logs}, APM {apm}",
     'esql.hint.unknown_index': 'that index does not exist, or the API key cannot read it: logs are in {logs}, APM in {apm}',
     'esql.hint.text_field': 'that field is text: compare it with a quoted string ("404") or use its .keyword field',
+    'esql.hint.type_mismatch': '{field} is {kind}: compare it as a string ("500"), or convert with TO_INTEGER({field})',
+    'esql.hint.grok_quotes': 'write the {command} pattern with triple quotes: {command} field """pattern"""',
     'esql.hint.log_column': 'the log line is in {message} ({fields})',
     'esql.slow': 'ES|QL HTTP 504: the query ran past the time limit of the gateway in front of Elasticsearch. Name fewer indices without a star, shorten the @timestamp range, '
                  'filter on a keyword field before any LIKE "*...*", or count one day at a time',

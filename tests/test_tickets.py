@@ -59,7 +59,7 @@ def test_create_task_files_a_task_with_the_card_facts_and_takes_the_card(store: 
     card = store.anomaly(KEY)
 
     # then
-    assert result == 'OPS-121 created · In progress · oscar.green@example.com'
+    assert result == 'OPS-121 created · In progress · oscar.green@example.com · scope Web', 'the summary line names the scope sent'
     assert (fields['project'], fields['issuetype'], fields['summary']) == ({'key': 'OPS'}, {'name': 'Task'}, 'OPS: checkout-service retry storm') and 'parent' not in fields, 'no epic unless one is chosen'
     assert (fields['customfield_1'], fields['customfield_2'], fields['customfield_3']) == ([{'value': 'Web'}], 1.0, 2604)
     assert fields['assignee'] == fields['customfield_4'] == {'accountId': '712020:abc'}

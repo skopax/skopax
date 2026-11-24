@@ -2,6 +2,29 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.12 (2026-11-24)
+
+Grafana Loki and AWS CloudWatch plug-ins, OpenTelemetry traces stored natively in Elastic, clearer ES|QL hints for the investigator, Take now assigns the card to whoever presses it, Jira tasks whose fields are all set in Admin or asked in the dialog, and Jira create errors that say which field was refused.
+
+**Added:**
+
+- Loki plug-in: error log patterns per service from Grafana Loki (self-hosted or Grafana Cloud; none, bearer or basic auth; optional tenant as `X-Scope-OrgID`) become cards keyed `log|<service>|<ERROR or WARN>|<pattern>` with the Elasticsearch log rules, from per-service `count_over_time` counts, a 200-line sample grouped by normalised pattern and exact counts against a day and a week earlier; read tools `loki_query`, `loki_count` and `loki_labels` always stay inside the instance's stream selector.
+- CloudWatch plug-in: AWS CloudWatch metric and composite alarms in ALARM become cards, one per alarm, keyed `cloudwatch|<region>|<alarm name>`, with severity from words in the name or description (crit or critical Critical, warn or warning Warning, otherwise High; adjustable), the service from the alarm's dimensions, and a card that clears when the alarm leaves ALARM; optional name prefixes narrow it and an optional switch also carries alarms in INSUFFICIENT_DATA, and optional Logs Insights counts error, exception and fatal lines per log group over the last 15 minutes (off while no log groups are set, since it is billed per GB scanned). Requests are signed with SigV4 by Skopax itself (no AWS SDK), with credentials from access keys or IRSA (web identity), optionally followed by an assumed role; it uses only read actions, no redirects and at most 500 alarms a pass. The investigator gets `cloudwatch_alarm`, `cloudwatch_metric` and `cloudwatch_logs`.
+- Elasticsearch: the APM check also reads OpenTelemetry traces that Elastic 8.16+ stores OTel-native (EDOT collector or managed OTLP endpoint). The default `apm-index` is now `traces-apm*,traces-*.otel-*`, and each shape gets its own ES|QL query: `kind`/root spans, `status.code` and `duration` in nanoseconds for OTel, the usual transaction fields for classic APM. The same `apm-fail` and APM p95 cards come out in milliseconds. Test connection says which shapes it found, and classic-only installs see no change.
+- Jira Create task asks Jira what a new task needs: the scope field's allowed values (with `jira.dev-scope` picked first), an "Add to the current sprint" box set by the new `jira.sprint-default` (default on), and an input for every other required field without a default, which the server checks against the project's create screen (cached 5 minutes). The scope, points, developer and sprint field ids are now Admin settings under Jira tasks > Fields, with a picker that lists Jira's fields by name; installs that set these field ids in code can move them to Admin.
+
+**Changed:**
+
+- Take moves the card to the person who presses it, even when it was assigned to someone else (by hand or by auto-assign); taking it for someone named picks that person. Before, Take kept the existing assignee.
+- Elasticsearch and Loki share `log|...` card keys: the first of them to open a card keeps it while it is open; the other's items for that key no longer take it over, escalate or clear it, and once its owner cleared it the other may reopen it as the new owner.
+- The chat logo for a custom workspace name draws its text in Helvetica or Arial instead of the system font, which some browsers rendered as wrong letters inside an image.
+- Test connection asks first for every plug-in whose test posts a real message (`Plugin(test_posts=True)`), with wording that names the plug-in.
+
+**Fixed:**
+
+- The investigator's ES|QL tool explains two common mistakes: comparing a text or keyword field with a number (it names the field and suggests a string or TO_INTEGER) and a GROK or DISSECT pattern with inner quotes (use triple quotes).
+- Creating a Jira ticket that Jira refuses with HTTP 400 shows Jira's own reasons, such as the required field it is missing, masked and cut to 500 characters; the log names only the refused field ids.
+
 ## 0.5.11 (2026-11-24)
 
 A Zabbix plug-in, and a read-only Integrations list that shows only what is connected.

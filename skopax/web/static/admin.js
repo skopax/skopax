@@ -365,6 +365,66 @@ function adminOwnFrom(i, row) {
   note.dataset.from = i.ownFrom;
   (row.querySelector('.adm-c') || row).appendChild(note);
 }
+var JIRA_FIELD_ROLES = {'jira.scope-field': 'scope', 'jira.points-field': 'points', 'jira.developer-field': 'developer', 'jira.sprint-field': 'sprint'};
+function adminJiraField(i, row) {
+  var input = row.querySelector('.adm-in'), host = row.querySelector('.adm-c');
+  if (!input || input.tagName !== 'INPUT' || !host) return;
+  var list = document.createElement('datalist'), box = el('div', 'adm-jira-field'), go = accText('button', 'btn sec small adm-jira-list', 'List Jira fields'), note = accText('p', 'adm-help adm-jira-note', ''), loaded = null;
+  list.id = adminId(i.key) + '-fields';
+  list.setAttribute('data-no-tx', '');
+  note.setAttribute('data-no-tx', '');
+  input.setAttribute('list', list.id);
+  go.type = 'button';
+  box.appendChild(list);
+  box.appendChild(go);
+  box.appendChild(note);
+  host.insertBefore(box, host.querySelector('.adm-acts'));
+  function named() {
+    var hit = loaded && loaded.fields.filter(function (f) { return f.id === input.value.trim(); })[0];
+    return hit ? hit.label : '';
+  }
+  function paint() {
+    note.textContent = '';
+    if (!loaded) return;
+    var now = named();
+    if (now) note.appendChild(document.createTextNode(tx('In Jira: {0}').replace('{0}', function () { return now; })));
+    var s = loaded.suggest;
+    if (s && s.id !== input.value.trim()) {
+      if (now) note.appendChild(document.createTextNode(' \u00b7 '));
+      note.appendChild(document.createTextNode(tx('Suggested: {0}').replace('{0}', function () { return s.label; }) + ' '));
+      var use = accText('button', 'btn sec small adm-jira-use', tx('Use it'));
+      use.type = 'button';
+      use.addEventListener('click', function () { input.value = s.id; input.dispatchEvent(new Event('input', {bubbles: true})); paint(); });
+      note.appendChild(use);
+    }
+    if (!now && !(s && s.id !== input.value.trim()) && input.value.trim()) note.textContent = tx('Not a field Jira lists: check the id');
+  }
+  async function fill(again) {
+    if (loaded && again !== true) return;
+    go.disabled = true;
+    try {
+      loaded = await adminApi('GET', '/api/admin/jira/fields?role=' + encodeURIComponent(JIRA_FIELD_ROLES[i.key]));
+      list.textContent = '';
+      loaded.fields.forEach(function (f) {
+        var opt = document.createElement('option');
+        opt.value = f.id;
+        opt.label = f.label;
+        opt.textContent = f.label;
+        list.appendChild(opt);
+      });
+      go.textContent = tx('List again');
+      go.disabled = false;
+      paint();
+    } catch (e) {
+      loaded = null;
+      go.disabled = false;
+      note.textContent = tx(e && e.detail ? e.detail : 'The Jira fields could not be read; type the field id');
+    }
+  }
+  go.addEventListener('click', function () { fill(true); });
+  input.addEventListener('focus', fill);
+  input.addEventListener('input', paint);
+}
 function adminRow(i, card) {
   var row = el('div', 'adm-row' + (i.source === 'admin' ? ' set' : '') + (card ? ' adm-field' : ''));
   row.dataset.key = i.key;
@@ -377,6 +437,7 @@ function adminRow(i, card) {
     '<span class="adm-msg" role="status"></span></div></div>';
   if (i.builtIn && i.builtIn.length) adminBuiltIn(i, row);
   if (i.ownFrom) adminOwnFrom(i, row);
+  if (JIRA_FIELD_ROLES[i.key]) adminJiraField(i, row);
   var chipIn = i.items && i.kind !== 'rules' ? row.querySelector('.adm-in') : null;
   if (chipIn && chipIn.tagName === 'INPUT') admChipsMount(chipIn, i.items, i.label);
   if (i.channelName) row.querySelector('.adm-c').insertBefore(accText('p', 'adm-help adm-channel-name', 'Posts to #' + i.channelName), row.querySelector('.adm-c .adm-acts'));

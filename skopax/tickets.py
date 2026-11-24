@@ -2,7 +2,7 @@ import logging
 import re
 from collections.abc import Callable
 
-from skopax import brand, clock
+from skopax import brand, clock, jirafields
 from skopax.errkind import NoAccess, text_of
 from skopax.engine import parse_iso
 from skopax.enrich import JiraRefused
@@ -16,6 +16,7 @@ TITLE_LIMIT = 200
 SUSPECTS = 5
 LINKS = 10
 FIBONACCI = (1, 2, 3, 5, 8, 13, 21)
+OPTION_KINDS = ('option', 'options')
 PROJECT_KEY = re.compile(r'[A-Z][A-Z0-9]{1,9}')
 
 
@@ -109,8 +110,25 @@ def looked_up(read: Callable[[], object], refused: list[str]) -> object:
         return None
 
 
+def person(jira: object, who: str) -> str | None:
+    said: list[str] = []
+    found = looked_up(lambda: jira.find_user(who), said)
+    if said:
+        raise JiraRefused(said[0])
+    return found
+
+
+def scope_shape(settings, screen: dict | None, scope_meta: dict | None, field_kind: Callable[[str], str | None] | None) -> dict | None | bool:
+    if screen is not None:
+        return scope_meta if scope_meta is not None and scope_meta['kind'] in OPTION_KINDS else False
+    found = field_kind(settings.jira_scope_field) if field_kind is not None else None
+    return {'kind': found, 'options': None} if found in OPTION_KINDS else None
+
+
 def create_task(store: Store, jira: object, settings, key: str, title: str | None, by: str, note: str, base_url: str, text: str | None = None, points: float | None = None,
-                project: str | None = None, epic: str | None = None, extra_projects: tuple[str, ...] = (), owner_name: str | None = None) -> tuple[str, str | None]:
+                project: str | None = None, epic: str | None = None, extra_projects: tuple[str, ...] = (), owner_name: str | None = None, *, scope: list[str] | None = None,
+                sprint: bool | None = None, fields: dict | None = None, meta: Callable[[str, str], dict | None] | None = None,
+                field_kind: Callable[[str], str | None] | None = None) -> tuple[str, str | None, list[str]]:
     if not jira.enabled:
         raise JiraRefused(msg('actions.jira_off'))
     tech = settings.jira_tech_project
@@ -122,15 +140,25 @@ def create_task(store: Store, jira: object, settings, key: str, title: str | Non
     if parent and not ticket_pattern(()).fullmatch(parent):
         raise JiraRefused('the epic is a Jira key such as OPS-123')
     if project == tech:
-        return create_tech_task(store, jira, settings, key, title, by, note, base_url, text, owner_name)
+        return create_tech_task(store, jira, settings, key, title, by, note, base_url, text, owner_name) + ([],)
     if points is not None and points not in FIBONACCI:
         raise JiraRefused('story points must be one of 1, 2, 3, 5, 8, 13, 21')
     card = store.anomaly(key)
     summary = (title or '').strip()[:TITLE_LIMIT] or default_title(card, settings.jira_title_prefix)
-    fields = {'project': {'key': project}, 'issuetype': {'name': dict(settings.jira_issue_types).get(project, 'Task')}, 'summary': summary,
-              'description': typed_description(card, text, card_link(key, base_url)) if (text or '').strip() else description(card, note, card_link(key, base_url))}
-    if settings.jira_scope_field and settings.jira_dev_scope:
-        fields[settings.jira_scope_field] = [{'value': settings.jira_dev_scope}]
+    issue_type = dict(settings.jira_issue_types).get(project, 'Task')
+    screen = meta(project, issue_type) if meta is not None and (scope is not None or fields) else None
+    picked = jirafields.texts(scope) if scope is not None else ([settings.jira_dev_scope] if settings.jira_dev_scope else [])
+    scope_meta = (screen or {}).get(settings.jira_scope_field) if settings.jira_scope_field else None
+    if scope is not None and not picked and scope_meta and scope_meta['required']:
+        raise JiraRefused(f"{scope_meta['name']} is required: pick at least one")
+    extra = jirafields.given_fields(fields or {}, screen, settings, project, lambda who: person(jira, who)) if fields else {}
+    issue = {'project': {'key': project}, 'issuetype': {'name': issue_type}, 'summary': summary,
+             'description': typed_description(card, text, card_link(key, base_url)) if (text or '').strip() else description(card, note, card_link(key, base_url))}
+    shape = scope_shape(settings, screen, scope_meta, field_kind) if settings.jira_scope_field and picked else None
+    sent_scope = picked if shape is not False else []
+    if sent_scope:
+        issue[settings.jira_scope_field] = jirafields.option_value(shape, scope_meta['name'] if scope_meta else 'scope', sent_scope)
+    fields = issue | extra
     if settings.jira_points_field:
         fields[settings.jira_points_field] = settings.jira_points if points is None else points
     if parent:
@@ -142,9 +170,10 @@ def create_task(store: Store, jira: object, settings, key: str, title: str | Non
         fields['assignee'] = {'accountId': account}
         if settings.jira_developer_field:
             fields[settings.jira_developer_field] = {'accountId': account}
-    sprint = looked_up(lambda: jira.active_sprint(project, settings.jira_sprint_field), refused) if settings.jira_sprint_field else None
-    if sprint:
-        fields[settings.jira_sprint_field] = sprint
+    wants_sprint = settings.jira_sprint_default if sprint is None else bool(sprint)
+    active = looked_up(lambda: jira.active_sprint(project, settings.jira_sprint_field), refused) if settings.jira_sprint_field and wants_sprint else None
+    if active:
+        fields[settings.jira_sprint_field] = active
     new_key = jira.create_issue(fields)
     if note:
         store.note(key, note)
@@ -152,7 +181,7 @@ def create_task(store: Store, jira: object, settings, key: str, title: str | Non
     store.add_activity('jira', by, f'{new_key} created for {key}', key=key)
     log.info('jira task %s created for %s by %s (account %s)', new_key, key, by, account or 'not found')
     missing = None if account or users_refused else f'no Jira account found for {by}: assignee and Developer are empty, fill them in Jira (or map the login in jira.accounts)'
-    return new_key, ' \u00b7 '.join([*refused, *([missing] if missing else [])]) or None
+    return new_key, ' \u00b7 '.join([*refused, *([missing] if missing else [])]) or None, sent_scope
 
 
 def create_tech_task(store: Store, jira: object, settings, key: str, title: str | None, by: str, note: str, base_url: str, text: str | None, owner_name: str | None = None) -> tuple[str, None]:
