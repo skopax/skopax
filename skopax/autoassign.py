@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 from skopax import tags
 from skopax.actors import SYSTEM
+from skopax.engine import ALREADY_ACTIVE
 from skopax.errkind import kind as error_kind
 from skopax.information import CARD_SEVS, IN_FLIGHT
 from skopax.messages import fold, msg
@@ -88,7 +89,7 @@ class AutoAssign:
         return done
 
     def _tag(self, card: dict, floors: dict[str, str], owners: dict[str, list[str]], people: dict[str, str], labels: dict[str, str]) -> tuple[str, list[str]] | None:
-        first = str(card.get('firstSeen') or '')
+        first = '' if card.get(ALREADY_ACTIVE) else str(card.get('firstSeen') or '')
         found = []
         for t in card.get('tags') or []:
             tag = t.get('id') if isinstance(t, dict) else None

@@ -14,7 +14,7 @@ from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
 from skopax.cardposts import summary_body
 from skopax.cardlink import card_url, chat_url
 from skopax.contract import ECHO_FIELD
-from skopax.engine import iso as epoch_iso, parent_name, parse_iso
+from skopax.engine import ALREADY_ACTIVE, iso as epoch_iso, parent_name, parse_iso
 from skopax.errkind import Authored, kind
 from skopax.investigator.select import own_findings
 from skopax.investigator.tools import draft_problem
@@ -61,6 +61,10 @@ WAIT_MINUTES = 30
 INVESTIGATING = 'waiting for the investigation'
 SINCE_SLACK_S = 2 * PASS_S
 HELD_MARGIN_S = 3600
+
+
+def off_routes(card: dict) -> bool:
+    return card.get('noRoutes') is True or bool(card.get(ALREADY_ACTIVE))
 
 
 def came_back_line(card: dict) -> str:
@@ -254,7 +258,7 @@ class Route:
         return SEV_RANK.get(card.get('sev'), 0) >= SEV_RANK.get(self.min_sev, SEV_RANK[str(DEFAULTS['min-sev'])]) and self.hit(card)
 
     def due(self, card: dict, by_key: dict | None = None) -> bool:
-        if card.get('status') != 'open' or card.get('muted') or card.get('triage') == 'handled' or grouped(card, by_key) or card.get('noRoutes') is True:
+        if card.get('status') != 'open' or card.get('muted') or card.get('triage') == 'handled' or grouped(card, by_key) or off_routes(card):
             return False
         if (self.business and not said(card)) or not self.takes(card):
             return False
@@ -263,7 +267,7 @@ class Route:
 
     def fixed_due(self, card: dict, now: float, by_key: dict | None = None) -> bool:
         said_it = card.get('business') or {}
-        return (self.business and said_it.get('kind') == tags.INFO and bool(said(card)) and not card.get('muted') and not grouped(card, by_key) and card.get('noRoutes') is not True and self.takes(card)
+        return (self.business and said_it.get('kind') == tags.INFO and bool(said(card)) and not card.get('muted') and not grouped(card, by_key) and not off_routes(card) and self.takes(card)
                 and closed(card, now))
 
 
@@ -1045,7 +1049,7 @@ class Routes:
             if waited and not self.young(row, now) and isinstance(since, Unread):
                 continue
             stopped = waited and self.stopped(card)
-            if ((card.get('status') != 'open' and not stopped) or card.get('muted') or card.get('triage') == 'handled' or grouped(card, None) or card.get('noRoutes') is True
+            if ((card.get('status') != 'open' and not stopped) or card.get('muted') or card.get('triage') == 'handled' or grouped(card, None) or off_routes(card)
                     or not route.takes(card) or (waited and not self.young(row, now) and not self.fresh(since, route, card))
                     or self.told_since(card, route, str(row.get('at') or ''))):
                 self._done(records, [route_id], key)

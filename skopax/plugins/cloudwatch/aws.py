@@ -84,6 +84,11 @@ def domain_of(region: str) -> str:
     return 'amazonaws.com.cn' if region.startswith('cn-') else 'amazonaws.com'
 
 
+def console_of(region: str) -> str:
+    host = 'console.amazonaws.cn' if region.startswith('cn-') else 'console.aws.amazon.com'
+    return f'https://{region}.{host}/cloudwatch/home?region={region}'
+
+
 def endpoint(service: str, region: str) -> str:
     return f'https://{SERVICES[service]}.{region}.{domain_of(region)}/'
 

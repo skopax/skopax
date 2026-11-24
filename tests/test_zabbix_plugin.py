@@ -1,3 +1,4 @@
+import datetime as dt
 import http.server
 import json
 import logging
@@ -330,6 +331,355 @@ def test_a_card_clears_when_its_problem_is_gone_and_stays_while_zabbix_fails(sto
     assert first == failed == {'zabbix|web-01|High CPU utilization|1001', 'zabbix|db-01|Disk space is low|1002'}
     assert second == {'zabbix|web-01|High CPU utilization|1001'}
     assert third == set()
+
+
+CPU = 'zabbix|web-01|High CPU utilization|1001'
+DISK = 'zabbix|db-01|Disk space is low|1002'
+AGENT = 'zabbix|web-01|Agent is not available|1003'
+SWAP = 'zabbix|db-01|Swap is low|1004'
+MONTHS_AGO = NOW - 40 * 86400
+MAIN = 'zabbix/zabbix/main'
+
+
+def started(store: Store, passes: dict | None = None) -> None:
+    store.save_state({'anomalies': [], 'history': [], 'initialized': True} | ({'serverPasses': passes} if passes else {}), None)
+
+
+def connections(store: Store) -> dict:
+    return store.load().get('connected') or {}
+
+
+def test_the_first_pass_opens_old_problems_quietly_and_fresh_ones_as_today(store: Store):
+    # given
+    started(store)
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO), problem(2, '1002', 'Disk low', 2, clock=NOW - 600), problem(3, '1003', 'Agent down', 5, clock=NOW - 3000)],
+              triggers=list(TRIGGERS.values()) + [trigger('1004', 'Swap is low', 4, '102')])
+    runtime = runtime_of(store, rpc)
+
+    # when
+    first = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW)
+    cards = open_cards(store)
+
+    # then
+    assert {a['key'] for a in first.push} == {DISK, AGENT}
+    assert {e['key']: e['ev'] for e in first.events} == {CPU: 'new', DISK: 'new', AGENT: 'new'}
+    assert cards[CPU]['alreadyActive'] == {'since': engine.iso(MONTHS_AGO), 'source': 'Zabbix'} and cards[CPU]['startedAt'] == engine.iso(MONTHS_AGO)
+    assert cards[CPU]['pushedAt'] is None and cards[CPU]['pushedSev'] == 'high'
+    assert 'alreadyActive' not in cards[DISK] and 'alreadyActive' not in cards[AGENT]
+    assert connections(store) == {MAIN: engine.iso(NOW)}
+
+
+def test_on_a_later_pass_only_a_problem_older_than_the_connection_is_quiet(store: Store):
+    # given
+    started(store)
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO)], triggers=list(TRIGGERS.values()) + [trigger('1004', 'Swap is low', 4, '102')])
+    runtime = runtime_of(store, rpc)
+    sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW)
+
+    # when
+    rpc.problems += [problem(4, '1004', 'Swap low', 4, clock=NOW + 3600), problem(2, '1002', 'Disk low', 2, clock=NOW - 7200)]
+    later = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW + 86400)
+    cards = open_cards(store)
+
+    # then
+    assert [a['key'] for a in later.push] == [SWAP]
+    assert 'alreadyActive' not in cards[SWAP] and cards[DISK]['alreadyActive']['source'] == 'Zabbix' and cards[CPU]['alreadyActive']['source'] == 'Zabbix'
+    assert connections(store) == {MAIN: engine.iso(NOW)}
+
+
+def test_a_failed_or_refused_pass_does_not_connect_and_a_capped_read_does(store: Store, monkeypatch):
+    # given
+    started(store)
+    monkeypatch.setattr('skopax.plugins.zabbix.zabbix.MAX_PROBLEMS', 1)
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO)], answers={'problem.get': Unreachable(f'{API} unreachable (timed out)')})
+    runtime = runtime_of(store, rpc)
+
+    # when
+    sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW)
+    failed = connections(store)
+    rpc.answers['problem.get'] = {'rpc_error': {'code': -32602, 'message': 'Not authorized.', 'data': ''}}
+    sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW + 900)
+    refused = connections(store)
+    rpc.answers.clear()
+    rpc.problems.append(problem(2, '1002', 'Disk low', 2, clock=MONTHS_AGO))
+    sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW + 1800)
+    capped = store.load()['serverPasses']['zabbix']['status']
+    monkeypatch.setattr('skopax.plugins.zabbix.zabbix.MAX_PROBLEMS', 500)
+    rpc.problems.append(problem(3, '1003', 'Agent down', 5, clock=NOW + 1900))
+    full = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW + 2700)
+    cards = open_cards(store)
+
+    # then
+    assert failed == {MAIN: None} and refused == {MAIN: None}
+    assert CAPPED in capped
+    assert connections(store) == {MAIN: engine.iso(NOW + 1800)}
+    assert cards[DISK]['alreadyActive']['source'] == 'Zabbix' and cards[CPU]['alreadyActive']['source'] == 'Zabbix'
+    assert [a['key'] for a in full.push] == [AGENT] and 'alreadyActive' not in cards[AGENT]
+
+
+@pytest.mark.parametrize('status', ['ok', 'error: Zabbix problem.get: unreachable'])
+def test_an_instance_that_ran_before_the_connection_record_existed_is_never_quiet(store: Store, status):
+    # given
+    started(store, {'zabbix': {'at': engine.iso(NOW - 900), 'status': status}})
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO)])
+    runtime = runtime_of(store, rpc)
+
+    # when
+    applied = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW)
+
+    # then
+    assert [a['key'] for a in applied.push] == [CPU] and 'alreadyActive' not in open_cards(store)[CPU]
+    assert connections(store) == {MAIN: engine.LONG_AGO}
+
+
+def test_the_connection_time_of_the_instance_record_wins(store: Store):
+    # given
+    started(store)
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO), problem(2, '1002', 'Disk low', 2, clock=NOW - 86400)])
+    runtime = runtime_of(store, rpc)
+    store.db['instances'].update_one({'_id': 'zabbix/main'}, {'$set': {'connectedAt': engine.iso(NOW - 2 * 86400)}})
+    runtime.refresh()
+
+    # when
+    applied = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW)
+    cards = open_cards(store)
+
+    # then
+    assert [a['key'] for a in applied.push] == [DISK]
+    assert cards[CPU]['alreadyActive']['source'] == 'Zabbix' and 'alreadyActive' not in cards[DISK]
+    assert connections(store) == {MAIN: engine.iso(NOW)}
+
+
+@pytest.mark.parametrize(('hours_off', 'reset'), [(3, False), (25, True)])
+def test_switching_an_instance_back_on_resets_its_connection_only_after_a_day_off(store: Store, monkeypatch, hours_off, reset):
+    # given
+    clock = {'now': dt.datetime(2026, 11, 1, 8, 0, tzinfo=dt.timezone.utc)}
+    monkeypatch.setattr('skopax.instances.utc_now', lambda: clock['now'])
+    instances = Instances(store.db, Registry.of(zabbix.PLUGIN), lambda: Sealer(KEY))
+    made = instances.create('zabbix', 'east', {'url': URL, 'token': TOKEN}, True, 'test')
+
+    # when
+    clock['now'] += dt.timedelta(days=5)
+    instances.set_enabled('zabbix', 'east', False, 'test')
+    clock['now'] += dt.timedelta(hours=hours_off)
+    on = instances.set_enabled('zabbix', 'east', True, 'test')
+
+    # then
+    assert made.connected == '2026-11-01T08:00:00Z'
+    assert on.connected == (engine.iso(clock['now'].timestamp()) if reset else made.connected)
+
+
+def test_an_instance_created_disabled_and_switched_on_the_same_day_keeps_its_creation_time(store: Store, monkeypatch):
+    # given
+    clock = {'now': dt.datetime(2026, 11, 1, 8, 0, tzinfo=dt.timezone.utc)}
+    monkeypatch.setattr('skopax.instances.utc_now', lambda: clock['now'])
+    instances = Instances(store.db, Registry.of(zabbix.PLUGIN), lambda: Sealer(KEY))
+    instances.create('zabbix', 'east', {'url': URL, 'token': TOKEN}, False, 'test')
+
+    # when
+    clock['now'] += dt.timedelta(hours=1)
+    on = instances.set_enabled('zabbix', 'east', True, 'test')
+
+    # then
+    assert on.connected == '2026-11-01T08:00:00Z'
+
+
+def test_a_problem_that_started_during_a_short_switch_off_is_loud(store: Store):
+    # given
+    started(store)
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO)])
+    runtime = runtime_of(store, rpc)
+    store.db['instances'].update_one({'_id': 'zabbix/main'}, {'$set': {'connectedAt': engine.iso(NOW - 86400)}})
+    runtime.refresh()
+    sweeper = sweeper_of(store, runtime)
+    sweeper.run('zabbix', 'zabbix', NOW)
+
+    # when
+    sweeper.retire('zabbix', runtime.instances.get('zabbix', 'main').info(), NOW + 60)
+    sweeper.revive('zabbix', 'main', checks=['zabbix'])
+    rpc.problems.append(problem(2, '1002', 'Disk low', 2, clock=NOW + 3600))
+    back = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW + 3 * 3600)
+
+    # then
+    assert [a['key'] for a in back.push] == [DISK] and 'alreadyActive' not in open_cards(store)[DISK]
+    assert open_cards(store)[CPU]['alreadyActive']['source'] == 'Zabbix'
+
+
+def test_the_earlier_of_the_instance_record_and_the_kept_connection_counts(store: Store):
+    # given
+    started(store, {'zabbix': {'at': engine.iso(NOW - 900), 'status': 'ok'}})
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO)])
+    runtime = runtime_of(store, rpc)
+    store.db['instances'].update_one({'_id': 'zabbix/main'}, {'$set': {'connectedAt': engine.iso(NOW - 3600)}})
+    runtime.refresh()
+
+    # when
+    applied = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW)
+
+    # then
+    assert [a['key'] for a in applied.push] == [CPU] and 'alreadyActive' not in open_cards(store)[CPU]
+    assert connections(store) == {MAIN: engine.LONG_AGO}
+
+
+def test_a_second_instance_is_quiet_on_its_own_first_pass_while_the_first_stays_as_it_was(store: Store):
+    # given
+    started(store, {'zabbix': {'at': engine.iso(NOW - 900), 'status': 'ok'}})
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO)])
+    runtime = runtime_of(store, rpc)
+    add_instance(store, zabbix.PLUGIN, 'east', sealer_key=KEY, primary=False, url=URL, token=TOKEN)
+    runtime.refresh()
+
+    # when
+    applied = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW)
+    cards = open_cards(store)
+
+    # then
+    assert [a['key'] for a in applied.push] == [CPU]
+    assert 'alreadyActive' not in cards[CPU] and cards[CPU + '@east']['alreadyActive']['source'] == 'Zabbix'
+    assert connections(store) == {MAIN: engine.LONG_AGO, 'zabbix/zabbix/east': engine.iso(NOW)}
+
+
+def test_an_instance_switched_off_and_on_again_keeps_a_quiet_card_quiet_and_a_loud_card_loud(store: Store):
+    # given
+    started(store)
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO), problem(2, '1002', 'Disk low', 2, clock=NOW - 600)])
+    runtime = runtime_of(store, rpc)
+    sweeper = sweeper_of(store, runtime)
+    sweeper.run('zabbix', 'zabbix', NOW)
+
+    # when
+    sweeper.retire('zabbix', runtime.instances.get('zabbix', 'main').info(), NOW + 60)
+    sweeper.revive('zabbix', 'main', checks=['zabbix'])
+    dropped = connections(store)
+    again = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW + 3 * 3600)
+    cards = open_cards(store)
+
+    # then
+    assert dropped == {MAIN: {'at': engine.iso(NOW), 'off': engine.iso(NOW + 60)}}
+    assert connections(store) == {MAIN: engine.iso(NOW)}
+    assert {e['key']: e['ev'] for e in again.events} == {CPU: 'reopened', DISK: 'reopened'} and [a['key'] for a in again.push] == [DISK]
+    assert cards[CPU]['alreadyActive']['source'] == 'Zabbix' and 'alreadyActive' not in cards[DISK]
+
+
+@pytest.mark.parametrize('check_only', [False, True])
+def test_a_legacy_instance_switched_off_for_three_hours_stays_loud_and_after_a_day_starts_over(store: Store, check_only):
+    # given
+    started(store, {'zabbix': {'at': engine.iso(NOW - 900), 'status': 'ok'}})
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO)], triggers=list(TRIGGERS.values()) + [trigger('1004', 'Swap is low', 4, '102')])
+    runtime = runtime_of(store, rpc)
+    sweeper = sweeper_of(store, runtime)
+    sweeper.run('zabbix', 'zabbix', NOW)
+
+    def off_and_on(at: float) -> None:
+        sweeper.retire('zabbix', 'main', at, 'zabbix' if check_only else None)
+        sweeper.revive('zabbix', 'main', checks=['zabbix'])
+
+    # when
+    off_and_on(NOW + 60)
+    rpc.problems.append(problem(2, '1002', 'Disk low', 2, clock=NOW + 3600))
+    short = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW + 3 * 3600)
+    after_short = connections(store)
+    off_and_on(NOW + 4 * 3600)
+    rpc.problems.append(problem(4, '1004', 'Swap low', 4, clock=NOW + 5 * 3600))
+    long = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW + 30 * 3600)
+    cards = open_cards(store)
+
+    # then
+    assert {a['key'] for a in short.push} >= {DISK} and 'alreadyActive' not in cards[DISK]
+    assert after_short == {MAIN: engine.LONG_AGO}
+    assert connections(store) == {MAIN: engine.iso(NOW + 30 * 3600)}
+    assert cards[SWAP]['alreadyActive']['source'] == 'Zabbix' and SWAP not in {a['key'] for a in long.push}
+
+
+def test_a_legacy_instance_switched_off_before_its_first_pass_after_the_upgrade_stays_loud(store: Store):
+    # given
+    started(store, {'zabbix': {'at': engine.iso(NOW - 900), 'status': 'ok'}})
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO)])
+    runtime = runtime_of(store, rpc)
+    sweeper = sweeper_of(store, runtime)
+
+    # when
+    sweeper.retire('zabbix', 'main', NOW)
+    sweeper.revive('zabbix', 'main', checks=['zabbix'])
+    back = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW + 3 * 3600)
+
+    # then
+    assert [a['key'] for a in back.push] == [CPU] and 'alreadyActive' not in open_cards(store)[CPU]
+    assert connections(store) == {MAIN: engine.LONG_AGO}
+
+
+def test_deleting_an_instance_forgets_its_connection(store: Store):
+    # given
+    started(store)
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO)])
+    runtime = runtime_of(store, rpc)
+    sweeper = sweeper_of(store, runtime)
+    sweeper.run('zabbix', 'zabbix', NOW)
+
+    # when
+    sweeper.retire('zabbix', 'main', NOW + 60)
+    sweeper.forget('zabbix', 'main')
+
+    # then
+    assert connections(store) == {}
+
+
+@pytest.mark.parametrize(('hours_ago', 'expected'), [(2, '1970-01-01T00:00:00Z'), (30, '2026-11-01T08:00:00Z')])
+def test_a_record_from_before_the_upgrade_switched_on_again_is_connected_long_ago_after_a_short_gap(store: Store, monkeypatch, hours_ago, expected):
+    # given
+    now = dt.datetime(2026, 11, 1, 8, 0, tzinfo=dt.timezone.utc)
+    monkeypatch.setattr('skopax.instances.utc_now', lambda: now)
+    add_instance(store, zabbix.PLUGIN, 'east', sealer_key=KEY, enabled=False, url=URL, token=TOKEN)
+    store.db['instances'].update_one({'_id': 'zabbix/east'}, {'$set': {'updatedAt': engine.iso(now.timestamp() - hours_ago * 3600)}})
+    instances = Instances(store.db, Registry.of(zabbix.PLUGIN), lambda: Sealer(KEY))
+
+    # when
+    on = instances.set_enabled('zabbix', 'east', True, 'test')
+
+    # then
+    assert on.connected == expected
+
+
+def test_a_primary_move_keeps_the_connection_so_old_problems_stay_quiet_and_new_ones_stay_loud(store: Store):
+    # given
+    started(store)
+    rpc = Rpc(problems=[problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO)])
+    runtime = runtime_of(store, rpc)
+    add_instance(store, zabbix.PLUGIN, 'east', sealer_key=KEY, primary=False, url=URL, token=TOKEN)
+    runtime.refresh()
+    sweeper = sweeper_of(store, runtime)
+    sweeper.run('zabbix', 'zabbix', NOW)
+    old, new = runtime.instances.get('zabbix', 'main').info(), runtime.instances.get('zabbix', 'east').info()
+
+    # when
+    runtime.instances.make_primary('zabbix', 'east', 'test')
+    runtime.refresh()
+    sweeper.primary_changed('zabbix', old, new, NOW + 60)
+    sweeper.revive('zabbix', None)
+    kept = connections(store)
+    rpc.problems.append(problem(2, '1002', 'Disk low', 2, clock=NOW + 600))
+    moved = sweeper_of(store, runtime).run('zabbix', 'zabbix', NOW + 900)
+    cards = open_cards(store)
+
+    # then
+    assert kept == {MAIN: engine.iso(NOW), 'zabbix/zabbix/east': engine.iso(NOW)}
+    assert cards[CPU]['alreadyActive']['source'] == 'Zabbix' and cards[CPU + '@main']['alreadyActive']['source'] == 'Zabbix'
+    assert {a['key'] for a in moved.push} == {DISK, DISK + '@main'}
+
+
+def test_a_trigger_starts_at_its_newest_problem_and_a_problem_without_a_clock_gives_no_start():
+    # given
+    rows = [problem(1, '1001', 'High CPU', 4, clock=MONTHS_AGO), problem(2, '1001', 'High CPU', 2, clock=NOW - 600), problem(3, '1002', 'Disk low', 2, clock=MONTHS_AGO)]
+    rows.append(dict(problem(4, '1002', 'Disk low', 2), clock='0'))
+    rpc = Rpc(problems=rows + [problem(5, '1003', 'Agent down', 5, clock=MONTHS_AGO)])
+
+    # when
+    cards = {c['key']: c for c in pass_of(rpc).result.found}
+
+    # then
+    assert cards[CPU]['startedAt'] == engine.iso(NOW - 600)
+    assert 'startedAt' not in cards[DISK]
+    assert cards[AGENT]['startedAt'] == engine.iso(MONTHS_AGO)
 
 
 def test_past_the_cap_the_newest_are_read_nothing_clears_and_the_warning_is_logged_once(store: Store, caplog):

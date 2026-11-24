@@ -4,7 +4,7 @@ from collections.abc import Callable, Mapping
 
 from skopax.contract import PassResult, Sweep, anomaly, iso
 from skopax.kit import access
-from skopax.plugins.cloudwatch.alarms import DOT, HELD, REASON_LIMIT, clean, masked, names_of
+from skopax.plugins.cloudwatch.alarms import DOT, HELD, REASON_LIMIT, clean, masked, names_of, within
 from skopax.plugins.cloudwatch.aws import NAME, Aws, AwsError
 
 PASS = 'cloudwatch-logs'
@@ -23,6 +23,9 @@ MAX_ROWS = 50
 SAMPLE_LIMIT = 200
 QUERY_LIMIT = 2000
 DEFAULT_MIN = 20
+HOUR_S = 3600
+MAX_WINDOWS = 6
+ROW_BYTES = 40000
 HIGH_TIMES = 10
 DONE = 'Complete'
 FAILED = ('Failed', 'Cancelled', 'Timeout', 'Unknown')
@@ -170,6 +173,53 @@ def card_of(row: dict[str, str], region: str, least: int) -> dict | None:
     return x
 
 
+def windows_of(row: object, now: int) -> list[dict]:
+    if not isinstance(row, dict) or not isinstance(row.get('windows'), list):
+        return []
+    kept = []
+    for w in row['windows']:
+        if not isinstance(w, dict) or not all(isinstance(w.get(k), int) and not isinstance(w.get(k), bool) for k in ('from', 'to', 'n')):
+            continue
+        if now - HOUR_S < w['to'] <= now and w['from'] < w['to']:
+            kept.append({'from': w['from'], 'to': w['to'], 'n': max(0, w['n']), 'sample': clean(w.get('sample') if isinstance(w.get('sample'), str) else '', SAMPLE_LIMIT)})
+    return sorted(kept, key=lambda w: w['to'])[-MAX_WINDOWS:]
+
+
+def hour_of(windows: list[dict], now: int) -> tuple[int, int]:
+    total, seen, reach, floor = 0.0, 0, now, now - HOUR_S
+    for w in sorted(windows, key=lambda w: w['to'], reverse=True):
+        high, low = min(w['to'], reach), max(w['from'], floor)
+        if high > low:
+            total += w['n'] * (high - low) / (w['to'] - w['from'])
+            seen += high - low
+            reach = low
+    return round(total), round(seen / 60)
+
+
+def group_rows(groups: list[str], rows: list[dict[str, str]], now: float, previous: list | None) -> tuple[list[dict], bool]:
+    found: dict[str, tuple[int, str]] = {}
+    for row in rows:
+        group = clean(group_of(row.get('@log') or row.get('logGroup') or ''), GROUP_LIMIT)
+        if group and group not in found:
+            found[group] = (count_of(row), clean(row.get('sample') or '', SAMPLE_LIMIT))
+    old = {r.get('group'): r for r in previous or [] if isinstance(r, dict) and r.get('part') == 'group'}
+    end = int(now)
+    start = end - WINDOW_S
+    out = []
+    for raw in dict.fromkeys(groups):
+        name = clean(raw, GROUP_LIMIT)
+        n, sample = found.get(name, (0, ''))
+        windows = windows_of(old.get(name), end) + [{'from': start, 'to': end, 'n': n, 'sample': sample}]
+        hour, minutes = hour_of(windows, end)
+        row = {'part': 'group', 'group': name, 'n': n, 'hour': hour, 'minutes': minutes, 'windows': windows}
+        if name == HELD:
+            row['keyName'] = 'held log group'
+        if name != raw:
+            row['noLink'] = True
+        out.append(row)
+    return within(sorted(out, key=lambda r: (-r['hour'], r['group'])), ROW_BYTES)
+
+
 def least_of(config: Mapping[str, str]) -> int:
     try:
         return max(1, int(config.get('log-min-lines') or DEFAULT_MIN))
@@ -178,10 +228,10 @@ def least_of(config: Mapping[str, str]) -> int:
 
 
 def sweep(aws: Aws, config: Mapping[str, str], now: float, pause: Callable[[float], None] = time.sleep,
-          monotonic: Callable[[], float] = time.monotonic) -> Sweep:
+          monotonic: Callable[[], float] = time.monotonic, previous: list | None = None) -> Sweep:
     entries = wanted(config)
     if not entries:
-        return Sweep(PassResult(PASS, True, 'off: no log groups set', [], {}, (PASS,)))
+        return Sweep(PassResult(PASS, True, 'off: no log groups set', [], {}, (PASS,)), sections={SECTION: []})
     query = (config.get('error-query') or '').strip() or DEFAULT_QUERY
     problem = query_problem(query)
     if problem:
@@ -198,7 +248,8 @@ def sweep(aws: Aws, config: Mapping[str, str], now: float, pause: Callable[[floa
         return Sweep(PassResult(PASS, False, f'error: {clean(e.reason, REASON_LIMIT)}'))
     least = least_of(config)
     cards = {}
-    for row in rows_of(answer, MAX_ROWS):
+    found = rows_of(answer, MAX_ROWS)
+    for row in found:
         card = card_of(row, aws.region, least)
         if card is not None:
             cards.setdefault(card['key'], card)
@@ -208,5 +259,6 @@ def sweep(aws: Aws, config: Mapping[str, str], now: float, pause: Callable[[floa
     if gone:
         tails.append('no log group named ' + ', '.join(clean(g, GROUP_LIMIT) for g in gone))
     summary = {'part': 'summary', 'at': iso(now), 'region': aws.region, 'groups': len(groups), 'cards': len(cards), 'bytesScanned': int(scanned), 'capped': capped,
-               'missingGroups': [clean(g, GROUP_LIMIT) for g in gone]}
-    return Sweep(PassResult(PASS, True, DOT.join(['ok'] + tails), list(cards.values()), {}, (PASS, access.ran_key(PASS, PART))), sections={SECTION: [summary]})
+               'missingGroups': [clean(g, GROUP_LIMIT) for g in gone], 'least': least}
+    shown, summary['rowsCut'] = group_rows(groups, found, now, previous)
+    return Sweep(PassResult(PASS, True, DOT.join(['ok'] + tails), list(cards.values()), {}, (PASS, access.ran_key(PASS, PART))), sections={SECTION: [summary] + shown})

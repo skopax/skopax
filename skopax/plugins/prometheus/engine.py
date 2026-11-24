@@ -264,7 +264,7 @@ def evaluate_prom(now, data, hard, alerts, deploys, image_by=None, floors: Mappi
         svc = lab.get('job') or lab.get('service') or lab.get('deployment') or lab.get('ingress') or lab.get('consumergroup') or lab.get('domain') or '-'
         ann = a.get('annotations', {})
         text = (ann.get('summary') or ann.get('description') or ann.get('message') or name).replace('\n', ' ')[:200]
-        x = anomaly('alert', 'alert', lab.get('namespace', '-'), svc, name, sev, 1, None, None, '', name, f'Prometheus alert {name} firing since {a.get("activeAt", "?")[:16].replace("T", " ")}Z: {text}')
+        x = anomaly('alert', 'alert', lab.get('namespace', '-'), svc, name, sev, 1, None, None, '', name, f'Prometheus alert {name} firing since {str(a.get("activeAt") or "?")[:16].replace("T", " ")}Z: {text}')
         x['key'] = f'alert|{name}|{ident}'
         x['alertName'], x['alertLabel'] = name, str(lab.get('severity') or '').strip().lower()
         x['short'] = f'{sev.upper()} alert {name}' + (f' {svc}' if svc != '-' else '')

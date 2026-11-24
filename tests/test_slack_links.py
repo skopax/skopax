@@ -57,7 +57,7 @@ def test_a_sent_card_stores_slacks_permalink_on_the_post_and_the_action(store: S
     assert res.status_code == 201
     assert res.json()['slack'] == {'channel': 'C123', 'ts': '1791900000.000001', 'permalink': link('1791900000.000001')}
     assert post['permalink'] == link('1791900000.000001')
-    assert api.methods() == ['chat.getPermalink']
+    assert [m for m in api.methods() if m != 'users.list'] == ['chat.getPermalink']
 
 
 def test_without_getpermalink_the_link_is_built_from_the_workspace_url_read_once(store: Store):
@@ -187,7 +187,7 @@ def test_old_posts_get_the_built_link_once_at_startup(store: Store):
     assert cards[OTHER]['permalink'] == 'https://example.slack.com/archives/C123/pkeep'
     assert rep['permalink'] == link('1791800000.000300')
     assert store.rev()['rev'] > before
-    assert api.methods() == ['auth.test'], 'one workspace lookup, no getPermalink per old post, nothing on the second start'
+    assert [m for m in api.methods() if m != 'users.list'] == ['auth.test'], 'one workspace lookup, no getPermalink per old post, nothing on the second start'
 
 
 @pytest.mark.parametrize('api', [FakeSlackApi(fail={'auth.test'}), FakeSlackApi(url=None), BrokenApi()])

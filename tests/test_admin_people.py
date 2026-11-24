@@ -41,6 +41,10 @@ class Clock:
 
 def inline(app) -> Clock:
     clock = Clock()
+    app.state.slack_people._settled.wait(5)
+    app.state.slack_people._people = None
+    app.state.slack_people._down_until = -tagreport.FAILURE_TTL_S
+    app.state.slack_people.slack.api.calls.clear()
     app.state.slack_people.spawn = lambda job: job()
     app.state.slack_people.clock = clock
     return clock
@@ -250,3 +254,17 @@ def test_a_rate_limited_page_waits_and_tries_again(store: Store):
     # then
     assert waits == [3.0, 3.0]
     assert [p['email'] for p in found] == [CHLOE, DANIEL]
+
+
+def test_the_slack_member_list_is_loaded_at_start_before_anyone_asks(store: Store):
+    # given
+    slack, _, api = fake_slack()
+    api.members = workspace()
+
+    # when
+    with TestClient(create_app(settings(), store, slack=slack)) as c:
+        c.app.state.slack_people._settled.wait(5)
+        people, state = c.app.state.slack_people.lookup()
+
+    # then
+    assert state == 'ok' and len(people) > 0 and api.methods().count('users.list') >= 1

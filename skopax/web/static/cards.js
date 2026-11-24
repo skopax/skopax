@@ -512,6 +512,19 @@ function causeHtml(a) {
   var c = causeOf(a);
   return c ? '<p class="rec-line cause-line">Cause: ' + (c.kind === 'event' ? 'an event' : 'recurring') + ' \u00b7 <span data-no-tx>' + esc(c.what) + '</span></p>' : '';
 }
+function alreadyActiveText(a) {
+  var m = a.alreadyActive;
+  if (!m || typeof m !== 'object' || !m.source || !daytime(m.since)) return '';
+  return 'Already active when ' + m.source + ' was connected (since ' + sinceWhen(m.since) + ')';
+}
+function sinceWhen(iso) {
+  var d = new Date(iso);
+  return dayMonth(d) + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '') + ' ' + hm(iso);
+}
+function alreadyActiveHtml(a) {
+  var text = alreadyActiveText(a);
+  return text ? '<p class="rec-line already-active">' + esc(text) + '</p>' : '';
+}
 function statusTag(a) {
   if (a.muted) return '<span class="spill k-muted">Muted</span>';
   if (a.status === 'cleared') return '<span class="spill k-cleared">' + clearedWord(a, true) + '</span>';
@@ -579,7 +592,7 @@ function anomCard(a, i) {
     '<span class="c c-status">' + (tags.row || statusTag(a)) + '</span><span class="c c-asg">' + asgTag(a) + '</span><span class="c c-tags">' + bizTags(a) + '</span>' +
     '<span class="c c-chg"><span class="chg">' + esc(change(a)) + '</span></span><span class="c c-age" title="' + esc(when) + '">' + esc(ageShort(a.firstSeen)) + '</span></div>' +
     runBanner(a.key) + '<div class="acts" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div></div>' +
-    '<div class="inc-more" id="more-' + i + '" hidden>' + tabsHtml(a, i) + '<div class="cd-details" role="tabpanel" id="cdp-d-' + i + '" aria-labelledby="cdt-d-' + i + '"' + (CARD_TAB[a.key] === 'history' ? ' hidden' : '') + '><div class="line">' + line + '</div>' + causeHtml(a) + seenHtml(a) +
+    '<div class="inc-more" id="more-' + i + '" hidden>' + tabsHtml(a, i) + '<div class="cd-details" role="tabpanel" id="cdp-d-' + i + '" aria-labelledby="cdt-d-' + i + '"' + (CARD_TAB[a.key] === 'history' ? ' hidden' : '') + '><div class="line">' + line + '</div>' + causeHtml(a) + alreadyActiveHtml(a) + seenHtml(a) +
     (tags.rest ? '<div class="inc-tags">' + tags.rest + '</div>' : '') +
     (recShown ? '<p class="rec-line"><span>Next</span>' + esc(a.recommend) + '</p>' : isOpen && a.gone ? '<p class="rec-line"><span>Next</span>' + esc(goneText(a)) + '</p>' : '') +
     body(a, recShown, i) + '<div class="notif" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div></div>' + histPane(a, i) + '</div>';

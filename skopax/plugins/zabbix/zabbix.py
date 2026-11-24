@@ -292,6 +292,16 @@ def since_text(at: object) -> str:
         return ''
 
 
+def started_of(rows: list[dict]) -> str | None:
+    starts = [number(p.get('clock'), -1) for p in rows]
+    if not starts or min(starts) <= 0:
+        return None
+    try:
+        return iso(max(starts))
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
 def severity_of(p: dict) -> int:
     level = number(p.get('severity'), 0)
     return level if 0 <= level < len(SEVERITY_NAMES) else 0
@@ -327,6 +337,9 @@ def card_of(rows: list[dict], trigger: dict | None) -> dict:
     x.update(key=f'{SIG}|{key_host}|{key_name}|{trigger_id}', ranKey=PASS, triggerId=trigger_id, eventId=str(top.get('eventid') or ''), host=host,
              zabbixSeverity=SEVERITY_LABELS[SEVERITY_NAMES[level]], acknowledged=acknowledged, tags=[f'{k}={v}' if v else k for k, v in tags],
              short=f'{sev.upper()} Zabbix {label} on {host}')
+    started = started_of(rows)
+    if started:
+        x['startedAt'] = started
     return x
 
 

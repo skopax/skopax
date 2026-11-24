@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 from skopax import clock, information, partmail, tags
 from skopax.cardlink import card_url
-from skopax.engine import has_owner
+from skopax.engine import ALREADY_ACTIVE, has_owner
 from skopax.errkind import kind as error_kind
 from skopax.mail import flat
 from skopax.messages import msg
@@ -30,7 +30,7 @@ PLAIN = str.maketrans({'*': '\u2217', '_': '\u02cd', '~': '\u223c'})
 
 def waiting(cards: list[dict]) -> list[dict]:
     def left(a: dict) -> bool:
-        return a.get('sev') == SEV and a.get('triage') not in ADDRESSED and not a.get('muted') and not a.get('ticket') and not has_owner(a)
+        return a.get('sev') == SEV and a.get('triage') not in ADDRESSED and not a.get('muted') and not a.get('ticket') and not has_owner(a) and not a.get(ALREADY_ACTIVE)
 
     return [a for a in board_open(information.cards_only(cards)) if left(a)]
 

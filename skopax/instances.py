@@ -1,4 +1,5 @@
 import dataclasses
+import datetime as dt
 import hashlib
 import logging
 import re
@@ -28,6 +29,8 @@ log = logging.getLogger('skopax.instances')
 
 NAME = re.compile(r'[a-z0-9](?:[-a-z0-9]{0,18}[a-z0-9])?')
 REFRESH_S = 15
+RECONNECT_AFTER_S = 24 * 3600
+CONNECTED_LONG_AGO = '1970-01-01T00:00:00Z'
 REREAD_S = 2
 ADMIN = 'admin'
 TEXT_MAX = 1000
@@ -71,6 +74,8 @@ class Instance:
     problem: str | None
     secret_keys: tuple[str, ...] = ()
     off_checks: frozenset[str] = frozenset()
+    updated_at: str = ''
+    connected: str | None = None
 
     def info(self) -> InstanceInfo:
         return InstanceInfo(self.name, self.primary, None if self.primary else self.name, {**self.values, **self.secrets}, frozenset(self.off_checks))
@@ -78,7 +83,7 @@ class Instance:
     def view(self) -> dict:
         return {'name': self.name, 'primary': self.primary, 'enabled': self.enabled, 'source': self.source, 'problem': self.problem, 'values': dict(self.values),
                 'secrets': {k: {'set': k in self.secrets, 'from': self.source if k in self.owned else None} for k in self.secret_keys}, 'owned': sorted(self.owned),
-                'offChecks': sorted(self.off_checks)}
+                'offChecks': sorted(self.off_checks), 'updatedAt': self.updated_at}
 
 
 def merge_plan(stored: Mapping[str, str], given: Mapping[str, str | None]) -> tuple[dict[str, str], dict[str, str], list[str]]:
@@ -613,7 +618,7 @@ class Instances:
             sealer = self._sealer()
             now = _stamp()
             doc = {'_id': f'{plugin}/{name}', 'plugin': plugin, 'name': name, 'enabled': bool(enabled), 'values': {k: v for k, v in clean.items() if kinds[k] != 'secret'},
-                   'secrets': {k: (kept or {}).get(k) or self._seal(sealer, v) for k, v in clean.items() if kinds[k] == 'secret'}, 'createdBy': by, 'createdAt': now, 'updatedBy': by, 'updatedAt': now}
+                   'secrets': {k: (kept or {}).get(k) or self._seal(sealer, v) for k, v in clean.items() if kinds[k] == 'secret'}, 'createdBy': by, 'createdAt': now, 'updatedBy': by, 'updatedAt': now, 'connectedAt': now}
             if off:
                 doc['offChecks'] = sorted(off)
             if not self.all(plugin):
@@ -690,10 +695,28 @@ class Instances:
     def set_enabled(self, plugin: str, name: str, on: bool, by: str) -> Instance:
         with self._write:
             self._reload(live=False)
-            self._need(plugin, name)
-            self._patch(plugin, name, by, {'enabled': bool(on)})
+            was = self._need(plugin, name)
+            put: dict = {'enabled': bool(on)}
+            if was.enabled and not on:
+                put['disabledAt'] = _stamp()
+            elif on and not was.enabled:
+                long, known = self._off_long(plugin, name)
+                if long:
+                    put['connectedAt'] = _stamp()
+                elif not known:
+                    put['connectedAt'] = CONNECTED_LONG_AGO
+            self._patch(plugin, name, by, put)
             self._reload(live=False)
             return self.get(plugin, name)
+
+    def _off_long(self, plugin: str, name: str) -> tuple[bool, bool]:
+        doc = self.col.find_one({'_id': f'{plugin}/{name}'}, {'disabledAt': 1, 'updatedAt': 1, 'connectedAt': 1}) or {}
+        off = doc.get('disabledAt') or doc.get('updatedAt')
+        known = isinstance(doc.get('connectedAt'), str) and bool(doc['connectedAt'])
+        try:
+            return not isinstance(off, str) or utc_now().timestamp() - dt.datetime.fromisoformat(off.replace('Z', '+00:00')).timestamp() > RECONNECT_AFTER_S, known
+        except ValueError:
+            return True, known
 
     def set_checks(self, plugin: str, name: str, off: Iterable[str], by: str) -> Instance:
         with self._write:
@@ -1023,6 +1046,7 @@ class Instances:
         flag = None
         enabled = True
         off: frozenset[str] = frozenset()
+        connected = None
         label = ADMIN
         if src is not None:
             label = src[2]
@@ -1069,6 +1093,8 @@ class Instances:
                 off = frozenset(c for c in doc['offChecks'] if isinstance(c, str)) & {c.id for c in plugin.checks}
             if 'primary' in doc:
                 flag = bool(doc['primary'])
+            if isinstance(doc.get('connectedAt'), str) and doc['connectedAt']:
+                connected = doc['connectedAt']
         clean, found_error = _checked(plugin, retired_route_sev(plugin, {**values, **secrets}), False, required=unreadable is None, extra=extra)
         error = error or found_error
         values = {k: v for k, v in clean.items() if fields[k].kind != 'secret'}
@@ -1078,7 +1104,7 @@ class Instances:
         elif error is not None:
             problem = str(error)
         secret_keys = tuple(f.key for f in all_fields if f.kind == 'secret')
-        instance = Instance(plugin.id, name, False, enabled, values, secrets, label, frozenset(owned), problem, secret_keys, off)
+        instance = Instance(plugin.id, name, False, enabled, values, secrets, label, frozenset(owned), problem, secret_keys, off, updated_at=str((doc or {}).get('updatedAt') or ''), connected=connected)
         return _Made(instance, flag), error
 
     def _open(self, sealed: object, sealer: Sealer, alt: Callable[[], Sealer | None]) -> tuple[str, bool] | None:
@@ -1115,14 +1141,22 @@ class PluginState:
     def __init__(self, db):
         self.col = db['plugin_state']
         self._on: dict[str, bool] = {}
+        self._at: dict[str, str] = {}
         self._guard = threading.Lock()
         self._write = threading.RLock()
 
     def refresh(self) -> None:
         with self._write:
-            found = {d['_id']: bool(d.get('enabled', True)) for d in self.col.find()}
+            docs = list(self.col.find())
+            found = {d['_id']: bool(d.get('enabled', True)) for d in docs}
+            at = {d['_id']: str(d.get('updatedAt') or '') for d in docs}
             with self._guard:
                 self._on = found
+                self._at = at
+
+    def stamp(self, plugin_id: str) -> str:
+        with self._guard:
+            return self._at.get(plugin_id, '')
 
     def enabled(self, plugin_id: str) -> bool:
         with self._guard:
@@ -1130,6 +1164,8 @@ class PluginState:
 
     def set(self, plugin_id: str, on: bool, by: str) -> None:
         with self._write:
-            self.col.replace_one({'_id': plugin_id}, {'_id': plugin_id, 'enabled': bool(on), 'updatedBy': by, 'updatedAt': _stamp()}, upsert=True)
+            now = _stamp()
+            self.col.replace_one({'_id': plugin_id}, {'_id': plugin_id, 'enabled': bool(on), 'updatedBy': by, 'updatedAt': now}, upsert=True)
             with self._guard:
                 self._on = {**self._on, plugin_id: bool(on)}
+                self._at = {**self._at, plugin_id: now}

@@ -212,7 +212,7 @@ class StateNotes:
     def jira_closed(self, key: str, ticket: str, status: str) -> None:
         self._note(key, 'handled', closed_text(ticket, status, self.jira_url))
 
-    def assigned(self, key: str, name: str | None, by: str, email: str | None = None, sure: bool = True) -> bool:
+    def assigned(self, key: str, name: str | None, by: str, email: str | None = None, sure: bool = True, named=None) -> bool:
         who = who_of(by)
         card = self._card(key)
         if card is None:
@@ -222,13 +222,18 @@ class StateNotes:
             return True
         shown_name = who_of(name)
         flat = assigned_text(shown_name, who)
-        self._send(card, 'assigned', assigned_text(shown_name, who, self._mention(name, email, sure)), who, flat)
+        self._send(card, 'assigned', assigned_text(shown_name, who, self._mention(name, email, sure, named)), who, flat)
         return True
 
-    def _mention(self, name: str, email: str | None, sure: bool) -> str | None:
+    def _mention(self, name: str, email: str | None, sure: bool, named=None) -> str | None:
         if not email:
             try:
-                return self.by_name(name) if '@' not in name else None
+                if '@' in name:
+                    return None
+                if named is None:
+                    return self.by_name(name)
+                resolved = named()
+                return self.mention(resolved) if resolved else None
             except Exception as e:
                 log.warning('the assignee mention by name was skipped: %s', error_kind(e))
                 return None
@@ -236,9 +241,14 @@ class StateNotes:
             found = self.mention(email)
             if found and not sure and not same_person(name, self.name_of(email)):
                 return None
+            if not found and not sure and '@' not in name:
+                if named is None:
+                    return self.by_name(name)
+                resolved = named()
+                return self.mention(resolved) if resolved else None
             return found
         except Exception as e:
-            log.warning('the assignee mention for %s was skipped: %s', email, error_kind(e))
+            log.warning('the assignee mention was skipped: %s', error_kind(e))
             return None
 
     def jira_linked(self, key: str, ticket: str, owner: str | None) -> None:

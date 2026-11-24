@@ -1405,6 +1405,147 @@ async function aTileSwitchKeepsTheKeyboardFocusOnItsSwitch() {
   console.log('PASS Integrations: a tile switch keeps the keyboard focus after its toggle and the redraw');
 }
 
+const OLD = '2026-11-24T09:00:00Z', SAVED = '2026-11-24T10:00:00Z', NEWER = '2026-11-24T11:00:00Z';
+const stamped = (id, over) => {
+  const c = catalog();
+  const row = c.plugins.filter((p) => p.id === id)[0];
+  return Object.assign(row, {switchedAt: OLD}, over || {});
+};
+
+async function aStaleReadAfterAPluginSwitchKeepsWhatWasSaved() {
+  //given
+  const t = await boot({catalog: (() => { const c = catalog(); c.plugins.forEach((p) => { p.switchedAt = OLD; }); return c; })()});
+  await open(t);
+  t.flags.hook = async (method, p, body, r) => method === 'PUT' && p === '/api/admin/plugins/acme' ? r.ok(stamped('acme', {enabled: false, switchedAt: SAVED})) : null;
+  const sw = () => tile(t.doc, 'acme').querySelector('.int-switch');
+  const before = sw().getAttribute('aria-checked');
+
+  //when
+  sw().click();
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual([before, sw().getAttribute('aria-checked'), t.doc.querySelector('#integrations .int-note').textContent], ['true', 'false', 'Acme metrics switched off'], 'the read is older than the save, so the save stays');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Integrations: a read older than a plug-in switch does not flip it back');
+}
+
+async function aNewerReadAfterAPluginSwitchWins() {
+  //given
+  const t = await boot({catalog: (() => { const c = catalog(); c.plugins.forEach((p) => { p.switchedAt = NEWER; }); return c; })()});
+  await open(t);
+  t.flags.hook = async (method, p, body, r) => method === 'PUT' && p === '/api/admin/plugins/acme' ? r.ok(stamped('acme', {enabled: false, switchedAt: SAVED})) : null;
+  const sw = () => tile(t.doc, 'acme').querySelector('.int-switch');
+
+  //when
+  sw().click();
+  await wait(100);
+
+  //then
+  assert.strictEqual(sw().getAttribute('aria-checked'), 'true', 'another admin switched it on after this save, so the read wins');
+  t.w.close();
+  console.log('PASS Integrations: a read newer than the save wins over it');
+}
+
+async function twoQuickSwitchesOnDifferentTilesBothStick() {
+  //given
+  const t = await boot({catalog: (() => { const c = catalog(); c.plugins.forEach((p) => { p.switchedAt = OLD; }); return c; })()});
+  await open(t);
+  t.flags.hook = async (method, p, body, r) => {
+    if (method !== 'PUT') return null;
+    const id = p.split('/').pop();
+    return r.ok(stamped(id, {enabled: body.enabled, switchedAt: SAVED}));
+  };
+  const sw = (id) => tile(t.doc, id).querySelector('.int-switch');
+
+  //when
+  sw('acme').click();
+  sw('evil').click();
+  await wait(150);
+
+  //then
+  assert.deepStrictEqual([sw('acme').getAttribute('aria-checked'), sw('evil').getAttribute('aria-checked')], ['false', 'true'], 'the first save is not lost when the second tile loads');
+  t.w.close();
+  console.log('PASS Integrations: two quick switches on different tiles both stick');
+}
+
+async function aStaleReadAfterAnInstanceSwitchKeepsWhatWasSaved() {
+  //given
+  const t = await boot({catalog: (() => { const c = catalog(); c.plugins.forEach((p) => { (p.instances || []).forEach((i) => { i.updatedAt = OLD; }); }); return c; })()});
+  await open(t);
+  t.flags.hook = async (method, p, body, r) => method === 'PATCH' ? r.ok({instance: instance('east', {enabled: false, updatedAt: SAVED})}) : null;
+  openInstance(t, 'acme', 'east');
+
+  //when
+  inPanel(t.doc, '.int-on').click();
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual([inPanel(t.doc, '.int-on').checked, inPanel(t.doc, '.int-panel-note').textContent], [false, 'east switched off'], 'the read is older than the save, so the save stays');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Integrations: a read older than an instance switch does not flip it back');
+}
+
+async function aKeptPluginSwitchTakesInstancesAndHealthFromTheNewerRead() {
+  //given
+  const t = await boot({catalog: (() => { const c = catalog(); c.plugins.forEach((p) => { p.switchedAt = OLD; }); c.plugins[0].instances = [instance('main'), instance('east'), instance('west')]; return c; })()});
+  await open(t);
+  t.flags.hook = async (method, p, body, r) => method === 'PUT' && p === '/api/admin/plugins/acme' ? r.ok(stamped('acme', {enabled: false, switchedAt: SAVED})) : null;
+  const before = tile(t.doc, 'acme').dataset.instances;
+
+  //when
+  tile(t.doc, 'acme').querySelector('.int-switch').click();
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual([before, tile(t.doc, 'acme').dataset.instances, tile(t.doc, 'acme').querySelector('.int-switch').getAttribute('aria-checked')], ['3', '3', 'false'], 'the instances come from the read, only the flag from the save');
+  t.w.close();
+  console.log('PASS Integrations: a kept switch takes instances from the newer read');
+}
+
+async function anEqualStampKeepsTheSave() {
+  //given
+  const t = await boot({catalog: (() => { const c = catalog(); c.plugins.forEach((p) => { p.switchedAt = SAVED; }); return c; })()});
+  await open(t);
+  t.flags.hook = async (method, p, body, r) => method === 'PUT' && p === '/api/admin/plugins/acme' ? r.ok(stamped('acme', {enabled: false, switchedAt: SAVED})) : null;
+  const sw = () => tile(t.doc, 'acme').querySelector('.int-switch');
+
+  //when
+  sw().click();
+  await wait(100);
+
+  //then
+  assert.strictEqual(sw().getAttribute('aria-checked'), 'false', 'a read stamped in the same second as the save is not newer');
+  t.w.close();
+  console.log('PASS Integrations: a read with the same stamp as the save does not flip the switch back');
+}
+
+async function aRefusedPluginSwitchOrInstancePatchLeavesTheOldState() {
+  //given
+  const t = await boot();
+  await open(t);
+  t.flags.hook = async (method, p, body, r) => method === 'PUT' && p === '/api/admin/plugins/acme' ? r.bad(409, 'Not now') : null;
+  const sw = () => tile(t.doc, 'acme').querySelector('.int-switch');
+
+  //when
+  sw().click();
+  await wait(100);
+  const plug = [sw().getAttribute('aria-checked'), tile(t.doc, 'acme').querySelector('.int-msg').textContent];
+  t.flags.hook = async (method, p, body, r) => method === 'PATCH' ? r.bad(409, 'Refused') : null;
+  openInstance(t, 'acme', 'east');
+  inPanel(t.doc, '.int-on').click();
+  await wait(100);
+  const inst = [inPanel(t.doc, '.int-on').checked, t.doc.querySelector('#int-panel .int-form-msg, #int-panel .int-rmsg, #int-panel .adm-msg.bad') ? true : false];
+
+  //then
+  assert.deepStrictEqual(plug, ['true', 'Not now'], 'the switch goes back and says why');
+  assert.strictEqual(inst[0], true, 'the instance switch goes back');
+  t.w.close();
+  console.log('PASS Integrations: a refused plug-in switch or instance patch leaves the old state');
+}
+
 async function theSearchOwnsTabWhileItIsOpenOverTheSidePanel() {
   //given
   const t = await boot();
@@ -2613,6 +2754,13 @@ async function anAgentInstanceShowsItsOwnGreenHealthWithTheAgeAndADownOneShowsIt
   await leavingTheTabOrTheRoleClosesThePanelAndTheCatalog();
   await theSidePanelIsAViewportOverlayAndFullScreenOnAPhone();
   await aNonAdminSeesNoIntegrationsTab();
+  await aStaleReadAfterAPluginSwitchKeepsWhatWasSaved();
+  await aNewerReadAfterAPluginSwitchWins();
+  await twoQuickSwitchesOnDifferentTilesBothStick();
+  await aStaleReadAfterAnInstanceSwitchKeepsWhatWasSaved();
+  await aKeptPluginSwitchTakesInstancesAndHealthFromTheNewerRead();
+  await anEqualStampKeepsTheSave();
+  await aRefusedPluginSwitchOrInstancePatchLeavesTheOldState();
   await testConnectionSendsTheTicksOnlyWhenTheFormChangedThem();
   await theSearchFiltersTheTilesByNameIdCategoryAndDescriptionWithoutCaseOrAccents();
   await aSlashDoesNotStealFocusFromAFieldOrTheOpenDrawer();

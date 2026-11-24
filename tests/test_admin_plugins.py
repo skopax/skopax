@@ -977,8 +977,8 @@ def test_a_plugin_broken_after_it_loaded_still_says_whether_it_is_switched_on(st
         off = c.put('/api/admin/plugins/demo', json={'enabled': False}, headers=AUTH)
 
     # then
-    assert set(row) == {'id', 'module', 'reason', 'enabled', 'origin', 'standing'} and row['enabled'] is True and row['standing'] == 'failed'
-    assert off.status_code == 200 and set(off.json()) == {'id', 'module', 'reason', 'enabled', 'origin', 'standing'} and off.json()['enabled'] is False and off.json()['standing'] == 'failed'
+    assert set(row) == {'id', 'module', 'reason', 'enabled', 'switchedAt', 'origin', 'standing'} and row['enabled'] is True and row['standing'] == 'failed'
+    assert off.status_code == 200 and set(off.json()) == {'id', 'module', 'reason', 'enabled', 'switchedAt', 'origin', 'standing'} and off.json()['enabled'] is False and off.json()['standing'] == 'failed'
 
 
 def test_an_instance_made_again_under_the_same_name_runs_every_check_it_watches_at_once(store):
@@ -1156,3 +1156,24 @@ def test_catalog_serves_a_plugin_setup_guide(store):
 
     # then
     assert row['setup'] == {'steps': ['Open Settings', 'Copy the token'], 'docs': 'https://docs.example.com/tokens', 'docsLabel': 'Example: tokens'}
+
+
+def test_a_delete_still_answers_when_its_connection_time_cannot_be_forgotten(store, caplog):
+    # given
+    caplog.set_level(logging.WARNING)
+    with served(store) as c:
+        c.app.state.scheduler.nudge = lambda name: None
+        add(c, 'main', True)
+        add(c, 'east', True)
+
+        def refused(plugin_id, name):
+            raise Conflict(7)
+
+        c.app.state.sweeper.forget = refused
+
+        # when
+        gone = c.delete('/api/admin/plugins/demo/instances/east', headers=AUTH)
+
+    # then
+    assert gone.status_code == 204
+    assert any('the connection time of demo east was not forgotten: ' in r.getMessage() for r in caplog.records)

@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable, Iterable
 
 from skopax import information, severity
-from skopax.engine import SEV_RANK, parse_iso
+from skopax.engine import ALREADY_ACTIVE, SEV_RANK, parse_iso
 
 log = logging.getLogger('skopax.investigator.select')
 
@@ -98,7 +98,7 @@ def eligible(state: dict, mode: str, runs: list[dict], now: float, limit: int, c
         a = by_key.get(key)
         if not a or a.get('status') != 'open' or a.get('muted') or a.get('sev') not in SEVERITIES or merged(a, by_key) or a.get('src') in own or ACCESS_KEY in str(a.get('ranKey') or ''):
             continue
-        if now - parse_iso(t) > EVENT_WINDOW_S:
+        if a.get(ALREADY_ACTIVE) or now - parse_iso(t) > EVENT_WINDOW_S:
             continue
         if mode == 'live' and a.get('triage'):
             continue

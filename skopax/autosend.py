@@ -7,7 +7,7 @@ from typing import Callable
 from pymongo.errors import PyMongoError
 
 from skopax import clock, information, severity
-from skopax.engine import SEV_RANK, Applied, fmt, iso as epoch_iso, parse_iso
+from skopax.engine import ALREADY_ACTIVE, SEV_RANK, Applied, fmt, iso as epoch_iso, parse_iso
 from skopax.errkind import Authored, kind as error_kind
 from skopax.investigator.select import EVENT_WINDOW_S, announced_twin, merged, own_findings, stamps
 from skopax.messages import msg
@@ -293,7 +293,7 @@ class Fallback:
         own = own_findings()
         for key, fired_at in stamps(state.get('history') or []).items():
             a = by_key.get(key)
-            if not a or a.get('status') != 'open' or a.get('muted') or a.get('sev') != FALLBACK_SEV or merged(a, by_key) or a.get('src') in own:
+            if not a or a.get('status') != 'open' or a.get('muted') or a.get('sev') != FALLBACK_SEV or merged(a, by_key) or a.get('src') in own or a.get(ALREADY_ACTIVE):
                 continue
             if on_its_way(a) or (a.get('slackPost') or {}).get('at') or (a.get('autoSend') or {}).get('holdBy') or a.get('triage') in FALLBACK_SKIP_TRIAGE:
                 continue

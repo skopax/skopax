@@ -361,3 +361,19 @@ def test_the_setup_guide_ends_with_send_test_mail():
 
     # then
     assert 'Send test mail' in steps[-1] and 'Test connection' in steps[-2]
+
+
+def test_the_test_mail_sees_a_plug_in_switched_off_on_another_pod_at_once(store, monkeypatch):
+    # given
+    faked(monkeypatch)
+    with served(store) as first, served(store) as second:
+        ready(first)
+        signed(second, store)
+        assert second.post(PATH).status_code == 200
+
+        # when
+        first.put('/api/admin/plugins/mail-server', json={'enabled': False}, headers=AUTH)
+        answer = second.post(PATH)
+
+        # then
+        assert answer.status_code == 409

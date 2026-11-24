@@ -93,10 +93,15 @@
   }
   function afterEvent(c) { return !!(c.cause && c.cause.kind === 'event' && c.cause.what); }
   function waiting(c) { return (c.status === 'cleared' && (c.sev === 'warn' || c.sev === 'high' || c.sev === 'crit')) || (c.status === 'open' && c.triage === 'dived'); }
+  function sinceWhen(iso) {
+    var w = when(iso), d = new Date(iso), at = w.lastIndexOf(' ');
+    return d.getFullYear() === new Date().getFullYear() ? w : w.slice(0, at) + ' ' + d.getFullYear() + w.slice(at);
+  }
   function tech(c) {
     var parts = [];
     if (c.what) parts.push('<p data-no-tx>' + esc(c.what) + '</p>');
     if (c.knownCause) parts.push('<p class="known"><span>Known cause</span> \u00b7 <span data-no-tx>' + esc(c.knownCause) + '</span></p>');
+    if (c.alreadyActive && typeof c.alreadyActive === 'object' && c.alreadyActive.source && when(c.alreadyActive.since)) parts.push('<p class="cause already-active">' + esc('Already active when ' + c.alreadyActive.source + ' was connected (since ' + sinceWhen(c.alreadyActive.since) + ')') + '</p>');
     if (c.cause && c.cause.what && (c.cause.kind === 'event' || c.cause.kind === 'recurring')) parts.push('<p class="cause">Cause: ' + (c.cause.kind === 'event' ? 'an event' : 'recurring') + ' \u00b7 <span data-no-tx>' + esc(c.cause.what) + '</span></p>');
     if (c.now != null) parts.push('<p class="nums">Now ' + esc(amount(c.now, c.unit)) + (c.d1 != null ? ' \u00b7 yesterday ' + esc(amount(c.d1, c.unit)) : '') + (c.d7 != null ? ' \u00b7 last week ' + esc(amount(c.d7, c.unit)) : '') + '</p>');
     if (c.note && c.note.text) parts.push('<h3>Investigation \u00b7 ' + esc(when(c.note.at)) + '</h3><p data-no-tx>' + esc(c.note.text) + '</p>');

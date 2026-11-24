@@ -1,4 +1,5 @@
 import dataclasses
+import inspect
 import logging
 import os
 import threading
@@ -12,7 +13,7 @@ import yaml
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
 from skopax.config import ConfigurationError, Settings, load_settings, resolve
 from skopax.contract import Plugin, SourceData
-from skopax.instances import AGENT_PLUGIN, InvalidInstance, agent_fields, check_name, validate, via_problem
+from skopax.instances import AGENT_PLUGIN, InvalidInstance, agent_fields, check_name, effective_fields, validate, via_problem
 from skopax.investigator.prompt import core_anchors
 from skopax.investigator.tools import CORE_TOOLS
 from skopax.messages import msg
@@ -31,6 +32,7 @@ LABEL_FILE = 'config file'
 FILE_KEYS = ('settings', 'plugins')
 OLD_CONNECTION_KEYS = ('gitlab.token', 'gitlab.group', 'jira.url', 'jira.email', 'jira.api-token', 'jira.cloud-id', 'slack.bot-token', 'slack.app-token')
 INSTANCE_META = ('plugin', 'name', 'primary', 'enabled')
+FIELD_KIND_ARG = 'field_kind'
 
 
 def env_source(env: Mapping[str, str], registry: Registry, timeout: float | None = None) -> SourceData:
@@ -109,16 +111,34 @@ def file_source(path: str, env: Mapping[str, str]) -> SourceData | None:
         raise ConfigurationError(msg('settings.file.value', path=path, where='file', expected='a mapping of single values')) from None
 
 
-def _hook_data(plugin: Plugin, env: Mapping[str, str]) -> SourceData | None:
+def field_kinds(registry: Registry) -> Callable[[str, str], str | None]:
+    def field_kind(plugin_id: str, key: str) -> str | None:
+        found = registry.get(plugin_id) if isinstance(plugin_id, str) else None
+        if found is None or found.plugin is None or found.state != 'ok':
+            return None
+        return next((f.kind for f in effective_fields(found.plugin, agent_fields(registry, found.id)) if f.key == key), None)
+    return field_kind
+
+
+def takes_field_kind(hook: Callable) -> bool:
     try:
-        raw = plugin.hooks.settings_source(dict(env))
+        params = inspect.signature(hook).parameters
+    except (TypeError, ValueError):
+        return False
+    return FIELD_KIND_ARG in params and params[FIELD_KIND_ARG].kind in (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+
+
+def _hook_data(plugin: Plugin, env: Mapping[str, str], registry: Registry | None = None) -> SourceData | None:
+    try:
+        hook = plugin.hooks.settings_source
+        raw = hook(dict(env), **{FIELD_KIND_ARG: field_kinds(registry)}) if registry is not None and takes_field_kind(hook) else hook(dict(env))
         return None if raw is None else SourceData.of(raw, plugin.name)
     except Exception as e:
         raise ConfigurationError(msg('settings.hook.failed', plugin=plugin.name, error=type(e).__name__)) from None
 
 
 def hook_sources(registry: Registry, env: Mapping[str, str]) -> list[SourceData]:
-    return [d for d in (_hook_data(p, env) for p in registry.usable() if p.hooks.settings_source is not None) if d is not None]
+    return [d for d in (_hook_data(p, env, registry) for p in registry.usable() if p.hooks.settings_source is not None) if d is not None]
 
 
 def merged(sources: list[SourceData]) -> dict[str, str]:
@@ -252,7 +272,7 @@ def _loaders(env: Mapping[str, str], registry: Registry, instances: bool = True)
     loaders.append((LABEL_FILE, lambda: file_source(path, env)))
     for plugin in registry.usable():
         if plugin.hooks.settings_source is not None:
-            loaders.append((plugin.name, lambda plugin=plugin: _hook_data(plugin, env) if registry.get(plugin.id).state == 'ok' else None))
+            loaders.append((plugin.name, lambda plugin=plugin: _hook_data(plugin, env, registry) if registry.get(plugin.id).state == 'ok' else None))
     return loaders
 
 
