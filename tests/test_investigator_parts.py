@@ -646,3 +646,14 @@ def test_the_kubernetes_tool_and_knowledge_name_no_metrics_tool_that_may_be_miss
 
     # then
     assert not any('promql' in text for text in [t.description for t in kubernetes.PLUGIN.tools] + [k.text for k in kubernetes.PLUGIN.knowledge])
+
+
+def test_the_business_tag_rule_asks_for_dated_times_not_relative_days():
+    # given
+    text = (Path(prompt.__file__).with_name('process.md')).read_text()
+
+    # when
+    rule = next(line for line in text.splitlines() if 'shown again on later days' in line)
+
+    # then
+    assert '23 Nov 10:00' in rule and 'today' in rule and 'tonight' in rule and 'yesterday' in rule

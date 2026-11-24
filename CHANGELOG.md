@@ -14,6 +14,10 @@ A Zabbix plug-in, and a read-only Integrations list that shows only what is conn
 
 - The read-only Integrations list (people who are not admins, and admins previewing as a viewer) shows each integration's icon, name, category, description, state and how many instances are connected, and nothing opens on click. Readers no longer get instance names, fields, setup, checks, tools or problem texts; each state reads as one fixed sentence, such as "Needs attention: an admin can see the details".
 
+**Fixed:**
+
+- A business sentence gives times as a date and a clock time (such as 23 Nov 10:00) instead of today, tonight or yesterday, since it is shown again on later days and on other cards' posts.
+
 ## 0.5.10 (2026-11-23)
 
 Routes wait for the investigation and never back-fill, tag responsibles get their part by mail, waiting cards are re-checked and closed with a short announcement, a Vault settings source, and a confirmation before a Teams test card. Read the upgrade notes under Changed.
