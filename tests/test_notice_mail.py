@@ -103,6 +103,39 @@ def test_only_accounts_that_have_signed_in_get_mail_by_default(store: Store, mon
     assert noticemail.choice({'lastLogin': None, 'mailNotices': {'on': True, 'kinds': []}})['on'] is True
 
 
+def test_a_chat_answer_is_not_mailed_unless_the_person_chose_it(store: Store, monkeypatch):
+    # given
+    smtp = faked(monkeypatch)
+    users = people(store, alice=None, carol={'on': True, 'kinds': ['answer']})
+    clock = Clock()
+    notices, sender = wired(store, clock)
+
+    # when
+    notices.add({'alice', 'carol'}, 'answer', 'investigator', None, 'Your answer is ready', key='', title='Your answer is ready', link='#t=chat/thread/c1')
+    clock.now += 120
+    sender.run_once()
+
+    # then
+    assert [m['To'] for m in sent(smtp)] == ['carol@example.com']
+    assert 'answer' not in noticemail.choice(users.get(ALICE))['kinds'] and 'assigned' in noticemail.choice(users.get(ALICE))['kinds']
+
+
+def test_the_upgrade_unticks_chat_answer_mail_once_in_saved_choices(store: Store):
+    # given
+    users = people(store, alice={'on': True, 'kinds': ['assigned', 'answer']}, carol={'on': False, 'kinds': ['answer']}, dana=None)
+
+    # when
+    first = noticemail.answer_off_once(store.db)
+    users.update(ALICE, {'mailNotices': {'on': True, 'kinds': ['assigned', 'answer']}})
+    second = noticemail.answer_off_once(store.db)
+
+    # then
+    assert (first, second) == (2, None)
+    assert users.get(ALICE)['mailNotices']['kinds'] == ['assigned', 'answer'], 'a person who ticks it again keeps it'
+    assert users.get('carol@example.com')['mailNotices'] == {'on': False, 'kinds': []}
+    assert 'mailNotices' not in users.get('dana@example.com')
+
+
 def test_a_null_choice_and_null_kinds_count_as_no_choice(store: Store, monkeypatch):
     # given
     smtp = faked(monkeypatch)
@@ -894,7 +927,7 @@ def test_the_api_reads_and_saves_only_your_own_choice(store: Store, monkeypatch)
     bad = client.put('/api/me/notice-mail', json={'on': True, 'kinds': ['nope']})
 
     # then
-    assert first == {'on': True, 'kinds': list(LABELS), 'all': list(LABELS), 'email': ADMIN_EMAIL, 'ready': True}
+    assert first == {'on': True, 'kinds': [k for k in LABELS if k != 'answer'], 'all': list(LABELS), 'email': ADMIN_EMAIL, 'ready': True}
     assert saved.status_code == 200 and saved.json()['on'] is True
     assert (after['on'], after['kinds']) == (True, ['assigned', 'reminder'])
     assert other.status_code == 422 and bad.status_code == 422

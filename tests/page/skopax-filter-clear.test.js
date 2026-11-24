@@ -39,9 +39,9 @@ async function boot() {
   return {w: dom.window, doc: dom.window.document, errors};
 }
 
-const pressed = (doc) => [...doc.querySelectorAll('#tab-sub-anoms button[aria-pressed="true"]')].map((b) => b.dataset.f || b.dataset.type);
-const chip = (doc, f) => doc.querySelector('#tab-sub-anoms button[data-f="' + f + '"]');
-const who = (doc) => doc.querySelector('#tab-sub-anoms .who-g [data-type="who:none"]');
+const pressed = (doc) => [...doc.querySelectorAll('#panel-anoms .qf-c[aria-pressed="true"]')].map((b) => b.dataset.f || b.dataset.type);
+const chip = (doc, f) => doc.querySelector('#panel-anoms .qf-c[data-f="' + f + '"]');
+const who = (doc) => doc.querySelector('#panel-anoms .qf-c[data-type="who:none"]');
 const note = (doc) => doc.getElementById('filter-note');
 
 async function turnOn(t, search) {

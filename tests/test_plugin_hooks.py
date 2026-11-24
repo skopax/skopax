@@ -373,22 +373,6 @@ def test_served_pack_carries_rules_months_tails_and_headers(store):
     assert listed == ['/plugins/pages/i18n-de.js', '/plugins/more-pages/i18n-de.js'], 'packs load, and so merge in the browser, in load order'
 
 
-def test_card_page_loads_the_locale_packs_of_serving_plugins(store):
-    # given
-    pattern = re.compile(r'<script src="([^"?]+)(?:\?v=\w+)?"></script>')
-
-    # when
-    with served(store, DEMO) as client:
-        on = pattern.findall(client.get('/c/1').text)
-        client.app.state.plugin_state.set('demo', False, 'alice')
-        client.app.state.runtime.refresh()
-        off = pattern.findall(client.get('/c/1').text)
-
-    # then
-    assert on == ['/static/actors.js', '/static/tagtones.js', '/static/cardlog.js', '/static/i18n.js', *CORE_PACKS, '/plugins/demo/i18n-de.js', '/static/suggest.js', '/static/runshow.js', '/static/card.js'], 'packs only, never the panel scripts'
-    assert off == ['/static/actors.js', '/static/tagtones.js', '/static/cardlog.js', '/static/i18n.js', *CORE_PACKS, '/static/suggest.js', '/static/runshow.js', '/static/card.js']
-
-
 def test_probe_targets_come_from_runnable_instances(store):
     # given
     add_instance(store, 'demo', 'east', sealer_key='k', url='https://east.example.org', token='pw')

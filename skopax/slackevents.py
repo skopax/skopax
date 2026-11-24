@@ -47,6 +47,8 @@ NAME_AFTER = r"(?:['\u2019]\w+)?(?![\w/-])(?!\.\w)"
 SPACES = re.compile(r'[ \t]+')
 QUESTION_LIMIT = 2000
 THREAD_KEEP = 10
+THREAD_FULL = 3
+CUT_MARK = ' [cut]'
 MAX_AGE_S = 7 * 86400
 ASK_WINDOW_S = 3600
 NOT_READY = 'not-ready'
@@ -125,8 +127,18 @@ def from_bot(message: dict, bot_id: str) -> bool:
     return bool(message.get('bot_id')) or message.get('user') == bot_id
 
 
+def cut_line(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit] + CUT_MARK
+
+
+def recent_people(posts: list[dict], bot_id: str, skip_ts: str) -> list[dict]:
+    return [m for m in posts if m.get('ts') != skip_ts and float(m.get('ts') or 0) < float(skip_ts) and not from_bot(m, bot_id)][-THREAD_FULL:]
+
+
 def thread_view(posts: list[dict], bot_id: str, skip_ts: str) -> list[dict]:
-    out = [{'who': 'bot' if from_bot(m, bot_id) else 'person', 'text': decode(m.get('text') or '', bot_id)[:prompt.SLACK_THREAD_LINE]}
+    full = {id(m) for m in recent_people(posts, bot_id, skip_ts)}
+    out = [{'who': 'bot' if from_bot(m, bot_id) else 'person',
+            'text': cut_line(decode(m.get('text') or '', bot_id), prompt.SLACK_THREAD_LINE_FULL if id(m) in full else prompt.SLACK_THREAD_LINE)}
            for m in posts if m.get('ts') != skip_ts]
     return out[-THREAD_KEEP:]
 
@@ -290,14 +302,14 @@ class Intake:
         if not question and not tagged:
             return self._record(channel, ts, record, 'empty')
         record['login'] = login
-        thread = None
-        images, skipped = self._images(event, channel, root, ts)
+        images, skipped, fetched = self._images(event, channel, root, ts, tagged)
+        thread = thread_view(fetched, bot, ts) if fetched else None
         if images or skipped:
             record['images'] = len(images)
         if not question and images:
             question = IMAGE_ONLY
         if not question:
-            posts = self._replies(channel, root, record) if root != ts else []
+            posts = (fetched if fetched is not None else self._replies(channel, root, record)) if root != ts else []
             picked = earlier_question(posts, bot, user, ts, now)
             if picked is None and record.get('readRefused'):
                 return self._say(channel, ts, root, record, 'read-refused', msg('slackevents.read_refused', scope=record.get('missingScope') or HISTORY_SCOPES))
@@ -309,11 +321,25 @@ class Intake:
             record['question'] = question[:LABEL_LIMIT]
         return self._decide(channel, ts, root, where, user, login, question, card, tagged, record, now, thread, (images, skipped))
 
-    def _images(self, event: dict, channel: str, root: str, ts: str) -> tuple[list[dict], int]:
-        found = images_of(event)
-        if found != ([], 0) or event.get('type') != 'app_mention':
-            return found
-        return images_of(next((m for m in self._replies(channel, root) if m.get('ts') == ts), {}))
+    def _images(self, event: dict, channel: str, root: str, ts: str, tagged: bool = False) -> tuple[list[dict], int, list[dict] | None]:
+        found, thread = images_of(event), None
+        if found == ([], 0) and event.get('type') == 'app_mention':
+            thread = self._replies(channel, root) or None
+            found = images_of(next((m for m in thread or [] if m.get('ts') == ts), {}))
+        if not tagged or len(found[0]) >= IMAGES_MAX:
+            return found[0], found[1], thread
+        if root != ts:
+            thread = thread or self._replies(channel, root) or None
+            posts = thread or []
+        else:
+            posts = self._recent_posts(channel, ts)
+        kept, skipped = list(found[0]), found[1]
+        for m in reversed(recent_people(posts, self.slack.bot_user(), ts)):
+            extra, over = images_of(m)
+            room = IMAGES_MAX - len(kept)
+            kept.extend(extra[:room])
+            skipped += over + max(0, len(extra) - room)
+        return kept, skipped, thread if root != ts else None
 
     def _decide(self, channel, ts, root, where, user, login, question, card, tagged, record, now, thread=None, attached=((), 0)) -> str:
         if self.listen == 'off' or not (self.investigator.enabled or tagged):
@@ -508,7 +534,7 @@ class Intake:
     def _thread(self, channel: str, root: str, ts: str, record: dict | None = None) -> list[dict]:
         return thread_view(self._replies(channel, root, record), self.slack.bot_user(), ts)
 
-    def _recent(self, channel: str, ts: str, record: dict | None = None) -> list[dict]:
+    def _recent_posts(self, channel: str, ts: str, record: dict | None = None) -> list[dict]:
         try:
             posts = self.slack.history(channel, ts, CONTEXT_KEEP)
         except SlackError as e:
@@ -516,7 +542,10 @@ class Intake:
             refused_read(record, e)
             return []
         kept = [m for m in posts if 0 <= float(ts) - float(m.get('ts') or 0) <= PICK_WINDOW_S]
-        return thread_view(sorted(kept, key=lambda m: float(m.get('ts') or 0)), self.slack.bot_user(), ts)
+        return sorted(kept, key=lambda m: float(m.get('ts') or 0))
+
+    def _recent(self, channel: str, ts: str, record: dict | None = None) -> list[dict]:
+        return thread_view(self._recent_posts(channel, ts, record), self.slack.bot_user(), ts)
 
     def _replies(self, channel: str, root: str, record: dict | None = None) -> list[dict]:
         try:

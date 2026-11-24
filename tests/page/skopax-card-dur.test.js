@@ -1,45 +1,63 @@
 const pageHtml = require('./skopax-page');
 const assert = require('assert');
-const path = require('path');
 const {JSDOM, VirtualConsole} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
-const CARD_PAGE = path.join(path.dirname(TEMPLATE), 'card.html');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const AT = '2026-11-09T16:32:00Z';
+const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
+const BASE = {svc: 'contacts-sync', label: 'Airbyte long run', sev: 'warn', status: 'open', firstSeen: iso(30), lastSeen: iso(1), unit: 'dur'};
+const CARDS = [Object.assign({}, BASE, {num: 21, key: 'airbyte|contacts-sync|long', src: 'airbyte', sig: 'airbyte-long-run', now: 9000, d1: 5400, d7: 90}),
+  Object.assign({}, BASE, {num: 22, key: 'argo|commerce/checkout-service', src: 'argo', sig: 'argo', now: 7260, d1: null, d7: null}),
+  Object.assign({}, BASE, {num: 23, key: 'apm-p95|checkout-service', src: 'apm', sig: 'apm', now: 1500, d1: 320, d7: null, unit: 'ms'})];
 
-async function boot(card) {
+async function boot() {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
-  const dom = new JSDOM(pageHtml(CARD_PAGE), {
-    url: 'https://skopax.example.com/c/' + card.num, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
+  const state = {rev: 1, updatedAt: iso(0), sweptIso: iso(1), nextIso: new Date(Date.now() + 59 * 60000).toISOString(), sources: {prom: 'ok'}, summary: {level: 'warn', headline: 'x', points: [], at: iso(1)},
+    anomalies: CARDS, services: [], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
+  const dom = new JSDOM(pageHtml(TEMPLATE, {view: 'board'}).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state)), {
+    url: 'https://skopax.example.com/#t=anoms/all', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
+      w.scrollTo = () => {};
+      w.Element.prototype.scrollIntoView = function () {};
       w.fetch = async (p) => {
-        if (String(p) === '/api/me') return {ok: true, status: 200, json: async () => ({loginEnabled: true, user: null, operator: false})};
-        return {ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(card))};
+        p = String(p);
+        const ok = (b) => ({ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(b)), text: async () => JSON.stringify(b)});
+        if (p.startsWith('/api/me')) return ok({loginEnabled: true, user: null, operator: false, teams: [], tags: []});
+        if (p.startsWith('/api/actions') || p.startsWith('/api/deploy-reports') || p.startsWith('/api/requests')) return ok([]);
+        if (p.startsWith('/api/rev')) return ok({rev: 1});
+        if (p.startsWith('/api/state')) return ok(state);
+        return {ok: false, status: 404, json: async () => ({})};
       };
-    },
-  });
-  await wait(100);
+    }});
+  await wait(400);
   return {w: dom.window, doc: dom.window.document, errors};
 }
 
-async function durationCardsReadAsHoursAndMinutesOnTheCardPage() {
+async function durationCardsReadAsHoursAndMinutesInThePanel() {
   //given
-  const base = {svc: 'contacts-sync', label: 'Airbyte long run', sev: 'warn', status: 'open', firstSeen: AT, live: true, src: 'airbyte', sig: 'airbyte-long-run', unit: 'dur'};
-  const long = await boot(Object.assign({num: 21, key: 'airbyte|contacts-sync|long', now: 9000, d1: 5400, d7: 90}, base));
-  const argo = await boot(Object.assign({num: 22, key: 'argo|commerce/checkout-service', now: 7260, d1: null, d7: null}, base));
-  const ms = await boot(Object.assign({}, base, {num: 23, key: 'apm-p95|checkout-service', now: 1500, d1: 320, d7: null, unit: 'ms'}));
+  const {w, doc, errors} = await boot();
+  const line = async (num) => {
+    w.location.hash = '#c=' + num;
+    await wait(60);
+    return doc.querySelector('.card-drawer .cd-details .line').textContent;
+  };
+
+  //when
+  const long = await line(21), argo = await line(22), ms = await line(23);
 
   //then
-  assert.strictEqual(long.doc.querySelector('.nums').textContent, 'Now 2 h 30 min \u00b7 yesterday 90 min \u00b7 last week 90 s');
-  assert.strictEqual(argo.doc.querySelector('.nums').textContent, 'Now 2 h 1 min');
-  assert.strictEqual(ms.doc.querySelector('.nums').textContent, 'Now 1.5 s \u00b7 yesterday 320 ms', 'other units stay as they were');
-  [long, argo, ms].forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
-  console.log('PASS cards measured in seconds (Airbyte, Argo) read as h / min / s on the card page, like the board, instead of a raw number and the word dur');
+  assert.ok(long.startsWith('running 2 h 30 minusual 90 min'), long);
+  assert.ok(argo.startsWith('for 2 h 1 min'), argo);
+  assert.ok(ms.startsWith('now 1.5 s1 d 320 ms7 d \u2013'), 'other units stay as they were: ' + ms);
+  assert.ok(![long, argo, ms].some((t) => /\bdur\b/.test(t)), 'never the word dur');
+  assert.deepStrictEqual(errors, []);
+  w.close();
 }
 
 (async () => {
-  await durationCardsReadAsHoursAndMinutesOnTheCardPage();
-})().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });
+  await durationCardsReadAsHoursAndMinutesInThePanel();
+  console.log('PASS cards measured in seconds (Airbyte, Argo) read as h / min / s in the card panel instead of a raw number and the word dur');
+  process.exit(0);
+})().catch((e) => { console.error(e); process.exit(1); });

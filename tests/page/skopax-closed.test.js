@@ -78,9 +78,9 @@ async function closedListsCardsThatLeftThePageWithPagingAndFilters() {
 
   //then
   assert.ok(view && doc.getElementById('panel-anoms').classList.contains('closed-on'), '#t=anoms/closed opens the Closed view and hides the live card search');
-  assert.strictEqual(doc.querySelector('#tab-sub-anoms button[data-f="closed"]').getAttribute('aria-pressed'), 'true');
+  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-f="closed"]').getAttribute('aria-pressed'), 'true');
   assert.strictEqual(list.length, 50);
-  assert.strictEqual(first.querySelector('.cl-num a').getAttribute('href'), '/c/100');
+  assert.strictEqual(first.querySelector('.cl-num a').getAttribute('href'), '#c=100');
   assert.ok(first.classList.contains('k-crit'));
   assert.strictEqual(first.querySelector('.cl-svc').textContent, 'svc-0');
   assert.ok(first.querySelector('.cl-res').textContent.includes('Resolved') && first.querySelector('.cl-ticket').getAttribute('href') === 'https://jira.example.com/browse/OPS-140');
@@ -92,10 +92,10 @@ async function closedListsCardsThatLeftThePageWithPagingAndFilters() {
   assert.deepStrictEqual(asked[2], {page: '0', size: '50', days: '7', outcome: 'muted'}, 'an outcome chip goes back to the first page');
   assert.deepStrictEqual(asked[3], {page: '0', size: '50', days: '30', outcome: 'muted'});
   assert.deepStrictEqual(asked[4], {page: '0', size: '50', days: '30', q: 'svc-3', outcome: 'muted'});
-  assert.strictEqual(doc.querySelector('#tab-sub-anoms button[data-f="closed"] .count').textContent, '60');
+  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-f="closed"] .count').textContent, '60');
   assert.deepStrictEqual(errors, []);
   w.close();
-  console.log('PASS #t=anoms/closed lists cards that left the page, newest first, 50 a page with Older / Newer, each number opening /c/<n>; outcome, range and search narrow it and go back to page one');
+  console.log('PASS #t=anoms/closed lists cards that left the page, newest first, 50 a page with Older / Newer, each number opening its card in the side panel; outcome, range and search narrow it and go back to page one');
 }
 
 async function customDatesEmptyStateAndALiveRepaintKeepTheFilters() {

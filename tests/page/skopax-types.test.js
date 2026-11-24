@@ -48,7 +48,7 @@ async function boot(hash) {
   const doc = dom.window.document;
   return {w: dom.window, doc, errors,
     shown: () => [...doc.querySelectorAll('#anoms article.inc')].map((c) => c.dataset.key),
-    chip: (t) => doc.querySelector('#tab-sub-anoms button[data-type="' + t + '"]'),
+    chip: (t) => doc.querySelector('#panel-anoms .qf-c[data-type="' + t + '"]'),
     note: () => doc.getElementById('filter-note')};
 }
 
@@ -60,7 +60,7 @@ async function aLinkOpensTheFilterAndTypeAndTheChipsKeepTheLinkCurrent() {
   assert.deepStrictEqual(shown(), ['page-typos|pages//shipping-calculator', 'page-typos|pages//gift-cards'], 'all typo cards, open and cleared');
   assert.ok(note().classList.contains('on') && /Showing All \u00b7 Typos\s*2/.test(note().querySelector('.fn-cur').textContent));
   assert.strictEqual(chip('page-typos').getAttribute('aria-pressed'), 'true');
-  assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms .types-g button[data-type]')].map((b) => [b.querySelector('.lbl').textContent, b.querySelector('.count').textContent]),
+  assert.deepStrictEqual([...doc.querySelectorAll('#panel-anoms [aria-label="Types"] .qf-c[data-type]')].map((b) => [b.querySelector('.lbl').textContent, b.querySelector('.count').textContent]),
     [['Typos', '2'], ['Layout', '1'], ['Log errors', '1']], 'the types on the page, most cards first, with readable names');
   assert.strictEqual(w.location.hash, '#t=anoms/all/page-typos');
 
@@ -89,7 +89,7 @@ async function anOpenTypeWithNothingOpenSaysSoAndEveryTypeClearsIt() {
   //when
   chip('page-typos').click();
   const typos = shown();
-  doc.querySelector('#tab-sub-anoms button[data-f="cleared"]').click();
+  doc.querySelector('#panel-anoms .qf-c[data-f="cleared"]').click();
   const cleared = shown();
   const hash = w.location.hash;
   doc.getElementById('clear-type').click();
@@ -135,10 +135,10 @@ async function aShortTypeLinkOpensOpenWithThatType() {
   console.log('PASS #t=anoms/page-typos opens Open with Typos and writes the full link');
 }
 
-async function typeCountsFollowTheFilterTheGroupFoldsAndTheViewCopiesItsLink() {
+async function typeCountsFollowTheFilterAndTheViewCopiesItsLink() {
   //given
   const {w, doc, errors, chip, note} = await boot('#t=anoms/cleared');
-  const types = () => [...doc.querySelectorAll('#tab-sub-anoms .types-g button[data-type]')].map((b) => [b.dataset.type, b.querySelector('.count').textContent]);
+  const types = () => [...doc.querySelectorAll('#panel-anoms [aria-label="Types"] .qf-c[data-type]')].map((b) => [b.dataset.type, b.querySelector('.count').textContent]);
   let copied = null;
   Object.defineProperty(w.navigator, 'clipboard', {configurable: true, value: {writeText: async (t) => { copied = t; }}});
 
@@ -146,20 +146,13 @@ async function typeCountsFollowTheFilterTheGroupFoldsAndTheViewCopiesItsLink() {
   assert.deepStrictEqual(types(), [['page-typos', '1']], 'under Cleared only the cleared typo counts, other types are not offered');
 
   //when
-  doc.querySelector('#tab-sub-anoms button[data-f="open"]').click();
+  doc.querySelector('#panel-anoms .qf-c[data-f="open"]').click();
 
   //then
   assert.deepStrictEqual(types(), [['page-layout', '1'], ['log', '1'], ['page-typos', '1']], 'under Open the open cards count, ties by name');
 
   //when
   chip('page-layout').click();
-  const fold = () => doc.querySelector('#tab-sub-anoms [data-fold="types"]');
-  fold().click();
-
-  //then
-  assert.strictEqual(fold().getAttribute('aria-expanded'), 'false');
-  assert.deepStrictEqual(types(), [['page-layout', '1']], 'folded, only the active type stays');
-  assert.strictEqual(w.localStorage.getItem('skopax-types-fold'), '1');
 
   //when
   doc.getElementById('copy-f').click();
@@ -168,8 +161,7 @@ async function typeCountsFollowTheFilterTheGroupFoldsAndTheViewCopiesItsLink() {
   //then
   assert.strictEqual(copied, 'https://skopax.example.com/#t=anoms/open/page-layout');
   assert.ok(/Copied/.test(doc.getElementById('copy-f').textContent));
-  fold().click();
-  assert.strictEqual(types().length, 3, 'unfolding shows every type again');
+  assert.strictEqual(types().length, 3, 'every type stays listed with the active one pressed');
   assert.ok(note().querySelector('#copy-f'), 'the filter line keeps its Copy link');
   assert.deepStrictEqual(errors, []);
   w.close();
@@ -203,8 +195,8 @@ async function aPageCardOpensItsPageFromTheHeadAndFromItsText() {
   assert.ok(!cardOf('log|members/sms-sender|ERROR').querySelector('a.open-page'));
   const gone = cardOf('page-layout|pages//garden-chairs');
   assert.strictEqual(gone.querySelector('.inc-title .page-gone').textContent, 'Page gone \u00b7 404', 'a removed page says so on the folded head');
-  assert.strictEqual(gone.querySelector('.rec-line').textContent, 'NextThe page answers HTTP 404 since ' + short('2026-11-09T12:45:00Z') + ': if it was taken down on purpose, Resolve this card.');
-  assert.ok(!page.querySelector('.page-gone') && !page.querySelector('.rec-line'), 'a live page gets neither');
+  assert.strictEqual(gone.querySelector('.card-todo p').textContent, 'The page answers HTTP 404 since ' + short('2026-11-09T12:45:00Z') + ': if it was taken down on purpose, Resolve this card.', 'What to do says what to do about a gone page');
+  assert.ok(!page.querySelector('.page-gone') && !page.querySelector('.card-todo'), 'a live page gets neither');
   assert.deepStrictEqual(errors, []);
   w.close();
   console.log('PASS a page card opens its page from the folded head and from the URL in its text');
@@ -229,7 +221,7 @@ async function everyPluginSigHasAReadableTypeNameAndOldPageGlobalsAreGone() {
 
 (async () => {
   await aPageCardOpensItsPageFromTheHeadAndFromItsText();
-  await typeCountsFollowTheFilterTheGroupFoldsAndTheViewCopiesItsLink();
+  await typeCountsFollowTheFilterAndTheViewCopiesItsLink();
   await aShortTypeLinkOpensOpenWithThatType();
   await aLinkOpensTheFilterAndTypeAndTheChipsKeepTheLinkCurrent();
   await anOpenTypeWithNothingOpenSaysSoAndEveryTypeClearsIt();

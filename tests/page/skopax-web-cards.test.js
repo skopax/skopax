@@ -50,7 +50,7 @@ async function webAndMarketingCardTypesShowNamesNotRawIds() {
   //when
   const names = ['ad-disapproved', 'access', 'gtm-publish', 'browser-down', 'umami-access', 'safebrowsing', 'crux'].map((t) => w.typeName(t));
   const access = ['access', 'no-access'].map((t) => w.typeName(t));
-  const chip = doc.querySelector('#tab-sub-anoms button[data-type="ad-disapproved"]');
+  const chip = doc.querySelector('#panel-anoms .qf-c[data-type="ad-disapproved"]');
 
   //then
   assert.deepStrictEqual(names, ['Disapproved ads', 'No access', 'GTM publishes', 'Screenshot browser', 'No access', 'Safe Browsing', 'Page speed']);
@@ -92,8 +92,8 @@ async function everyAccessTypeFoldsIntoOneNoAccessChipAndGroup() {
   const {w, doc, errors} = await boot(list);
 
   //when
-  const chips = [...doc.querySelectorAll('#tab-sub-anoms button[data-type]')].map((b) => b.dataset.type);
-  const folded = doc.querySelector('#tab-sub-anoms button[data-type="no-access"]');
+  const chips = [...doc.querySelectorAll('#panel-anoms .qf-c[data-type]')].map((b) => b.dataset.type);
+  const folded = doc.querySelector('#panel-anoms .qf-c[data-type="no-access"]');
   const groups = [...w.typeGroups(w.ALL)].map((g) => [g.type, g.list.length]);
   const oldLink = [...w.ALL].filter((a) => w.typeIs(a, 'access')).length;
 

@@ -45,7 +45,7 @@ async function boot(hash) {
   const doc = dom.window.document;
   return {w: dom.window, doc, errors,
     shown: () => [...doc.querySelectorAll('#anoms article.inc')].map((c) => c.dataset.key),
-    chip: (t) => doc.querySelector('#tab-sub-anoms button[data-type="' + t + '"]'),
+    chip: (t) => doc.querySelector('#panel-anoms .qf-c[data-type="' + t + '"]'),
     note: () => doc.getElementById('filter-note')};
 }
 

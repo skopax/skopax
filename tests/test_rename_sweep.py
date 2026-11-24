@@ -27,7 +27,7 @@ def test_browser_names():
     # given
     hits = [f'{p.relative_to(ROOT)}: {n}' for p in BROWSER_FILES for n in OLD_BROWSER_NAMES if n in p.read_text(encoding='utf-8')]
     chatui = (ROOT / 'skopax' / 'chatui' / '__init__.py').read_text(encoding='utf-8')
-    pages = [WEB / 'template.html', WEB / 'card.html', WEB / 'login.html', WEB / 'setup.html']
+    pages = [WEB / 'template.html', WEB / 'login.html', WEB / 'setup.html']
 
     # when
     missing = []

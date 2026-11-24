@@ -13,7 +13,7 @@ from skopax.actors import SYSTEM
 from skopax.contract import KEY_SEGMENT, Check, InstanceInfo, PassResult, Plugin, ReadError, Sweep
 from skopax.engine import ALREADY_ACTIVE, APPLY_ATTEMPTS, CONNECTED, LONG_AGO, SEV_RANK, SHOTS, Applied, clearing_key, iso, no_data, parse_iso, read_any, started_before
 from skopax.errkind import kind
-from skopax.instances import RECONNECT_AFTER_S, REFRESH_S, Instance
+from skopax.instances import RECONNECT_AFTER_S, REFRESH_S, Instance, node_of
 from skopax.messages import msg
 from skopax.monitor import refusal
 from skopax.redact import redact_text
@@ -68,7 +68,7 @@ def owned(check: Check, inst: InstanceInfo | Instance | None) -> bool:
 
 
 def watched(plugin: Plugin, inst: Instance | None) -> list[Check]:
-    return [c for c in plugin.checks if inst is None or (c.id not in inst.off_checks and owned(c, inst))]
+    return [c for c in plugin.checks if inst is None or (c.id not in inst.off_checks and owned(c, inst) and not node_of(inst))]
 
 
 def pass_name(check: Check, inst: InstanceInfo | None) -> str:
@@ -589,7 +589,7 @@ class Sweeper:
                 segment = _segment(info)
                 kept = set().union(*(c.sections for c in watched(plugin, inst)))
                 for check in plugin.checks:
-                    if check.id not in inst.off_checks or not owned(check, info):
+                    if (check.id not in inst.off_checks and not node_of(inst)) or not owned(check, info):
                         continue
                     passes = any(pass_name(check, info) in (state.get(t) or {}) for t in ('sources', 'serverPasses'))
                     cards = any(a.get('status') == 'open' and retires(check, info, clearing_key(a)) and (a.get('cluster') or None) == segment for a in state.get('anomalies') or [])

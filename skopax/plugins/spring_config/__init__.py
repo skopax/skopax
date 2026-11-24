@@ -320,10 +320,14 @@ def fetch(setup: Setup, transport: Transport) -> list:
     return sources
 
 
+MISSING = 'is not in the config server answer'
 Template = tuple[tuple[str, ...], tuple[tuple[str, str], ...]]
 
 
-def build(sources: list, mapping: list[tuple[str, tuple[str, ...]]], env: Mapping[str, str], templates: list[Template] | None = None) -> dict:
+LEFT_OUT_MAX = 50
+
+
+def build(sources: list, mapping: list[tuple[str, tuple[str, ...]]], env: Mapping[str, str], templates: list[Template] | None = None, said: set[str] | None = None) -> dict:
     config = flatten(sources)
     known: dict[str, str | None] = {}
     why: dict[str, str] = {}
@@ -332,7 +336,7 @@ def build(sources: list, mapping: list[tuple[str, tuple[str, ...]]], env: Mappin
         if key not in known:
             known[key] = None
             if key not in config:
-                why[key] = 'is not in the config server answer'
+                why[key] = MISSING
             else:
                 try:
                     known[key] = resolve_value(config[key], config, env)
@@ -349,12 +353,18 @@ def build(sources: list, mapping: list[tuple[str, tuple[str, ...]]], env: Mappin
         else:
             instances.setdefault((where[1], where[2]), {'plugin': where[1], 'name': where[2]})[where[3]] = value
 
-    warned: set[str] = set()
+    said = set() if said is None else said
+    problems: set[str] = set()
+    left_out: set[str] = set()
     for key, where in mapping:
         value = value_of(key)
         if value is None:
-            if key not in warned:
-                warned.add(key)
+            mark = f'key:{key}'
+            problems.add(mark)
+            if why[key] == MISSING:
+                left_out.add(key)
+            if mark not in said:
+                said.add(mark)
                 log.warning('%s: the key %s %s, so it is left out', NAME, key, why[key])
             continue
         place(where, value)
@@ -367,15 +377,25 @@ def build(sources: list, mapping: list[tuple[str, tuple[str, ...]]], env: Mappin
                 continue
             value = config.get(text)
             if value is None:
-                log.warning('%s: the template for %s is left out because the key %s is not in the config server answer', NAME, target, text)
+                mark = f'template:{target}:{text}'
+                problems.add(mark)
+                left_out.add(text)
+                if mark not in said:
+                    said.add(mark)
+                    log.warning('%s: the template for %s is left out because the key %s is not in the config server answer', NAME, target, text)
                 break
             out.append(value)
         else:
             if sum(len(x) for x in out) > VALUE_MAX:
-                log.warning('%s: the template for %s is left out because its value is longer than %s characters', NAME, target, VALUE_MAX)
+                mark = f'long:{target}'
+                problems.add(mark)
+                if mark not in said:
+                    said.add(mark)
+                    log.warning('%s: the template for %s is left out because its value is longer than %s characters', NAME, target, VALUE_MAX)
                 continue
             place(where, ''.join(out))
-    return {'values': values, 'instances': list(instances.values())}
+    said &= problems
+    return {'values': values, 'instances': list(instances.values()), 'leftOut': sorted(left_out)}
 
 
 def kind_of(where: tuple[str, ...], field_kind: Callable[[str, str], str | None] | None) -> str | None:
@@ -420,6 +440,8 @@ class SpringConfig:
         self._error: type[SpringConfigError] | None = None
         self._said = ''
         self._unchecked: list[str] = []
+        self._said_keys: set[str] = set()
+        self._left_out: list[str] = []
         self._lock = threading.Lock()
 
     def __call__(self, env: Mapping[str, str], field_kind: Callable[[str, str], str | None] | None = None) -> dict | None:
@@ -445,12 +467,13 @@ class SpringConfig:
             now = self.clock()
             if self._identity != setup.identity():
                 self._identity, self.good, self._next, self._retry, self._error = setup.identity(), None, 0.0, 0.0, None
+                self._said_keys = set()
             if self.good is not None and now < self._next:
                 return self._copy()
             if self._error is not None and now < self._retry:
                 raise self._error('the last read failed; the next try waits')
             try:
-                found = build(fetch(setup, self.transport), mapping, env, templates)
+                found = build(fetch(setup, self.transport), mapping, env, templates, self._said_keys)
             except SpringConfigError as e:
                 first = self._error is None
                 self._error, self._retry = type(e), now + RETRY_S
@@ -458,11 +481,16 @@ class SpringConfig:
                     kept = 'keeping the last good copy' if self.good is not None else 'there is no earlier copy'
                     log.warning('%s: reading the config server failed (%s), %s', NAME, type(e).__name__, kept)
                 raise
-            self.good, self._next, self._error = found, now + REFETCH_S, None
+            self.good, self._left_out, self._next, self._error = {'values': found['values'], 'instances': found['instances']}, found['leftOut'], now + REFETCH_S, None
             return self._copy()
 
     def _copy(self) -> dict:
-        return {'values': dict(self.good['values']), 'instances': [dict(i) for i in self.good['instances']]}
+        left = self._left_out
+        out = {'values': dict(self.good['values']), 'instances': [dict(i) for i in self.good['instances']]}
+        if left:
+            out['leftOut'] = left[:LEFT_OUT_MAX]
+            out['leftOutMore'] = max(0, len(left) - LEFT_OUT_MAX)
+        return out
 
 
 PLUGIN = Plugin(

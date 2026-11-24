@@ -205,7 +205,11 @@ class SourceSet:
 
     def status(self) -> dict[str, dict]:
         with self._lock:
-            return {label: dict(item) for label, item in self._status.items()}
+            out = {}
+            for index, (label, _) in enumerate(self.loaders):
+                data = self._data[index]
+                out[label] = {**self._status[label], 'leftOut': list(data.left_out) if data else [], 'leftOutMore': data.left_out_more if data else 0}
+            return out
 
     def unanswered(self) -> list[str]:
         with self._lock:

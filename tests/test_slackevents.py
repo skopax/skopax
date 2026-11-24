@@ -2002,3 +2002,54 @@ def test_a_bare_tag_whose_thread_read_names_no_scope_says_which_scopes_read_a_th
 
     # then
     assert [p['text'] for p in f.post.calls] == [msg('slackevents.read_refused', scope='channels:history, groups:history or im:history')]
+
+
+def person(n: int, text: str, user: str = 'U2') -> dict:
+    return {'ts': f'1792224000.{n:06d}', 'user': user, 'text': text}
+
+
+def test_the_last_person_messages_before_a_tag_keep_their_full_text():
+    # given
+    posts = [person(10, 'x' * 3000), {'ts': ASK_TS, 'user': 'U1', 'text': '<@UBOT> please look into it'}]
+
+    # when
+    view = thread_view(posts, 'UBOT', ASK_TS)
+
+    # then
+    assert view == [{'who': 'person', 'text': 'x' * 3000}]
+
+
+def test_an_older_message_is_still_cut_and_says_so():
+    # given
+    posts = [person(n, chr(96 + n) * 900) for n in range(1, 6)]
+
+    # when
+    view = thread_view(posts, 'UBOT', ASK_TS)
+
+    # then
+    assert [t['text'] for t in view[:2]] == [chr(96 + n) * 500 + ' [cut]' for n in (1, 2)]
+    assert [t['text'] for t in view[2:]] == [chr(96 + n) * 900 for n in (3, 4, 5)]
+
+
+def test_bot_messages_do_not_use_up_the_full_slots():
+    # given
+    posts = [person(1, 'a' * 900), person(2, 'b' * 900), {'ts': '1792224000.000003', 'bot_id': 'B0BOT', 'text': 'z' * 900}, person(4, 'c' * 900),
+             {'ts': '1792224000.000005', 'bot_id': 'B0BOT', 'text': 'y' * 900}, person(6, 'd' * 900)]
+
+    # when
+    view = thread_view(posts, 'UBOT', ASK_TS)
+
+    # then
+    assert [len(t['text']) for t in view] == [506, 900, 506, 900, 506, 900]
+    assert [t['who'] for t in view if t['text'].endswith(' [cut]')] == ['person', 'bot', 'bot']
+
+
+def test_a_message_newer_than_the_tag_does_not_take_a_full_slot():
+    # given
+    posts = [person(1, 'a' * 900), person(2, 'b' * 900), person(3, 'c' * 900), {'ts': '1792224000.000300', 'user': 'U2', 'text': 'd' * 900}]
+
+    # when
+    view = thread_view(posts, 'UBOT', '1792224000.000250')
+
+    # then
+    assert [len(t['text']) for t in view] == [900, 900, 900, 506]

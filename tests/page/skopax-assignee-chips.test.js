@@ -41,25 +41,25 @@ async function boot(hash, stored) {
 }
 
 const shown = (doc) => [...doc.querySelectorAll('#anoms article.inc')].map((c) => c.dataset.key).sort();
-const items = (doc, cls) => [...doc.querySelectorAll('#tab-sub-anoms .' + cls + ' button.tab-sub-i')].map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent);
-const fold = (doc, id) => doc.querySelector('#tab-sub-anoms [data-fold="' + id + '"]');
+const name = (b) => (b.querySelector('.lbl') || b.querySelector('.qf-n')).textContent;
+const items = (doc) => ['who:any', 'who:me', 'who:none'].map((t) => doc.querySelector('#panel-anoms .qf-c[data-type="' + t + '"]')).concat([...doc.querySelectorAll('#card-qf [aria-label="Assignee"] .qf-p')]).map((b) => name(b) + ' ' + b.querySelector('.count').textContent);
 
 async function everyAssigneeIsAFilterUnderAssignee() {
   //given
   const {w, doc, errors} = await boot('#t=anoms');
 
   //when
-  const listed = items(doc, 'who-g');
-  doc.querySelector('#tab-sub-anoms .who-g [data-type="who:u:paul.stone"]').click();
-  const paul = {cards: shown(doc), hash: w.location.hash, pressed: doc.querySelector('#tab-sub-anoms .who-g [data-type="who:u:paul.stone"]').getAttribute('aria-pressed')};
-  doc.querySelector('#tab-sub-anoms .who-g [data-type="who:u:nina.white"]').click();
+  const listed = items(doc);
+  doc.querySelector('#panel-anoms .qf-c[data-type="who:u:paul.stone"]').click();
+  const paul = {cards: shown(doc), hash: w.location.hash, pressed: doc.querySelector('#panel-anoms .qf-c[data-type="who:u:paul.stone"]').getAttribute('aria-pressed')};
+  doc.querySelector('#panel-anoms .qf-c[data-type="who:u:nina.white"]').click();
   const nina = shown(doc);
-  doc.querySelector('#tab-sub-anoms .who-g [data-type="who:u:nina.white"]').click();
+  doc.querySelector('#panel-anoms .qf-c[data-type="who:u:nina.white"]').click();
   const back = shown(doc);
   const reload = await boot('#t=anoms/open/who%3Au%3Apaul.stone');
 
   //then
-  assert.deepStrictEqual(listed, ['Assigned 3', 'Me 2', 'Unassigned 1', 'Nina White 2', 'Paul Stone 1'], 'after Assigned / Mine / Unassigned each person with cards, most first; a name and an email of one person count once');
+  assert.deepStrictEqual(listed, ['Assigned 3', 'Mine 2', 'Unassigned 1', 'Nina White 2', 'Paul Stone 1'], 'after Assigned / Mine / Unassigned each person with cards, most first; a name and an email of one person count once');
   assert.deepStrictEqual(paul, {cards: [M1], hash: '#t=anoms/open/who%3Au%3Apaul.stone', pressed: 'true'});
   assert.deepStrictEqual(nina, [A2, A1].sort(), 'both spellings of one person are theirs');
   assert.deepStrictEqual(back, [A1, A2, FREE, M1].sort(), 'a second click shows everyone again');
@@ -69,39 +69,6 @@ async function everyAssigneeIsAFilterUnderAssignee() {
   return 'the Assignee group lists every person with cards as a filter (name and email of one person merged), and a link keeps it';
 }
 
-async function theSmallMenuGroupsFoldAndRememberIt() {
-  //given
-  const {w, doc, errors} = await boot('#t=anoms');
-  const heads = [...doc.querySelectorAll('#tab-sub-anoms button.types-fold')].map((b) => b.dataset.fold);
-
-  //when
-  fold(doc, 'lists').click();
-  const lists = {open: fold(doc, 'lists').getAttribute('aria-expanded'), rows: items(doc, 'tab-sub-g:has([data-fold="lists"])').length, focus: doc.activeElement === fold(doc, 'lists')};
-  doc.querySelector('#tab-sub-anoms .tags-g [data-type="tag:data"]').click();
-  fold(doc, 'tags').click();
-  const tags = items(doc, 'tags-g');
-  fold(doc, 'who').click();
-  const who = items(doc, 'who-g');
-  const saved = JSON.parse(w.localStorage.getItem('skopax-sub-fold'));
-  const again = await boot('#t=anoms', {'skopax-sub-fold': JSON.stringify(saved)});
-  const kept = ['lists', 'tags', 'who'].map((id) => fold(again.doc, id).getAttribute('aria-expanded'));
-  fold(again.doc, 'lists').click();
-  const reopened = items(again.doc, 'tab-sub-g:has([data-fold="lists"])').length;
-
-  //then
-  assert.deepStrictEqual(heads, ['lists', 'who', 'tags', 'types'], 'Lists, Assignee, Tags and Types each have a fold arrow');
-  assert.deepStrictEqual(lists, {open: 'false', rows: 0, focus: true}, 'a folded group hides its items and keeps the focus on its arrow');
-  assert.deepStrictEqual(tags, ['Data 1'], 'a folded group still shows the item that is on');
-  assert.deepStrictEqual(who, [], 'and nothing when none of its items is on');
-  assert.deepStrictEqual(saved, {lists: 1, tags: 1, who: 1});
-  assert.deepStrictEqual(kept, ['false', 'false', 'false'], 'the folds survive a reload in this browser');
-  assert.ok(reopened > 0, 'the arrow opens it again');
-  assert.deepStrictEqual(errors.concat(again.errors), []);
-  w.close(); again.w.close();
-  return 'Lists, Assignee and Tags fold like Types, keep the item that is on visible, and remember the fold per browser';
-}
-
 (async () => {
   console.log('PASS ' + await everyAssigneeIsAFilterUnderAssignee());
-  console.log('PASS ' + await theSmallMenuGroupsFoldAndRememberIt());
 })().catch((e) => { console.error('FAIL', e); process.exit(1); });

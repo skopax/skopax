@@ -1011,27 +1011,23 @@ async function tabGroupsCarryTheHealthState() {
   });
   const actions = [{id: 'q1', type: 'dive', key: 'err|payments/orders-service', target: 'err|payments/orders-service', label: 'Investigate orders-service', status: 'requested', requestedAt: iso(1)}];
   const {doc, errors, dom} = await boot(state, DEPLOYS, REPORTS, actions);
-  const groups = [...doc.querySelectorAll('#tabs > .tab-grp')];
   const tab = (id) => doc.getElementById('tab-' + id);
 
   //then
-  assert.deepStrictEqual(groups.map((g) => (g.querySelector('.tabs-l') || {}).textContent || ''), ['Anomaly filters'], 'the side menu keeps only the anomaly filters');
+  assert.ok(!doc.getElementById('tabs'), 'the filters moved to the board toolbar');
   const rows = (grp) => [...doc.querySelectorAll('#snav .s-grp[data-grp="' + grp + '"] a.tab[data-tab]')].map((t) => t.dataset.tab);
   assert.deepStrictEqual(['main', 'observe', 'activity', 'connect', 'more'].map(rows), [['anoms', 'reqs', 'chat', 'inv'], ['svcs', 'info', 'lat', 'rels', 'reps'], ['slack', 'hist', 'acts', 'costs'], ['integrations', 'tools', 'mcp'], ['review', 'docs']], 'the sidebar groups the tabs: the Board group, then Observe (the old Metrics and Delivery), Activity, Connect and More');
   assert.ok(!doc.getElementById('toptabs') && !doc.getElementById('menu-metrics') && !doc.getElementById('tabs-metrics'), 'no top-bar menus any more');
   assert.deepStrictEqual(['hist', 'acts'].map((id) => tab(id).querySelector('.lbl').textContent), ['Events', 'History'], 'the action log is History, the anomaly events are Events');
-  assert.ok(groups.every((g) => g.getAttribute('role') === 'presentation') && !doc.querySelector('#tabs .tabs-l[role="tab"]'), 'labels are not tabs');
   const rules = [...doc.styleSheets].flatMap((sh) => [...sh.cssRules]);
   assert.ok(rules.some((r) => r.selectorText === '.s-grp + .s-grp' && r.style.getPropertyValue('margin-top')), 'a visible gap between the sidebar groups');
-  assert.ok(rules.some((r) => r.selectorText === '.tabs' && r.style.getPropertyValue('position') === 'sticky' && r.style.getPropertyValue('flex-direction') === 'column'), 'the filter column is a sticky menu, one per line');
   const layout = doc.querySelector('.layout');
-  assert.deepStrictEqual([...layout.children].filter((c) => !c.hidden).map((c) => c.tagName + '#' + c.id), ['NAV#tabs', 'MAIN#', 'ASIDE#live'], 'the menu sits left of the main column, the Activity rail right of it');
+  assert.deepStrictEqual([...layout.children].filter((c) => !c.hidden).map((c) => c.tagName + '#' + c.id), ['MAIN#', 'ASIDE#live'], 'the main column leads, the Activity rail sits right of it');
   assert.ok(['reco', 'queue-strip', 'banner'].concat([...doc.querySelectorAll('#side a.tab[data-tab]')].map((t) => 'panel-' + t.dataset.tab)).every((id) => layout.querySelector('main').contains(doc.getElementById(id))), 'the summary, the queue strip and every panel are in the main column');
   const narrow = rules.filter((r) => r.cssRules && /max-width: 900px/.test(r.conditionText || (r.media && r.media.mediaText) || '')).flatMap((r) => [...r.cssRules]);
   assert.ok(narrow.some((r) => r.selectorText === '.layout' && r.style.getPropertyValue('grid-template-columns') === 'minmax(0px, 1fr)'), 'on a narrow content the main column takes the full width');
-  assert.ok(narrow.some((r) => r.selectorText === '.tabs' && r.style.getPropertyValue('position') === 'fixed') && narrow.some((r) => r.selectorText === 'body.nav-open .tabs'), 'and the menu becomes a drawer');
   assert.deepStrictEqual([...doc.querySelector('section.overview').children].map((c) => c.id), ['reco', 'meta'], 'the overview keeps the Skopax summary and the source pills');
-  assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms button')].map((b) => b.dataset.f).slice(0, 5), ['all', 'open', 'crit', 'high', 'warn'], 'All first, then the Open counts right under Open in the Anomalies side sub menu');
+  assert.deepStrictEqual([...doc.querySelectorAll('#bf-main .qf-c[data-f]')].map((b) => b.dataset.f), ['open', 'crit', 'taken'], 'Open, Critical and Done lead the toolbar');
   assert.strictEqual(tab('anoms').title, '1 critical', 'the Anomalies tab tooltip counts by severity');
   assert.ok(tab('svcs').classList.contains('hot') && tab('svcs').classList.contains('k-crit'), 'Services is coloured by its worst service: ' + tab('svcs').className);
   assert.strictEqual(doc.getElementById('count-svcs').textContent, '1/2');
@@ -1047,7 +1043,6 @@ async function tabGroupsCarryTheHealthState() {
   //then
   assert.ok(!doc.getElementById('panel-reps').hidden && tab('reps').getAttribute('aria-current') === 'page', 'tabs still switch');
   assert.strictEqual(doc.querySelectorAll('a.tab[data-tab][aria-current="page"]').length, 1);
-  assert.ok(doc.querySelector('.layout').classList.contains('no-nav'), 'away from Anomalies the side menu steps aside and the main column takes its room');
 
   //when
   dom.window.matchMedia = (q) => ({media: q, matches: false});
@@ -1060,38 +1055,7 @@ async function tabGroupsCarryTheHealthState() {
   tab('anoms').click();
 
   //then
-  const navBtn = () => doc.getElementById('filter-menu'), backdrop = doc.getElementById('nav-backdrop');
-  assert.ok(!doc.querySelector('.layout').classList.contains('no-nav'), 'on Anomalies the side menu with its filters is back');
   assert.strictEqual(doc.getElementById('crumb-page').textContent, 'Board', 'the crumb names the open section');
-  assert.ok(!doc.body.classList.contains('nav-open') && navBtn().getAttribute('aria-expanded') === 'false' && backdrop.hidden, 'the drawer starts closed');
-
-  //when
-  navBtn().click();
-
-  //then
-  assert.ok(doc.body.classList.contains('nav-open') && navBtn().getAttribute('aria-expanded') === 'true' && !backdrop.hidden, 'the Filters button opens the drawer');
-  assert.strictEqual(doc.activeElement, doc.querySelector('#tab-sub-anoms button[aria-pressed="true"]'), 'focus lands on the active anomaly filter');
-
-  //when
-  doc.querySelector('#tab-sub-anoms button[data-f="open"]').click();
-
-  //then
-  assert.ok(!doc.body.classList.contains('nav-open') && backdrop.hidden && navBtn().getAttribute('aria-expanded') === 'false', 'picking a filter closes the drawer');
-  assert.strictEqual(doc.activeElement, navBtn(), 'focus goes back to the Filters button');
-
-  //when
-  navBtn().click();
-  doc.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'Escape'}));
-
-  //then
-  assert.ok(!doc.body.classList.contains('nav-open') && backdrop.hidden, 'Escape closes it');
-
-  //when
-  navBtn().click();
-  backdrop.click();
-
-  //then
-  assert.ok(!doc.body.classList.contains('nav-open') && backdrop.hidden, 'so does a click beside it');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
 

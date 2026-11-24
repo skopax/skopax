@@ -2,6 +2,29 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.14 (2026-11-24)
+
+A simpler board: cards open expanded on the board instead of on a page of their own, fewer controls in view, a calmer blue palette and the left menu collapsed on a first visit. Also Elasticsearch connections reached through an agent node, longer Slack thread context with earlier screenshots, and Spring Config missing keys logged once.
+
+### Changed
+
+- Cards open in the side panel on the board, wide by default. The top reads "What happened" and "What to do"; the main buttons are Take it, Assign, Resolve and Ask AI, and every other action is under More. Technical details (cause, numbers, suspects, key, follow-up, screenshots, merged cards, runs, Slack draft) are folded, and the panel remembers if you open them.
+- The board shows Open, Mine, Critical and Done; every other filter, the people and tag chips, the card types and the Board/List switch are under More filters, which opens by itself and shows a count when a filter inside it is on. The separate filter column is gone.
+- Board tiles show the severity dot, title, number, age and owner, plus a live Investigating tag; the hover action row is gone and dragging between columns still moves a card.
+- A calmer palette in both themes: blues from the logo, neutral pills and tags, severity colour only on the dot, and a light left menu in the light theme.
+- The left menu starts collapsed on a first visit; a saved choice wins.
+- In a Slack thread, the last three messages from people before a mention are read in full (up to 4000 characters each, longer ones marked as cut), and screenshots in those messages are read too, up to three per question.
+- Chat answer ready is no longer mailed by default. On upgrade it is unticked once in saved mail choices too; a person who wants it ticks it again in Preferences.
+- Spring Config logs a key missing from the config server answer once per process instead of on every read, and Admin lists the left-out keys.
+
+### Added
+
+- Through agent node: an Elasticsearch connection (and any plug-in that opts in through its agent read) can name a Kubernetes agent instance that reaches it. Its queries go through that node, its settings are pushed to the node in memory only, and it runs no automatic checks. The esql tool picks the connection with `instance`.
+
+### Removed
+
+- The separate card page. Old card links (`/c/<num>`) still work: they open the board with that card expanded, also for closed and older cards.
+
 ## 0.5.13 (2026-11-24)
 
 Zabbix and CloudWatch pages in the left menu, a quiet first pass for newly connected Zabbix and CloudWatch instances, Slack mentions for people assigned by name, Admin switches that show what was saved on every pod, and Spring Cloud Config keys that fill several fields or build one from several keys.

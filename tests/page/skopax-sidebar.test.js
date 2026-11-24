@@ -45,6 +45,7 @@ async function boot(opts) {
       w.Element.prototype.scrollIntoView = function () {};
       if (opts.width) w.matchMedia = media(opts.width);
       if (opts.calm) w.matchMedia = (q) => ({matches: /\(prefers-reduced-motion:\s*reduce\)/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}});
+      w.localStorage.setItem('skopax-sidebar', 'full');
       Object.keys(opts.stored || {}).forEach((k) => w.localStorage.setItem(k, opts.stored[k]));
       w.fetch = async (path) => {
         const p = String(path);
@@ -131,7 +132,7 @@ async function aRowOpensItsPageAndMarksItself() {
   //then
   assert.deepStrictEqual(current(svcs.doc), ['tab-svcs'], '#t=svcs opens Services');
   assert.deepStrictEqual(current(open.doc), ['tab-anoms'], '#t=anoms/all opens the Board');
-  assert.strictEqual(open.doc.querySelector('#tab-sub-anoms button[aria-pressed="true"]').dataset.f, 'all', 'on the All filter');
+  assert.strictEqual(open.doc.querySelector('#panel-anoms .qf-c[aria-pressed="true"]').dataset.f, 'all', 'on the All filter');
   assert.strictEqual(open.doc.getElementById('crumb-page').textContent, 'Board');
   assert.match(open.doc.getElementById('copy-f').title, /^Copies a link that opens Board with this filter/, 'tooltips name the Board too');
   assert.deepStrictEqual(current(linked.doc), ['tab-anoms'], '#a= opens the Board');
@@ -414,24 +415,10 @@ async function aPluginPageGetsARowAndASection() {
   return 'a plug-in page lands at the end of Observe marked by data-plugin with no pill, its label as text and its icon as an img, gets its own section, and goes away when the plug-in stops serving';
 }
 
-async function aPluginPageCannotTakeAPageId() {
-  //given
-  const plugins = [{id: 'demo', name: 'Demo', icon: '/plugins/demo/icon.svg', tab: null, passes: [], instances: [], pages: [{tab: 'sub-anoms', label: 'Filters', group: 'observe', icon: '/plugins/demo/icon.svg'}, {tab: 'fold-anoms', label: 'Fold', group: 'main', icon: '/plugins/demo/icon.svg'}]}];
-  const {dom, doc, errors} = await boot({hash: '#t=anoms', plugins, settle: 500});
-
-  //then
-  assert.strictEqual(doc.querySelector('#side [data-tab="sub-anoms"], #side [data-tab="fold-anoms"]'), null, 'a page whose ids the page already uses gets no row');
-  assert.deepStrictEqual(['tab-sub-anoms', 'tab-fold-anoms', 'panel-sub-anoms'].map((id) => doc.querySelectorAll('[id="' + id + '"]').length), [1, 1, 0], 'and no second element with those ids');
-  assert.ok(doc.getElementById('tab-sub-anoms').closest('#tabs') && doc.querySelector('#tab-sub-anoms button[data-f="open"]'), 'the Board keeps its filter column');
-  assert.deepStrictEqual(errors, []);
-  dom.window.close();
-  return 'a plug-in page whose tab would reuse an id the page already has gets no row and no section';
-}
-
 async function theOverlaysSitOutsideTheContainer() {
   //given
   const {dom, doc, errors} = await boot({hash: '#t=anoms'});
-  const ids = ['side-scrim', 'nav-backdrop', 'tipbox', 'cf-wrap', 'json-wrap', 'shot-wrap', 'ask-wrap', 'task-wrap'];
+  const ids = ['side-scrim', 'tipbox', 'cf-wrap', 'json-wrap', 'shot-wrap', 'ask-wrap', 'task-wrap'];
 
   //then
   assert.deepStrictEqual(ids.filter((id) => !doc.getElementById(id) || doc.getElementById(id).closest('.pane') || doc.getElementById(id).parentNode !== doc.body), [], 'every fixed overlay is a child of the body, outside the content container');
@@ -524,27 +511,6 @@ async function theTopBarHoldsTheCrumbAndTheLastCheck() {
   return 'the top bar holds the hamburger, the crumb, the stopped tag and a right cluster with Last check, the investigator menu and the theme button; the source pills sit in the overview card';
 }
 
-async function theFilterColumnStartsFoldedWhenTheContentIsNarrow() {
-  //given
-  const narrow = await boot({hash: '#t=anoms', width: 1280});
-  const wide = await boot({hash: '#t=anoms', width: 1600});
-  const kept = await boot({hash: '#t=anoms', width: 1280, stored: {'skopax-nav-off': '0'}});
-  const plain = await boot({hash: '#t=anoms'});
-  const between = await boot({hash: '#t=anoms', width: 1400});
-  const railed = await boot({hash: '#t=anoms', width: 1400, stored: {'skopax-sidebar': 'rail'}});
-  const off = (x) => x.doc.querySelector('.layout').classList.contains('nav-off');
-  const before = off(between);
-  between.doc.getElementById('side-rail').click();
-  const afterRail = off(between);
-
-  //then
-  assert.deepStrictEqual([off(narrow), off(wide), off(kept), off(plain)], [true, false, false, false], 'folded under 1240 px of content, open when wider, the stored choice wins, and no media query keeps today\'s default');
-  assert.deepStrictEqual([before, off(railed), afterRail], [true, false, false], 'at 1400 px the full sidebar leaves under 1240 px of content and the rail leaves more, also right after the toggle');
-  assert.deepStrictEqual(narrow.errors.concat(wide.errors, kept.errors, plain.errors, between.errors, railed.errors), []);
-  for (const x of [narrow, wide, kept, plain, between, railed]) x.dom.window.close();
-  return 'the filter column starts folded while the content is under 1240 px wide, unless the reader chose otherwise';
-}
-
 (async () => {
   console.log('PASS ' + await theSidebarListsTheMapInOrder());
   console.log('PASS ' + await aRowOpensItsPageAndMarksItself());
@@ -556,11 +522,9 @@ async function theFilterColumnStartsFoldedWhenTheContentIsNarrow() {
   console.log('PASS ' + await onAPhoneTheHamburgerOpensTheDrawer());
   console.log('PASS ' + await theAdminRowShowsForAdminsOnly());
   console.log('PASS ' + await aPluginPageGetsARowAndASection());
-  console.log('PASS ' + await aPluginPageCannotTakeAPageId());
   console.log('PASS ' + await theOverlaysSitOutsideTheContainer());
   console.log('PASS ' + await theAttributionSitsAtTheFootAndInTheRail());
   console.log('PASS ' + await theThemeButtonCyclesTheMode());
   console.log('PASS ' + await theChatRowFollowsTheChatAndItsSwitch());
   console.log('PASS ' + await theTopBarHoldsTheCrumbAndTheLastCheck());
-  console.log('PASS ' + await theFilterColumnStartsFoldedWhenTheContentIsNarrow());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

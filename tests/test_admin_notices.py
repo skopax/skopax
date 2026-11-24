@@ -10,6 +10,7 @@ from tests.conftest import AUTH, settings
 from tests.test_auth import Clock
 from tests.test_slack_listener import Factory, listening_app, wait_for
 from skopax.app import create_app
+from skopax.contract import SourceData
 from skopax.messages import msg
 from skopax.registry import Registry
 from skopax.settingsources import SourceSet
@@ -242,3 +243,17 @@ def test_a_listener_that_fails_to_stop_still_lets_the_sighting_writer_shut_down(
     assert shut == [True], 'the sighting writer is shut down even though the listener failed to stop'
     said = [r.getMessage() for r in caplog.records if 'listener' in r.getMessage() and 'stop' in r.getMessage()]
     assert len(said) == 1 and 'ConnectionError' in said[0] and 'xapp-test' not in said[0]
+
+
+def test_a_source_that_left_keys_out_gets_an_info_notice_naming_them(store: Store):
+    # given
+    data = SourceData(SOURCE, {}, (), ('a.b', 'c.d'), 3)
+    sources = SourceSet([(SOURCE, lambda: data)], {SOURCE: data})
+
+    # when
+    c = client_of(create_app(settings(), store, registry=Registry.of(), sources=sources))
+    items = {item['id']: item for item in c.get(NOTICES, headers=AUTH).json()['items']}
+
+    # then
+    assert items[f'source-left-out:{SOURCE}']['level'] == 'info'
+    assert items[f'source-left-out:{SOURCE}']['text'] == 'Not in the config server answer: a.b, c.d and 3 more'

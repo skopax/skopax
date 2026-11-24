@@ -721,6 +721,29 @@ async function whatItWatchesSendsOffChecksAndAChecksOnlySaveIsAChange() {
   console.log('PASS Integrations: what it watches has one box per check, unchecking sends PATCH offChecks, and a new instance can start without a check');
 }
 
+async function aConnectionThroughANodeShowsNoCheckBoxes() {
+  //given
+  const cat = catalog();
+  cat.plugins[0].checks = CHECKS;
+  cat.plugins[0].instances[1].values = Object.assign({}, cat.plugins[0].instances[1].values, {'via-node': 'test'});
+  const t = await boot({catalog: cat});
+  await open(t);
+
+  //when
+  openInstance(t, 'acme', 'main');
+  const mainBoxes = checks(t.doc).map((c) => c.dataset.check);
+  openInstance(t, 'acme', 'east');
+  const eastBoxes = checks(t.doc).map((c) => c.dataset.check);
+  const eastGroup = panel(t.doc).querySelector('.int-checks');
+
+  //then
+  assert.deepStrictEqual(mainBoxes, ['pulse', 'beat'], 'a direct connection shows its check boxes');
+  assert.deepStrictEqual(eastBoxes, [], 'a connection through an agent node shows none');
+  assert.strictEqual(eastGroup, null, 'and no empty What it watches group');
+  t.w.close();
+  console.log('PASS Integrations: a connection through an agent node shows no check boxes');
+}
+
 async function aOnceCheckShowsItsBoxOnlyOnThePrimary() {
   //given
   const once = {id: 'nodes', label: 'Nodes', period: 900, offset: 0, ran: ['nodes'], once: true};
@@ -2732,6 +2755,7 @@ async function anAgentInstanceShowsItsOwnGreenHealthWithTheAgeAndADownOneShowsIt
   await editingSendsOnlyChangesAndAnExplicitClearSendsAnEmptySecret();
   await whatItWatchesSendsOffChecksAndAChecksOnlySaveIsAChange();
   await aOnceCheckShowsItsBoxOnlyOnThePrimary();
+  await aConnectionThroughANodeShowsNoCheckBoxes();
   await aConflictOnAChecksChangeReloadsTheRow();
   await saveAndTurnOnWhoseChecksChangeConflictsSaysItStaysOff();
   await aRefusedCheckShowsByWhatItWatchesAsText();

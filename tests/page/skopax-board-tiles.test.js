@@ -5,7 +5,6 @@ const path = require('path');
 const {JSDOM, VirtualConsole} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
-const CARD_PAGE = path.join(path.dirname(TEMPLATE), 'card.html');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const NOW = Date.now();
 const iso = (min) => new Date(NOW - min * 60000).toISOString();
@@ -17,8 +16,8 @@ const CLUSTER = 'k8s|-|NodeNotReady|node';
 const PLAIN = 'log|shop-web|ERROR|plain';
 const LONG_NAME = 'Alexandria Montgomery-Featherstonehaugh';
 const WORDS = {
-  en: {event: 'Stopped after the event', short: 'Stopped firing', long: 'Stopped firing \u00b7 awaiting action \u00b7 assigned to ' + LONG_NAME},
-  tr: {event: 'Olaydan sonra sinyal durdu', short: 'Sinyal durdu', long: 'Sinyal durdu \u00b7 aksiyon bekleniyor \u00b7 atanan: ' + LONG_NAME},
+  en: {long: 'Stopped firing \u00b7 awaiting action \u00b7 assigned to ' + LONG_NAME},
+  tr: {long: 'Sinyal durdu \u00b7 aksiyon bekleniyor \u00b7 atanan: ' + LONG_NAME},
 };
 
 function card(key, num, extra) {
@@ -66,14 +65,15 @@ async function boot(lang, view) {
 
 const tileOf = (doc, key) => [...doc.querySelectorAll('#anoms .tile')].find((t) => t.dataset.key === key);
 
-async function theTileTagIsShortAndItsTitleHoldsTheLongForm(lang) {
+async function theTileHoldsNoStatusTagAndTheDrawerKeepsTheLongForm(lang) {
   //given
   const words = WORDS[lang];
   const {doc, errors} = await boot(lang);
 
   //when
-  const tag = tileOf(doc, WAITING).querySelector('.tile-foot .tag');
-  const eventTag = tileOf(doc, EVENT).querySelector('.tile-foot .tag');
+  const footTags = [WAITING, EVENT, NOSVC].map((k) => tileOf(doc, k).querySelectorAll('.tile-foot .tag').length);
+  const topLine = [...tileOf(doc, WAITING).querySelectorAll('.tile-top > *')].map((e) => e.className.split(' ')[0]);
+  const initials = tileOf(doc, WAITING).querySelector('.tile-top .tile-asg').textContent;
   tileOf(doc, WAITING).querySelector('.tile-open').click();
   await wait(60);
   const drawerStatus = doc.querySelector('.card-drawer .c-status').textContent;
@@ -85,12 +85,9 @@ async function theTileTagIsShortAndItsTitleHoldsTheLongForm(lang) {
   const bareLabel = doc.querySelector('.card-drawer').getAttribute('aria-label');
 
   //then
-  assert.ok(eventTag.textContent.startsWith(words.event + ' ') && /^\d/.test(eventTag.textContent.slice(words.event.length + 1)), 'event short form with time: ' + eventTag.textContent);
-  assert.ok(tag, 'the stopped tag is on the tile');
-  assert.ok(tag.textContent.startsWith(words.short + ' ') && /^\d/.test(tag.textContent.slice(words.short.length + 1)), 'short form with time: ' + tag.textContent);
-  assert.ok(tag.textContent.indexOf(LONG_NAME) < 0 && tag.textContent.indexOf('\u00b7') < 0, 'no assignee on the tile tag: ' + tag.textContent);
-  assert.ok(tag.title.startsWith(words.long + ' '), 'the title carries the long form: ' + tag.title);
-  assert.ok(tag.classList.contains('k-cleared') && !tag.classList.contains('k-crit'), 'stopped colour, not critical: ' + tag.className);
+  assert.deepStrictEqual(footTags, [0, 0, 0], 'the tile footer holds no stopped or investigated tag');
+  assert.deepStrictEqual(topLine, ['sev', 'tile-num', 'tile-age', 'tile-asg'], 'the top line has severity, number, age and the owner');
+  assert.strictEqual(initials, 'AM', 'owner initials');
   assert.ok(drawerStatus.startsWith(words.long + ' '), 'the drawer keeps the long form: ' + drawerStatus);
   assert.strictEqual(bareLabel, 'shop / KubePodNotReady', 'the drawer of a no-service card never says a bare dash');
   assert.deepStrictEqual(errors, []);
@@ -171,45 +168,42 @@ function tilesWrapInsideTheColumn() {
   assert.match(tag, /overflow-wrap:\s*anywhere/);
 }
 
-async function theCardPageHeaderNeverShowsABareDash() {
+async function anOffBoardCardInThePanelNeverShowsABareDash() {
   //given
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
-  const c = {num: 42, key: NOSVC, svc: '-', ns: 'shop', label: 'KubePodNotReady', sev: 'warn', status: 'open', live: true, firstSeen: iso(30), now: 1, d1: 0, d7: 0};
-  const bare = Object.assign({}, c, {num: 43, svc: '', ns: '-', label: 'DiskPressure'});
-  const open = async (card) => {
-    const dom = new JSDOM(pageHtml(CARD_PAGE), {
-      url: 'https://skopax.example.com/c/' + card.num, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
-      beforeParse(w) {
-        w.fetch = async (p) => {
-          if (String(p) === '/api/me') return {ok: true, status: 200, json: async () => ({loginEnabled: true, user: null, operator: false, tags: []})};
-          if (String(p).startsWith('/api/cards/')) return {ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(card))};
-          return {ok: false, status: 404, json: async () => ({})};
-        };
-      }});
-    await wait(150);
-    return dom.window.document;
+  const {w, doc, errors} = await boot('en');
+  const c = {num: 142, key: 'k8s|-|KubePodNotReady|old', svc: '-', ns: 'shop', label: 'KubePodNotReady', sev: 'warn', status: 'cleared', live: false, firstSeen: iso(3000), now: 1, d1: 0, d7: 0};
+  const bare = Object.assign({}, c, {num: 143, key: 'k8s|-|DiskPressure|old', svc: '', ns: '-', label: 'DiskPressure'});
+  const real = w.fetch;
+  w.fetch = async (p, init) => {
+    const hit = [c, bare].find((x) => String(p) === '/api/cards/' + x.num);
+    return hit ? {ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(hit))} : real(p, init);
   };
 
   //when
-  const named = await open(c), alone = await open(bare);
+  w.location.hash = '#c=142';
+  await wait(100);
+  const named = doc.querySelector('.card-drawer');
+  const namedLabel = named.getAttribute('aria-label'), namedSvc = named.querySelector('.inc-title .svc').textContent;
+  w.location.hash = '#c=143';
+  await wait(100);
+  const alone = doc.querySelector('.card-drawer');
 
   //then
-  assert.strictEqual(named.querySelector('h1').textContent, 'shop / KubePodNotReady');
-  assert.strictEqual(named.title.split(' \u00b7 ')[1], 'shop / KubePodNotReady');
-  assert.strictEqual(alone.querySelector('h1').textContent, 'DiskPressure');
+  assert.strictEqual(namedLabel, 'shop / KubePodNotReady');
+  assert.strictEqual(namedSvc, 'shop');
+  assert.strictEqual(alone.querySelector('.inc-title .svc').textContent, 'DiskPressure', 'the label stands in when nothing else is known');
+  assert.ok(!/(^|\s)-\s(\/|\u00b7)/.test(alone.querySelector('.inc-title').textContent), alone.querySelector('.inc-title').textContent);
   assert.deepStrictEqual(errors, []);
 }
 
 (async () => {
   const jobs = [
-    ['tile tag en', () => theTileTagIsShortAndItsTitleHoldsTheLongForm('en')],
-    ['tile tag tr', () => theTileTagIsShortAndItsTitleHoldsTheLongForm('tr')],
+    ['tile tag en', () => theTileHoldsNoStatusTagAndTheDrawerKeepsTheLongForm('en')],
+    ['tile tag tr', () => theTileHoldsNoStatusTagAndTheDrawerKeepsTheLongForm('tr')],
     ['no service', noServiceNeverShowsABareDash],
     ['shared name', theSharedNameIsUsedInTheSearchTheGroupListAndTheClosedList],
     ['tile css', async () => tilesWrapInsideTheColumn()],
-    ['card page title', theCardPageHeaderNeverShowsABareDash],
+    ['off-board panel title', anOffBoardCardInThePanelNeverShowsABareDash],
   ];
   for (const [name, job] of jobs) {
     try { await job(); console.log('PASS ' + name); } catch (e) {

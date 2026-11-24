@@ -325,6 +325,7 @@ function intAttention(p) { return !intUsable(p) || !!(p.health && (p.health.stat
 function intChecks(p) { return intList(p.checks).filter(function (c) { return c && typeof c.id === 'string' && c.id; }); }
 function intShownChecks(p, inst) {
   var primary = inst ? !!inst.primary : !intList(p.instances).length;
+  if (inst && inst.values && String(inst.values['via-node'] || '').trim()) return [];
   return intChecks(p).filter(function (c) { return c.once !== true || primary; });
 }
 function intStoredOff(p, inst) {

@@ -104,49 +104,24 @@ async function aGuestIsAskedToLogInAndAServiceWithoutTheChatSaysSo() {
   console.log('PASS a guest is asked to log in, a service without the chat says so, and a logged-in person gets the chat frame');
 }
 
-async function theChatTabHidesSummaryActivityAndTheMenuWhichFoldsAwayOnAnyTab() {
+async function theChatTabHidesSummaryAndActivity() {
   //given
   const {w, doc, errors} = await boot('#t=chat');
   const layout = doc.querySelector('.layout');
-  const off = () => layout.classList.contains('nav-off');
 
   //then
   assert.ok(doc.getElementById('reco').hidden && doc.getElementById('reco').parentNode.hidden, 'no Summary on the Chat tab');
   assert.ok(doc.getElementById('live').hidden && layout.classList.contains('no-live'), 'no Activity on the Chat tab');
-  assert.ok(off() && doc.body.classList.contains('nav-off'), 'the menu starts folded away on Chat');
-  assert.strictEqual(doc.getElementById('nav-fold').title, 'Show the menu');
 
   //when
   doc.getElementById('tab-anoms').click();
   await wait(60);
-  const onAnoms = off();
-  const summaryBack = !doc.getElementById('reco').hidden && !doc.getElementById('live').hidden;
-  const onTitle = doc.getElementById('nav-fold').title;
-  doc.getElementById('nav-fold').click();
-  const hidden = off();
-  const offTitle = doc.getElementById('nav-fold').title;
-  doc.getElementById('nav-fold').click();
-  const shown = !off();
-  doc.getElementById('tab-chat').click();
-  await wait(120);
-  const chatAgain = off();
-  doc.getElementById('nav-fold').click();
-  const chatOpened = !off();
-  doc.getElementById('tab-anoms').click();
-  await wait(60);
-  doc.getElementById('tab-chat').click();
-  await wait(120);
 
   //then
-  assert.ok(!onAnoms && summaryBack, 'other tabs keep the menu, Summary and Activity');
-  assert.ok(hidden && shown, 'the fold arrow folds the menu away and the same arrow brings it back');
-  assert.deepStrictEqual([onTitle, offTitle], ['Hide the menu', 'Show the menu']);
-  assert.strictEqual(doc.querySelector('#tabs .nav-hide'), null, 'no second button at the bottom of the menu');
-  assert.ok(chatAgain && chatOpened, 'Chat folds it again and the button opens it');
-  assert.ok(!off(), 'a menu opened on Chat stays open the next time');
+  assert.ok(!doc.getElementById('reco').hidden && !doc.getElementById('live').hidden, 'other tabs keep Summary and Activity');
   assert.deepStrictEqual(errors, []);
   w.close();
-  console.log('PASS the Chat tab shows no Summary or Activity and starts with the menu folded away; one fold arrow folds and opens it on any tab, and Chat remembers an opened menu');
+  console.log('PASS the Chat tab shows no Summary or Activity, and other tabs keep them');
 }
 
 async function theChatLoadsBehindASpinnerInThePageThemeAndFadesInWhenItsInputIsThere() {
@@ -248,7 +223,7 @@ async function theChatAndDocsNotesPointWhereThingsLiveNow() {
   await aChatThatNeverGetsItsInputIsReloadedOnceThenShown();
   await theChatLoadsBehindASpinnerInThePageThemeAndFadesInWhenItsInputIsThere();
   await aCardLinkOpensTheChatFrameWithThatCardAndTheFrameStaysAcrossTabSwitches();
-  await theChatTabHidesSummaryActivityAndTheMenuWhichFoldsAwayOnAnyTab();
+  await theChatTabHidesSummaryAndActivity();
   await aGuestIsAskedToLogInAndAServiceWithoutTheChatSaysSo();
   await theCardAskBoxStartsAPrivateChatWithTheCardAndOpensIt();
   await theChatAndDocsNotesPointWhereThingsLiveNow();

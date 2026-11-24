@@ -109,113 +109,6 @@ function renderBrief() {
   r.querySelectorAll('[data-open-anoms]').forEach(function (b) { b.addEventListener('click', function () { showTab('anoms'); setFilter('open'); }); });
 }
 
-var tabsEl = document.getElementById('tabs');
-(function () {
-  var box = el('div', 'tab-grp');
-  box.id = 'tabs-anomalies';
-  box.setAttribute('role', 'presentation');
-  var row = el('div', 'tab-row');
-  row.setAttribute('role', 'presentation');
-  row.appendChild(el('span', 'tabs-l filters-l', 'Anomaly filters'));
-  var fold = el('button', 'tab-fold');
-  fold.type = 'button'; fold.id = 'tab-fold-anoms';
-  fold.setAttribute('aria-controls', 'tab-sub-anoms'); fold.setAttribute('aria-expanded', 'false'); fold.setAttribute('aria-label', 'Anomaly filters');
-  fold.title = 'Show or hide the anomaly filters';
-  fold.addEventListener('click', function () { setAnomSub(!anomSubOpen); });
-  row.appendChild(fold);
-  box.appendChild(row);
-  var sub = el('div', 'tab-sub');
-  sub.id = 'tab-sub-anoms'; sub.hidden = true;
-  sub.setAttribute('role', 'group'); sub.setAttribute('aria-label', 'Anomaly filters');
-  box.appendChild(sub);
-  tabsEl.appendChild(box);
-})();
-var anomSubOpen = false;
-function setAnomSub(on) {
-  anomSubOpen = on;
-  document.getElementById('tab-sub-anoms').hidden = !on;
-  document.getElementById('tab-fold-anoms').setAttribute('aria-expanded', on ? 'true' : 'false');
-}
-function renderAnomSub() {
-  var sub = document.getElementById('tab-sub-anoms');
-  sub.innerHTML = '';
-  [['anom-chips', '', ''], ['list-chips', 'Lists', 'lists'], ['tri-chips', 'Triage', 'triage']].forEach(function (g) {
-    var list = CH.filter(function (c) { return c.seg === g[0] && ((g[0] !== 'tri-chips' && !c.whenAny) || c.n || c.id === filter); });
-    if (!list.length) return;
-    var box = el('div', 'tab-sub-g');
-    box.setAttribute('role', 'presentation');
-    if (g[1]) box.appendChild(subHead(g[2], g[1], box));
-    var rows = [];
-    list.forEach(function (c) { rows.push(c); if (c.id === 'open') CH.forEach(function (x) { if (x.seg === 'sev-chips') rows.push(x); }); });
-    rows.forEach(function (c) {
-      if (g[2] && subFolded(g[2]) && c.id !== filter) return;
-      var b = el('button', 'tab-sub-i ' + c.k + (c.n ? '' : ' zero') + (c.seg === 'sev-chips' ? ' child' : ''), '<span class="lbl">' + esc(c.chip || c.label) + '</span><span class="count">' + esc(c.n) + '</span>');
-      b.type = 'button'; b.dataset.f = c.id;
-      b.setAttribute('aria-pressed', c.id === filter ? 'true' : 'false');
-      b.title = (c.tip ? c.tip + ' \u00b7 ' : '') + 'opens Board filtered to ' + c.label + (c.seg !== 'anom-chips' ? ', click again for all open' : '');
-      b.addEventListener('click', function () {
-        var back = curTab === 'anoms' && c.id === filter && c.seg !== 'anom-chips';
-        showTab('anoms');
-        setFilter(back ? 'open' : c.id);
-      });
-      box.appendChild(b);
-    });
-    sub.appendChild(box);
-  });
-  var counts = {}, label = (CH.filter(function (c) { return c.id === filter; })[0] || {label: 'Open'}).label;
-  filterBase(filter).forEach(function (a) { var t = typeOf(a); counts[t] = (counts[t] || 0) + 1; });
-  fParts(typeF).filter(function (p) { return fKind(p) === 'type'; }).forEach(function (p) { if (!counts[p]) counts[p] = 0; });
-  var types = Object.keys(counts).sort(function (x, y) { return counts[y] - counts[x] || (typeName(x) < typeName(y) ? -1 : 1); });
-  sub.appendChild(whoRow(label));
-  sub.appendChild(tagsRow(label));
-  if (!types.length) return;
-  var tbox = el('div', 'tab-sub-g types-g' + (typesFold ? ' folded' : ''));
-  tbox.setAttribute('role', 'presentation');
-  var head = el('button', 'tab-sub-l types-fold', 'Types <span class="types-n">' + types.length + '</span><span class="types-chev" aria-hidden="true"></span>');
-  head.type = 'button'; head.dataset.fold = 'types';
-  head.setAttribute('aria-expanded', typesFold ? 'false' : 'true');
-  head.title = (typesFold ? 'Show' : 'Hide') + ' the ' + types.length + ' card types under ' + label;
-  head.addEventListener('click', function () {
-    typesFold = !typesFold;
-    save('skopax-types-fold', typesFold ? '1' : '0');
-    renderAnomSub();
-    var again = document.querySelector('#tab-sub-anoms [data-fold="types"]');
-    if (again) again.focus();
-  });
-  tbox.appendChild(head);
-  types.forEach(function (t) {
-    if (typesFold && !hasF(t)) return;
-    var b = el('button', 'tab-sub-i k-act' + (counts[t] ? '' : ' zero'), '<span class="lbl">' + esc(typeName(t)) + '</span><span class="count">' + esc(counts[t]) + '</span>');
-    b.type = 'button'; b.dataset.type = t;
-    b.setAttribute('aria-pressed', hasF(t) ? 'true' : 'false');
-    b.title = counts[t] + ' ' + typeName(t) + ' ' + (counts[t] === 1 ? 'card' : 'cards') + ' under ' + label + ' (signal ' + t + ') · ' + (hasF(t) ? 'click again for every type' : 'shows only them');
-    b.addEventListener('click', function () {
-      showTab('anoms');
-      setType(toggledF(t));
-    });
-    tbox.appendChild(b);
-  });
-  sub.appendChild(tbox);
-}
-typesFold = load('skopax-types-fold') === '1';
-var SUB_FOLD = (function () { try { return JSON.parse(load('skopax-sub-fold') || '{}') || {}; } catch (e) { return {}; } })();
-function subFolded(id) { return !!SUB_FOLD[id]; }
-function subHead(id, label, box) {
-  var folded = subFolded(id);
-  box.classList.toggle('folded', folded);
-  var head = el('button', 'tab-sub-l types-fold', esc(label) + '<span class="types-chev" aria-hidden="true"></span>');
-  head.type = 'button'; head.dataset.fold = id;
-  head.setAttribute('aria-expanded', folded ? 'false' : 'true');
-  head.title = (folded ? 'Show ' : 'Hide ') + label;
-  head.addEventListener('click', function () {
-    if (SUB_FOLD[id]) delete SUB_FOLD[id]; else SUB_FOLD[id] = 1;
-    save('skopax-sub-fold', JSON.stringify(SUB_FOLD));
-    renderAnomSub();
-    var again = document.querySelector('#tab-sub-anoms [data-fold="' + id + '"]');
-    if (again) again.focus();
-  });
-  return head;
-}
 function whoPeople(base) {
   var people = {};
   base.forEach(function (a) {
@@ -227,132 +120,10 @@ function whoPeople(base) {
   fParts(typeF).filter(isPersonF).forEach(function (t) { if (!people[t.slice(6)]) people[t.slice(6)] = {n: 0, name: t.slice(6)}; });
   return people;
 }
-function whoRow(label) {
-  var base = filterBase(filter);
-  var box = el('div', 'tab-sub-g who-g');
-  box.setAttribute('role', 'presentation');
-  box.appendChild(subHead('who', 'Assignee', box));
-  var folded = subFolded('who'), people = whoPeople(base);
-  Object.keys(WHO_NAMES).forEach(function (t) {
-    if (folded && !hasF(t)) return;
-    var c = base.filter(function (a) { return typeIs(a, t); }).length;
-    var b = el('button', 'tab-sub-i k-act' + (c ? '' : ' zero'), '<span class="lbl">' + esc(WHO_CHIPS[t]) + '</span><span class="count">' + esc(c) + '</span>');
-    b.type = 'button'; b.dataset.type = t;
-    b.setAttribute('aria-pressed', hasF(t) ? 'true' : 'false');
-    b.title = c + ' ' + (c === 1 ? 'card' : 'cards') + ' under ' + label + (t === 'who:me' ? (ME_USER ? ' assigned to you' : ' assigned to you (log in to see them)') : t === 'who:any' ? ' with an assignee, whoever it is' : ' with no assignee') + ' · ' + (hasF(t) ? 'click again to drop this filter' : 'shows only them');
-    b.addEventListener('click', function () {
-      showTab('anoms');
-      setType(toggledF(t));
-    });
-    box.appendChild(b);
-  });
-  Object.keys(people).sort(function (x, y) { return people[y].n - people[x].n || (x < y ? -1 : 1); }).forEach(function (s) {
-    var t = 'who:u:' + s, p = people[s];
-    if (folded && !hasF(t)) return;
-    var b = el('button', 'tab-sub-i k-act child' + (p.n ? '' : ' zero'), '<span class="lbl">' + esc(p.name) + '</span><span class="count">' + esc(p.n) + '</span>');
-    b.type = 'button'; b.dataset.type = t;
-    b.setAttribute('aria-pressed', hasF(t) ? 'true' : 'false');
-    b.title = p.n + ' ' + (p.n === 1 ? 'card' : 'cards') + ' under ' + label + ' assigned to ' + p.name + ' · ' + (hasF(t) ? 'click again for everyone' : 'shows only theirs');
-    b.addEventListener('click', function () {
-      showTab('anoms');
-      setType(toggledF(t));
-    });
-    box.appendChild(b);
-  });
-  return box;
-}
-function tagsRow(label) {
-  var n = {};
-  filterBase(filter).forEach(function (a) { tagIds(a).forEach(function (t) { n[t] = (n[t] || 0) + 1; }); });
-  var box = el('div', 'tab-sub-g tags-g');
-  box.setAttribute('role', 'presentation');
-  box.appendChild(subHead('tags', 'Tags', box));
-  var folded = subFolded('tags');
-  Object.keys(TAG_NAMES).forEach(function (id) {
-    var t = 'tag:' + id, c = n[id] || 0;
-    if (folded && !hasF(t)) return;
-    var b = el('button', 'tab-sub-i k-act ' + tagClass(id) + (c ? '' : ' zero'), '<span class="lbl">' + esc(tagName(id)) + '</span><span class="count">' + esc(c) + '</span>');
-    b.type = 'button'; b.dataset.type = t;
-    b.setAttribute('aria-pressed', hasF(t) ? 'true' : 'false');
-    b.title = c + ' ' + (c === 1 ? 'card' : 'cards') + ' tagged ' + tagName(id) + ' under ' + label + (TECH_TAGS[id] ? ': ' + TECH_TAGS[id] + ' to fix them · ' : ': they go to its Teams channel once they have a business sentence · ') + (hasF(t) ? 'click again to drop this filter' : 'shows only them');
-    b.addEventListener('click', function () {
-      showTab('anoms');
-      setType(toggledF(t));
-    });
-    box.appendChild(b);
-  });
-  var u = UNTAGGED_F, un = filterBase(filter).filter(function (a) { return !tagIds(a).length; }).length;
-  if (Object.keys(TAG_NAMES).length && (!folded || hasF(u))) {
-    var ub = el('button', 'tab-sub-i k-act' + (un ? '' : ' zero'), '<span class="lbl">Untagged</span><span class="count">' + esc(un) + '</span>');
-    ub.type = 'button'; ub.dataset.type = u;
-    ub.setAttribute('aria-pressed', hasF(u) ? 'true' : 'false');
-    ub.title = un + ' ' + (un === 1 ? 'card' : 'cards') + ' with no tag under ' + label + ' \u00b7 ' + (hasF(u) ? 'click again to drop this filter' : 'shows only them');
-    ub.addEventListener('click', function () {
-      showTab('anoms');
-      setType(toggledF(u));
-    });
-    box.appendChild(ub);
-  }
-  return box;
-}
 function setType(t) {
   typeF = t || '';
   setFilter(filter === 'svc' && !svcF ? 'open' : filter);
 }
-var navBack = document.getElementById('nav-backdrop');
-function navOpen() { return document.body.classList.contains('nav-open'); }
-function setNav(on) {
-  if (on === navOpen()) return;
-  var opener = document.getElementById('filter-menu');
-  document.body.classList.toggle('nav-open', on);
-  if (opener) opener.setAttribute('aria-expanded', on ? 'true' : 'false');
-  navBack.hidden = !on;
-  if (on) { var sel = tabsEl.querySelector('button[aria-pressed="true"]') || tabsEl.querySelector('button:not(.nav-fold)'); if (sel) sel.focus(); }
-  else if (tabsEl.contains(document.activeElement) && opener) opener.focus();
-}
-var NAV_OFF_KEY = 'skopax-nav-off', NAV_CHAT_KEY = 'skopax-nav-chat';
-var layoutEl = document.querySelector('.layout');
-var navHide = el('button', 'nav-fold', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline></svg><span class="nf-l sr">Hide menu</span>');
-navHide.type = 'button';
-navHide.id = 'nav-fold';
-navHide.setAttribute('aria-controls', 'tabs');
-tabsEl.insertBefore(navHide, tabsEl.firstChild);
-navHide.addEventListener('click', function () { setNavOff(!navOff()); });
-function navSide() { return typeof sideWidth === 'function' ? sideWidth() : 0; }
-function wideNav() { return !window.matchMedia || window.matchMedia('(min-width: ' + (901 + navSide()) + 'px)').matches; }
-function narrowContent() { return !!window.matchMedia && window.matchMedia('(max-width: ' + (1239 + navSide()) + 'px)').matches; }
-function navOff() {
-  if (curTab === 'chat') return load(NAV_CHAT_KEY) !== 'on';
-  var kept = load(NAV_OFF_KEY);
-  return kept === '1' || kept === '0' ? kept === '1' : narrowContent();
-}
-function armNavAnim() {
-  var arm = function () { layoutEl.classList.add('nav-anim'); };
-  if (window.requestAnimationFrame) requestAnimationFrame(function () { requestAnimationFrame(arm); }); else setTimeout(arm, 50);
-}
-function applyNavOff() {
-  var off = navOff(), wide = wideNav();
-  layoutEl.classList.toggle('nav-off', off);
-  document.body.classList.toggle('nav-off', off);
-  if (window.__skopaxTipHide) window.__skopaxTipHide();
-  navHide.setAttribute('aria-expanded', String(!off));
-  navHide.querySelector('.nf-l').textContent = off ? 'Menu' : 'Hide menu';
-  navHide.dataset.tip = navHide.title = off ? 'Show the menu' : 'Hide the menu';
-  navHide.setAttribute('aria-label', off ? 'Show the menu' : 'Hide the menu');
-  if (off && wide && tabsEl.contains(document.activeElement) && document.activeElement !== navHide) navHide.focus();
-  if (!layoutEl.classList.contains('nav-anim')) armNavAnim();
-}
-function setNavOff(off) {
-  if (curTab === 'chat') save(NAV_CHAT_KEY, off ? 'off' : 'on'); else save(NAV_OFF_KEY, off ? '1' : '0');
-  applyNavOff();
-}
-var navResize = 0;
-window.addEventListener('resize', function () {
-  clearTimeout(navResize);
-  navResize = setTimeout(function () { if (curTab) applyNavOff(); }, 120);
-});
-navBack.addEventListener('click', function () { setNav(false); });
-document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && navOpen()) setNav(false); });
 var curTab = null, urlReady = false;
 function tabPath(id) {
   if (id === 'anoms') {
@@ -394,7 +165,6 @@ function openTabPath(raw) {
     var known = LINK_FILTERS.indexOf(sub) >= 0, given = known ? parts[2] : sub;
     typeF = /^(tag:|who:(u:)?)?[a-z0-9.-]{1,60}(\+(tag:|who:(u:)?)?[a-z0-9.-]{1,60}){0,2}$/.test(given || '') ? given : '';
     showTab(id);
-    renderAnomSub();
     setFilter(known ? sub : 'open');
     return;
   }
@@ -457,7 +227,6 @@ function showTab(id) {
     if (panel) panel.hidden = t.id !== id;
   });
   sideMark(id);
-  layoutEl.classList.toggle('no-nav', id !== 'anoms');
   if (ADMIN_TABS.indexOf(id) < 0) save('skopax-tab', id);
   var moved = curTab !== null && curTab !== id;
   if (moved && curTab === 'access' && typeof clearAccessSecret === 'function') clearAccessSecret();
@@ -470,10 +239,6 @@ function showTab(id) {
   document.getElementById('reco').parentNode.hidden = bare;
   var live = document.getElementById('live');
   if (live) { live.hidden = bare; live.parentNode.classList.toggle('no-live', bare); }
-  applyNavOff();
-  document.getElementById('tabs-anomalies').hidden = id !== 'anoms';
-  if (id === 'anoms') setAnomSub(true);
-  setNav(false);
   markTab();
   if ((id === 'reps' || id === 'rels' || id === 'slack') && reports) reports.refresh();
   if (typeof ntTab === 'function') ntTab(id === 'slack');
@@ -508,17 +273,11 @@ function renderFilters() {
     {id: 'closed', label: 'Closed', k: 'k-cleared', n: CLOSED.data ? CLOSED.data.total : '', seg: 'list-chips', tip: 'cards that already left the page, kept for a year; the count is for the time range picked in the list'}
   ];
   if (svcF) CH.push({id: 'svc', label: svcF.svc + ' cards', k: 'k-act', n: svcCards(svcF).list.length});
-  renderAnomSub();
-}
-function openFilterMenu() {
-  setAnomSub(true);
-  setNav(true);
-  var b = document.querySelector('#tab-sub-anoms button[aria-pressed="true"]') || document.querySelector('#tab-sub-anoms button');
-  if (b) b.focus();
+  renderQuick();
 }
 function renderFilterNote(c) {
   var note = document.getElementById('filter-note');
-  var f = c ? c.id : 'open', refocus = document.activeElement && document.activeElement.id === 'filter-menu';
+  var f = c ? c.id : 'open';
   note.className = 'filter-note ' + (c ? c.k : SEV[worst][1]) + (f !== 'open' || typeF || searchQ ? ' on' : '');
   note.title = [[openBySev('crit').length, 'critical'], [openBySev('high').length, 'high'], [openBySev('warn').length, 'warning'], [inprog.length, 'in progress'], [taken.length, 'done'], [muted.length, 'muted'], [cleared.length, 'stopped firing'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
   note.innerHTML = '<span class="fn-cur">Showing <b>' + esc(c ? c.label : 'Open') + '</b>' + (typeF ? ' · <b>' + esc(typeName(typeF)) + '</b>' : '') +
@@ -528,8 +287,7 @@ function renderFilterNote(c) {
     (f !== 'svc' && (f !== 'open' || typeF) ? '<button class="xlink copy-f" type="button" id="copy-f" title="Copies a link that opens Board with this filter' + (typeF ? ' and type' : '') + '">' + ICON_LINK + 'Copy link</button>' : '') +
     (f !== 'open' && (typeF || searchQ) ? '<button class="xlink" type="button" id="clear-f">Back to Open ›</button>' : '') +
     (f !== 'all' && (f !== 'open' || typeF || searchQ) ? '<button class="xlink fn-all" type="button" id="all-f">All</button>' : '') +
-    (f !== 'open' || typeF || searchQ ? '<button class="xlink fn-clear" type="button" id="clear-all">Clear filters \u2715</button>' : '') +
-    '<button class="btn sec small with-icon fn-menu" type="button" id="filter-menu" aria-controls="tab-sub-anoms" title="Open the section menu at the anomaly filters"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>Filters</button>';
+    (f !== 'open' || typeF || searchQ ? '<button class="xlink fn-clear" type="button" id="clear-all">Clear filters \u2715</button>' : '');
   var back = document.getElementById('clear-f'), allf = document.getElementById('all-f'), clearAll = document.getElementById('clear-all');
   if (back) back.addEventListener('click', function () { setFilter('open'); });
   if (allf) allf.addEventListener('click', function () { setFilter('all'); });
@@ -538,10 +296,6 @@ function renderFilterNote(c) {
   var copyF = document.getElementById('copy-f');
   if (copyF) copyF.addEventListener('click', function () { copyUrl(location.origin + location.pathname + '#t=' + tabPath('anoms'), copyF); });
   if (f === 'svc') document.getElementById('back-svcs').addEventListener('click', backToSvcs);
-  var menu = document.getElementById('filter-menu');
-  menu.setAttribute('aria-expanded', navOpen() ? 'true' : 'false');
-  menu.addEventListener('click', openFilterMenu);
-  if (refocus) menu.focus();
 }
 function clearBoardFilters() {
   clearCardFilters();
@@ -552,18 +306,13 @@ document.addEventListener('keydown', function (e) {
   if (e.key !== 'Escape' || e.defaultPrevented || curTab !== 'anoms' || !boardFiltersOn()) return;
   var t = e.target, tag = t && t.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
-  if (navOpen() || document.body.classList.contains('drawer-open') || (typeof DRAWER !== 'undefined' && DRAWER) || [].some.call(document.querySelectorAll('.modal, .pal-box, #cf-wrap, #int-wrap, [role="dialog"], [role="menu"]'), function (x) { return !x.closest('[hidden]'); })) return;
+  if (document.body.classList.contains('drawer-open') || (typeof DRAWER !== 'undefined' && DRAWER) || [].some.call(document.querySelectorAll('.modal, .pal-box, #cf-wrap, #int-wrap, [role="dialog"], [role="menu"]'), function (x) { return !x.closest('[hidden]'); })) return;
   e.preventDefault();
   clearBoardFilters();
 });
 function setFilter(f) {
   filter = f === 'stale' ? 'open' : f;
-  var sub = document.getElementById('tab-sub-anoms'), had = sub && sub.contains(document.activeElement) ? document.activeElement.dataset : null;
-  renderAnomSub();
-  if (had) {
-    var back = had.f ? sub.querySelector('button[data-f="' + had.f + '"]') : had.type ? sub.querySelector('button[data-type="' + had.type + '"]') : null;
-    if (back) back.focus();
-  }
+  renderQuick();
   renderAnoms();
   renderFilterNote(CH.filter(function (x) { return x.id === f; })[0]);
   markTab();

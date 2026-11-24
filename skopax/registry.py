@@ -17,7 +17,7 @@ from packaging.version import InvalidVersion, Version
 import skopax
 from skopax.bounded import HOOK_TIMEOUT_S, Bound
 from skopax.chattext import STARTERS_MAX as CHAT_STARTERS_MAX, TEXT_MAX as CHAT_TEXT_MAX, chat_kept, chat_problem, tree_problem
-from skopax.contract import CATEGORIES, ECHO_FIELD, ROUTE_ECHO, EDITIONS, FIELD_KINDS, ID, SEPARATORS, SUGGEST_KINDS, KNOWLEDGE_INLINE_MAX, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Setup, Tag, TagRule, Tool
+from skopax.contract import CATEGORIES, ECHO_FIELD, NODE_FIELD, NODE_VIA, ROUTE_ECHO, EDITIONS, FIELD_KINDS, ID, SEPARATORS, SUGGEST_KINDS, KNOWLEDGE_INLINE_MAX, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Setup, Tag, TagRule, Tool
 from skopax.errkind import Authored, kind as exc_kind
 from skopax.messages import LANG_TAG, msg, refusal as message_refusal
 
@@ -140,7 +140,7 @@ SHOWN_MAX = 60
 PANEL_TAB = re.compile(r'[a-z][a-z0-9-]{1,30}')
 CORE_TABS = ('anoms', 'reqs', 'chat', 'inv', 'svcs', 'info', 'lat', 'rels', 'reps', 'slack', 'hist', 'acts', 'costs', 'tools', 'mcp', 'review', 'docs', 'prefs', 'settings', 'access', 'workspaces', 'integrations', 'features', 'ai', 'changes')
 NAV_GROUPS = ('main', 'observe', 'activity', 'connect', 'more')
-RESERVED_TABS = ('sub-anoms', 'fold-anoms')
+RESERVED_TABS = ()
 PAGE_LABEL_MAX = 24
 STANDING = {'broken': 'failed'}
 ORIGIN_WORDS = {'builtin': 'plugins.why.origin_builtin', 'entry-point': 'plugins.why.origin_package', 'env': 'plugins.why.origin_env'}
@@ -733,6 +733,9 @@ def _check(plugin: Plugin, directory: Path | None) -> None:
                 re.compile(key)
             except (re.error, TypeError):
                 raise _why('agent_key', key=key) from None
+        mapped = read.node_keys
+        if mapped is not None and not callable(mapped) and not (isinstance(mapped, Mapping) and mapped and all(isinstance(k, str) and isinstance(v, str) and any(re.fullmatch(p, v) for p in read.keys) for k, v in mapped.items())):
+            raise _why('node_keys', op=str(read.op)[:40])
         for f in read.fields:
             if not any(re.fullmatch(key, f.key) for key in read.keys):
                 raise _why('agent_field_undeclared', key=f.key, op=read.op)
@@ -1241,6 +1244,8 @@ def _loaded(plugin: object, label: str, origin: str, module=None, directory: Pat
         kept, drops, dropped = _kept_locales(plugin)
         if kept.outbound is not None and not any(f.key == ECHO_FIELD for f in kept.fields):
             kept = replace(kept, fields=(*kept.fields, ROUTE_ECHO))
+        if any(read.node_keys is not None for read in kept.agent_reads) and not any(f.key == NODE_FIELD for f in kept.fields):
+            kept = replace(kept, fields=(*kept.fields, NODE_VIA))
     except _Reject as exc:
         return Loaded(str(plugin.id), modname, origin, plugin, 'broken', _broken_text(_pname(plugin, label), exc.text), directory)
     except Exception as exc:

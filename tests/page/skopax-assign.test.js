@@ -60,14 +60,14 @@ const shown = (doc) => [...doc.querySelectorAll('#anoms article.inc')].map((c) =
 async function everyCardShowsItsAssigneeOnTheRowAndTheSideMenuFiltersAssignedMineAndUnassigned() {
   //given
   const {w, doc, errors} = await boot();
-  const row = doc.querySelector('#tab-sub-anoms .who-g');
-  const chips = () => [...doc.querySelectorAll('#tab-sub-anoms .who-g button.tab-sub-i:not(.child)')].map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent);
+  const row = doc.querySelector('#card-qf [aria-label="Assignee"]');
+  const chips = () => ['who:any', 'who:me', 'who:none'].map((t) => doc.querySelector('#panel-anoms .qf-c[data-type="' + t + '"]')).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent);
   const acts = (k) => [...cardOf(doc, k).querySelectorAll('.acts > button')].map((b) => b.textContent.trim());
   const form = (k) => [...cardOf(doc, k).querySelectorAll('.acts .asg-form button')].map((b) => b.textContent.trim());
 
   //then
-  assert.strictEqual(row.querySelector('.tab-sub-l').textContent, 'Assignee');
-  assert.deepStrictEqual(chips(), ['Assigned 2', 'Me 1', 'Unassigned 1']);
+  assert.strictEqual(row.querySelector('.qf-l').textContent, 'Assignee');
+  assert.deepStrictEqual(chips(), ['Assigned 2', 'Mine 1', 'Unassigned 1']);
   assert.strictEqual(cardOf(doc, PICKED).querySelector('.inc-title .asg-tag').textContent, '@Nina White');
   assert.ok(cardOf(doc, PICKED).querySelector('.asg-tag').title.includes('set by zoe.hart'));
   assert.strictEqual(cardOf(doc, FREE).querySelector('.asg-tag'), null);
@@ -80,13 +80,13 @@ async function everyCardShowsItsAssigneeOnTheRowAndTheSideMenuFiltersAssignedMin
   assert.ok(!mineBtn || mineBtn.hidden, 'no Assign to me on a card that is already yours');
 
   //when
-  doc.querySelector('#tab-sub-anoms .who-g [data-type="who:none"]').click();
+  doc.querySelector('#panel-anoms .qf-c[data-type="who:none"]').click();
   await wait(20);
   const unassigned = shown(doc);
-  doc.querySelector('#tab-sub-anoms .who-g [data-type="who:any"]').click();
+  doc.querySelector('#panel-anoms .qf-c[data-type="who:any"]').click();
   await wait(20);
   const assigned = shown(doc);
-  doc.querySelector('#tab-sub-anoms .who-g [data-type="who:me"]').click();
+  doc.querySelector('#panel-anoms .qf-c[data-type="who:me"]').click();
   await wait(20);
 
   //then

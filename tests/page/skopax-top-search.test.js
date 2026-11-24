@@ -27,6 +27,7 @@ async function boot(opts) {
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () {};
       if (opts.pack) { w.SKOPAX_I18N = opts.pack; w.document.cookie = 'skopax_lang=' + Object.keys(opts.pack)[0] + '; path=/'; }
+      w.localStorage.setItem('skopax-sidebar', 'full');
       Object.keys(opts.stored || {}).forEach((k) => w.localStorage.setItem(k, opts.stored[k]));
       w.fetch = async (path) => {
         const p = String(path);

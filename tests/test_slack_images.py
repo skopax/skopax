@@ -9,7 +9,7 @@ from tests.fake_slack import fake_slack
 from tests.test_investigator import KEY, NOW, seed
 from tests.test_investigator_slack import RECAP, first_brief, slack_action
 from tests.test_investigator_tools import sources
-from tests.test_slackevents import ASK_TS, card_with_post, intake, reply_event
+from tests.test_slackevents import ASK_TS, TOP_TS, card_with_post, intake, reply_event, top_event
 from skopax.investigator import Investigator
 from skopax.investigator.tools import Effects
 from skopax.slack import IMAGE_BYTES_MAX, Slack, SlackError
@@ -140,3 +140,64 @@ def test_images_that_cannot_be_read_are_named_in_the_brief_and_the_run_goes_on(s
     assert 'The asker attached 1 image that Skopax could not read (error.png: Slack did not return an image' in first_brief(inv) and 'say that you cannot see' in first_brief(inv)
     assert record['outcome'] == 'done' and 'images' not in record
     assert 'The asker attached' not in first_brief(none) and plain['outcome'] == 'done'
+
+
+def earlier(n: int, files: list[dict], user: str = 'U2') -> dict:
+    return {'ts': f'1792224000.{n:06d}', 'user': user, 'text': 'see this', 'files': files}
+
+
+def test_a_screenshot_posted_just_before_the_tag_is_read(store: Store):
+    # given
+    card_with_post(store)
+    box, f = intake(store, gate_replies=[verdict()])
+    f.api.thread = [earlier(150, [SHOT]), {'ts': ASK_TS, 'user': 'U1', 'text': '<@UBOT> look into it'}]
+
+    # when
+    got = box.handle(reply_event('<@UBOT> look into it'))
+
+    # then
+    ask = store.list_actions('requested', 1)[0]
+    assert got == 'accepted' and [i['name'] for i in ask['images']] == ['error.png'] and ask['imagesSkipped'] == 0
+
+
+def test_the_tagging_message_images_come_first_and_the_cap_holds(store: Store):
+    # given
+    card_with_post(store)
+    box, f = intake(store, gate_replies=[verdict()])
+    f.api.thread = [earlier(150, [file(3), file(4)]), {'ts': ASK_TS, 'user': 'U1', 'text': '<@UBOT> look', 'files': [file(1), file(2)]}]
+
+    # when
+    got = box.handle(reply_event('<@UBOT> look', files=[file(1), file(2)]))
+
+    # then
+    ask = store.list_actions('requested', 1)[0]
+    assert got == 'accepted' and [i['name'] for i in ask['images']] == ['screen-1.jpg', 'screen-2.jpg', 'screen-3.jpg'] and ask['imagesSkipped'] == 1
+
+
+def test_an_image_older_than_the_last_three_person_messages_is_not_read(store: Store):
+    # given
+    card_with_post(store)
+    box, f = intake(store, gate_replies=[verdict()])
+    f.api.thread = [earlier(10, [file(9)]), earlier(20, []), earlier(30, []), earlier(40, []), {'ts': ASK_TS, 'user': 'U1', 'text': '<@UBOT> look'}]
+
+    # when
+    got = box.handle(reply_event('<@UBOT> look'))
+
+    # then
+    ask = store.list_actions('requested', 1)[0]
+    assert got == 'accepted' and 'images' not in ask
+
+
+def test_a_top_level_mention_without_files_reads_a_screenshot_posted_just_before_it_in_the_channel(store: Store):
+    # given
+    card_with_post(store)
+    box, f = intake(store, gate_replies=[verdict()])
+    f.api.thread = [{'ts': TOP_TS, 'user': 'U1', 'text': '<@UBOT> look into it'}]
+    f.api.history = [earlier(450, [SHOT])]
+
+    # when
+    got = box.handle(top_event('<@UBOT> look into it'))
+
+    # then
+    ask = store.list_actions('requested', 1)[0]
+    assert got == 'accepted' and [i['name'] for i in ask['images']] == ['error.png']

@@ -40,9 +40,9 @@ async function nestedMergesShowUnderTheTopCardAndCopyLinkCopiesTheCardPage() {
   //then
   assert.ok(!cards.includes('page-typos|a') && !cards.includes('page-typos|b'), 'nested cards are not separate rows');
   assert.ok(top.querySelector('.inc-head').textContent.includes('+2 merged') || top.textContent.includes('+2 merged'), 'the top card holds both, the nested one too');
-  assert.strictEqual(top.querySelector('a.num-link').getAttribute('href'), '/c/5');
+  assert.strictEqual(top.querySelector('a.num-link').getAttribute('href'), '#c=5');
   const kid = [...top.querySelectorAll('.kids li')].find((l) => l.textContent.includes('1 typo on'));
-  assert.ok(kid && kid.querySelector('a.num-link[href="/c/2"]') && kid.querySelector('a.open-page') && kid.querySelector('.kid-todo').textContent === 'Recommended: Fix the heading on page A.', 'a merged card shows its finding, page link, number and action');
+  assert.ok(kid && kid.querySelector('a.num-link[href="#c=2"]') && kid.querySelector('a.open-page') && kid.querySelector('.kid-todo').textContent === 'Recommended: Fix the heading on page A.', 'a merged card shows its finding, page link, number and action');
 
   const acts = top.querySelector('.acts');
   const inv = acts.querySelector('.inv-btn'), tog = acts.querySelector('.acts-tog');

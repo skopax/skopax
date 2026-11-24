@@ -516,6 +516,6 @@ function sideRender() {
     [SIDE_PHONE, SIDE_SHORT].forEach(function (q) { var m = window.matchMedia(q); if (m && m.addEventListener) m.addEventListener('change', sideLayout); });
   }
   sideTheme(false);
-  sideRail(load(SIDE_KEY) === 'rail', false);
+  sideRail(load(SIDE_KEY) !== 'full', false);
 }
 sideRender();

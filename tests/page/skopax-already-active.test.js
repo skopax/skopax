@@ -5,7 +5,6 @@ const path = require('path');
 const {JSDOM, VirtualConsole} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
-const CARD_PAGE = path.join(path.dirname(TEMPLATE), 'card.html');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
 const SINCE = '2026-10-01T05:32:00Z';
@@ -68,17 +67,24 @@ async function bootCard(found, lang) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
-  const dom = new JSDOM(pageHtml(CARD_PAGE), {
-    url: 'https://skopax.example.com/c/' + found.num, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
+  const empty = Object.assign(state(), {anomalies: []});
+  const dom = new JSDOM(pageHtml(TEMPLATE, {view: 'board'}).replace('/*__SKOPAX_DATA__*/', JSON.stringify(empty)), {
+    url: 'https://skopax.example.com/#c=' + found.num, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
       pack(w, lang);
+      w.scrollTo = () => {}; w.Element.prototype.scrollIntoView = function () {};
       w.fetch = async (p) => {
-        if (String(p) === '/api/me') return {ok: true, status: 200, json: async () => ({loginEnabled: true, user: null, operator: false, tags: []})};
-        return {ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(found))};
+        p = String(p);
+        const ok = (b) => ({ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(b)), text: async () => JSON.stringify(b)});
+        if (p === '/api/cards/' + found.num) return ok(found);
+        if (p.startsWith('/api/me')) return ok({loginEnabled: true, user: null, operator: false, tags: []});
+        if (p.startsWith('/api/actions') || p.startsWith('/api/deploy-reports') || p.startsWith('/api/requests')) return ok([]);
+        if (p.startsWith('/api/rev')) return ok({rev: 1});
+        return {ok: false, status: 404, json: async () => ({})};
       };
     },
   });
-  await wait(150);
+  await wait(450);
   return {w: dom.window, doc: dom.window.document, errors};
 }
 
@@ -120,13 +126,13 @@ async function theLineIsTranslatedByTheLocaleRules() {
   console.log('PASS the German pack translates the line and its month');
 }
 
-async function theCardPageShowsTheSameLine() {
+async function aCardOpenedByItsNumberShowsTheSameLineInThePanel() {
   //given
   const at = shown(SINCE);
   const base = {svc: 'web-01', label: 'High CPU utilization', status: 'open', sev: 'high', firstSeen: iso(30), live: true, what: 'Zabbix problem.'};
   const quiet = await bootCard(Object.assign({num: 61, key: QUIET, alreadyActive: MARK}, base));
   const loud = await bootCard(Object.assign({num: 62, key: LOUD}, base));
-  const line = (doc) => { const p = doc.querySelector('.already-active'); return p ? p.textContent : null; };
+  const line = (doc) => { const p = doc.querySelector('.card-drawer .already-active'); return p ? p.textContent : null; };
 
   //then
   const old = await bootCard(Object.assign({num: 64, key: OLD, alreadyActive: {since: LAST_YEAR, source: 'Zabbix'}}, base));
@@ -139,11 +145,11 @@ async function theCardPageShowsTheSameLine() {
   assert.strictEqual(line(loud.doc), null);
   assert.deepStrictEqual(quiet.errors.concat(loud.errors, old.errors, french.errors), []);
   quiet.w.close(); loud.w.close(); old.w.close(); french.w.close();
-  console.log('PASS the card page shows the already-active line');
+  console.log('PASS a card opened by its number shows the already-active line in the panel');
 }
 
 (async () => {
   await theBoardSaysTheProblemWasAlreadyActiveWhenTheSourceWasConnected();
   await theLineIsTranslatedByTheLocaleRules();
-  await theCardPageShowsTheSameLine();
+  await aCardOpenedByItsNumberShowsTheSameLineInThePanel();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

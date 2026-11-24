@@ -50,7 +50,7 @@ function markClosedChip() {
   var c = CH.filter(function (x) { return x.id === 'closed'; })[0];
   if (!c || !CLOSED.data) return;
   c.n = CLOSED.data.total;
-  var b = document.querySelector('#tab-sub-anoms button[data-f="closed"] .count');
+  var b = document.querySelector('#more-filters-box button[data-f="closed"] .count');
   if (b) b.textContent = String(CLOSED.data.total);
   if (filter === 'closed') renderFilterNote(c);
 }
@@ -120,7 +120,7 @@ function closedRow(r) {
   var o = closedOutcome(r.outcome), k = (SEV[r.sev] || SEV.info)[1];
   var row = el('div', 'cl-row ' + k);
   row.dataset.key = r.key || '';
-  var num = r.num ? '<a href="/c/' + encodeURIComponent(r.num) + '" title="Opens the card page">#' + esc(r.num) + '</a>' : '<span class="muted">–</span>';
+  var num = r.num ? '<a href="#c=' + encodeURIComponent(r.num) + '" title="Opens the card in the side panel">#' + esc(r.num) + '</a>' : '<span class="muted">–</span>';
   var main = '<span class="cl-svc">' + esc(svcName(r)) + '</span><span class="cl-lbl">' + esc(r.label || r.key || '') + (r.sub ? ' · ' + esc(r.sub) : '') + '</span>' +
     (r.note || r.muted ? '<span class="cl-note muted" data-no-tx>' + esc(r.note || r.muted) + '</span>' : '');
   var how = outcomeHtml(r.outcome, r.resolution), res = resolutionOf(r);
@@ -163,7 +163,7 @@ function paintClosedBody() {
 function renderClosed(root) {
   var view = el('section', 'grp k-cleared cl-view');
   view.id = 'closed-view';
-  var hd = el('header', 'grp-h', '<h3>Closed</h3><span class="wait-why">cards that already left the page: resolved, muted or stopped and dropped off. Each occurrence is kept for a year; the number opens its card page</span>');
+  var hd = el('header', 'grp-h', '<h3>Closed</h3><span class="wait-why">cards that already left the page: resolved, muted or stopped and dropped off. Each occurrence is kept for a year; the number opens the card in the side panel</span>');
   view.appendChild(hd);
   view.appendChild(closedToolbar());
   view.appendChild(el('div', 'cl-body', ''));

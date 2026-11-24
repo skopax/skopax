@@ -1,16 +1,13 @@
 const pageHtml = require('./skopax-page');
 const assert = require('assert');
-const path = require('path');
 const {JSDOM, VirtualConsole} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
-const CARD_PAGE = path.join(path.dirname(TEMPLATE), 'card.html');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
 const NEW = 'log|checkout-service|ERROR|boom', WAIT = 'log|payments-api|ERROR|npe', MUTED = 'log|bff|ERROR|z';
 const FIXED = 'log|inventory-service|ERROR|fixed', DUP = 'log|web-frontend|WARN|dup', OLD = 'log|old-service|WARN|old', AUTO = 'log|auto-service|INFO|auto', SEEN = 'log|seen-service|ERROR|seen';
 const AT = '2026-11-09T16:32:00Z', STOPPED = '2026-11-09T18:10:00Z';
-const {short} = require('./skopax-zone');
 const NINA = 'alice@example.com', PAUL = 'carol@example.com';
 
 function state() {
@@ -34,7 +31,6 @@ const CLOSED_ROWS = [
   {key: 'log|c|ERROR|c', num: 203, svc: 'c', label: 'ERROR pattern', sev: 'warn', firstSeen: iso(3000), lastSeen: iso(2002), outcome: 'handled'},
 ];
 
-const statusOf = (doc) => [doc.getElementById('state'), doc.querySelector('.status')].filter(Boolean).map((e) => e.textContent).join(' \u00b7 ');
 async function boot(hash, opts) {
   const errors = [], posted = [], asked = [];
   const o = opts || {};
@@ -51,6 +47,7 @@ async function boot(hash, opts) {
         const ok = (body) => ({ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body)), text: async () => JSON.stringify(body)});
         if (url.startsWith('/api/actions') && init && init.method === 'POST') { const b = JSON.parse(init.body); posted.push(b); return ok({id: 'x' + posted.length, type: b.type, status: 'done', result: 'ok'}); }
         if (url.startsWith('/api/history/cards')) { asked.push(Object.fromEntries(new URL('https://x' + url).searchParams.entries())); return ok({from: iso(10080), to: iso(0), page: 0, size: 50, total: 3, items: CLOSED_ROWS, outcomes: {}}); }
+        if (o.cards && o.cards[url]) return ok(o.cards[url]);
         if (url.startsWith('/api/me')) return ok({loginEnabled: true, user: NINA, operator: true, teams: [], tags: [], jiraUrl: 'https://jira.example.com', task: {projects: ['OPS']}});
         if (url.startsWith('/api/actions') || url.startsWith('/api/deploy-reports') || url.startsWith('/api/requests')) return ok([]);
         if (url.startsWith('/api/rev')) return ok({rev: 1});
@@ -164,7 +161,7 @@ async function aResolvedCardSaysHowViaAndWhoAndAnOldOneReadsResolved() {
 
   //then
   assert.deepStrictEqual(english, ['Fixed (OPS-140 \u2197) \u00b7 via Slack \u00b7 alice', 'Duplicate of #12 \u00b7 via chat \u00b7 carol', 'Resolved']);
-  assert.strictEqual(tag(en.doc, DUP).querySelector('a').getAttribute('href'), '/c/12', 'the other card links to its page');
+  assert.strictEqual(tag(en.doc, DUP).querySelector('a').getAttribute('href'), '#c=12', 'the other card opens in the panel');
   assert.strictEqual(auto, 'No action needed \u00b7 auto-resolved', 'auto-resolved keeps its own tag');
   assert.ok(/^Seen before: 2 times, last .+, resolved as Fixed \(OPS-120 \u2197\) \u00b7 via page \u00b7 alice$/.test(line.textContent), line.textContent);
   assert.deepStrictEqual(en.errors, []);
@@ -191,83 +188,25 @@ async function theClosedViewFiltersByTheNewKindsAndSaysHowEachRowEnded() {
   console.log('PASS the Closed view has Fixed and Duplicate chips and each row says how it ended, via and who');
 }
 
-async function cardPage(num, card, who) {
-  const errors = [], posts = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
-  const dom = new JSDOM(pageHtml(CARD_PAGE), {
-    url: 'https://skopax.example.com/c/' + num, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
-    beforeParse(w) {
-      w.fetch = async (p, opts) => {
-        if (String(p) === '/api/me') return {ok: true, status: 200, json: async () => Object.assign({loginEnabled: true, user: null, operator: false}, who || {})};
-        if (opts && opts.method === 'POST') { posts.push(JSON.parse(opts.body)); return {ok: true, status: 201, json: async () => ({})}; }
-        return {ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(card))};
-      };
-    },
-  });
-  await wait(100);
-  return {w: dom.window, doc: dom.window.document, errors, posts};
-}
-
-async function theCardPageKeepsItsDomWhileTheCardIsUnchanged() {
+async function aCardOpenedByItsNumberSaysHowItWasResolved() {
   //given
-  const data = {num: 153, key: NEW, svc: 'checkout-service', label: 'ERROR lines', sev: 'warn', status: 'open', firstSeen: AT, live: true};
-  const t = await cardPage(153, data, {user: NINA, operator: true});
-  const first = t.doc.querySelector('h1');
+  const off = {num: 260, key: 'log|stock-service|ERROR|fixed', svc: 'stock-service', label: 'ERROR lines', sev: 'warn', status: 'cleared', clearedAt: STOPPED, firstSeen: AT, live: true,
+    triage: 'handled', ticket: 'OPS-140', resolution: {kind: 'fixed', ref: 'OPS-140', by: NINA, via: 'page', at: AT}};
+  const old = Object.assign({}, off, {num: 262, key: 'log|stock-service|WARN|old', resolution: undefined, ticket: undefined});
+  const {w, doc, errors} = await boot('#c=260', {view: 'board', cards: {'/api/cards/260': off, '/api/cards/262': old}});
 
   //when
-  t.doc.getElementById('upd').textContent = '';
-  await t.w.__cardLoad();
-  const same = t.doc.querySelector('h1') === first;
-  const stamped = /^Updated /.test(t.doc.getElementById('upd').textContent);
-  data.label = 'WARN lines';
-  await t.w.__cardLoad();
+  const fixed = doc.querySelector('.card-drawer .res-tag').textContent;
+  w.location.hash = '#c=262';
+  await wait(80);
+  const plain = doc.querySelector('.card-drawer .res-tag').textContent;
 
   //then
-  assert.strictEqual(same, true, 'a poll with the same card redraws nothing');
-  assert.ok(stamped, 'but the Updated time moves');
-  assert.notStrictEqual(t.doc.querySelector('h1'), first, 'a changed card is drawn again');
-  assert.deepStrictEqual(t.errors, []);
-  t.w.close();
-  console.log('PASS the card page redraws only when the card changed');
-}
-
-async function theCardPageSaysHowAndAsksTheKind() {
-  //given
-  const live = await cardPage(160, {num: 160, key: FIXED, svc: 'inventory-service', label: 'ERROR lines', sev: 'warn', status: 'cleared', clearedAt: '2026-11-09T18:10:00Z', firstSeen: AT, live: true,
-    triage: 'handled', resolution: {kind: 'fixed', ref: 'OPS-140', by: NINA, via: 'page', at: AT}});
-  const gone = await cardPage(161, {num: 161, key: DUP, svc: 'web-frontend', label: 'WARN lines', sev: 'warn', live: false, lastSeen: AT, outcome: 'duplicate',
-    resolution: {kind: 'duplicate', ref: '#12', by: 'pod', via: 'system', at: AT}});
-  const old = await cardPage(162, {num: 162, key: OLD, svc: 'old-service', label: 'WARN lines', sev: 'warn', status: 'cleared', clearedAt: '2026-11-09T18:10:00Z', firstSeen: AT, live: true, triage: 'handled'});
-  const op = await cardPage(153, {num: 153, key: NEW, svc: 'checkout-service', label: 'ERROR lines', sev: 'warn', status: 'open', firstSeen: AT, live: true, last: null}, {user: NINA, operator: true});
-  const d = op.doc;
-
-  //when
-  d.getElementById('act-resolve').click();
-  const first = [...d.querySelectorAll('#form-resolve .res-kind')].map((b) => b.dataset.kind + ':' + b.getAttribute('aria-pressed'));
-  const cardForm = [d.getElementById('resolve-hint').textContent, d.getElementById('resolve-why').placeholder, d.getElementById('resolve-dup').placeholder, d.getElementById('resolve-why').title.length > 20];
-  d.getElementById('resolve-duplicate').click();
-  const dupHint = d.getElementById('resolve-hint').textContent;
-  const swapped = [d.getElementById('resolve-why').hidden, d.getElementById('resolve-dup').hidden];
-  d.getElementById('resolve-go').click();
-  await wait(30);
-  const empty = [op.posts.length, d.getElementById('resolve-dup').getAttribute('aria-invalid')];
-  d.getElementById('resolve-dup').value = '12';
-  d.getElementById('resolve-go').click();
-  await wait(50);
-
-  //then
-  assert.strictEqual(statusOf(live.doc), 'Fixed (OPS-140) \u00b7 from the page \u00b7 alice \u00b7 fixed ' + short(STOPPED));
-  assert.strictEqual(statusOf(gone.doc), 'Duplicate: #12 \u00b7 by Skopax \u00b7 investigator \u00b7 last seen ' + short(AT));
-  assert.strictEqual(statusOf(old.doc), 'Resolved \u00b7 fixed ' + short(STOPPED), 'an old resolve without a kind reads Resolved');
-  assert.deepStrictEqual(first, ['fixed:true', 'handled:false', 'duplicate:false']);
-  assert.deepStrictEqual(swapped, [true, false]);
-  assert.deepStrictEqual(cardForm, ['The cause is gone because something was changed, such as a deploy, a config change or a rollback.', 'Note (optional)', 'Card number or key', true], 'the card page form reads like the menu form');
-  assert.strictEqual(dupHint, 'The same problem as another card, which carries it on.');
-  assert.deepStrictEqual(empty, [0, 'true']);
-  assert.deepStrictEqual(op.posts, [{type: 'resolve', kind: 'duplicate', ref: '12', label: 'Resolve checkout-service / ERROR lines (duplicate of 12)', key: NEW, target: NEW}]);
-  [live, gone, old, op].forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
-  console.log('PASS the card page says Fixed, Duplicate or No action needed with where and who, an old resolve reads Resolved, and its Resolve asks the kind');
+  assert.strictEqual(fixed, 'Fixed (OPS-140 \u2197) \u00b7 via page \u00b7 alice');
+  assert.strictEqual(plain, 'Resolved', 'an old resolve without a kind reads Resolved');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS a card opened by its number that is no longer on the board says Fixed with where and who in the panel, and an old resolve reads Resolved');
 }
 
 function solid(doc) {
@@ -344,6 +283,5 @@ async function theResolveDialogDrawsThePickedOutcomeToo() {
   await draggingToDoneAsksHowAndUnmutesFirst();
   await aResolvedCardSaysHowViaAndWhoAndAnOldOneReadsResolved();
   await theClosedViewFiltersByTheNewKindsAndSaysHowEachRowEnded();
-  await theCardPageKeepsItsDomWhileTheCardIsUnchanged();
-  await theCardPageSaysHowAndAsksTheKind();
+  await aCardOpenedByItsNumberSaysHowItWasResolved();
 })().then(() => process.exit(0), (e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });
