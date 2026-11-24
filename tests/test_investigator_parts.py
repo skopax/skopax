@@ -299,6 +299,7 @@ def test_the_slack_brief_quotes_the_thread_and_ends_with_the_slack_close():
     assert with_card.endswith(prompt.SLACK_CLOSE.format(calls=10)) and 'Up to 10 tool calls.' in with_card
     assert prompt.SLACK_NO_CARD in channel and 'Card of this thread' not in channel
     assert prompt.thread_text([]) == '> (no earlier messages)'
+    assert prompt.thread_text([{'who': 'person', 'text': 'q' * 3000}]) == '> person: ' + 'q' * 3000
     assert 'Skopax limits now' not in with_card
 
 

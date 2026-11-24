@@ -48,7 +48,7 @@ const tile = (doc, key) => [...doc.querySelectorAll('#anoms .tile')].find((t) =>
 
 async function theButtonToggles() {
   //given
-  const {doc, errors} = await boot({store: 'ok'});
+  const {doc, errors} = await boot({store: 'ok', initial: {[KEY]: '0'}});
   tile(doc, A).click();
   const drawer = doc.querySelector('.card-drawer');
   const btn = drawer.querySelector('.cd-bar .cd-expand');
@@ -60,7 +60,7 @@ async function theButtonToggles() {
   assert.ok(btn.getAttribute('aria-label') && btn.title, 'it has an aria-label and a title');
   assert.ok(!drawer.classList.contains('wide'));
   const kids = [...drawer.querySelector('.cd-bar').children].map((c) => c.className.split(' ').find((x) => x.startsWith('cd-')));
-  assert.deepStrictEqual(kids, ['cd-expand', 'cd-t', 'cd-link', 'cd-close'], 'first in the bar, on the left side the drawer grows to');
+  assert.deepStrictEqual(kids, ['cd-expand', 'cd-t', 'cd-close'], 'first in the bar, on the left side the drawer grows to');
   assert.strictEqual(btn.querySelectorAll('svg.cd-x-i').length, 1, 'Expand carries an arrow icon');
   const arrowOf = () => [...btn.querySelectorAll('polyline')].map((p) => p.getAttribute('points')).join(' ');
   const expandArrow = arrowOf();
@@ -123,6 +123,12 @@ async function theChoiceIsRemembered() {
   //given
   const {w, doc, errors} = await boot({store: 'ok'});
   tile(doc, A).click();
+
+  //then
+  assert.ok(doc.querySelector('.card-drawer').classList.contains('wide'), 'with no saved choice the first drawer opens wide');
+
+  //when
+  doc.querySelector('.cd-expand').click();
   doc.querySelector('.cd-expand').click();
 
   //then
@@ -154,18 +160,21 @@ async function itStillTogglesWhenStorageThrows() {
   tile(doc, A).click();
   const drawer = doc.querySelector('.card-drawer');
 
-  //when
-  drawer.querySelector('.cd-expand').click();
-
   //then
-  assert.ok(drawer.classList.contains('wide'));
-  assert.strictEqual(drawer.querySelector('.cd-expand').textContent, 'Shrink');
+  assert.ok(drawer.classList.contains('wide'), 'blocked storage opens wide, the default');
 
   //when
   drawer.querySelector('.cd-expand').click();
 
   //then
   assert.ok(!drawer.classList.contains('wide'));
+  assert.strictEqual(drawer.querySelector('.cd-expand').textContent, 'Expand');
+
+  //when
+  drawer.querySelector('.cd-expand').click();
+
+  //then
+  assert.ok(drawer.classList.contains('wide'));
   assert.deepStrictEqual(errors, []);
 }
 

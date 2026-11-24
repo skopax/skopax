@@ -6,7 +6,7 @@ from skopax.kit import connection
 from skopax.kit.elastic import TEST_TIMEOUT, Budget, Elastic, ElasticError, client_for, cluster_of, index_of, indices_of, namespace_problem, native, no_read, quoted
 from skopax.messages import msg
 from skopax.plugins.elasticsearch.checks import APM_HELP, APM_RULES, CLASSIC, LOG_HELP, MASKED, SHAPE_NAMES, families, links, literal, mask_of, mask_problem, p95_overrides, row_links, run_apm, run_logs
-from skopax.plugins.elasticsearch.esql import AGENT_FIELDS, DESCRIPTION, KEYS, SCHEMA, TIMEOUT_S, agent_esql, agent_sources, run_esql
+from skopax.plugins.elasticsearch.esql import AGENT_FIELDS, DESCRIPTION, KEYS, SCHEMA, TIMEOUT_S, NodeElastic, agent_esql, agent_sources, node_keys, node_of, run_esql
 from skopax.plugins.elasticsearch.logflow import HELP as FLOW_HELP, RULES as FLOW_RULES, SECTION_HELP as FLOW_SECTION_HELP, run_logflow
 
 ID = 'elasticsearch'
@@ -130,9 +130,23 @@ def namespace_field(client: Elastic, config: Mapping[str, str], budget: Budget) 
             raise SourceDown(f'{index} lacks the field {field}, which the log flow check needs') from None
 
 
+def node_test(ctx: Context, node: str) -> TestResult:
+    config = ctx.instance.config
+
+    def ask() -> str:
+        for cluster in ('logs', 'apm') if str(config.get('apm-url') or '') else ('logs',):
+            NodeElastic(ctx, node, cluster).query(f'FROM {index_of(config, cluster)} | WHERE @timestamp >= NOW() - 1 minute | LIMIT 0')
+        return msg('elasticsearch.node_test', node=node)
+
+    return connection.result(ask)
+
+
 def test(ctx: Context) -> TestResult:
     config = ctx.instance.config
     off = ctx.instance.off_checks
+    node = node_of(config)
+    if node:
+        return node_test(ctx, node)
 
     def ask() -> str:
         problem = namespace_problem(config)
@@ -160,6 +174,8 @@ def test(ctx: Context) -> TestResult:
 
 
 def probe_targets(info: InstanceInfo) -> list[dict]:
+    if node_of(info.config):
+        return []
     out = [{'name': f'elasticsearch-{info.name}', 'url': info.config['url']}]
     if str(info.config.get('apm-url') or ''):
         out.append({'name': f'elasticsearch-{info.name}-apm', 'url': info.config['apm-url']})
@@ -210,5 +226,5 @@ PLUGIN = Plugin(
     links=links, row_links=row_links, probe_targets=probe_targets,
     panels=(Panel('logs', 'panel.js', label='Logs', group='observe'),),
     knowledge=(Knowledge('esql', 'Elasticsearch', (Path(__file__).parent / 'esql.md').read_text(encoding='utf-8'), slack=True),),
-    agent_reads=(AgentRead('esql', ('cluster', 'query'), KEYS, agent_sources, agent_esql, fields=AGENT_FIELDS, timeout=TIMEOUT_S),),
+    agent_reads=(AgentRead('esql', ('cluster', 'query'), KEYS, agent_sources, agent_esql, fields=AGENT_FIELDS, timeout=TIMEOUT_S, node_keys=node_keys),),
 )

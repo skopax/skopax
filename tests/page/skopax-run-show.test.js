@@ -5,7 +5,6 @@ const path = require('path');
 const {JSDOM, VirtualConsole} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
-const CARD_PAGE = path.join(path.dirname(TEMPLATE), 'card.html');
 const CORE_PACK = /^CORE_PACK = '(.+)'$/m.exec(fs.readFileSync(path.join(path.dirname(TEMPLATE), '..', 'locales.py'), 'utf8'))[1];
 const SLOT = '<script type="text/plain" id="plugin-scripts"></script>';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -484,71 +483,6 @@ async function everyPackSaysTheBannerAndThePill() {
   console.log('PASS every built-in pack says the banner and the pill');
 }
 
-async function theCardPageShowsTheBannerToo() {
-  //given
-  let status = board();
-  const c = {num: 45, key: KEY, svc: 'inventory', label: 'restarts', sev: 'warn', status: 'open', firstSeen: iso(40), live: true, triage: 'investigating', what: 'x', now: 6, d1: 0, d7: 0};
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
-  const dom = new JSDOM(pageHtml(CARD_PAGE), {
-    url: 'https://skopax.example.com/c/45', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
-    beforeParse(w) {
-      w.fetch = async (p) => {
-        const ok = (body) => ({ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body))});
-        if (String(p) === '/api/me') return ok({loginEnabled: true, user: null, operator: false});
-        if (String(p).startsWith('/api/investigator/status')) {
-          if (status === 'hang') return new Promise(() => {});
-          if (status === 'fail') return {ok: false, status: 503, json: async () => ({})};
-          return ok(status);
-        }
-        return ok(c);
-      };
-    },
-  });
-  await wait(150);
-  const doc = dom.window.document;
-
-  //then
-  const b = doc.querySelector('#card .run-banner.run-on');
-  assert.ok(b, 'the card page carries the banner');
-  assert.ok(b.previousElementSibling.tagName === 'H1' || b.previousElementSibling.classList.contains('status'));
-  assert.ok(b.nextElementSibling.classList.contains('acts'), 'above the action groups');
-  assert.deepStrictEqual(bits(b), ['started ' + hhmm(STARTED), '2 min', '3 tool calls', '$0.21', 'last tool kube']);
-  const h1 = doc.querySelector('h1'), rec = b.querySelector('.run-rec');
-
-  //when
-  status = Object.assign(board(), {at: iso(-1), limits: Object.assign({}, board().limits, {spentToday: 2})});
-  await dom.window.__cardLoad();
-
-  //then
-  assert.strictEqual(doc.querySelector('h1'), h1, 'a status poll does not rebuild the card');
-  assert.strictEqual(doc.querySelector('#card .run-rec'), rec, 'an unchanged banner keeps its nodes, so focus stays');
-
-  //when
-  status = idle({recent: [{id: 'run-45', outcome: 'done', usd: 0.38, toolCalls: 7, keys: [KEY]}]});
-  await dom.window.__cardLoad();
-
-  //then
-  assert.strictEqual(doc.querySelector('h1'), h1);
-  assert.strictEqual(doc.querySelector('#card .run-banner .run-say').textContent, 'Investigation done', 'the banner changes in place');
-  assert.strictEqual(doc.querySelector('#card .run-rec'), rec, 'the same run keeps its Run record link, so keyboard focus is not lost');
-  assert.strictEqual(doc.querySelector('#card .run-banner').lastElementChild, rec);
-
-  //when
-  status = board();
-  dom.window.Date.now = ((was) => () => was() + 61000)(dom.window.Date.now.bind(dom.window.Date));
-  await dom.window.__cardLoad();
-  status = 'fail';
-  await dom.window.__cardLoad();
-
-  //then
-  assert.ok(doc.querySelector('#card .run-banner.run-on'), 'a failing status poll keeps the last good banner');
-  assert.deepStrictEqual(errors, []);
-  dom.window.close();
-  console.log('PASS the card page shows the banner above its action groups');
-}
-
 async function theStoppedTagAndTheSpendButtonKeepTheirWords() {
   //given
   const t = await boot({board: idle({halted: 'stopped'})});
@@ -568,32 +502,6 @@ async function theStoppedTagAndTheSpendButtonKeepTheirWords() {
   console.log('PASS the stopped tag and the spend button keep their words; the phone styles only hide parts');
 }
 
-async function aHangingStatusDoesNotHoldBackTheCardPage() {
-  //given
-  const c = {num: 45, key: KEY, svc: 'inventory', label: 'restarts', sev: 'warn', status: 'open', firstSeen: iso(40), live: true, triage: 'investigating', what: 'x', now: 6, d1: 0, d7: 0};
-  const dom = new JSDOM(pageHtml(CARD_PAGE), {
-    url: 'https://skopax.example.com/c/45', runScripts: 'dangerously', pretendToBeVisual: true,
-    beforeParse(w) {
-      w.fetch = async (p, o) => {
-        const ok = (body) => ({ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body))});
-        if (String(p) === '/api/me') return ok({loginEnabled: true, user: null, operator: false});
-        if (String(p).startsWith('/api/investigator/status')) return new Promise((res, rej) => { if (o && o.signal) o.signal.addEventListener('abort', () => rej(new Error('aborted'))); });
-        return ok(c);
-      };
-    },
-  });
-
-  //when
-  await wait(150);
-
-  //then
-  const doc = dom.window.document;
-  assert.ok(doc.querySelector('#card h1'), 'the card shows while the status is still on its way');
-  assert.strictEqual(doc.querySelector('#card .run-banner'), null);
-  dom.window.close();
-  console.log('PASS a hanging status fetch does not hold back the card page');
-}
-
 (async () => {
   await aRunningCardShowsTheBannerUnderItsHeaderWithElapsedToolCallsCostAndStep();
   await anAskRunSaysAskingAndAPrivateChatRunRaisesNoBanner();
@@ -605,8 +513,6 @@ async function aHangingStatusDoesNotHoldBackTheCardPage() {
   await clickingThePillOpensTheCardWhenExactlyOneRuns();
   await reducedMotionAndPhoneWidthAreHandledInTheStyles();
   await everyPackSaysTheBannerAndThePill();
-  await theCardPageShowsTheBannerToo();
-  await aHangingStatusDoesNotHoldBackTheCardPage();
   await theStoppedTagAndTheSpendButtonKeepTheirWords();
   await aBannerThatAppearsLaterIsAnnounced();
   await theCardStatLineShowsTheLiveCostDuringARun();

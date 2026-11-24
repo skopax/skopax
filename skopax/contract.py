@@ -56,6 +56,8 @@ __all__ = [
     'Outbound',
     'ECHO_FIELD',
     'ROUTE_ECHO',
+    'NODE_FIELD',
+    'NODE_VIA',
     'AgentRead',
     'ReadError',
     'SourceDown',
@@ -96,6 +98,7 @@ SETTING_KINDS = ('int', 'float', 'bool', 'text', 'choice', 'list')
 TOOL_KINDS = ('read', 'write', 'propose')
 CHANNELS = ('page', 'slack', 'mcp')
 KEY_SEGMENT = '@'
+NODE_FIELD = 'via-node'
 SEPARATORS = ('', ',', ';')
 SUGGEST_KINDS = ('text', 'url')
 RUN_STATE_KEYS = 500
@@ -376,6 +379,7 @@ ECHO_FIELD = 'slack-echo'
 ROUTE_ECHO = Field(ECHO_FIELD, 'Also post to Slack', 'choice', choices=('default', 'on', 'off'),
                    choice_labels={'default': 'Use the default', 'on': 'On', 'off': 'Off'},
                    help='On posts a card to Slack too when this route sends it, if Slack has not posted it yet, and says in its Slack thread which channel got it; Off never does; Use the default (or not set) follows the install-wide Slack echo setting.')
+NODE_VIA = Field(NODE_FIELD, 'Through agent node', 'text', group='advanced', help='Name of a Kubernetes agent instance that reaches this service. Empty means Skopax connects directly.')
 
 
 @dataclass(frozen=True)
@@ -387,6 +391,7 @@ class AgentRead:
     run: Callable[[Mapping[str, str], dict], object]
     fields: tuple[Field, ...] = ()
     timeout: int = 75
+    node_keys: Mapping[str, str] | Callable[[Mapping[str, str]], Mapping[str, str]] | None = None
 
 
 class ReadError(Exception):
@@ -445,6 +450,8 @@ class SourceData:
     label: str
     values: Mapping[str, str] = field(default_factory=dict, repr=False)
     instances: tuple[Mapping[str, str], ...] = field(default=(), repr=False)
+    left_out: tuple[str, ...] = ()
+    left_out_more: int = 0
 
     @classmethod
     def of(cls, raw: dict, default_label: str) -> 'SourceData':
@@ -457,7 +464,13 @@ class SourceData:
         listed = () if raw.get('instances') is None else raw['instances']
         if not isinstance(listed, (list, tuple)):
             raise ValueError('instances must be a list')
-        return cls(label, values, tuple(_strings(f'instances[{i}]', item) for i, item in enumerate(listed)))
+        left = () if raw.get('leftOut') is None else raw['leftOut']
+        more = 0 if raw.get('leftOutMore') is None else raw['leftOutMore']
+        if not isinstance(left, (list, tuple)) or not all(isinstance(k, str) for k in left):
+            raise ValueError('leftOut must be a list of strings')
+        if isinstance(more, bool) or not isinstance(more, int) or more < 0:
+            raise ValueError('leftOutMore must be a count')
+        return cls(label, values, tuple(_strings(f'instances[{i}]', item) for i, item in enumerate(listed)), tuple(left), more)
 
 
 @dataclass(frozen=True)
@@ -534,6 +547,8 @@ class Context(Protocol):
     def setting(self, key: str) -> object: ...
 
     def agent_read(self, agent: str, op: str, args: dict) -> object: ...
+
+    def node_read(self, op: str, args: dict) -> object: ...
 
     def peer(self, field: str) -> Peer | None: ...
 

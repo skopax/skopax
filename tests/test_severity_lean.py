@@ -260,18 +260,17 @@ def ratio(a: str, b: str) -> float:
     return (max(x, y) + 0.05) / (min(x, y) + 0.05)
 
 
-def test_the_card_page_mail_slack_and_favicon_share_the_new_orange():
+def test_the_page_mail_slack_and_favicon_share_the_new_orange():
     # given
     root = Path(__file__).resolve().parent.parent / 'skopax'
-    card_page, page = (root / 'web' / 'card.html').read_text(), (root / 'web' / 'template.html').read_text()
+    page = (root / 'web' / 'template.html').read_text()
     overview = (root / 'web' / 'static' / 'overview.js').read_text()
 
     # when
-    tokens = re.findall(r'--high: (#[0-9a-f]{6}); --high-bg: (#[0-9a-f]{6});', card_page)
     page_tokens = re.findall(r'--high: (#[0-9a-f]{6}); --high-bg: (#[0-9a-f]{6});', page)
 
     # then
-    assert tokens == page_tokens[:3] == [('#b54400', '#fff0e3'), ('#ff7a2e', '#3d2210'), ('#ff7a2e', '#3d2210')]
+    assert page_tokens[:3] == [('#b54400', '#fff0e3'), ('#ff7a2e', '#3d2210'), ('#ff7a2e', '#3d2210')]
     assert mail.SEV_COLOURS['high'] == '#b54400' and ratio('#ffffff', mail.SEV_COLOURS['high']) >= 4.5
     assert slack.COLOR['high'] == '#f97316' and "high: '#f97316'" in overview
     assert ratio(mail.SEV_COLOURS['high'], '#fff0e3') >= 4.5 and ratio('#ff7a2e', '#3d2210') >= 4.5

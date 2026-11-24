@@ -4,9 +4,9 @@ import re
 from collections.abc import Mapping
 
 from skopax import clock
-from skopax.contract import Context, Field, ReadError, send
+from skopax.contract import NODE_FIELD, Context, Field, ReadError, send
 from skopax.messages import msg
-from skopax.kit.elastic import CLUSTERS, DATED, FALLBACK, REJECTED, Elastic, ElasticError, client_for, closest_patterns, index_of, log_fields, refused_text, sources_of
+from skopax.kit.elastic import CLUSTERS, DATED, ERROR_TYPE, FALLBACK, REJECTED, UNKNOWN_COLUMN, Elastic, ElasticError, client_for, closest_patterns, cluster_of, index_of, log_fields, refused_text, sources_of
 
 FROM = re.compile(r'^\s*FROM\s+([^|]+)', re.I)
 TIME_BOUND = re.compile(r'@timestamp`?\s*(>=|>|<=|<)', re.I)
@@ -40,7 +40,11 @@ KEYS = (r'elastic\.(logging|apm)-(url|api-key)',)
 AGENT_CLUSTERS = {'logs': 'logging', 'apm': 'apm'}
 AGENT_REFUSED = 502
 RANGE_KINDS = ('search_phase_execution_exception', 'too_many_buckets_exception', 'no_shard_available_action_exception')
-DESCRIPTION = ('ES|QL query on Elasticsearch, read only. cluster logs (the default) reads the log cluster, whose logs are in {field:log-index}; '
+NODE_ANSWER = re.compile(r'ES\|QL HTTP (\d{3}): (.*)', re.S)
+PLUGIN_ID = 'elasticsearch'
+NAMED_CLUSTER = re.compile(r'(.+?)[-_ ]+(logs|apm)', re.I)
+DESCRIPTION = ('ES|QL query on Elasticsearch, read only. instance picks the Elasticsearch connection, for example prod or test, and cluster stays logs or apm inside it. '
+               'cluster logs (the default) reads the log cluster, whose logs are in {field:log-index}; '
                'cluster apm reads the APM cluster: {field:apm-index}, logs-apm.error-* and metrics-apm.*. '
                'Daily index names follow UTC dates, so never write a dated index name: use the pattern above with a wildcard and a WHERE on @timestamp. '
                'FROM comes first and names one to three indices; a wildcard or more indices is refused unless WHERE bounds @timestamp. '
@@ -148,16 +152,82 @@ def check_scope(query: str, index: str) -> None:
                              f'or add a @timestamp range to WHERE, like FROM {index} | WHERE @timestamp >= NOW() - 1 hour')
 
 
+def named_cluster(cluster: object, names: list[str]) -> str | None:
+    found = NAMED_CLUSTER.fullmatch(cluster.strip()) if isinstance(cluster, str) else None
+    if found is None:
+        return None
+    if found.group(1) in names:
+        return msg('plugintools.named_choice', key='cluster', value=cluster.strip()[:60], field='instance', name=found.group(1), choice=found.group(2).lower())
+    return msg('plugintools.named_unknown', key='cluster', value=cluster.strip()[:60], field='instance', name=found.group(1)[:60], names=', '.join(names), choices=', '.join(CLUSTERS))
+
+
+def instance_names(ctx: Context) -> list[str]:
+    try:
+        return [peer.info.name for peer in ctx.peers(PLUGIN_ID)]
+    except ReadError:
+        return []
+
+
+def node_of(config: Mapping[str, str]) -> str:
+    return str(config.get(NODE_FIELD) or '').strip()
+
+
+def node_keys(config: Mapping[str, str]) -> dict[str, str]:
+    out = {}
+    for cluster, key in AGENT_CLUSTERS.items():
+        out[f'elastic.{key}-url'], out[f'elastic.{key}-api-key'] = cluster_of(config, cluster)
+    return out
+
+
+def relayed(e: ReadError) -> ReadError:
+    found = NODE_ANSWER.fullmatch(e.message or '')
+    if found is None:
+        return e
+    status, detail = int(found.group(1)), found.group(2)
+    kind = detail.partition(':')[0].strip()
+    kind = kind if ERROR_TYPE.fullmatch(kind) else ''
+    missing = kind == 'index_not_found_exception' or (kind == 'verification_exception' and 'Unknown index' in detail)
+    unknown = tuple(dict.fromkeys(UNKNOWN_COLUMN.findall(detail))) if kind == 'verification_exception' else ()
+    return ElasticError(f'ES|QL HTTP {status}', detail, status, missing, unknown, status in REJECTED or kind == 'security_exception', code=kind)
+
+
+class NodeElastic:
+    def __init__(self, ctx: Context, node: str, cluster: str):
+        config = ctx.instance.config
+        if not cluster_of(config, cluster)[1]:
+            raise ReadError(400, msg('elasticsearch.node_needs_key', node=node))
+        self.ctx, self.node, self.cluster = ctx, node, cluster
+
+    def query(self, esql: str, timeout: float = QUERY_S, params: list[dict] | None = None, limit: int | None = None) -> list[dict]:
+        return self.answer(esql, timeout, params, limit)[1]
+
+    def answer(self, esql: str, timeout: float = QUERY_S, params: list[dict] | None = None, limit: int | None = None) -> tuple[list[str], list[dict]]:
+        try:
+            got = self.ctx.node_read('esql', {'cluster': self.cluster, 'query': esql})
+        except ReadError as e:
+            raise relayed(e) from None
+        rows = [r for r in got if isinstance(r, dict)] if isinstance(got, list) else []
+        return (list(rows[0]) if rows else []), rows
+
+    def index_patterns(self, timeout: float = 0, clock: object = None) -> list[str]:
+        return []
+
+
+def client_of(ctx: Context, cluster: str) -> Elastic | NodeElastic:
+    node = node_of(ctx.instance.config)
+    return NodeElastic(ctx, node, cluster) if node else client_for(ctx.instance, ctx.http(), cluster)
+
+
 def run_esql(ctx: Context, args: dict) -> object:
     cluster = args.get('cluster') or 'logs'
     if cluster not in CLUSTERS:
-        raise ReadError(400, 'cluster must be logs or apm')
+        raise ReadError(400, named_cluster(cluster, instance_names(ctx)) or 'cluster must be logs or apm')
     query = args.get('query')
     if not isinstance(query, str) or not query.strip():
         raise ReadError(400, 'query is required')
     config = ctx.instance.config
     check_scope(query, index_of(config, cluster))
-    es = client_for(ctx.instance, ctx.http(), cluster)
+    es = client_of(ctx, cluster)
     try:
         return es.query(query, timeout=QUERY_S)
     except ElasticError as e:
@@ -189,7 +259,7 @@ def missing_names(detail: str) -> set[str]:
     return {x.strip() for x in MISSING_NAME.findall(detail or '')}
 
 
-def yesterday(query: str, now: float, missing: set[str], es: Elastic) -> str | None:
+def yesterday(query: str, now: float, missing: set[str], es: Elastic | NodeElastic) -> str | None:
     m = FROM.match(query)
     if not m:
         return None
@@ -218,7 +288,7 @@ def found_day(found: re.Match) -> dt.date | None:
         return None
 
 
-def day_before(es: Elastic, query: str, earlier: str, status: int, first: str, config: Mapping[str, str]) -> object:
+def day_before(es: Elastic | NodeElastic, query: str, earlier: str, status: int, first: str, config: Mapping[str, str]) -> object:
     try:
         rows = es.query(earlier, timeout=QUERY_S)
     except ElasticError as again:
@@ -227,7 +297,7 @@ def day_before(es: Elastic, query: str, earlier: str, status: int, first: str, c
     return {'note': msg('esql.day_before_note', named=named, used=used), 'rows': rows}
 
 
-def column_hint(es: Elastic, query: str, unknown: tuple[str, ...]) -> str:
+def column_hint(es: Elastic | NodeElastic, query: str, unknown: tuple[str, ...]) -> str:
     sources = sources_of(query)
     if not sources:
         return ''
@@ -244,7 +314,7 @@ def unserved_range(e: ElasticError) -> bool:
     return e.status in (400, 503) and not e.unknown and e.code in RANGE_KINDS
 
 
-def missing_hint(es: Elastic, query: str) -> str:
+def missing_hint(es: Elastic | NodeElastic, query: str) -> str:
     sources = sources_of(query)
     close = closest_patterns(sources, es.index_patterns()) if sources else []
     if not close:

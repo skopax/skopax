@@ -1,7 +1,7 @@
 var D = {}, ALL = [], S = [], H = [], KIDS = {}, A = [];
 var open = [], muted = [], stale = [], cleared = [], inprog = [], taken = [], recurringL = [], ARCHIVED = [], CARDS = [], worst = 'ok';
 var src = {}, down = [], svcOk = 0, deps = [], CH = [];
-var filter = 'open', kind = 'all', svcF = null, typeF = '', shownN = 0, typesFold = false;
+var filter = 'open', kind = 'all', svcF = null, typeF = '', shownN = 0;
 var TYPE_NAMES = {'page-typos': 'Typos', 'page-layout': 'Layout', log: 'Log errors', alert: 'Alerts', err: 'Error rate', '5xx': '5xx', 'avg-latency': 'Latency', 'apm-p95': 'APM p95',
   'apm-fail': 'APM failures', 'pvc-disk': 'Disk', 'db-disk': 'Host disk', 'hpa-max': 'Autoscalers', 'jvm-heap': 'JVM heap', 'varnish-cache': 'Varnish cache', 'varnish-hit': 'Varnish hit rate',
   'kafka-consume-err': 'Kafka consume errors', 'kafka-lag': 'Kafka lag', 'airbyte-long-run': 'Airbyte long runs', 'airbyte-failed': 'Airbyte failures',
@@ -149,7 +149,7 @@ function resolutionOf(x) { var r = x && x.resolution; return r && RES_KINDS.some
 function resWho(by) { return RES_BY[by] || (isTokenActor(by) ? tokenActorLabel(by, 'Investigator') : !by || isInvestigatorBy(by) ? investigatorName() : String(by).split('@')[0]); }
 function resRefHtml(ref) {
   var t = String(ref || '').trim(), n = /^#?(\d{1,7})$/.exec(t);
-  if (n) return '<a href="/c/' + n[1] + '" title="Opens card #' + n[1] + '">#' + n[1] + '</a>';
+  if (n) return '<a href="#c=' + n[1] + '" title="Opens card #' + n[1] + '">#' + n[1] + '</a>';
   if (/^https:\/\/\S+$/.test(t)) return '<a href="' + esc(t) + '" target="_blank" rel="noopener" data-no-tx>' + esc(t.replace(/^https:\/\//, '').slice(0, 60)) + ' ↗</a>';
   return '<span data-no-tx>' + jiraLinks(t) + '</span>';
 }

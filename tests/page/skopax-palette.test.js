@@ -43,6 +43,7 @@ async function boot(opts) {
     beforeParse(w) {
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () { w.__scrolled = this; };
+      w.localStorage.setItem('skopax-sidebar', 'full');
       if (opts.mac) Object.defineProperty(w.navigator, 'platform', {get: () => 'MacIntel'});
       const answer = async (path) => {
         const p = String(path);

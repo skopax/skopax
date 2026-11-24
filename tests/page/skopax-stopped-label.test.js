@@ -33,7 +33,7 @@ async function aStoppedCardReadsTheSlackWordsOnTheBoardInTheChipAndInTheHistory(
   const status = (key) => article(doc, key).querySelector('.inc-head .c-status').textContent;
   const every = (key) => [...article(doc, key).querySelectorAll('.tag, .c-status')].map((t) => t.textContent);
   const rest = (key) => [...article(doc, key).querySelectorAll('.inc-more .inc-tags .tag')].map((t) => t.textContent);
-  const chip = doc.querySelector('#tab-sub-anoms button[data-f="cleared"] .lbl');
+  const chip = doc.querySelector('#panel-anoms .qf-c[data-f="cleared"] .lbl');
 
   //when
   expand(a());
@@ -43,7 +43,7 @@ async function aStoppedCardReadsTheSlackWordsOnTheBoardInTheChipAndInTheHistory(
   await wait(30);
   const labels = [...a().querySelectorAll('.cd-hist li .h-l')].map((x) => x.textContent);
   const board = doc.querySelector('#anoms').textContent, row = status(WAITING), owned = status(ASSIGNED);
-  doc.querySelector('#tab-sub-anoms button[data-f="progress"]').click();
+  doc.querySelector('#panel-anoms .qf-c[data-f="progress"]').click();
   await wait(60);
   expand(article(doc, TAKEN));
   const taken = every(TAKEN).filter((t) => t.startsWith(short));

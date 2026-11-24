@@ -135,7 +135,7 @@ async function theBoardHasNoInfoFilterAndAnEmptyPageSaysSo() {
   const {w, doc, errors} = await boot([], true);
 
   //when
-  const chips = [...doc.querySelectorAll('#tab-sub-anoms button')].map((b) => b.dataset.f);
+  const chips = [...doc.querySelectorAll('#panel-anoms .qf-c')].map((b) => b.dataset.f);
 
   //then
   assert.ok(chips.indexOf('warn') >= 0 && chips.indexOf('info') < 0, 'the board has no Info filter');

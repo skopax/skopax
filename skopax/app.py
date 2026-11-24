@@ -114,7 +114,7 @@ from skopax import migrations
 from skopax.errkind import NoAccess, Refusal, kind, text_of
 from skopax.features import BY_ID as FEATURE_BY_ID, FEATURES, Features, Locked, off_text
 from skopax.integrationview import reader_row
-from skopax.instances import AGENT_PLUGIN as KUBE_ID, InstanceExists, InstanceMissing, Instances, InvalidInstance, PluginState, SourceOwned, Writer, checks_off, ADMIN
+from skopax.instances import AGENT_PLUGIN as KUBE_ID, InstanceExists, InstanceMissing, Instances, InvalidInstance, PluginState, SourceOwned, Writer, checks_off, node_of, ADMIN
 from skopax.registry import Registry, card_types_view, describe, locale_drops, standing_of
 from skopax.plugai import PluginAi
 from skopax.plugintools import PluginTools
@@ -169,7 +169,6 @@ DUPLICATE_KEY_CODE = 11000
 CHAT_PAGE = re.compile(r'/chat/(?:thread|share)/[A-Za-z0-9-]{1,64}/?')
 WEB = Path(__file__).parent / 'web'
 TEMPLATE = WEB / 'template.html'
-CARD_PAGE = WEB / 'card.html'
 CARD_FIELDS = ('num', 'key', 'svc', 'label', 'sub', 'sev', 'status', 'muted', 'triage', 'ticket', 'owner', 'ownerName', 'assigned', 'firstSeen', 'lastSeen', 'clearedAt', 'what', 'note', 'business',
                'tags', 'url', 'gone', 'now', 'd1', 'd7', 'unit', 'recommend', 'suspects', 'outcome', 'resolution', 'triagedBy', 'autoResolvedAt', 'clearNote',
                'knownCause', 'alreadyActive')
@@ -314,12 +313,8 @@ def render_page(state: dict, plugin_scripts: list[str] = ()) -> str:
     return blob.join(fill_brand(part) for part in page.split(PLACEHOLDER))
 
 
-def render_card_page(plugin_scripts: list[str] = ()) -> str:
-    page = SCRIPT_SRC.sub(lambda m: f'<script src="/static/{m[1]}?v={ASSETS[m[1]][1]}"></script>', CARD_PAGE.read_text(encoding='utf-8'))
-    return fill_brand(page.replace(PLUGIN_SLOT, plugin_script_tags(core_packs() + list(plugin_scripts))))
-
-
 MERGED_FIELDS = ('num', 'key', 'svc', 'label', 'sub', 'sev', 'status', 'url', 'what', 'business')
+FOLLOW_UP_FIELDS = ('doneWhen', 'checkedAt', 'lastResult', 'lastEvidence', 'closeAt', 'closeKind', 'owner', 'keptBy', 'gaveUp')
 
 
 def card_view(card: dict, live: bool, merged: list[dict] = (), parent: dict | None = None) -> dict:
@@ -329,7 +324,9 @@ def card_view(card: dict, live: bool, merged: list[dict] = (), parent: dict | No
         out['cause'] = cause
     shots = (card.get('slackPost') or {}).get('screenshots') or (card.get('slackDraft') or {}).get('screenshots') or card.get('screenshots') or []
     kids = [{k: c[k] for k in MERGED_FIELDS if c.get(k) not in (None, '', [])} for c in merged]
-    return out | {'live': live, 'screenshots': list(shots)[:3]} | ({'merged': kids} if kids else {})
+    follow = card.get('followUp') if isinstance(card.get('followUp'), dict) else {}
+    follow = {k: follow[k] for k in FOLLOW_UP_FIELDS if follow.get(k) not in (None, '', [])}
+    return out | {'live': live, 'screenshots': list(shots)[:3]} | ({'merged': kids} if kids else {}) | ({'followUp': follow} if follow else {})
 
 
 TICKET_HITS = 8
@@ -1535,6 +1532,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             found = agent
         elif plugin.id == MCPTOOLS_ID:
             found = {**mcptools_routes.health(mcptools_deps, inst), 'at': None}
+        elif plugin.checks and node_of(inst):
+            found = {'state': 'off', 'text': msg('integrations.health.through_node', node=node_of(inst), checks=', '.join(c.label for c in plugin.checks)), 'at': None}
         elif not checks and any(owned(c, inst) for c in plugin.checks):
             found = {'state': 'off', 'text': msg('integrations.health.unchecked'), 'at': None}
         else:
@@ -1745,6 +1744,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         def marks_job() -> None:
             try:
                 mutemarks.run_once(store)
+                noticemail.answer_off_once(store.db)
             finally:
                 marked.set()
 
@@ -2221,9 +2221,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def page() -> str:
         return render_page({**information.page_state(store.load(), time.time()), 'archiveHours': settings.archive_hours, 'plugins': plugin_tiles(store.server_runs()['passes'])}, runtime.page_scripts())
 
-    @app.get('/c/{num}', response_class=HTMLResponse)
-    def card_page(num: int) -> HTMLResponse:
-        return HTMLResponse(render_card_page(runtime.page_packs()), headers={'Cache-Control': 'no-cache'})
+    @app.get('/c/{num}')
+    def card_page(num: int) -> RedirectResponse:
+        return RedirectResponse(f'/#c={num}', status_code=status.HTTP_302_FOUND)
 
     @app.get('/api/cards/{num}')
     def get_card(num: int) -> dict:
@@ -2728,7 +2728,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         items = next((items for p, items in runtime.serving() if p.id == plugin.id), None)
         if items is None:
             raise HTTPException(status.HTTP_409_CONFLICT, msg('checks.not_serving', name=plugin.name))
-        if plugin.fields and not any(check.id not in i.off_checks and owned(check, i) for i in items):
+        if plugin.fields and not any(check in watched(plugin, i) for i in items):
             refused = 'checks.unchecked' if not check.once else 'checks.unchecked_once' if any(i.primary for i in items) else 'checks.primary_not_serving'
             raise HTTPException(status.HTTP_409_CONFLICT, msg(refused, check=check.label, name=plugin.name))
         job = f'{plugin.id}.{check.id}'
@@ -3597,6 +3597,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         for label, state in sources.status().items():
             if not state['ok']:
                 items.append({'id': f'source:{label}', 'level': 'warn', 'text': msg('settings.source_failed', source=label, error=state['error']), 'at': state['since']})
+            if state['leftOut']:
+                more = state['leftOutMore']
+                shown = ', '.join(state['leftOut']) + (msg('settings.source_left_out_more', count=more) if more else '')
+                items.append({'id': f'source-left-out:{label}', 'level': 'info', 'text': msg('settings.source_left_out', keys=shown)})
         if aikey.status()['unreadable']:
             items.append({'id': 'ai-key', 'level': 'warn', 'text': msg('aikey.unreadable')})
         if openai_key.status()['unreadable']:

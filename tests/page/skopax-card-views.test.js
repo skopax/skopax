@@ -65,12 +65,12 @@ async function theBoardIsTheDefaultAndAllTopsTheMenu() {
 
   //when
   const pressed = [...doc.querySelectorAll('#card-view button')].map((b) => b.dataset.view + ':' + b.getAttribute('aria-pressed'));
-  const menu = [...doc.querySelectorAll('#tab-sub-anoms button[data-f]')].slice(0, 2).map((b) => b.dataset.f);
+  const menu = [doc.querySelector('#bf-main .qf-c[data-f]'), doc.querySelector('#more-filters-box .qf-c[data-f]')].map((b) => b.dataset.f);
 
   //then
   assert.ok(doc.querySelector('#anoms .board') && doc.getElementById('anoms').classList.contains('view-board'), 'with nothing stored the Board shows');
   assert.deepStrictEqual(pressed, ['board:true', 'list:false'], 'Board comes first in the toggle and is pressed');
-  assert.deepStrictEqual(menu, ['all', 'open'], 'All tops the filter menu, then Open');
+  assert.deepStrictEqual(menu, ['open', 'all'], 'Open leads the chips in view and All opens the fold');
   assert.deepStrictEqual(errors, []);
   w.close();
   return 'the Board is the default view (List still one click away and remembered), and All tops the filter menu';
@@ -79,26 +79,26 @@ async function theBoardIsTheDefaultAndAllTopsTheMenu() {
 async function assigneeAndTagChipsFilterTheBoardTogetherAndALinkKeepsThem() {
   //given
   const {w, doc, errors} = await boot('#t=anoms/all', {'skopax-card-view': 'board'});
-  const chips = () => [...doc.querySelectorAll('#card-qf .qf-c')].map((b) => b.dataset.type + (b.getAttribute('aria-pressed') === 'true' ? '*' : '') + ' ' + b.querySelector('.count').textContent);
+  const chips = () => [...doc.querySelectorAll('#card-qf .qf-c, #bf-main [data-type]')].map((b) => b.dataset.type + (b.getAttribute('aria-pressed') === 'true' ? '*' : '') + ' ' + b.querySelector('.count').textContent);
   const shown = () => [...doc.querySelectorAll('#anoms .tile')].map((t) => t.dataset.key).sort();
-  const chip = (t) => doc.querySelector('#card-qf .qf-c[data-type="' + t + '"]');
+  const chip = (t) => doc.querySelector('#panel-anoms .qf-c[data-type="' + t + '"]');
 
   //when
   const listed = chips();
   const tone = 'th-' + w.tagHue('data');
-  const colors = [chip('tag:data').classList.contains(tone), !!doc.querySelector('#anoms .tile .tag.' + tone), !!doc.querySelector('#tab-sub-anoms .tags-g .' + tone), chip('who:me').firstChild.textContent];
+  const colors = [chip('tag:data').classList.contains(tone), !!doc.querySelector('#anoms .tile .tag.' + tone), !!doc.querySelector('#card-qf [aria-label="Tags"] .' + tone), doc.querySelector('#bf-main [data-type="who:me"] .lbl').textContent];
   chip('who:u:alice').click();
   const nina = shown();
   chip('tag:data').click();
-  const both = {cards: shown(), hash: w.location.hash, menu: doc.querySelector('#tab-sub-anoms .tags-g [data-type="tag:data"]').getAttribute('aria-pressed')};
+  const both = {cards: shown(), hash: w.location.hash, menu: doc.querySelector('#panel-anoms .qf-c[data-type="tag:data"]').getAttribute('aria-pressed')};
   chip('who:none').click();
   const swapped = shown();
   const reload = await boot('#t=anoms/all/' + encodeURIComponent('who:u:alice+tag:data'), {'skopax-card-view': 'board'});
 
   //then
-  assert.deepStrictEqual(listed, ['tag:data 1', 'tag:- 4', 'who:me 1', 'who:none 3', 'who:u:alice 1', 'who:u:carol.diaz 1'], 'the tags in use on their own row on top, ending with Untagged, then Me, Unassigned and each person with cards');
-  assert.deepStrictEqual([...doc.querySelectorAll('#card-qf .qf-g')].map((g) => g.getAttribute('aria-label')), ['Tags', 'Assignee'], 'two rows, Tags first');
-  assert.deepStrictEqual(colors, [true, true, true, 'Me'], 'each tag has its own colour on the chip, the tile and the side menu; Mine reads Me');
+  assert.deepStrictEqual(listed, ['who:me 1', 'tag:developer 0', 'tag:data 1', 'tag:infra 0', 'tag:analyst 0', 'tag:- 4', 'who:any 2', 'who:none 3', 'who:u:alice 1', 'who:u:carol.diaz 1', 'log 5'], 'Mine sits first in view, then the fold holds every tag ending with Untagged, Assigned, Unassigned, each person with cards and the types');
+  assert.deepStrictEqual([...doc.querySelectorAll('#card-qf .qf-g')].map((g) => g.getAttribute('aria-label')), ['Tags', 'Assignee', 'Types'], 'three rows, Tags first');
+  assert.deepStrictEqual(colors, [true, true, true, 'Mine'], 'each tag has its own colour on the chip, the tile and the side menu; the chip reads Mine');
   assert.deepStrictEqual(nina, [NEW]);
   assert.deepStrictEqual(both, {cards: [NEW], hash: '#t=anoms/all/' + encodeURIComponent('who:u:alice+tag:data'), menu: 'true'}, 'an assignee and a tag combine, the link and the side menu follow');
   assert.deepStrictEqual(swapped, [], 'another assignee replaces the first one and keeps the tag');
@@ -297,7 +297,7 @@ async function aCardWithNoChangeFor48HoursMovesToArchivedAndShowsNowhereElse() {
 
   //when
   const onBoard = tiles().includes(OLD);
-  const chip = doc.querySelector('#tab-sub-anoms button[data-f="archived"]');
+  const chip = doc.querySelector('#panel-anoms .qf-c[data-f="archived"]');
   const counted = chip.querySelector('.count').textContent;
   chip.click();
   const archivedView = {tiles: tiles(), hash: w.location.hash};
@@ -408,7 +408,7 @@ async function theFiltersStillNarrowTheBoardAndACardLinkOpensItsPanel() {
   return 'the menu lists and search still decide which cards the Board shows, and a card link opens its side panel';
 }
 
-async function waitingAndInvestigatedAreTagsOnOpenCards() {
+async function waitingAndInvestigatedCardsStayInOpenAndOnlyALiveRunTagsTheTile() {
   //given
   const DIVED = 'log|orders-service|ERROR|dived', LOOKING = 'log|profile-service|WARN|looking';
   const more = [
@@ -424,17 +424,14 @@ async function waitingAndInvestigatedAreTagsOnOpenCards() {
   //then
   assert.deepStrictEqual([NEW, LOOKING, DIVED, WAIT].map((k) => colOf(doc, k)), ['open', 'open', 'open', 'open'], 'firing, investigated and stopped cards nobody acted on are all Open');
   assert.deepStrictEqual([...doc.querySelectorAll('#anoms .bcol')].map((c) => c.dataset.col), ['open', 'progress', 'done', 'muted'], 'no New or Waiting column');
-  assert.strictEqual(colEl(doc, 'open').querySelector('.bcol-h').title, 'firing, or stopped with nobody acting on it yet; critical first, firing before stopped. The tags say whether it was investigated and whether it stopped');
+  assert.strictEqual(colEl(doc, 'open').querySelector('.bcol-h').title, 'firing, or stopped with nobody acting on it yet; critical first, firing before stopped');
   assert.deepStrictEqual(order, [NEW, DIVED, LOOKING, WAIT], 'critical first, then the firing ones, the stopped one last');
-  assert.deepStrictEqual(tags(DIVED), ['Investigated'], 'the investigation is a tag, not a column');
-  assert.deepStrictEqual(tags(LOOKING), ['Investigating']);
-  assert.ok(/^Stopped firing \d/.test(tags(WAIT)[0]), 'a stopped card says when it stopped');
-  assert.ok(tileOf(doc, WAIT).querySelector('.tile-foot .tag.k-cleared').title.startsWith('Stopped firing \u00b7 unassigned '), 'and its tip carries the long form');
+  assert.deepStrictEqual([tags(DIVED), tags(LOOKING), tags(WAIT)], [[], ['Investigating'], []], 'only a live investigation shows on the tile; investigated and stopped are left to the panel');
   assert.deepStrictEqual(tags(NEW), ['Data']);
   assert.ok(colEl(doc, 'done').querySelector('.bcol-h svg.bcol-tick') && [...doc.querySelectorAll('.bcol-h svg.bcol-tick')].length === 1, 'only the Done column carries the green tick');
   assert.strictEqual(colEl(doc, 'done').querySelector('.bcol-h h3').textContent, 'Done');
-  assert.strictEqual(doc.querySelector('#tab-sub-anoms button[data-f="stale"]'), null, 'no separate Waiting item in the side menu');
-  assert.strictEqual(doc.querySelector('#tab-sub-anoms button[data-f="open"] .count').textContent, '4', 'Open counts them all, the investigated and the stopped card included');
+  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-f="stale"]'), null, 'no separate Waiting item in the side menu');
+  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-f="open"] .count').textContent, '4', 'Open counts them all, the investigated and the stopped card included');
   assert.strictEqual(doc.getElementById('count-anoms').textContent, '4', 'the Anomalies tab shows one Open count');
   assert.deepStrictEqual(errors, []);
   w.close();
@@ -480,5 +477,5 @@ async function aDropAnywhereInAColumnMovesTheCardAndTheColumnsFillTheBoard() {
   console.log('PASS ' + await theBoardPutsCardsInStatusColumnsAndATileOpensTheCardInASidePanel());
   console.log('PASS ' + await theFiltersStillNarrowTheBoardAndACardLinkOpensItsPanel());
   console.log('PASS ' + await aDropAnywhereInAColumnMovesTheCardAndTheColumnsFillTheBoard());
-  await waitingAndInvestigatedAreTagsOnOpenCards();
+  await waitingAndInvestigatedCardsStayInOpenAndOnlyALiveRunTagsTheTile();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

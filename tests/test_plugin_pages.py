@@ -64,15 +64,12 @@ def test_a_panel_without_a_label_adds_no_page(store):
     (Panel('x', 'demo-panel.js', label='Short'), 'panel tab x is not valid'),
     (Panel('demo', 'demo-panel.js', label='Demo', group='elsewhere'), 'unknown sidebar group elsewhere'),
     (Panel('demo', 'demo-panel.js', label=5), 'a panel is malformed'),
-    (Panel('sub-anoms', 'demo-panel.js', label='Filters'), 'panel tab sub-anoms is reserved'),
-    (Panel('fold-anoms', 'demo-panel.js', label='Fold'), 'panel tab fold-anoms is reserved'),
-    (Panel('sub-anoms'), 'panel tab sub-anoms is reserved'),
     (Panel('demo', 'demo-panel.js', label='   '), 'needs a label of 1 to 24 printable characters'),
     (Panel('demo', 'demo-panel.js', label='D' * 25), 'needs a label of 1 to 24 printable characters'),
     (Panel('demo', 'demo-panel.js', label='Demo\nboard'), 'needs a label of 1 to 24 printable characters'),
     (Panel('demo', 'demo-panel.js', label='Demo' + chr(7)), 'needs a label of 1 to 24 printable characters'),
     (Panel('demo', label='Demo board'), 'panel demo has a label but no script'),
-], ids=['core-tab-script', 'core-tab-label', 'core-tab-fragment', 'bad-id', 'too-short', 'unknown-group', 'label-type', 'filter-sub-id', 'filter-fold-id', 'reserved-bare-link',
+], ids=['core-tab-script', 'core-tab-label', 'core-tab-fragment', 'bad-id', 'too-short', 'unknown-group', 'label-type',
         'blank-label', 'long-label', 'two-line-label', 'control-label', 'label-without-script'])
 def test_a_panel_that_clashes_or_lies_breaks_the_plugin(panel, fragment):
     # given

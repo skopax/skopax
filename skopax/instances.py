@@ -18,7 +18,7 @@ from skopax.actors import SYSTEM
 from skopax.agentproto import KEYS_MAX, VALUE_LIMIT
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
 from skopax.config import retired_info
-from skopax.contract import Field, InstanceInfo, Plugin, SourceData
+from skopax.contract import NODE_FIELD, AgentRead, Field, InstanceInfo, Plugin, ReadError, SourceData
 from skopax.errkind import InvalidInstance, SourceOwned, kind
 from skopax.messages import msg
 from skopax.registry import ALONE_ADDRESS, HOSTS_ADDRESS, Registry
@@ -243,7 +243,7 @@ def moved_addresses(plugin: Plugin, fields: Mapping[str, Field], owners: Mapping
             return fields[key].default != before.get(key)
         return any(sent_to(k) and k != key and side(k) == side(key) and after.get(k) for k in fields)
 
-    changed = [k for k, v in given.items() if (sent_to(k) or (k == 'via' and k in fields and plugin.id == AGENT_PLUGIN)) and v is not None and v != before.get(k, '')]
+    changed = [k for k, v in given.items() if (sent_to(k) or (k == 'via' and k in fields and plugin.id == AGENT_PLUGIN) or (k == NODE_FIELD and k in fields)) and v is not None and v != before.get(k, '')]
     hosts = [k for k in fields if host_list(k) and added_host(k)]
     trusted = [k for k in given if trust and trusted_otherwise(k)]
     return {side(k)[0] for k in changed if given[k] != '' or taken_over(k)} | {side(k)[0] for k in hosts + trusted}
@@ -291,6 +291,30 @@ def via_problem(name: str, values: Mapping[str, str], others: Mapping[str, Mappi
     user = next((n for n, v in others.items() if v.get('via') == name and v.get('mode', 'agent') == 'agent'), None)
     if user is not None:
         return msg('instances.invalid.via_relays', other=user)
+    return None
+
+
+def node_of(inst: 'Instance | InstanceInfo | None') -> str:
+    if inst is None:
+        return ''
+    values = inst.config if isinstance(inst, InstanceInfo) else inst.values
+    return str(values.get(NODE_FIELD) or '').strip()
+
+
+def node_config(read: AgentRead, config: Mapping[str, str]) -> dict[str, str]:
+    mapped = read.node_keys
+    try:
+        found = dict(mapped(config)) if callable(mapped) else {key: config.get(field) for field, key in (mapped or {}).items()}
+    except Exception as e:
+        raise ReadError(500, msg('agent.node_keys_failed', op=read.op, error=type(e).__name__)) from None
+    return {k: v for k, v in found.items() if isinstance(k, str) and isinstance(v, str) and v.strip()}
+
+
+def node_problem(node: str, hub: 'Instance | None') -> str | None:
+    if not node:
+        return None
+    if hub is None or hub.values.get('mode', 'agent') != 'agent' or not hub.enabled or hub.problem:
+        return msg('instances.via_node', node=node)
     return None
 
 
@@ -1016,6 +1040,8 @@ class Instances:
             if len(flagged) > 1:
                 self._warn(('primaries', plugin, tuple(r.instance.name for r in flagged)), f'plug-in {plugin} has several primary instances ({", ".join(r.instance.name for r in flagged)}); using {chosen.instance.name}')
             out.extend(dataclasses.replace(r.instance, primary=r is chosen) for r in group)
+        nodes = {i.name: i for i in out if i.plugin == AGENT_PLUGIN}
+        out = [dataclasses.replace(i, problem=found) if i.plugin != AGENT_PLUGIN and not i.problem and (found := node_problem(node_of(i), nodes.get(node_of(i)))) else i for i in out]
         out.sort(key=lambda i: (i.plugin, not i.primary, i.name))
         self._flags = flags
         return out, reseal
@@ -1070,7 +1096,7 @@ class Instances:
         if owned:
             owners = address_owners(self.registry, plugin.id, extra)
             sides = {owners.get(k, plugin.id) for k in owned} | {plugin.id}
-            owned |= addresses | {k for k, f in fields.items() if (f.kind == 'url' and owners.get(k, plugin.id) in sides) or (plugin.id == AGENT_PLUGIN and k == 'via' and plugin.id in sides)}
+            owned |= addresses | {k for k, f in fields.items() if (f.kind == 'url' and owners.get(k, plugin.id) in sides) or (plugin.id == AGENT_PLUGIN and k == 'via' and plugin.id in sides) or (k == NODE_FIELD and plugin.id in sides)}
         unreadable = None
         if doc is not None:
             for key, value in (doc.get('values') or {}).items():

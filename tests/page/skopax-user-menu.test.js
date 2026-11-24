@@ -28,7 +28,7 @@ async function boot(me, opts) {
   const dom = new JSDOM(html, {
     url: 'https://skopax.example.com' + (opts.path || '/') + '#t=anoms', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
-      if (opts.rail) w.localStorage.setItem('skopax-sidebar', 'rail');
+      w.localStorage.setItem('skopax-sidebar', opts.rail ? 'rail' : 'full');
       if (opts.width) w.matchMedia = media(opts.width);
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () {};

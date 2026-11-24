@@ -66,7 +66,7 @@ async function englishAndAutoOnAnEnglishBrowserChangeNothing() {
   console.log('PASS with English picked, or Auto on an English browser, the page is unchanged');
 }
 
-const openChip = (doc) => doc.querySelector('#tab-sub-anoms button[data-f="open"]');
+const openChip = (doc) => doc.querySelector('#panel-anoms .qf-c[data-f="open"]');
 const chipLabel = (doc) => openChip(doc).firstChild.textContent.trim();
 
 async function aRegisteredPackTranslatesAndNoPackLeavesEnglish() {

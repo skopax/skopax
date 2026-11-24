@@ -908,3 +908,43 @@ def test_a_source_hook_without_the_field_kind_argument_still_loads_and_one_with_
     # then
     assert sorted(s.label for s in found) == ['demo source', 'keyword source', 'told source']
     assert sorted(asked, key=str) == sorted([('secret', 'url', None, None), 'secret'], key=str)
+
+
+def test_the_status_has_no_left_out_keys_while_a_source_has_no_data():
+    # given
+    sources = SourceSet([('feed', feed(None))], {'feed': None})
+
+    # when
+    status = sources.status()['feed']
+
+    # then
+    assert status['leftOut'] == [] and status['leftOutMore'] == 0
+
+
+def test_a_failed_refresh_keeps_the_left_out_keys_of_the_data_it_kept():
+    # given
+    data = SourceData('feed', {}, (), ('a.b', 'c.d'), 4)
+    sources = SourceSet([('feed', feed(RuntimeError('down')))], {'feed': data})
+
+    # when
+    sources.refresh()
+    status = sources.status()['feed']
+
+    # then
+    assert status['ok'] is False and status['leftOut'] == ['a.b', 'c.d'] and status['leftOutMore'] == 4
+
+
+def test_a_spring_config_hook_result_reaches_the_status_through_a_refresh():
+    # given
+    from tests.test_spring_config_plugin import BASE, Clock, Server, Told, missing_answer
+    hook = Told(Server(missing_answer()), Clock())
+    env = {**BASE, 'SPRING_CONFIG_MAP': 'a.b=core.timezone,c.d=jira/main/url,tz=investigate.max-cards'}
+    load = lambda: SourceData.of(hook(env), 'spring')
+    sources = SourceSet([('spring', load)], {'spring': None})
+
+    # when
+    sources.refresh()
+    status = sources.status()['spring']
+
+    # then
+    assert status['ok'] is True and status['leftOut'] == ['a.b', 'c.d'] and status['leftOutMore'] == 0

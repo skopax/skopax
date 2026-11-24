@@ -162,6 +162,7 @@ SLACK_NO_CARD = ('No card is attached: this was asked in the channel. Find the s
 CHAT_NO_CARD = ('No card is attached to this chat. Find the service or card with open_cards, card and the other read tools. '
                 'With no card there is no Create task: a ticket request is answered with which team should open it.')
 SLACK_THREAD_LINE = 500
+SLACK_THREAD_LINE_FULL = 4000
 GATE_THREAD = 6
 GATE_LINE = 300
 
@@ -267,7 +268,7 @@ def gate_input(context: str, thread: list[dict], message: str, tagged: bool = Fa
 
 
 def thread_text(thread: list[dict]) -> str:
-    return '\n'.join(f"> {t.get('who', 'person')}: {quoted(t.get('text') or '', SLACK_THREAD_LINE)}" for t in thread) or '> (no earlier messages)'
+    return '\n'.join(f"> {t.get('who', 'person')}: {quoted(t.get('text') or '', SLACK_THREAD_LINE_FULL)}" for t in thread) or '> (no earlier messages)'
 
 
 def small_talk_use(used: int, cap: int, enabled: bool) -> str:

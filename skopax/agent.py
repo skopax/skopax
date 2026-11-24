@@ -53,6 +53,8 @@ READ_TIMEOUT = 75
 ARG_LIMIT = 200
 DEFAULT_STATUS = 502
 DETAIL_LIMIT = 300
+SLOTS_MAX = 32
+SLOT_NAME_MAX = 64
 RELAYED = {INFO_PATH: ('GET', INFO_TIMEOUT), KUBE_PATH: ('POST', KUBE_TIMEOUT), READ_PATH: ('POST', READ_TIMEOUT), SOURCES_PATH: ('PUT', INFO_TIMEOUT)}
 OPS = {
     'pods': ('namespace', 'selector'),
@@ -86,6 +88,13 @@ class RawBody(str):
 
 def status_of(code: object) -> int:
     return code if isinstance(code, int) and not isinstance(code, bool) and 400 <= code <= 599 else DEFAULT_STATUS
+
+
+def slot_of(body: object) -> str | None:
+    found = body.get('instance') if isinstance(body, dict) else None
+    if found in (None, ''):
+        return ''
+    return found if isinstance(found, str) and len(found) <= SLOT_NAME_MAX and found.strip() == found else None
 
 
 class AgentError(ReadError):
@@ -173,6 +182,7 @@ class AgentCore:
         self._lock = threading.Lock()
         self._pushed: dict[str, str] = {}
         self._rev = ''
+        self._scoped: dict[tuple[str, str], tuple[str, dict[str, str]]] = {}
 
     def _reads(self) -> dict[str, AgentRead]:
         return {read.op: read for plugin in self.registry.usable() for read in plugin.agent_reads}
@@ -180,7 +190,11 @@ class AgentCore:
     def _patterns(self) -> tuple[str, ...]:
         return tuple(key for read in self._reads().values() for key in read.keys)
 
-    def _config(self, read: AgentRead) -> dict[str, str]:
+    def _config(self, read: AgentRead, instance: str = '') -> dict[str, str]:
+        if instance:
+            with self._lock:
+                held = self._scoped.get((read.op, instance))
+            return {} if held is None else {k: v for k, v in held[1].items() if declared(k, read.keys)}
         with self._lock:
             pushed = {k: v for k, v in self._pushed.items() if declared(k, read.keys)}
         if pushed:
@@ -192,16 +206,18 @@ class AgentCore:
             return {}
         return {k: v for k, v in own.items() if declared(k, read.keys)}
 
-    def _pending(self, read: AgentRead) -> list[str]:
+    def _pending(self, read: AgentRead, instance: str = '') -> list[str]:
+        if instance:
+            return []
         with self._lock:
             if any(declared(k, read.keys) for k in self._pushed):
                 return []
         return list(self.waiting())
 
-    def _names(self, read: AgentRead) -> list[str]:
-        if self._pending(read):
+    def _names(self, read: AgentRead, instance: str = '') -> list[str]:
+        if self._pending(read, instance):
             return []
-        config = self._config(read)
+        config = self._config(read, instance)
         if read.keys and not config:
             return []
         try:
@@ -213,10 +229,20 @@ class AgentCore:
     def reads(self) -> dict[str, list[str]]:
         return {op: self._names(read) for op, read in self._reads().items()}
 
-    def push(self, rev: str, config: dict[str, str]) -> None:
+    def push(self, rev: str, config: dict[str, str], instance: str = '', op: str = '') -> str:
+        if instance:
+            with self._lock:
+                self._scoped.pop((op, instance), None)
+                while config and len(self._scoped) >= SLOTS_MAX:
+                    self._scoped.pop(next(iter(self._scoped)))
+                if config:
+                    self._scoped[(op, instance)] = (str(rev or '')[:64], dict(config))
+            log.info('source settings %s for %s %s taken from the master: %d keys', str(rev or '')[:64] or 'cleared', op, instance, len(config))
+            return str(rev or '')[:64]
         with self._lock:
             self._pushed, self._rev = dict(config), str(rev or '')[:64]
         log.info('source settings %s taken from the master: %d keys', self._rev or 'cleared', len(config))
+        return self._rev
 
     def _refused(self, authorization: str, relay: bool = False) -> tuple[int, dict] | None:
         key = self.token()
@@ -286,6 +312,9 @@ class AgentCore:
             return 400, {'error': msg('agent.body_op')}
         op = body.get('op') if isinstance(body, dict) else None
         args = (body.get('args') or {}) if isinstance(body, dict) else {}
+        instance = slot_of(body)
+        if instance is None:
+            return 422, {'error': msg('agent.instance_name', max=SLOT_NAME_MAX)}
         reads = self._reads()
         read = reads.get(op) if isinstance(op, str) else None
         if read is None:
@@ -295,13 +324,13 @@ class AgentCore:
         unknown = [k for k in args if k not in read.args]
         if unknown:
             return 422, {'error': msg('agent.args_only', op=op, allowed=', '.join(read.args) or msg('agent.args_none'), given=', '.join(map(str, unknown)))}
-        pending = self._pending(read)
+        pending = self._pending(read, instance)
         if pending:
             return 503, {'error': msg('agent.source_pending', source=', '.join(pending))}
-        if not self._names(read):
+        if not self._names(read, instance):
             return 503, {'error': msg('agent.read_off', op=op)}
         try:
-            data = read.run(self._config(read), args)
+            data = read.run(self._config(read, instance), args)
         except ReadError as e:
             return status_of(e.status), {'error': e.message}
         except Exception as e:
@@ -316,14 +345,21 @@ class AgentCore:
         given = body.get('config') if isinstance(body, dict) else None
         if not isinstance(given, dict) or len(given) > KEYS_MAX:
             return 422, {'error': msg('agent.push_shape', max=KEYS_MAX)}
-        patterns = self._patterns()
+        instance = slot_of(body)
+        if instance is None:
+            return 422, {'error': msg('agent.instance_name', max=SLOT_NAME_MAX)}
+        reads = self._reads()
+        op = body.get('op') if instance else ''
+        if instance and (not isinstance(op, str) or op not in reads):
+            return 422, {'error': msg('agent.instance_op', ops=', '.join(reads) or msg('agent.args_none'))}
+        patterns = reads[op].keys if instance else self._patterns()
         unknown = [str(k)[:60] for k in given if not isinstance(k, str) or not declared(k, patterns)]
         if unknown:
             return 422, {'error': msg('agent.push_unknown', keys=', '.join(unknown))}
         if any(not isinstance(v, str) or len(v) > VALUE_LIMIT for v in given.values()):
             return 422, {'error': msg('agent.push_value', max=VALUE_LIMIT)}
-        self.push(str(body.get('rev') or ''), given)
-        return 200, {'rev': self._rev, 'reads': self.reads()}
+        rev = self.push(str(body.get('rev') or ''), given, instance, op)
+        return 200, {'rev': rev, 'reads': self.reads()} | ({'instance': instance} if instance else {})
 
     @staticmethod
     def _routes() -> str:
@@ -516,11 +552,11 @@ class RemoteAgent:
     def kube(self, op: str, **args):
         return self._send('POST', KUBE_PATH, {'op': op, 'args': {k: v for k, v in args.items() if v is not None}}, KUBE_TIMEOUT).get('data')
 
-    def read(self, op: str, args: dict, timeout: float | None = None):
-        return self._send('POST', READ_PATH, {'op': op, 'args': {k: v for k, v in (args or {}).items() if v is not None}}, timeout or READ_TIMEOUT).get('data')
+    def read(self, op: str, args: dict, timeout: float | None = None, instance: str = ''):
+        return self._send('POST', READ_PATH, {'op': op, 'args': {k: v for k, v in (args or {}).items() if v is not None}} | ({'instance': instance} if instance else {}), timeout or READ_TIMEOUT).get('data')
 
-    def push_sources(self, rev: str, config: dict[str, str]) -> dict:
-        return self._send('PUT', SOURCES_PATH, {'rev': rev, 'config': config}, INFO_TIMEOUT)
+    def push_sources(self, rev: str, config: dict[str, str], instance: str = '', op: str = '') -> dict:
+        return self._send('PUT', SOURCES_PATH, {'rev': rev, 'config': config} | ({'instance': instance, 'op': op} if instance else {}), INFO_TIMEOUT)
 
     def _failed(self, e: remote.HttpError) -> AgentError:
         try:

@@ -43,8 +43,8 @@ async function boot(hash, saved) {
 }
 
 const shown = (doc) => [...doc.querySelectorAll('#anoms article.inc')].map((c) => c.dataset.key).sort();
-const pressed = (doc) => [...doc.querySelectorAll('#tab-sub-anoms button[aria-pressed="true"]')].map((b) => b.dataset.f);
-const chip = (doc, f) => doc.querySelector('#tab-sub-anoms button[data-f="' + f + '"]');
+const pressed = (doc) => [...doc.querySelectorAll('#panel-anoms .qf-c[aria-pressed="true"]')].map((b) => b.dataset.f);
+const chip = (doc, f) => doc.querySelector('#panel-anoms .qf-c[data-f="' + f + '"]');
 
 (async () => {
   //given

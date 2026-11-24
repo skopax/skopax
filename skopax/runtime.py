@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import re
+import secrets
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -26,7 +27,7 @@ from skopax.kube import Kube
 from skopax.messages import LANG_TAG, msg
 from skopax.migrations import MigrationFailed
 from skopax.redact import SlowRules, redact_text
-from skopax.instances import (ADMIN, AGENT_PLUGIN, REFRESH_S, Instance, InstanceMissing, Instances, InvalidInstance, PluginState, address_owners, agent_fields, checks_off, effective_fields,
+from skopax.instances import (ADMIN, AGENT_PLUGIN, REFRESH_S, Instance, InstanceMissing, Instances, InvalidInstance, PluginState, address_owners, agent_fields, checks_off, effective_fields, node_config, node_of,
                               hub_problem, merged_values, moved_addresses, validate, visible)
 from skopax.registry import Registry, field_view, problem
 from skopax.routes import Parsed, Route, route_of
@@ -97,6 +98,8 @@ def picked(raw: object, separator: str, secrets: Iterable[str]) -> list[str]:
 ORG_KEYS = ('link_hosts', 'email_domains', 'ticket_projects')
 ASSET_MAX_BYTES = 2 * 1024 * 1024
 TEST_SUMMARY_MAX = 300
+UNSAVED_SLOT = '-'
+SLOT_WAIT_S = 1.0
 SUGGEST_MAX = 2000
 SUGGEST_VALUE_MAX = 200
 SUGGEST_SECRET_MIN = 4
@@ -191,6 +194,8 @@ class RunContext:
         self.testing = False
         self._reads = reads
         self._tool_reads: list = []
+        self._unsaved = ''
+        self._used: set[tuple[str, str, str]] = set()
 
     def http(self) -> Transport:
         return self.runtime.transport_for(self.plugin, self.instance)
@@ -256,6 +261,30 @@ class RunContext:
 
     def agent_read(self, agent: str, op: str, args: dict) -> object:
         return self.runtime.agent_read(agent, op, args)
+
+    def node_read(self, op: str, args: dict) -> object:
+        read = next((r for r in self.plugin.agent_reads if r.op == op and r.node_keys is not None), None)
+        if read is None:
+            raise ReadError(404, msg('agent.node_op', op=str(op)[:40], plugin=self.plugin.id))
+        node = node_of(self.instance)
+        if not node:
+            raise ReadError(400, msg('agent.no_node', op=op))
+        slot = self._slot_name()
+        self._used.add((node, op, slot))
+        return self.runtime.agent_read(node, op, args, slot, node_config(read, self.instance.config))
+
+    def _slot_name(self) -> str:
+        name = self.instance.name if self.instance is not None else ''
+        if name and name != '-':
+            return name
+        if not self._unsaved:
+            self._unsaved = UNSAVED_SLOT + secrets.token_hex(6)
+        return self._unsaved
+
+    def forget_unsaved(self) -> None:
+        for node, op, slot in sorted(self._used):
+            if slot == self._unsaved:
+                self.runtime.forget_slot(node, op, slot)
 
     def _host_only(self) -> None:
         if self.plugin.id != AGENT_PLUGIN or self.instance is None:
@@ -354,7 +383,9 @@ class Runtime:
         self._compiled: dict[tuple[str, str, str], regex.Pattern] = {}
         self._slow = SlowRules(log)
         self._warned: set[tuple] = set()
-        self._pushed: dict[str, tuple[tuple, str]] = {}
+        self._pushed: dict[tuple[str, str, str], tuple[tuple, str, str, str]] = {}
+        self._flat: set[str] = set()
+        self._node_locks: dict[str, threading.RLock] = {}
         self._tests: dict[tuple[str, str | None], threading.Thread] = {}
         self._suggesting: dict[tuple[str, str | None, str], threading.Thread] = {}
         self._probing: dict[tuple[str, str], tuple[dict, threading.Event]] = {}
@@ -370,8 +401,8 @@ class Runtime:
             self._compiled = {}
         steps = [('migrate', self._catch_up)] if self.migrate is not None else []
         after = [(name, part) for name, part in (('languages', self.languages), ('heal', self.after_refresh)) if part is not None]
-        for name, part in steps + [('registry', self.registry.refresh), ('daily', self._publish_daily), ('state', self.state.refresh), ('instances', self.instances.refresh), ('org', self._refresh_org)] + after:
-            if name in ('registry', 'daily', 'instances', 'org'):
+        for name, part in steps + [('registry', self.registry.refresh), ('daily', self._publish_daily), ('state', self.state.refresh), ('instances', self.instances.refresh), ('org', self._refresh_org), ('slots', self._forget_stale)] + after:
+            if name in ('registry', 'daily', 'instances', 'org', 'slots'):
                 self._step(name, part)
                 continue
             try:
@@ -478,35 +509,86 @@ class Runtime:
         given = {**found.values, **found.secrets}
         return {k: given[k] for k in sorted(keys) if given.get(k) and declared(k, patterns)}
 
-    def agent_read(self, agent: str, op: str, args: dict) -> object:
+    def agent_read(self, agent: str, op: str, args: dict, instance: str = '', given: Mapping[str, str] | None = None) -> object:
         reads = {read.op: read for plugin in self.active() for read in plugin.agent_reads}
         read = reads.get(op) if isinstance(op, str) else None
         if read is None:
             raise ReadError(404, msg('agent.op_unknown', ops=', '.join(reads)) if reads else msg('agent.no_reads'))
         found = self._agent(agent)
         remote_agent = self.agent_for(agent)
-        config = self._agent_config(found)
-        rev = rev_of(config)
-        target = (found.values.get('url'), found.values.get('via') or '')
-        with self._guard:
-            last = self._pushed.get(agent)
-        if (last is None and rev) or (last is not None and last != (target, rev)):
-            self._push(agent, remote_agent, target, rev, config)
+        config = {k: given[k] for k in sorted(given or {}) if isinstance(given[k], str) and given[k] and declared(k, read.keys)} if instance else self._agent_config(found)
+        mark = ((found.values.get('url'), found.values.get('via') or ''), rev_of(config), op if instance else '', instance)
         timeout = min(max(read.timeout, READ_TIMEOUT_MIN), READ_TIMEOUT_MAX)
+        lock = self._lock_of(agent)
+        with lock:
+            with self._guard:
+                last = self._pushed.get(self._slot(agent, mark))
+            if (last is None and mark[1]) or (last is not None and last != mark):
+                self._push(agent, remote_agent, mark, config)
+            if agent in self._flat:
+                return self._read_once(agent, remote_agent, op, args, timeout, mark, config, lock)
+        return self._read_once(agent, remote_agent, op, args, timeout, mark, config, lock)
+
+    def _read_once(self, agent: str, remote_agent: RemoteAgent, op: str, args: dict, timeout: float, mark: tuple, config: dict[str, str], lock: threading.RLock) -> object:
         try:
-            return remote_agent.read(op, args or {}, timeout)
+            return remote_agent.read(op, args or {}, timeout, mark[3])
         except AgentError as e:
             if e.code != 503 or not config:
                 raise
-        with self._guard:
-            self._pushed.pop(agent, None)
-        self._push(agent, remote_agent, target, rev, config)
-        return remote_agent.read(op, args or {}, timeout)
+        with lock:
+            with self._guard:
+                self._pushed.pop(self._slot(agent, mark), None)
+            self._push(agent, remote_agent, mark, config)
+            if agent in self._flat:
+                return remote_agent.read(op, args or {}, timeout, mark[3])
+        return remote_agent.read(op, args or {}, timeout, mark[3])
 
-    def _push(self, agent: str, remote_agent: RemoteAgent, target: tuple, rev: str, config: dict[str, str]) -> None:
-        remote_agent.push_sources(rev, config)
+    def _lock_of(self, agent: str) -> threading.RLock:
         with self._guard:
-            self._pushed[agent] = (target, rev)
+            return self._node_locks.setdefault(agent, threading.RLock())
+
+    def forget_slot(self, agent: str, op: str, instance: str, wait: float = -1) -> bool:
+        lock = self._lock_of(agent)
+        if not lock.acquire(timeout=wait):
+            return False
+        try:
+            gone = self.instances.get(AGENT_PLUGIN, agent) is None
+            if not gone:
+                try:
+                    self.agent_for(agent).push_sources('', {}, instance, op)
+                except Exception as e:
+                    if ('slot', agent, op, instance) not in self._warned:
+                        self._warned.add(('slot', agent, op, instance))
+                        log.warning('%s', msg('agent.slot_not_cleared', label=agent, instance=instance, error=kind(e)))
+                    return False
+            with self._guard:
+                for key in [k for k, m in self._pushed.items() if k[0] == agent and m[2] == op and m[3] == instance]:
+                    del self._pushed[key]
+            self._warned.discard(('slot', agent, op, instance))
+            return True
+        finally:
+            lock.release()
+
+    def _forget_stale(self) -> None:
+        live = {(node_of(i), read.op, i.name) for p in self.registry.usable() for read in p.agent_reads if read.node_keys is not None for i in self.instances.all(p.id) if node_of(i)}
+        with self._guard:
+            stale = {(k[0], m[2], m[3]) for k, m in self._pushed.items() if m[3] and not m[3].startswith(UNSAVED_SLOT) and (k[0], m[2], m[3]) not in live}
+        for agent, op, instance in sorted(stale):
+            self.forget_slot(agent, op, instance, SLOT_WAIT_S)
+
+    def _slot(self, agent: str, mark: tuple) -> tuple[str, str, str]:
+        return (agent, '', '') if agent in self._flat or not mark[3] else (agent, mark[2], mark[3])
+
+    def _push(self, agent: str, remote_agent: RemoteAgent, mark: tuple, config: dict[str, str]) -> None:
+        op, instance = mark[2], mark[3]
+        answer = remote_agent.push_sources(mark[1], config, instance, op)
+        with self._guard:
+            if instance and not (isinstance(answer, dict) and answer.get('instance') == instance):
+                self._flat.add(agent)
+                self._pushed = {k: v for k, v in self._pushed.items() if k[0] != agent or not k[2]}
+            elif instance:
+                self._flat.discard(agent)
+            self._pushed[self._slot(agent, mark)] = mark
 
     def active(self) -> list[Plugin]:
         return [p for p in self.registry.usable() if self.state.enabled(p.id)]
@@ -564,6 +646,7 @@ class Runtime:
         key = (plugin.id, name)
 
         def go() -> None:
+            ctx = None
             try:
                 ctx = self.context(plugin, temp, now)
                 ctx.testing = True
@@ -571,6 +654,8 @@ class Runtime:
             except BaseException as e:
                 box['error'] = e
             finally:
+                if ctx is not None:
+                    ctx.forget_unsaved()
                 with self._guard:
                     if self._tests.get(key) is threading.current_thread():
                         del self._tests[key]
@@ -1212,9 +1297,6 @@ class Runtime:
 
     def _packs(self, plugin: Plugin) -> list[str]:
         return [f'i18n-{lang}.js' for lang in dict.fromkeys(locale.lang for locale in self._valid(plugin, 'locales') if on_page(locale))]
-
-    def page_packs(self) -> list[str]:
-        return [f'/plugins/{plugin.id}/{file}' for plugin in self._plugins() for file in self._packs(plugin)]
 
     def page_scripts(self) -> list[str]:
         out: list[str] = []

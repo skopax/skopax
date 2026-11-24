@@ -20,6 +20,8 @@ from skopax.store import NotFound, Store, new_id
 log = logging.getLogger('skopax.noticemail')
 
 KINDS = tuple(LABELS)
+OFF_BY_DEFAULT = ('answer',)
+DEFAULT_KINDS = tuple(k for k in KINDS if k not in OFF_BY_DEFAULT)
 MAIL_KIND = 'notice'
 SUMMARY = 'summary'
 PER_HOUR = 20
@@ -34,6 +36,8 @@ OFFSET = 7
 PREFS = '/#t=prefs'
 INBOX = '/#t=slack'
 WHY_LIMIT = 200
+ANSWER_OFF_OWNER = 'core-answer-mail-off'
+ANSWER_OFF_VERSION = 1
 CHOSE_ON = {'$or': [{'mailNotices.on': True}, {'mailNotices.on': {'$ne': False}, 'lastLogin': {'$ne': None}, 'opened': {'$ne': False}}]}
 
 
@@ -42,7 +46,21 @@ def choice(doc: dict | None) -> dict:
     held = held if isinstance(held, dict) else {}
     kinds = held.get('kinds')
     signed = (doc or {}).get('lastLogin') is not None and (doc or {}).get('opened') is not False
-    return {'on': held.get('on') is True or (held.get('on') is not False and signed), 'kinds': [k for k in KINDS if k in kinds] if isinstance(kinds, list) else list(KINDS)}
+    return {'on': held.get('on') is True or (held.get('on') is not False and signed), 'kinds': [k for k in KINDS if k in kinds] if isinstance(kinds, list) else list(DEFAULT_KINDS)}
+
+
+def answer_off_once(db, clock=time.time) -> int | None:
+    col = db['schema_version']
+    try:
+        if int((col.find_one({'_id': ANSWER_OFF_OWNER}) or {}).get('version', 0)) >= ANSWER_OFF_VERSION:
+            return None
+        changed = db['users'].update_many({'mailNotices.kinds': 'answer'}, {'$pull': {'mailNotices.kinds': 'answer'}}).modified_count
+        col.update_one({'_id': ANSWER_OFF_OWNER}, {'$max': {'version': ANSWER_OFF_VERSION}, '$push': {'applied': {'version': ANSWER_OFF_VERSION, 'name': 'chat-answer-mail-off', 'at': dt.datetime.fromtimestamp(clock(), dt.timezone.utc).isoformat()}}}, upsert=True)
+    except PyMongoError as e:
+        log.warning('chat answer mail not switched off in saved choices, the next start tries again: %s', error_kind(e))
+        return None
+    log.info('chat answer mail switched off in %d saved choices', changed)
+    return changed
 
 
 def wants(doc: dict | None, kind: str) -> bool:

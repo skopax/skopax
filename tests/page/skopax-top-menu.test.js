@@ -14,6 +14,7 @@ async function boot(hash, me) {
   const dom = new JSDOM(pageHtml(process.argv[2]).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state)), {url: 'https://skopax.example.com/' + (hash || ''), runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
       w.scrollTo = () => {};
+      w.localStorage.setItem('skopax-sidebar', 'full');
       w.Element.prototype.scrollIntoView = function () {};
       w.fetch = async (p) => {
         p = String(p);
@@ -39,8 +40,7 @@ async function theOldSkopaxMenuTabsSitInTheActivityAndConnectGroups() {
   //then
   assert.deepStrictEqual(rows('activity').concat(rows('connect'), rows('more')), MENU.concat(['docs']), 'the old Skopax menu tabs keep their order across Activity, Connect and More, with Docs last');
   assert.ok(!doc.getElementById('menu-product') && !doc.getElementById('tabs-product') && !doc.getElementById('toptabs'), 'no top-bar menu any more');
-  assert.ok(!doc.getElementById('tabs-misc') && MENU.every((id) => !doc.querySelector('#tabs [data-tab="' + id + '"]')), 'the filter column has no Misc group');
-  assert.deepStrictEqual([...doc.querySelectorAll('#tabs .tabs-l')].map((l) => l.textContent), ['Anomaly filters'], 'the filter column keeps only the anomaly filters');
+  assert.ok(!doc.getElementById('tabs') && MENU.every((id) => !doc.querySelector('#panel-anoms [data-tab="' + id + '"]')), 'there is no filter column any more');
 
   //when
   doc.getElementById('tab-costs').click();

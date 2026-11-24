@@ -138,7 +138,7 @@ async function warnRowOpensItsCards() {
   assert.strictEqual(chip(doc, 'bad').getAttribute('aria-pressed'), 'true', 'service kind chip kept');
   assert.strictEqual(doc.activeElement, row(doc, 'catalog-service').querySelector('button.go'), 'focus back on the row it came from');
   assert.ok(/^Showing Open/.test(doc.getElementById('filter-note').textContent) && !doc.getElementById('back-svcs'), 'anomaly filter reset to Open, the default');
-  assert.strictEqual(doc.querySelector('#tab-sub-anoms button[aria-pressed="true"]').dataset.f, 'open');
+  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[aria-pressed="true"]').dataset.f, 'open');
 
   //when
   row(doc, 'orders-service').querySelector('button.go').click();
@@ -231,19 +231,14 @@ async function severityChipsFilterTheOpenCards() {
   ];
   const serve = {rev: 5, state: base(5, anomalies, [svc('catalog-service', 'store', 'app', 'ok', 9000)])};
   const {doc, errors, dom} = await boot(serve);
-  const groups = [...doc.querySelectorAll('#tab-sub-anoms .tab-sub-g')];
-  const sevGroup = groups[0];
-  const listGroup = groups.find((g) => (g.querySelector('.tab-sub-l') || {}).textContent === 'Lists');
-  const sevItem = (f) => doc.querySelector('#tab-sub-anoms .tab-sub-g button[data-f="' + f + '"]');
+  const sevItem = (f) => doc.querySelector('#panel-anoms .qf-c[data-f="' + f + '"]');
   const txt = (b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent;
-  const statusPressed = () => doc.querySelector('#tab-sub-anoms .tab-sub-g').querySelector('button:not(.child)[aria-pressed="true"]');
+  const statusPressed = () => ['open', 'taken', 'all', 'progress', 'muted', 'cleared'].map(sevItem).find((b) => b.getAttribute('aria-pressed') === 'true') || null;
 
   //then
-  assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child')].map(txt), ['Critical 1', 'High 0', 'Warning 2'], 'open counts in the side menu; muted and cleared cards left out, and no Info filter');
-  assert.deepStrictEqual([...listGroup.querySelectorAll('button.tab-sub-i')].map(txt), ['Archived 0', 'Closed '], 'Lists holds Archived and Closed; Closed has no count until its list is loaded');
-  assert.deepStrictEqual([...sevGroup.querySelectorAll('button.child.zero')].map((b) => b.dataset.f).concat([...listGroup.querySelectorAll('button.zero')].map((b) => b.dataset.f)), ['high', 'archived', 'closed'], 'zero items are faded');
-  assert.ok(sevItem('open').nextElementSibling === sevItem('crit') && !groups[0].querySelector('.tab-sub-l') && groups.indexOf(listGroup) === 1, 'the severities sit right under Open, in the unlabelled status group');
-  assert.ok(groups.every((g) => !/Triage/.test(g.textContent)), 'no Triage group while nothing is investigating or investigated');
+  assert.deepStrictEqual(['crit', 'high', 'warn'].map(sevItem).map(txt), ['Critical 1', 'High 0', 'Warning 2'], 'open counts on the chips; muted and cleared cards left out, and no Info filter');
+  assert.deepStrictEqual(['archived', 'closed'].map(sevItem).map(txt), ['Archived 0', 'Closed '], 'the fold holds Archived and Closed; Closed has no count until its list is loaded');
+  assert.deepStrictEqual(['crit', 'high', 'warn', 'archived', 'closed'].map(sevItem).filter((b) => b.classList.contains('zero')).map((b) => b.dataset.f), ['high', 'archived', 'closed'], 'zero items are faded');
   assert.ok(!doc.getElementById('sev-chips') && !doc.getElementById('anom-chips') && !doc.getElementById('filters'), 'the chips row is gone from the Anomalies tab');
   assert.match(sevItem('crit').title, /^open critical items \(pushed\) \u00b7 opens Board filtered to Critical, click again for all open$/);
   const anoms = doc.getElementById('tab-anoms');
@@ -268,7 +263,7 @@ async function severityChipsFilterTheOpenCards() {
   assert.strictEqual(doc.getElementById('clear-f'), null, 'Open is the default filter, so the line offers no way back');
   assert.ok(!navigated(errors) && !errors.length, 'no errors: ' + errors.join(' | '));
   dom.window.close();
-  return 'Critical / Warning / Info in the side menu sub menu (group Open, counts, zero-faded) filter the open cards and toggle back; no chips row on the tab; the Anomalies tab takes the worst severity with an N critical \u00b7 N warning tooltip; the filter line tooltip keeps the counts';
+  return 'Critical / Warning / Info chips in the toolbar (counts, zero-faded) filter the open cards and toggle back; no chips row on the tab; the Anomalies tab takes the worst severity with an N critical \u00b7 N warning tooltip; the filter line tooltip keeps the counts';
 }
 
 async function inProgressSplitsFromActionTaken() {
@@ -280,11 +275,10 @@ async function inProgressSplitsFromActionTaken() {
   ];
   const serve = {rev: 5, state: base(5, anomalies, [svc('catalog-service', 'store', 'app', 'ok', 9000)])};
   const {doc, errors, dom} = await boot(serve);
-  const statusGroup = doc.querySelector('#tab-sub-anoms .tab-sub-g');
-  const seg = (f) => statusGroup.querySelector('button[data-f="' + f + '"]');
+  const seg = (f) => doc.querySelector('#panel-anoms .qf-c[data-f="' + f + '"]');
 
   //then
-  assert.deepStrictEqual([...statusGroup.querySelectorAll('button:not(.child)')].map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['All 3', 'Open 1', 'In progress 1', 'Done 1', 'Muted 0', 'Stopped firing 0'], 'All first, the default; In progress is its own filter, after Open, before Done');
+  assert.deepStrictEqual(['all', 'open', 'progress', 'taken', 'muted', 'cleared'].map(seg).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['All 3', 'Open 1', 'In progress 1', 'Done 1', 'Muted 0', 'Stopped firing 0'], 'All first, the default; In progress is its own filter, after Open, before Done');
   assert.match(doc.getElementById('filter-note').title, /1 in progress \u00b7 1 done/, 'the filter line tooltip counts the two buckets apart');
 
   //when
@@ -357,8 +351,8 @@ async function highSitsBetweenCriticalAndWarning() {
   ];
   const serve = {rev: 7, state: base(7, anomalies, [svc('catalog-service', 'store', 'app', 'ok', 9000), svc('orders-service', 'store', 'app', 'ok', 8000), svc('pricing-service', 'store', 'app', 'ok', 7000)])};
   const {doc, errors, dom} = await boot(serve);
-  const sevItem = (f) => doc.querySelector('#tab-sub-anoms .tab-sub-g button[data-f="' + f + '"]');
-  const chips = [...doc.querySelectorAll('#tab-sub-anoms .tab-sub-g button.child')].map((b) => b.dataset.f + ':' + b.querySelector('.count').textContent);
+  const sevItem = (f) => doc.querySelector('#panel-anoms .qf-c[data-f="' + f + '"]');
+  const chips = ['crit', 'high', 'warn'].map(sevItem).map((b) => b.dataset.f + ':' + b.querySelector('.count').textContent);
   const tpl = require('fs').readFileSync(TEMPLATE, 'utf8');
 
   //when
@@ -367,17 +361,17 @@ async function highSitsBetweenCriticalAndWarning() {
   const pill = doc.querySelector('#anoms article.inc .sev');
 
   //then
-  assert.deepStrictEqual(chips, ['crit:1', 'high:1', 'warn:1'], 'High sits between Critical and Warning in the side menu');
+  assert.deepStrictEqual(chips, ['crit:1', 'high:1', 'warn:1'], 'High sits between Critical and Warning between the chips');
   assert.ok(sevItem('high').classList.contains('k-high'), 'the High filter wears the high colour');
   assert.deepStrictEqual(onlyHigh, ['5xx|store/orders-service'], 'High shows the open high cards only');
   assert.ok(pill && pill.classList.contains('k-high') && pill.textContent === 'High', 'a high card says High in the high colour');
   assert.strictEqual(doc.getElementById('tab-anoms').title, '1 critical \u00b7 1 high \u00b7 1 warning');
   assert.ok(/\.k-high \{ --c: var\(--high\); --cb: var\(--high-bg\); \}/.test(tpl), 'k-high reads the high tokens');
-  assert.strictEqual((tpl.match(/--high: #[0-9a-f]{6}; --high-bg:/g) || []).length, 4, 'the light theme, both dark blocks and the sidebar set the high colour');
+  assert.strictEqual((tpl.match(/--high: #[0-9a-f]{6}; --high-bg:/g) || []).length, 5, 'the light theme, both dark blocks and both dark sidebar blocks set the high colour');
   assert.ok(/--high: #ff8c42; --high-bg: rgba\(255, 140, 66, 0\.14\);/.test(tpl), 'the sidebar sets it too');
   assert.ok(!errors.length, 'no errors: ' + errors.join(' | '));
   dom.window.close();
-  return 'High sits between Critical and Warning: the side menu filter and its colour, the card pill, the tab tooltip and the theme tokens';
+  return 'High sits between Critical and Warning: the filter chip and its colour, the card pill, the tab tooltip and the theme tokens';
 }
 
 function rgbOf(hex) { return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)); }
@@ -398,9 +392,9 @@ function over(rgba, under) {
 
 async function highIsAClearOrangeApartFromWarning() {
   //given
-  const tpl = require('fs').readFileSync(TEMPLATE, 'utf8');
+  const tpl = require('fs').readFileSync(TEMPLATE, 'utf8').replace(/\n\.side \{[^}]*\}\n/, '\n');
   const all = (name) => [...tpl.matchAll(new RegExp('--' + name + ': (#[0-9a-f]{6}|rgba\\([^)]*\\))', 'g'))].map((m) => m[1]);
-  const high = all('high'), highBg = all('high-bg'), warn = all('warn'), crit = all('crit'), bar = rgbOf(all('bar-bg')[0]);
+  const high = all('high'), highBg = all('high-bg'), warn = all('warn'), crit = all('crit'), bar = rgbOf(all('bar-bg')[1]);
   const themes = [
     {name: 'light', surfaces: [all('surface')[0], all('bg')[0], all('sunken')[0], all('raised')[0], all('hover')[0], all('active')[0], highBg[0]].map(rgbOf)},
     {name: 'dark', surfaces: [all('surface')[1], all('bg')[1], all('sunken')[1], all('raised')[1], all('hover')[1], all('active')[1], highBg[1]].map(rgbOf)},
@@ -409,7 +403,7 @@ async function highIsAClearOrangeApartFromWarning() {
   ];
 
   //then
-  assert.deepStrictEqual(high, ['#b54400', '#ff7a2e', '#ff7a2e', '#ff8c42'], 'a purer orange in light, dark and the sidebar');
+  assert.deepStrictEqual(high, ['#b54400', '#ff7a2e', '#ff7a2e', '#ff8c42', '#ff8c42'], 'a purer orange in light, dark and the sidebar');
   themes.forEach((t, i) => {
     const h = rgbOf(high[i]), tone = hueOf(h), w = hueOf(rgbOf(warn[i])), c = hueOf(rgbOf(crit[i]));
     for (const s of t.surfaces) assert.ok(ratio(h, s) >= 4.5, t.name + ' high text contrast ' + ratio(h, s).toFixed(2) + ' is below 4.5');

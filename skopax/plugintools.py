@@ -65,6 +65,21 @@ def related_names(asked: str, names: list[str]) -> list[str]:
     return [n for n in names if low in n.lower() or n.lower() in low]
 
 
+def named_choice(tool: Tool, field: str, names: list[str], args: dict, text: str) -> str | None:
+    key = text.partition(' must be one of ')[0]
+    choices = ((tool.input_schema.get('properties') or {}).get(key) or {}).get('enum') if key != field and ' must be one of ' in text else None
+    value = args.get(key)
+    if not choices or not isinstance(value, str):
+        return None
+    found = re.fullmatch('(.+?)[-_ ]+(' + '|'.join(re.escape(str(c)) for c in choices) + ')', value.strip(), re.I)
+    if found is None:
+        return None
+    if found.group(1) not in names:
+        return msg('plugintools.named_unknown', key=key, value=value.strip()[:60], field=field, name=found.group(1)[:60], names=', '.join(names), choices=', '.join(str(c) for c in choices))
+    choice = next(str(c) for c in choices if str(c).lower() == found.group(2).lower())
+    return msg('plugintools.named_choice', key=key, value=value.strip()[:60], field=field, name=found.group(1), choice=choice)
+
+
 def error_room(room: object) -> int:
     if not isinstance(room, int) or isinstance(room, bool) or room <= 0:
         return ERROR_LIMIT
@@ -160,6 +175,8 @@ class PluginTools:
         asked = args.get(field) if field and isinstance(args, dict) else None
         if entry is not None and field and isinstance(asked, str) and asked not in [i.name for i in entry[2]] and text.startswith(f'{field} must be one of'):
             text += self._not_here(entry[1], field, asked, [i.name for i in entry[2]], among)
+        elif entry is not None and field and isinstance(args, dict):
+            text = named_choice(entry[1], field, [i.name for i in entry[2]], args, text) or text
         return self._refuse(text, asked)
 
     def default_instance(self, name: str) -> str | None:

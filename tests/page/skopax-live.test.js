@@ -76,7 +76,7 @@ async function liveUpdateKeepsTheView() {
   const {w, doc, errors, calls, scrolls, dom} = await boot(serve);
   assert.ok(!expanded(card(doc, 'err|orders-service|ERROR')), 'a reload starts collapsed, even with an old skopax-open key in localStorage');
   expand(card(doc, 'err|orders-service|ERROR'));
-  doc.querySelector('#tab-sub-anoms button[data-f="all"]').click();
+  doc.querySelector('#panel-anoms .qf-c[data-f="all"]').click();
   doc.querySelector('#svc-chips button[data-f="app"]').click();
   const knownBtn = [...card(doc, 'err|orders-service|ERROR').querySelectorAll('.acts button')].find((b) => b.textContent === 'Known noise');
   knownBtn.click();
@@ -100,7 +100,7 @@ async function liveUpdateKeepsTheView() {
   assert.strictEqual(before.svcTab, 'page');
   assert.strictEqual(doc.getElementById('tab-svcs').getAttribute('aria-current'), 'page', 'Services tab still selected');
   assert.ok(!doc.getElementById('panel-svcs').hidden && doc.getElementById('panel-anoms').hidden, 'panels unchanged');
-  assert.strictEqual(doc.querySelector('#tab-sub-anoms button[data-f="all"]').getAttribute('aria-pressed'), 'true', 'All filter kept');
+  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-f="all"]').getAttribute('aria-pressed'), 'true', 'All filter kept');
   assert.match(doc.getElementById('filter-note').textContent, /^Showing All3/, 'the filter line follows the live update: ' + doc.getElementById('filter-note').textContent);
   assert.strictEqual(doc.querySelector('#svc-chips button[data-f="app"]').getAttribute('aria-pressed'), 'true', 'service kind chip kept');
   const orders = card(doc, 'err|orders-service|ERROR');
@@ -121,7 +121,7 @@ async function liveUpdateKeepsTheView() {
   assert.ok(!doc.getElementById('tiles') && !doc.querySelector('.pill'), 'no count pills');
   assert.strictEqual(doc.getElementById('tab-anoms').title, '1 critical \u00b7 1 warning', 'the Anomalies tab tooltip counts the new card and never information');
   assert.ok(doc.getElementById('tab-anoms').classList.contains('k-crit') && doc.getElementById('tab-anoms').classList.contains('hot'), 'and takes the worst open severity');
-  assert.deepStrictEqual([...doc.querySelectorAll('#tab-sub-anoms button')].filter((b) => ['crit', 'warn', 'info', 'slack'].includes(b.dataset.f)).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['Critical 1', 'Warning 1'], 'the severity filters in the side menu follow the live update');
+  assert.deepStrictEqual([...doc.querySelectorAll('#panel-anoms .qf-c')].filter((b) => ['crit', 'warn', 'info', 'slack'].includes(b.dataset.f)).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['Critical 1', 'Warning 1'], 'the severity chips follow the live update');
   await wait(4100);
   assert.ok(!card(doc, 'restart|payments-api|restarts').classList.contains('linked'), 'highlight is brief');
   dom.window.close();
@@ -209,9 +209,9 @@ async function pastedCardLinkJumpsInAnOpenTab() {
   const handled = anomaly('restart|payments-api|restarts', 'warn', {status: 'cleared', triage: 'handled', clearedAt: iso(10)});
   const serve = {rev: 5, state: stateAt(5, {headline: 'one', ordersNow: 40, extra: [handled]})};
   const {w, doc, errors, dom} = await boot(serve);
-  const pressed = () => doc.querySelector('#tab-sub-anoms button[aria-pressed="true"]').dataset.f;
+  const pressed = () => doc.querySelector('#panel-anoms .qf-c[aria-pressed="true"]').dataset.f;
   assert.strictEqual(pressed(), 'open', 'Anomalies opens on Open');
-  doc.querySelector('#tab-sub-anoms button[data-f="open"]').click();
+  doc.querySelector('#panel-anoms .qf-c[data-f="open"]').click();
   assert.strictEqual(pressed(), 'open');
   assert.ok(!card(doc, handled.key), 'handled card is not in the Open view');
 
@@ -311,7 +311,7 @@ async function cardsCollapseToOneRow() {
   //given
   const serve = {rev: 5, state: rowState(5, 40)};
   const {w, doc, errors, dom} = await boot(serve);
-  doc.querySelector('#tab-sub-anoms button[data-f="all"]').click();
+  doc.querySelector('#panel-anoms .qf-c[data-f="all"]').click();
   const c = (key) => card(doc, key);
   const fold = (key) => c(key).querySelector('.inc-title .fold');
   const panel = (key) => c(key).querySelector('.inc-more');
@@ -347,7 +347,7 @@ async function cardsCollapseToOneRow() {
   assert.strictEqual(rowTags(MUTED)[0], 'Muted', 'Muted before Cleared');
   assert.deepStrictEqual(restTags(MUTED).map((t) => t.replace(/\d{1,2} [A-Z][a-z]{2} \d\d:\d\d/, 'D Mon HH:MM')), ['Stopped firing D Mon HH:MM'], 'a muted card reads the short words with its time');
   assert.match(rowTags(CLEARED)[0], /^Stopped firing \d{1,2} [A-Z][a-z]{2} \d\d:\d\d$/, 'the cleared time carries its day');
-  assert.ok(c(ORDERS).querySelector('.rec-line') && !inCard(c(ORDERS), c(ORDERS).querySelector('.rec-line')), 'the Next line is in the panel too');
+  assert.ok(c(ORDERS).querySelector('.card-todo') && !inCard(c(ORDERS), c(ORDERS).querySelector('.card-todo')), 'What to do is in the panel too');
   assert.ok(!c(ORDERS).querySelector('.acts').hidden && inCard(c(ORDERS), c(ORDERS).querySelector('.acts button.icon')), 'action icons stay on the collapsed row');
 
   //when
@@ -355,9 +355,11 @@ async function cardsCollapseToOneRow() {
 
   //then
   assert.ok(isOpen(ORDERS), 'a click on the title area expands the card');
-  for (const sel of ['.line', '.inc-tags', '.rec-line', '.inc-body', '.notif']) assert.ok(inCard(c(ORDERS), c(ORDERS).querySelector(sel)), sel + ' shown once expanded');
-  const order = ['.line', '.inc-tags', '.rec-line', '.inc-body', '.notif'].map((s) => [...panel(ORDERS).querySelector('.cd-details').children].indexOf(panel(ORDERS).querySelector('.cd-details > ' + s)));
-  assert.deepStrictEqual(order, [0, 1, 2, 3, 4], 'panel order: numbers, tags, Next, analysis, Notify');
+  for (const sel of ['.card-state', '.inc-tags', '.card-todo', '.tech-fold', '.notif']) assert.ok(inCard(c(ORDERS), c(ORDERS).querySelector(sel)), sel + ' shown once expanded');
+  const order = ['.card-state', '.inc-tags', '.card-todo', '.tech-fold', '.notif'].map((s) => [...panel(ORDERS).querySelector('.cd-details').children].indexOf(panel(ORDERS).querySelector('.cd-details > ' + s)));
+  assert.deepStrictEqual(order, [...order].sort((x, y) => x - y), 'panel order: state, tags, What to do, Technical details, Notify');
+  assert.ok(order.every((n) => n >= 0), order.join(','));
+  assert.ok(panel(ORDERS).querySelector('.tech-fold > .line') && panel(ORDERS).querySelector('.tech-fold > .inc-body'), 'numbers and analysis sit in Technical details');
   assert.match(panel(ORDERS).querySelector('.inc-body').textContent, /first suspect/, 'the analysis shows directly');
   assert.ok(!isOpen(CART), 'other cards stay collapsed');
 
@@ -407,10 +409,10 @@ async function cardsCollapseToOneRow() {
   assert.ok(isOpen(CART), 'and stays expanded over the next live update');
   assert.ok(!navigated(errors), errors.join(' | '));
   dom.window.close();
-  return 'anomaly cards collapse to one row (chevron, sev, title button, one status tag: armed auto-send \u2192 triage \u2192 Muted \u2192 Cleared, change chip, icons); numbers, other tags, Next, analysis and Notify sit in the panel in that order; a title click toggles, icons and tag links do not; open state survives a re-render and a deep link opens the card expanded';
+  return 'anomaly cards collapse to one row (chevron, sev, title button, one status tag: armed auto-send \u2192 triage \u2192 Muted \u2192 Cleared, change chip, icons); the state line, other tags, What to do, Technical details (numbers and analysis) and Notify sit in the panel in that order; a title click toggles, icons and tag links do not; open state survives a re-render and a deep link opens the card expanded';
 }
 
-async function anomalyFiltersInTheSideMenu() {
+async function anomalyFiltersInTheToolbar() {
   //given
   const cleared = {status: 'cleared', clearedAt: iso(60)};
   const extra = [
@@ -421,9 +423,8 @@ async function anomalyFiltersInTheSideMenu() {
   ];
   const serve = {rev: 5, tab: 'anoms', state: stateAt(5, {headline: 'h', ordersNow: 40, extra})};
   const {w, doc, errors, dom} = await boot(serve);
-  const sub = doc.getElementById('tab-sub-anoms'), foldBtn = doc.getElementById('tab-fold-anoms');
-  const items = () => [...sub.querySelectorAll('button[data-f]')];
-  const item = (f) => sub.querySelector('button[data-f="' + f + '"]');
+  const items = () => [...doc.querySelectorAll('#panel-anoms .qf-c[data-f]')];
+  const item = (f) => doc.querySelector('#panel-anoms .qf-c[data-f="' + f + '"]');
   const kOf = (b) => [...b.classList].find((c) => c.startsWith('k-'));
   const pressed = () => items().filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.f);
   const note = () => doc.getElementById('filter-note');
@@ -435,47 +436,36 @@ async function anomalyFiltersInTheSideMenu() {
   };
 
   //then
-  assert.ok(!sub.hidden && foldBtn.getAttribute('aria-expanded') === 'true' && foldBtn.getAttribute('aria-controls') === 'tab-sub-anoms', 'the sub menu opens by itself while Anomalies is the open tab');
   assert.deepStrictEqual([...doc.querySelectorAll('#snav .s-grp[data-grp="main"] a.tab')].map((a) => a.id), ['tab-anoms', 'tab-reqs', 'tab-chat', 'tab-inv'], 'Board, Requests, Chat and Investigator lead the sidebar');
-  assert.ok(sub.closest('#tabs') && sub.previousElementSibling.contains(foldBtn) && sub.previousElementSibling.querySelector('.filters-l').textContent === 'Anomaly filters', 'the filters lead the side menu under their own heading, the arrow beside it');
-  assert.deepStrictEqual(items().map((b) => b.dataset.f), ['all', 'open', 'crit', 'high', 'warn', 'progress', 'taken', 'muted', 'cleared', 'archived', 'closed'], 'All first, then status, with Open split by severity right under it; Lists; Triage only when above 0');
-  assert.deepStrictEqual([...sub.querySelectorAll('.tab-sub-g')].map((g) => (g.querySelector('.tab-sub-l') || {textContent: ''}).textContent.replace(/\s*\d+$/, '')), ['', 'Lists', 'Assignee', 'Tags', 'Types'], 'four groups: status (severity nested under Open), Lists, the business tags and the card types (with their count)');
-  assert.deepStrictEqual(items().map((b) => b.querySelector('.lbl').textContent), ['All', 'Open', 'Critical', 'High', 'Warning', 'In progress', 'Done', 'Muted', 'Stopped firing', 'Archived', 'Closed'], 'short labels');
+  assert.deepStrictEqual(items().map((b) => b.dataset.f), ['open', 'crit', 'taken', 'all', 'progress', 'muted', 'cleared', 'investigating', 'dived', 'high', 'warn', 'recurring', 'archived', 'closed'], 'four chips in view, the rest in the fold');
+  assert.deepStrictEqual(items().map((b) => b.querySelector('.lbl').textContent), ['Open', 'Critical', 'Done', 'All', 'In progress', 'Muted', 'Stopped firing', 'Investigating', 'Investigated', 'High', 'Warning', 'Recurring', 'Archived', 'Closed'], 'short labels');
   assert.deepStrictEqual(['taken', 'muted', 'cleared', 'all', 'crit', 'high', 'warn'].map((f) => kOf(item(f))), ['k-good', 'k-muted', 'k-cleared', 'k-act', 'k-crit', 'k-high', 'k-warn'], 'with their colours');
   assert.deepStrictEqual(['open', 'progress', 'taken', 'muted', 'cleared', 'all'].map((f) => item(f).querySelector('.count').textContent), ['3', '1', '1', '0', '1', '6'], 'Open counts the stopped card nobody acted on too, as the board does');
   assert.ok(item('crit').classList.contains('zero') && item('muted').classList.contains('zero') && !item('warn').classList.contains('zero'), 'a zero count is faded');
   assert.deepStrictEqual(pressed(), ['open'], 'the active filter is marked, Open by default');
-  assert.ok(!doc.getElementById('filters') && !doc.getElementById('anom-chips') && !doc.getElementById('sev-chips') && !doc.getElementById('tri-chips') && !doc.querySelector('#panel-anoms .seg'), 'no chips row on the Anomalies tab any more');
-  assert.strictEqual(note().textContent, 'Showing Open3Filters', 'one small line names the filter and its count');
-  assert.ok(!doc.getElementById('clear-all'), 'no way back needed on All');
+  assert.ok(!doc.getElementById('tab-sub-anoms') && !doc.getElementById('tabs') && !doc.getElementById('filter-menu'), 'no side menu filters any more');
+  assert.strictEqual(note().textContent, 'Showing Open3', 'one small line names the filter and its count');
+  assert.ok(!doc.getElementById('clear-all'), 'no way back needed on Open');
   assert.match(note().title, /^2 warning \u00b7 1 in progress \u00b7 1 done \u00b7 1 stopped firing/, 'the line tooltip counts every bucket: ' + note().title);
-  const rules = [...doc.styleSheets].flatMap((sh) => [...sh.cssRules]);
-  assert.ok(rules.some((r) => r.selectorText === '.tab-sub[hidden]' && r.style.getPropertyValue('display') === 'none'), 'a folded sub menu takes no space');
-  const narrow = rules.filter((r) => r.cssRules && /max-width: 900px/.test(r.conditionText || (r.media && r.media.mediaText) || '')).flatMap((r) => [...r.cssRules]);
-  assert.ok(rules.some((r) => r.selectorText === '.filter-note .fn-menu' && r.style.getPropertyValue('display') === 'none'), 'the Filters button is hidden on wide screens');
-  assert.ok(narrow.some((r) => r.selectorText === '.filter-note .fn-menu' && r.style.getPropertyValue('display') === 'inline-flex'), 'and shown under 900 px of content, where the side menu is a drawer');
-  assert.ok(rules.some((r) => r.selectorText === '.filter-note:not(.on)' && r.style.getPropertyValue('display') === 'none'), 'on a wide screen the line shows only while a filter other than All is on, like the old banner');
-  assert.ok(narrow.some((r) => r.selectorText === '.filter-note:not(.on)' && r.style.getPropertyValue('display') === 'flex'), 'on a narrow screen it always shows, to carry the Filters button');
 
   //when
   doc.getElementById('tab-svcs').click();
   item('progress').click();
 
   //then
-  assert.strictEqual(doc.getElementById('tab-anoms').getAttribute('aria-current'), 'page', 'a sub item opens the Anomalies tab');
+  assert.strictEqual(doc.getElementById('tab-anoms').getAttribute('aria-current'), 'page', 'a chip opens the Anomalies tab');
   assert.ok(!doc.getElementById('panel-anoms').hidden && doc.getElementById('panel-svcs').hidden);
   assert.deepStrictEqual([...doc.querySelectorAll('#anoms article.inc')].map((c) => c.dataset.key), ['err|inventory-service|ERROR'], 'with that filter');
   assert.deepStrictEqual(pressed(), ['progress'], 'and marks it as the active one');
   assert.ok(note().classList.contains('on') && note().classList.contains('k-info'), 'the line takes the filter colour');
   assert.strictEqual(note().querySelector('.fn-cur').textContent, 'Showing In progress1', 'and names it with its count');
-
   assert.strictEqual(doc.getElementById('clear-all').textContent, 'Clear filters \u2715', 'the way back leads to Open');
 
   //when
   doc.getElementById('clear-all').click();
 
   //then
-  assert.deepStrictEqual(pressed(), ['open'], 'Back to Open on the line goes back to Open');
+  assert.deepStrictEqual(pressed(), ['open'], 'Clear filters goes back to Open');
   assert.ok(!note().classList.contains('on') && !doc.getElementById('clear-all'));
 
   //when
@@ -488,58 +478,23 @@ async function anomalyFiltersInTheSideMenu() {
 
   //when
   item('progress').click();
-  foldBtn.click();
   await refresh(6, [anomaly('restart|payments-api|restarts', 'crit')]);
-
-  //then
-  assert.ok(sub.hidden && foldBtn.getAttribute('aria-expanded') === 'false', 'the arrow folds it and a live refresh keeps it folded');
-
-  //when
-  doc.getElementById('tab-svcs').click();
-  foldBtn.click();
   await refresh(7, [anomaly('restart|payments-api|restarts', 'crit'), anomaly('restart|checkout-service|restarts', 'crit')]);
 
   //then
-  assert.ok(!sub.hidden && foldBtn.getAttribute('aria-expanded') === 'true', 'unfolded by hand on another tab, it stays open over a live refresh');
   assert.ok(item('crit').querySelector('.count').textContent === '2' && !item('crit').classList.contains('zero'), 'with the new counts');
   assert.deepStrictEqual(pressed(), ['progress'], 'and the active filter still marked');
 
   //when
-  foldBtn.click();
   doc.getElementById('tab-anoms').click();
 
   //then
-  assert.ok(!sub.hidden, 'going back to Anomalies unfolds it again');
   assert.deepStrictEqual(pressed(), ['open'], 'a click on the Anomalies item itself resets the filter to Open');
   assert.strictEqual(w.location.hash, '#t=anoms');
-
-  //when
-  doc.getElementById('filter-menu').click();
-  const drawer = doc.body.classList.contains('nav-open');
-  item('progress').click();
-
-  //then
-  assert.ok(drawer && !doc.body.classList.contains('nav-open'), 'in the phone drawer a sub item closes the drawer like a section does');
-  assert.deepStrictEqual(pressed(), ['progress']);
-
-  //when
-  foldBtn.click();
-  doc.getElementById('filter-menu').click();
-
-  //then
-  assert.ok(doc.body.classList.contains('nav-open') && doc.getElementById('filter-menu').getAttribute('aria-expanded') === 'true', 'the narrow-screen Filters button opens the drawer');
-  assert.ok(!sub.hidden, 'with the sub menu unfolded');
-  assert.strictEqual(doc.activeElement, item('progress'), 'and the active filter focused');
-
-  //when
-  item('open').click();
-
-  //then
-  assert.ok(!doc.body.classList.contains('nav-open') && pressed()[0] === 'open', 'a pick closes it again');
   assert.ok(!navigated(errors), errors.join(' | '));
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-  return 'the Anomalies filters live only in the side menu sub menu (labels, counts, colours, zero faded), no chips row on the tab; a click opens Anomalies with that filter and marks it, a second severity click goes back to Open; the small filter line names the filter and its count, takes its colour and offers Back to Open; the arrow folds the sub menu, it unfolds by itself on the Anomalies tab, its fold state and counts survive live refreshes; in the phone drawer a pick closes the drawer, and the narrow-only Filters button opens the drawer at the sub menu';
+  return 'the Anomalies filters live in the board toolbar (labels, counts, colours, zero faded): a click opens Anomalies with that filter and marks it, a second severity click goes back to Open, the small filter line names the filter and offers Clear filters, and a live refresh updates the counts';
 }
 
 async function datesReadAsDayAndEnglishMonth() {
@@ -588,7 +543,7 @@ async function switchingTabsRefreshesAtOnce() {
 }
 
 (async () => {
-  for (const t of [liveUpdateKeepsTheView, typingAndConfirmDeferTheUpdate, hiddenTabPausesAndStateFailureReloads, pastedCardLinkJumpsInAnOpenTab, summaryLabelInBothBranches, cardsCollapseToOneRow, anomalyFiltersInTheSideMenu, datesReadAsDayAndEnglishMonth, switchingTabsRefreshesAtOnce]) {
+  for (const t of [liveUpdateKeepsTheView, typingAndConfirmDeferTheUpdate, hiddenTabPausesAndStateFailureReloads, pastedCardLinkJumpsInAnOpenTab, summaryLabelInBothBranches, cardsCollapseToOneRow, anomalyFiltersInTheToolbar, datesReadAsDayAndEnglishMonth, switchingTabsRefreshesAtOnce]) {
     console.log('PASS ' + (await t()));
   }
 })().catch((e) => { console.error('FAIL', e.message); process.exit(1); });

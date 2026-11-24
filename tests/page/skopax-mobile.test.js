@@ -194,21 +194,16 @@ async function theCardDrawerShowsChatAndInvestigateAsAnAiSegmentLikeStatus() {
   w.openDrawer('log|checkout-service|ERROR|boom', true);
   await wait(50);
   const acts = doc.querySelector('.card-drawer .acts');
-  const groups = [...acts.querySelectorAll(':scope > .act-group')].map((g) => doc.getElementById(g.getAttribute('aria-labelledby')).textContent);
-  const ai = acts.querySelector(':scope > .act-group.ai');
-  const segs = [...ai.querySelectorAll(':scope > .ag-body > .seg > .seg-b')].map((b) => [b.tagName.toLowerCase(), b.classList.contains('chat-btn') ? 'chat' : b.classList.contains('inv-btn') ? 'investigate' : '?', b.getAttribute('aria-label') || b.textContent, !!b.querySelector('svg[aria-hidden="true"]'), b.querySelector('.lbl') ? b.querySelector('.lbl').textContent : null]);
-  const chat = ai.querySelector('.chat-btn');
+  const chat = acts.querySelector('.card-main .chat-btn'), inv = acts.querySelector('.card-more-box .inv-btn');
 
   //then
-  assert.deepStrictEqual(groups, ['AI', 'Status', 'Owner', 'Links'], 'the drawer reads AI, Status, Owner, Links');
-  assert.strictEqual(ai.getAttribute('role'), 'group', 'AI is a labelled group like Status');
-  assert.deepStrictEqual(segs, [['a', 'chat', 'Chat about this card', true, 'Chat about this card'], ['button', 'investigate', 'Investigate', true, 'Investigate']], 'Chat and Investigate are icon and word segments with their names');
-  assert.strictEqual(chat.getAttribute('href'), '/#t=chat/new/14', 'Chat still opens a new chat with the card');
+  assert.deepStrictEqual([chat.tagName, chat.textContent, chat.getAttribute('href'), !!chat.querySelector('svg[aria-hidden="true"]')], ['A', 'Ask AI', '/#t=chat/new/14', true], 'Ask AI opens a new chat with the card');
+  assert.deepStrictEqual([inv.getAttribute('aria-label'), inv.querySelector('.lbl').textContent], ['Investigate', 'Investigate'], 'Investigate keeps its word under More');
   assert.strictEqual(acts.querySelector('.act-primary'), null, 'there is no filled primary button row any more');
-  assert.ok(![...ai.querySelectorAll('.seg-b')].some((b) => b.hasAttribute('aria-pressed')), 'they are actions, not toggles');
+  assert.ok(!chat.hasAttribute('aria-pressed') && !inv.hasAttribute('aria-pressed'), 'they are actions, not toggles');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-  return 'the card drawer shows Chat and Investigate as an AI group of icon and word segments like Status, with their names, and no filled primary button';
+  return 'the card drawer shows Ask AI in the main row and Investigate under More, with their names';
 }
 
 async function aShortLandscapePhoneGetsTheDrawerMenuToo() {
@@ -249,7 +244,6 @@ function onAPhoneTheStylesGiveOneColumnAFullScreenDrawerBigTargetsAnd16pxInputs(
     drawerEdge: value(phone, '.card-drawer > .cd-panel', 'border-left-width') || value(phone, '.card-drawer > .cd-panel', 'border-left'),
     ibtn: [value(phone, '.ibtn', 'width'), value(phone, '.ibtn', 'height')],
     btn: value(phone, '.btn', 'min-height'),
-    tile: [value(phone, '.tile-acts .ta-b', 'min-width'), value(phone, '.tile-acts .ta-b', 'min-height')],
     input: value(phone, 'textarea', 'font-size'),
     inputPriority: phone.filter((r) => r.selectorText.indexOf('textarea') >= 0).map((r) => r.style.getPropertyPriority('font-size'))[0],
     chat: value(phone, '.chat-frame', 'height'),
@@ -260,7 +254,7 @@ function onAPhoneTheStylesGiveOneColumnAFullScreenDrawerBigTargetsAnd16pxInputs(
   assert.ok(phone.length > 10, 'the phone rules are read: ' + phone.length);
   assert.deepStrictEqual(got, {
     tabsHidden: 'none', tabsShown: 'flex', snap: 'x mandatory', column: '100%', colSnap: 'start', headClip: ['rect(0px 0px 0px 0px)', 'absolute'], viewIcon: '0px', switchHit: '-14px -8px', chips: 'nowrap',
-    drawer: '100%', drawerEdge: '0px', ibtn: ['44px', '44px'], btn: '44px', tile: ['44px', '44px'],
+    drawer: '100%', drawerEdge: '0px', ibtn: ['44px', '44px'], btn: '44px',
     input: '16px', inputPriority: 'important', chat: 'calc(100dvh - 150px)', safeTop: 'max(16px, env(safe-area-inset-left))',
   });
   return 'at 640 px and below the board snaps one column at a time under its tabs, the card drawer fills the screen, targets are 44 px, inputs 16 px and the top bar and chat respect the safe area and dynamic viewport';
@@ -281,7 +275,7 @@ function onAPhoneTheBoardHeaderKeepsItsDomOrderOnScreen() {
   //then
   assert.deepStrictEqual(reordered, [], 'no phone rule moves a control away from its place in the page, so the visual order is the focus order');
   assert.deepStrictEqual(flattened, ['#panel-anoms:not(.closed-on) > .card-search, #panel-anoms:not(.closed-on) > #filter-note'], 'the header boxes are flattened into one row flow, not reordered');
-  assert.deepStrictEqual(ids, ['card-search', 'card-view', 'card-qf', 'filter-note', 'anoms'], 'search, Board/List, chips, the Showing line with Filters, then the board');
+  assert.deepStrictEqual(ids, ['card-search', 'card-qf', 'card-view', 'filter-note', 'anoms'], 'search, the fold with the assignee and tag chips and Board/List, the Showing line with Filters, then the board');
   return 'the compact phone board header sets no CSS order, so search, Board/List, chips, the Showing line with Filters and the board read in DOM order';
 }
 

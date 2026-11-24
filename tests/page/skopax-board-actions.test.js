@@ -50,32 +50,30 @@ async function theDrawerGroupsTheActions() {
   tileOf(doc, PROG).click();
   await wait(50);
   const acts = doc.querySelector('.card-drawer .acts');
-  const parts = [...acts.children].filter((c) => !c.hidden).map((c) => c.classList.contains('act-group') ? doc.getElementById(c.getAttribute('aria-labelledby')).textContent : c.className);
+  const parts = [...acts.children].filter((c) => !c.hidden).map((c) => c.className.split(' ')[0] || c.tagName);
 
   //then
   assert.ok(acts.classList.contains('acts-grouped'));
-  assert.deepStrictEqual(parts, ['AI', 'Status', 'Owner', 'Links', 'act-foot']);
-  const chat = acts.querySelector('.act-group.ai .chat-btn');
-  assert.deepStrictEqual([chat.textContent, chat.getAttribute('href')], ['Chat about this card', '/#t=chat/new/12']);
-  const inv = acts.querySelector('.act-group.ai .inv-btn');
-  assert.deepStrictEqual([inv.querySelector('.lbl').textContent, inv.getAttribute('aria-label')], ['Investigate', 'Investigate'], 'Investigate shows its word in the drawer');
-  const status = doc.getElementById('ag-status-' + acts.dataset.i).closest('.act-group');
-  const seg = [...status.querySelectorAll('.seg > button')].map((b) => [b.textContent, b.getAttribute('aria-pressed')]);
-  assert.deepStrictEqual(seg, [['In progress', 'true'], ['Resolve', 'false'], ['Mute 24 h', 'false']], 'the card is in progress, so the pressed first segment says In progress');
-  assert.deepStrictEqual([status.querySelector('.seg > button').getAttribute('aria-label'), status.querySelector('.seg > button').title.startsWith('Start progress')], ['In progress', true], 'its name matches the word and the tip stays');
-  assert.ok(status.querySelector('.sev-act') && status.querySelector('.acts-tog'), 'Change severity and the More menu sit with the status');
-  assert.deepStrictEqual([...status.querySelectorAll('.acts-more > .btn')].map((b) => b.textContent), ['Mute 1 w', 'Known noise', 'Group'], 'the rarer status moves stay behind More');
-  const owner = doc.getElementById('ag-owner-' + acts.dataset.i).closest('.act-group');
-  assert.ok(owner.querySelector(':scope > .ag-body > .asg-btn') && !status.querySelector('.asg-btn'), 'the assignee has its own group');
-  const links = acts.querySelector('.act-group.links');
-  const key = links.querySelector('.jira-key');
+  assert.deepStrictEqual(parts, ['card-main', 'asg-msg', 'btn', 'act-foot'], 'the main row, the assign note, More, then the foot; the More box starts hidden');
+  const main = acts.querySelector('.card-main');
+  assert.deepStrictEqual(names(main), ['Take it', 'Assign', 'Resolve', 'Ask AI'], 'someone else holds this card, so Take it shows');
+  const chat = main.querySelector('.chat-btn');
+  assert.deepStrictEqual([chat.textContent, chat.getAttribute('href')], ['Ask AI', '/#t=chat/new/12']);
+  const box = acts.querySelector('.card-more-box');
+  acts.querySelector('button.card-more').click();
+  const inv = box.querySelector('.inv-btn');
+  assert.deepStrictEqual([inv.querySelector('.lbl').textContent, inv.getAttribute('aria-label')], ['Investigate', 'Investigate'], 'Investigate shows its word under More');
+  assert.ok(box.querySelector('.sev-act') && box.querySelector('.jira-acts'), 'Change severity and Jira sit under More');
+  const key = box.querySelector('.jira-key');
   assert.deepStrictEqual([key.textContent, key.getAttribute('href'), key.target], ['SHOP-123 \u2197', 'https://jira.example.com/browse/SHOP-123', '_blank']);
-  assert.deepStrictEqual(names(links), ['SHOP-123 \u2197', 'Change ticket', 'Copy link']);
+  const more = [...box.children].filter((c) => c.matches('.btn, .jira-acts')).map((c) => c.matches('.jira-acts') ? 'jira' : c.getAttribute('aria-label') || c.textContent.trim());
+  assert.deepStrictEqual(more, ['Mute 24 h', 'Mute 1 w', 'Known noise', 'Start progress', 'Reopen', 'Investigate', 'Group', 'Change severity', 'jira', 'Copy link']);
+  assert.ok(box.querySelector('.notif .slack-btn'), 'Send to Slack and the channels sit under More');
   assert.ok(acts.querySelector('.act-foot .stat') && acts.querySelector('.act-foot .last-act'), 'the last action line and its status sit in the foot');
   assert.ok([...acts.querySelectorAll('svg')].every((s) => s.getAttribute('aria-hidden') === 'true'), 'icons are decoration');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'the drawer shows Chat and Investigate, then Status (segmented, pressed state, More), Owner and Links groups and a foot';
+  return 'the drawer shows Take it, Assign, Resolve and Ask AI, the rest under More, and a foot';
 }
 
 async function theDrawerKeepsTheActionsWorking() {
@@ -86,132 +84,56 @@ async function theDrawerKeepsTheActionsWorking() {
   const acts = doc.querySelector('.card-drawer .acts');
 
   //when
-  const seg = [...doc.getElementById('ag-status-' + acts.dataset.i).closest('.act-group').querySelectorAll('.seg > button')];
-  seg.find((b) => b.textContent === 'Unmute').click();
+  acts.querySelector('button.card-more').click();
+  [...acts.querySelectorAll('.card-more-box > .btn')].find((b) => b.getAttribute('aria-label') === 'Unmute').click();
   await wait(50);
 
   //then
-  assert.deepStrictEqual(seg.map((b) => [b.textContent, b.getAttribute('aria-pressed')]), [['Start progress', 'false'], ['Resolve', 'false'], ['Unmute', 'true']], 'a muted card shows Unmute pressed');
   assert.deepStrictEqual(posts.map((p) => p.type), ['unmute']);
   assert.ok(!doc.querySelector('#anoms .inc:not(.card-drawer *) .acts.acts-grouped'), 'list rows keep the compact row');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'the grouped drawer buttons still act: Unmute unmutes a muted card';
+  return 'the drawer buttons still act: Unmute under More unmutes a muted card';
 }
 
-async function aTileHasAQuietActionRow() {
+async function aTileShowsOnlyWhatTheBoardNeeds() {
   //given
   const {w, doc, errors} = await boot();
 
   //when
-  const row = (key) => tileOf(doc, key).querySelector('.tile-acts');
+  const open = tileOf(doc, OPEN).querySelector('.tile-open[aria-haspopup="dialog"]');
+  const owned = tileOf(doc, PROG).querySelector('.tile-top .tile-asg');
 
   //then
-  const open = tileOf(doc, OPEN).querySelector('.tile-open[aria-haspopup="dialog"]');
   assert.ok(open.tagName === 'BUTTON', 'the tile title is a real button that opens the card');
   assert.match(open.textContent.replace(/\s+/g, ' ').trim(), /^Warning, #11, 30 min, boomcheckout-service \u00b7 ERROR lines$/, 'its name carries the severity, number and age before the title');
   assert.ok([...doc.querySelectorAll('#anoms .tile')].every((t) => !t.hasAttribute('role') && !t.hasAttribute('tabindex')), 'the tile itself is no button, so its buttons are not nested in one');
-  assert.deepStrictEqual(names(row(OPEN)), ['Start progress', 'Resolve', 'Mute', 'Copy link']);
-  assert.deepStrictEqual(names(row(PROG)), ['Reopen', 'Resolve', 'Mute', 'Open SHOP-123 in Jira', 'Copy link'], 'each button is a board move this card can make, like a drag');
-  assert.deepStrictEqual(names(row(MUTED)), ['Reopen', 'Start progress', 'Resolve', 'Copy link']);
-  assert.ok([...doc.querySelectorAll('.tile-acts button')].every((b) => b.title && b.getAttribute('aria-label')), 'every tile button has a tip and a name');
-  assert.ok([...doc.querySelectorAll('.tile-acts svg')].every((s) => s.getAttribute('aria-hidden') === 'true'));
-  const jira = row(PROG).querySelector('a.ta-jira');
-  assert.deepStrictEqual([jira.getAttribute('href'), jira.target, !!jira.querySelector('.ext')], ['https://jira.example.com/browse/SHOP-123', '_blank', true]);
-  assert.ok(row(PROG).querySelector('.tile-asg'), 'the assignee avatar moves into the row');
-  assert.strictEqual(row(PROG).getAttribute('role'), 'group');
+  assert.strictEqual(doc.querySelectorAll('.tile-acts, .tile .ta-b, .tile .ta-jira, .tile .ta-copy').length, 0, 'a tile has no hover buttons');
+  assert.deepStrictEqual([...tileOf(doc, OPEN).querySelectorAll('.tile-top > *')].map((e) => e.className.split(' ')[0]), ['sev', 'tile-num', 'tile-age']);
+  assert.deepStrictEqual([owned.textContent, owned.getAttribute('aria-label')], ['A', 'Assignee: alice'], 'the owner shows as initials in the top line');
+  assert.strictEqual(tileOf(doc, OPEN).querySelectorAll('button').length, 1, 'the only button on a tile is its title');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'a tile ends with a row of icon buttons: status moves, the assignee, then the Jira key and Copy link';
+  return 'a tile shows the severity dot, title, number, age and owner initials, and no action buttons';
 }
 
-async function aTileActionDoesNotOpenTheDrawer() {
+async function aClickOnAnyPartOfATileOpensTheDrawer() {
   //given
   const {w, doc, errors, posts} = await boot();
-  const start = tileOf(doc, OPEN).querySelector('.tile-acts [aria-label="Start progress"]');
 
   //when
-  start.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
-  const keyOpened = !!doc.querySelector('.card-drawer');
-  start.click();
-  await wait(80);
-
-  //then
-  assert.strictEqual(keyOpened, false, 'Enter on a tile button does not open the drawer');
-  assert.strictEqual(doc.querySelector('.card-drawer'), null, 'a click on a tile button does not open the drawer');
-  assert.deepStrictEqual(posts.map((p) => [p.type, p.key]), [['take', OPEN]], 'Start progress moves the card like a drag to In progress');
   tileOf(doc, OPEN).querySelector('.tile-open').click();
-  assert.ok(doc.querySelector('.card-drawer'), 'the tile title still opens the drawer');
+  const byTitle = !!doc.querySelector('.card-drawer');
   doc.querySelector('.card-drawer .cd-close').click();
   tileOf(doc, OPEN).querySelector('.tile-top').click();
-  assert.ok(doc.querySelector('.card-drawer'), 'a click on the tile body outside the title opens the drawer too, so the overlay can let drags through');
-  doc.querySelector('.card-drawer .cd-close').click();
-  tileOf(doc, OPEN).querySelector('.tile-acts').click();
-  assert.strictEqual(doc.querySelector('.card-drawer'), null, 'a click in the action row, between buttons, does not open it');
-  assert.deepStrictEqual(errors, []);
-  w.close();
-  return 'a tile action acts on the card without opening the drawer, by click or key';
-}
-
-async function aDoubleClickSendsOneMoveAndTheFocusComesBack() {
-  //given
-  const {w, doc, errors, posts} = await boot();
-  const start = tileOf(doc, MUTED).querySelector('.tile-acts [aria-label="Start progress"]');
-  start.focus();
-
-  //when
-  start.click();
-  const busy = [start.disabled, start.getAttribute('aria-busy')];
-  start.click();
-  start.dispatchEvent(new w.MouseEvent('click', {bubbles: true}));
-  await wait(400);
+  const byTop = !!doc.querySelector('.card-drawer');
 
   //then
-  assert.deepStrictEqual(busy, [true, 'true'], 'the button waits while the move runs');
-  assert.deepStrictEqual(posts.map((p) => p.type), ['unmute', 'take'], 'two clicks send the move once');
-  const now = tileOf(doc, MUTED).querySelector('.tile-acts [aria-label="Start progress"]');
-  assert.ok(now && doc.activeElement === now && !now.disabled && !now.hasAttribute('aria-busy'), 'after the refresh the focus is on the same button of the new tile');
+  assert.ok(byTitle && byTop, 'the title and the top line both open the drawer, so the overlay can let drags through');
+  assert.deepStrictEqual(posts, [], 'opening a tile sends nothing');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'a double click on a tile button sends the move once, the button is busy meanwhile, and the focus comes back to it';
-}
-
-async function aKeyOnATileButtonStillReachesThePage() {
-  //given
-  const {w, doc, errors} = await boot();
-  const copy = tileOf(doc, OPEN).querySelector('.tile-acts .ta-copy');
-  let seen = null;
-  doc.addEventListener('keydown', (e) => { seen = e.key; });
-  Object.defineProperty(w.navigator, 'clipboard', {value: {writeText: () => Promise.resolve()}, configurable: true});
-
-  //when
-  copy.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
-  copy.click();
-  await wait(30);
-
-  //then
-  assert.strictEqual(seen, 'Escape', 'a key on a tile button is not swallowed');
-  assert.deepStrictEqual([copy.title, doc.getElementById('board-note').textContent, copy.querySelector('svg') && copy.textContent], ['Copied', 'Copied', 'Copy link'], 'Copy link says Copied through its tip and the live note, not inside the small button');
-  assert.deepStrictEqual(errors, []);
-  w.close();
-  return 'keys on tile buttons reach the page, and Copy link reports through its tip and the live note';
-}
-
-async function aCardWithAQueuedActionHasItsTileMovesDisabled() {
-  //given
-  const queued = [{id: 'q1', type: 'dive', target: OPEN, status: 'requested', requestedAt: iso(1), requestedBy: 'op@example.com', label: 'Investigate'}];
-
-  //when
-  const {w, doc, errors} = await boot({}, queued);
-  const moves = (key) => [...tileOf(doc, key).querySelectorAll('.tile-acts .ta-b[data-move]')].map((b) => b.disabled);
-
-  //then
-  assert.ok(moves(OPEN).length && moves(OPEN).every(Boolean), 'the busy card cannot be moved from its tile');
-  assert.ok(moves(PROG).every((d) => !d), 'other cards stay movable');
-  assert.ok(!tileOf(doc, OPEN).querySelector('.ta-copy').disabled, 'Copy link stays usable');
-  assert.deepStrictEqual(errors, []);
-  w.close();
-  return 'a card with a queued action has its tile move buttons disabled, like the drawer';
+  return 'a click on the title or the top line of a tile opens the drawer and changes nothing';
 }
 
 async function aBusyCardCannotBeDragged() {
@@ -239,38 +161,6 @@ async function aBusyCardCannotBeDragged() {
   return 'a card with a queued action is not draggable, like its tile buttons are disabled';
 }
 
-async function aTileRedrawnMidMoveLooksBusyAndCannotBeDragged() {
-  //given
-  let release;
-  const hold = new Promise((r) => { release = r; });
-  const {w, doc, errors, posts} = await boot({}, [], hold);
-  const move = (key) => tileOf(doc, key).querySelector('.tile-acts [data-move="progress"]');
-  const buttons = (key) => [...tileOf(doc, key).querySelectorAll('.tile-acts .ta-b[data-move]')];
-
-  //when
-  move(OPEN).click();
-  await wait(30);
-  w.bumpRender();
-  w.renderAnoms();
-  const redrawn = tileOf(doc, OPEN);
-  const during = {all: buttons(OPEN).every((b) => b.disabled), busy: move(OPEN).getAttribute('aria-busy'), others: buttons(OPEN).filter((b) => b !== move(OPEN)).some((b) => b.hasAttribute('aria-busy')), draggable: redrawn.draggable};
-  const e = new w.Event('dragstart', {bubbles: true, cancelable: true});
-  redrawn.dispatchEvent(e);
-  move(OPEN).click();
-  release();
-  await wait(400);
-
-  //then
-  assert.deepStrictEqual(during, {all: true, busy: 'true', others: false, draggable: false}, 'the redrawn tile looks busy: buttons disabled, the clicked one marked, not draggable');
-  assert.ok(e.defaultPrevented, 'the redrawn tile cannot be dragged while the move runs');
-  assert.strictEqual(posts.filter((p) => p.type === 'take').length, 1, 'one move was sent');
-  assert.ok(buttons(OPEN).length && buttons(OPEN).every((b) => !b.disabled && !b.hasAttribute('aria-busy')), 'when the move ends the redrawn tile is usable again');
-  assert.strictEqual(tileOf(doc, OPEN).draggable, true, 'and draggable again');
-  assert.deepStrictEqual(errors, []);
-  w.close();
-  return 'a tile redrawn while its move runs looks busy and cannot be dragged, and is usable again when the move ends';
-}
-
 async function aDropOnACardThatBecameBusyMidDragSendsNothing() {
   //given
   const {w, doc, errors, posts} = await boot();
@@ -295,10 +185,10 @@ async function theDraggableRuleIsOneFunctionTheGateAndTheTileShare() {
   const {w, doc, errors} = await boot();
 
   //when
-  w.TILE_BUSY[OPEN] = 'progress';
+  w.__cardBusy = (k) => k === OPEN;
   w.__skopaxGate();
   const mid = [tileOf(doc, OPEN).draggable, tileOf(doc, PROG).draggable, w.__tileDraggable(OPEN), w.__tileDraggable(PROG)];
-  delete w.TILE_BUSY[OPEN];
+  w.__cardBusy = () => false;
   w.__skopaxGate();
   const after = [tileOf(doc, OPEN).draggable, w.__tileDraggable(OPEN)];
 
@@ -319,44 +209,42 @@ function theTileOverlayLetsDragsThrough() {
   return 'the title overlay lets pointer events through to the draggable tile';
 }
 
-async function aViewerOnlyGetsTheLinksOnATile() {
+async function aViewerCannotDragATile() {
   //given
   const {w, doc, errors} = await boot({operator: false, user: 'viewer@example.com'});
 
   //when
-  const row = tileOf(doc, OPEN).querySelector('.tile-acts');
+  const tile = tileOf(doc, OPEN);
 
   //then
-  assert.deepStrictEqual(names(row), ['Copy link']);
+  assert.strictEqual(tile.draggable, false);
+  assert.strictEqual(tile.querySelectorAll('button').length, 1, 'a viewer still gets only the title button');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'a viewer gets no status buttons on a tile, only Copy link';
+  return 'a viewer gets a tile that opens the card but cannot be dragged';
 }
 
-function theTileRowAndTheDrawerGroupsHaveTheirStyles() {
+function theDrawerGroupsHaveTheirStyles() {
   //given
   const css = fs.readFileSync(TEMPLATE, 'utf8');
 
   //then
-  assert.ok(/\.tile-acts \{[^}]*border-top: 1px solid var\(--line\)/.test(css), 'the tile row sits behind a hairline');
-  assert.ok(/\.tile-acts \.ta-b:focus-visible \{[^}]*outline/.test(css), 'tile buttons show a focus ring');
-  assert.ok(/@container \(max-width: 520px\) \{[^@]*\.acts-grouped \.act-group \{ grid-template-columns: minmax\(0, 1fr\);/.test(css), 'the drawer groups stack on a narrow panel');
-  return 'the tile row has a hairline and focus rings, and the drawer groups stack on a narrow panel';
+  assert.ok(!/\.tile-acts/.test(css), 'no tile action row styles are left');
+  assert.ok(/\.acts-panel \.card-main, \.acts-panel \.card-more-box \{ display: flex; flex-wrap: wrap;/.test(css), 'the main row and the More box wrap on a narrow panel');
+  assert.ok(!/\.act-group|\.ag-body/.test(css), 'the old action group styles are gone');
+  return 'no tile row styles are left, and the panel rows wrap on a narrow panel';
 }
 
 (async () => {
   console.log('PASS ' + await theDrawerGroupsTheActions());
   console.log('PASS ' + await theDrawerKeepsTheActionsWorking());
-  console.log('PASS ' + await aTileHasAQuietActionRow());
-  console.log('PASS ' + await aTileActionDoesNotOpenTheDrawer());
-  console.log('PASS ' + await aDoubleClickSendsOneMoveAndTheFocusComesBack());
-  console.log('PASS ' + await aKeyOnATileButtonStillReachesThePage());
-  console.log('PASS ' + await aCardWithAQueuedActionHasItsTileMovesDisabled());
+  console.log('PASS ' + await aTileShowsOnlyWhatTheBoardNeeds());
+  console.log('PASS ' + await aClickOnAnyPartOfATileOpensTheDrawer());
   console.log('PASS ' + await aBusyCardCannotBeDragged());
-  console.log('PASS ' + await aTileRedrawnMidMoveLooksBusyAndCannotBeDragged());
   console.log('PASS ' + await aDropOnACardThatBecameBusyMidDragSendsNothing());
   console.log('PASS ' + await theDraggableRuleIsOneFunctionTheGateAndTheTileShare());
   console.log('PASS ' + theTileOverlayLetsDragsThrough());
-  console.log('PASS ' + await aViewerOnlyGetsTheLinksOnATile());
-  console.log('PASS ' + theTileRowAndTheDrawerGroupsHaveTheirStyles());
+  console.log('PASS ' + await aViewerCannotDragATile());
+  console.log('PASS ' + theDrawerGroupsHaveTheirStyles());
+  process.exit(0);
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

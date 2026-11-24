@@ -1,4 +1,4 @@
-Use the esql tool for log lines, error messages and traces the cards and tables cannot show. It runs one ES|QL query on one Elasticsearch instance. The cluster input picks the log cluster (logs, the default) or the APM cluster (apm); with several instances, the instance input picks one, else the primary answers.
+Use the esql tool for log lines, error messages and traces the cards and tables cannot show. instance picks the connection (for example prod or test, else the primary); cluster stays logs (default) or apm inside it, so test logs are instance: test, cluster: logs. A Through agent node connection runs no checks.
 
 What the scheduled checks read, so you can reproduce a card:
 - Log patterns (logs): ERROR and WARN lines of the last 60 minutes, grouped by service, level and the first 90 characters of the error text, else the message. The level is compared in upper case. The same hour one day and one week earlier is the baseline.

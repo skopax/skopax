@@ -45,6 +45,24 @@ async function historyRowsComeNewestFirstWithWhoWhenAndOldToNew() {
   console.log('PASS history rows come newest first from what the card records, with who, when and old to new for severity');
 }
 
+async function theHistoryListsFollowUpRowsAndKeepOpen() {
+  //given
+  const {w, errors} = await boot([card(KEY)]);
+  const c = card(KEY, {num: 42, status: 'cleared', firstSeen: '2026-11-09T16:32:00Z', clearedAt: '2026-11-09T16:32:00Z'});
+  const data = {actions: [{type: 'keep', target: KEY, status: 'done', requestedAt: '2026-11-09T18:00:00Z', doneAt: '2026-11-09T18:00:00Z', requestedBy: 'alice@example.com', result: 'kept open'}],
+    activity: [{kind: 'followup', who: 'Claude (pod)', t: '2026-11-09T17:00:00Z', key: KEY, text: 'Follow-up checked: not done yet \u00b7 still 404'},
+      {kind: 'followup', who: 'Claude (pod)', t: '2026-11-09T19:00:00Z', key: KEY, text: 'Closed as Fixed after the follow-up check: Verified: answered 301'}]};
+  //when
+  const rows = JSON.parse(JSON.stringify(w.cardHistoryRows(c, data, []))).map((r) => r.what + (r.data ? ': ' + r.data : ''));
+  //then
+  assert.ok(rows.some((r) => r.includes('Follow-up checked: not done yet')), 'the check is a row: ' + rows.join(' | '));
+  assert.ok(rows.some((r) => r.includes('Closed as Fixed after the follow-up check')), 'the close after verify is a row');
+  assert.ok(rows.some((r) => r.includes('Kept open')), 'Keep open is a row');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS the History tab lists the follow-up check, the close after verify and Keep open');
+}
+
 async function theDetailsAndHistoryTabsSwitchByClickAndKeyboardAndStayAcrossARepaint() {
   //given
   const {c, data} = fixture();
@@ -233,7 +251,7 @@ async function anUnknownRoutePluginNamesItsIdAsARouteInTheReadersLanguage() {
 }
 
 (async () => {
-  for (const t of [aRouteSendInTheActivityShowsOnceInTheHistoryTab, anUnknownRoutePluginNamesItsIdAsARouteInTheReadersLanguage, emailPostsReadAsEmailAndTeamsPostsStillReadTeams, failedAndCancelledActionsReadInTheReadersLanguage, anAssignmentRowReadsAssignedToNameWithNoColon, historyRowsComeNewestFirstWithWhoWhenAndOldToNew, historyRowsAreTranslatedButTheirDataStaysAsWritten, theDetailsAndHistoryTabsSwitchByClickAndKeyboardAndStayAcrossARepaint]) {
+  for (const t of [aRouteSendInTheActivityShowsOnceInTheHistoryTab, anUnknownRoutePluginNamesItsIdAsARouteInTheReadersLanguage, emailPostsReadAsEmailAndTeamsPostsStillReadTeams, failedAndCancelledActionsReadInTheReadersLanguage, anAssignmentRowReadsAssignedToNameWithNoColon, historyRowsComeNewestFirstWithWhoWhenAndOldToNew, historyRowsAreTranslatedButTheirDataStaysAsWritten, theHistoryListsFollowUpRowsAndKeepOpen, theDetailsAndHistoryTabsSwitchByClickAndKeyboardAndStayAcrossARepaint]) {
     try { await t(); } catch (e) { console.error('FAIL ' + t.name + ': ' + e.message.replace(/\x1b\[[0-9;]*m/g, '').split('\n').slice(0, 30).join(' | ')); process.exitCode = 1; }
   }
   process.exit(process.exitCode || 0);

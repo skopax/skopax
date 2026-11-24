@@ -43,7 +43,7 @@ async function boot(opts) {
     },
   });
   await wait(300);
-  const chips = () => [...dom.window.document.querySelectorAll('#tab-sub-anoms button[data-type]')];
+  const chips = () => [...dom.window.document.querySelectorAll('#panel-anoms .qf-c[data-type]')];
   return {w: dom.window, doc: dom.window.document, errors, chips, chip: (t) => chips().filter((b) => b.dataset.type === t)[0]};
 }
 

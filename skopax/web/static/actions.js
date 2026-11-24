@@ -62,6 +62,7 @@ async function initActions() {
   }
   function gate() {
     var why = lockReason(), loginWhy = loginReason();
+    document.querySelectorAll('#anoms .login-hint').forEach(function (h) { h.hidden = !(me.loginEnabled && !me.user); });
     document.querySelectorAll('#anoms .tile').forEach(function (t) { t.draggable = window.__tileDraggable(t.dataset.key); });
     document.querySelectorAll('#anoms .acts button.btn:not(.free), #anoms .notif button.btn, .op-btn, .op-in').forEach(function (b) {
       var r = (b.classList.contains('admin-only') ? adminReason() : b.classList.contains('login-ok') ? loginWhy : why) || (b.classList.contains('slack-btn') && !me.slack ? 'Slack is not set up on this service yet: an admin connects it in Connect \u203a Integrations \u203a Slack' : '') || (b.classList.contains('jira-btn') && !me.jira ? 'Jira is not set up on this service yet: an admin adds it under Connect \u203a Integrations' : '');
@@ -79,8 +80,10 @@ async function initActions() {
         b.dataset.locked = '1';
       }
     });
+    document.querySelectorAll('#anoms .op-only').forEach(function (b) { b.hidden = !me.operator; });
   }
   window.__skopaxApi = api;
+  window.__skopaxOperator = function () { return !!me.operator; };
   window.__skopaxGate = gate;
   window.__boardLock = lockReason;
   window.__skopaxConfirm = confirmDialog;
@@ -640,67 +643,60 @@ async function initActions() {
     actsMenu(menu, !!ACTS_OPEN[a.key]);
   }
   var ICON_CHAT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
-  function actGroup(box, id, label, cls) {
-    var g = el('div', 'act-group' + (cls ? ' ' + cls : '')), h = el('span', 'ag-h'), body = el('div', 'ag-body');
-    h.id = 'ag-' + id + '-' + box.dataset.i;
-    h.textContent = label;
-    g.setAttribute('role', 'group');
-    g.setAttribute('aria-labelledby', h.id);
-    g.append(h, body);
-    g.body = body;
-    return g;
-  }
   function showWord(b) {
     var sr = b && b.querySelector(':scope > .sr');
     if (sr) sr.className = 'lbl';
     return b;
   }
-  function groupActs(a, box, p) {
-    var keep = function (n) { return n || null; };
-    box.classList.add('acts-grouped');
-    var ai = actGroup(box, 'ai', 'AI', 'ai'), aseg = el('div', 'seg');
+  function panelActs(a, box, p, name) {
+    box.classList.add('acts-grouped', 'acts-panel');
+    var main = el('div', 'card-main');
+    if (a.triage !== 'handled' && !(a.triage === 'progress' && isMine(a))) {
+      var takeIt = asIcon(btn('Take it', 'sec take-it'), ICON_TAKE, 'Take it: the card goes In progress with you as owner', true);
+      takeIt.addEventListener('click', function () { if (takeIt.getAttribute('aria-disabled') !== 'true') queue({type: 'take', target: a.key, key: a.key, label: 'Take ' + name}, takeIt); });
+      main.append(takeIt);
+    }
+    var asg = box.querySelector(':scope > .asg-btn');
+    if (asg) main.append(asg);
+    if (p.res) main.append(showWord(p.res));
     if (a.num) {
-      var chat = el('a', 'btn sec seg-b chat-btn', ICON_CHAT + '<span class="lbl">Chat about this card</span>');
+      var chat = el('a', 'btn sec chat-btn', ICON_CHAT + '<span class="lbl">Ask AI</span>');
       chat.href = '/#t=chat/new/' + encodeURIComponent(a.num);
       chat.title = 'Opens a new private chat with this card attached: ask why it fired, what the investigation found, who should look';
-      aseg.append(chat);
+      main.append(chat);
     }
-    if (p.dive) { p.dive.classList.add('seg-b'); aseg.append(showWord(p.dive)); }
-    if (aseg.children.length) ai.body.append(aseg);
-    var status = actGroup(box, 'status', 'Status'), seg = el('div', 'seg');
-    [[p.take, a.triage === 'progress'], [p.res, false], [p.mute, false], [p.un, true]].forEach(function (x) {
-      if (!x[0]) return;
-      x[0].classList.add('seg-b');
-      x[0].setAttribute('aria-pressed', x[1] ? 'true' : 'false');
-      if (x[0] === p.take) {
-        x[0].innerHTML = ICON_PLAY + '<span class="sr">' + (x[1] ? 'In progress' : 'Start progress') + '</span>';
-        x[0].setAttribute('aria-label', x[1] ? 'In progress' : 'Start progress');
-      }
-      seg.append(showWord(x[0]));
-    });
-    if (seg.children.length) status.body.append(seg);
-    var sev = box.querySelector('.sev-act'), menu = box.querySelector('.acts-menu');
-    if (sev) status.body.append(sev);
-    if (menu) { status.body.append(menu); menu.hidden = !menu.querySelector('.acts-more').children.length; actsMenu(menu, !!ACTS_OPEN[a.key]); }
-    var owner = actGroup(box, 'owner', 'Owner');
-    [box.querySelector(':scope > .asg-btn'), box.querySelector(':scope > .asg-form'), box.querySelector(':scope > .asg-msg')].forEach(function (n) { if (n) owner.body.append(n); });
-    var links = actGroup(box, 'links', 'Links', 'links');
-    var jira = box.querySelector(':scope > .jira-acts');
-    if (jira) links.body.append(jira);
-    if (p.copy) links.body.append(showWord(p.copy));
+    var more = cardMore(a, box), list = more.box;
+    var add = function (n) { if (n) list.append(n); };
+    [p.un, p.mute, p.week, p.known].forEach(function (n) { if (n) add(showWord(n)); });
+    add(p.kform);
+    if (p.take) add(showWord(p.take));
+    add(p.tform);
+    var steps = moveSteps(a, 'open');
+    if (Array.isArray(steps) && steps.length) {
+      var re = asIcon(btn('Reopen', 'sec'), ICON_REPLY, 'Reopen: back to Open, like a drag to the Open column', true);
+      re.addEventListener('click', function () { queue(steps[0], re); });
+      add(re);
+    }
+    var fu = a.followUp;
+    if (fu && typeof fu === 'object' && fu.closeAt && a.triage !== 'handled') {
+      var keepOpen = btn('Keep open', 'sec keep-open');
+      keepOpen.dataset.tip = keepOpen.title = KEEP_TIP;
+      keepOpen.addEventListener('click', function () { queue({type: 'keep', target: a.key, key: a.key, label: 'Keep open ' + name}, keepOpen); });
+      add(keepOpen);
+    }
+    if (p.dive) add(showWord(p.dive));
+    [p.grp, p.gform, box.querySelector(':scope > .sev-act'), box.querySelector(':scope > .sev-form'), box.querySelector(':scope > .jira-acts'), box.querySelector(':scope > .jira-form')].forEach(add);
+    if (p.copy) add(showWord(p.copy));
+    var nbox = box.closest('article.inc').querySelector('.notif');
+    if (nbox) add(nbox);
     var foot = el('div', 'act-foot'), stat = box.querySelector(':scope > .stat'), last = box.closest('article.inc').querySelector('.last-act');
     if (last) foot.append(last);
     if (stat) foot.append(stat);
-    var forms = [keep(p.tform), keep(p.rform), box.querySelector('.sev-form')].filter(Boolean);
-    var after = [box.querySelector(':scope > .jira-form')].filter(Boolean);
-    if (aseg.children.length) box.append(ai);
-    box.append(status);
-    forms.forEach(function (f) { box.append(f); });
-    box.append(owner, links);
-    after.forEach(function (f) { box.append(f); });
-    box.append(foot);
+    var keepers = [box.querySelector(':scope > .asg-form'), box.querySelector(':scope > .asg-msg'), p.rform].filter(Boolean);
+    box.append(loginHint(a, !!(me.loginEnabled && !me.user)), main);
+    keepers.forEach(function (n) { box.append(n); });
+    box.append(more.button, list, foot);
   }
-  var ICON_PLAY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M10 8.5l5 3.5-5 3.5z"></path></svg>';
   var ICON_SPARKLES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5Q11 12 18 13Q11 14 10 21Q9 14 2 13Q9 12 10 5Z"></path><path d="M19 2v6"></path><path d="M16 5h6"></path></svg>';
   var ICON_BELL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
   var ICON_BELL_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.73 21a2 2 0 0 1-3.46 0"></path><path d="M18.63 13A17.89 17.89 0 0 1 18 8"></path><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"></path><path d="M18 8a6 6 0 0 0-9.33-5"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
@@ -1409,11 +1405,11 @@ async function initActions() {
         });
         box.append(res, rform);
       }
-      var copy = asIcon(btn('Copy link', 'sec free'), ICON_LINK, a.num ? 'Copy the direct link to card #' + a.num + ': it opens this card alone' : 'Copy a link that opens this anomaly');
+      var copy = asIcon(btn('Copy link', 'sec free'), ICON_LINK, copyTip(a));
       copy.addEventListener('click', function () { copyLink(a, copy); });
       box.append(copy, el('span', 'stat'));
-      foldActs(a, box, dive);
-      if (box.closest('.card-drawer')) groupActs(a, box, {dive: dive, take: take, tform: tform, res: res, rform: rform, mute: mute, un: un, copy: copy});
+      var inPanel = !!box.closest('.card-drawer');
+      if (!inPanel) foldActs(a, box, dive);
       var nbox = box.closest('article.inc').querySelector('.notif');
       nbox.innerHTML = '';
       nbox.append(el('span', 'nl', 'Notify'));
@@ -1437,6 +1433,7 @@ async function initActions() {
       }
       nbox.append(el('span', 'slack-st'));
       nbox.hidden = false;
+      if (inPanel) panelActs(a, box, {dive: dive, take: take, tform: tform, res: res, rform: rform, mute: mute, un: un, week: week, known: known, kform: form, grp: grp, gform: gform, copy: copy}, name);
       var dbox = box.closest('article.inc').querySelector('.sdraft');
       if (dbox) wireDraft(a, dbox);
       var bbox = box.closest('article.inc').querySelector('.biz');
@@ -1455,8 +1452,6 @@ async function initActions() {
     all.forEach(function (x) { if (!latest[x.target] || latest[x.target].requestedAt < x.requestedAt) latest[x.target] = x; });
     LATEST = latest;
     document.querySelectorAll('#anoms .tile').forEach(function (t) {
-      var busy = window.__tileBusy(t.dataset.key);
-      t.querySelectorAll('.tile-acts .ta-b[data-move]').forEach(function (b) { if (!b.hasAttribute('aria-busy')) b.disabled = busy; });
       t.draggable = window.__tileDraggable(t.dataset.key);
     });
     renderPdc(latest.postdeploy);
@@ -1465,7 +1460,7 @@ async function initActions() {
       var a = cardOfBox(box);
       if (!a) return;
       var x = latest[a.key];
-      box.querySelectorAll('button.btn:not(.free):not(.slack-btn)').forEach(function (b) { b.disabled = !!(x && (x.status === 'requested' || x.status === 'processing')) || b.dataset.gpWait === '1'; });
+      box.querySelectorAll('button.btn:not(.free):not(.slack-btn)').forEach(function (b) { if (b.closest('.notif')) return; b.disabled = !!(x && (x.status === 'requested' || x.status === 'processing')) || b.dataset.gpWait === '1'; });
       var st = box.querySelector('.stat'), la = box.closest('article.inc').querySelector('.last-act');
       if (st) {
         st.innerHTML = x && !earlier(x, a) ? pill(x, true) : '';
@@ -1536,7 +1531,6 @@ async function initActions() {
     document.querySelectorAll('.card-ask input').forEach(function (i) { i.maxLength = ASK_MAX; });
   }
   if (ME_USER) {
-    renderAnomSub();
     if (hasF('who:me')) setFilter(filter); else renderQuick();
   }
   repActs = wireReps;
@@ -1554,6 +1548,8 @@ async function initActions() {
   if (typeof setAdminAccess === 'function') setAdminAccess(me.admin);
   if (typeof setIntView === 'function') setIntView(!!me.user, !!me.admin);
   window.__skopaxRender = render;
+  window.__skopaxLastLine = function (x, card) { return x && x.type ? lastLine(x, card) : ''; };
+  if (typeof paintLooseLast === 'function') paintLooseLast();
   window.__skopaxActions = refresh;
   await refresh();
   setInterval(refresh, 30000);

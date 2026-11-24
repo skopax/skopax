@@ -27,6 +27,7 @@ async function boot(opts) {
       if (opts.packs) w.SKOPAX_I18N = opts.packs;
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () {};
+      w.localStorage.setItem('skopax-sidebar', 'full');
       Object.keys(opts.stored || {}).forEach((k) => w.localStorage.setItem(k, opts.stored[k]));
       w.fetch = async (path, o) => {
         const p = String(path), method = (o && o.method) || 'GET';

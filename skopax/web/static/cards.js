@@ -166,7 +166,7 @@ function draftHtml(a, i) {
 }
 function numLink(a) {
   if (!a.num) return '';
-  return '<a class="tag num-link" href="/c/' + esc(a.num) + '" target="_blank" rel="noopener" title="' + esc('Card #' + a.num + ': opens this card alone in a new tab, the page to send to people outside the team') + '">#' + esc(a.num) + '<span aria-hidden="true"> ↗</span></a>';
+  return '<a class="tag num-link" href="#c=' + esc(a.num) + '" title="' + esc('Card #' + a.num + ': opens it in the side panel; Copy link gives the link to send') + '">#' + esc(a.num) + '</a>';
 }
 var ASG_NOTE = {};
 function asgHow(a, lead) {
@@ -198,7 +198,7 @@ function bizHtml(a, i) {
     '<div class="biz-note"><div class="biz-nh"><h5>Business note' + (b.text ? '<span class="h5n biz-by">' + esc(tagBy(b)) + ' \u00b7 ' + esc(dayhm(b.at)) + '</span>' : '') + '</h5>' +
     '<button type="button" class="btn sec small op-btn biz-edit" data-tip="' + esc(editTip) + '" title="' + esc(editTip) + '"' + (n.button ? '' : ' hidden') + '>' + esc(n.button) + '</button></div>' +
     '<p class="biz-why"' + (b.text && b.why ? '' : ' hidden') + '><b>Why:</b> ' + esc(b.why || '') + '</p>' +
-    '<p class="biz-txt' + (b.text ? '' : ' muted') + (n.hint ? ' biz-hint' : '') + '">' + (b.text ? '<b>' + bizLead(b) + ':</b> ' + esc(b.text) : esc(n.empty)) + '</p>' +
+    '<p class="biz-txt' + (b.text ? '' : ' muted') + (n.hint ? ' biz-hint' : '') + '"' + (b.text ? ' hidden' : '') + '>' + (b.text ? '<b>' + bizLead(b) + ':</b> ' + esc(b.text) : esc(n.empty)) + '</p>' +
     '<div class="reason biz-form" hidden><textarea id="biz-' + i + '" maxlength="500" rows="2" aria-label="What we recommend the business team does, for ' + esc(svcName(a) + ' ' + a.label) + '" placeholder="Recommended: a recommendation, e.g. we recommend changing the product page title back to Garden Chairs. Empty and Save removes it.">' + esc(b.text || '') + '</textarea>' +
     '<input type="text" class="biz-why-in" maxlength="300" aria-label="Why, in business terms" placeholder="Why, shown first: what users see or lose" value="' + esc(b.why || '') + '">' +
     '<select class="biz-kind" aria-label="Action or information" title="Recommended: we recommend the team changes something itself. Info: the team only needs to know, engineering fixes it."><option value="action"' + (b.kind === 'info' ? '' : ' selected') + '>Recommended: they act</option><option value="info"' + (b.kind === 'info' ? ' selected' : '') + '>Info: they only need to know</option></select>' +
@@ -219,6 +219,7 @@ function bizNoteSync(a, box) {
   if (!n.button) box.querySelector('.biz-form').hidden = true;
   if (b && b.text) p.innerHTML = '<b>' + bizLead(b) + ':</b> ' + esc(b.text); else p.textContent = n.empty;
   p.classList.toggle('muted', !(b && b.text));
+  p.hidden = !!(b && b.text);
   p.classList.toggle('biz-hint', n.hint);
   w.innerHTML = '<b>Why:</b> ' + esc((b && b.why) || '');
   w.hidden = !(b && b.text && b.why);
@@ -433,10 +434,9 @@ function loadRuns(key, force) {
     done((Array.isArray(rows) ? rows : []).filter(function (r) { return (r.keys || []).indexOf(key) >= 0; }), false);
   }, function () { done([], true); });
 }
-function body(a, recShown, i) {
-  var what = (a.what ? '<p class="what">' + linkify(a.what) + '</p>' : '') + (a.knownCause ? '<p class="known"><span>Known cause</span> \u00b7 <span data-no-tx>' + esc(a.knownCause) + '</span></p>' : '') + cardShots(a);
-  var sus = (a.suspects || []).length ? '<section><h5>Suspects</h5><ol>' + a.suspects.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol></section>' : '';
-  var rec = a.recommend && !recShown ? '<section class="rec"><h5>Recommendation</h5><p>' + esc(a.recommend) + '</p></section>' : '';
+function body(a, i) {
+  var what = (bizSaid(a) && a.what ? '<p class="what">' + linkify(a.what) + '</p>' : '') + (a.knownCause ? '<p class="known"><span>Known cause</span> \u00b7 <span data-no-tx>' + esc(a.knownCause) + '</span></p>' : '') + cardShots(a);
+  var sus = (a.suspects || []).length ? '<section class="sus"><h5>Suspects</h5><ol>' + a.suspects.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol></section>' : '';
   var code = codeOf(a).filter(function (c) { return !isFix(c); });
   var codeHtml = fixesOf(a).map(fixHtml).join('') + (code.length ? '<section><h5>Code</h5><ul class="code-refs">' + code.map(function (c) {
     return '<li><a class="code-file" href="' + esc(c.url) + '" target="_blank" rel="noopener" title="' + esc(c.label + '\n' + c.repo + ' @ ' + (c.sha || 'master')) + '">' + esc(c.label) + ' \u2197</a><span class="code-why"><span class="cn">' + esc(c.note) + '</span> <span class="repo">' + esc(c.repo) + '</span></span></li>';
@@ -449,22 +449,79 @@ function body(a, recShown, i) {
       (more.length ? ' <span class="d" title="' + esc(more.map(function (m) { return m.what + ' · ' + m.title + ' · ' + m.date; }).join('\n')) + '">+' + more.length + ' more</span>' : '') + '</span></li>';
   }).join('') + '</ul></details>' : '';
   var note = a.note ? '<section class="dive"><h5>Investigation · ' + esc(dayhm(a.note.at)) + '</h5><p>' + esc(a.note.text) + '</p></section>' : '';
-  var mb = a.muted ? '<section><h5>Muted</h5><p class="reason-line">' + esc(a.muted) + '</p></section>' : '';
-  var analysis = sus + rec + draftHtml(a, i) + bizHtml(a, i) + codeHtml + pplHtml + note + invHtml(a) + mb;
-  if (!analysis && !recShown) analysis = '<section><h5>Analysis</h5><p class="muted">Not assessed yet. Investigate queues one.</p></section>';
+  var analysis = sus + clearNoteHtml(a) + followHtml(a) + draftHtml(a, i) + codeHtml + pplHtml + note + invHtml(a);
+  if (!analysis && !a.recommend && a.live !== false) analysis = '<section><h5>Analysis</h5><p class="muted">Not assessed yet. Investigate queues one.</p></section>';
   analysis += runsHtml(a, i);
-  var kids = (KIDS[a.key] || []).map(function (c) {
+  var list = mergedOf(a);
+  var kids = list.map(function (c) {
     var ck = (SEV[c.sev] || SEV.info)[1];
     var said = c.business && c.business.text ? '<span class="kid-todo"><b>' + bizLead(c.business) + ':</b> ' + esc(c.business.text) + '</span>' : '';
-    return '<li class="' + ck + '"><div class="k1">' + sev(c.sev) + '<b>' + esc(svcName(c)) + '</b><span>' + esc(c.label) + (c.sub ? ' \u00b7 ' + esc(c.sub) : '') + '</span>' + numLink(c) + pageLink(c) + (c.status === 'cleared' ? '<span class="tag plain">' + (eventCause(c) ? 'stopped after the event' : 'stopped firing') + '</span>' : '') + '</div>' +
+    return '<li class="' + ck + '"><div class="k1">' + sev(c.sev) + '<b>' + esc(svcName(c)) + '</b><span>' + esc(c.label || '') + (c.sub ? ' \u00b7 ' + esc(c.sub) : '') + '</span>' + numLink(c) + pageLink(c) + (c.status === 'cleared' ? '<span class="tag plain">' + (eventCause(c) ? 'stopped after the event' : 'stopped firing') + '</span>' : '') + '</div>' +
       (c.what ? '<span class="kid-what">' + linkify(c.what) + '</span>' : '') + said +
-      '<span class="kv">now <b>' + num(c.now, c.unit) + '</b> · 1 d ' + num(c.d1, c.unit) + ' · 7 d ' + num(c.d7, c.unit) + '</span>' + linksHtml(c.links, 2) + '<span class="keyline">' + esc(c.key) + '</span></li>';
+      (c.now != null ? '<span class="kv">now <b>' + num(c.now, c.unit) + '</b> · 1 d ' + num(c.d1, c.unit) + ' · 7 d ' + num(c.d7, c.unit) + '</span>' : '') + linksHtml(c.links, 2) + '<span class="keyline">' + esc(c.key) + '</span></li>';
   }).join('');
   var lk = linksHtml(a.links);
   var ev = (lk ? '<section><h5>Open in</h5>' + lk + '</section>' : '') +
-    (kids ? '<section><h5>Merged here · same cause (' + KIDS[a.key].length + ')</h5><ul class="kids">' + kids + '</ul></section>' : '') +
+    (kids ? '<section><h5>Merged here · same cause (' + list.length + ')</h5><ul class="kids">' + kids + '</ul></section>' : '') +
     '<section><h5>Key</h5><span class="keyline">' + esc(a.key) + '</span></section>';
-  return '<div class="inc-body"><div class="analysis">' + what + '<p class="last-act" hidden></p>' + analysis + '</div><aside class="evidence">' + ev + '</aside></div>';
+  return '<div class="inc-body"><div class="analysis">' + what + analysis + '</div><aside class="evidence">' + ev + '</aside></div>';
+}
+var TECH_OPEN_KEY = 'skopax.techOpen';
+function techFold(line, inner) {
+  return '<details class="tech-fold"' + (load(TECH_OPEN_KEY) === '1' ? ' open' : '') + '><summary class="chev"><h5>Technical details</h5></summary>' + line + inner + '</details>';
+}
+function bizTodo(a) { return !a.recommend && a.business && a.business.text && a.business.kind !== 'info'; }
+function bizSaid(a) { return !!(a.business && a.business.text && !bizTodo(a)); }
+function whatHtml(a) {
+  if (bizSaid(a)) return '<section class="card-what"><h5>What happened</h5><p class="biz-said">' + esc(a.business.text) + '</p></section>';
+  return a.what ? '<section class="card-what"><h5>What happened</h5><p class="what">' + linkify(a.what) + '</p></section>' : '';
+}
+function todoHtml(a, isOpen) {
+  var t = a.recommend ? a.recommend : bizTodo(a) ? a.business.text : isOpen && a.gone ? goneText(a) : '';
+  return t ? '<section class="card-todo"><h5>What to do</h5><p' + (bizTodo(a) ? ' class="biz-said"' : '') + '>' + esc(t) + '</p></section>' : '';
+}
+function mergedOf(a) { return (KIDS[a.key] || []).length ? KIDS[a.key] : (Array.isArray(a.merged) ? a.merged.filter(function (c) { return c && c.key; }) : []); }
+var ST_INV = {investigating: 'investigating', dived: 'investigated'};
+function stWhen(word, iso) { var d = iso ? daytime(iso) : ''; return '<span>' + esc(word) + '</span>' + (d ? ' <span>' + esc(d) + '</span>' : ''); }
+function stWaiting(a) { return (a.status === 'cleared' && cardSev(a.sev)) || (a.status === 'open' && a.triage === 'dived'); }
+function cardState(a) {
+  var r = resolutionOf(a), ev = !!eventCause(a), parts;
+  if (a.live === false) parts = [r ? resolutionHtml(r) : '<span>Closed</span>', a.lastSeen || a.clearedAt ? stWhen('last seen', a.lastSeen || a.clearedAt) : ''];
+  else if (a.triage === 'handled') {
+    var how = a.triagedBy === 'auto' ? null : r;
+    parts = [how ? resolutionHtml(how) : '<span>Resolved</span>', a.status === 'cleared' ? stWhen(ev ? 'stopped after the event' : 'fixed', a.clearedAt) : stWhen('first seen', a.firstSeen)];
+  } else {
+    var since = a.status === 'cleared' ? stWhen(ev ? 'stopped after the event' : 'stopped', a.clearedAt) : stWhen('first seen', a.firstSeen);
+    if (a.triage === 'progress') parts = ['<span>In progress</span>', a.ticket ? '<span data-no-tx>' + jiraLinks(a.ticket) + '</span>' : '', since];
+    else if (a.muted) parts = ['<span>Muted</span>', since];
+    else if (a.status === 'cleared' && !stWaiting(a)) parts = [stWhen(ev ? 'Stopped after the event' : 'Fixed', a.clearedAt)];
+    else parts = ['<span>Open</span>', since, ST_INV[a.triage] ? '<span>' + ST_INV[a.triage] + '</span>' : '', stWaiting(a) ? '<span>waiting to be addressed</span>' : ''];
+  }
+  return '<p class="card-state">' + parts.filter(Boolean).join(' \u00b7 ') + '</p>';
+}
+var FOLLOW_KIND = {no_action: 'No action needed'};
+var FOLLOW_RESULTS = {not_done: 'Not done yet', fixed: 'Looks fixed', no_action: 'Looks over', keep: 'Keep open', ticket: 'Ticket still open'};
+function followOf(a) { return a.followUp && typeof a.followUp === 'object' ? a.followUp : null; }
+function closingHtml(a) {
+  var f = followOf(a);
+  if (!f || !f.closeAt || a.live === false || a.triage === 'handled') return '';
+  return '<p class="follow-close"><b>' + esc('Closes as ' + (FOLLOW_KIND[f.closeKind] || 'Fixed') + ' at ' + daytime(f.closeAt)) + '</b>' + (f.lastEvidence ? ' \u00b7 <span data-no-tx>' + esc(f.lastEvidence) + '</span>' : '') + '</p>';
+}
+function followHtml(a) {
+  var f = followOf(a), parts = [];
+  if (!f) return '';
+  if (f.doneWhen) parts.push('<span>Done when</span> <span data-no-tx>' + esc(f.doneWhen) + '</span>');
+  if (f.checkedAt) parts.push('<span>' + esc('Last check ' + daytime(f.checkedAt)) + '</span>' + (f.lastResult ? ': <span>' + esc(FOLLOW_RESULTS[f.lastResult] || f.lastResult) + '</span>' : '') + (f.lastEvidence ? ' \u00b7 <span data-no-tx>' + esc(f.lastEvidence) + '</span>' : ''));
+  if (f.closeAt && a.triage !== 'handled') parts.push('<b>' + esc('Closes as ' + (FOLLOW_KIND[f.closeKind] || 'Fixed') + ' at ' + daytime(f.closeAt)) + '</b>');
+  if (f.owner) parts.push('<span>Pending with</span> <span data-no-tx>' + esc(f.owner) + '</span>');
+  if (f.keptBy) parts.push('<span>Kept open by</span> <span data-no-tx>' + esc(String(f.keptBy).split('@')[0]) + '</span>');
+  if (f.gaveUp) parts.push('<span>Gave up</span>');
+  return parts.length ? '<section class="follow-up"><h5>Follow-up check</h5><p class="follow">' + parts.join(' \u00b7 ') + '</p></section>' : '';
+}
+function clearNoteHtml(a) {
+  var c = a.clearNote;
+  if (!c || typeof c !== 'object' || !c.text) return '';
+  return '<section class="clear-note"><h5>Stopped firing<span class="h5n">' + esc(draftBy(c.by) + (c.at ? ' \u00b7 ' + dayhm(c.at) : '')) + '</span></h5><p>' + esc(c.text) + '</p></section>';
 }
 function podBy() { return ' \u00b7 ' + tx('by {0}').replace('{0}', function () { return '<span data-no-tx>' + esc(tx(investigatorName())) + '</span>'; }); }
 function cardTags(a) {
@@ -482,8 +539,9 @@ function cardTags(a) {
   if (was) t.push({row: 1, html: was});
   if ((a.teamsPosts || []).length) t.push({row: 0, html: teamsTag(a.teamsPosts)});
   if (a.muted) t.push({row: 3, html: '<span class="tag k-muted">Muted</span>'});
-  if (a.status === 'cleared') t.push({row: 4, html: '<span class="tag k-cleared">' + esc(clearedWord(a) + ' ' + daytime(a.clearedAt)) + '</span>'});
-  if ((KIDS[a.key] || []).length) t.push({row: 0, html: '<span class="tag plain">+' + KIDS[a.key].length + ' merged</span>'});
+  if (a.live === false) t.push({row: 4, html: '<span class="tag k-cleared past-tag">' + (resolutionOf(a) ? resKindHtml(resolutionOf(a)) : '<span>Closed</span>') + '</span>'});
+  else if (a.status === 'cleared') t.push({row: 4, html: '<span class="tag k-cleared">' + esc(clearedWord(a) + ' ' + daytime(a.clearedAt)) + '</span>'});
+  if (mergedOf(a).length) t.push({row: 0, html: '<span class="tag plain">+' + mergedOf(a).length + ' merged</span>'});
   if (a.sevSet && a.sevSet.sev) t.push({row: 0, html: '<span class="tag plain sev-hand" title="' + esc('Severity set by hand by ' + draftBy(a.sevSet.by) + ' ' + dayhm(a.sevSet.at) + '; the signal says ' + (SEV[a.sevAuto || a.sevSet.auto] || SEV.info)[0] + '. Change severity › Back to the signal undoes it') + '">Severity by hand</span>'});
   var lead = t.filter(function (x) { return x.row; }).sort(function (x, y) { return x.row - y.row; })[0];
   return {row: (lead ? lead.html : '') + recurringTag(a), rest: t.filter(function (x) { return x !== lead; }).map(function (x) { return x.html; }).join('')};
@@ -526,6 +584,7 @@ function alreadyActiveHtml(a) {
   return text ? '<p class="rec-line already-active">' + esc(text) + '</p>' : '';
 }
 function statusTag(a) {
+  if (a.live === false) return '<span class="spill k-cleared">Closed</span>';
   if (a.muted) return '<span class="spill k-muted">Muted</span>';
   if (a.status === 'cleared') return '<span class="spill k-cleared">' + clearedWord(a, true) + '</span>';
   return '<span class="spill">Open</span>';
@@ -584,7 +643,6 @@ function anomCard(a, i) {
     a.src === 'argo' ? '<span>for <b>' + num(a.now, a.unit) + '</b></span>' :
     '<span>now <b>' + num(a.now, a.unit) + '</b></span><span>1 d ' + num(a.d1, a.unit) + '</span><span>7 d ' + num(a.d7, a.unit) + '</span>') +
     '<span class="ch">' + esc(change(a)) + '</span><span class="when">' + esc(when) + '</span>' + (ctx ? '<span>' + esc(ctx) + '</span>' : '') + usd;
-  var recShown = isOpen && !!a.recommend;
   var name = svcName(a) + ' / ' + a.label;
   card.innerHTML = '<div class="inc-head"><div class="inc-title">' +
     '<span class="c c-num">' + numLink(a) + '</span><span class="c c-sev">' + sev(a.sev) + '</span>' +
@@ -592,10 +650,10 @@ function anomCard(a, i) {
     '<span class="c c-status">' + (tags.row || statusTag(a)) + '</span><span class="c c-asg">' + asgTag(a) + '</span><span class="c c-tags">' + bizTags(a) + '</span>' +
     '<span class="c c-chg"><span class="chg">' + esc(change(a)) + '</span></span><span class="c c-age" title="' + esc(when) + '">' + esc(ageShort(a.firstSeen)) + '</span></div>' +
     runBanner(a.key) + '<div class="acts" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div></div>' +
-    '<div class="inc-more" id="more-' + i + '" hidden>' + tabsHtml(a, i) + '<div class="cd-details" role="tabpanel" id="cdp-d-' + i + '" aria-labelledby="cdt-d-' + i + '"' + (CARD_TAB[a.key] === 'history' ? ' hidden' : '') + '><div class="line">' + line + '</div>' + causeHtml(a) + alreadyActiveHtml(a) + seenHtml(a) +
-    (tags.rest ? '<div class="inc-tags">' + tags.rest + '</div>' : '') +
-    (recShown ? '<p class="rec-line"><span>Next</span>' + esc(a.recommend) + '</p>' : isOpen && a.gone ? '<p class="rec-line"><span>Next</span>' + esc(goneText(a)) + '</p>' : '') +
-    body(a, recShown, i) + '<div class="notif" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div></div>' + histPane(a, i) + '</div>';
+    '<div class="inc-more" id="more-' + i + '" hidden>' + tabsHtml(a, i) + '<div class="cd-details" role="tabpanel" id="cdp-d-' + i + '" aria-labelledby="cdt-d-' + i + '"' + (CARD_TAB[a.key] === 'history' ? ' hidden' : '') + '>' +
+    cardState(a) + closingHtml(a) + (tags.rest ? '<div class="inc-tags">' + tags.rest + '</div>' : '') + whatHtml(a) + todoHtml(a, isOpen) + '<p class="last-act" hidden></p>' + bizHtml(a, i) +
+    (a.muted ? '<section class="muted-why"><h5>Muted</h5><p class="reason-line">' + esc(a.muted) + '</p></section>' : '') +
+    techFold('<div class="line">' + line + '</div>' + causeHtml(a) + alreadyActiveHtml(a) + seenHtml(a), body(a, i)) + '<div class="notif" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div></div>' + histPane(a, i) + '</div>';
   card.querySelector('.inc-title').addEventListener('click', function (e) {
     if (e.target.closest('a, input, select, textarea, label, button:not(.fold)')) return;
     var s = window.getSelection && window.getSelection();
@@ -605,6 +663,8 @@ function anomCard(a, i) {
     if (card.closest('.card-drawer')) return;
     if (on) cardUrl(a, true); else cardUrlOff(a.key);
   });
+  var tf = card.querySelector('.tech-fold');
+  tf.addEventListener('toggle', function () { save(TECH_OPEN_KEY, tf.open ? '1' : '0'); });
   if (OPENK[a.key]) cardOpen(card, true);
   return card;
 }
@@ -624,7 +684,7 @@ function histBody(a) {
   return cardHistoryHtml(cardHistoryRows(a, c.data || {}, runs, TAG_NAMES), daytime, c.failed ? 'failed' : '');
 }
 function paintHist(key) {
-  var a = CARDS.filter(function (x) { return x.key === key; })[0];
+  var a = drawerCard(key);
   if (!a) return;
   document.querySelectorAll('#anoms article.inc').forEach(function (card) {
     if (card.dataset.key !== key) return;
@@ -653,7 +713,7 @@ function cardTab(card, which, focus) {
   card.querySelector('.cd-details').hidden = h;
   var p = card.querySelector('.cd-hist');
   p.hidden = !h;
-  if (h) { p.innerHTML = histBody(CARDS.filter(function (x) { return x.key === key; })[0] || {key: key}); loadHist(key); }
+  if (h) { p.innerHTML = histBody(drawerCard(key) || {key: key}); loadHist(key); }
 }
 document.addEventListener('click', function (e) {
   var t = e.target.closest && e.target.closest('#anoms .cd-tab');
@@ -684,19 +744,13 @@ var CARD_VIEW = load(VIEW_KEY) === 'list' ? 'list' : 'board';
 var DRAWER = null;
 var BOARD_SHOWN = 15, BOARD_FULL = {};
 var DONE_TICK = '<svg class="bcol-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="20 6 9 17 4 12"/></svg>';
-var BOARD_COLS = [['open', 'Open', 'firing, or stopped with nobody acting on it yet; critical first, firing before stopped. The tags say whether it was investigated and whether it stopped'],
+var BOARD_COLS = [['open', 'Open', 'firing, or stopped with nobody acting on it yet; critical first, firing before stopped'],
   ['progress', 'In progress', 'a ticket or hand-off is underway'], ['done', 'Done', 'action taken, or cleared with nothing to do'], ['muted', 'Muted', 'no pushes while the mute lasts']];
 function boardColumn(a) {
   if (a.muted) return 'muted';
   if (a.triage === 'handled') return 'done';
   if (a.triage === 'progress') return 'progress';
   return a.status === 'open' || stale.indexOf(a) >= 0 ? 'open' : 'done';
-}
-function boardState(a) {
-  var t = '';
-  if (TRI[a.triage] && (a.triage === 'investigating' || a.triage === 'dived')) t += '<span class="tag ' + TRI[a.triage][1] + (a.triage === 'investigating' ? ' tri-inv' : '') + '" title="' + esc(a.triage === 'dived' ? 'Investigated; nobody acted on it yet' : 'The investigator is on it') + '">' + (a.triage === 'investigating' ? runIndHtml(runFor(a.key)) : '') + esc(TRI[a.triage][0]) + '</span>';
-  if (a.status === 'cleared' && stale.indexOf(a) >= 0) t += '<span class="tag k-cleared" title="' + esc(clearedWord(a) + ' ' + daytime(a.clearedAt)) + '">' + esc(clearedWord(a, true) + ' ' + daytime(a.clearedAt)) + '</span>';
-  return t;
 }
 function setCardView(v) {
   if (v === CARD_VIEW) return;
@@ -731,57 +785,13 @@ function businessTitle(a) {
 }
 function svcLabel(a) { var s = svcName(a), l = svcReal(a.label); return l && l !== s ? s + ' \u00b7 ' + l : s; }
 function cardTitle(a) { return businessTitle(a) || patternTitle(a) || ''; }
-function tileSvg(body) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + body + '</svg>'; }
-var TILE_MOVES = [
-  ['open', 'Reopen', tileSvg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path>'), 'Reopen: back to Open, like a drag to the Open column'],
-  ['progress', 'Start progress', tileSvg('<circle cx="12" cy="12" r="9"></circle><path d="M10 8.5l5 3.5-5 3.5z"></path>'), 'Start progress: the card goes In progress with you as owner'],
-  ['done', 'Resolve', tileSvg('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>'), 'Resolve: fixed, no action needed or a duplicate of another card'],
-  ['muted', 'Mute', tileSvg('<path d="M13.73 21a2 2 0 0 1-3.46 0"></path><path d="M18.63 13A17.89 17.89 0 0 1 18 8"></path><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"></path><path d="M18 8a6 6 0 0 0-9.33-5"></path><line x1="1" y1="1" x2="23" y2="23"></line>'), 'Mute: for 24 hours, a week or for good']];
-var TILE_TICKET = tileSvg('<rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>');
-var TILE_BUSY = {};
-function tileBusy(key) { return !!(TILE_BUSY[key] || (window.__cardBusy && window.__cardBusy(key))); }
+function tileBusy(key) { return !!(window.__cardBusy && window.__cardBusy(key)); }
 function tileDraggable(key) { return !(window.__boardLock ? window.__boardLock() : 'Log in to move cards') && !tileBusy(key); }
 window.__tileBusy = tileBusy;
 window.__tileDraggable = tileDraggable;
-function tileActs(a, lock, who) {
-  var moves = lock ? [] : TILE_MOVES.filter(function (m) { return moveSteps(a, m[0]); });
-  var busy = tileBusy(a.key);
-  var status = moves.map(function (m) { return '<button type="button" class="ta-b" data-move="' + m[0] + '" aria-label="' + esc(m[1]) + '" title="' + esc(m[3]) + '"' + (busy ? ' disabled' : '') + (TILE_BUSY[a.key] === m[0] ? ' aria-busy="true"' : '') + '>' + m[2] + '</button>'; }).join('');
-  var k = ticketKey(a.ticket), href = k ? jiraHref(k) : '';
-  var jira = !k ? '' : href ? '<a class="ta-jira" href="' + esc(href) + '" target="_blank" rel="noopener" aria-label="' + esc('Open ' + k + ' in Jira') + '" title="' + esc('Open ' + k + ' in Jira') + '">' + TILE_TICKET + '<span data-no-tx>' + esc(k) + '</span><span class="ext" aria-hidden="true">\u2197</span></a>'
-    : '<span class="ta-jira">' + TILE_TICKET + '<span data-no-tx>' + esc(k) + '</span></span>';
-  var copy = '<button type="button" class="ta-b icon ta-copy" aria-label="Copy link" title="' + esc(a.num ? 'Copy the direct link to card #' + a.num + ': it opens this card alone' : 'Copy a link that opens this anomaly') + '">' + ICON_LINK + '<span class="sr">Copy link</span></button>';
-  var groups = [status, who, jira + copy].filter(Boolean).map(function (g, i) { return '<span class="ta-g">' + g + '</span>'; });
-  return '<div class="tile-acts" role="group" aria-label="' + esc(a.num ? 'Actions for card #' + a.num : 'Actions for this card') + '">' + groups.join('<span class="ta-sep" aria-hidden="true"></span>') + '</div>';
-}
-function tileCopy(a, t) {
-  var url = a.num ? location.origin + '/c/' + a.num : location.origin + location.pathname + '#a=' + linkKey(a.key), tip = t.title;
-  function said(text) { t.title = text; boardNote(text); setTimeout(function () { t.title = tip; }, 2000); }
-  if (!navigator.clipboard) { history.replaceState(null, '', url); said('Link is in the address bar'); return; }
-  navigator.clipboard.writeText(url).then(function () { said('Copied'); }, function () { history.replaceState(null, '', url); said('Link is in the address bar'); });
-}
-function tileMove(a, t) {
-  var key = a.key, move = t.dataset.move;
-  if (TILE_BUSY[key]) return;
-  TILE_BUSY[key] = move;
-  var row = t.closest('.tile-acts');
-  row.querySelectorAll('.ta-b[data-move]').forEach(function (b) { b.disabled = true; });
-  t.setAttribute('aria-busy', 'true');
-  row.closest('.tile').draggable = false;
-  Promise.resolve(dropOn(a, move)).catch(function () {}).then(function () {
-    delete TILE_BUSY[key];
-    t.removeAttribute('aria-busy');
-    var busy = tileBusy(key);
-    var now = [].filter.call(document.querySelectorAll('#anoms .tile'), function (x) { return x.dataset.key === key; })[0];
-    [row, now && now.querySelector('.tile-acts')].forEach(function (r) {
-      if (r) r.querySelectorAll('.ta-b[data-move]').forEach(function (b) { b.removeAttribute('aria-busy'); b.disabled = busy; });
-    });
-    if (now) now.draggable = tileDraggable(key);
-    var lost = !document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected || document.activeElement === t;
-    if (!lost || !now) return;
-    var back = now.querySelector('.ta-b[data-move="' + move + '"]:not(:disabled)') || now.querySelector('.tile-open');
-    if (back) back.focus();
-  });
+function tileRun(a) {
+  if (a.triage !== 'investigating' || boardColumn(a) !== 'open') return '';
+  return '<span class="tag ' + TRI.investigating[1] + ' tri-inv" title="' + esc('The investigator is on it') + '">' + runIndHtml(runFor(a.key)) + esc(TRI.investigating[0]) + '</span>';
 }
 function tile(a) {
   var b = el('div', 'tile ' + (SEV[a.sev] || SEV.info)[1]);
@@ -791,19 +801,11 @@ function tile(a) {
   var where = a.cluster && !svcFromCluster(a) ? ' \u00b7 instance ' + a.cluster : '';
   b.title = svcName(a) + ' / ' + a.label + where + (a.num ? ' \u00b7 #' + a.num : '') + ' \u00b7 opens the card' + (lock ? '' : '; drag it to another column to change its status');
   var who = a.owner ? '<span class="tile-asg" role="img" aria-label="' + esc('Assignee: ' + ownerName(a.owner)) + '" title="' + esc('Assigned to ' + a.owner) + '">' + esc(ownerName(a.owner).split(/[._-]/).map(function (p) { return p.charAt(0); }).join('').slice(0, 2).toUpperCase()) + '</span>' : '';
-  b.innerHTML = '<span class="tile-top">' + sev(a.sev) + (a.num ? '<span class="tile-num">#' + esc(a.num) + '</span>' : '') + '<span class="tile-age">' + esc(ageShort(a.firstSeen)) + '</span></span>' +
+  b.innerHTML = '<span class="tile-top">' + sev(a.sev) + (a.num ? '<span class="tile-num">#' + esc(a.num) + '</span>' : '') + '<span class="tile-age">' + esc(ageShort(a.firstSeen)) + '</span>' + who + '</span>' +
     '<button type="button" class="tile-open" aria-haspopup="dialog"><span class="sr"><span>' + esc((SEV[a.sev] || [a.sev])[0]) + '</span>, ' + (a.num ? '<span>#' + esc(a.num) + '</span>, ' : '') + '<span class="tile-age-sr">' + esc(ageShort(a.firstSeen)) + '</span>, </span>' + (cardTitle(a) ? '<span class="tile-svc tile-title">' + esc(cardTitle(a)) + '</span><span class="tile-sig">' + esc(svcLabel(a) + where) + '</span>'
       : '<span class="tile-svc">' + esc(svcName(a)) + '</span>' + (svcReal(a.label) && svcReal(a.label) !== svcName(a) ? '<span class="tile-sig">' + esc(a.label + where) + '</span>' : where ? '<span class="tile-sig">' + esc(where.slice(3)) + '</span>' : '')) + '</button>' +
-    '<span class="tile-foot">' + (boardColumn(a) === 'open' ? boardState(a) : '') + bizTags(a) + (draftOf(a) && !draftSent(a) ? '<span class="tag k-act">Slack draft</span>' : '') + (recurs(a) ? '<span class="tag k-warn">Recurring</span>' : '') + '</span>' + tileActs(a, lock, who);
-  var row = b.querySelector('.tile-acts');
-  row.addEventListener('click', function (e) {
-    e.stopPropagation();
-    var t = e.target.closest('button');
-    if (!t) return;
-    if (t.dataset.move) tileMove(a, t);
-    else if (t.classList.contains('ta-copy')) tileCopy(a, t);
-  });
-  b.addEventListener('click', function (e) { if (!e.target.closest('.tile-acts')) { openDrawer(a.key); cardUrl(a, true); } });
+    '<span class="tile-foot">' + tileRun(a) + bizTags(a) + (draftOf(a) && !draftSent(a) ? '<span class="tag k-act">Slack draft</span>' : '') + (recurs(a) ? '<span class="tag k-warn">Recurring</span>' : '') + '</span>';
+  b.addEventListener('click', function () { openDrawer(a.key); cardUrl(a, true); });
   b.addEventListener('dragstart', function (e) {
     if (!b.draggable || tileBusy(a.key)) { e.preventDefault(); return; }
     DRAG = a;
@@ -942,10 +944,31 @@ function wireDrop(col) {
   });
 }
 var QF_PEOPLE = 8;
+var MORE_KEY = 'skopax.moreFilters';
+var VISIBLE_FILTERS = ['open', 'crit', 'taken'];
+var FOLD_FILTERS = ['all', 'progress', 'muted', 'cleared', 'investigating', 'dived', 'high', 'warn', 'recurring', 'archived', 'closed'];
+var MORE_SHUT = false, MORE_SIG = '';
+function moreFiltersCount() {
+  return (VISIBLE_FILTERS.indexOf(filter) < 0 ? 1 : 0) + fParts(typeF).filter(function (p) { return p !== 'who:me'; }).length;
+}
+function moreFiltersSync() {
+  var btn = document.getElementById('more-filters'), box = document.getElementById('more-filters-box');
+  if (!btn || !box) return;
+  var n = moreFiltersCount(), sig = filter + '|' + typeF + '|' + CARD_VIEW;
+  if (sig !== MORE_SIG) { MORE_SIG = sig; if (n || CARD_VIEW === 'list') MORE_SHUT = false; }
+  var on = !MORE_SHUT && (n > 0 || CARD_VIEW === 'list' || load(MORE_KEY) === 'open');
+  box.hidden = !on;
+  btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+  btn.innerHTML = 'More filters' + (n ? ' <span class="count">(' + n + ')</span>' : '');
+}
 function renderQuick() {
-  var box = document.getElementById('card-qf');
+  var box = document.getElementById('card-qf'), main = document.getElementById('bf-main'), rest = document.getElementById('bf-rest');
   if (!box) return;
+  var held = document.activeElement && document.activeElement.closest && document.activeElement.closest('#board-filters, #more-filters-box');
+  var back = held && held.contains(document.activeElement) && document.activeElement.classList.contains('qf-c') ? (document.activeElement.dataset.f ? '[data-f="' + document.activeElement.dataset.f + '"]' : '[data-type="' + document.activeElement.dataset.type + '"]') : '';
   box.innerHTML = '';
+  if (main) main.innerHTML = '';
+  if (rest) rest.innerHTML = '';
   var base = filterBase(filter);
   function chip(t, label, n, tip, cls) {
     var b = el('button', 'qf-c' + (cls ? ' ' + cls : '') + (n ? '' : ' zero'), label + '<span class="count">' + esc(n) + '</span>');
@@ -955,12 +978,33 @@ function renderQuick() {
     b.addEventListener('click', function () { setType(toggledF(t)); });
     return b;
   }
+  function filterChip(id) {
+    var c = CH.filter(function (x) { return x.id === id; })[0];
+    if (!c) return null;
+    var b = el('button', 'qf-c ' + c.k + (c.n ? '' : ' zero'), '<span class="lbl">' + esc(c.chip || c.label) + '</span><span class="count">' + esc(c.n) + '</span>');
+    b.type = 'button'; b.dataset.f = c.id;
+    b.setAttribute('aria-pressed', c.id === filter ? 'true' : 'false');
+    b.title = (c.tip ? c.tip + ' · ' : '') + 'opens Board filtered to ' + c.label + (c.seg !== 'anom-chips' ? ', click again for all open' : '');
+    b.addEventListener('click', function () {
+      var again = c.id === filter && c.seg !== 'anom-chips';
+      showTab('anoms');
+      setFilter(again ? 'open' : c.id);
+    });
+    return b;
+  }
+  if (main) {
+    var first = filterChip('open');
+    if (first) main.appendChild(first);
+    var me = chip('who:me', '<span class="lbl">Mine</span>', base.filter(function (a) { return typeIs(a, 'who:me'); }).length, ME_USER ? 'cards assigned to you' : 'cards assigned to you (log in to see them)');
+    main.appendChild(me);
+    ['crit', 'taken'].forEach(function (id) { var b = filterChip(id); if (b) main.appendChild(b); });
+  }
+  if (rest) FOLD_FILTERS.forEach(function (id) { var b = filterChip(id); if (b) rest.appendChild(b); });
   var who = el('div', 'qf-g');
   who.setAttribute('role', 'group'); who.setAttribute('aria-label', 'Assignee');
   who.appendChild(el('span', 'qf-l', 'Assignee'));
-  ['who:me', 'who:none'].forEach(function (t) {
-    who.appendChild(chip(t, esc(WHO_CHIPS[t]), base.filter(function (a) { return typeIs(a, t); }).length, t === 'who:me' ? (ME_USER ? 'cards assigned to you' : 'cards assigned to you (log in to see them)') : 'cards with no assignee'));
-  });
+  who.appendChild(chip('who:any', '<span class="lbl">' + esc(WHO_CHIPS['who:any']) + '</span>', base.filter(function (a) { return typeIs(a, 'who:any'); }).length, 'cards with an assignee, whoever it is'));
+  who.appendChild(chip('who:none', '<span class="lbl">' + esc(WHO_CHIPS['who:none']) + '</span>', base.filter(function (a) { return typeIs(a, 'who:none'); }).length, 'cards with no assignee'));
   var people = whoPeople(base);
   Object.keys(people).sort(function (x, y) { return people[y].n - people[x].n || (x < y ? -1 : 1); }).filter(function (s, i) { return i < QF_PEOPLE || hasF('who:u:' + s); }).forEach(function (s) {
     var p = people[s], ini = p.name.split(/[\s._-]+/).filter(Boolean).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase();
@@ -971,14 +1015,37 @@ function renderQuick() {
   tg.appendChild(el('span', 'qf-l', 'Tags'));
   var n = {};
   base.forEach(function (a) { tagIds(a).forEach(function (t) { n[t] = (n[t] || 0) + 1; }); });
-  Object.keys(TAG_NAMES).filter(function (id) { return n[id] || hasF('tag:' + id); }).forEach(function (id) {
-    tg.appendChild(chip('tag:' + id, esc(tagName(id)), n[id] || 0, 'cards tagged ' + tagName(id), tagClass(id)));
+  Object.keys(TAG_NAMES).forEach(function (id) {
+    tg.appendChild(chip('tag:' + id, '<span class="lbl">' + esc(tagName(id)) + '</span>', n[id] || 0, 'cards tagged ' + tagName(id) + (TECH_TAGS[id] ? ': ' + TECH_TAGS[id] + ' to fix them' : ': they go to its Teams channel once they have a business sentence'), tagClass(id)));
   });
   var bare = base.filter(function (a) { return !tagIds(a).length; }).length;
-  if (Object.keys(TAG_NAMES).length && (bare || hasF(UNTAGGED_F))) tg.appendChild(chip(UNTAGGED_F, 'Untagged', bare, 'cards with no tag'));
+  if (Object.keys(TAG_NAMES).length) tg.appendChild(chip(UNTAGGED_F, '<span class="lbl">Untagged</span>', bare, 'cards with no tag'));
   if (tg.children.length > 1) box.append(tg);
   box.append(who);
+  var counts = {};
+  base.forEach(function (a) { var t = typeOf(a); counts[t] = (counts[t] || 0) + 1; });
+  fParts(typeF).filter(function (p) { return fKind(p) === 'type'; }).forEach(function (p) { if (!counts[p]) counts[p] = 0; });
+  var types = Object.keys(counts).sort(function (x, y) { return counts[y] - counts[x] || (typeName(x) < typeName(y) ? -1 : 1); });
+  if (types.length) {
+    var ty = el('div', 'qf-g');
+    ty.setAttribute('role', 'group'); ty.setAttribute('aria-label', 'Types');
+    ty.appendChild(el('span', 'qf-l', 'Types'));
+    types.forEach(function (t) { ty.appendChild(chip(t, '<span class="lbl">' + esc(typeName(t)) + '</span>', counts[t], counts[t] + ' ' + typeName(t) + (counts[t] === 1 ? ' card' : ' cards') + ' (signal ' + t + ')', 'qf-t')); });
+    box.append(ty);
+  }
+  moreFiltersSync();
+  if (back) { var again = document.querySelector('#board-filters ' + back + ', #more-filters-box ' + back); if (again) again.focus(); }
 }
+(function () {
+  var btn = document.getElementById('more-filters');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    var shut = btn.getAttribute('aria-expanded') === 'true';
+    MORE_SHUT = shut;
+    save(MORE_KEY, shut ? 'closed' : 'open');
+    moreFiltersSync();
+  });
+})();
 function renderBoard(root, groups) {
   var cards = [], nextTiles = {};
   groups.forEach(function (gr) { gr.list.forEach(function (a) { if (cards.indexOf(a) < 0) cards.push(a); }); });
@@ -1015,7 +1082,7 @@ function renderBoard(root, groups) {
   if (!cards.length && searchQ) root.appendChild(el('p', 'muted', 'No card matches.'));
   TILES = nextTiles;
   if (DRAWER && cards.some(function (a) { return a.key === DRAWER; })) openDrawer(DRAWER, true);
-  else { DRAWER = null; var gone = drawerNode(root); if (gone) gone.remove(); }
+  else if (!looseDrawer()) { DRAWER = null; var gone = drawerNode(root); if (gone) gone.remove(); }
 }
 var BOARD_AT = 'open', BOARD_Q = '(max-width: 640px), (max-height: 500px) and (pointer: coarse)';
 function boardPhone() { try { return !!(window.matchMedia && window.matchMedia(BOARD_Q).matches); } catch (e) { return false; } }
@@ -1093,9 +1160,29 @@ function drawerWide(wrap, on) {
   b.setAttribute('aria-pressed', on ? 'true' : 'false');
 }
 function drawerNode(root) { return [].filter.call(root.children, function (c) { return c.classList.contains('card-drawer'); })[0] || null; }
+var LOOSE = null;
+function drawerCard(key) {
+  return CARDS.filter(function (x) { return x.key === key; })[0] || (LOOSE && LOOSE.key === key ? LOOSE : null);
+}
+function looseDrawer() { return !!(LOOSE && DRAWER && LOOSE.key === DRAWER); }
 function openDrawer(key, quiet) {
-  var a = CARDS.filter(function (x) { return x.key === key; })[0], root = document.getElementById('anoms');
-  if (!a || !root) return;
+  var a = CARDS.filter(function (x) { return x.key === key; })[0];
+  if (!a) return;
+  LOOSE = null;
+  showDrawer(a, quiet);
+}
+function openDrawerCard(c, quiet) {
+  if (!c || !c.key) return;
+  var a = CARDS.filter(function (x) { return x.key === c.key; })[0];
+  if (a && CARD_VIEW === 'board' && filter !== 'closed') { openDrawer(a.key, quiet); return; }
+  LOOSE = a || (c.label ? c : Object.assign({}, c, {label: c.num ? 'Card #' + c.num : c.key}));
+  showDrawer(LOOSE, quiet);
+}
+function cardIndex(a) { var i = CARDS.indexOf(a); return i >= 0 ? i : 'n' + (a.num || 0); }
+function showDrawer(a, quiet) {
+  var key = a.key, root = document.getElementById('anoms');
+  if (!root) return;
+  if (DRAWER !== key) linkMoved();
   DRAWER = key;
   var old = drawerNode(root);
   if (old && old.dataset.key === key) { refreshDrawer(old, a, root); return; }
@@ -1107,13 +1194,13 @@ function openDrawer(key, quiet) {
   wrap.setAttribute('aria-modal', 'true');
   wrap.setAttribute('aria-label', svcName(a) + ' / ' + a.label);
   wrap.innerHTML = '<div class="cd-backdrop"></div><div class="cd-panel"><div class="cd-bar"><button type="button" class="btn sec small cd-expand"></button><span class="cd-t">' + (a.num ? 'Card #' + esc(a.num) : 'Card') + '</span>' +
-    (a.num ? '<a class="cd-link" href="/c/' + esc(a.num) + '" target="_blank" rel="noopener">Open alone ↗</a>' : '') + '<button type="button" class="btn sec small cd-close">Close</button></div></div>';
-  var card = anomCard(a, CARDS.indexOf(a));
+    '<button type="button" class="btn sec small cd-close">Close</button></div></div>';
+  var card = drawerArticle(a);
   wrap.querySelector('.cd-panel').appendChild(card);
   root.appendChild(wrap);
   cardOpen(card, true);
   root.querySelectorAll('.tile').forEach(function (t) { t.classList.toggle('on', t.dataset.key === key); });
-  drawerWide(wrap, load(DRAWER_WIDE_KEY) === '1');
+  drawerWide(wrap, load(DRAWER_WIDE_KEY) !== '0');
   wrap.querySelector('.cd-expand').addEventListener('click', function () {
     var on = !wrap.classList.contains('wide');
     drawerWide(wrap, on);
@@ -1130,7 +1217,7 @@ function refreshDrawer(wrap, a, root) {
   var sig = cardSig(a);
   if (wrap.dataset.sig === sig) return;
   var panel = wrap.querySelector('.cd-panel'), at = panel.scrollTop, held = panel.querySelector('article.inc');
-  var card = anomCard(a, CARDS.indexOf(a));
+  var card = drawerArticle(a);
   if (held) panel.replaceChild(card, held); else panel.appendChild(card);
   cardOpen(card, true);
   wrap.dataset.sig = sig;
@@ -1138,9 +1225,110 @@ function refreshDrawer(wrap, a, root) {
   panel.scrollTop = at;
   if (window.__skopaxRender) window.__skopaxRender();
 }
+function drawerArticle(a) {
+  var card = anomCard(a, cardIndex(a));
+  if (CARDS.indexOf(a) < 0) { closedActs(a, card); looseLast(a, card); }
+  return card;
+}
+var CARD_MORE = {};
+function cardMore(a, box) {
+  var more = el('button', 'btn sec free card-more', 'More'), list = el('div', 'card-more-box');
+  more.type = 'button';
+  list.id = 'card-more-' + box.dataset.i;
+  list.setAttribute('role', 'group');
+  list.setAttribute('aria-label', 'More actions');
+  more.setAttribute('aria-controls', list.id);
+  more.title = 'More actions: status moves, Investigate, Jira, channels and the link';
+  var set = function (on) {
+    list.hidden = !on;
+    more.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) CARD_MORE[a.key] = 1; else delete CARD_MORE[a.key];
+  };
+  more.addEventListener('click', function () { set(list.hidden); });
+  set(!!CARD_MORE[a.key]);
+  return {button: more, box: list};
+}
+function copyTip(a) { return a.num ? 'Copy the link to card #' + a.num + ': it opens the Board with this card open' : 'Copy a link that opens this anomaly'; }
+function closedActs(a, card) {
+  var box = card.querySelector('.acts'), nb = card.querySelector('.notif');
+  if (nb) nb.remove();
+  if (!box) return;
+  box.dataset.wired = '1';
+  box.hidden = false;
+  box.classList.add('acts-closed', 'acts-grouped', 'acts-panel');
+  var main = el('div', 'card-main'), more = cardMore(a, box), fu = followOf(a);
+  box.appendChild(loginHint(a, false));
+  if (a.num) {
+    var chat = el('a', 'btn sec chat-btn', 'Ask AI');
+    chat.href = '/#t=chat/new/' + encodeURIComponent(a.num);
+    chat.title = 'Opens a new private chat with this card attached: ask why it fired, what the investigation found, who should look';
+    main.appendChild(chat);
+  }
+  if (a.live && a.num && (a.muted || a.triage)) {
+    var re = el('button', 'btn sec op-btn op-only', 'Reopen');
+    re.type = 'button';
+    re.hidden = !(window.__skopaxOperator && window.__skopaxOperator());
+    re.title = 'Reopen: back to Open, like a drag to the Open column';
+    re.addEventListener('click', function () { if (re.getAttribute('aria-disabled') !== 'true') looseAct(a, re, 'reopen', 'Reopen '); });
+    more.box.appendChild(re);
+  }
+  if (a.live && a.num && fu && fu.closeAt && a.triage !== 'handled') {
+    var keep = el('button', 'btn sec op-btn keep-open', 'Keep open');
+    keep.type = 'button';
+    keep.title = KEEP_TIP;
+    keep.addEventListener('click', function () { if (keep.getAttribute('aria-disabled') !== 'true') looseAct(a, keep, 'keep', 'Keep open '); });
+    more.box.appendChild(keep);
+  }
+  if (a.num) {
+    var copy = el('button', 'btn sec free', ICON_LINK + 'Copy link');
+    copy.type = 'button';
+    copy.title = copyTip(a);
+    copy.addEventListener('click', function () { copyUrl(location.origin + '/c/' + a.num, copy); });
+    more.box.appendChild(copy);
+  }
+  if (main.children.length) box.appendChild(main);
+  if (more.box.children.length) box.append(more.button, more.box);
+}
+function looseLast(a, card) {
+  var la = card.querySelector('.last-act'), html = a.last && window.__skopaxLastLine ? window.__skopaxLastLine(a.last, a) : '';
+  if (!la) return;
+  la.innerHTML = html;
+  la.hidden = !html;
+}
+function paintLooseLast() {
+  var a = looseDrawer() ? LOOSE : null, root = document.getElementById('anoms'), w = a && root ? drawerNode(root) : null;
+  var card = w && w.querySelector('article.inc');
+  if (card) looseLast(a, card);
+}
+var KEEP_TIP = 'Keep open: the card stays open until someone closes it';
+function loginHint(a, shown) {
+  var next = a.num ? '/c/' + a.num : location.pathname + location.search;
+  var h = el('p', 'login-hint', 'Log in: actions need the operator role. <a href="/login?next=' + esc(encodeURIComponent(next)) + '">Log in</a>');
+  h.hidden = !shown;
+  return h;
+}
+function looseAct(a, b, type, lead) {
+  var api = window.__skopaxApi;
+  if (!api) return;
+  b.disabled = true;
+  api('POST', '/api/actions', {type: type, key: a.key, target: a.key, label: lead + svcName(a) + ' ' + a.label}).then(function (x) {
+    if (x && x.status === 'failed') failToast(x.result || 'the action was not saved');
+    if (window.__skopaxActions) window.__skopaxActions();
+    return api('GET', '/api/cards/' + encodeURIComponent(a.num)).catch(function () { return null; });
+  }).then(function (c) {
+    b.disabled = false;
+    if (c && c.key && DRAWER === a.key) { LOOSE = c; var root = document.getElementById('anoms'), w = root && drawerNode(root); if (w) refreshDrawer(w, c, root); }
+  }, function (e) {
+    b.disabled = false;
+    if (!e || (e.code !== 401 && e.code !== 403)) b.textContent = 'Not saved, try again';
+  });
+}
+function linkMoved() { if (typeof LINK_ASK === 'number') LINK_ASK++; }
 function closeDrawer() {
   var root = document.getElementById('anoms'), key = DRAWER;
+  linkMoved();
   DRAWER = null;
+  LOOSE = null;
   var d = root && root.querySelector('.card-drawer');
   if (d) d.remove();
   if (key) delete OPENK[key];
@@ -1236,7 +1424,7 @@ function hiddenToast(key) {
   t.querySelector('.toast-view').addEventListener('click', function () {
     gone();
     if (CARD_VIEW === 'board' && a) { openDrawer(key); cardUrl(a, true); }
-    else if (a && a.num) window.open('/c/' + a.num, '_blank', 'noopener');
+    else if (a && a.num) { openDrawerCard(a); cardUrl(a, true); }
     else if (a) { clearCardFilters(); setFilter('all'); OPENK[key] = 1; renderAnoms(); }
   });
   t.querySelector('.toast-clear').addEventListener('click', function () { gone(); clearCardFilters(); setFilter(a ? 'all' : 'closed'); });
@@ -1260,17 +1448,18 @@ function renderAnoms() {
 }
 function paintAnoms() {
   var root = document.getElementById('anoms'), panel = document.getElementById('panel-anoms');
-  var keep = DRAWER && CARD_VIEW === 'board' && filter !== 'closed' ? drawerNode(root) : null;
+  var keep = DRAWER && ((CARD_VIEW === 'board' && filter !== 'closed') || looseDrawer()) ? drawerNode(root) : null;
   [].slice.call(root.children).forEach(function (c) { if (c !== keep) c.remove(); });
   if (root.firstChild && !keep) root.textContent = '';
+  if (keep && looseDrawer()) refreshDrawer(keep, drawerCard(DRAWER), root);
   if (panel) panel.classList.toggle('closed-on', filter === 'closed');
+  renderQuick();
   if (filter === 'closed') {
     renderClosed(root);
     shownN = CLOSED.data ? CLOSED.data.total : 0;
     return;
   }
   markCardView();
-  renderQuick();
   var groups = [];
   function g(id, title, hint, k, list, empty) {
     if (typeF) {

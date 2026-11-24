@@ -174,7 +174,7 @@ def test_the_font_tokens_are_the_exact_system_stacks_in_both_pages_and_both_chat
     themes = json.loads((ROOT / 'chatui' / 'public' / 'theme.json').read_text(encoding='utf-8'))['variables']
 
     # then
-    for page in ('template.html', 'card.html'):
+    for page in ('template.html',):
         lines = [line.strip() for line in (ROOT / 'web' / page).read_text(encoding='utf-8').splitlines()]
         assert lines.count(ui) == 1 and lines.count(data) == 1, page
     for mode in ('light', 'dark'):

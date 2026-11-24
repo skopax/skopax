@@ -47,7 +47,7 @@ def test_package_and_version():
     old = importlib.util.find_spec('watch' + 'er')
 
     # then
-    assert version == '0.5.13'
+    assert version == '0.5.14'
     assert old is None
 
 
@@ -79,8 +79,8 @@ def test_attribution():
     named, default = dataclasses.replace(settings(), display_name='Acme Ops'), dataclasses.replace(settings(), display_name='Skopax')
 
     # then
-    assert brand.attribution(named) == ('Acme Ops \u00b7 powered by Skopax 0.5.13', 'https://skopax.io')
-    assert brand.attribution(default) == ('Skopax 0.5.13 \u00b7 skopax.io', 'https://skopax.io')
+    assert brand.attribution(named) == ('Acme Ops \u00b7 powered by Skopax 0.5.14', 'https://skopax.io')
+    assert brand.attribution(default) == ('Skopax 0.5.14 \u00b7 skopax.io', 'https://skopax.io')
 
 
 def test_the_shown_version_is_the_release_tag_form_of_the_package_version():
@@ -91,10 +91,10 @@ def test_the_shown_version_is_the_release_tag_form_of_the_package_version():
     shown = {v: brand.display_version(v) for v in versions}
 
     # then
-    assert brand.display_version() == '0.5.13' == brand.display_version(skopax.__version__)
+    assert brand.display_version() == '0.5.14' == brand.display_version(skopax.__version__)
     assert shown == {v: release_version.release_tag(v).removeprefix('v') if release_version.release_tag(v) else v for v in versions}
     assert shown['0.1.0rc1'] == '0.1.0-rc.1' and shown['0.1.0'] == '0.1.0' and shown['0.1.0.post1'] == '0.1.0.post1'
-    assert brand.page_info()['version'] == '0.5.13' and skopax.__version__ == '0.5.13'
+    assert brand.page_info()['version'] == '0.5.14' and skopax.__version__ == '0.5.14'
 
 
 def test_display_name_is_escaped_everywhere(store):
@@ -105,7 +105,6 @@ def test_display_name_is_escaped_everywhere(store):
 
     # when
     page = client.get('/', headers=HTML).text
-    card = client.get('/c/1', headers=HTML).text
     login = client.get('/login', headers=HTML).text
     manifest = client.get('/manifest.webmanifest')
     with app_client(fresh_store(), display_name=quoted) as c:
@@ -114,7 +113,7 @@ def test_display_name_is_escaped_everywhere(store):
     instructions = mcpserver.instructions('')
 
     # then
-    for text in (page, card, login, setup):
+    for text in (page, login, setup):
         assert escaped in text
     assert manifest.json()['name'] == quoted and manifest.json()['short_name'] == quoted
     assert instructions.startswith(f'{brand.product()}, powered by Skopax ') and f'{brand.product()} is a production health board' in instructions
@@ -242,8 +241,7 @@ def test_version_is_the_same_everywhere(store):
     assert server['version'] == version and server['displayName'] == 'Acme Ops'
     assert powered in page and powered in login and powered in setup
     assert '<a href="https://skopax.io"' in login and '<a href="https://skopax.io"' in setup
-    card = client.get('/c/1', headers=HTML).text
-    for text in (login, setup, page, card):
+    for text in (login, setup, page):
         assert re.findall(r'<a [^>]*href="https://skopax.io"[^>]*>', text) and all('rel="noopener noreferrer"' in a for a in re.findall(r'<a [^>]*href="https://skopax.io"[^>]*>', text))
     assert info['version'] == version and info['name'] == 'acme-ops'
     assert server['product'] == 'Skopax' and info['websiteUrl'] == 'https://skopax.io'
@@ -396,7 +394,6 @@ def test_login_setup_and_the_page_header_show_the_wordmark_and_the_favicon_is_th
     # when
     login = client.get('/login', headers=HTML).text
     page = client.get('/', headers=HTML).text
-    card = client.get('/c/1', headers=HTML).text
     with app_client(fresh_store()) as c:
         setup = c.get('/setup', headers=HTML).text
     mark = client.get('/icons/mark.svg')
@@ -407,8 +404,7 @@ def test_login_setup_and_the_page_header_show_the_wordmark_and_the_favicon_is_th
     for text in (login, setup):
         assert '<span class="wordmark" role="img" aria-label="Skopax">' in text and 'wm-light' in text and 'wm-dark' in text
     assert '<a class="home" href="/" title="Main page"><span class="wordmark" role="img" aria-label="Skopax"><span class="wm-dark"><svg' in page
-    assert '<a class="brand" href="/"><span class="wordmark"' in card
-    for text in (page, card):
+    for text in (page,):
         assert 'rel="icon"' in text and 'href="/icons/mark.svg"' in text and 'data:image/svg+xml' not in text.split('rel="icon"', 1)[1].split('>', 1)[0]
     assert mark.status_code == 200 and mark.headers['content-type'].startswith('image/svg+xml') and mark.text.startswith('<svg')
     assert '<span class="wordmark wordmark-text" role="img" aria-label="Acme Ops">Acme Ops</span>' in named and '<svg aria-hidden' not in named
@@ -465,11 +461,11 @@ def test_a_display_name_that_looks_like_a_data_placeholder_gets_no_data_blob(sto
     pages = {}
     for name in (PLACEHOLDER, BRAND_PLACEHOLDER):
         client = admin_client(store, display_name=name)
-        pages[name] = (client.get('/', headers=HTML).text, client.get('/c/1', headers=HTML).text)
+        pages[name] = client.get('/', headers=HTML).text
 
     # then
-    for name, (page, card) in pages.items():
-        assert f'<title>{name}</title>' in page and f'<title>{name}</title>' in card
+    for name, page in pages.items():
+        assert f'<title>{name}</title>' in page
         assert page.count('"anomalies"') == 1
         assert re.findall(r'<meta[^>]*content="([^"]*)"', page).count(name) >= 1
         assert all('"anomalies"' not in m for m in re.findall(r'<meta[^>]*>', page))
@@ -521,7 +517,7 @@ LINE = f'{NAMED} \u00b7 powered by Skopax {brand.display_version()}'
 SITE = 'https://skopax.io'
 CHAT_JSON = '/public/skopax-brand.json'
 BRAND_DATA = re.compile(r'<script type="application/json" id="brand-data">\s*(.*?)\s*</script>', re.S)
-SURFACES = ('/', '/c/1', '/login')
+SURFACES = ('/', '/login')
 
 
 def hide_client(store, **over) -> TestClient:
@@ -593,7 +589,7 @@ def test_a_failing_hide_check_keeps_the_line_and_warns_once(caplog):
     warned = [r.getMessage() for r in caplog.records if r.name == 'skopax.brand']
 
     # then
-    assert seen == (True, True, {'text': 'Skopax 0.5.13 \u00b7 skopax.io', 'href': SITE}, {'text': 'Skopax 0.5.13 \u00b7 skopax.io', 'href': SITE})
+    assert seen == (True, True, {'text': 'Skopax 0.5.14 \u00b7 skopax.io', 'href': SITE}, {'text': 'Skopax 0.5.14 \u00b7 skopax.io', 'href': SITE})
     assert len(warned) == 1 and 'RuntimeError' in warned[0] and 'secret' not in warned[0]
 
 
@@ -626,17 +622,17 @@ FOOTER_SOURCE = re.compile(r"^FOOTER = '(.+)'$", re.M)
 HARNESS = Path(__file__).resolve().parent / 'page' / 'skopax-page.js'
 
 
-def test_the_page_and_card_footers_carry_the_id_the_scripts_read_and_the_page_harness_renders_the_same_markup(store):
+def test_the_page_footers_carry_the_id_the_scripts_read_and_the_page_harness_renders_the_same_markup(store):
     # given
     client = admin_client(store, display_name="O'Brien Ops")
     text, href = brand.attribution_of("O'Brien Ops")
     harness_fill = brand.FOOTER.format(href=html.escape(href, quote=True), text=html.escape(text, quote=True))
 
     # when
-    feet = [re.findall(r'<footer class="attribution">.*?</footer>', client.get(path, headers=HTML).text) for path in ('/', '/c/1')]
+    feet = [re.findall(r'<footer class="attribution">.*?</footer>', client.get(path, headers=HTML).text) for path in ('/',)]
 
     # then
-    assert feet == [[brand.footer_html(), brand.footer_html(element_id=None)], [brand.footer_html()]]
+    assert feet == [[brand.footer_html(), brand.footer_html(element_id=None)]]
     assert '<a href="https://skopax.io" id="attribution" rel="noopener noreferrer">' in feet[0][0] and 'O&#x27;Brien Ops' in feet[0][0]
     assert brand.footer_html() == harness_fill
     assert brand.footer_html(element_id=None) == harness_fill.replace(' id="attribution"', '')
@@ -699,14 +695,14 @@ def test_the_board_carries_one_attribution_id_and_its_phone_copy_carries_none(st
     client = admin_client(store, display_name='Acme Ops')
 
     # when
-    board, card = (client.get(path, headers=HTML).text for path in ('/', '/c/1'))
+    board = client.get('/', headers=HTML).text
 
     # then
-    assert (board.count('id="attribution"'), card.count('id="attribution"')) == (1, 1)
+    assert board.count('id="attribution"') == 1
     assert SIDE_ATTR.search(board)[1] == brand.footer_html()
     assert END_ATTR.search(board)[1] == brand.footer_html(element_id=None) == brand.footer_html().replace(' id="attribution"', '')
     assert brand.attribution_of('Acme Ops')[0] in END_ATTR.search(board)[1]
-    assert '[[attribution' not in board and '[[attribution' not in card
+    assert '[[attribution' not in board
 
 
 def test_with_the_line_hidden_the_foot_the_phone_copy_and_the_rail_mark_render_nothing(store):
@@ -716,13 +712,13 @@ def test_with_the_line_hidden_the_foot_the_phone_copy_and_the_rail_mark_render_n
 
         # when
         hide(c, True)
-        board, card = (c.get(path, headers=AUTH | HTML).text for path in ('/', '/c/1'))
+        board = c.get('/', headers=AUTH | HTML).text
 
     # then
     assert SIDE_ATTR.search(before)[1] and END_ATTR.search(before)[1] and brand_data(before)['attribution'] == {'text': LINE, 'href': SITE}
     assert (SIDE_ATTR.search(board)[1], END_ATTR.search(board)[1]) == ('', ''), 'the foot and the phone copy slots render nothing'
     assert brand_data(board)['attribution'] is None, 'the rail mark is drawn from this gated line, so it has nothing to draw'
-    assert 'id="attribution"' not in board and 'id="attribution"' not in card and bare(board) and bare(card)
+    assert 'id="attribution"' not in board and bare(board)
 
 
 def test_the_line_disappears_from_every_surface_with_enterprise(store):
@@ -744,7 +740,7 @@ def test_the_line_disappears_from_every_surface_with_enterprise(store):
     assert turned.status_code == 200 and (item['running'], item['stored'], item['locked'], item['on']) == ('enterprise', True, False, True)
     assert all(carries(text) for text in shown.values()) and shown_chat == {'attribution': {'text': LINE, 'href': SITE}}
     assert {path: bare(text) for path, text in hidden.items()} == {path: True for path in SURFACES}
-    assert brand_data(hidden['/'])['attribution'] is None and brand_data(hidden['/c/1'])['attribution'] is None
+    assert brand_data(hidden['/'])['attribution'] is None
     assert hidden_chat == {'attribution': None}
     assert setup.status_code == 200 and setup_state == ('enterprise', True) and bare(setup.text)
 

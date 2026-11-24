@@ -478,7 +478,7 @@ async function aStoppedCardNobodyActedOnIsJustOpen() {
   assert.ok(/Stopped firing \u00b7 unassigned /.test(card.querySelector('.c-status').textContent), 'its row says it stopped');
   assert.strictEqual(doc.getElementById('count-anoms').textContent, '2', 'the Anomalies tab shows one Open count');
   assert.ok(!/waiting to be addressed/.test(doc.getElementById('tab-anoms').title), 'the tab tooltip has no separate waiting count');
-  assert.strictEqual(doc.querySelector('#tab-sub-anoms button[data-f="stale"]'), null, 'no Waiting item in the side menu');
+  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-f="stale"]'), null, 'no Waiting item in the side menu');
   assert.strictEqual(doc.querySelector('#reco [data-open-stale]'), null, 'no waiting link in the summary row');
   assert.deepStrictEqual(oldLink, ['open', ['Open']], 'an old waiting link opens Open');
   dom.window.close();

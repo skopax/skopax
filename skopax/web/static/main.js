@@ -48,6 +48,7 @@ document.addEventListener('click', function (e) {
   followHash(location.hash.replace('#', ''));
 });
 function followHash(h) {
+  LINK_ASK++;
   var m = /^(a|c|r|rel|t)=(.*)$/.exec(h);
   if (!m || m[1] === 't') dropCard();
   if (!m) return;
@@ -70,14 +71,16 @@ function showLinked(raw, byNum) {
   if (a && A.indexOf(a) < 0 && ARCHIVED.indexOf(a) < 0 && a.parent) a = A.concat(ARCHIVED).filter(function (x) { return x.key === a.parent; })[0];
   if (CARD_URL && (!a || CARD_URL.key !== a.key)) dropCard();
   showTab('anoms');
+  if (byNum && (!a || (A.indexOf(a) < 0 && ARCHIVED.indexOf(a) < 0))) {
+    fetchLinked(key);
+    return;
+  }
   if (!a || (A.indexOf(a) < 0 && ARCHIVED.indexOf(a) < 0)) {
-    note = el('p', 'panel-note', 'The linked anomaly is no longer on the page: cleared items drop off after 24 hours, In progress ones with a Jira ticket 24 hours after the ticket closes.');
-    note.id = 'link-note';
-    document.getElementById('anoms').before(note);
+    linkNote('The linked anomaly is no longer on the page: cleared items drop off after 24 hours, In progress ones with a Jira ticket 24 hours after the ticket closes.');
     tabUrl();
     return;
   }
-  if (typeF && !typeIs(a, typeF)) { typeF = ''; renderAnomSub(); }
+  if (typeF && !typeIs(a, typeF)) { typeF = ''; renderQuick(); }
   clearSearchUnless([a]);
   setFilter(ARCHIVED.indexOf(a) >= 0 ? 'archived' : open.indexOf(a) >= 0 || stale.indexOf(a) >= 0 ? 'open' : muted.indexOf(a) >= 0 ? 'muted' : cleared.indexOf(a) >= 0 ? 'cleared' : inprog.indexOf(a) >= 0 ? 'progress' : taken.indexOf(a) >= 0 ? 'taken' : 'all');
   if (CARD_VIEW === 'board') {
@@ -89,6 +92,30 @@ function showLinked(raw, byNum) {
   if (!card) { tabUrl(); return; }
   ring(card);
   cardUrl(a, false);
+}
+var LINK_ASK = 0;
+function linkNote(text) {
+  var note = el('p', 'panel-note', esc(text));
+  note.id = 'link-note';
+  document.getElementById('anoms').before(note);
+}
+function fetchLinked(num) {
+  var ask = LINK_ASK;
+  var stale = function () { return ask !== LINK_ASK; };
+  fetch('/api/cards/' + encodeURIComponent(num), {headers: {'Accept': 'application/json'}, credentials: 'same-origin'}).then(function (r) {
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(String(r.status));
+    return r.json();
+  }).then(function (c) {
+    if (stale()) return;
+    if (!c || !c.key) { linkNote('Card not found.'); tabUrl(); return; }
+    openDrawerCard(c);
+    cardUrl(c, false);
+  }).catch(function () {
+    if (stale()) return;
+    linkNote('The card could not be loaded; reload the page.');
+    tabUrl();
+  });
 }
 function ring(card) {
   document.querySelectorAll('#anoms article.inc.linked').forEach(function (c) { c.classList.remove('linked'); });

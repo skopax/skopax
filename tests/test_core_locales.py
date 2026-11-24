@@ -233,7 +233,6 @@ def test_core_packs_are_on_with_no_plugin_on_every_surface(store):
     # when
     with served(store, add=False) as client:
         page = SCRIPT.findall(client.get('/').text)
-        card = SCRIPT.findall(client.get('/c/1').text)
         script = client.get('/static/i18n-tr.js')
         with messages.speaking('tr'):
             sent = msg(key)
@@ -245,7 +244,6 @@ def test_core_packs_are_on_with_no_plugin_on_every_surface(store):
 
     # then
     assert page.index('/static/i18n.js') < page.index('/static/i18n-tr.js') < page.index('/static/core.js')
-    assert card.index('/static/i18n.js') < card.index('/static/i18n-tr.js') < card.index('/static/card.js')
     assert script.status_code == 200 and script.headers['content-type'].startswith('text/javascript')
     assert script.text == locales.CORE_PACK % ('"tr"', json.dumps(locales.page_of(pack)))
     assert sent == pack.messages[key] and 'tr' in languages

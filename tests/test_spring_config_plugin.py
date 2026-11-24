@@ -516,7 +516,7 @@ def test_a_shared_key_the_server_lacks_is_warned_once_and_no_target_gets_it(capl
         out = get({'SPRING_CONFIG_MAP': SHARED_MAP + ',tz=core.timezone'}, answer)
 
     # then
-    assert out == {'values': {'core.timezone': 'UTC'}, 'instances': []}
+    assert out['values'] == {'core.timezone': 'UTC'} and out['instances'] == []
     assert caplog.text.count('google.sa-json') == 1 and caplog.text.count('google.api-key') == 1
 
 
@@ -610,7 +610,7 @@ def test_a_template_with_a_missing_key_is_left_unset_and_the_warning_names_the_k
         out = get(env, SHARED_ANSWER)
 
     # then
-    assert out == {'values': {'core.timezone': 'UTC'}, 'instances': []}
+    assert out['values'] == {'core.timezone': 'UTC'} and out['instances'] == []
     assert 'pagescan.gone' in caplog.text and 'website/shop/scan-headers' in caplog.text
     assert 'as-s3cr3t-value' not in caplog.text and 'X-Automation-Secret' not in caplog.text and 'X-Id' not in caplog.text
 
@@ -832,3 +832,101 @@ def test_a_continuation_line_shaped_like_a_target_is_named_by_its_number_only(ca
     # then
     assert str(raised.value).startswith('SPRING_CONFIG_TEMPLATES line 2 ')
     assert 'pk-abc123' not in str(raised.value) and 'pk-abc123' not in caplog.text
+
+
+def missing_answer(*keys):
+    present = {'tz': 'UTC'}
+    present.update({k: 'x' for k in keys})
+    return {'propertySources': [{'name': 'x', 'source': present}]}
+
+
+def warnings_naming(caplog, key):
+    return [r for r in caplog.records if r.levelno == logging.WARNING and key in r.getMessage()]
+
+
+def test_a_missing_key_warns_once_per_process(caplog):
+    # given
+    server, clock = Server(missing_answer()), Clock()
+    feed = source(server, clock)
+    env = {'SPRING_CONFIG_MAP': 'a.b=core.timezone,tz=investigate.max-cards'}
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        feed({**BASE, **env})
+        feed({**BASE, **env})
+        clock.now += spring_config.REFETCH_S + 1
+        feed({**BASE, **env})
+
+    # then
+    assert len(server.calls) == 2
+    assert len(warnings_naming(caplog, 'a.b')) == 1
+
+
+def test_a_missing_key_warns_again_after_the_source_changes(caplog):
+    # given
+    server, clock = Server(missing_answer()), Clock()
+    feed = source(server, clock)
+    env = {'SPRING_CONFIG_MAP': 'a.b=core.timezone'}
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        feed({**BASE, **env})
+        feed({**BASE, **env, 'SPRING_CONFIG_PROFILE': 'qa'})
+
+    # then
+    assert len(warnings_naming(caplog, 'a.b')) == 2
+
+
+def test_a_key_that_comes_back_and_goes_again_warns_again(caplog):
+    # given
+    server, clock = Server(missing_answer()), Clock()
+    feed = source(server, clock)
+    env = {**BASE, 'SPRING_CONFIG_MAP': 'a.b=core.timezone'}
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        feed(env)
+        server.answer = missing_answer('a.b')
+        clock.now += spring_config.REFETCH_S + 1
+        feed(env)
+        server.answer = missing_answer()
+        clock.now += spring_config.REFETCH_S + 1
+        feed(env)
+
+    # then
+    assert len(warnings_naming(caplog, 'a.b')) == 2
+
+
+def test_a_template_key_warns_once_too(caplog):
+    # given
+    server, clock = Server(missing_answer()), Clock()
+    feed = source(server, clock)
+    env = {**BASE, 'SPRING_CONFIG_MAP': 'tz=core.timezone', 'SPRING_CONFIG_TEMPLATES': 'website/shop/scan-headers=X-Id: ${pagescan.gone}'}
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        feed(env)
+        clock.now += spring_config.REFETCH_S + 1
+        feed(env)
+
+    # then
+    assert len(warnings_naming(caplog, 'pagescan.gone')) == 1
+
+
+def test_the_source_status_lists_the_left_out_keys():
+    # given
+    keys = [f'k{n:02d}' for n in range(60)]
+    many = {**BASE, 'SPRING_CONFIG_MAP': ','.join(f'{k}=jira/n{i}/url' for i, k in enumerate(keys))}
+    few = {**BASE, 'SPRING_CONFIG_MAP': 'c.d=core.timezone,a.b=jira/main/url'}
+
+    # when
+    small = SourceData.of(source(Server(missing_answer()))(few), 'x')
+    big = SourceData.of(source(Server(missing_answer()))(many), 'x')
+    sources = SourceSet([('x', lambda: small)], {'x': small})
+    status = sources.status()['x']
+
+    # then
+    assert small.left_out == ('a.b', 'c.d') and small.left_out_more == 0
+    assert status['leftOut'] == ['a.b', 'c.d'] and status['leftOutMore'] == 0
+    assert len(big.left_out) == 50 and big.left_out_more == 10
+    assert sources.status()['x']['ok'] is True

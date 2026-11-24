@@ -1,10 +1,8 @@
 const pageHtml = require('./skopax-page');
 const assert = require('assert');
-const path = require('path');
 const {JSDOM, VirtualConsole} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
-const CARD_PAGE = path.join(path.dirname(TEMPLATE), 'card.html');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
 const FIRST = iso(90);
@@ -47,16 +45,23 @@ async function bootCard(card) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
-  const dom = new JSDOM(pageHtml(CARD_PAGE), {
-    url: 'https://skopax.example.com/c/' + card.num, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
+  const empty = Object.assign(state(), {anomalies: []});
+  const dom = new JSDOM(pageHtml(TEMPLATE, {view: 'board'}).replace('/*__SKOPAX_DATA__*/', JSON.stringify(empty)), {
+    url: 'https://skopax.example.com/#c=' + card.num, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
+      w.scrollTo = () => {};
+      w.Element.prototype.scrollIntoView = function () {};
       w.fetch = async (p) => {
-        if (String(p) === '/api/me') return {ok: true, status: 200, json: async () => ({loginEnabled: true, user: null, operator: false, tags: []})};
-        return {ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(card))};
+        const ok = (body) => ({ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body)), text: async () => JSON.stringify(body)});
+        if (String(p) === '/api/cards/' + card.num) return ok(card);
+        if (String(p).startsWith('/api/me')) return ok({loginEnabled: true, user: null, operator: false, tags: []});
+        if (String(p).startsWith('/api/actions') || String(p).startsWith('/api/deploy-reports') || String(p).startsWith('/api/requests')) return ok([]);
+        if (String(p).startsWith('/api/rev')) return ok({rev: 1});
+        return {ok: false, status: 404, json: async () => ({})};
       };
     },
   });
-  await wait(100);
+  await wait(450);
   return {w: dom.window, doc: dom.window.document, errors};
 }
 
@@ -86,46 +91,42 @@ async function theListAndItsPanelSayTheCardStoppedAfterTheEvent() {
   console.log('PASS the list row and the panel say Stopped after the event and name the cause, also for a merged child, never for an earlier episode');
 }
 
-async function theBoardTileSaysTheCardStoppedAfterTheEvent() {
+async function theBoardTileCarriesNoStoppedTag() {
   //given
   const {w, doc, errors} = await boot('board');
   const tile = (key) => [...doc.querySelectorAll('#anoms .tile')].find((x) => x.dataset.key === key);
   const tags = (key) => [...tile(key).querySelectorAll('.tile-foot .tag')].map((x) => x.textContent);
 
   //then
-  assert.ok(tags(EVENT)[0].startsWith('Stopped after the event '), 'the waiting event tile: ' + tags(EVENT).join(' | '));
-  assert.ok(tile(EVENT).querySelector('.tile-foot .tag.k-cleared').title.startsWith('Stopped after the event \u00b7 unassigned '), 'its tip says so too');
-  assert.ok(/^Stopped firing \d/.test(tags(PLAIN)[0]), 'a plain waiting tile reads the short Stopped firing: ' + tags(PLAIN)[0]);
+  assert.deepStrictEqual([tags(EVENT), tags(PLAIN)], [[], []], 'a waiting tile carries no stopped tag; the panel says it');
   assert.deepStrictEqual(errors, []);
   w.close();
-  console.log('PASS a waiting tile on the board reads Stopped after the event when the investigator tied it to one');
+  console.log('PASS a waiting tile on the board carries no stopped tag');
 }
 
-async function theCardPageSaysStoppedAfterTheEventAndShowsTheCause() {
+async function aCardOpenedByItsNumberSaysStoppedAfterTheEventAndShowsTheCause() {
   //given
   const base = {key: CALM, svc: 'feed-service', label: 'WARN lines', status: 'cleared', firstSeen: FIRST, clearedAt: iso(20), live: true};
   const calm = await bootCard(Object.assign({num: 154, sev: 'info', cause: {kind: 'event', what: WHAT, firstSeen: FIRST}}, base));
-  const waiting = await bootCard(Object.assign({num: 150, sev: 'warn', cause: {kind: 'event', what: WHAT, firstSeen: FIRST}}, base));
   const plain = await bootCard(Object.assign({num: 151, sev: 'info'}, base));
   const recur = await bootCard(Object.assign({num: 155, sev: 'info', cause: {kind: 'recurring', what: 'a leak', firstSeen: FIRST}}, base));
-  const status = (doc) => [doc.getElementById('state'), doc.querySelector('.status')].filter(Boolean).map((e) => e.textContent).join(' \u00b7 ');
-  const cause = (doc) => { const p = doc.querySelector('.cause'); return p ? p.textContent : null; };
+  const status = (doc) => doc.querySelector('.card-drawer .inc-head .c-status').textContent;
+  const cause = (doc) => { const p = doc.querySelector('.card-drawer .cause-line'); return p ? p.textContent : null; };
 
   //then
-  assert.ok(status(calm.doc).startsWith('Stopped after the event \u00b7 '), 'a calm event card is not Fixed: ' + status(calm.doc));
-  assert.ok(status(waiting.doc).startsWith('Open \u00b7 stopped after the event '), 'a waiting event card says when it stopped after the event: ' + status(waiting.doc));
-  assert.ok(status(plain.doc).startsWith('Fixed \u00b7 '), 'a plain calm card stays Fixed');
+  assert.match(status(calm.doc), /^Stopped after the event /, 'a calm event card is not Fixed: ' + status(calm.doc));
+  assert.ok(!/after the event/.test(status(plain.doc)), 'a plain calm card does not say it: ' + status(plain.doc));
   assert.strictEqual(cause(calm.doc), 'Cause: an event \u00b7 ' + WHAT);
   assert.strictEqual(cause(plain.doc), null);
   assert.strictEqual(cause(recur.doc), 'Cause: recurring \u00b7 a leak');
-  assert.ok(status(recur.doc).startsWith('Fixed \u00b7 '), 'a recurring cause keeps the plain wording');
-  assert.deepStrictEqual(calm.errors.concat(waiting.errors, plain.errors, recur.errors), []);
-  calm.w.close(); waiting.w.close(); plain.w.close(); recur.w.close();
-  console.log('PASS the card page reads Stopped after the event instead of Fixed and shows the cause');
+  assert.ok(!/after the event/.test(status(recur.doc)), 'a recurring cause keeps the plain wording: ' + status(recur.doc));
+  assert.deepStrictEqual(calm.errors.concat(plain.errors, recur.errors), []);
+  calm.w.close(); plain.w.close(); recur.w.close();
+  console.log('PASS a card opened by its number reads Stopped after the event in the panel and shows the cause');
 }
 
 (async () => {
   await theListAndItsPanelSayTheCardStoppedAfterTheEvent();
-  await theBoardTileSaysTheCardStoppedAfterTheEvent();
-  await theCardPageSaysStoppedAfterTheEventAndShowsTheCause();
+  await theBoardTileCarriesNoStoppedTag();
+  await aCardOpenedByItsNumberSaysStoppedAfterTheEventAndShowsTheCause();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

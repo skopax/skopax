@@ -1,10 +1,8 @@
 const pageHtml = require('./skopax-page');
 const assert = require('assert');
-const path = require('path');
 const {JSDOM, VirtualConsole} = require('jsdom');
 
 const TEMPLATE = process.argv[2];
-const CARD_PAGE = path.join(path.dirname(TEMPLATE), 'card.html');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
 const MARKUP = '<b>&"x';
@@ -58,24 +56,6 @@ async function boot(brand, blob, wordmark) {
   return {w: dom.window, doc: dom.window.document, errors};
 }
 
-async function bootCard(brand, card) {
-  const errors = [];
-  const vc = new VirtualConsole();
-  vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
-  const dom = new JSDOM(pageHtml(CARD_PAGE, {brand}), {
-    url: 'https://example.com/c/482', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
-    beforeParse(w) {
-      w.fetch = async (p) => {
-        if (String(p) === '/api/me') return {ok: true, status: 200, json: async () => ({loginEnabled: true, user: null, operator: false})};
-        if (card === null) return {ok: false, status: 404, json: async () => ({detail: 'no card'})};
-        return {ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(card))};
-      };
-    },
-  });
-  await wait(150);
-  return {w: dom.window, doc: dom.window.document, errors};
-}
-
 async function theHeaderTitleAndAttributionShowTheDisplayNameAsText() {
   //given
   const {w, doc, errors} = await boot(HOSTILE);
@@ -122,20 +102,19 @@ async function theDefaultNameGivesTheShortAttributionLine() {
   assert.strictEqual(doc.querySelector('h1 a.home').textContent, 'Skopax');
   assert.strictEqual(doc.getElementById('attribution').textContent, 'Skopax 0.1.0 \u00b7 skopax.io');
   assert.strictEqual(doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
-  assert.ok(/footer\.attribution \{[^}]*justify-content: center;/.test(require('fs').readFileSync(CARD_PAGE, 'utf8')), 'the card page centres the attribution line');
   console.log('PASS the default name shows the short attribution line');
 }
 
 async function theScriptFallbackBuildsTheFullAttributionAndNeverShortensAServerLine() {
   //given
   const blank = (name) => ({name, slug: 'x', version: '0.1.0', attribution: {text: '', href: 'https://skopax.io'}});
-  const custom = await boot(blank('Acme Ops'), {name: 'Acme Ops', slug: 'acme-ops', version: '0.5.13'});
-  const plain = await boot(blank('Skopax'), {name: 'Skopax', slug: 'skopax', version: '0.5.13'});
+  const custom = await boot(blank('Acme Ops'), {name: 'Acme Ops', slug: 'acme-ops', version: '0.5.14'});
+  const plain = await boot(blank('Skopax'), {name: 'Skopax', slug: 'skopax', version: '0.5.14'});
   const kept = await boot(PLAIN, {name: 'Skopax', slug: 'skopax', version: '0.1.0'});
 
   //then
-  assert.strictEqual(custom.doc.getElementById('attribution').textContent, 'Acme Ops \u00b7 powered by Skopax 0.5.13');
-  assert.strictEqual(plain.doc.getElementById('attribution').textContent, 'Skopax 0.5.13 \u00b7 skopax.io');
+  assert.strictEqual(custom.doc.getElementById('attribution').textContent, 'Acme Ops \u00b7 powered by Skopax 0.5.14');
+  assert.strictEqual(plain.doc.getElementById('attribution').textContent, 'Skopax 0.5.14 \u00b7 skopax.io');
   assert.strictEqual(kept.doc.getElementById('attribution').textContent, PLAIN.attribution.text);
   for (const page of [custom, plain, kept]) { assert.deepStrictEqual(page.errors, []); page.w.close(); }
   console.log('PASS the script fallback builds the full attribution and keeps a correct server line');
@@ -181,7 +160,7 @@ async function aMissingOrUnreadableBrandBlobStillGetsTheFallbackLine() {
   //then
   for (const page of [missing, unreadable]) {
     assert.deepStrictEqual(page.errors, []);
-    assert.strictEqual(page.doc.getElementById('attribution').textContent, 'Skopax 0.5.13 \u00b7 skopax.io');
+    assert.strictEqual(page.doc.getElementById('attribution').textContent, 'Skopax 0.5.14 \u00b7 skopax.io');
     assert.strictEqual(page.doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
     page.w.close();
   }
@@ -200,26 +179,6 @@ async function theAttributionSitsAtTheBottomOfThePageLayout() {
   console.log('PASS the attribution sits at the foot of the sidebar, and its phone copy is the last element of the main column');
 }
 
-async function theCardPageShowsTheNameInTitleHeaderFooterAndAttribution() {
-  //given
-  const card = {num: 482, key: 'page-typos|example.com/orders', svc: 'example.com/orders', label: 'Typos', sev: 'warn', status: 'open', firstSeen: iso(30), live: true, now: 1, d1: 0, d7: 0, screenshots: []};
-
-  //when
-  const found = await bootCard(HOSTILE, card);
-  const gone = await bootCard(HOSTILE, null);
-
-  //then
-  assert.deepStrictEqual(found.errors, []);
-  assert.strictEqual(found.doc.title, '#482 \u00b7 example.com/orders / Typos \u00b7 ' + MARKUP);
-  assert.strictEqual(found.doc.querySelector('a.brand').textContent, MARKUP);
-  assert.strictEqual(found.doc.getElementById('full').textContent, 'The whole ' + MARKUP);
-  assert.strictEqual(found.doc.getElementById('attribution').textContent, HOSTILE.attribution.text);
-  assert.strictEqual(found.doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
-  assert.strictEqual(found.doc.querySelector('b.x, .top b, footer b'), null);
-  assert.strictEqual(gone.doc.title, MARKUP);
-  console.log('PASS the card page shows the display name as text in its title, header, footer and attribution');
-}
-
 (async () => {
   try {
     await theHeaderTitleAndAttributionShowTheDisplayNameAsText();
@@ -230,7 +189,6 @@ async function theCardPageShowsTheNameInTitleHeaderFooterAndAttribution() {
     theServedPageCarriesOneAttributionIdAndThePhoneCopyNone();
     await aMissingOrUnreadableBrandBlobStillGetsTheFallbackLine();
     await theAttributionSitsAtTheBottomOfThePageLayout();
-    await theCardPageShowsTheNameInTitleHeaderFooterAndAttribution();
     process.exit(0);
   } catch (e) {
     console.log('FAIL ' + (e && e.message));

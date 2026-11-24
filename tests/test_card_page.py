@@ -46,7 +46,7 @@ def test_a_pass_numbers_its_cards_and_the_number_survives_the_next_pass(store: S
     assert first == 1 and store.anomaly(found['key'])['num'] == 1
 
 
-def test_the_card_api_gives_one_card_by_number_live_or_from_its_history_and_the_page_loads_it(store: Store, tmp_path):
+def test_the_card_api_gives_one_card_by_number_live_or_from_its_history(store: Store, tmp_path):
     # given
     live = anomaly('page-typos|shop.example.com/products', sev='warn', svc='shop.example.com/products', label='Typos', num=4, url='https://shop.example.com/products', what='1 typo',
                    firstSeen=AT, tags=[{'id': 'seo', 'by': 'rule', 'at': AT}], business={'text': 'Fix it.', 'by': 'rule', 'at': AT},
@@ -61,7 +61,6 @@ def test_the_card_api_gives_one_card_by_number_live_or_from_its_history_and_the_
         past = c.get('/api/cards/5').json()
         bare = c.get('/api/cards/6').json()
         missing = c.get('/api/cards/77')
-        page = c.get('/c/4')
 
     # then
     assert got['live'] is True and got['num'] == 4 and got['business']['text'] == 'Fix it.' and got['screenshots'] == [{'id': 's1', 'viewport': 'phone'}]
@@ -69,7 +68,89 @@ def test_the_card_api_gives_one_card_by_number_live_or_from_its_history_and_the_
     assert (past['live'], past['num'], past['svc'], past['outcome']) == (False, 5, 'old', 'cleared')
     assert bare == {'num': 6, 'key': 'log|gone|ERROR|y', 'live': False}
     assert missing.status_code == 404
-    assert page.status_code == 200 and '/static/card.js?v=' in page.text and page.headers['cache-control'] == 'no-cache'
+
+
+def test_a_card_link_redirects_to_the_board_with_the_card_open(store: Store, tmp_path):
+    # given
+    from tests.conftest import AUTH
+
+    store.save({**state(), 'initialized': True}, None)
+
+    # when
+    with TestClient(create_app(settings(public_read=False), store, kube=Kube(root=tmp_path)), follow_redirects=False) as c:
+        got = c.get('/c/520', headers={**AUTH, 'Accept': 'text/html'})
+
+    # then
+    assert got.status_code == 302
+    assert got.headers['location'] == '/#c=520'
+
+
+def test_a_signed_out_card_link_survives_sign_in(store: Store, tmp_path):
+    # given
+    from urllib.parse import parse_qs, urlsplit
+
+    from tests.conftest import ADMIN_EMAIL
+    from skopax.users import Users
+
+    store.save({**state(), 'initialized': True}, None)
+    Users(store.db).set_password(ADMIN_EMAIL, 'correct horse battery')
+
+    # when
+    with TestClient(create_app(settings(public_read=False), store, kube=Kube(root=tmp_path)), base_url='https://testserver', follow_redirects=False) as c:
+        first = c.get('/c/520', headers={'Accept': 'text/html'})
+        target = parse_qs(urlsplit(first.headers['location']).query)['next'][0]
+        signed = c.post('/login', data={'email': ADMIN_EMAIL, 'password': 'correct horse battery', 'next': target})
+        landed = c.get(signed.headers['location'], headers={'Accept': 'text/html'})
+
+    # then
+    assert first.status_code == 303 and urlsplit(first.headers['location']).path == '/login'
+    assert target == '/c/520', 'a hash never reaches the server, so the sign-in keeps the card path'
+    assert signed.status_code == 303 and signed.headers['location'] == '/c/520'
+    assert landed.status_code == 302 and landed.headers['location'] == '/#c=520'
+
+
+def test_the_card_page_assets_are_gone(store: Store, tmp_path):
+    # given
+    store.save({**state(), 'initialized': True}, None)
+
+    # when
+    with TestClient(create_app(settings(), store, kube=Kube(root=tmp_path))) as c:
+        script = c.get('/static/card.js')
+
+    # then
+    assert script.status_code == 404
+
+
+def test_the_card_api_still_answers_for_a_past_card(store: Store, tmp_path):
+    # given
+    store.save({**state(), 'initialized': True}, None)
+    store.card_ids.insert_one({'_id': 'log|old|ERROR|x', 'n': 412})
+    store.card_history.insert_one({'key': 'log|old|ERROR|x', 'svc': 'old', 'label': 'Payments slow', 'sev': 'warn', 'firstSeen': '2026-06-01T10:00:00Z', 'lastSeen': '2026-06-01T12:00:00Z', 'outcome': 'cleared'})
+
+    # when
+    with TestClient(create_app(settings(), store, kube=Kube(root=tmp_path))) as c:
+        got = c.get('/api/cards/412')
+
+    # then
+    assert got.status_code == 200
+    assert got.json()['live'] is False and got.json()['num'] == 412 and got.json()['label'] == 'Payments slow'
+
+
+def test_the_card_api_sends_the_follow_up_check_the_panel_shows_and_nothing_internal(store: Store, tmp_path):
+    # given
+    follow = {'doneWhen': 'errors stay at zero', 'checkedAt': AT, 'lastResult': 'not_done', 'lastEvidence': '0 errors in 1 h', 'closeAt': AT, 'closeKind': 'fixed',
+              'owner': 'alice@example.com', 'keptBy': 'bob@example.com', 'gaveUp': None, 'tools': ['prom'], 'lastRun': 'r1', 'announced': {'at': AT}, 'basis': 'x', 'by': 'pod'}
+    live = anomaly('log|shop|ERROR|x', sev='warn', svc='shop', label='ERROR lines', num=4, firstSeen=AT, followUp=follow)
+    store.save(state(live), None)
+    store.card_ids.insert_one({'_id': live['key'], 'n': 4})
+
+    # when
+    with TestClient(create_app(settings(), store, kube=Kube(root=tmp_path))) as c:
+        got = c.get('/api/cards/4').json()
+
+    # then
+    assert got['followUp'] == {'doneWhen': 'errors stay at zero', 'checkedAt': AT, 'lastResult': 'not_done', 'lastEvidence': '0 errors in 1 h', 'closeAt': AT, 'closeKind': 'fixed',
+                               'owner': 'alice@example.com', 'keptBy': 'bob@example.com'}
 
 
 def test_business_teams_posts_link_the_card_page_and_slack_titles_carry_the_number(store: Store):

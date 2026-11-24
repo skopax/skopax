@@ -103,7 +103,7 @@ async function seenBeforeLineInTheExpandedCard() {
   assert.strictEqual(parts[1], 'Asked in Slack ' + short(SEEN.slack.at) + ': one customer, 40 lines', 'an English date on the English page, the Slack line kept as asked');
   assert.strictEqual(line.querySelector('a').getAttribute('href'), 'https://jira.example.com/browse/OPS-120', 'the ticket links to Jira');
   assert.ok(/card history/.test(line.title), 'the tooltip says where it comes from');
-  assert.strictEqual(c.querySelector('.inc-more .cd-details > .line').nextElementSibling, line, 'right under the metric line');
+  assert.strictEqual(c.querySelector('.inc-more .tech-fold > .line').nextElementSibling, line, 'right under the metric line, in Technical details');
   assert.strictEqual(article(doc, NEW).querySelector('.seen-line'), null, 'a first-timer has no line');
   assert.strictEqual(article(doc, 'log|x-service|WARN|once').querySelector('.seen-line').textContent, 'Seen before: once, last ' + short('2026-10-20T09:00:00Z') + ', In progress');
   assert.deepStrictEqual(errors, []);
@@ -189,10 +189,10 @@ async function recurringTagOnTheRowAndInTheSideMenu() {
   const serve = {state: stateAt(5, [card(KEY, {recurring: true, recurringCount: 3, recurringDays: 7}), card(TICKETED, {recurring: true, recurringCount: 4, recurringDays: 7, triage: 'progress', ticket: 'OPS-1'}), card(NEW)]), runs: []};
   const quiet = await boot({state: stateAt(5, [card(NEW)]), runs: []});
   const {dom, doc, errors} = await boot(serve);
-  const item = (d) => d.querySelector('#tab-sub-anoms button[data-f="recurring"]');
+  const item = (d) => d.querySelector('#panel-anoms .qf-c[data-f="recurring"]');
   const keys = () => [...doc.querySelectorAll('#anoms article.inc')].map((c) => c.dataset.key);
   //when
-  doc.querySelector('#tab-sub-anoms button[data-f="all"]').click();
+  doc.querySelector('#panel-anoms .qf-c[data-f="all"]').click();
   const tag = article(doc, KEY).querySelector('.inc-title .tag.recurring');
   const others = [article(doc, TICKETED).querySelector('.tag.recurring'), article(doc, NEW).querySelector('.tag.recurring')];
   const label = [item(doc).querySelector('.lbl').textContent, item(doc).querySelector('.count').textContent, item(doc).classList.contains('zero')];
@@ -207,9 +207,9 @@ async function recurringTagOnTheRowAndInTheSideMenu() {
   assert.deepStrictEqual(label, ['Recurring', '1', false]);
   assert.deepStrictEqual(filtered, [KEY], 'the filter shows only the recurring card');
   assert.ok(note.includes('Recurring') && note.includes('1'), note);
-  assert.strictEqual(doc.querySelector('#tab-sub-anoms button[data-f="open"]').getAttribute('aria-pressed'), 'true', 'a second click goes back to Open');
+  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-f="open"]').getAttribute('aria-pressed'), 'true', 'a second click goes back to Open');
   assert.deepStrictEqual(keys(), [KEY, NEW]);
-  assert.strictEqual(item(quiet.doc), null, 'no Recurring item while no card recurs, like the Triage items');
+  assert.ok(item(quiet.doc) && item(quiet.doc).classList.contains('zero'), 'with no card recurring the Recurring chip stays in More filters, dimmed at zero');
   assert.deepStrictEqual(errors.concat(quiet.errors), []);
   close(dom);
   close(quiet.dom);

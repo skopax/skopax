@@ -12,7 +12,7 @@ async function open(hash, folds, width) {
   const dom = new JSDOM(pageHtml(process.argv[2]).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state)), {url: 'https://skopax.example.com/' + hash, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {
       if (folds) w.localStorage.setItem(KEY, folds);
-      if (width) w.localStorage.setItem('skopax-sidebar', width);
+      w.localStorage.setItem('skopax-sidebar', width || 'full');
       w.scrollTo = () => {}; w.Element.prototype.scrollIntoView = function () {};
       w.fetch = async (p) => {
         p = String(p);
