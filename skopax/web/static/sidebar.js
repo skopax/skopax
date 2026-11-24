@@ -271,6 +271,7 @@ function sideFoot(acct) {
     var cut = name && at.text.indexOf(name + ' \u00b7 ') === 0 ? name.length : at.text.length;
     if (id) a.id = id;
     a.setAttribute('href', at.href);
+    a.setAttribute('target', '_blank');
     a.setAttribute('rel', 'noopener noreferrer');
     a.title = at.text;
     a.appendChild(el('span', 'attr-name')).textContent = at.text.slice(0, cut);
@@ -285,6 +286,7 @@ function sideFoot(acct) {
     foot.appendChild(line('attribution'));
     var mark = el('a', 'attr-mark', '<img src="/icons/mark.svg" alt="" width="16" height="16">');
     mark.setAttribute('href', at.href);
+    mark.setAttribute('target', '_blank');
     mark.setAttribute('rel', 'noopener noreferrer');
     mark.setAttribute('aria-label', at.text);
     mark.title = at.text;

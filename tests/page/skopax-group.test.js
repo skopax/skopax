@@ -45,11 +45,11 @@ async function nestedMergesShowUnderTheTopCardAndCopyLinkCopiesTheCardPage() {
   assert.ok(kid && kid.querySelector('a.num-link[href="#c=2"]') && kid.querySelector('a.open-page') && kid.querySelector('.kid-todo').textContent === 'Recommended: Fix the heading on page A.', 'a merged card shows its finding, page link, number and action');
 
   const acts = top.querySelector('.acts');
-  const inv = acts.querySelector('.inv-btn'), tog = acts.querySelector('.acts-tog');
-  assert.ok(inv.querySelector('.sr') && !inv.querySelector('.lbl'), 'Investigate is icon only');
-  assert.ok(acts.querySelector('.acts-more').hidden && tog.getAttribute('aria-expanded') === 'false', 'the other actions start folded');
+  const inv = acts.querySelector('.inv-btn'), tog = acts.querySelector('.card-more');
+  assert.ok(inv.closest('.card-more-box') && inv.querySelector('.lbl'), 'Investigate is a labelled item in the More menu');
+  assert.ok(acts.querySelector('.card-more-box').hidden && tog.getAttribute('aria-expanded') === 'false', 'the other actions start folded');
   tog.click();
-  assert.ok(!acts.querySelector('.acts-more').hidden && tog.getAttribute('aria-expanded') === 'true', 'More shows them');
+  assert.ok(!acts.querySelector('.card-more-box').hidden && tog.getAttribute('aria-expanded') === 'true', 'More shows them');
 
   //when
   top.querySelector('.fold').click();
@@ -65,7 +65,7 @@ async function nestedMergesShowUnderTheTopCardAndCopyLinkCopiesTheCardPage() {
   assert.ok(!groupOptions.includes('#4'), 'a resolved card is not offered as a parent');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-  console.log('PASS Investigate is icon only and the other actions fold behind More; cards merged in a chain show under the top card, Copy link copies the card page link, and a resolved card is never offered as a parent');
+  console.log('PASS Investigate and the other actions fold behind the More menu; cards merged in a chain show under the top card, Copy link copies the card page link, and a resolved card is never offered as a parent');
 }
 
 (async () => {

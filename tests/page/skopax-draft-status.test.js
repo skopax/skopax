@@ -39,9 +39,9 @@ async function show(card, features, view) {
   const line = art.querySelector('.sdraft .sdraft-status');
   const tag = view === 'board' ? doc.querySelector('#anoms .tile .slack-rec, .card-drawer .slack-rec') : art.querySelector('.slack-rec');
   const row = dom.window.sqDrafts().filter((r) => r.kind === 'card')[0];
-  const rt = art.querySelector('.inc-title .c-status .slack-rec .tag-t');
+  const rt = art.querySelector('.inc-more .inc-tags .slack-rec .tag-t');
   const css = [...doc.querySelectorAll('style')].map((x) => x.textContent).join('');
-  const out = {rowText: rt ? rt.textContent : null, ellipsis: /\.tag-t \{[^}]*text-overflow: ellipsis/.test(css) && /\.inc-title \.c-status \.tag \{[^}]*max-width: 100%/.test(css), imgs: art.querySelectorAll('img').length, line: line ? line.textContent : null, tip: tag ? tag.title : '', queue: row ? row.st.tip : null, errors};
+  const out = {rowText: rt ? rt.textContent : null, ellipsis: /\.tag-t \{[^}]*text-overflow: ellipsis/.test(css) && /\.inc-tags \.tag, \.tech-tags \.tag \{[^}]*text-overflow: ellipsis/.test(css), imgs: art.querySelectorAll('img').length, line: line ? line.textContent : null, tip: tag ? tag.title : '', queue: row ? row.st.tip : null, errors};
   dom.window.close();
   return out;
 }
@@ -89,8 +89,8 @@ async function check(view) {
     assert.deepStrictEqual(r[k].errors, []);
   });
   if (view === 'list') {
-    assert.strictEqual(r.planted.rowText, 'Not posted: the run read suspicious text', 'the row tag keeps its text in a span that can shorten');
-    assert.ok(r.planted.ellipsis, 'a long tag in the status column ends in an ellipsis instead of being cut by the column');
+    assert.strictEqual(r.planted.rowText, 'Not posted: the run read suspicious text', 'the warning tag stays in the tag row, its text in a span that can shorten');
+    assert.ok(r.planted.ellipsis, 'a long chip in the tag row stays on one line and ends in an ellipsis');
   }
   assert.strictEqual(r.hostile.imgs, 0, view + ': hostile text from Slack stays text');
 }

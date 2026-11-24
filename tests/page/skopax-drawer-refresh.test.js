@@ -65,12 +65,10 @@ async function aRefreshKeepsTheOpenDrawerItsScrollFormMenuAndFocus() {
 
   //given
   const inner = panel.querySelector('article.inc');
-  const more = panel.querySelector('.card-more');
   [...panel.querySelectorAll('.acts button')].find((b) => b.textContent === 'Resolve').click();
   const why = panel.querySelector('.res-form input[id^="why-"]');
   why.value = 'rolled back';
   panel.querySelector('.res-form .res-kind[data-kind="handled"]').click();
-  more.click();
   panel.querySelector('.res-form .res-kind[data-kind="handled"]').focus();
 
   //when
@@ -86,7 +84,16 @@ async function aRefreshKeepsTheOpenDrawerItsScrollFormMenuAndFocus() {
   assert.strictEqual(panel.querySelector('.res-form input[id^="why-"]').value, 'rolled back', 'with its typed text');
   assert.strictEqual(panel.querySelector('.res-form .res-kind[data-kind="handled"]').getAttribute('aria-pressed'), 'true', 'and its picked outcome');
   assert.strictEqual(doc.activeElement, panel.querySelector('.res-form .res-kind[data-kind="handled"]'), 'focus stays on the same button');
-  assert.strictEqual(panel.querySelector('.card-more-box').hidden, false, 'the More box stays open');
+
+  //when
+  panel.querySelector('.card-more').click();
+  serve.rev = 8; serve.state = stateAt(8, {what: 'third text'});
+  await refresh(w);
+
+  //then
+  assert.ok(/third text/.test(panel.textContent));
+  assert.strictEqual(panel.querySelector('.card-more-box').hidden, false, 'the More menu stays open');
+  assert.strictEqual(panel.querySelector('.card-more').getAttribute('aria-expanded'), 'true');
   assert.deepStrictEqual(errors, []);
   w.close();
   console.log('PASS a refresh keeps the open drawer, its scroll, form, menu and focus, swaps only a changed card, and keeps unchanged board tiles');
@@ -128,7 +135,8 @@ async function aCardInsertedAheadKeepsTheDrawerActionsOnItsOwnCard() {
   //then
   assert.strictEqual(doc.querySelector('.card-drawer'), drawer);
   assert.strictEqual(drawer.querySelector('.acts').dataset.key, B);
-  assert.ok(/Queued/.test(drawer.querySelector('.stat').textContent), 'the pill shows the action of the open card: ' + drawer.querySelector('.stat').textContent);
+  assert.ok(/Queued/.test(drawer.querySelector('.last-act').textContent), 'the last action line shows the action of the open card: ' + drawer.querySelector('.last-act').textContent);
+  assert.ok(/Investigate payments-api/.test(drawer.querySelector('.stat button').getAttribute('aria-label')), 'and its Cancel stays beside it');
   w.close();
   console.log('PASS a card inserted ahead leaves the open drawer on its own actions');
 }

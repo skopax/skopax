@@ -5,7 +5,7 @@ function cardsState() {
     s[c.dataset.key] = {
       resp: resp ? resp.open : null,
       kind: kind ? kind.dataset.kind : null,
-      menu: !!c.querySelector('.acts-grouped .acts-more:not([hidden])'),
+      menu: !!c.querySelector('.card-more-box:not([hidden])'),
       focus: at && c.contains(at) && at.tagName === 'BUTTON' ? [at.id, at.className, at.textContent.trim()] : null,
       forms: [].concat.apply([], [].filter.call(c.querySelectorAll('.reason'), function (f) { return !f.hidden; }).map(function (f) {
         return [].map.call(f.querySelectorAll('input, textarea, select'), function (i) { return i.id ? [i.id.replace(/-\d+$/, ''), i.value, i === document.activeElement] : null; }).filter(Boolean);
@@ -35,8 +35,8 @@ function restoreCards(s, seen) {
       i.value = f[1];
       if (f[2]) i.focus({preventScroll: true});
     });
-    var tog = x.menu && c.querySelector('.acts-grouped .acts-tog'), more = c.querySelector('.acts-grouped .acts-more');
-    if (tog && more && more.hidden) tog.click();
+    var menu = c.querySelector('.cm-wrap > .card-more-box');
+    if (x.menu && menu && menu.hidden) cardMenu(menu, menu.parentNode.querySelector('.card-more'), true);
     if (x.focus) {
       var b = (x.focus[0] && document.getElementById(x.focus[0])) || [].filter.call(c.querySelectorAll('button'), function (n) { return n.className === x.focus[1] && n.textContent.trim() === x.focus[2]; })[0];
       if (b && c.contains(b)) b.focus({preventScroll: true});

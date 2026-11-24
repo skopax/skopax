@@ -114,7 +114,7 @@ async function liveUpdateKeepsTheView() {
   assert.deepStrictEqual(scrolls[scrolls.length - 1], [0, 420], 'scroll position restored');
   assert.strictEqual(before.anomsCount, '2');
   assert.strictEqual(doc.getElementById('count-anoms').textContent, '3', 'tab count updated');
-  assert.ok(orders.querySelector('.acts button').textContent === 'Investigate' && !orders.querySelector('.acts').hidden, 'action buttons re-wired');
+  assert.ok(orders.querySelector('.acts .card-main button').textContent === 'Take it' && orders.querySelector('.acts .card-more-box .inv-btn') && !orders.querySelector('.acts').hidden, 'action buttons re-wired');
   assert.strictEqual(doc.querySelectorAll('#pdc').length, 1, 'one post-deploy box');
   assert.ok(doc.getElementById('pdc').closest('#panel-reps') && !doc.getElementById('pdc').closest('#reps'), 'it sits in the Deploy reports header, outside the re-rendered list');
   assert.deepStrictEqual([...doc.querySelector('section.overview').children].map((c) => c.id), ['reco', 'meta'], 'the overview holds the summary and the source pills, also after a live update');
@@ -135,7 +135,7 @@ async function typingAndConfirmDeferTheUpdate() {
   const box = card(doc, 'err|orders-service|ERROR');
   const nowLine = () => card(doc, 'err|orders-service|ERROR').querySelector('.line').textContent;
   expand(box);
-  box.querySelector('.acts .acts-tog').click();
+  box.querySelector('.acts .card-more').click();
   [...box.querySelectorAll('.acts button')].find((b) => b.textContent === 'Start progress').click();
   const ticket = box.querySelector('input[id^="ticket-"]');
   ticket.focus();
@@ -316,7 +316,7 @@ async function cardsCollapseToOneRow() {
   const fold = (key) => c(key).querySelector('.inc-title .fold');
   const panel = (key) => c(key).querySelector('.inc-more');
   const isOpen = (key) => fold(key).getAttribute('aria-expanded') === 'true' && !panel(key).hidden && c(key).classList.contains('open');
-  const rowTags = (key) => [...c(key).querySelectorAll('.inc-head .tag:not(.asg-tag)')].map((t) => t.textContent);
+  const triTag = (key) => [...c(key).querySelectorAll('.tech-tags .tag.tri-wrap')].map((t) => t.textContent);
   const restTags = (key) => [...panel(key).querySelectorAll('.inc-tags .tag')].map((t) => t.textContent);
 
   //then
@@ -329,24 +329,20 @@ async function cardsCollapseToOneRow() {
     assert.strictEqual(doc.getElementById(fold(key).getAttribute('aria-controls')), panel(key), 'aria-controls names the panel');
     assert.ok(!fold(key).closest('summary') && !x.querySelector('.acts').closest('summary'), 'no toggle or icon inside a summary');
     assert.ok(!x.querySelector('.acts').closest('.inc-title'), 'icons sit outside the clickable title area');
-    assert.deepStrictEqual([...x.querySelector('.inc-title').children].map((e) => e.className), ['c c-num', 'c c-sev', 'c c-name', 'c c-status', 'c c-asg', 'c c-tags', 'c c-chg', 'c c-age'], 'row: one cell per list column');
-    assert.ok(x.querySelector('.c-sev .sev') && x.querySelector('.c-chg .chg'), 'row: the sev badge and the change chip sit in their columns');
+    assert.deepStrictEqual([...x.querySelector('.inc-title').children].map((e) => e.className), ['c c-num', 'c c-sev', 'c c-name', 'c c-status', 'c c-asg', 'c c-age'], 'row: one cell per list column');
+    assert.ok(x.querySelector('.c-sev .sev') && x.querySelector('.c-status .spill') && !x.querySelector('.inc-head .tag:not(.asg-tag):not(.num-link):not(.open-page)'), 'row: the sev badge and one state word; the tags sit in the body');
     assert.strictEqual(x.querySelector('.inc-title h4').firstElementChild, fold(key), 'the title is the button');
-    assert.strictEqual(rowTags(key).length, 1, key + ' row carries one status tag: ' + rowTags(key).join(' | '));
-    assert.strictEqual(x.querySelector('.inc-title .chg').textContent, x.querySelector('.line .ch').textContent, 'row change chip matches the numbers line');
     assert.ok(x.querySelectorAll('.slack-rec').length <= 1, 'one Slack tag per card at most');
     for (const sel of ['.line', '.inc-body', '.notif']) assert.ok(x.querySelector(sel) && !inCard(x, x.querySelector(sel)), key + ' ' + sel + ' hidden while collapsed');
     assert.ok(![...x.querySelectorAll('summary')].some((s) => /^Analysis/.test(s.textContent)), 'no nested Analysis fold');
   }
-  assert.strictEqual(rowTags(ORDERS)[0], 'Slack post failed: channel_not_found', 'a post that did not go out wins the row slot over triage');
-  assert.match(restTags(ORDERS)[0], /^Investigating \u00b7 OPS-7/, 'triage moves into the panel');
-  assert.deepStrictEqual(restTags(ORDERS).slice(1), ['App query', '+1 merged'], 'the other tags move into the panel');
-  assert.strictEqual(rowTags(CART)[0], 'Slack post failed: channel_not_found', 'a post that did not go out takes the row slot without triage');
-  assert.ok(c(CART).querySelector('.inc-title .slack-rec.not-posted'));
-  assert.deepStrictEqual(restTags(CART), [], 'nothing else to show for cart');
-  assert.strictEqual(rowTags(MUTED)[0], 'Muted', 'Muted before Cleared');
-  assert.deepStrictEqual(restTags(MUTED).map((t) => t.replace(/\d{1,2} [A-Z][a-z]{2} \d\d:\d\d/, 'D Mon HH:MM')), ['Stopped firing D Mon HH:MM'], 'a muted card reads the short words with its time');
-  assert.match(rowTags(CLEARED)[0], /^Stopped firing \d{1,2} [A-Z][a-z]{2} \d\d:\d\d$/, 'the cleared time carries its day');
+  assert.strictEqual(restTags(ORDERS)[0], 'Slack post failed: channel_not_found', 'a post that did not go out leads the tag row');
+  assert.match(triTag(ORDERS)[0], /^Investigating \u00b7 OPS-7/, 'triage moves into Technical details');
+  assert.deepStrictEqual(restTags(ORDERS).slice(1), ['App query', '+1 merged'], 'the other tags follow in the tag row');
+  assert.deepStrictEqual(restTags(CART), ['Slack post failed: channel_not_found'], 'a post that did not go out stays in view without triage');
+  assert.ok(c(CART).querySelector('.inc-tags .slack-rec.not-posted'));
+  assert.deepStrictEqual(restTags(MUTED).map((t) => t.replace(/\d{1,2} [A-Z][a-z]{2} \d\d:\d\d/, 'D Mon HH:MM')), ['Muted', 'Stopped firing D Mon HH:MM'], 'a muted card reads Muted, then the short words with its time');
+  assert.match(restTags(CLEARED)[0], /^Stopped firing \d{1,2} [A-Z][a-z]{2} \d\d:\d\d$/, 'the cleared time carries its day');
   assert.ok(c(ORDERS).querySelector('.card-todo') && !inCard(c(ORDERS), c(ORDERS).querySelector('.card-todo')), 'What to do is in the panel too');
   assert.ok(!c(ORDERS).querySelector('.acts').hidden && inCard(c(ORDERS), c(ORDERS).querySelector('.acts button.icon')), 'action icons stay on the collapsed row');
 
@@ -355,9 +351,10 @@ async function cardsCollapseToOneRow() {
 
   //then
   assert.ok(isOpen(ORDERS), 'a click on the title area expands the card');
-  for (const sel of ['.card-state', '.inc-tags', '.card-todo', '.tech-fold', '.notif']) assert.ok(inCard(c(ORDERS), c(ORDERS).querySelector(sel)), sel + ' shown once expanded');
-  const order = ['.card-state', '.inc-tags', '.card-todo', '.tech-fold', '.notif'].map((s) => [...panel(ORDERS).querySelector('.cd-details').children].indexOf(panel(ORDERS).querySelector('.cd-details > ' + s)));
-  assert.deepStrictEqual(order, [...order].sort((x, y) => x - y), 'panel order: state, tags, What to do, Technical details, Notify');
+  for (const sel of ['.card-state', '.inc-tags', '.card-todo', '.tech-fold']) assert.ok(inCard(c(ORDERS), c(ORDERS).querySelector(sel)), sel + ' shown once expanded');
+  assert.ok(c(ORDERS).querySelector('.tech-fold > .notif'), 'the Slack history links sit in Technical details');
+  const order = ['.card-state', '.inc-tags', '.card-todo', '.tech-fold'].map((s) => [...panel(ORDERS).querySelector('.cd-details').children].indexOf(panel(ORDERS).querySelector('.cd-details > ' + s)));
+  assert.deepStrictEqual(order, [...order].sort((x, y) => x - y), 'panel order: state, tags, What to do, Technical details');
   assert.ok(order.every((n) => n >= 0), order.join(','));
   assert.ok(panel(ORDERS).querySelector('.tech-fold > .line') && panel(ORDERS).querySelector('.tech-fold > .inc-body'), 'numbers and analysis sit in Technical details');
   assert.match(panel(ORDERS).querySelector('.inc-body').textContent, /first suspect/, 'the analysis shows directly');
@@ -366,13 +363,11 @@ async function cardsCollapseToOneRow() {
   //when
   const copy = [...c(ORDERS).querySelectorAll('.acts button')].find((b) => b.getAttribute('aria-label') === 'Copy link');
   copy.click();
-  const link = c(TICKETED).querySelector('.inc-title .tag a');
-  link.addEventListener('click', (e) => e.preventDefault());
-  link.click();
 
   //then
-  assert.match(rowTags(TICKETED)[0], /^In progress \u00b7 OPS-8/, 'triage holds the row slot when no auto-send is armed');
-  assert.ok(isOpen(ORDERS) && !isOpen(TICKETED), 'an action icon or a row tag link does not toggle the card');
+  assert.match(triTag(TICKETED)[0], /^In progress \u00b7 OPS-8/, 'the triage tag with its ticket sits in Technical details');
+  assert.ok(isOpen(ORDERS) && !isOpen(TICKETED), 'an action button does not toggle the card');
+  assert.ok(!c(TICKETED).querySelector('.inc-title .tag a'), 'the header carries no ticket link; it sits in Technical details');
 
   //when
   fold(ORDERS).click();
@@ -381,7 +376,7 @@ async function cardsCollapseToOneRow() {
   assert.ok(!isOpen(ORDERS), 'the title button collapses it again');
 
   //when
-  c(ORDERS).querySelector('.inc-title .chg').click();
+  c(ORDERS).querySelector('.inc-title .c-status').click();
   serve.rev = 6;
   serve.state = rowState(6, 95);
   visible(w);

@@ -30,7 +30,7 @@ async function aStoppedCardReadsTheSlackWordsOnTheBoardInTheChipAndInTheHistory(
   const [long, short, lower, assigned, onIt, eventOnIt] = WORDS[lang];
   const {w, doc, errors} = await boot(cards(), Object.assign({history: {actions: [], activity: []}}, lang === 'en' ? {} : {lang}));
   const a = () => article(doc, WAITING);
-  const status = (key) => article(doc, key).querySelector('.inc-head .c-status').textContent;
+  const status = (key) => article(doc, key).querySelector('.inc-more .inc-tags .tag.k-cleared').textContent;
   const every = (key) => [...article(doc, key).querySelectorAll('.tag, .c-status')].map((t) => t.textContent);
   const rest = (key) => [...article(doc, key).querySelectorAll('.inc-more .inc-tags .tag')].map((t) => t.textContent);
   const chip = doc.querySelector('#panel-anoms .qf-c[data-f="cleared"] .lbl');
@@ -42,7 +42,7 @@ async function aStoppedCardReadsTheSlackWordsOnTheBoardInTheChipAndInTheHistory(
   await until(() => a().querySelector('.cd-hist li'));
   await wait(30);
   const labels = [...a().querySelectorAll('.cd-hist li .h-l')].map((x) => x.textContent);
-  const board = doc.querySelector('#anoms').textContent, row = status(WAITING), owned = status(ASSIGNED);
+  const board = doc.querySelector('#anoms').textContent, row = status(WAITING), head = article(doc, WAITING).querySelector('.inc-head .c-status').textContent, owned = status(ASSIGNED);
   doc.querySelector('#panel-anoms .qf-c[data-f="progress"]').click();
   await wait(60);
   expand(article(doc, TAKEN));
@@ -59,6 +59,7 @@ async function aStoppedCardReadsTheSlackWordsOnTheBoardInTheChipAndInTheHistory(
 
   //then
   assert.ok(timed(row, long), 'the waiting card on the board: ' + row);
+  assert.strictEqual(head, short, 'the header keeps the short state');
   assert.ok(timed(owned, assigned) && owned.indexOf('@') < 0, 'an assigned card names who has it, never an e-mail: ' + owned);
   assert.ok(timed(calm, short) && !calm.startsWith(long), 'an info card that needs nothing: ' + calm);
   assert.ok(taken.length >= 1 && taken.every((t) => timed(t, onIt)), 'a card in progress says who is on it by display name: ' + taken.join(' | '));

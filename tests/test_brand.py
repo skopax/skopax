@@ -47,7 +47,7 @@ def test_package_and_version():
     old = importlib.util.find_spec('watch' + 'er')
 
     # then
-    assert version == '0.5.14'
+    assert version == '0.5.15'
     assert old is None
 
 
@@ -79,8 +79,8 @@ def test_attribution():
     named, default = dataclasses.replace(settings(), display_name='Acme Ops'), dataclasses.replace(settings(), display_name='Skopax')
 
     # then
-    assert brand.attribution(named) == ('Acme Ops \u00b7 powered by Skopax 0.5.14', 'https://skopax.io')
-    assert brand.attribution(default) == ('Skopax 0.5.14 \u00b7 skopax.io', 'https://skopax.io')
+    assert brand.attribution(named) == ('Acme Ops \u00b7 powered by Skopax 0.5.15', 'https://skopax.io')
+    assert brand.attribution(default) == ('Skopax 0.5.15 \u00b7 skopax.io', 'https://skopax.io')
 
 
 def test_the_shown_version_is_the_release_tag_form_of_the_package_version():
@@ -91,10 +91,10 @@ def test_the_shown_version_is_the_release_tag_form_of_the_package_version():
     shown = {v: brand.display_version(v) for v in versions}
 
     # then
-    assert brand.display_version() == '0.5.14' == brand.display_version(skopax.__version__)
+    assert brand.display_version() == '0.5.15' == brand.display_version(skopax.__version__)
     assert shown == {v: release_version.release_tag(v).removeprefix('v') if release_version.release_tag(v) else v for v in versions}
     assert shown['0.1.0rc1'] == '0.1.0-rc.1' and shown['0.1.0'] == '0.1.0' and shown['0.1.0.post1'] == '0.1.0.post1'
-    assert brand.page_info()['version'] == '0.5.14' and skopax.__version__ == '0.5.14'
+    assert brand.page_info()['version'] == '0.5.15' and skopax.__version__ == '0.5.15'
 
 
 def test_display_name_is_escaped_everywhere(store):
@@ -589,7 +589,7 @@ def test_a_failing_hide_check_keeps_the_line_and_warns_once(caplog):
     warned = [r.getMessage() for r in caplog.records if r.name == 'skopax.brand']
 
     # then
-    assert seen == (True, True, {'text': 'Skopax 0.5.14 \u00b7 skopax.io', 'href': SITE}, {'text': 'Skopax 0.5.14 \u00b7 skopax.io', 'href': SITE})
+    assert seen == (True, True, {'text': 'Skopax 0.5.15 \u00b7 skopax.io', 'href': SITE}, {'text': 'Skopax 0.5.15 \u00b7 skopax.io', 'href': SITE})
     assert len(warned) == 1 and 'RuntimeError' in warned[0] and 'secret' not in warned[0]
 
 
@@ -633,7 +633,7 @@ def test_the_page_footers_carry_the_id_the_scripts_read_and_the_page_harness_ren
 
     # then
     assert feet == [[brand.footer_html(), brand.footer_html(element_id=None)]]
-    assert '<a href="https://skopax.io" id="attribution" rel="noopener noreferrer">' in feet[0][0] and 'O&#x27;Brien Ops' in feet[0][0]
+    assert '<a href="https://skopax.io" id="attribution" target="_blank" rel="noopener noreferrer">' in feet[0][0] and 'O&#x27;Brien Ops' in feet[0][0]
     assert brand.footer_html() == harness_fill
     assert brand.footer_html(element_id=None) == harness_fill.replace(' id="attribution"', '')
     assert FOOTER_SOURCE.search(Path(brand.__file__).read_text(encoding='utf-8'))[1] == brand.FOOTER

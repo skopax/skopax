@@ -194,7 +194,7 @@ async function aPageCardOpensItsPageFromTheHeadAndFromItsText() {
   assert.ok(!cardOf('page-layout|pages//garden-chairs').querySelector('a.open-page'), 'a card without a url gets no link');
   assert.ok(!cardOf('log|members/sms-sender|ERROR').querySelector('a.open-page'));
   const gone = cardOf('page-layout|pages//garden-chairs');
-  assert.strictEqual(gone.querySelector('.inc-title .page-gone').textContent, 'Page gone \u00b7 404', 'a removed page says so on the folded head');
+  assert.strictEqual(gone.querySelector('.inc-tags .page-gone').textContent, 'Page gone \u00b7 404', 'a removed page says so in the tag row');
   assert.strictEqual(gone.querySelector('.card-todo p').textContent, 'The page answers HTTP 404 since ' + short('2026-11-09T12:45:00Z') + ': if it was taken down on purpose, Resolve this card.', 'What to do says what to do about a gone page');
   assert.ok(!page.querySelector('.page-gone') && !page.querySelector('.card-todo'), 'a live page gets neither');
   assert.deepStrictEqual(errors, []);

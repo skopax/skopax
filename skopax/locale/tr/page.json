@@ -1,5 +1,8 @@
 {
  "page": {
+  "None": "Yok",
+  "None (connect directly)": "Yok (doğrudan bağlan)",
+  "{0} (not an agent node)": "{0} (agent düğümü değil)",
   "Requests": "Talepler",
   "Chat": "Sohbet",
   "Metrics": "Metrikler",
@@ -346,6 +349,7 @@
   "KrakenD p{0} of the {1} busiest routes (Prometheus, not sampled). Flagged above {2}× baseline and +{3} ms.": "En yoğun {1} route'un KrakenD p{0} değeri (Prometheus, örnekleme yok). Baseline'ın {2}× ve +{3} ms üstü işaretlenir.",
   "Last": "Son",
   "Last action:": "Son işlem:",
+  "Last action": "Son işlem",
   "Last changed by": "Son değiştiren",
   "Last heartbeat": "Son heartbeat",
   "Last run": "Son run",

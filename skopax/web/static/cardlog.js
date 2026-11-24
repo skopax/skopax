@@ -89,7 +89,8 @@ function cardHistoryHtml(rows, when, state) {
   if (state === 'loading') return '<p class="muted h-note">Loading the history\u2026</p>';
   var note = state === 'failed' ? '<p class="muted h-note">Actions and activity could not be loaded; showing what the card itself records.</p>' : '';
   if (!rows.length) return note + '<p class="muted h-note">Nothing recorded yet.</p>';
-  return note + '<ol class="h-rows">' + rows.map(function (r) {
+  var full = typeof load === 'function' && load('skopax.fold.hist') === '1';
+  return note + '<button type="button" class="btn sec small h-tog" aria-expanded="' + full + '"' + (full ? '' : ' hidden') + '>' + (full ? 'Show less' : 'Show more') + '</button><ol class="h-rows' + (full ? '' : ' h-clamp') + '">' + rows.map(function (r) {
     var chg = r.to ? ' <span class="h-chg">' + (r.from ? '<span class="h-old">' + histEsc(r.from) + '</span> \u2192 ' : '') + '<span class="h-new">' + histEsc(r.to) + '</span></span>' : '';
     var link = r.href ? ' <a class="h-link" href="' + histEsc(r.href) + '" target="_blank" rel="noopener">' + (r.kind === 'run' ? 'Run record' : 'Open') + ' \u2197</a>' : '';
     return '<li class="h-' + histEsc(r.kind || 'row') + '"><time datetime="' + histEsc(r.at) + '" title="' + histEsc(r.at) + '">' + histEsc(when(r.at)) + '</time><span class="h-body"><span class="h-what">' + (r.label ? '<span class="h-l">' + histEsc(r.label) + '</span>' + (r.data ? (r.bare ? ' ' : ': ') : '') : '') +

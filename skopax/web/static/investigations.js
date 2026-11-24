@@ -28,8 +28,8 @@ function invHtml(a) {
   }).join('') : '';
   var flags = (r.flags || []).length ? '<p class="podflag" title="' + esc(r.flags.map(function (f) { return f.tool + ': ' + f.excerpt; }).join('\n')) + '">Planted-looking text: ' +
     esc(r.flags.map(function (f) { return f.phrase; }).join(', ')) + '</p>' : '';
-  return '<section class="podrun"><h5>' + esc(head) + '<span class="h5n">' + esc(meta) + '</span></h5>' + (r.recap ? '<p>' + esc(r.recap) + '</p>' : '') +
-    (props ? '<ul>' + props + '</ul>' : '') + flags + '</section>';
+  return blockFold('inv', 'podrun', '<h5>' + esc(head) + '<span class="h5n">' + esc(meta) + '</span></h5>', (r.recap ? '<p>' + esc(r.recap) + '</p>' : '') +
+    (props ? '<ul>' + props + '</ul>' : '') + flags);
 }
 function invOperator() { return typeof window.__boardLock === 'function' && !window.__boardLock(); }
 var PROP_HEADS = {done: 'Confirmed', failed: 'Failed', timeout: 'Timed out', declined: 'Declined'};

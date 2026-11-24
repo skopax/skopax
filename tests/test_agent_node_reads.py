@@ -6,7 +6,8 @@ import pytest
 from skopax.contract import NODE_FIELD, AgentRead, Capabilities, Field, ReadError, Tool
 from skopax.messages import msg
 from skopax.plugintools import PluginTools
-from skopax.registry import Registry
+from skopax.plugins import kubernetes
+from skopax.registry import Registry, field_view
 from skopax.sweeps import watched
 from tests.kube_kit import Seen, agent_app, app_transport, kube_runtime
 from tests.plugins.base import minimal
@@ -137,3 +138,47 @@ def test_a_connection_moved_to_a_node_clears_the_cards_its_checks_left(store, tm
     assert before[pair_key('pulse', 'east')] == before[pair_key('beat', 'east')] == 'open'
     assert after[pair_key('pulse', 'east')] == after[pair_key('beat', 'east')] == 'cleared'
     assert after[pair_key('pulse', 'main')] == after[pair_key('beat', 'main')] == 'open'
+
+
+def test_the_node_field_and_the_relay_field_ask_the_page_for_a_pick_of_kubernetes_instances():
+    # given
+    opted = Registry.of(demo()).get('demo')
+    found = Registry.of(kubernetes.PLUGIN).get('kubernetes')
+
+    # when
+    node = field_view({f.key: f for f in opted.plugin.fields}[NODE_FIELD])
+    relay = field_view({f.key: f for f in found.plugin.fields}['via'])
+
+    # then
+    assert opted.state == 'ok' and 'kubernetes' not in opted.plugin.uses
+    assert found.state == 'ok'
+    assert (node['kind'], node['choices'], node['group']) == ('instance', ['kubernetes'], 'advanced')
+    assert (relay['kind'], relay['choices'], relay['showIf']) == ('instance', ['kubernetes'], ['mode', 'agent'])
+
+
+def test_a_saved_node_name_that_is_no_longer_an_agent_node_still_saves_and_shows_its_problem(store):
+    # given
+    runtime, _, _, _ = demo_setup(store, {'lost': {'url': 'https://dev.example.com', NODE_FIELD: 'nowhere'}})
+
+    # when
+    runtime.instances.update('demo', 'lost', {'url': 'https://other.example.com'}, 'alice')
+
+    # then
+    kept = runtime.instances.get('demo', 'lost')
+    assert kept.values[NODE_FIELD] == 'nowhere' and kept.problem == msg('instances.via_node', node='nowhere')
+
+
+def test_a_relay_must_still_name_another_agent_instance(store):
+    # given
+    runtime = kube_runtime(store, {'hub': NODE})
+
+    # when
+    with pytest.raises(Exception) as unknown:
+        runtime.instances.create('kubernetes', 'east', {'mode': 'agent', 'url': 'https://east.example.com', 'token': 'east-token-0001', 'via': 'nowhere'}, True, 'alice')
+    with pytest.raises(Exception) as itself:
+        runtime.instances.create('kubernetes', 'east', {'mode': 'agent', 'url': 'https://east.example.com', 'token': 'east-token-0001', 'via': 'east'}, True, 'alice')
+    made = runtime.instances.create('kubernetes', 'west', {'mode': 'agent', 'url': 'https://west.example.com', 'token': 'west-token-0001', 'via': 'hub'}, True, 'alice')
+
+    # then
+    assert str(unknown.value) == msg('instances.invalid.via') and str(itself.value) == msg('instances.invalid.via')
+    assert made.values['via'] == 'hub'

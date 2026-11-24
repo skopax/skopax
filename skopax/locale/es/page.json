@@ -1,5 +1,8 @@
 {
  "page": {
+  "None": "Ninguno",
+  "None (connect directly)": "Ninguno (conectar directamente)",
+  "{0} (not an agent node)": "{0} (no es un nodo agente)",
   "({0} d {1} ms · {2} d {3} ms)": "({0} d {1} ms · {2} d {3} ms)",
   "({0} err)": "({0} err.)",
   "+{0} merged": "+{0} fusionadas",
@@ -408,6 +411,7 @@
   "Language": "Idioma",
   "Last": "Última",
   "Last action:": "Última acción:",
+  "Last action": "Última acción",
   "Last admin": "Último admin",
   "Last changed by": "Último cambio por",
   "Last check": "Última comprobación",

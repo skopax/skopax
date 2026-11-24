@@ -379,7 +379,7 @@ ECHO_FIELD = 'slack-echo'
 ROUTE_ECHO = Field(ECHO_FIELD, 'Also post to Slack', 'choice', choices=('default', 'on', 'off'),
                    choice_labels={'default': 'Use the default', 'on': 'On', 'off': 'Off'},
                    help='On posts a card to Slack too when this route sends it, if Slack has not posted it yet, and says in its Slack thread which channel got it; Off never does; Use the default (or not set) follows the install-wide Slack echo setting.')
-NODE_VIA = Field(NODE_FIELD, 'Through agent node', 'text', group='advanced', help='Name of a Kubernetes agent instance that reaches this service. Empty means Skopax connects directly.')
+NODE_VIA = Field(NODE_FIELD, 'Through agent node', 'instance', choices=('kubernetes',), group='advanced', help='Name of a Kubernetes agent instance that reaches this service. Empty means Skopax connects directly.')
 
 
 @dataclass(frozen=True)

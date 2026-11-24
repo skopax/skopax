@@ -76,7 +76,7 @@ async function theTileHoldsNoStatusTagAndTheDrawerKeepsTheLongForm(lang) {
   const initials = tileOf(doc, WAITING).querySelector('.tile-top .tile-asg').textContent;
   tileOf(doc, WAITING).querySelector('.tile-open').click();
   await wait(60);
-  const drawerStatus = doc.querySelector('.card-drawer .c-status').textContent;
+  const drawerStatus = doc.querySelector('.card-drawer .inc-tags .tag.k-cleared').textContent;
   const drawer = doc.querySelector('.card-drawer');
   assert.strictEqual(drawer.getAttribute('aria-label'), 'checkout-service / ERROR');
   drawer.querySelector('.cd-close').click();
@@ -88,7 +88,7 @@ async function theTileHoldsNoStatusTagAndTheDrawerKeepsTheLongForm(lang) {
   assert.deepStrictEqual(footTags, [0, 0, 0], 'the tile footer holds no stopped or investigated tag');
   assert.deepStrictEqual(topLine, ['sev', 'tile-num', 'tile-age', 'tile-asg'], 'the top line has severity, number, age and the owner');
   assert.strictEqual(initials, 'AM', 'owner initials');
-  assert.ok(drawerStatus.startsWith(words.long + ' '), 'the drawer keeps the long form: ' + drawerStatus);
+  assert.ok(drawerStatus.startsWith(words.long + ' '), 'the tag row in the drawer keeps the long form: ' + drawerStatus);
   assert.strictEqual(bareLabel, 'shop / KubePodNotReady', 'the drawer of a no-service card never says a bare dash');
   assert.deepStrictEqual(errors, []);
   return lang;

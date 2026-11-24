@@ -706,7 +706,7 @@ def _check(plugin: Plugin, directory: Path | None) -> None:
         if not ID.fullmatch(used) or used == plugin.id:
             raise _why('uses', id=used[:40])
     for f in plugin.fields:
-        if f.kind == 'instance' and (not isinstance(f.choices, (tuple, list)) or len(f.choices) != 1 or f.choices[0] not in plugin.uses):
+        if f.kind == 'instance' and f.key != NODE_FIELD and (not isinstance(f.choices, (tuple, list)) or len(f.choices) != 1 or (f.choices[0] != plugin.id and f.choices[0] not in plugin.uses)):
             raise _why('instance_field', key=f.key)
     for read in plugin.agent_reads:
         for f in read.fields:

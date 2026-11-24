@@ -120,8 +120,9 @@ async function aRunningCardShowsTheBannerUnderItsHeaderWithElapsedToolCallsCostA
   assert.strictEqual(b.querySelector('.run-rec').getAttribute('href'), '/api/investigations/run-45');
   assert.strictEqual(b.querySelector('.run-rec').textContent, 'Run record');
   assert.ok(b.querySelector('.run-ind[aria-hidden="true"]') && !b.querySelector('.run-ind.run-q'));
-  const chip = t.doc.querySelector('.card-drawer article.inc .c-status .tag.tri-inv');
-  assert.ok(chip.querySelector('.run-ind:not(.run-q)'), 'the header chip carries the activity indicator');
+  assert.strictEqual(t.doc.querySelector('.card-drawer article.inc .c-status').textContent, 'Investigating', 'the header keeps the state word');
+  const chip = t.doc.querySelector('.card-drawer article.inc .tech-tags .tag.tri-inv');
+  assert.ok(chip.querySelector('.run-ind:not(.run-q)'), 'the chip in Technical details carries the activity indicator');
   assert.strictEqual(chip.textContent, 'Investigating \u00b7 by Investigator', 'the indicator adds no text');
   t.w.INV[KEY] = {id: 'run-45', startedAt: STARTED, outcome: 'running', toolCalls: 0, usd: 0, mode: 'live'};
   assert.ok(t.w.invHtml({key: KEY}).includes(t.w.dayhm(STARTED) + ' \u00b7 running</span>') && !t.w.invHtml({key: KEY}).includes('tool calls'), 'the stored run line no longer claims 0 tool calls and $0.00 while it runs');
@@ -257,7 +258,7 @@ async function boardTilesAndListRowsCarryTheIndicatorOnTheInvestigatingTag() {
 
   //then
   const row = [...list.doc.querySelectorAll('#anoms article.inc')].find((c) => c.dataset.key === KEY);
-  assert.ok(row.querySelector('.c-status .tag.tri-inv .run-ind'), 'the list row tag has it too');
+  assert.ok(row.querySelector('.tech-tags .tag.tri-inv .run-ind'), 'the list row tag in Technical details has it too');
   assert.ok(row.querySelector('.inc-head > .run-banner'), 'the banner is there for when the row opens');
   const css = [...list.doc.querySelectorAll('style')].map((s) => s.textContent).join('\n');
   assert.ok(css.includes('article.inc:not(.open) .run-banner { display: none; }'), 'a folded row shows only the tag');

@@ -193,7 +193,7 @@ async function recurringTagOnTheRowAndInTheSideMenu() {
   const keys = () => [...doc.querySelectorAll('#anoms article.inc')].map((c) => c.dataset.key);
   //when
   doc.querySelector('#panel-anoms .qf-c[data-f="all"]').click();
-  const tag = article(doc, KEY).querySelector('.inc-title .tag.recurring');
+  const tag = article(doc, KEY).querySelector('.tech-fold .tag.recurring');
   const others = [article(doc, TICKETED).querySelector('.tag.recurring'), article(doc, NEW).querySelector('.tag.recurring')];
   const label = [item(doc).querySelector('.lbl').textContent, item(doc).querySelector('.count').textContent, item(doc).classList.contains('zero')];
   item(doc).click();
@@ -201,7 +201,7 @@ async function recurringTagOnTheRowAndInTheSideMenu() {
   const note = doc.getElementById('filter-note').textContent;
   item(doc).click();
   //then
-  assert.strictEqual(tag.textContent, 'Recurring \u00d73', 'the row says it keeps coming back');
+  assert.strictEqual(tag.textContent, 'Recurring \u00d73', 'Technical details says it keeps coming back');
   assert.ok(/Fired 3 times in the last 7 days/.test(tag.title) && /Create task/.test(tag.title), tag.title);
   assert.deepStrictEqual(others, [null, null], 'a card in progress with a Jira ticket is not flagged again, a plain card never');
   assert.deepStrictEqual(label, ['Recurring', '1', false]);
@@ -497,29 +497,28 @@ async function cardHeadShowsACompactActionBadgeAndTheFullLineInside() {
   //when
   const done = article(doc, KEY).querySelector('.acts .stat');
   const queued = article(doc, NEW).querySelector('.acts .stat');
-  const pill = done.querySelector('.st');
-  const lastHidden = article(doc, KEY).querySelector('.inc-more .last-act').closest('.inc-more').hidden;
   expand(article(doc, KEY));
   expand(article(doc, NEW));
-  const last = article(doc, KEY).querySelector('.inc-more .last-act');
-  const lastNew = article(doc, NEW).querySelector('.inc-more .last-act');
+  const last = article(doc, KEY).querySelector('.acts .act-foot .last-act');
+  const lastNew = article(doc, NEW).querySelector('.acts .act-foot .last-act');
   //then
-  assert.strictEqual(done.textContent, 'Investigated ' + w.hm(ACTS[0].doneAt), 'only the status pill sits next to the buttons, and it names the action');
-  assert.ok(pill.classList.contains('s-done'));
-  assert.strictEqual(pill.getAttribute('data-tip'), 'Investigate reports-service WARN logs \u00b7 Done ' + w.dayhm(ACTS[0].doneAt) + '\n' + ACTS[0].result, 'label and result live in the tooltip');
-  assert.deepStrictEqual([queued.querySelector('.st').textContent, queued.querySelector('button').textContent], ['Queued', 'Cancel'], 'a queued action keeps Cancel for operators');
-  assert.ok(lastHidden, 'the full line lives in the expanded card');
-  assert.strictEqual(last.textContent, 'Last action: Investigated ' + w.dayhm(ACTS[0].doneAt) + ' by op \u00b7 ' + ACTS[0].result);
-  assert.strictEqual(last.querySelector('.st').getAttribute('data-tip'), 'Investigate reports-service WARN logs', 'the action\'s own label lives in the tooltip');
-  assert.strictEqual(last.querySelector('a').getAttribute('href'), 'https://jira.example.com/browse/OPS-120');
-  assert.strictEqual(lastNew.textContent, 'Last action: Queued ' + w.dayhm(ACTS[1].requestedAt) + ' by op');
-  assert.strictEqual(lastNew.querySelector('.st').getAttribute('title'), 'Mute checkout-service first time for 24 h');
+  assert.strictEqual(done.textContent, '', 'no second status pill next to the last action line');
+  assert.deepStrictEqual([queued.querySelector('.st'), queued.querySelector('button').textContent], [null, 'Cancel'], 'a queued action keeps Cancel for operators');
+  assert.ok(last && !last.hidden, 'the line sits in the foot of the actions');
+  assert.strictEqual(last.querySelector('summary').textContent, 'Investigated ' + w.dayhm(ACTS[0].doneAt) + ' \u00b7 Same PayCo outage', 'one short line: the action, its time and a gist');
+  assert.strictEqual(last.querySelector('details').open, false, 'the full text starts folded');
+  assert.strictEqual(last.querySelector('.la-full').textContent, 'by op \u00b7 ' + ACTS[0].result, 'the fold adds who and the full result, no second badge');
+  assert.strictEqual(last.querySelector('summary .st').getAttribute('data-tip'), 'Investigate reports-service WARN logs \u00b7 Done ' + w.dayhm(ACTS[0].doneAt) + '\n' + ACTS[0].result, 'label and result live in the tooltip');
+  assert.strictEqual(last.querySelector('.la-full a').getAttribute('href'), 'https://jira.example.com/browse/OPS-120');
+  assert.strictEqual(lastNew.querySelector('summary').textContent, 'Queued');
+  assert.strictEqual(lastNew.querySelector('summary .st').getAttribute('title'), 'Mute checkout-service first time for 24 h \u00b7 Queued ' + w.dayhm(ACTS[1].requestedAt));
+  assert.strictEqual(lastNew.querySelector('.la-full').textContent, 'by op');
   assert.deepStrictEqual(errors, []);
   close(dom);
   //given
   const guest = await boot({state: stateAt(5, [card(KEY), card(NEW)]), runs: [], actions: ACTS, guest: true});
   //then
-  assert.deepStrictEqual([article(guest.doc, NEW).querySelector('.acts .stat').textContent, article(guest.doc, NEW).querySelector('.acts .stat button')], ['Queued', null], 'no Cancel for a guest');
+  assert.deepStrictEqual([article(guest.doc, NEW).querySelector('.acts .stat').textContent, article(guest.doc, NEW).querySelector('.acts .stat button')], ['', null], 'no Cancel for a guest');
   close(guest.dom);
   console.log('PASS cardHeadShowsACompactActionBadgeAndTheFullLineInside');
 }
@@ -535,7 +534,7 @@ async function cardPillNamesTheActionNotJustDone() {
   const {dom, w, doc, errors} = await boot(serve);
   const at = w.hm(doneAt);
   //when
-  const pills = acts.map((x) => article(doc, x.key).querySelector('.acts .stat .st'));
+  const pills = acts.map((x) => article(doc, x.key).querySelector('.acts .last-act summary .st'));
   const queued = article(doc, k(3)).querySelector('.acts .stat');
   //then
   assert.deepStrictEqual(pills.map((p) => p.textContent), ['Investigated ' + at, 'Investigating\u2026', 'Queued', 'Investigate failed', 'Investigate cancelled',
@@ -543,7 +542,7 @@ async function cardPillNamesTheActionNotJustDone() {
   assert.deepStrictEqual(pills.slice(0, 5).map((p) => p.className), ['st s-done', 'st s-processing', 'st s-queued', 'st s-failed', 'st s-other'], 'the colors stay');
   assert.strictEqual(pills[0].getAttribute('data-tip'), 'dive pill-1-service \u00b7 Done ' + w.dayhm(doneAt) + '\none client retried 40 times', 'the tooltip keeps the full label and result');
   assert.strictEqual(pills[3].getAttribute('data-tip'), 'dive pill-4-service \u00b7 Failed ' + w.dayhm(doneAt) + '\nthe investigator is stopped');
-  assert.deepStrictEqual([queued.querySelector('.st').textContent, queued.querySelector('button').textContent], ['Queued', 'Cancel'], 'a queued one keeps Cancel');
+  assert.deepStrictEqual([queued.querySelector('.st'), queued.querySelector('button').textContent], [null, 'Cancel'], 'a queued one keeps Cancel beside the line, with no second pill');
   assert.deepStrictEqual(errors, []);
   close(dom);
   console.log('PASS cardPillNamesTheActionNotJustDone');
@@ -557,7 +556,7 @@ async function anActionFromBeforeTheCardFiredAgainIsMarkedEarlier() {
   //when
   const stat = article(doc, KEY).querySelector('.acts .stat');
   expand(article(doc, KEY));
-  const last = article(doc, KEY).querySelector('.inc-more .last-act');
+  const last = article(doc, KEY).querySelector('.acts .last-act');
   //then
   assert.strictEqual(stat.textContent, '', 'a resolve from the last round is not repeated in the head');
   assert.strictEqual(last.querySelector('.la-h').textContent, 'Reopened ' + w.dayhm(back.firstSeen) + ' \u00b7 fired again');
@@ -579,20 +578,20 @@ async function lastActionLineNamesTheActionLikeThePill() {
   const at = w.dayhm(doneAt);
   //when
   acts.forEach((x) => expand(article(doc, x.key)));
-  const lines = acts.map((x) => article(doc, x.key).querySelector('.inc-more .last-act'));
+  const lines = acts.map((x) => article(doc, x.key).querySelector('.acts .last-act'));
   const history = [...doc.querySelectorAll('#q-list > li.hrow')].find((li) => li.textContent.includes('dive line-1-service'));
   //then
   assert.deepStrictEqual(lines.map((l) => l.hidden), [false, false, false, false, false]);
-  assert.deepStrictEqual(lines.map((l) => l.textContent), [
-    'Last action: Investigated ' + at + ' by dora.lane \u00b7 one client retried 40 times, see https://jira.example.com/browse/OPS-120',
-    'Last action: Investigating\u2026 ' + at + ' by dora.lane',
-    'Last action: Queued ' + w.dayhm(askedAt) + ' by dora.lane',
-    'Last action: Investigate failed ' + at + ' by dora.lane \u00b7 the investigator is stopped',
-    'Last action: Muted ' + at + ' by dora.lane'], 'the line uses the pill\'s words, not Done');
+  assert.deepStrictEqual(lines.map((l) => l.querySelector('summary').textContent), ['Investigated ' + at + ' \u00b7 one client retried 40 times', 'Investigating\u2026', 'Queued', 'Investigate failed \u00b7 the investigator is stopped',
+    'Muted until ' + w.dayhm(new Date(Date.parse(doneAt) + 24 * 3600e3).toISOString())], 'the short line names the action like the pill, with a gist');
+  assert.deepStrictEqual(lines.map((l) => l.querySelector('.la-full').textContent), [
+    'by dora.lane \u00b7 one client retried 40 times, see https://jira.example.com/browse/OPS-120', 'by dora.lane', 'by dora.lane',
+    'by dora.lane \u00b7 the investigator is stopped', 'by dora.lane'], 'the fold adds who and the full result');
+  assert.ok(lines.every((l) => l.querySelectorAll('.st').length === 1), 'one badge per line, also with the fold open');
   assert.deepStrictEqual(lines.map((l) => l.querySelector('.st').className), ['st s-done', 'st s-processing', 'st s-queued', 'st s-failed', 'st s-done'], 'the colors stay');
-  assert.deepStrictEqual(lines.map((l) => l.querySelector('.st').getAttribute('data-tip')), acts.map((x) => x.label), 'the action\'s own label is the tooltip');
+  assert.deepStrictEqual(lines.map((l) => l.querySelector('.st').getAttribute('data-tip').split(' \u00b7 ')[0]), acts.map((x) => x.label), 'the action\'s own label leads the tooltip');
   assert.strictEqual(lines[0].querySelector('a').getAttribute('href'), 'https://jira.example.com/browse/OPS-120', 'the result keeps its link');
-  assert.strictEqual(lines[0].querySelector('.la-h').textContent, 'Last action:');
+  assert.strictEqual(lines[0].querySelector('summary').title, 'Last action');
   assert.strictEqual(history.querySelector('summary .st').textContent, 'Done ' + w.hm(doneAt), 'History rows keep the generic chip');
   assert.deepStrictEqual(errors, []);
   close(dom);

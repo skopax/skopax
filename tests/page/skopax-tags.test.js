@@ -67,7 +67,7 @@ async function cardsShowTheirBusinessTagsAndTheTagRowFiltersThem() {
   const chips = () => [...row.querySelectorAll('.qf-c')].map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent);
 
   //then
-  assert.deepStrictEqual([...cardOf(doc, TYPO).querySelectorAll('.inc-title .biz-tag')].map((t) => t.textContent), ['SEO']);
+  assert.deepStrictEqual([...cardOf(doc, TYPO).querySelectorAll('.tech-fold .biz-tag')].map((t) => t.textContent), ['SEO']);
   assert.ok(cardOf(doc, TYPO).querySelector('.biz-tag').title.includes('tagged by rule') && cardOf(doc, TYPO).querySelector('.biz-tag').title.includes(SENTENCE));
   assert.ok(cardOf(doc, LOG).querySelector('.biz-tag').title.includes('No action written yet'));
   assert.strictEqual(cardOf(doc, PLAIN).querySelector('.biz-tag'), null);
@@ -97,7 +97,7 @@ async function cardsShowTheirBusinessTagsAndTheTagRowFiltersThem() {
 async function anOperatorTagsAndWritesTheSentenceAndOnlyTaggedCardsOfferTheBusinessChannel() {
   //given
   const {w, doc, errors, calls} = await boot();
-  const teams = (k) => [...cardOf(doc, k).querySelectorAll('.notif button.teams-btn')].map((b) => b.textContent.trim());
+  const teams = (k) => [...cardOf(doc, k).querySelectorAll('.card-more-box button.teams-btn')].map((b) => b.textContent.trim());
   const pressed = (k) => [...cardOf(doc, k).querySelectorAll('.biz-tb')].filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.tag);
 
   //then
@@ -144,8 +144,8 @@ async function theDeveloperTagShowsOnTheCardNeedsNoSentenceAndItsRouteShowsOnlyO
   //given
   const {w, doc, errors, calls} = await boot([{key: FIX, sig: 'log', tags: [{id: 'developer', by: 'pod', at: iso(5)}]}],
     [{id: 'teams/eng', name: 'eng', tags: ['developer'], tagged: true, business: false, plugin: 'Microsoft Teams'}]);
-  const teams = (k) => [...cardOf(doc, k).querySelectorAll('.notif button.teams-btn')].map((b) => b.textContent.trim());
-  const pill = cardOf(doc, FIX).querySelector('.inc-title .biz-tag');
+  const teams = (k) => [...cardOf(doc, k).querySelectorAll('.card-more-box button.teams-btn')].map((b) => b.textContent.trim());
+  const pill = cardOf(doc, FIX).querySelector('.tech-fold .biz-tag');
 
   //then
   assert.strictEqual(pill.textContent, 'Developer');
@@ -177,7 +177,7 @@ async function sendToRouteListsTheRoutesAndPosts() {
   const EVIL = '<img src=x onerror="window.__evil=1">';
   const {w, doc, errors, calls} = await boot(null, [{id: 'teams/biz', name: 'biz', tags: ['bizdev'], tagged: true, business: true, plugin: 'Microsoft Teams'}, {id: 'teams/evil', name: EVIL, tags: [], tagged: false, business: false, plugin: EVIL},
     {id: 'teams/mixed', name: 'mixed', tags: ['bizdev'], tagged: false, business: false, plugin: 'Microsoft Teams'}]);
-  const buttons = (k) => [...cardOf(doc, k).querySelectorAll('.notif button.teams-btn')];
+  const buttons = (k) => [...cardOf(doc, k).querySelectorAll('.card-more-box button.teams-btn')];
 
   //then
   assert.deepStrictEqual(buttons(PLAIN).map((b) => b.dataset.route), ['teams/tech', 'teams/evil', 'teams/mixed'], 'a route that takes card keys shows on every card, also when it names tags');
@@ -185,7 +185,7 @@ async function sendToRouteListsTheRoutesAndPosts() {
   assert.ok(buttons(LOG)[1].title.startsWith('Post this card to Microsoft Teams \u00b7 tech'), buttons(LOG)[1].title);
   assert.ok(!buttons(LOG).filter((b) => b.dataset.route === 'teams/mixed')[0].title.includes('business sentence'), 'a route with card keys never asks for the sentence');
   assert.strictEqual(buttons(PLAIN)[1].textContent.trim(), EVIL + ' \u00b7 ' + EVIL);
-  assert.strictEqual(doc.querySelectorAll('.notif img').length, 0, 'a route name is text');
+  assert.strictEqual(doc.querySelectorAll('.card-more-box img').length, 0, 'a route name is text');
   assert.ok(buttons(TYPO)[0].title.startsWith('Post the business sentence to Microsoft Teams \u00b7 seo'), buttons(TYPO)[0].title);
   assert.ok(buttons(LOG)[0].title.startsWith('Write the business sentence first'), buttons(LOG)[0].title);
 

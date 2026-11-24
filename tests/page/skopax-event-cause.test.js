@@ -69,11 +69,12 @@ async function theListAndItsPanelSayTheCardStoppedAfterTheEvent() {
   //given
   const {w, doc, errors} = await boot('list');
   const row = (key) => [...doc.querySelectorAll('#anoms article.inc')].find((x) => x.dataset.key === key);
-  const rowTag = (key) => row(key).querySelector('.inc-head .c-status').textContent;
+  const rowTag = (key) => row(key).querySelector('.inc-more .inc-tags .tag.k-cleared').textContent;
   const cause = (key) => { const p = row(key).querySelector('.inc-more .cause-line'); return p ? p.textContent : null; };
 
   //then
   assert.match(rowTag(EVENT), /^Stopped after the event /, 'the event card reads Stopped after the event: ' + rowTag(EVENT));
+  assert.strictEqual(row(EVENT).querySelector('.inc-head .c-status').textContent, 'Stopped after the event', 'the header keeps the short state');
   assert.match(rowTag(PLAIN), /^Stopped firing \u00b7 unassigned /, 'a card without a cause still reads Stopped firing \u00b7 unassigned');
   assert.strictEqual(row(KID), undefined, 'the merged child sits under its parent');
   assert.deepStrictEqual([...row(EVENT).querySelectorAll('.inc-more li .tag.plain')].map((t) => t.textContent), ['stopped after the event'], 'a merged child takes its parent cause');
@@ -110,7 +111,7 @@ async function aCardOpenedByItsNumberSaysStoppedAfterTheEventAndShowsTheCause() 
   const calm = await bootCard(Object.assign({num: 154, sev: 'info', cause: {kind: 'event', what: WHAT, firstSeen: FIRST}}, base));
   const plain = await bootCard(Object.assign({num: 151, sev: 'info'}, base));
   const recur = await bootCard(Object.assign({num: 155, sev: 'info', cause: {kind: 'recurring', what: 'a leak', firstSeen: FIRST}}, base));
-  const status = (doc) => doc.querySelector('.card-drawer .inc-head .c-status').textContent;
+  const status = (doc) => doc.querySelector('.card-drawer .inc-tags .tag.k-cleared').textContent;
   const cause = (doc) => { const p = doc.querySelector('.card-drawer .cause-line'); return p ? p.textContent : null; };
 
   //then

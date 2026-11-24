@@ -2,6 +2,20 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.15 (2026-11-24)
+
+A calmer opened card: a short More menu, one short last-action and status line, at most three tags in view and long blocks folded. Also picking the agent node from a list, and the Skopax link opening in a new tab.
+
+### Changed
+
+- More on an opened card is a short menu in five groups (status, AI, ticket, card, send) that works with the keyboard (arrow keys, Home, End, Enter, Esc). Every action is still there. Copy link and sends show their result as a short message.
+- The card header shows number, title, severity, state and owner. The last action is one short line ("Done 02:33 - stopped firing"); the full text opens under it. The state line is short too ("Stopped firing - <owner>"), with the full sentence on hover.
+- At most three tags are in view, warnings first, with "+N" for the rest; triage, Recurring and team tags are under Technical details, and so are the Slack and Teams status lines. Investigate is no longer a filled button.
+- Long text blocks on a card (follow-up, investigation note, recap, runs, clear note, Slack draft) are folded, and each kind remembers in the browser whether you opened it. History shows one line per entry with Show more when a line is longer.
+- List rows use the same layout as the opened card plus an Age column; tags and change are under Technical details.
+- Through agent node (Elasticsearch and other plug-ins that opt in) and the Kubernetes Relay field are now a list of the Kubernetes agent instances instead of free text, with None to connect directly. A saved name that is not an agent node is shown as such.
+- The Skopax link in the left menu and the page footer opens in a new tab.
+
 ## 0.5.14 (2026-11-24)
 
 A simpler board: cards open expanded on the board instead of on a page of their own, fewer controls in view, a calmer blue palette and the left menu collapsed on a first visit. Also Elasticsearch connections reached through an agent node, longer Slack thread context with earlier screenshots, and Spring Config missing keys logged once.
