@@ -2,7 +2,7 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
-## 0.5.11 (2026-11-23)
+## 0.5.11 (2026-11-24)
 
 A Zabbix plug-in, and a read-only Integrations list that shows only what is connected.
 

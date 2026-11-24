@@ -355,8 +355,7 @@ def sweep(z: Zabbix, config, now: float, last_status: str | None, instance: str)
     if capped:
         tails.append(CAPPED)
         if CAPPED not in (last_status or ''):
-            log.warning('the Zabbix pass of instance %s read only the newest %d problems; older problems keep their cards and none clear until it is under the cap',
-                        masked(instance, HOST_LIMIT), MAX_PROBLEMS)
+            log.warning('a Zabbix pass read only the newest %d problems; older problems keep their cards and none clear until it is under the cap', MAX_PROBLEMS)
     status = DOT.join(['ok'] + tails)
     summary = {'part': 'summary', 'at': iso(now), 'version': masked(z.version, 40), 'problems': len(rows), 'cards': len(cards), 'capped': capped,
                'missingGroups': [masked(n, HOST_LIMIT) for n in scope.missing]}
