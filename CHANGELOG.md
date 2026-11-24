@@ -17,6 +17,7 @@ A Zabbix plug-in, and a read-only Integrations list that shows only what is conn
 **Fixed:**
 
 - A business sentence gives times as a date and a clock time (such as 23 Nov 10:00) instead of today, tonight or yesterday, since it is shown again on later days and on other cards' posts.
+- The investigator's business sentence is refused, and written again, when it says or implies that someone is following, looking into or fixing the problem, or when it uses today, tonight or yesterday (English, Turkish, German, Spanish and French).
 
 ## 0.5.10 (2026-11-23)
 
