@@ -22,7 +22,7 @@ ROWS = [
 
 
 def health(c: TestClient) -> dict:
-    plugin = next(p for p in c.get('/api/integrations', headers=AUTH).json()['plugins'] if p['id'] == 'kubernetes')
+    plugin = next(p for p in c.get('/api/admin/plugins', headers=AUTH).json()['plugins'] if p['id'] == 'kubernetes')
     return {i['name']: i for i in plugin['health']['instances']}
 
 
@@ -76,7 +76,7 @@ def test_the_primary_line_is_unchanged_and_the_plugin_top_turns_error_for_a_down
     # given
     with booted(store, ROWS, {'prod': LOCAL, 'east': EAST, 'west': WEST}) as c:
         # when
-        plugin = next(p for p in c.get('/api/integrations', headers=AUTH).json()['plugins'] if p['id'] == 'kubernetes')
+        plugin = next(p for p in c.get('/api/admin/plugins', headers=AUTH).json()['plugins'] if p['id'] == 'kubernetes')
 
     # then
     by_name = {i['name']: i for i in plugin['health']['instances']}

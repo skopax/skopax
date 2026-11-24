@@ -384,9 +384,19 @@ def link_problem(text: str, hosts: tuple[str, ...], code_rule: Callable[[str], s
     return None
 
 
+ON_IT = re.compile(r'\b(?:looking into|working on (?:it|this|a fix)|working to fix|investigating|is being (?:fixed|investigated|handled)|will be (?:fixed|resolved)|following (?:it|this|up)|is on it|takip (?:ediyor|ediliyor|edilmektedir|etmektedir)|inceleniyor|inceliyor|ilgileniyor|\u00e7al\u0131\u015f\u0131l\u0131yor|\u00fczerinde \u00e7al\u0131\u015f\u0131yor|d\u00fczeltilecek|giderilecek|\u00e7\u00f6z\u00fclecek|'
+                   r'k\u00fcmmert sich|arbeitet daran|wird untersucht|wird behoben|est\u00e1 investigando|se est\u00e1 investigando|trabajando en ello|se solucionar\u00e1|travaille dessus|en cours d.analyse|sera corrig\u00e9)\b')
+RELATIVE_DAY = re.compile(r'\b(?:today|tonight|yesterday|this morning|this evening|last night|bug\u00fcn|bu gece|bu sabah|bu ak\u015fam|d\u00fcn|gece|heute|gestern|hoy|ayer|esta noche|aujourd.hui|ce soir)\b')
+
+
 def business_problem(text: str, hosts: tuple[str, ...] = (), code_rule: Callable[[str], str | None] | None = None) -> str | None:
     if '](' in text:
         return f'no markdown links: the post adds the page link and an Open in {brand.product()} link'
+    folded = text.replace('I', '\u0131').replace('\u0130', 'i').casefold()
+    if ON_IT.search(folded):
+        return 'say only what users see and where the cause is; never say or imply that someone is following, looking into or fixing it'
+    if RELATIVE_DAY.search(folded):
+        return 'give a time as a date and a clock time, such as 23 Nov 10:00, not today, tonight or yesterday: the sentence is shown again on later days'
     return link_problem(text, hosts, code_rule)
 
 

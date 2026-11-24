@@ -646,3 +646,41 @@ def test_the_kubernetes_tool_and_knowledge_name_no_metrics_tool_that_may_be_miss
 
     # then
     assert not any('promql' in text for text in [t.description for t in kubernetes.PLUGIN.tools] + [k.text for k in kubernetes.PLUGIN.knowledge])
+
+
+def test_the_business_tag_rule_asks_for_dated_times_not_relative_days():
+    # given
+    text = (Path(prompt.__file__).with_name('process.md')).read_text()
+
+    # when
+    rule = next(line for line in text.splitlines() if 'shown again on later days' in line)
+
+    # then
+    assert '23 Nov 10:00' in rule and 'today' in rule and 'tonight' in rule and 'yesterday' in rule
+
+
+def test_a_business_sentence_that_says_someone_is_on_it_is_refused():
+    # given
+    texts = ['Users cannot get the credit report; the tech team is looking into it.', 'Kullanicilar rapor alamiyor; teknik ekip konuyu takip ediyor.',
+             'Kredi bürosu tarafındaki sorun takip ediliyor.', 'Das Team kümmert sich darum.']
+
+    # when
+    found = [tools.business_problem(t) for t in texts]
+
+    # then
+    assert all(f and 'never say or imply that someone' in f for f in found), found
+
+
+def test_a_business_sentence_with_a_relative_day_is_refused_and_a_dated_one_passes():
+    # given
+    relative = ['Reports are not ready since 10:00 today.', "Raporlar bugün saat 10:00'dan beri hazırlanmıyor.", "Gece 00:51'den beri rapor alınamıyor."]
+    dated = "Raporlar 23 Kas 10:00'dan beri hazırlanmıyor; kullanıcılar adımları tamamlıyor ama rapor gelmiyor."
+
+    # when
+    found = [tools.business_problem(t) for t in relative]
+
+    # then
+    assert all(f and '23 Nov 10:00' in f for f in found), found
+    assert tools.business_problem(dated) is None
+    assert tools.business_problem('Payments are not working on iOS since 23 Nov 09:40.') is None
+    assert tools.business_problem("Ödeme sayfası çalışıyor ama kampanya kodu reddediliyor.") is None

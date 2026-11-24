@@ -41,6 +41,7 @@ BUILTIN: tuple[str, ...] = (
     'skopax.plugins.argocd',
     'skopax.plugins.capacity',
     'skopax.plugins.grafana',
+    'skopax.plugins.zabbix',
     'skopax.plugins.kafka',
     'skopax.plugins.redis',
     'skopax.plugins.batch_jobs',
