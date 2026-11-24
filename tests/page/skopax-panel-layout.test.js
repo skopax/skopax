@@ -89,7 +89,7 @@ async function theTopReadsPlainly() {
   assert.strictEqual(art.querySelector('.card-todo p').textContent, 'Roll back the last deploy.');
   assert.ok(!art.querySelector('.card-what').closest('.tech-fold') && !art.querySelector('.card-todo').closest('.tech-fold'));
   const st = art.querySelector('.card-state');
-  assert.ok(st && /^Open \u00b7 first seen /.test(st.textContent), st && st.textContent);
+  assert.ok(st && st.textContent === 'Open' && /^Open \u00b7 first seen /.test(st.title), st && st.textContent + ' / ' + st.title);
   const close = art.querySelector('.follow-close');
   assert.ok(close && /^Closes as Fixed at /.test(close.textContent), 'the announced close shows at the top');
   assert.ok(art.querySelector('.tech-fold .what') && art.querySelector('.tech-fold .what').textContent === '5 ERROR lines in 10 min', 'the technical what moves into the fold');
@@ -246,10 +246,10 @@ async function aPastCardKeepsOnlyWhatMakesSense() {
   assert.deepStrictEqual([...art.querySelector('.card-main').children].map((b) => b.textContent.trim()), ['Ask AI']);
   art.querySelector('button.card-more').click();
   assert.deepStrictEqual(kids(art.querySelector('.card-more-box')), ['Copy link'], 'a past card gets no Take it, Start progress, Resolve or Reopen');
-  assert.ok(/^Closed \u00b7 last seen /.test(art.querySelector('.card-state').textContent), art.querySelector('.card-state').textContent);
+  assert.ok(art.querySelector('.card-state').textContent === 'Closed' && /^Closed \u00b7 last seen /.test(art.querySelector('.card-state').title), art.querySelector('.card-state').title);
   assert.ok(!/Stopped firing/.test(art.querySelector('.inc-head').textContent), 'a past card does not read as stopped firing');
   const last = art.querySelector('.last-act');
-  assert.ok(last && !last.hidden && /Last action/.test(last.textContent) && /alice/.test(last.textContent), 'the last action the card API sends shows: ' + (last && last.textContent));
+  assert.ok(last && !last.hidden && last.querySelector('summary').title === 'Last action' && /alice/.test(last.textContent), 'the last action the card API sends shows: ' + (last && last.textContent));
   assert.deepStrictEqual(errors, []);
   w.close();
   return 'a past card opened by number shows Ask AI, Copy link under More, its last action, and reads Closed';
@@ -338,7 +338,7 @@ async function aQueuedActionLeavesTheChannelButtonsAlone() {
 
   //when
   art.querySelector('button.card-more').click();
-  const route = art.querySelector('.card-more-box .notif .teams-btn');
+  const route = art.querySelector('.card-more-box .teams-btn');
 
   //then
   assert.ok(route, 'the channel button is under More');
@@ -451,13 +451,14 @@ async function theBodyHasGuttersAndMoreSitsOnTheButtonRow() {
   //when
   const body = rule('.cd-details > *');
   const row = rule('.acts.acts-grouped.acts-panel');
-  const more = rule('.acts-panel > .card-more');
+  const more = rule('.acts-panel > .cm-wrap');
 
   //then
   assert.match(body, /padding-inline:\s*18px/, 'the details body keeps the header gutter');
   assert.match(row, /display:\s*flex/);
   assert.match(row, /flex-wrap:\s*wrap/, 'More wraps only when the row is too narrow');
   assert.match(more, /flex:\s*none/, 'More is a plain item on the button row');
+  assert.match(rule('.acts .card-more-box'), /position:\s*absolute/, 'its menu opens over the panel');
   return 'the details body keeps the header gutter and More sits on the button row, wrapping only when narrow';
 }
 

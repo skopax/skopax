@@ -886,7 +886,7 @@ class Instances:
     def _peers_ok(self, plugin: Plugin, values: Mapping[str, str], extra: Iterable[Field]) -> None:
         for f in effective_fields(plugin, extra):
             value = values.get(f.key)
-            if f.kind != 'instance' or not value or len(f.choices) != 1:
+            if f.kind != 'instance' or not value or len(f.choices) != 1 or f.key == NODE_FIELD or (plugin.id == AGENT_PLUGIN and f.key == 'via'):
                 continue
             used = f.choices[0]
             if not any(i.name == value for i in self.all(used)):

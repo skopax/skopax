@@ -102,19 +102,21 @@ async function theDefaultNameGivesTheShortAttributionLine() {
   assert.strictEqual(doc.querySelector('h1 a.home').textContent, 'Skopax');
   assert.strictEqual(doc.getElementById('attribution').textContent, 'Skopax 0.1.0 \u00b7 skopax.io');
   assert.strictEqual(doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
+  assert.strictEqual(doc.getElementById('attribution').getAttribute('target'), '_blank', 'the Skopax link opens in a new tab');
+  assert.ok([...doc.querySelectorAll('.side-attr a, .end-attr a')].every((x) => x.getAttribute('target') === '_blank'), 'every Skopax link in the sidebar opens in a new tab');
   console.log('PASS the default name shows the short attribution line');
 }
 
 async function theScriptFallbackBuildsTheFullAttributionAndNeverShortensAServerLine() {
   //given
   const blank = (name) => ({name, slug: 'x', version: '0.1.0', attribution: {text: '', href: 'https://skopax.io'}});
-  const custom = await boot(blank('Acme Ops'), {name: 'Acme Ops', slug: 'acme-ops', version: '0.5.14'});
-  const plain = await boot(blank('Skopax'), {name: 'Skopax', slug: 'skopax', version: '0.5.14'});
+  const custom = await boot(blank('Acme Ops'), {name: 'Acme Ops', slug: 'acme-ops', version: '0.5.15'});
+  const plain = await boot(blank('Skopax'), {name: 'Skopax', slug: 'skopax', version: '0.5.15'});
   const kept = await boot(PLAIN, {name: 'Skopax', slug: 'skopax', version: '0.1.0'});
 
   //then
-  assert.strictEqual(custom.doc.getElementById('attribution').textContent, 'Acme Ops \u00b7 powered by Skopax 0.5.14');
-  assert.strictEqual(plain.doc.getElementById('attribution').textContent, 'Skopax 0.5.14 \u00b7 skopax.io');
+  assert.strictEqual(custom.doc.getElementById('attribution').textContent, 'Acme Ops \u00b7 powered by Skopax 0.5.15');
+  assert.strictEqual(plain.doc.getElementById('attribution').textContent, 'Skopax 0.5.15 \u00b7 skopax.io');
   assert.strictEqual(kept.doc.getElementById('attribution').textContent, PLAIN.attribution.text);
   for (const page of [custom, plain, kept]) { assert.deepStrictEqual(page.errors, []); page.w.close(); }
   console.log('PASS the script fallback builds the full attribution and keeps a correct server line');
@@ -160,7 +162,7 @@ async function aMissingOrUnreadableBrandBlobStillGetsTheFallbackLine() {
   //then
   for (const page of [missing, unreadable]) {
     assert.deepStrictEqual(page.errors, []);
-    assert.strictEqual(page.doc.getElementById('attribution').textContent, 'Skopax 0.5.14 \u00b7 skopax.io');
+    assert.strictEqual(page.doc.getElementById('attribution').textContent, 'Skopax 0.5.15 \u00b7 skopax.io');
     assert.strictEqual(page.doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
     page.w.close();
   }

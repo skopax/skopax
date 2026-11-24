@@ -64,7 +64,7 @@ async function cardsPaintedBeforeTheLoginAnswerGetJiraSearchTeamsButtonsAndNoAss
     assert.ok(tin.parentNode.classList.contains('tsg'), hash + ': the ticket field of Take searches Jira');
     assert.deepStrictEqual(searched, ['/api/jira/search?q=seo%20cache'], hash);
     assert.deepStrictEqual([...free.querySelectorAll('.tsg-list li')].map((li) => li.querySelector('b').textContent), ['OPS-144'], hash);
-    assert.deepStrictEqual([...free.querySelectorAll('.notif .teams-btn')].map((b) => b.dataset.route), ['teams/tech'], hash + ': the Notify row has the route button');
+    assert.deepStrictEqual([...free.querySelectorAll('.acts .card-more-box .teams-btn')].map((b) => b.dataset.route), ['teams/tech'], hash + ': the More menu has the route button');
     const mineBtn = cardOf(doc, MINE).querySelector('.asg-me');
     assert.ok(!mineBtn || mineBtn.hidden, hash + ': no Assign to me on a card that is already mine');
     assert.ok(cardOf(doc, FREE).querySelector('.asg-me') && !cardOf(doc, FREE).querySelector('.asg-me').hidden, hash + ': Assign to me on a card of nobody');

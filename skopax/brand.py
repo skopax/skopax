@@ -20,7 +20,7 @@ BRAND_DIR = Path(__file__).parent / 'web' / 'brand'
 SVG_NAME_ATTRS = re.compile(r'\s(?:role|aria-label|xmlns)="[^"]*"')
 THEMES = ('light', 'dark')
 TEXT_INK = {'light': '#0f1720', 'dark': '#e8eef5'}
-FOOTER = '<footer class="attribution"><a href="{href}" id="attribution" rel="noopener noreferrer">{text}</a></footer>'
+FOOTER = '<footer class="attribution"><a href="{href}" id="attribution" target="_blank" rel="noopener noreferrer">{text}</a></footer>'
 ELEMENT_ID = re.compile(r'[A-Za-z][A-Za-z0-9_-]*')
 VERSION_NUMBER = '(0|[1-9][0-9]*)'
 PACKAGE_VERSION = re.compile(rf'{VERSION_NUMBER}\.{VERSION_NUMBER}\.{VERSION_NUMBER}(?:rc{VERSION_NUMBER})?')

@@ -41,9 +41,12 @@ async function initActions() {
   }
   function lastLine(a, card) {
     var at = dayhm(when(a));
-    if (card && earlier(a, card)) return '<span class="la-h">Reopened ' + esc(dayhm(card.firstSeen)) + ' \u00b7 fired again</span> <span class="la-before"><span>Before that:</span> ' + badge(a, named(a) + (at ? ' ' + at : ''), label(a), 's-other', true) +
-      ' by ' + esc(draftBy(a.requestedBy)) + (a.result ? ' (' + linkify(a.result) + ')' : '') + '</span>';
-    return '<span class="la-h">Last action:</span> ' + badge(a, named(a) + (at ? ' ' + at : ''), label(a), '') + ' by ' + esc(draftBy(a.requestedBy)) + (a.result ? ' \u00b7 ' + linkify(a.result) : '');
+    var fold = function (head, full) { return '<details class="la-fold" data-fold="last"' + foldAttr('last') + '><summary class="chev" title="' + esc(tx('Last action')) + '">' + head + '</summary><p class="la-full">' + full + '</p></details>'; };
+    if (card && earlier(a, card)) return fold('<span class="la-h">Reopened ' + esc(dayhm(card.firstSeen)) + ' \u00b7 fired again</span>', '<span class="la-before"><span>Before that:</span> ' + badge(a, named(a) + (at ? ' ' + at : ''), label(a), 's-other', true) +
+      ' by ' + esc(draftBy(a.requestedBy)) + (a.result ? ' (' + linkify(a.result) + ')' : '') + '</span>');
+    var g = lastGist(a.result, card);
+    return fold(pill(a, true) + (g ? ' \u00b7 <span class="la-gist" data-no-tx>' + esc(g) + '</span>' : ''),
+      'by ' + esc(draftBy(a.requestedBy)) + (a.result ? ' \u00b7 ' + linkify(a.result) : ''));
   }
   function btn(text, cls) { var b = el('button', 'btn ' + (cls || '')); b.type = 'button'; b.textContent = text; return b; }
   function lockReason() {
@@ -604,44 +607,6 @@ async function initActions() {
     var tag = b.classList.contains('labeled') ? 'lbl' : hide && b.classList.contains('icon') ? 'sr' : '';
     b.innerHTML = icon + (tag ? '<span class="' + tag + '">' + esc(text) + '</span>' : esc(text));
   }
-  var ICON_MORE = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>';
-  var ACTS_OPEN = {};
-  function actsMenu(menu, on) {
-    var more = menu.querySelector('.acts-more'), tog = menu.querySelector('.acts-tog'), card = menu.closest('article.inc');
-    if (card) { if (on) ACTS_OPEN[card.dataset.key] = true; else delete ACTS_OPEN[card.dataset.key]; }
-    more.hidden = !on;
-    tog.setAttribute('aria-expanded', on ? 'true' : 'false');
-    tog.dataset.tip = tog.title = on ? 'Close this menu' : menu.closest('.acts-grouped') ? 'More actions: mute for a week, known noise, group' : 'More actions: mute, known noise, group, resolve, copy link';
-  }
-  document.addEventListener('click', function (e) {
-    if (!e.target.isConnected) return;
-    document.querySelectorAll('.acts-menu').forEach(function (m) { if (!m.querySelector('.acts-more').hidden && !m.contains(e.target)) actsMenu(m, false); });
-  });
-  document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape') return;
-    var m = e.target.closest && e.target.closest('.acts-menu');
-    if (!m || m.querySelector('.acts-more').hidden) return;
-    actsMenu(m, false);
-    m.querySelector('.acts-tog').focus();
-  });
-  function foldActs(a, box, dive) {
-    var stat = box.querySelector('.stat');
-    var menu = el('span', 'acts-menu');
-    var more = el('span', 'acts-more');
-    more.id = 'acts-more-' + box.dataset.i;
-    more.setAttribute('role', 'group');
-    more.setAttribute('aria-label', 'More actions');
-    [].slice.call(box.children).forEach(function (c) { if (c !== dive && c !== stat && !c.classList.contains('acts-keep')) more.appendChild(c); });
-    var tog = btn('More actions', 'sec free acts-tog');
-    tog.classList.add('icon');
-    tog.innerHTML = ICON_MORE + '<span class="sr">More actions</span>';
-    tog.setAttribute('aria-controls', more.id);
-    tog.setAttribute('aria-haspopup', 'true');
-    tog.addEventListener('click', function () { actsMenu(menu, more.hidden); });
-    menu.append(tog, more);
-    box.insertBefore(menu, stat);
-    actsMenu(menu, !!ACTS_OPEN[a.key]);
-  }
   var ICON_CHAT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
   function showWord(b) {
     var sr = b && b.querySelector(':scope > .sr');
@@ -665,37 +630,30 @@ async function initActions() {
       chat.title = 'Opens a new private chat with this card attached: ask why it fired, what the investigation found, who should look';
       main.append(chat);
     }
-    var more = cardMore(a, box), list = more.box;
-    var add = function (n) { if (n) list.append(n); };
-    [p.un, p.mute, p.week, p.known].forEach(function (n) { if (n) add(showWord(n)); });
-    add(p.kform);
-    if (p.take) add(showWord(p.take));
-    add(p.tform);
+    var more = cardMore(a, box), status = [p.take, p.un, p.mute, p.week, p.known].map(showWord);
     var steps = moveSteps(a, 'open');
     if (Array.isArray(steps) && steps.length) {
       var re = asIcon(btn('Reopen', 'sec'), ICON_REPLY, 'Reopen: back to Open, like a drag to the Open column', true);
       re.addEventListener('click', function () { queue(steps[0], re); });
-      add(re);
+      status.push(re);
     }
     var fu = a.followUp;
     if (fu && typeof fu === 'object' && fu.closeAt && a.triage !== 'handled') {
       var keepOpen = btn('Keep open', 'sec keep-open');
       keepOpen.dataset.tip = keepOpen.title = KEEP_TIP;
       keepOpen.addEventListener('click', function () { queue({type: 'keep', target: a.key, key: a.key, label: 'Keep open ' + name}, keepOpen); });
-      add(keepOpen);
+      status.push(keepOpen);
     }
-    if (p.dive) add(showWord(p.dive));
-    [p.grp, p.gform, box.querySelector(':scope > .sev-act'), box.querySelector(':scope > .sev-form'), box.querySelector(':scope > .jira-acts'), box.querySelector(':scope > .jira-form')].forEach(add);
-    if (p.copy) add(showWord(p.copy));
-    var nbox = box.closest('article.inc').querySelector('.notif');
-    if (nbox) add(nbox);
+    var jira = box.querySelector(':scope > .jira-acts'), ticket = jira ? [].slice.call(jira.children) : [];
+    if (jira) jira.remove();
+    more.fill([status, [showWord(p.dive)], ticket, [box.querySelector(':scope > .sev-act'), showWord(p.grp), showWord(p.copy)], p.send || []]);
     var foot = el('div', 'act-foot'), stat = box.querySelector(':scope > .stat'), last = box.closest('article.inc').querySelector('.last-act');
     if (last) foot.append(last);
     if (stat) foot.append(stat);
-    var keepers = [box.querySelector(':scope > .asg-form'), box.querySelector(':scope > .asg-msg'), p.rform].filter(Boolean);
-    box.append(loginHint(a, !!(me.loginEnabled && !me.user)), main);
+    var keepers = [box.querySelector(':scope > .asg-form'), box.querySelector(':scope > .asg-msg'), p.rform, p.kform, p.tform, p.gform, box.querySelector(':scope > .sev-form'), box.querySelector(':scope > .jira-form'), p.uform].filter(Boolean);
+    box.append(loginHint(a, !!(me.loginEnabled && !me.user)), main, more.wrap);
     keepers.forEach(function (n) { box.append(n); });
-    box.append(more.button, list, foot);
+    box.append(foot);
   }
   var ICON_SPARKLES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5Q11 12 18 13Q11 14 10 21Q9 14 2 13Q9 12 10 5Z"></path><path d="M19 2v6"></path><path d="M16 5h6"></path></svg>';
   var ICON_BELL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
@@ -921,6 +879,7 @@ async function initActions() {
     try {
       await api('POST', '/api/slack-posts', {key: a.key});
       relabel(b, ICON_SEND, 'Sent');
+      menuNote(b, 'Sent to ' + (me.slackChannel || 'Slack'));
       await refresh();
       if (window.__skopaxPoll) window.__skopaxPoll();
     } catch (e) {
@@ -958,6 +917,7 @@ async function initActions() {
     try {
       await api('POST', '/api/routes/send', {key: a.key, route: r.id});
       routeSay(b, 'Sent to ' + routeName(r));
+      menuNote(b, 'Sent to ' + routeName(r));
       if (window.__skopaxPoll) window.__skopaxPoll();
     } catch (e) {
       routeSay(b, e && e.code === 502 ? (e.detail || 'The chat tool did not take it') : e && e.code === 422 && e.detail ? e.detail : 'Not sent, try again');
@@ -1046,7 +1006,13 @@ async function initActions() {
   function wireBiz(a, bbox) {
     var form = bbox.querySelector('.biz-form'), ta = form.querySelector('textarea'), save = bbox.querySelector('.biz-save');
     bbox.querySelectorAll('.biz-tb').forEach(function (b) { b.addEventListener('click', function () { toggleTag(a, b); }); });
-    bbox.querySelector('.biz-edit').addEventListener('click', function () { form.hidden = !form.hidden; if (!form.hidden) ta.focus(); });
+    bbox.querySelector('.biz-edit').addEventListener('click', function (e) {
+      var fold = bbox.querySelector('details.biz-note');
+      e.preventDefault();
+      form.hidden = !form.hidden;
+      if (!form.hidden && fold) fold.open = true;
+      if (!form.hidden) ta.focus();
+    });
     bbox.querySelector('.biz-cancel').addEventListener('click', function () { ta.blur(); form.hidden = true; ta.value = (a.business || {}).text || ''; bbox.querySelector('.biz-why-in').value = (a.business || {}).why || ''; bbox.querySelector('.biz-kind').value = (a.business || {}).kind === 'info' ? 'info' : 'action'; });
     save.addEventListener('click', function () { saveBiz(a, bbox, save); });
   }
@@ -1099,7 +1065,8 @@ async function initActions() {
   }
   function wireDraft(a, dbox) {
     var copy = dbox.querySelector('.draft-copy');
-    copy.addEventListener('click', function () {
+    copy.addEventListener('click', function (e) {
+      e.preventDefault();
       function shown(t) { copy.textContent = t; setTimeout(function () { copy.textContent = 'Copy'; }, 2000); }
       var d = draftOf(a);
       if (!d || !navigator.clipboard) { shown('Select the text to copy'); return; }
@@ -1300,7 +1267,7 @@ async function initActions() {
       if (!a) return;
       var name = svcName(a) + ' ' + a.label;
       var prior = window.INV && INV[a.key];
-      var dive = asIcon(btn('Investigate', 'inv-btn'), ICON_SPARKLES, prior ? 'Investigate · last run ' + dayhm(prior.startedAt) + ' (' + prior.mode + ') · ' + usdText(prior.usd) + ' · asks before running again' : 'Investigate: the investigator takes it within about two minutes');
+      var dive = asIcon(btn('Investigate', 'sec inv-btn'), ICON_SPARKLES, prior ? 'Investigate · last run ' + dayhm(prior.startedAt) + ' (' + prior.mode + ') · ' + usdText(prior.usd) + ' · asks before running again' : 'Investigate: the investigator takes it within about two minutes');
       dive.addEventListener('click', function () {
         var go = function () { queue({type: 'dive', target: a.key, key: a.key, label: 'Investigate ' + name}, dive); };
         if (!prior) { go(); return; }
@@ -1359,7 +1326,7 @@ async function initActions() {
       if (a.status === 'open' || a.status === 'cleared') {
         var others = A.filter(function (o) { return o !== a && o.triage !== 'handled' && (o.status === 'open' || (a.status === 'cleared' && stale.indexOf(o) >= 0)); });
         if (others.length) {
-          var grp = asIcon(btn('Group', 'sec'), ICON_GROUP, a.status === 'open' ? 'Group: merge this card under another open card, the one that explains it' : 'Group: merge this stopped card under an open card or another stopped one, the one that explains it');
+          var grp = asIcon(btn('Group', 'sec grp-btn'), ICON_GROUP, a.status === 'open' ? 'Group: merge this card under another open card, the one that explains it' : 'Group: merge this stopped card under an open card or another stopped one, the one that explains it');
           var gform = el('div', 'reason');
           gform.hidden = true;
           var gok = btn('Group', 'small');
@@ -1367,7 +1334,7 @@ async function initActions() {
           gok.dataset.gpWait = '1';
           var gp = groupPicker(a, others, box.dataset.i, name, function (o) { if (o) delete gok.dataset.gpWait; else gok.dataset.gpWait = '1'; gok.disabled = !o || cardBusy(a.key); });
           gform.append(gp.box, gok);
-          gp.box.onleave = function () { gform.hidden = true; grp.focus(); };
+          gp.box.onleave = function () { gform.hidden = true; var m = grp.closest('.card-more-box'); (m && m.hidden ? m.parentNode.querySelector('.card-more') : grp).focus(); };
           grp.addEventListener('click', function () { gform.hidden = !gform.hidden; if (!gform.hidden) gp.input.focus(); });
           gok.addEventListener('click', function () {
             var o = gp.current();
@@ -1408,19 +1375,14 @@ async function initActions() {
       var copy = asIcon(btn('Copy link', 'sec free'), ICON_LINK, copyTip(a));
       copy.addEventListener('click', function () { copyLink(a, copy); });
       box.append(copy, el('span', 'stat'));
-      var inPanel = !!box.closest('.card-drawer');
-      if (!inPanel) foldActs(a, box, dive);
       var nbox = box.closest('article.inc').querySelector('.notif');
-      nbox.innerHTML = '';
-      nbox.append(el('span', 'nl', 'Notify'));
       var slack = asIcon(btn(slackLabel(a), 'sec slack-btn'), ICON_SEND, null, true);
       slackButton(a, slack);
       slack.addEventListener('click', function () { slackClick(a, slack); });
-      nbox.append(slack);
-      teamsButtons(a).forEach(function (tb) { nbox.append(tb); });
+      var send = [slack].concat(teamsButtons(a)), uform = null;
       if (a.slackPost && a.slackPost.ts) {
-        var upd = asIcon(btn('Post update', 'sec slack-btn slack-upd'), ICON_REPLY, 'Reply in the Slack thread of the message posted ' + dayhm(a.slackPost.at) + ', e.g. that it is fixed or has a ticket');
-        var uform = el('div', 'reason');
+        var upd = asIcon(btn('Post update', 'sec slack-btn slack-upd'), ICON_REPLY, 'Reply in the Slack thread of the message posted ' + dayhm(a.slackPost.at) + ', e.g. that it is fixed or has a ticket', true);
+        uform = el('div', 'reason');
         uform.hidden = true;
         var uta = el('textarea');
         uta.id = 'update-' + box.dataset.i; uta.maxLength = 1000; uta.rows = 2; uta.value = updateText(a);
@@ -1429,11 +1391,14 @@ async function initActions() {
         uform.append(uta, upost);
         upd.addEventListener('click', function () { uform.hidden = !uform.hidden; if (!uform.hidden) uta.focus(); });
         upost.addEventListener('click', function () { postUpdate(a, uta, upost, uform); });
-        nbox.append(upd, uform);
+        send.push(upd);
       }
-      nbox.append(el('span', 'slack-st'));
-      nbox.hidden = false;
-      if (inPanel) panelActs(a, box, {dive: dive, take: take, tform: tform, res: res, rform: rform, mute: mute, un: un, week: week, known: known, kform: form, grp: grp, gform: gform, copy: copy}, name);
+      if (nbox) {
+        nbox.innerHTML = '';
+        nbox.append(el('span', 'slack-st'));
+        nbox.hidden = false;
+      }
+      panelActs(a, box, {dive: dive, take: take, tform: tform, res: res, rform: rform, mute: mute, un: un, week: week, known: known, kform: form, grp: grp, gform: gform, copy: copy, send: send, uform: uform}, name);
       var dbox = box.closest('article.inc').querySelector('.sdraft');
       if (dbox) wireDraft(a, dbox);
       var bbox = box.closest('article.inc').querySelector('.biz');
@@ -1460,10 +1425,10 @@ async function initActions() {
       var a = cardOfBox(box);
       if (!a) return;
       var x = latest[a.key];
-      box.querySelectorAll('button.btn:not(.free):not(.slack-btn)').forEach(function (b) { if (b.closest('.notif')) return; b.disabled = !!(x && (x.status === 'requested' || x.status === 'processing')) || b.dataset.gpWait === '1'; });
+      box.querySelectorAll('button.btn:not(.free):not(.slack-btn):not(.teams-btn)').forEach(function (b) { b.disabled = !!(x && (x.status === 'requested' || x.status === 'processing')) || b.dataset.gpWait === '1'; });
       var st = box.querySelector('.stat'), la = box.closest('article.inc').querySelector('.last-act');
       if (st) {
-        st.innerHTML = x && !earlier(x, a) ? pill(x, true) : '';
+        st.innerHTML = x && !earlier(x, a) && !la ? pill(x, true) : '';
         if (x && x.status === 'requested' && me.operator) st.appendChild(cancelBtn(x));
       }
       if (la) {

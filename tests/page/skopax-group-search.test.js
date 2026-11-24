@@ -59,7 +59,7 @@ async function open(cards, lang) {
   const top = doc.querySelector('#anoms article.inc[data-key="chk|10"]');
   top.querySelector('.fold').click();
   await wait(30);
-  top.querySelector('.acts-tog').click();
+  top.querySelector('.acts .card-more').click();
   const form = top.querySelector('.reason input[role="combobox"]').closest('.reason');
   const input = form.querySelector('input[role="combobox"]');
   const rows = () => [...form.querySelectorAll('[role="listbox"] [role="option"]')];
@@ -67,7 +67,7 @@ async function open(cards, lang) {
   const type = (text) => { input.value = text; input.dispatchEvent(new dom.window.Event('input', {bubbles: true})); };
   const key = (k) => input.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: k, bubbles: true, cancelable: true}));
   const ok = form.querySelector('button');
-  const toggle = form.previousElementSibling;
+  const toggle = top.querySelector('.card-more-box .grp-btn');
   toggle.click();
   return {dom, doc, top, form, input, rows, nums, type, key, ok, errors, posts};
 }
@@ -196,7 +196,7 @@ async function escClosesTheListThenLeavesTheField() {
   t.input.focus();
   t.input.dispatchEvent(new t.dom.window.Event('focus'));
   await wait(20);
-  const toggle = t.form.previousElementSibling;
+  const more = t.top.querySelector('.acts .card-more');
   assert.strictEqual(t.doc.activeElement, t.input);
 
   //when
@@ -213,7 +213,7 @@ async function escClosesTheListThenLeavesTheField() {
 
   //then
   assert.ok(t.form.hidden, 'the second Esc hides the form');
-  assert.strictEqual(t.doc.activeElement, toggle, 'focus returns to the Group toggle');
+  assert.strictEqual(t.doc.activeElement, more, 'focus returns to More, which holds Group');
   t.dom.window.close();
   console.log('PASS Esc closes the list and a second Esc leaves the field');
 }

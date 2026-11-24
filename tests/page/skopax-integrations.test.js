@@ -2718,6 +2718,87 @@ async function anAgentInstanceShowsItsOwnGreenHealthWithTheAgeAndADownOneShowsIt
   console.log('PASS Integrations: an agent instance shows a green dot with its age and a down one shows its error');
 }
 
+const NODE_FIELD_DEF = {key: 'via-node', label: 'Through agent node', kind: 'instance', required: false, default: '', help: '', choices: ['kubernetes'], low: null, high: null, showIf: null, ui: false, group: 'advanced'};
+const KUBE_FIELDS = [
+  {key: 'mode', label: 'Mode', kind: 'choice', required: true, default: 'agent', help: '', choices: ['in-cluster', 'agent'], low: null, high: null, showIf: null, ui: false},
+  {key: 'url', label: 'URL', kind: 'url', required: true, default: '', help: '', choices: [], low: null, high: null, showIf: ['mode', 'agent'], ui: false},
+  {key: 'via', label: 'Relay', kind: 'instance', required: false, default: '', help: '', choices: ['kubernetes'], low: null, high: null, showIf: ['mode', 'agent'], ui: false, group: 'advanced'},
+];
+
+function nodeCatalog(nodeValue) {
+  const cat = catalog();
+  cat.plugins[0].fields = FIELDS.concat([NODE_FIELD_DEF]);
+  cat.plugins[0].instances[0].values = Object.assign({}, cat.plugins[0].instances[0].values, nodeValue === undefined ? {} : {'via-node': nodeValue});
+  const kube = (name, values) => instance(name, {primary: name === 'hub', values, secrets: {}});
+  cat.plugins.push({id: 'kubernetes', name: 'Kubernetes', version: '0.1.0', category: 'infrastructure', description: 'Reads clusters.', edition: 'community', icon: true, state: 'ok', reason: null, enabled: true,
+    fields: KUBE_FIELDS, checks: [], uses: [], maxInstances: null,
+    instances: [kube('hub', {mode: 'agent', url: 'https://hub.example.com'}), kube('east', {url: 'https://east.example.com'}), kube('local', {mode: 'in-cluster'}), kube('test-west', {mode: 'agent', url: 'https://west.example.com'})],
+    health: health('ok', 'Healthy', iso(2), [])});
+  return cat;
+}
+
+const optionsOf = (doc, key) => [...field(doc, key).querySelectorAll('.int-in option')].map((o) => [o.value, o.textContent, o.selected]);
+
+async function theAgentNodeFieldIsASelectOfAgentModeKubernetesInstancesWithANoneFirst() {
+  //given
+  const t = await boot({catalog: nodeCatalog()});
+  await open(t);
+
+  //when
+  openInstance(t, 'acme', 'main');
+  const node = field(t.doc, 'via-node');
+
+  //then
+  assert.strictEqual(node.querySelector('select.int-in').tagName, 'SELECT');
+  assert.deepStrictEqual(optionsOf(t.doc, 'via-node'), [['', 'None (connect directly)', true], ['hub', 'hub', false], ['east', 'east', false], ['test-west', 'test-west', false]]);
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Integrations: the agent node field picks from agent-mode Kubernetes instances with None first');
+}
+
+async function theRelayOfAKubernetesInstanceListsOtherAgentNodesButNotItself() {
+  //given
+  const t = await boot({catalog: nodeCatalog()});
+  await open(t);
+
+  //when
+  openInstance(t, 'kubernetes', 'test-west');
+
+  //then
+  assert.deepStrictEqual(optionsOf(t.doc, 'via'), [['', 'None', true], ['hub', 'hub', false], ['east', 'east', false]]);
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Integrations: the Relay lists the other agent nodes and never the instance itself');
+}
+
+async function aSavedAgentNodeThatIsGoneStaysSelectedWithAMarker() {
+  //given
+  const t = await boot({catalog: nodeCatalog('gone')});
+  await open(t);
+
+  //when
+  openInstance(t, 'acme', 'main');
+  const picked = field(t.doc, 'via-node').querySelector('select.int-in');
+
+  //then
+  assert.strictEqual(picked.value, 'gone');
+  assert.deepStrictEqual(optionsOf(t.doc, 'via-node').map((o) => o.slice(0, 2)), [['', 'None (connect directly)'], ['gone', 'gone (not an agent node)'], ['hub', 'hub'], ['east', 'east'], ['test-west', 'test-west']]);
+  t.w.close();
+
+  //given
+  const direct = await boot({catalog: nodeCatalog('local')});
+  await open(direct);
+
+  //when
+  openInstance(direct, 'acme', 'main');
+
+  //then
+  assert.strictEqual(field(direct.doc, 'via-node').querySelector('select.int-in').value, 'local');
+  assert.ok(optionsOf(direct.doc, 'via-node').some((o) => o[1] === 'local (not an agent node)'));
+  direct.w.close();
+  console.log('PASS Integrations: a saved agent node that is gone or not an agent stays selected with a marker');
+}
+
 (async () => {
   await theTilesShowEveryConnectedPluginWithItsStateHealthAndIcon();
   await anOnTileWithEveryInstanceOffShowsItsSwitchAsIdle();
@@ -2806,4 +2887,7 @@ async function anAgentInstanceShowsItsOwnGreenHealthWithTheAgeAndADownOneShowsIt
   await anOldBrowserUrlShowsTheMoveHintAndTheButtonMovesIt();
   await theMailServerSendsATestMailFromASavedInstanceOnly();
   await anAgentInstanceShowsItsOwnGreenHealthWithTheAgeAndADownOneShowsItsError();
+  await theAgentNodeFieldIsASelectOfAgentModeKubernetesInstancesWithANoneFirst();
+  await theRelayOfAKubernetesInstanceListsOtherAgentNodesButNotItself();
+  await aSavedAgentNodeThatIsGoneStaysSelectedWithAMarker();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

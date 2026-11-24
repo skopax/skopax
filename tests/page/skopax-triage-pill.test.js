@@ -56,7 +56,7 @@ async function theTriagePillKeepsItsTicketLinkAndItsWholeLabel() {
   //when
   const pills = [...t.doc.querySelectorAll('#anoms article.inc .tag.tri-wrap')];
   const css = [...t.doc.querySelectorAll('style')].map((s) => s.textContent).join('\n');
-  const rule = (css.match(/\.tag\.tri-wrap \{[^}]*\}/) || [''])[0];
+  const rule = (css.match(/\.inc-tags \.tag, \.tech-tags \.tag \{[^}]*\}/) || [''])[0];
 
   //then
   assert.strictEqual(pills.length, 2, 'both cards show the pill');
@@ -67,11 +67,11 @@ async function theTriagePillKeepsItsTicketLinkAndItsWholeLabel() {
     assert.ok(link.textContent.startsWith(ticket), 'the link names the ticket');
     assert.ok(/^In progress/.test(pill.textContent.trim()) && pill.textContent.includes(ticket), 'the label is whole: ' + pill.textContent);
   });
-  assert.ok(/white-space: normal;/.test(rule) && /max-width: 100%;/.test(rule) && /overflow-wrap: anywhere;/.test(rule), 'the pill wraps instead of cutting');
-  assert.ok(!/text-overflow|overflow: hidden/.test(rule), 'and nothing clips it');
+  assert.ok(/white-space: nowrap;/.test(rule) && /text-overflow: ellipsis;/.test(rule), 'the pill is a one-line chip that ends in an ellipsis');
+  pills.forEach((pill) => assert.ok(/^In progress/.test(pill.title) && /OPS-31/.test(pill.title), 'its title carries the whole label: ' + pill.title));
   assert.deepStrictEqual(t.errors, []);
   t.dom.window.close();
-  console.log('PASS the triage pill keeps its ticket link and its whole label');
+  console.log('PASS the triage pill keeps its ticket link, and its whole label in the title');
 }
 
 (async () => {

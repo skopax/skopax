@@ -177,15 +177,15 @@ async function guestsCannotDragAndARefusedMoveSaysWhy() {
   return 'tiles are draggable only with the operator role, and a move the server refuses shows its reason above the board';
 }
 
-async function jiraCreateAndLinkShowAsTextButtonsOutsideTheFoldedActions() {
+async function jiraCreateAndLinkSitInTheTicketGroupOfTheMenu() {
   //given
   const {w, doc, errors, posted} = await boot('#t=anoms/all');
   const acts = (key) => [...doc.querySelectorAll('#anoms article.inc')].find((c) => c.dataset.key === key).querySelector('.acts');
 
   //when
-  const free = acts(NEW).querySelector('.jira-acts');
+  const free = acts(NEW).querySelector('.card-more-box');
   const labels = [...free.querySelectorAll('.jira-act')].map((b) => b.textContent);
-  const folded = !!free.closest('.acts-more');
+  const folded = [...free.querySelectorAll('.jira-act')].every((b) => b.getAttribute('role') === 'menuitem');
   [...free.querySelectorAll('.jira-act')].find((b) => b.textContent === 'Link ticket').click();
   const form = acts(NEW).querySelector('.jira-form');
   const shown = !form.hidden;
@@ -196,19 +196,19 @@ async function jiraCreateAndLinkShowAsTextButtonsOutsideTheFoldedActions() {
   input.value = 'ops-145';
   form.querySelector('.jira-go').click();
   await wait(80);
-  const linked = acts(PROG).querySelector('.jira-acts');
+  const linked = acts(PROG).querySelector('.card-more-box');
   const open = linked.querySelector('a.jira-key');
 
   //then
   assert.deepStrictEqual(labels, ['Create Jira task', 'Link ticket'], 'a card without a ticket shows both as text buttons, and Link names no Jira while Jira is off');
-  assert.strictEqual(folded, false, 'they stay out of the More actions fold');
+  assert.strictEqual(folded, true, 'they are items of the More menu, in its ticket group');
   assert.ok(shown, 'Link opens a field for the key');
   assert.deepStrictEqual(refused, {msg: 'Type the ticket key, like OPS-123', sent: 0}, 'words with no key are not sent (no Jira search on this service, so it asks for the key)');
   assert.deepStrictEqual(posted.map((b) => [b.type, b.key, b.ticket]), [['link', NEW, 'OPS-145']]);
   assert.deepStrictEqual([open.textContent, open.getAttribute('href'), [...linked.querySelectorAll('.jira-act')].map((b) => b.textContent)], ['OPS-1234 \u2197', 'https://jira.example.com/browse/OPS-1234', ['Change ticket']], 'a card with a ticket links it and offers Change ticket');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'Create Jira task and Link ticket sit as text buttons next to Investigate and Assign; Link takes a key (or a pick from the Jira search) and a card with a ticket shows it with Change ticket';
+  return 'Create Jira task and Link ticket sit in the ticket group of the More menu; Link takes a key (or a pick from the Jira search) and a card with a ticket shows it with Change ticket';
 }
 
 async function severityChangesFromTheCardAndAHandSetOneSaysSo() {
@@ -218,7 +218,7 @@ async function severityChangesFromTheCardAndAHandSetOneSaysSo() {
 
   //when
   const open = inc(NEW).querySelector('.acts .sev-act');
-  const folded = !!open.closest('.acts-more');
+  const folded = !!open.closest('.card-more-box');
   open.click();
   const picks = [...inc(NEW).querySelectorAll('.sev-form .sev-pick')].map((b) => b.textContent);
   [...inc(NEW).querySelectorAll('.sev-pick')].find((b) => b.dataset.sev === 'info').click();
@@ -227,7 +227,7 @@ async function severityChangesFromTheCardAndAHandSetOneSaysSo() {
   const handPicks = [...inc(WAIT).querySelectorAll('.sev-form .sev-pick')].map((b) => b.dataset.sev + (b.getAttribute('aria-pressed') === 'true' ? '*' : ''));
 
   //then
-  assert.ok(open.textContent === 'Change severity' && !folded, 'Change severity is a text button outside the More actions fold');
+  assert.ok(open.textContent === 'Change severity' && folded && open.getAttribute('role') === 'menuitem', 'Change severity is an item of the More menu');
   assert.deepStrictEqual(picks, ['Critical', 'High', 'Warning', 'Move to Information'], 'no Back to the signal while the signal decides');
   assert.deepStrictEqual(posted.map((b) => [b.type, b.key, b.sev]), [['severity', NEW, 'info']]);
   assert.ok(hand && /set by hand by carol/.test(hand.title) && /the signal says Critical/.test(hand.title), 'a hand-set severity shows a tag saying who set it and what the signal says');
@@ -338,14 +338,15 @@ async function theListHasColumnsAndARowStillOpensForDetails() {
   card.querySelector('.inc-title').click();
 
   //then
-  assert.deepStrictEqual(cols, ['#', 'Sev', 'Card', 'Status', 'Assignee', 'Tags', 'Change', 'Age']);
+  assert.deepStrictEqual(cols, ['#', 'Sev', 'Card', 'Status', 'Assignee', 'Age']);
   assert.strictEqual(pressed, 'true', 'List shows when it was picked');
   assert.ok(doc.getElementById('anoms').classList.contains('view-list'));
-  assert.ok(cells['c-num'].startsWith('#153') && cells['c-name'] === 'checkout-service/boom' && cells['c-status'] === 'Open' && cells['c-asg'] === '@alice' && cells['c-tags'] === 'Data' && cells['c-age'] === '1 h', JSON.stringify(cells));
+  assert.ok(cells['c-num'].startsWith('#153') && cells['c-name'] === 'checkout-service/boom' && cells['c-status'] === 'Open' && cells['c-asg'] === '@alice' && cells['c-age'] === '1 h' && Object.keys(cells).length === 6, JSON.stringify(cells));
+  assert.ok(card.querySelector('.tech-fold .tech-tags .biz-tag').textContent === 'Data', 'the tags move into Technical details');
   assert.ok(card.classList.contains('open') && !card.querySelector('.inc-more').hidden, 'a row still opens for its details');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'the List view has one header per group with #, Sev, Card, Status, Assignee, Tags, Change and Age, each card fills those columns, and a row still opens for details';
+  return 'the List view has one header per group with #, Sev, Card, Status, Assignee and Age, each card fills those columns, and a row still opens for details';
 }
 
 async function theBoardPutsCardsInStatusColumnsAndATileOpensTheCardInASidePanel() {
@@ -468,7 +469,7 @@ async function aDropAnywhereInAColumnMovesTheCardAndTheColumnsFillTheBoard() {
   console.log('PASS ' + await assigneeAndTagChipsFilterTheBoardTogetherAndALinkKeepsThem());
   console.log('PASS ' + await draggingATileMovesTheCardAndOnlyMutedAsksHowLong());
   console.log('PASS ' + await guestsCannotDragAndARefusedMoveSaysWhy());
-  console.log('PASS ' + await jiraCreateAndLinkShowAsTextButtonsOutsideTheFoldedActions());
+  console.log('PASS ' + await jiraCreateAndLinkSitInTheTicketGroupOfTheMenu());
   console.log('PASS ' + await severityChangesFromTheCardAndAHandSetOneSaysSo());
   console.log('PASS ' + await movingAnInFlightCardToInformationSaysItStaysOnTheBoardUntilItIsDone());
   console.log('PASS ' + await tilesAndRowsTitleACardByItsMessageOrItsBusinessSentence());

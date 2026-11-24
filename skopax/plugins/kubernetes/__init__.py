@@ -115,7 +115,7 @@ PLUGIN = Plugin(
     fields=(Field('mode', 'Mode', 'choice', required=True, default='agent', choices=('in-cluster', 'agent'), choice_labels={'in-cluster': 'This cluster', 'agent': 'Through an agent'}, help='Read the cluster this service runs in, or a cluster through a remote agent.'),
             Field('url', 'URL', 'url', required=True, show_if=('mode', 'agent'), help='Address of the remote agent.'),
             Field('token', 'Token', 'secret', required=True, show_if=('mode', 'agent'), help='Bearer token the remote agent expects.'),
-            Field('via', 'Relay', 'text', show_if=('mode', 'agent'), group='advanced', help='Name of another agent instance that relays the calls to this agent.')),
+            Field('via', 'Relay', 'instance', choices=(ID,), show_if=('mode', 'agent'), group='advanced', help='Name of another agent instance that relays the calls to this agent.')),
     env_instances=env_instances, test=test,
     checks=(Check(PASS, 'Node and agent heartbeat', PERIOD, 165, (PASS,), nodes_run, sections=(PASS,), section_help=SECTION_HELP, once=True),),
     tools=(Tool('kube', DESCRIPTION, SCHEMA, kube, instance_input='cluster'),),

@@ -62,7 +62,7 @@ async function everyCardShowsItsAssigneeOnTheRowAndTheSideMenuFiltersAssignedMin
   const {w, doc, errors} = await boot();
   const row = doc.querySelector('#card-qf [aria-label="Assignee"]');
   const chips = () => ['who:any', 'who:me', 'who:none'].map((t) => doc.querySelector('#panel-anoms .qf-c[data-type="' + t + '"]')).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent);
-  const acts = (k) => [...cardOf(doc, k).querySelectorAll('.acts > button')].map((b) => b.textContent.trim());
+  const acts = (k) => [...cardOf(doc, k).querySelectorAll('.acts .card-main > .btn')].map((b) => b.textContent.trim());
   const form = (k) => [...cardOf(doc, k).querySelectorAll('.acts .asg-form button')].map((b) => b.textContent.trim());
 
   //then
@@ -71,7 +71,7 @@ async function everyCardShowsItsAssigneeOnTheRowAndTheSideMenuFiltersAssignedMin
   assert.strictEqual(cardOf(doc, PICKED).querySelector('.inc-title .asg-tag').textContent, '@Nina White');
   assert.ok(cardOf(doc, PICKED).querySelector('.asg-tag').title.includes('set by zoe.hart'));
   assert.strictEqual(cardOf(doc, FREE).querySelector('.asg-tag'), null);
-  assert.deepStrictEqual(acts(FREE).slice(0, 2), ['Investigate', 'Assign'], 'Assign sits in the action row, right after Investigate');
+  assert.deepStrictEqual(acts(FREE).slice(0, 2), ['Take it', 'Assign'], 'Assign sits in the main row, right after Take it');
   assert.strictEqual(cardOf(doc, FREE).querySelector('.asg'), null, 'no assignee box in the middle of the card');
   assert.ok(cardOf(doc, PICKED).querySelector('.asg-btn').title.includes('Assignee: Nina White'));
   assert.deepStrictEqual(form(FREE), ['Assign to me', 'Assign'], 'the popover lists Assign to me first, Assign closes it at the bottom');

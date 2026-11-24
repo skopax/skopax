@@ -17,9 +17,15 @@ function intPlaceholder(f, inst) {
   if (s && s.set) return s.from ? 'set \u00b7 from ' + s.from : 'set';
   return 'not set';
 }
-function intPeerNames(f) {
-  var used = intFind(intList(f.choices)[0]);
-  return intList(used && used.instances).map(function (i) { return i && i.name; }).filter(function (n) { return typeof n === 'string' && n !== ''; });
+var INT_NODE_PLUGIN = 'kubernetes';
+function intIsNodePick(f) { return f.kind === 'instance' && intList(f.choices)[0] === INT_NODE_PLUGIN && (f.key === 'via-node' || f.key === 'via'); }
+function intPeerNames(f, p, inst) {
+  var used = intFind(intList(f.choices)[0]), node = intIsNodePick(f);
+  return intList(used && used.instances).filter(function (i) {
+    if (!i || typeof i.name !== 'string' || i.name === '') return false;
+    if (node && (((i.values && i.values.mode) || 'agent') !== 'agent')) return false;
+    return !(node && p && inst && p.id === INT_NODE_PLUGIN && i.name === inst.name);
+  }).map(function (i) { return i.name; });
 }
 function intHuman(v) {
   v = String(v == null ? '' : v).replace(/_/g, ' ');
@@ -218,11 +224,17 @@ function intFieldHtml(p, f, inst) {
     extra = ' data-default="' + esc(f.default || '') + '"';
     input = '<input type="hidden" class="int-in" value="' + esc(init) + '"><button type="button" id="' + esc(id) + '" class="int-switch int-tog" role="switch" aria-checked="false" aria-labelledby="' + esc(id) + '-l"></button>';
   } else if (f.kind === 'choice' || f.kind === 'instance') {
-    var opts = f.kind === 'instance' ? intPeerNames(f) : intList(f.choices).slice();
+    var pick = intIsNodePick(f);
+    var opts = f.kind === 'instance' ? intPeerNames(f, p, inst) : intList(f.choices).slice();
     if (f.kind === 'instance' && init !== '' && opts.indexOf(init) < 0) opts.unshift(init);
     var entry = p.id === INT_MCP && f.key === 'preset';
-    if (!plain && (init === '' || (f.kind === 'choice' && !f.required && !f.default))) opts.unshift('');
-    var text = function (c) { return f.kind === 'instance' ? c : intChoiceText(f, c, entry ? 'No catalog entry' : ''); };
+    if (pick) opts.unshift('');
+    else if (!plain && (init === '' || (f.kind === 'choice' && !f.required && !f.default))) opts.unshift('');
+    var stale = pick && init !== '' && intPeerNames(f, p, inst).indexOf(init) < 0;
+    var text = function (c) {
+      if (pick) return c === '' ? tx(f.key === 'via' ? 'None' : 'None (connect directly)') : stale && c === init ? tx('{0} (not an agent node)').replace('{0}', c) : c;
+      return f.kind === 'instance' ? c : intChoiceText(f, c, entry ? 'No catalog entry' : '');
+    };
     if (f.kind === 'choice' && !entry && opts.length >= 2 && opts.length <= INT_SEG_MAX) {
       tag = 'span';
       input = '<input type="hidden" class="int-in" value="' + esc(init) + '"><div class="int-seg" id="' + esc(id) + '" role="radiogroup" aria-labelledby="' + esc(id) + '-l">' +

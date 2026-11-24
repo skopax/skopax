@@ -23,7 +23,7 @@ async function eachTagGetsAStableTintFromTheHashOfItsId() {
   for (const id of ['seo', 'infra', 'bizdev', 'marketing', 'a-custom-team']) assert.strictEqual(w.tagHue(id), fnv(id), 'FNV-1a of ' + id);
   assert.strictEqual(again.w.tagHue('seo'), w.tagHue('seo'), 'the same id gets the same hue on every load');
   assert.ok(new Set(TAGS.map((t) => w.tagHue(t.id))).size >= 5, 'the core tags spread over the palette');
-  const tags = [...article(doc, KEY).querySelectorAll('.inc-title .biz-tag')];
+  const tags = [...article(doc, KEY).querySelectorAll('.tech-fold .biz-tag')];
   assert.deepStrictEqual(tags.map((t) => t.classList.contains('th-' + fnv(t.textContent === 'SEO' ? 'seo' : 'infra'))), [true, true]);
   assert.ok(doc.querySelector('#panel-anoms .qf-c[data-type="tag:seo"]').classList.contains('th-' + fnv('seo')), 'the Tags filter row uses the same tint');
   assert.ok(doc.getElementById('tag-tones').textContent.includes('.th-' + fnv('seo')), 'the tones are one style block');

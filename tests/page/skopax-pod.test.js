@@ -119,13 +119,13 @@ async function cardShowsTheShadowRun() {
   assert.match(podCard.textContent, / \u00b7 by Investigator/, 'the pill names the investigator by its display label');
   const pill = podCard.querySelector('.tag.tri-wrap');
   assert.ok(pill && pill.querySelector('[data-no-tx]').textContent === 'Investigator', 'the label is its own untranslated element inside the wrapping pill');
-  assert.match([...doc.querySelectorAll('style')].map((x) => x.textContent).join('\n'), /\.tag\.tri-wrap \{[^}]*white-space: normal;[^}]*max-width: 100%;/, 'the pill wraps inside its row instead of running past it');
+  assert.ok(pill.title.includes('Investigator'), 'the pill carries its whole label in the title, since a chip stays on one line');
   const usd = doc.querySelector('#anoms article.inc .line .usd');
   assert.strictEqual(usd.textContent, '$0.62', 'the card line shows what the investigator spent on it');
   assert.strictEqual(usd.title, 'Investigator: 1 run, $0.62');
   assert.ok(!podCard.querySelector('.line .usd'), 'no badge on a card without a run');
-  assert.deepStrictEqual([...sec.closest('article.inc').querySelectorAll('.acts button.icon')].map((b) => b.getAttribute('aria-label') || b.textContent), ['Investigate', 'Assign', 'More actions', 'Mute 24 h', 'Mute 1 w', 'Known noise', 'Start progress', 'Group', 'Resolve', 'Copy link'], 'icon action buttons keep their names for screen readers');
-  assert.ok(sec.closest('article.inc').querySelectorAll('.acts button.icon > .sr').length === 9 && [...sec.closest('article.inc').querySelectorAll('.acts button.icon > .lbl')].every((l) => l.parentNode.classList.contains('asg-btn')) && sec.closest('article.inc').querySelector('.acts button.icon').title.startsWith('Investigate \u00b7 last run '), 'labels hidden on every icon button, Investigate too, tooltips carry them');
+  assert.deepStrictEqual([...sec.closest('article.inc').querySelectorAll('.acts button.icon')].map((b) => b.getAttribute('aria-label') || b.textContent), ['Take it', 'Assign', 'Resolve', 'Start progress', 'Mute 24 h', 'Mute 1 w', 'Known noise', 'Investigate', 'Group', 'Copy link', 'Send to Slack'], 'icon action buttons keep their names for screen readers');
+  assert.ok([...sec.closest('article.inc').querySelectorAll('.acts button.icon')].every((b) => b.querySelector(':scope > .lbl')) && sec.closest('article.inc').querySelector('.acts .inv-btn').title.startsWith('Investigate \u00b7 last run '), 'every icon button shows its word in the main row and the More menu, and Investigate keeps its tooltip');
   assert.strictEqual(doc.getElementById('off-tag').hidden, true, 'the laptop offline flag and the stale nextIso no longer pause the page');
   assert.ok(!/paused/i.test(doc.getElementById('banner').textContent), 'no paused banner while the pod runs');
   assert.ok(!doc.getElementById('pause-btn') && doc.getElementById('off-tag').hidden, 'no Pause button and no stopped tag in the header while the investigator runs');
@@ -172,7 +172,7 @@ async function investigateAgainNeedsASecondClick() {
 
 const SPARKLE = 'M10 5Q11 12 18 13Q11 14 10 21Q9 14 2 13Q9 12 10 5Z';
 
-async function investigateIsAnIconOnlyButtonWithTheSparklesIcon() {
+async function investigateIsAPlainMenuItemWithTheSparklesIcon() {
   //given
   const {dom, w, doc, gets, errors} = await boot({mode: 'live', enabled: true, stopped: null, spentToday: 0, cap: 20}, true);
   w.setFilter('all');
@@ -188,10 +188,9 @@ async function investigateIsAnIconOnlyButtonWithTheSparklesIcon() {
   doc.getElementById('cf-no').click();
   await wait(50);
   //then
-  assert.ok([...doc.querySelectorAll('#anoms .acts .labeled')].every((b) => b.classList.contains('asg-btn')), 'Investigate is icon only since 9 Nov; only Assign carries its word, since 11 Nov');
-  assert.strictEqual(card.querySelector('.acts button'), dive, 'Investigate leads the row');
-  assert.ok(dive.classList.contains('icon') && !dive.classList.contains('sec'), 'it keeps the blue primary style');
-  assert.deepStrictEqual([...dive.children].map((c) => c.tagName.toLowerCase() + (c.getAttribute('class') ? '.' + c.getAttribute('class') : '')), ['svg', 'span.sr'], 'the icon, then the word for screen readers only');
+  assert.strictEqual(dive.getAttribute('role'), 'menuitem', 'Investigate is an item of the More menu');
+  assert.ok(dive.classList.contains('icon') && dive.classList.contains('sec'), 'with no accent fill, like every other item');
+  assert.deepStrictEqual([...dive.children].map((c) => c.tagName.toLowerCase() + (c.getAttribute('class') ? '.' + c.getAttribute('class') : '')), ['svg', 'span.lbl'], 'the icon, then its word');
   assert.strictEqual(dive.textContent, 'Investigate');
   assert.strictEqual(dive.getAttribute('aria-label'), 'Investigate', 'the accessible name stays');
   assert.match(dive.title, /^Investigate \u00b7 last run \d\d:\d\d \(shadow\) \u00b7 \$0\.62 \u00b7 asks before running again$/, 'the tooltip names the earlier run');
@@ -200,15 +199,15 @@ async function investigateIsAnIconOnlyButtonWithTheSparklesIcon() {
   assert.ok(!svg.querySelector('circle') && !svg.querySelector('line'), 'not the magnifier any more');
   assert.strictEqual(svg.querySelector('path').getAttribute('d'), SPARKLE, 'a four-point sparkle leads the icon');
   assert.ok(svg.querySelectorAll('path').length >= 2, 'with a small sparkle beside it');
-  assert.deepStrictEqual(others.map((b) => b.getAttribute('aria-label') || b.textContent), ['Assign', 'More actions', 'Mute 24 h', 'Mute 1 w', 'Known noise', 'Start progress', 'Group', 'Resolve', 'Copy link'], 'the other icon buttons; Create task is the worded Create Jira task button since 11 Nov');
-  assert.ok(others.filter((b) => !b.classList.contains('asg-btn')).every((b) => b.classList.contains('icon') && b.querySelector(':scope > .sr') && !b.querySelector('.lbl')), 'and stay icon-only, Assign apart');
+  assert.deepStrictEqual(others.map((b) => b.getAttribute('aria-label') || b.textContent), ['Take it', 'Assign', 'Resolve', 'Start progress', 'Mute 24 h', 'Mute 1 w', 'Known noise', 'Group', 'Copy link', 'Send to Slack'], 'the other icon buttons; Create task is the worded Create Jira task button since 11 Nov');
+  assert.ok(others.every((b) => b.classList.contains('icon') && b.querySelector(':scope > .lbl')), 'and show their word, in the main row and in the More menu');
   assert.ok(card.querySelector('.acts .asg-btn > .lbl'), 'Assign carries its word since 11 Nov');
-  assert.ok(card.querySelector('.notif .slack-btn.labeled > .lbl'), 'the Slack button in the Notify row carries its word next to the icon, like Teams, since 11 Nov');
+  assert.ok(card.querySelector('.card-more-box .slack-btn.labeled > .lbl'), 'the Slack item in the More menu carries its word next to the icon, like Teams, since 11 Nov');
   assert.deepStrictEqual(byIcon, [false, 'Investigate again?'], 'a click on the icon opens the Investigate again? dialog');
   assert.ok(wrap.hidden && posts() === 0, 'Cancel still queues nothing');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-  console.log('PASS Investigate is an icon-only button (sparkles, blue) leading the row, the other icon buttons stay icon-only, and a click on the icon still asks before running again');
+  console.log('PASS Investigate is a plain More menu item with the sparkles icon and its word, like the other items, and a click on the icon still asks before running again');
 }
 
 async function guestsSeeInvestigateLockedWithItsIcon() {
@@ -223,7 +222,7 @@ async function guestsSeeInvestigateLockedWithItsIcon() {
   assert.strictEqual(dive.getAttribute('aria-disabled'), 'true', 'the operator gate locks it');
   assert.strictEqual(dive.title, 'Log in to use this', 'the tooltip says why');
   assert.ok(dive.dataset.tip.startsWith('Investigate'), 'the own tooltip waits for the unlock');
-  assert.ok(dive.querySelector('svg') && dive.querySelector('.sr').textContent === 'Investigate' && dive.getAttribute('aria-label') === 'Investigate', 'locked, it keeps the icon and its name');
+  assert.ok(dive.querySelector('svg') && dive.querySelector('.lbl').textContent === 'Investigate' && dive.getAttribute('aria-label') === 'Investigate', 'locked, it keeps the icon and its name');
   assert.ok(doc.getElementById('cf-wrap').hidden && !gets.includes('/api/actions'), 'a click on the icon opens no dialog and queues nothing');
   assert.deepStrictEqual(errors.map((e) => e.split(' (')[0]), ['Not implemented: navigation to another Document'], 'it sends the guest to /login instead');
   dom.window.close();
@@ -285,9 +284,9 @@ async function takeReticketsAnInProgressCardAndResolveMarksItDone() {
   combo.dispatchEvent(new dom.window.Event('focus'));
   const offered = [...dom.window.document.getElementById(combo.getAttribute('aria-controls')).querySelectorAll('[role="option"]')].map((r) => r.dataset.key);
   assert.ok(icon(progress, 'Group') && offered.includes(KEY), 'Group offers the other open cards as parent');
-  assert.ok(progress.querySelector('.notif .slack-btn') && !progress.querySelector('.acts .slack-btn') && progress.querySelector('.notif .nl').textContent === 'Notify', 'Send to Slack sits in the Notify strip, not in the action row');
+  assert.ok(progress.querySelector('.acts .card-more-box .slack-btn') && !progress.querySelector('.acts .card-main .slack-btn') && !progress.querySelector('.nl'), 'Send to Slack sits in the send group of the More menu, not in the main row');
   dom.window.close();
-  console.log('PASS Take re-tickets an In-progress card with the ticket prefilled, Resolve marks it No action needed, Group lists the other open cards, and the Slack buttons live in the Notify strip');
+  console.log('PASS Take re-tickets an In-progress card with the ticket prefilled, Resolve marks it No action needed, Group lists the other open cards, and the Slack buttons live in the More menu');
 }
 
 async function historyListsRunsAndStopsTheInvestigator() {
@@ -475,7 +474,8 @@ async function aStoppedCardNobodyActedOnIsJustOpen() {
   //then
   assert.deepStrictEqual(groups, ['SECTION Open'], 'one Open group, no separate Waiting group');
   assert.ok(card, 'the stopped card nobody acted on sits in Open');
-  assert.ok(/Stopped firing \u00b7 unassigned /.test(card.querySelector('.c-status').textContent), 'its row says it stopped');
+  assert.strictEqual(card.querySelector('.c-status').textContent, 'Stopped firing', 'its row says it stopped');
+  assert.ok(/Stopped firing \u00b7 unassigned /.test(card.querySelector('.inc-tags').textContent), 'the tag row says nobody has it');
   assert.strictEqual(doc.getElementById('count-anoms').textContent, '2', 'the Anomalies tab shows one Open count');
   assert.ok(!/waiting to be addressed/.test(doc.getElementById('tab-anoms').title), 'the tab tooltip has no separate waiting count');
   assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-f="stale"]'), null, 'no Waiting item in the side menu');
@@ -586,7 +586,7 @@ async function aCardLinkCutByACharacterStillOpensTheCard() {
   await offHidesThePauseControls();
   await guestsSeeTheButtonLocked();
   await investigateAgainNeedsASecondClick();
-  await investigateIsAnIconOnlyButtonWithTheSparklesIcon();
+  await investigateIsAPlainMenuItemWithTheSparklesIcon();
   await guestsSeeInvestigateLockedWithItsIcon();
   await takeReticketsAnInProgressCardAndResolveMarksItDone();
   await activityRailStreamsServerAndPodLines();

@@ -54,26 +54,27 @@ async function theDrawerGroupsTheActions() {
 
   //then
   assert.ok(acts.classList.contains('acts-grouped'));
-  assert.deepStrictEqual(parts, ['card-main', 'asg-msg', 'btn', 'act-foot'], 'the main row, the assign note, More, then the foot; the More box starts hidden');
+  assert.deepStrictEqual(parts, ['card-main', 'cm-wrap', 'asg-msg', 'act-foot'], 'the main row, More, the assign note, then the foot');
   const main = acts.querySelector('.card-main');
   assert.deepStrictEqual(names(main), ['Take it', 'Assign', 'Resolve', 'Ask AI'], 'someone else holds this card, so Take it shows');
   const chat = main.querySelector('.chat-btn');
   assert.deepStrictEqual([chat.textContent, chat.getAttribute('href')], ['Ask AI', '/#t=chat/new/12']);
   const box = acts.querySelector('.card-more-box');
+  assert.ok(box.hidden, 'the More menu starts closed');
   acts.querySelector('button.card-more').click();
   const inv = box.querySelector('.inv-btn');
   assert.deepStrictEqual([inv.querySelector('.lbl').textContent, inv.getAttribute('aria-label')], ['Investigate', 'Investigate'], 'Investigate shows its word under More');
-  assert.ok(box.querySelector('.sev-act') && box.querySelector('.jira-acts'), 'Change severity and Jira sit under More');
+  assert.ok(box.querySelector('.sev-act') && box.querySelector('.jira-key'), 'Change severity and Jira sit under More');
   const key = box.querySelector('.jira-key');
   assert.deepStrictEqual([key.textContent, key.getAttribute('href'), key.target], ['SHOP-123 \u2197', 'https://jira.example.com/browse/SHOP-123', '_blank']);
-  const more = [...box.children].filter((c) => c.matches('.btn, .jira-acts')).map((c) => c.matches('.jira-acts') ? 'jira' : c.getAttribute('aria-label') || c.textContent.trim());
-  assert.deepStrictEqual(more, ['Mute 24 h', 'Mute 1 w', 'Known noise', 'Start progress', 'Reopen', 'Investigate', 'Group', 'Change severity', 'jira', 'Copy link']);
-  assert.ok(box.querySelector('.notif .slack-btn'), 'Send to Slack and the channels sit under More');
+  const more = [...box.children].filter((c) => c.matches('.btn')).map((c) => c.getAttribute('aria-label') || c.textContent.trim());
+  assert.deepStrictEqual(more, ['Start progress', 'Mute 24 h', 'Mute 1 w', 'Known noise', 'Reopen', 'Investigate', 'SHOP-123 \u2197', 'Change ticket', 'Change severity', 'Group', 'Copy link', 'Send to Slack']);
+  assert.ok(box.querySelector(':scope > .slack-btn'), 'Send to Slack and the channels sit under More');
   assert.ok(acts.querySelector('.act-foot .stat') && acts.querySelector('.act-foot .last-act'), 'the last action line and its status sit in the foot');
   assert.ok([...acts.querySelectorAll('svg')].every((s) => s.getAttribute('aria-hidden') === 'true'), 'icons are decoration');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'the drawer shows Take it, Assign, Resolve and Ask AI, the rest under More, and a foot';
+  return 'the drawer shows Take it, Assign, Resolve and Ask AI, the rest in the More menu, and a foot';
 }
 
 async function theDrawerKeepsTheActionsWorking() {
@@ -90,7 +91,6 @@ async function theDrawerKeepsTheActionsWorking() {
 
   //then
   assert.deepStrictEqual(posts.map((p) => p.type), ['unmute']);
-  assert.ok(!doc.querySelector('#anoms .inc:not(.card-drawer *) .acts.acts-grouped'), 'list rows keep the compact row');
   assert.deepStrictEqual(errors, []);
   w.close();
   return 'the drawer buttons still act: Unmute under More unmutes a muted card';
@@ -230,9 +230,10 @@ function theDrawerGroupsHaveTheirStyles() {
 
   //then
   assert.ok(!/\.tile-acts/.test(css), 'no tile action row styles are left');
-  assert.ok(/\.acts-panel \.card-main, \.acts-panel \.card-more-box \{ display: flex; flex-wrap: wrap;/.test(css), 'the main row and the More box wrap on a narrow panel');
+  assert.ok(/\.acts-panel \.card-main \{ display: flex; flex-wrap: wrap;/.test(css), 'the main row wraps on a narrow panel');
+  assert.ok(/\.acts \.card-more-box \{ position: absolute;[^}]*flex-direction: column;/.test(css), 'More opens a one-column menu over the panel');
   assert.ok(!/\.act-group|\.ag-body/.test(css), 'the old action group styles are gone');
-  return 'no tile row styles are left, and the panel rows wrap on a narrow panel';
+  return 'no tile row styles are left, the main row wraps and More is a one-column menu';
 }
 
 (async () => {
