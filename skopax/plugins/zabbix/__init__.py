@@ -1,7 +1,9 @@
+import time
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, Plugin, ReadError, Setup, Sweep, TestResult, Tool
+from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, Panel, Plugin, ReadError, Setup, Sweep, TestResult, Tool
 from skopax.kit import access, connection
+from skopax.plugins.zabbix import page
 from skopax.plugins.zabbix.tools import (HISTORY_DESCRIPTION, HISTORY_SCHEMA, HOST_DESCRIPTION, HOST_SCHEMA, PROBLEM_DESCRIPTION, PROBLEM_SCHEMA, zabbix_history as read_history,
                                          zabbix_host as read_host, zabbix_problem as read_problem)
 from skopax.plugins.zabbix.zabbix import (DEFAULT_MIN, NAME, PASS, SECTION, SEVERITY_LABELS, SEVERITY_NAMES, ZabbixError, client_for, link_for,
@@ -12,7 +14,7 @@ TEST_CALL_S = 7
 DOT = ' \u00b7 '
 TOKEN_REFUSED = ('Zabbix refused the token: check that it is valid, not expired or disabled, and that its user has API access '
                  'and read access to the host groups')
-SECTION_HELP = {SECTION: 'when the Zabbix problem check last ran, the Zabbix version, how many active problems it read and whether it hit the cap'}
+SECTION_HELP = {SECTION: 'when the Zabbix problem check last ran, the Zabbix version, how many active problems it read and whether it hit the cap', page.PAGE: page.PAGE_HELP}
 
 
 def client_of(ctx: Context, timeout: float | None = None):
@@ -44,7 +46,9 @@ def test(ctx: Context) -> TestResult:
 
 def run(ctx: Context) -> Sweep:
     info = ctx.instance
-    return sweep(client_of(ctx), info.config, ctx.now, ctx.last_status(), info.name)
+    z = client_of(ctx)
+    started = time.monotonic()
+    return page.extend(sweep(z, info.config, ctx.now, ctx.last_status(), info.name), z, info.config, ctx.now, info.name, started, ctx.previous(page.PAGE))
 
 
 def zabbix_problem(ctx: Context, args: dict) -> object:
@@ -90,10 +94,10 @@ PLUGIN = Plugin(
             Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),
             Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), group='advanced', help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),
     test=test,
-    checks=(Check(PASS, 'Active Zabbix problems', 900, 510, (PASS,), run, tool='zabbix_problem', sections=(SECTION,), section_help=SECTION_HELP),),
+    checks=(Check(PASS, 'Active Zabbix problems', 900, 510, (PASS,), run, tool='zabbix_problem', sections=(SECTION, page.PAGE), section_help=SECTION_HELP),),
     tools=(Tool('zabbix_problem', PROBLEM_DESCRIPTION, PROBLEM_SCHEMA, zabbix_problem, per_run=PER_RUN),
            Tool('zabbix_host', HOST_DESCRIPTION, HOST_SCHEMA, zabbix_host, per_run=PER_RUN),
            Tool('zabbix_history', HISTORY_DESCRIPTION, HISTORY_SCHEMA, zabbix_history, per_run=PER_RUN)),
-    links=links, probe_targets=probe_targets,
+    links=links, probe_targets=probe_targets, panels=(Panel(PASS, 'panel.js', label=NAME, group='observe'),),
     knowledge=(Knowledge('zabbix', NAME, (Path(__file__).parent / 'zabbix.md').read_text(encoding='utf-8'), slack=True),),
 )

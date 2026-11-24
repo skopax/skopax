@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import re
 from collections.abc import Mapping
@@ -40,6 +41,10 @@ SERVICE_DIMENSIONS = ('ServiceName', 'FunctionName', 'DBInstanceIdentifier', 'DB
 WORD = re.compile(r'[a-z0-9]+')
 CAPPED = f'read {MAX_ALARMS} alarms, more not read'
 STATES = {'ALARM': 'in ALARM', 'INSUFFICIENT_DATA': 'without enough data (INSUFFICIENT_DATA)'}
+LISTED = 200
+COUNT_PAGES = 10
+ROW_BYTES = 60000
+METRIC_LIMIT = 200
 
 
 def flat(text: object) -> str:
@@ -146,6 +151,16 @@ def since_text(at: object) -> str:
         return ''
 
 
+def started_of(at: object) -> str | None:
+    stamp = seconds(at)
+    if stamp is None or stamp <= 0:
+        return None
+    try:
+        return iso(stamp)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
 def key_name(alarm: dict, shown: str) -> str:
     if shown and shown != HELD:
         return shown
@@ -178,7 +193,93 @@ def card_of(alarm: dict, region: str, mapping: tuple[dict[str, str], str]) -> di
     x = anomaly(PASS, SIG, '-', svc, keyed, sev, 1, None, None, '', label, '; '.join(parts) + '.')
     x.update(key=f'{SIG}|{region}|{keyed}', ranKey=PASS, region=region, alarmName=name, alarmArn=masked(alarm.get('AlarmArn') or '', 400), alarmType=kind,
              alarmState=state, short=f'{sev.upper()} CloudWatch {label}' + (f' on {svc}' if svc != '-' else '') + f' in {region}')
+    started = started_of(alarm.get('StateTransitionedTimestamp')) or started_of(alarm.get('StateUpdatedTimestamp'))
+    if started:
+        x['startedAt'] = started
     return x
+
+
+def since_of(at: object) -> str | None:
+    stamp = seconds(at)
+    if stamp is None or stamp <= 0:
+        return None
+    try:
+        return iso(stamp)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def row_of(alarm: dict) -> dict:
+    raw = str(alarm.get('AlarmName') or '')
+    name = clean(raw, NAME_LIMIT)
+    row = {'part': 'alarm', 'name': name, 'type': 'composite' if alarm.get('AlarmRule') else 'metric', 'state': clean(alarm.get('StateValue') or 'ALARM', 40),
+           'reason': clean(alarm.get('StateReason') or '', REASON_LIMIT), 'since': since_of(alarm.get('StateUpdatedTimestamp')), 'metric': metric_text(alarm)[:METRIC_LIMIT]}
+    keyed = key_name(alarm, name)
+    if keyed != name:
+        row['keyName'] = keyed
+    if name != raw:
+        row['noLink'] = True
+    return row
+
+
+def within(rows: list[dict], budget: int) -> tuple[list[dict], bool]:
+    kept, used = [], 0
+    for r in rows:
+        used += len(json.dumps(r, ensure_ascii=False).encode('utf-8'))
+        if used > budget:
+            return kept, True
+        kept.append(r)
+    return kept, False
+
+
+def scan(aws: Aws, config: Mapping[str, str], budget: int = COUNT_PAGES) -> tuple[list[dict], bool]:
+    prefixes = [p[:PREFIX_LIMIT] for p in names_of(config.get('alarm-prefixes') or '')][:MAX_PREFIXES] or [None]
+    seen: dict[str, dict] = {}
+    calls = 0
+    for prefix in prefixes:
+        token = None
+        while True:
+            if calls >= budget:
+                return list(seen.values()), True
+            body: dict = {'AlarmTypes': ALARM_TYPES, 'MaxRecords': PAGE_SIZE}
+            if prefix:
+                body['AlarmNamePrefix'] = prefix
+            if token:
+                body['NextToken'] = token
+            answer = aws.cloudwatch('DescribeAlarms', body)
+            calls += 1
+            for group in ('MetricAlarms', 'CompositeAlarms'):
+                for a in answer.get(group) or []:
+                    if isinstance(a, dict) and a.get('AlarmName'):
+                        seen.setdefault(str(a.get('AlarmArn') or a.get('AlarmName')), a)
+            token = answer.get('NextToken') if isinstance(answer.get('NextToken'), str) else None
+            if not token:
+                break
+    return list(seen.values()), False
+
+
+def board(aws: Aws, config: Mapping[str, str], rows: list[dict], capped: bool) -> dict:
+    listed = {str(a.get('AlarmArn') or a.get('AlarmName')): a for a in rows}
+    count = {'ALARM': sum(1 for a in rows if str(a.get('StateValue') or 'ALARM') == 'ALARM')}
+    both = (config.get('insufficient-data') or '') == 'true'
+    out: dict = {'alarmsCut': capped}
+    try:
+        everything, cut = scan(aws, config)
+    except AwsError as e:
+        out.update(counts={'ALARM': count['ALARM'], 'INSUFFICIENT_DATA': None, 'OK': None}, countsCut=False, countsError=clean(e.reason, REASON_LIMIT))
+        everything, cut = [], False
+    else:
+        by = {s: sum(1 for a in everything if a.get('StateValue') == s) for s in ('INSUFFICIENT_DATA', 'OK')}
+        if both:
+            by['INSUFFICIENT_DATA'] = max(by['INSUFFICIENT_DATA'], sum(1 for a in rows if a.get('StateValue') == 'INSUFFICIENT_DATA'))
+        out.update(counts=count | by, countsCut=cut)
+    for a in everything:
+        if a.get('StateValue') == 'INSUFFICIENT_DATA':
+            listed.setdefault(str(a.get('AlarmArn') or a.get('AlarmName')), a)
+    shown = sorted(listed.values(), key=lambda a: (str(a.get('StateValue') or 'ALARM') != 'ALARM', -(seconds(a.get('StateUpdatedTimestamp')) or 0)))
+    out['listed'], cut = within([row_of(a) for a in shown[:LISTED]], ROW_BYTES)
+    out['listCut'] = cut or len(shown) > LISTED
+    return out
 
 
 def pages(aws: Aws, state: str, prefix: str | None, room: int) -> tuple[list[dict], bool]:
@@ -234,7 +335,9 @@ def sweep(aws: Aws, config: Mapping[str, str], now: float, last_status: str | No
         if CAPPED not in (last_status or ''):
             log.warning('a CloudWatch pass read only %d alarms; the other alarms keep their cards and none clear until it is under the cap', MAX_ALARMS)
     status = DOT.join(['ok'] + tails)
+    seen = board(aws, config, rows, capped)
+    listed = seen.pop('listed')
     summary = {'part': 'summary', 'at': iso(now), 'region': aws.region, 'alarms': len(rows), 'cards': len(cards), 'capped': capped,
-               'insufficientData': (config.get('insufficient-data') or '') == 'true'}
+               'insufficientData': (config.get('insufficient-data') or '') == 'true'} | seen
     keys = ((NO_DATA,) if capped else (PASS,)) + (access.ran_key(PASS, PART),)
-    return Sweep(PassResult(PASS, True, status, list(cards.values()), {}, keys), sections={SECTION: [summary]})
+    return Sweep(PassResult(PASS, True, status, list(cards.values()), {}, keys), sections={SECTION: [summary] + listed})

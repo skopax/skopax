@@ -98,7 +98,7 @@ CORE_PREFIXES = (
 )
 CORE_RAN = ('manual', 'slack-posts', 'selfreview', 'certs', 'jira-links', 'custom-checks')
 BRIDGE_PREFIX = 'mcp_'
-CORE_STATE = frozenset({'anomalies', 'history', 'muted', 'retired', 'warned', 'summary', 'sources', 'serverPushes', 'serverPasses', 'initialized', 'conflict', 'rev', 'updatedAt', 'archiveHours', '_id'})
+CORE_STATE = frozenset({'anomalies', 'history', 'muted', 'retired', 'warned', 'summary', 'sources', 'serverPushes', 'serverPasses', 'initialized', 'conflict', 'rev', 'updatedAt', 'archiveHours', 'connected', '_id'})
 TOOL_NAME = re.compile(r'[a-zA-Z0-9_-]{1,64}')
 KNOWLEDGE_ID = re.compile(r'[a-z][a-z0-9-]{0,39}')
 TITLE_MAX = 80

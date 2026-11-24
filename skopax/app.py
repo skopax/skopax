@@ -172,7 +172,7 @@ TEMPLATE = WEB / 'template.html'
 CARD_PAGE = WEB / 'card.html'
 CARD_FIELDS = ('num', 'key', 'svc', 'label', 'sub', 'sev', 'status', 'muted', 'triage', 'ticket', 'owner', 'ownerName', 'assigned', 'firstSeen', 'lastSeen', 'clearedAt', 'what', 'note', 'business',
                'tags', 'url', 'gone', 'now', 'd1', 'd7', 'unit', 'recommend', 'suspects', 'outcome', 'resolution', 'triagedBy', 'autoResolvedAt', 'clearNote',
-               'knownCause')
+               'knownCause', 'alreadyActive')
 PLACEHOLDER = '/*__SKOPAX_DATA__*/'
 PLUGIN_SLOT = '<script type="text/plain" id="plugin-scripts"></script>'
 PEOPLE_MIN = 2
@@ -783,7 +783,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     jira_links = JiraLinks(store, jira, settings.jira_links, notes, base_url, settings.jira_developer_field)
     backlinks = Backlinks(store, jira, base_url, mode=lambda: settings.jira_backlink, projects=live_projects,
                           pool=lambda: ThreadPoolExecutor(max_workers=1, thread_name_prefix='skopax-jira-backlink'))
-    assigner = Assigner(store, slack, settings, base_url, notes, notices, posts=card_posts)
+    assigner = Assigner(store, slack, settings, base_url, notes, notices, posts=card_posts, by_name=slack_people.email_of)
     auto_pool: list[ThreadPoolExecutor] = []
     auto_guard = threading.Lock()
 
@@ -1716,6 +1716,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             await asyncio.to_thread(aikey.refresh)
             await asyncio.to_thread(openai_key.refresh)
             await asyncio.to_thread(sso_secret.refresh)
+            await asyncio.to_thread(lambda: slack.enabled and slack_people.lookup())
         except PyMongoError as e:
             if not checked:
                 migrations.stop_if_required(registry, e)
@@ -3628,6 +3629,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/admin/features')
     def get_admin_features(by: Annotated[str, Depends(require_admin)]) -> dict:
+        live.refresh(force=True)
         return {'edition': features.edition(), 'items': features.view()}
 
     @app.put('/api/admin/features/{feature_id}')
@@ -3722,9 +3724,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if found.plugin is None:
             return {'id': found.id, 'module': found.module, 'reason': found.reason, 'origin': origin, 'standing': standing_of(found, plugin_state.enabled)}
         if found.state == 'broken':
-            return {'id': found.id, 'module': found.module, 'reason': found.reason, 'enabled': plugin_state.enabled(found.id), 'origin': origin, 'standing': standing_of(found, plugin_state.enabled)}
+            return {'id': found.id, 'module': found.module, 'reason': found.reason, 'enabled': plugin_state.enabled(found.id), 'switchedAt': plugin_state.stamp(found.id), 'origin': origin, 'standing': standing_of(found, plugin_state.enabled)}
         listed = instances.all(found.id)
-        return {**describe(found.plugin, registry.icon(found.id) is not None), 'state': found.state, 'standing': standing_of(found, plugin_state.enabled), 'reason': found.reason, 'enabled': plugin_state.enabled(found.id),
+        return {**describe(found.plugin, registry.icon(found.id) is not None), 'state': found.state, 'standing': standing_of(found, plugin_state.enabled), 'reason': found.reason, 'enabled': plugin_state.enabled(found.id), 'switchedAt': plugin_state.stamp(found.id),
                 'origin': origin, **({} if origin == 'builtin' else {'module': found.module}),
                 'localeDrops': drops_view(found) if found.state == 'ok' else [],
                 'fields': runtime.fields_of(found.id), 'instances': [i.view() for i in listed], 'health': plugin_health(found.plugin, listed, passes)}
@@ -3755,13 +3757,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/admin/plugins')
     def get_admin_plugins(by: Annotated[str, Depends(require_admin)]) -> dict:
-        instances.reread()
+        plugin_state.refresh()
+        instances.reread(within=0)
         passes = store.server_runs()['passes']
         return {'edition': registry.edition(), 'secretsKey': 'env' if base_settings.secret_key else 'generated', 'plugins': [plugin_row(x, passes) for x in registry.loaded()]}
 
     @app.get('/api/integrations')
     def get_integrations(by: Annotated[str, Depends(require_login)]) -> dict:
-        instances.reread()
+        plugin_state.refresh()
+        instances.reread(within=0)
         passes = store.server_runs()['passes']
         return {'edition': registry.edition(), 'readOnly': True,
                 'plugins': [reader_row(plugin_row(x, passes)) for x in registry.loaded()]}
@@ -3769,6 +3773,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     @app.put('/api/admin/plugins/{plugin_id}')
     def put_admin_plugin(plugin_id: str, body: PluginSwitchIn, by: Annotated[str, Depends(require_admin)]) -> dict:
         plugin = plugin_usable(plugin_id) if body.enabled else plugin_loaded(plugin_id)
+        plugin_state.refresh()
         was = plugin_state.enabled(plugin_id)
         runtime.set_enabled(plugin_id, body.enabled, by)
         if body.enabled:
@@ -3996,6 +4001,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def post_admin_test_mail(name: str, request: Request, by: Annotated[str, Depends(require_admin)], body: TestMailIn | None = None) -> dict:
         plugin = plugin_usable(mail_out.PLUGIN_ID)
         held = instances.fresh(plugin.id, name)
+        plugin_state.refresh()
         if held is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, msg('instances.unknown', name=name))
         if held.problem:
@@ -4037,6 +4043,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             sweeper.primary_changed(plugin_id, before.info(), heir.info(), time.time())
         else:
             sweeper.retire(plugin_id, before.info(), time.time())
+        try:
+            sweeper.forget(plugin_id, name)
+        except Exception as e:
+            log.warning('the connection time of %s %s was not forgotten: %s', plugin_id, name, kind(e))
         if plugin_id == MCPTOOLS_ID:
             mcptools_routes.after_delete(mcptools_deps, name)
         store.add_activity(ADMIN_KIND, by, msg('integrations.instance_deleted', plugin=plugin.name, instance=name))

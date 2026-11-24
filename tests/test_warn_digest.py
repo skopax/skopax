@@ -448,3 +448,14 @@ def test_the_digest_is_a_feature_switch_that_is_on_by_default(client):
     # then
     item = next(i for i in items if i['id'] == 'warn-digest')
     assert (item['key'], item['on'], item['label']) == ('core.warn-digest', True, 'Daily warnings digest')
+
+
+def test_a_card_already_active_when_its_source_was_connected_is_left_out_until_it_changes():
+    # given
+    cards = [card('quiet', num=1, alreadyActive={'since': iso(FRI_0900 - 86400 * 30), 'source': 'Zabbix'}), card('loud', num=2)]
+
+    # when
+    out = built(cards)
+
+    # then
+    assert keys_shown(out) == ['#2']

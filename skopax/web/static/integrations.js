@@ -501,7 +501,7 @@ async function intSwitch(p, sw, msg) {
   sw.setAttribute('aria-busy', 'true');
   intSay(msg, 'Saving\u2026', false);
   try {
-    await adminApi('PUT', intBase(p), {enabled: want});
+    intNote(p, await adminApi('PUT', intBase(p), {enabled: want}));
     await loadIntegrations(intName(p) + (want ? ' switched on' : ' switched off'));
     var again = held && intTileSwitch(p.id);
     if (again && (document.activeElement === document.body || !document.activeElement)) again.focus();
@@ -677,12 +677,40 @@ function renderIntegrations(note) {
   });
   markIntegCount(INTEG);
 }
+var INT_SAVED = {};
+function intSaved(key, flag, at, row) {
+  INT_SAVED[key] = {enabled: flag, at: typeof at === 'string' ? at : '', row: row || null};
+}
+function intNote(p, row) {
+  if (row && typeof row.enabled === 'boolean' && row.id === p.id) intSaved('p:' + p.id, row.enabled, row.switchedAt, row);
+}
+function intOlder(read, saved) {
+  return !(typeof read === 'string' && read && saved.at && read > saved.at);
+}
+function intKeepSaved(r) {
+  if (!r || !Array.isArray(r.plugins)) return r;
+  r.plugins = r.plugins.map(function (p) {
+    var mine = INT_SAVED['p:' + p.id];
+    if (mine) {
+      if (mine.enabled === p.enabled || !intOlder(p.switchedAt, mine)) delete INT_SAVED['p:' + p.id];
+      else if (mine.row) p = Object.assign({}, p, {enabled: mine.enabled, switchedAt: mine.at, standing: mine.row.standing});
+    }
+    p.instances = intList(p.instances).map(function (i) {
+      var key = 'i:' + p.id + '/' + i.name, held = INT_SAVED[key];
+      if (!held) return i;
+      if (held.enabled === i.enabled || !intOlder(i.updatedAt, held)) { delete INT_SAVED[key]; return i; }
+      return Object.assign({}, i, {enabled: held.enabled});
+    });
+    return p;
+  });
+  return r;
+}
 async function loadIntegrations(note) {
   var seq = ++INTEG_SEQ, box = document.getElementById('integrations');
   try {
     var ro = intRO(), r = await adminApi('GET', ro ? INT_RO_PATH : '/api/admin/plugins');
     if (seq !== INTEG_SEQ) return false;
-    INTEG = r;
+    INTEG = ro ? r : intKeepSaved(r);
     renderIntegrations(note);
     if (!ro) intMcpBack();
     return true;
@@ -989,7 +1017,7 @@ function intTurnOn(p) {
     b.disabled = true;
     intSay(msg, 'Saving\u2026', false);
     try {
-      await adminApi('PUT', intBase(p), {enabled: true});
+      intNote(p, await adminApi('PUT', intBase(p), {enabled: true}));
       await loadIntegrations(intName(p) + ' switched on');
       intClose(true);
     } catch (e) {
@@ -1039,7 +1067,8 @@ function intInstHead(p, inst) {
     on.disabled = true;
     intSay(rmsg, 'Saving\u2026', false);
     try {
-      await adminApi('PATCH', intBase(p) + '/instances/' + encodeURIComponent(inst.name), {enabled: want});
+      var done = await adminApi('PATCH', intBase(p) + '/instances/' + encodeURIComponent(inst.name), {enabled: want});
+      if (done && done.instance && typeof done.instance.enabled === 'boolean') intSaved('i:' + p.id + '/' + inst.name, done.instance.enabled, done.instance.updatedAt);
       await intRepaint(inst.name + (want ? ' switched on' : ' switched off'), '.int-on');
     } catch (e) {
       on.checked = !want;

@@ -2,6 +2,27 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.13 (2026-11-24)
+
+Zabbix and CloudWatch pages in the left menu, a quiet first pass for newly connected Zabbix and CloudWatch instances, Slack mentions for people assigned by name, Admin switches that show what was saved on every pod, and Spring Cloud Config keys that fill several fields or build one from several keys.
+
+**Added:**
+
+- Zabbix page in the left menu: the hosts of the watched host groups, grouped by group, with interface availability and its error text, maintenance and open problems by severity, and the open problems at or above the lowest severity with severity, host, start, acknowledged, the card and a link to the event in Zabbix. Host group, severity and text filters and an instance switcher that also lists instances not read yet. Reads are bounded (300 hosts, 200 problem rows, 200 KB per instance, trimming problems below High first, then hosts, then High and Disaster); a failed page read keeps the earlier rows with their time.
+- CloudWatch page in the left menu: per instance the region with its ALARM, INSUFFICIENT_DATA and OK alarm counts, and the alarms in ALARM or INSUFFICIENT_DATA with type, reason, since, the card and an AWS console link (console.amazonaws.cn for cn-* regions); per watched log group the error lines of the last 15 minutes and of about the last hour with the latest sample lines. Region, state and text filters and an instance switcher. The page starts no Logs Insights query; the counts take up to 10 extra DescribeAlarms calls per instance every 15 minutes.
+- Spring Cloud Config: one config key can fill several targets (`key=target1|target2`, or the key repeated), so a shared credential is stored once and a rotation reaches every copy; a key's targets must be all secret fields or none. New `SPRING_CONFIG_TEMPLATES` builds one secret field from several keys with `${key}` placeholders that take raw config values (no environment, defaults or nesting); a missing key leaves the field unset and the log names the target and the key, never a value.
+- Plug-in contract: a `settings_source` hook can declare an optional `field_kind` parameter; core then passes `field_kind(plugin_id, field)`. Hooks that take only `env` are called as before.
+
+**Changed:**
+
+- Connecting a Zabbix or CloudWatch instance no longer floods the board. A problem that started more than 1 hour before the instance was connected still opens its card, which says "Already active when <plug-in> was connected (since <time>)", but it is not auto-investigated, not auto-assigned, not pushed and not posted by Slack, Teams or email routes, and it stays out of the warning digest; a person can still press Investigate. A later escalation, a problem coming back with a new start or after it was resolved as fixed, behaves as usual. The instance counts as connected when it was created or switched on (a switch-off of up to 24 hours keeps the earlier time), or else at its first read; instances from before 0.5.13 count as connected long ago.
+
+**Fixed:**
+
+- A card assigned by name only now mentions the person in the Slack thread note and reaches them by direct message when the guessed address is unknown to Slack but exactly one Slack member has that name. The Slack member list loads at start, and an assignment waits up to 3 s for it once. Several members with that name still mean no mention, with one throttled warning that names neither the person nor an address.
+- Switching a plug-in, an instance or a feature on or off in Admin no longer redraws the old value when another pod answers the follow-up read: the lists read the on/off flags from the database on every request, and the page keeps what the save answered while the read is older than the save.
+- A Prometheus alert with a null `activeAt` no longer fails the pass.
+
 ## 0.5.12 (2026-11-24)
 
 Grafana Loki and AWS CloudWatch plug-ins, OpenTelemetry traces stored natively in Elastic, clearer ES|QL hints for the investigator, Take now assigns the card to whoever presses it, Jira tasks whose fields are all set in Admin or asked in the dialog, and Jira create errors that say which field was refused.

@@ -885,3 +885,26 @@ def test_post_at_once_from_set_and_removed_in_a_source_moves_with_its_set_mark(s
     assert before == ('off', False), 'the stored old switch counts while the new setting is not set'
     assert added == ('crit', True), 'a source that sets the new setting wins over the stored old switch at once'
     assert removed == ('off', False), 'and once it is gone the stored old switch counts again'
+
+
+def test_a_source_hook_without_the_field_kind_argument_still_loads_and_one_with_it_is_told_the_kinds():
+    # given
+    asked = []
+
+    def told(env, field_kind=None):
+        asked.append((field_kind('demo', 'token'), field_kind('demo', 'url'), field_kind('demo', 'nope'), field_kind('nosuch', 'token')))
+        return {'label': 'told source', 'values': {'investigate.max-cards': '4'}}
+
+    def keyword_only(env, *, field_kind):
+        asked.append(field_kind('demo', 'token'))
+        return {'label': 'keyword source'}
+
+    from tests.plugins.base import minimal
+    registry = registry_with(demo_plugin, minimal('told', 'Told', hooks=Hooks(settings_source=told)), minimal('keyword', 'Keyword', hooks=Hooks(settings_source=keyword_only)))
+
+    # when
+    found = hook_sources(registry, {})
+
+    # then
+    assert sorted(s.label for s in found) == ['demo source', 'keyword source', 'told source']
+    assert sorted(asked, key=str) == sorted([('secret', 'url', None, None), 'secret'], key=str)

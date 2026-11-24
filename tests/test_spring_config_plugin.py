@@ -7,13 +7,13 @@ import pytest
 
 from skopax import bounded, remote
 from skopax.config import ConfigurationError
-from skopax.contract import Hooks
+from skopax.contract import Capabilities, Field, Hooks, SourceData
 from skopax.plugins import spring_config
 from skopax.plugins.spring_config import (BadAnswer, BadMap, BadSetup, EmptyAnswer, SpringConfig, SpringConfigError, TimedOut, Unauthorized, Unreachable, Refused, flatten,
                                           map_of, resolve_value)
 from skopax.registry import BUILTIN, Registry, describe
 from skopax.remote import HttpError, Reply
-from skopax.settingsources import SourceSet, boot, light_boot
+from skopax.settingsources import SourceSet, _hook_data, boot, field_kinds, light_boot
 
 URL = 'https://config.example.com'
 USER = 'cfg-user'
@@ -52,7 +52,23 @@ class Server:
         return Reply(self.answer, {})
 
 
+SECRET_FIELDS = ('scan-headers', 'headers', 'token')
+
+
+def fake_kind(plugin_id, key):
+    return 'secret' if key in SECRET_FIELDS else 'text'
+
+
+class Told(SpringConfig):
+    def __call__(self, env, field_kind=fake_kind):
+        return super().__call__(env, field_kind)
+
+
 def source(server=None, clock=None) -> SpringConfig:
+    return Told(server if server is not None else Server(), clock if clock is not None else Clock())
+
+
+def plain(server=None, clock=None) -> SpringConfig:
     return SpringConfig(server if server is not None else Server(), clock if clock is not None else Clock())
 
 
@@ -244,7 +260,9 @@ def test_an_empty_or_malformed_answer_is_a_failure_not_an_empty_config(answer, e
 
 
 @pytest.mark.parametrize('env, expected', [
-    ({'SPRING_CONFIG_MAP': 'a=core.timezone,a=general.x'}, BadMap),
+    ({'SPRING_CONFIG_MAP': 'a=core.timezone,a=core.timezone'}, BadMap), ({'SPRING_CONFIG_MAP': 'a=core.timezone|core.timezone'}, BadMap),
+    ({'SPRING_CONFIG_MAP': 'a=core.timezone|'}, BadMap), ({'SPRING_CONFIG_MAP': 'a=|core.timezone'}, BadMap), ({'SPRING_CONFIG_MAP': 'a=jira/main/url|b=jira/main/api-token'}, BadMap),
+    ({'SPRING_CONFIG_MAP': 'a=core.timezone|jira/main/name'}, BadMap), ({'SPRING_CONFIG_MAP': 'a=core.timezone|jira.url'}, BadMap),
     ({'SPRING_CONFIG_MAP': 'a=core.timezone,b=core.timezone'}, BadMap),
     ({'SPRING_CONFIG_MAP': 'a=jira/main/url,b=jira/main/url'}, BadMap),
     ({'SPRING_CONFIG_MAP': 'a'}, BadMap), ({'SPRING_CONFIG_MAP': '=core.timezone'}, BadMap), ({'SPRING_CONFIG_MAP': 'a='}, BadMap),
@@ -343,7 +361,7 @@ def plugin_with(feed) -> object:
 
 def test_a_main_does_not_start_when_the_server_cannot_be_read():
     # given
-    registry = Registry.of(plugin_with(source(Server(HttpError(401, 'x')))))
+    registry = Registry.of(plugin_with(plain(Server(HttpError(401, 'x')))))
 
     # when
     with pytest.raises(ConfigurationError) as raised:
@@ -355,7 +373,7 @@ def test_a_main_does_not_start_when_the_server_cannot_be_read():
 
 def test_a_main_starts_from_the_server_and_the_values_reach_the_settings():
     # given
-    registry = Registry.of(plugin_with(source()))
+    registry = Registry.of(plugin_with(plain()))
 
     # when
     b = boot(dict(BASE), registry)
@@ -367,7 +385,7 @@ def test_a_main_starts_from_the_server_and_the_values_reach_the_settings():
 
 def test_an_agent_starts_on_the_environment_alone_when_the_server_times_out_simulated():
     # given
-    registry = Registry.of(plugin_with(source(Server(remote.TimedOut('x')))))
+    registry = Registry.of(plugin_with(plain(Server(remote.TimedOut('x')))))
 
     # when
     b = light_boot(dict(BASE), registry)
@@ -379,7 +397,7 @@ def test_an_agent_starts_on_the_environment_alone_when_the_server_times_out_simu
 def test_a_server_that_fails_later_leaves_the_applied_values_in_place():
     # given
     server, clock = Server(), Clock()
-    registry = Registry.of(plugin_with(source(server, clock)))
+    registry = Registry.of(plugin_with(plain(server, clock)))
     b = boot(dict(BASE), registry)
     live = SourceSet(b.loaders, b.loaded, 60)
     before = [d.values for d in live.current()]
@@ -415,14 +433,14 @@ def test_a_bad_setup_logs_the_variable_it_names_and_no_password(caplog):
     assert 'SPRING_CONFIG_PASSWORD' in caplog.text and USER not in caplog.text
 
 
-def test_a_key_mapped_twice_logs_which_key(caplog):
+def test_a_target_mapped_twice_logs_which_key_and_target(caplog):
     # when
     with caplog.at_level(logging.WARNING):
         with pytest.raises(BadMap):
-            source()({**BASE, 'SPRING_CONFIG_MAP': 'dup.key=core.timezone,dup.key=general.x'})
+            source()({**BASE, 'SPRING_CONFIG_MAP': 'one.key=core.timezone,dup.key=general.x|core.timezone'})
 
     # then
-    assert 'dup.key' in caplog.text
+    assert 'dup.key' in caplog.text and 'core.timezone' in caplog.text and 'already mapped' in caplog.text
 
 
 def test_an_unresolved_placeholder_inside_a_secret_value_logs_the_key_and_no_part_of_the_value(caplog):
@@ -462,3 +480,355 @@ def test_an_unconfigured_install_has_no_settings_source_at_all():
 
     # then
     assert 'Spring Cloud Config' not in [d.label for d in b.sources] and b.loaded['Spring Cloud Config'] is None
+
+
+SHARED = '{"type": "service_account", "private_key": "pk-s3cr3t-value"}'
+SHARED_ANSWER = {'propertySources': [{'name': 'x', 'source': {'google.sa-json': SHARED, 'google.api-key': 'ak-s3cr3t-value', 'pagescan.automation-secret': 'as-s3cr3t-value',
+                                                             'pagescan.automation-id': 'bot-7', 'tz': 'UTC'}}]}
+SHARED_MAP = 'google.sa-json=analytics/main/key|search/main/key, google.sa-json=sheets/main/key, google.api-key=maps/main/key|places/main/key'
+TEMPLATES = 'website/shop/scan-headers = X-Automation-Secret: ${pagescan.automation-secret}; X-Automation-Id: ${pagescan.automation-id}, end\n\n  demo/one/token=${tz}=${tz}  \n'
+
+
+def test_map_of_gives_one_entry_per_target_for_both_the_bar_and_the_repeated_key():
+    # when
+    found = map_of('k = a.b | jira/main/url , k = c.d, j=e.f')
+
+    # then
+    assert found == [('k', ('setting', 'a.b')), ('k', ('instance', 'jira', 'main', 'url')), ('k', ('setting', 'c.d')), ('j', ('setting', 'e.f'))]
+
+
+def test_one_key_fills_every_target_it_is_mapped_to_with_the_same_value():
+    # when
+    out = get({'SPRING_CONFIG_MAP': SHARED_MAP}, SHARED_ANSWER)
+
+    # then
+    assert out['values'] == {}
+    assert out['instances'] == [{'plugin': p, 'name': 'main', 'key': v} for p, v in
+                                (('analytics', SHARED), ('search', SHARED), ('sheets', SHARED), ('maps', 'ak-s3cr3t-value'), ('places', 'ak-s3cr3t-value'))]
+
+
+def test_a_shared_key_the_server_lacks_is_warned_once_and_no_target_gets_it(caplog):
+    # given
+    answer = {'propertySources': [{'name': 'x', 'source': {'tz': 'UTC'}}]}
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        out = get({'SPRING_CONFIG_MAP': SHARED_MAP + ',tz=core.timezone'}, answer)
+
+    # then
+    assert out == {'values': {'core.timezone': 'UTC'}, 'instances': []}
+    assert caplog.text.count('google.sa-json') == 1 and caplog.text.count('google.api-key') == 1
+
+
+def test_a_rotated_shared_key_reaches_every_target_and_the_template_at_the_next_read():
+    # given
+    server, clock = Server(SHARED_ANSWER), Clock()
+    feed = source(server, clock)
+    env = {**BASE, 'SPRING_CONFIG_MAP': SHARED_MAP, 'SPRING_CONFIG_TEMPLATES': 'website/shop/scan-headers=S: ${pagescan.automation-secret}; K: ${google.api-key}'}
+    before = feed(env)
+    body = dict(SHARED_ANSWER['propertySources'][0]['source'], **{'google.sa-json': 'rotated-json', 'google.api-key': 'rotated-key'})
+    server.answer = {'propertySources': [{'name': 'x', 'source': body}]}
+
+    # when
+    clock.now += spring_config.REFETCH_S
+    after = feed(env)
+
+    # then
+    fields = {i['plugin']: i.get('key') or i.get('scan-headers') for i in after['instances']}
+    assert before != after and len(server.calls) == 2
+    assert fields == {'analytics': 'rotated-json', 'search': 'rotated-json', 'sheets': 'rotated-json', 'maps': 'rotated-key', 'places': 'rotated-key',
+                      'website': 'S: as-s3cr3t-value; K: rotated-key'}
+
+
+def test_a_rotated_shared_key_is_a_changed_source_for_the_refresh():
+    # given
+    server, clock = Server(SHARED_ANSWER), Clock()
+    feed = source(server, clock)
+    env = {**BASE, 'SPRING_CONFIG_MAP': SHARED_MAP}
+    sources = SourceSet([('Spring Cloud Config', lambda: SourceData.of(feed(env), 'Spring Cloud Config'))], {'Spring Cloud Config': SourceData.of(feed(env), 'Spring Cloud Config')})
+    body = dict(SHARED_ANSWER['propertySources'][0]['source'], **{'google.api-key': 'rotated-key'})
+
+    # when
+    unchanged = sources.refresh()
+    server.answer = {'propertySources': [{'name': 'x', 'source': body}]}
+    clock.now += spring_config.REFETCH_S
+    changed = sources.refresh()
+
+    # then
+    keys = {i['plugin']: i['key'] for i in sources.current()[0].instances}
+    assert unchanged is False and changed is True
+    assert keys['maps'] == keys['places'] == 'rotated-key' and keys['sheets'] == SHARED
+
+
+def test_a_template_fills_one_field_from_several_keys_with_commas_and_equals_kept():
+    # when
+    out = get({'SPRING_CONFIG_MAP': 'tz=core.timezone', 'SPRING_CONFIG_TEMPLATES': TEMPLATES}, SHARED_ANSWER)
+
+    # then
+    assert out['values'] == {'core.timezone': 'UTC'}
+    assert out['instances'] == [{'plugin': 'website', 'name': 'shop', 'scan-headers': 'X-Automation-Secret: as-s3cr3t-value; X-Automation-Id: bot-7, end'},
+                                {'plugin': 'demo', 'name': 'one', 'token': 'UTC=UTC'}]
+
+
+def test_templates_alone_are_a_valid_setup():
+    # when
+    out = get({'SPRING_CONFIG_MAP': '', 'SPRING_CONFIG_TEMPLATES': 'demo/one/token=v${tz}'}, SHARED_ANSWER)
+
+    # then
+    assert out == {'values': {}, 'instances': [{'plugin': 'demo', 'name': 'one', 'token': 'vUTC'}]}
+
+
+def test_a_template_reads_config_keys_only_never_the_environment_nor_a_default():
+    # given
+    env = {'SPRING_CONFIG_MAP': '', 'SPRING_CONFIG_TEMPLATES': 'demo/one/token=${ONLY_IN_ENV}\ndemo/two/token=$tz ${tz} $ {tz} }'}
+
+    # when
+    out = get({**env, 'ONLY_IN_ENV': 'env-value'}, SHARED_ANSWER)
+
+    # then
+    assert out['instances'] == [{'plugin': 'demo', 'name': 'two', 'token': '$tz UTC $ {tz} }'}]
+
+
+def test_a_template_takes_the_raw_config_value_with_no_placeholder_filled_inside_it():
+    # given
+    answer = {'propertySources': [{'name': 'x', 'source': {'host': 'cfg-host', 'dir': '${HOME}/x', 'url': 'https://${host}/${PORT_ENV:80}'}}]}
+
+    # when
+    out = get({'SPRING_CONFIG_MAP': 'url=general.y', 'SPRING_CONFIG_TEMPLATES': 'demo/one/token=<${url}> ${dir}', 'PORT_ENV': '8080', 'HOME': '/home/someone'}, answer)
+
+    # then
+    assert out['values'] == {'general.y': 'https://cfg-host/8080'}
+    assert out['instances'] == [{'plugin': 'demo', 'name': 'one', 'token': '<https://${host}/${PORT_ENV:80}> ${HOME}/x'}]
+
+
+def test_a_template_with_a_missing_key_is_left_unset_and_the_warning_names_the_key_only(caplog):
+    # given
+    env = {'SPRING_CONFIG_MAP': 'tz=core.timezone', 'SPRING_CONFIG_TEMPLATES': 'website/shop/scan-headers=X-Automation-Secret: ${pagescan.automation-secret}; X-Id: ${pagescan.gone}'}
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        out = get(env, SHARED_ANSWER)
+
+    # then
+    assert out == {'values': {'core.timezone': 'UTC'}, 'instances': []}
+    assert 'pagescan.gone' in caplog.text and 'website/shop/scan-headers' in caplog.text
+    assert 'as-s3cr3t-value' not in caplog.text and 'X-Automation-Secret' not in caplog.text and 'X-Id' not in caplog.text
+
+
+def test_a_template_that_grows_past_the_value_bound_is_left_unset(caplog):
+    # given
+    answer = {'propertySources': [{'name': 'x', 'source': {'big': 'x' * spring_config.VALUE_MAX}}]}
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        out = get({'SPRING_CONFIG_MAP': '', 'SPRING_CONFIG_TEMPLATES': 'demo/one/token=${big}${big}'}, answer)
+
+    # then
+    assert out['instances'] == [] and 'demo/one/token' in caplog.text
+
+
+@pytest.mark.parametrize('templates', [
+    'demo/one/token', 'demo/one/token=', '=${a}', 'demo/one/token=plain text', 'demo/one/token=${a:dflt}', 'demo/one/token=${a${b}}', 'demo/one/token=${}', 'demo/one/token=${a b}', 'demo/one/token=${open',
+    'jira/main/name=${a}', 'jira.url=${a}', 'Not A Target=${a}', 'general.x=${a}', 'demo/one/note=${a}', 'demo/one/token=${a}\ndemo/one/token=${b}', 'core.timezone=${a}', 'demo/one/token=' + 'x' * (spring_config.VALUE_MAX + 1),
+])
+def test_a_wrong_template_is_refused_before_any_request(templates):
+    # given
+    server = Server()
+
+    # then
+    with pytest.raises(BadMap):
+        source(server)({**BASE, 'SPRING_CONFIG_MAP': 'tz=core.timezone', 'SPRING_CONFIG_TEMPLATES': templates})
+    assert server.calls == []
+
+
+def test_a_refused_template_names_its_target_and_never_its_text(caplog):
+    # when
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(BadMap) as raised:
+            source()({**BASE, 'SPRING_CONFIG_TEMPLATES': 'website/shop/scan-headers=X-Inline: lit-s3cr3t ${a:dflt-s3cr3t}'})
+
+    # then
+    assert 'website/shop/scan-headers' in caplog.text and 'website/shop/scan-headers' in str(raised.value)
+    assert 's3cr3t' not in caplog.text and 's3cr3t' not in str(raised.value) and 'X-Inline' not in caplog.text
+
+
+@pytest.mark.parametrize('templates', ['demo/one/token=${a}\n  rest-of-lit-s3cr3t ${b}', 'X-Inline: lit-s3cr3t=${a}', 'demo/one/token=${a}\nlit-s3cr3t'])
+def test_a_line_that_does_not_start_with_a_target_is_refused_by_its_number_and_never_echoed(templates, caplog):
+    # when
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(BadMap) as raised:
+            source()({**BASE, 'SPRING_CONFIG_TEMPLATES': templates})
+
+    # then
+    assert 'SPRING_CONFIG_TEMPLATES line ' in str(raised.value)
+    assert 's3cr3t' not in caplog.text and 's3cr3t' not in str(raised.value) and 'X-Inline' not in caplog.text
+
+
+def test_a_changed_template_does_not_reuse_the_old_answer():
+    # given
+    server = Server(SHARED_ANSWER)
+    feed = source(server)
+
+    # when
+    first = feed({**BASE, 'SPRING_CONFIG_TEMPLATES': 'demo/one/token=a${tz}'})
+    second = feed({**BASE, 'SPRING_CONFIG_TEMPLATES': 'demo/one/token=b${tz}'})
+
+    # then
+    assert len(server.calls) == 2 and first['instances'][0]['token'] == 'aUTC' and second['instances'][0]['token'] == 'bUTC'
+
+
+def test_a_shared_key_and_a_template_show_as_from_the_config_server_and_their_secrets_stay_sealed():
+    # given
+    import mongomock
+    from skopax.instances import Instances
+    from skopax.sealer import Sealer
+    from tests.plugin_kit import registry_with
+    from tests.plugins.base import minimal
+    holder = minimal('holder', 'Holder', capabilities=Capabilities(secrets=('key', 'headers')), fields=(
+        Field('url', 'URL', 'url'), Field('key', 'Key', 'secret'), Field('headers', 'Headers', 'secret'), Field('note', 'Note', 'text')))
+    answer = {'propertySources': [{'name': 'x', 'source': {'google.sa-json': SHARED, 'pagescan.automation-secret': 'as-s3cr3t-value', 'pagescan.automation-id': 'bot-7',
+                                                          'host': 'https://h.example.com'}}]}
+    env = {'SPRING_CONFIG_MAP': 'google.sa-json=holder/one/key|holder/two/key, host=holder/one/url|holder/two/url',
+           'SPRING_CONFIG_TEMPLATES': 'holder/one/headers=X-Automation-Secret: ${pagescan.automation-secret}; X-Automation-Id: ${pagescan.automation-id}\nholder/two/headers=id ${pagescan.automation-id}'}
+    data = SourceData.of(get(env, answer), 'Spring Cloud Config')
+    instances = Instances(mongomock.MongoClient(tz_aware=True)['skopax'], registry_with(holder), lambda: Sealer('k'), sources=lambda: [data])
+
+    # when
+    instances.refresh()
+    one, two = instances.get('holder', 'one'), instances.get('holder', 'two')
+    views = json.dumps([one.view(), two.view()])
+
+    # then
+    assert one.source == two.source == 'Spring Cloud Config'
+    assert one.view()['secrets'] == {'key': {'set': True, 'from': 'Spring Cloud Config'}, 'headers': {'set': True, 'from': 'Spring Cloud Config'}}
+    assert two.view()['owned'] == ['headers', 'key', 'url'] and two.info().config['headers'] == 'id bot-7'
+    assert one.info().config['headers'] == 'X-Automation-Secret: as-s3cr3t-value; X-Automation-Id: bot-7' and two.info().config['key'] == SHARED
+    assert 'as-s3cr3t-value' not in views and 'pk-s3cr3t-value' not in views
+
+
+def test_a_template_into_a_field_that_is_not_secret_is_refused_by_target_before_any_request(caplog):
+    # given
+    server = Server(SHARED_ANSWER)
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(BadMap) as raised:
+            source(server)({**BASE, 'SPRING_CONFIG_TEMPLATES': 'demo/one/note=X-Automation-Secret: ${pagescan.automation-secret}'})
+
+    # then
+    assert server.calls == [] and 'demo/one/note' in str(raised.value) and 'not a secret field' in str(raised.value)
+    assert 'X-Automation-Secret' not in caplog.text and 'pagescan.automation-secret' not in str(raised.value)
+
+
+def test_core_tells_the_source_the_field_kinds_and_a_secret_field_is_filled():
+    # given
+    env = {**BASE, 'SPRING_CONFIG_MAP': '', 'SPRING_CONFIG_TEMPLATES': 'website/shop/scan-headers=v ${tz}'}
+    plugin = plugin_with(SpringConfig(Server(SHARED_ANSWER), Clock()))
+
+    # when
+    out = _hook_data(plugin, env, Registry.load({}))
+
+    # then
+    assert [dict(i) for i in out.instances] == [{'plugin': 'website', 'name': 'shop', 'scan-headers': 'v UTC'}]
+
+
+@pytest.mark.parametrize('target', ['website/shop/kept-headers', 'website/shop/url', 'core.timezone', 'nosuch/main/token'])
+def test_with_the_real_field_kinds_a_template_into_a_field_that_is_not_secret_is_refused(target):
+    # given
+    server = Server(SHARED_ANSWER)
+    env = {**BASE, 'SPRING_CONFIG_MAP': '', 'SPRING_CONFIG_TEMPLATES': f'{target}=v ${{tz}}'}
+
+    # when
+    with pytest.raises(BadMap) as raised:
+        SpringConfig(server, Clock())(env, field_kinds(Registry.load({})))
+
+    # then
+    assert str(raised.value).startswith(f"SPRING_CONFIG_TEMPLATES line 1 target {target!r} is not a secret field;") and server.calls == []
+
+
+def test_without_the_field_kind_callable_templates_are_refused_and_the_map_still_works():
+    # given
+    feed = SpringConfig(Server(SHARED_ANSWER), Clock())
+
+    # when
+    plain = feed({**BASE, 'SPRING_CONFIG_MAP': 'tz=core.timezone'})
+    with pytest.raises(BadMap) as raised:
+        feed({**BASE, 'SPRING_CONFIG_MAP': 'tz=core.timezone', 'SPRING_CONFIG_TEMPLATES': 'website/shop/scan-headers=v ${tz}'})
+
+    # then
+    assert plain['values'] == {'core.timezone': 'UTC'} and 'website/shop/scan-headers' in str(raised.value)
+
+
+def test_a_field_kind_callable_that_raises_counts_as_not_secret():
+    # given
+    def broken(plugin_id, key):
+        raise RuntimeError('down')
+
+    # when
+    with pytest.raises(BadMap) as raised:
+        SpringConfig(Server(SHARED_ANSWER), Clock())({**BASE, 'SPRING_CONFIG_TEMPLATES': 'website/shop/scan-headers=v ${tz}'}, broken)
+
+    # then
+    assert 'is not a secret field' in str(raised.value)
+
+
+@pytest.mark.parametrize('mapping, names', [
+    ('google.api-key=maps/main/key|maps/main/token', 'maps/main/key, maps/main/token'),
+    ('google.api-key=demo/one/token, google.api-key=core.timezone', 'demo/one/token, core.timezone'),
+])
+def test_a_key_that_fills_both_secret_and_plain_fields_is_refused_by_key_and_targets(mapping, names, caplog):
+    # given
+    server = Server(SHARED_ANSWER)
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(BadMap) as raised:
+            source(server)({**BASE, 'SPRING_CONFIG_MAP': mapping})
+
+    # then
+    assert str(raised.value) == (f"SPRING_CONFIG_MAP key 'google.api-key' fills both secret and non-secret fields ({names}); "
+                                 'a key can fill several targets only when all are secret or none is')
+    assert server.calls == [] and 'ak-s3cr3t-value' not in caplog.text
+
+
+def test_a_key_that_fills_only_secret_or_only_plain_fields_or_an_unknown_one_is_allowed():
+    # given
+    def kinds(plugin_id, key):
+        return None if plugin_id == 'gone' else fake_kind(plugin_id, key)
+
+    # when
+    secret = source(Server(SHARED_ANSWER))({**BASE, 'SPRING_CONFIG_MAP': 'google.api-key=demo/one/token|demo/two/token'}, kinds)
+    plain = source(Server(SHARED_ANSWER))({**BASE, 'SPRING_CONFIG_MAP': 'google.api-key=maps/main/key|core.timezone'}, kinds)
+    unknown = source(Server(SHARED_ANSWER))({**BASE, 'SPRING_CONFIG_MAP': 'google.api-key=demo/one/token|gone/main/key'}, kinds)
+
+    # then
+    assert secret['instances'] == [{'plugin': 'demo', 'name': 'one', 'token': 'ak-s3cr3t-value'}, {'plugin': 'demo', 'name': 'two', 'token': 'ak-s3cr3t-value'}]
+    assert plain['values'] == {'core.timezone': 'ak-s3cr3t-value'} and plain['instances'] == [{'plugin': 'maps', 'name': 'main', 'key': 'ak-s3cr3t-value'}]
+    assert unknown['instances'] == [{'plugin': 'demo', 'name': 'one', 'token': 'ak-s3cr3t-value'}, {'plugin': 'gone', 'name': 'main', 'key': 'ak-s3cr3t-value'}]
+
+
+def test_without_the_field_kinds_a_spread_key_still_fills_its_targets_and_one_warning_says_it_was_not_checked(caplog):
+    # given
+    feed = SpringConfig(Server(SHARED_ANSWER), Clock())
+    env = {**BASE, 'SPRING_CONFIG_MAP': 'google.api-key=maps/main/key|maps/main/token, tz=core.timezone'}
+
+    # when
+    with caplog.at_level(logging.WARNING):
+        out = feed(env)
+        feed(env)
+
+    # then
+    assert out['instances'] == [{'plugin': 'maps', 'name': 'main', 'key': 'ak-s3cr3t-value', 'token': 'ak-s3cr3t-value'}]
+    assert caplog.text.count('cannot be checked') == 1 and 'google.api-key' in caplog.text and 'tz' not in caplog.text.split('cannot be checked')[1].split('\n')[0]
+    assert 'ak-s3cr3t-value' not in caplog.text
+
+
+def test_a_continuation_line_shaped_like_a_target_is_named_by_its_number_only(caplog):
+    # when
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(BadMap) as raised:
+            source()({**BASE, 'SPRING_CONFIG_TEMPLATES': 'demo/one/token=${a}\npk-abc123=${b}'})
+
+    # then
+    assert str(raised.value).startswith('SPRING_CONFIG_TEMPLATES line 2 ')
+    assert 'pk-abc123' not in str(raised.value) and 'pk-abc123' not in caplog.text

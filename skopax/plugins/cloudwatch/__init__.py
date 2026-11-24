@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, PassResult, Plugin, ReadError, Setup, Sweep, TestResult, Tool
+from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, Panel, PassResult, Plugin, ReadError, Setup, Sweep, TestResult, Tool
 from skopax.kit import connection
 from skopax.plugins.cloudwatch import alarms, logs
 from skopax.plugins.cloudwatch.alarms import DEFAULT_MAP, map_problem
-from skopax.plugins.cloudwatch.aws import NAME, AwsError, client_for, region_problem, role_problem
+from skopax.plugins.cloudwatch.aws import NAME, AwsError, client_for, console_of, region_problem, role_problem
 from skopax.plugins.cloudwatch.logs import DEFAULT_MIN, groups_problem, query_problem
 from skopax.plugins.cloudwatch.tools import (ALARM_DESCRIPTION, ALARM_SCHEMA, LOGS_DESCRIPTION, LOGS_SCHEMA, METRIC_DESCRIPTION, METRIC_SCHEMA,
                                              cloudwatch_alarm as read_alarm, cloudwatch_logs as read_logs, cloudwatch_metric as read_metric)
@@ -15,9 +15,8 @@ TEST_CALL_S = 7
 DOT = ' \u00b7 '
 HOSTS = ('monitoring.*.amazonaws.com', 'logs.*.amazonaws.com', 'sts.*.amazonaws.com', 'monitoring.*.amazonaws.com.cn', 'logs.*.amazonaws.com.cn',
          'sts.*.amazonaws.com.cn')
-SECTION_HELP = {alarms.SECTION: 'when the CloudWatch alarm check last ran, the region, how many alarms it read and whether it hit the cap',
-                logs.SECTION: 'when the CloudWatch Logs check last ran, how many log groups it queried and how many bytes Logs Insights scanned'}
-CONSOLE = 'https://{region}.console.aws.amazon.com/cloudwatch/home?region={region}'
+SECTION_HELP = {alarms.SECTION: 'when the alarm check last ran, its ALARM, INSUFFICIENT_DATA and OK counts and caps, and one row per alarm in ALARM or INSUFFICIENT_DATA',
+                logs.SECTION: 'when the Logs check last ran and the bytes it scanned, and one row per log group with its error lines of 15 minutes and about an hour'}
 
 
 def client_of(ctx: Context, timeout: float | None = None):
@@ -60,7 +59,7 @@ def run_logs(ctx: Context) -> Sweep:
         aws = client_of(ctx)
     except AwsError as e:
         return failed(logs.PASS, e)
-    return logs.sweep(aws, ctx.instance.config, ctx.now)
+    return logs.sweep(aws, ctx.instance.config, ctx.now, previous=ctx.previous(logs.SECTION))
 
 
 def aws_of(ctx: Context):
@@ -86,7 +85,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
     region = str(card.get('region') or '')
     if card.get('src') not in (alarms.PASS, logs.PASS) or card.get('sig') not in (alarms.SIG, logs.SIG) or region_problem(region):
         return None
-    base = CONSOLE.format(region=region)
+    base = console_of(region)
     if card.get('src') == alarms.PASS:
         return [dict(label='Alarms in CloudWatch', url=base + '#alarmsV2:')]
     return [dict(label='Logs Insights in CloudWatch', url=base + '#logsV2:logs-insights')]
@@ -136,5 +135,6 @@ PLUGIN = Plugin(
            Tool('cloudwatch_metric', METRIC_DESCRIPTION, METRIC_SCHEMA, cloudwatch_metric, per_run=PER_RUN),
            Tool('cloudwatch_logs', LOGS_DESCRIPTION, LOGS_SCHEMA, cloudwatch_logs, per_run=LOG_RUNS)),
     links=links,
+    panels=(Panel('cloudwatch', 'panel.js', label='CloudWatch', group='observe'),),
     knowledge=(Knowledge('cloudwatch', NAME, (Path(__file__).parent / 'cloudwatch.md').read_text(encoding='utf-8'), slack=True),),
 )

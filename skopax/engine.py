@@ -3,6 +3,7 @@ import copy
 import fnmatch
 import datetime as dt
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import tzinfo
@@ -61,6 +62,12 @@ DAILY_KEYS = ('crux', 'ga', 'varnish-cache')
 PLUGIN_DAILY: frozenset[str] = frozenset()
 SEVERITIES = severity.CARD_LEVELS
 NO_DATA = ':no-data'
+ALREADY_ACTIVE = 'alreadyActive'
+STARTED_AT = 'startedAt'
+ACCESS_MARK = ':access:'
+CONNECTED = 'connected'
+LONG_AGO = '1970-01-01T00:00:00Z'
+CONNECT_GRACE_S = 3600
 
 
 def no_data(key: object) -> bool:
@@ -219,8 +226,13 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
         back = None
         set_muted(f, mute_for(state, k, now))
         f.pop('cause', None)
+        mark = f.pop(ALREADY_ACTIVE, None)
+        quiet_start = False
         if a is None:
             a = dict(f, firstSeen=t, lastSeen=t, peak=f['now'], status='open', pushedAt=None, pushedSev=None, pushedPeak=None, note=None)
+            if isinstance(mark, dict):
+                a[ALREADY_ACTIVE] = mark
+                quiet_start = True
             prev[k] = a
             ev = 'new'
         elif a['status'] == 'cleared':
@@ -228,9 +240,13 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
             carried['cause'] = flap_cause(a, now, t)
             pushed = (a.get('pushedAt'), a.get('pushedSev'), a.get('pushedPeak'))
             closed_at = a.get('triagedAt')
+            held = a.get(ALREADY_ACTIVE) if isinstance(a.get(ALREADY_ACTIVE), dict) and same_start(f, a[ALREADY_ACTIVE]) else None
             a.clear()
             a.update(f, **carried)
             a.update(firstSeen=t, lastSeen=t, peak=f['now'], status='open', pushedAt=pushed[0], pushedSev=pushed[1], pushedPeak=pushed[2])
+            if isinstance(held, dict):
+                a[ALREADY_ACTIVE] = held
+                quiet_start = True
             original = duplicate_of(a, prev) if a.get('triage') == 'handled' else None
             followed = follow_original(state, a, original, firing, now) if original else None
             back = came_back(a, followed, closed_at)
@@ -250,8 +266,8 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
                 a['followUp'] = {x: v for x, v in a['followUp'].items() if x not in FOLLOW_CLOSE}
             ev = 'reopened'
         else:
-            keep = {x: a.get(x) for x in ('firstSeen', 'pushedAt', 'pushedSev', 'pushedPeak', 'peak', 'parent', BACK_AFTER_RESOLVE, SHOTS) + OFFER_MARKS + CARRY
-                    if x not in WHEN_SET + OFFER_MARKS + (BACK_AFTER_RESOLVE, SHOTS) or a.get(x) is not None}
+            keep = {x: a.get(x) for x in ('firstSeen', 'pushedAt', 'pushedSev', 'pushedPeak', 'peak', 'parent', BACK_AFTER_RESOLVE, SHOTS, ALREADY_ACTIVE) + OFFER_MARKS + CARRY
+                    if x not in WHEN_SET + OFFER_MARKS + (BACK_AFTER_RESOLVE, SHOTS, ALREADY_ACTIVE) or a.get(x) is not None}
             a.clear()
             a.update(f, **keep)
             a['lastSeen'] = t
@@ -283,19 +299,26 @@ def merge(state: dict, found: list[dict], ran: dict[str, bool | frozenset], now:
             higher = a.get('pushedSev') not in SEV_RANK or SEV_RANK[a['sev']] > SEV_RANK[a['pushedSev']]
             quiet = a.get('pushedAt') is None or now - parse_iso(a['pushedAt']) > REOPEN_QUIET_S
             if ev == 'new':
-                should = True
+                should = not quiet_start
+            elif ev == 'reopened' and quiet_start:
+                should = higher or regressed
+                if should:
+                    a.pop(ALREADY_ACTIVE, None)
             elif ev == 'reopened':
                 should = regressed or (higher if quiet_back else higher or (doubled if a.get('triage') in HANDLED else quiet))
             else:
                 should = higher or doubled
                 if should:
                     ev = 'escalated'
+                    a.pop(ALREADY_ACTIVE, None)
         if should and a.get('triagedBy') in BY_SYSTEM and a.get('triage') in POD_REOPEN:
             a['triage'] = None
             a['triagedBy'] = None
             a['resolution'] = None
         if first and SEV_RANK[a['sev']] >= 1:
             a['pushedAt'], a['pushedSev'], a['pushedPeak'] = t, a['sev'], a['now']
+        elif quiet_start and SEV_RANK[a['sev']] >= 1:
+            a['pushedSev'], a['pushedPeak'] = a['sev'], a['now']
         if ev:
             events.append(dict(t=t, key=k, ev=ev, sev=a['sev'], text=a['short'], muted=bool(a['muted'])) | ({'cameBack': str(back.get('ref') or '')} if regressed else {}))
         if should:
@@ -656,6 +679,37 @@ class Applied:
     resolved: list[dict] = field(default_factory=list)
     cards: list[dict] = field(default_factory=list)
     first: bool = False
+
+
+def read_any(r: 'PassResult') -> bool:
+    return r.ok and any(ACCESS_MARK not in k for k in r.ran or (r.name,))
+
+
+def start_of(card: dict) -> str | None:
+    started = card.get(STARTED_AT)
+    if not isinstance(started, str) or not started:
+        return None
+    try:
+        at = parse_iso(started)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return iso(at) if math.isfinite(at) and at > 0 else None
+
+
+def same_start(card: dict, mark: dict) -> bool:
+    started = start_of(card)
+    return started is not None and started == mark.get('since')
+
+
+def started_before(card: dict, connected: float) -> str | None:
+    started = card.get(STARTED_AT)
+    if not isinstance(started, str) or not started:
+        return None
+    try:
+        at = parse_iso(started)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return iso(at) if math.isfinite(at) and 0 < at < connected - CONNECT_GRACE_S else None
 
 
 def reach_of(results: list[PassResult], clusters: Mapping[str, tuple[str | None, ...]] | None = None) -> dict[str, bool | frozenset]:

@@ -36,6 +36,7 @@ OWNERS_MAX = 20
 PEOPLE_TTL_S = 6 * 3600
 PEOPLE_MAX = 20
 NAME_WARN_S = 3600
+PEOPLE_WAIT_S = 3.0
 QUERY_MIN = 2
 QUERY_MAX = 100
 SOURCES = ('skopax', 'responsible', 'slack')
@@ -426,21 +427,31 @@ class SlackPeople:
         self._for: str | None = None
         self._busy = False
         self._down_until = -FAILURE_TTL_S
-        self._told: dict[str, float] = {}
+        self._told: dict[tuple[str, str], float] = {}
+        self.patience = PEOPLE_WAIT_S
+        self._settled = threading.Event()
+        self._settled.set()
+        self._gave_up = False
 
     def email_of(self, name: str) -> str | None:
         wanted = folded_name(name)
         if not wanted or '@' in wanted:
             return None
         people, state = self.lookup()
+        if state == 'loading' and not self._gave_up:
+            if self._settled.wait(self.patience):
+                people, state = self.lookup()
+            else:
+                self._gave_up = True
         found = {p['email'] for p in people if wanted in (folded_name(p.get('name')), folded_name(p.get('display')))}
         if len(found) == 1:
             return found.pop()
         now = self.clock()
-        last = self._told.get(wanted)
+        why = 'several Slack members have that name' if found else 'no Slack member has that name' if state == 'ok' else f'the Slack member list is {state}'
+        slot = (wanted, why)
+        last = self._told.get(slot)
         if last is None or now - last >= NAME_WARN_S:
-            self._told[wanted] = now
-            why = 'several Slack members have that name' if found else 'no Slack member has that name' if state == 'ok' else f'the Slack member list is {state}'
+            self._told[slot] = now
             log.warning('an assignee name of %d characters stays plain text in Slack, without a mention: %s', len(wanted), why)
         return None
 
@@ -455,14 +466,29 @@ class SlackPeople:
             start = (self._people is None or now - self._at >= self.ttl) and not self._busy and now >= self._down_until
             if start:
                 self._busy = True
+                self._settled.clear()
+                self._gave_up = False
         if start:
-            self.spawn(lambda: self._build(token))
+            try:
+                self.spawn(lambda: self._build(token))
+            except Exception as e:
+                log.warning('the Slack member list could not be started: %s', error_kind(e))
+                with self._guard:
+                    self._busy = False
+                    self._down_until = self.clock() + FAILURE_TTL_S
+                self._settled.set()
         with self._guard:
             if self._people is not None:
                 return self._people, 'ok'
             return [], 'loading' if self._busy else 'unavailable'
 
     def _build(self, token: str) -> None:
+        try:
+            self._load(token)
+        finally:
+            self._settled.set()
+
+    def _load(self, token: str) -> None:
         try:
             found = self.slack.members()
         except Exception as e:

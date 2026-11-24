@@ -39,11 +39,26 @@ def people_of(users) -> list[dict]:
     return out
 
 
+class Once:
+    def __init__(self, find, name: str):
+        self.find = find
+        self.name = name
+        self.done = False
+        self.value = None
+
+    def __call__(self) -> str | None:
+        if not self.done:
+            self.value = self.find(self.name)
+            self.done = True
+        return self.value
+
+
 class Assigner:
     dm = Setting('assign_dm')
 
-    def __init__(self, store: Store, slack: Slack, settings, base: str, notes=None, notices=None, posts=None):
+    def __init__(self, store: Store, slack: Slack, settings, base: str, notes=None, notices=None, posts=None, by_name=None):
         self.store = store
+        self.by_name = by_name
         self.notes = notes
         self.posts = posts
         self.notices = notices
@@ -57,14 +72,19 @@ class Assigner:
         handle, domain = slug(name), by.split('@')[1] if '@' in by else ''
         return f'{handle}@{domain}' if handle and domain else None
 
-    def tell(self, card: dict, name: str, email: str | None, by: str) -> str:
+    def tell(self, card: dict, name: str, email: str | None, by: str, named=None) -> str:
         if not self.dm or not self.slack.enabled:
             return OFF
         to = self.address(name, email, by)
         mine = slug(name) == slug(by) or bool(to and to.lower() == by.lower())
         try:
             user = self.slack.user_by_email(to) if to else None
-            if user is None or not (email or mine or same_person(name, user['name'])):
+            matched = False
+            if user is None and not email and not mine and self.by_name:
+                found = (named or Once(self.by_name, name))()
+                user = self.slack.user_by_email(found) if found else None
+                matched = user is not None
+            if user is None or not (email or mine or matched or same_person(name, user['name'])):
                 return NONE
             title = (f"#{card['num']} · " if card.get('num') else '') + f"{card.get('svc') or '-'} / {card.get('label') or '?'}"
             what = ' '.join(str(card.get('what') or '').split())
@@ -90,22 +110,24 @@ class Assigner:
             self.notify(before, None, None, by)
             return {'rev': rev, 'owner': None, 'assigned': None, 'dm': None, 'thread': self.noted(key, None, by) if before.get('owner') else False}
         same = slug(before.get('owner')) == slug(name)
+        named = Once(self.by_name, name) if self.by_name else None
         assigned = {'by': by, 'at': iso(utc_now())} | ({'email': email} if email else {})
         rev, card = self.store.set_tagging(key, {'owner': name, 'ownerName': None, 'assigned': assigned, 'handAssigned': True})
         self.store.add_activity('assign', by, f'assigned to {name} · {key}', key=key)
         if not same:
             self.notify(before, name, email, by)
         log.info('%s assigned by %s', key, by)
-        return {'rev': rev, 'owner': name, 'assigned': assigned, 'dm': SAME if same else self.tell(card, name, email, by), 'thread': False if same else self.noted(key, name, by, email)}
+        return {'rev': rev, 'owner': name, 'assigned': assigned, 'dm': SAME if same else self.tell(card, name, email, by, named), 'thread': False if same else self.noted(key, name, by, email, named)}
 
     def announce(self, before: dict, name: str, email: str | None, by: str) -> None:
         self.notify(before, name, email, by)
+        named = Once(self.by_name, name) if self.by_name else None
         try:
-            self.tell(self.store.anomaly(before['key']), name, email, by)
+            self.tell(self.store.anomaly(before['key']), name, email, by, named)
         except Exception as e:
             log.warning('assignee message for %s not sent: %s', before.get('key'), error_kind(e))
         try:
-            self.noted(before['key'], name, by, email)
+            self.noted(before['key'], name, by, email, named)
         except Exception as e:
             log.warning('assignee note for %s not sent: %s', before.get('key'), error_kind(e))
 
@@ -117,13 +139,13 @@ class Assigner:
         except Exception as e:
             log.warning('assignee notification for %s not saved: %s', before.get('key'), error_kind(e))
 
-    def noted(self, key: str, name: str | None, by: str, email: str | None = None) -> bool:
+    def noted(self, key: str, name: str | None, by: str, email: str | None = None, named=None) -> bool:
         if self.posts is not None:
             self.posts.assigned(key, name, by)
         if self.notes is None:
             return False
         try:
-            return self.notes.assigned(key, name, by, self.address(name, email, by) if name else None, bool(email))
+            return self.notes.assigned(key, name, by, self.address(name, email, by) if name else None, bool(email), named)
         except Exception as e:
             log.warning('assignee note for %s not sent to its thread: %s', key, error_kind(e))
             return False

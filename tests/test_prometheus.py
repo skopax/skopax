@@ -885,3 +885,15 @@ def test_every_prometheus_sign_in_field_explains_itself():
 
     # then
     assert set(helps) == {'auth', 'token', 'username', 'password'} and all(helps.values())
+
+
+def test_an_alert_with_a_null_active_at_still_gives_its_card():
+    # given
+    alerts = [dict(ALERT, activeAt=None)]
+
+    # when
+    found = evaluate_prom(NOW, prom_data(), HARD, alerts, [])[0]
+    cards = [x for x in found if x['sig'] == 'alert']
+
+    # then
+    assert [c['alertName'] for c in cards] == ['HighLatency'] and 'firing since ?Z' in cards[0]['what'] and 'startedAt' not in cards[0]

@@ -452,3 +452,19 @@ def test_an_auto_assigned_person_gets_the_assigned_notice_and_the_mail_they_opte
     assert smtp.made == [], 'nothing is sent inside the pass'
     queued = list(store.db['notice_mail'].find({}, {'email': 1, 'kind': 1, '_id': 0}))
     assert queued == [{'email': NINA, 'kind': 'assigned'}]
+
+
+def test_a_card_already_active_when_its_source_was_connected_is_auto_assigned_only_when_a_person_tags_it(store: Store):
+    # given
+    team(store)
+    store.set_tag_owners('developer', [NINA])
+    mark = {'since': '2025-11-01T00:00:00Z', 'source': 'Zabbix'}
+    store.save(state(card('log|quiet', alreadyActive=mark), card('log|by-hand', by=NINA, alreadyActive=mark), card('log|loud')), None)
+
+    # when
+    with TestClient(create_app(settings(), store)) as c:
+        done = c.app.state.auto_assign.sweep(store.load()['anomalies'])
+
+    # then
+    assert sorted(done) == ['log|by-hand', 'log|loud']
+    assert owners(store)['log|quiet'] is None

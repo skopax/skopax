@@ -11,9 +11,9 @@ import bson
 from skopax import engine, sections, summary, sweepout
 from skopax.actors import SYSTEM
 from skopax.contract import KEY_SEGMENT, Check, InstanceInfo, PassResult, Plugin, ReadError, Sweep
-from skopax.engine import APPLY_ATTEMPTS, SEV_RANK, SHOTS, Applied, clearing_key, iso, no_data, parse_iso
+from skopax.engine import ALREADY_ACTIVE, APPLY_ATTEMPTS, CONNECTED, LONG_AGO, SEV_RANK, SHOTS, Applied, clearing_key, iso, no_data, parse_iso, read_any, started_before
 from skopax.errkind import kind
-from skopax.instances import REFRESH_S, Instance
+from skopax.instances import RECONNECT_AFTER_S, REFRESH_S, Instance
 from skopax.messages import msg
 from skopax.monitor import refusal
 from skopax.redact import redact_text
@@ -95,6 +95,39 @@ def scope(sweep: Sweep, check: Check, inst: InstanceInfo | None) -> Sweep:
     return dataclasses.replace(sweep, result=dataclasses.replace(result, name=pass_name(check, inst), found=found, ran=keys), deploys=deploys)
 
 
+def connection_key(plugin_id: str, check_id: str, name: str) -> str:
+    return f'{plugin_id}/{check_id}/{name}'
+
+
+def stamp_of(text: object) -> float | None:
+    if not isinstance(text, str) or not text:
+        return None
+    try:
+        return parse_iso(text)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def went_off(state: dict, key: str, ran: bool, now: float, forget: bool) -> None:
+    table = state.setdefault(CONNECTED, {})
+    if forget:
+        table.pop(key, None)
+        return
+    entry = table.get(key)
+    if isinstance(entry, dict):
+        return
+    at = entry if isinstance(entry, str) else LONG_AGO if key not in table and ran else None
+    table[key] = {'at': at, 'off': iso(now)}
+
+
+def quiet_start(sweep: Sweep, plugin: Plugin, connected: float) -> Sweep:
+    found = []
+    for card in sweep.result.found:
+        since = started_before(card, connected)
+        found.append(card if since is None else dict(card, **{ALREADY_ACTIVE: {'since': since, 'source': plugin.name}}))
+    return dataclasses.replace(sweep, result=dataclasses.replace(sweep.result, found=found))
+
+
 def allowed(key: str, check: Check) -> bool:
     return key in check.ran or (':' in key and key.split(':', 1)[0] in check.ran)
 
@@ -157,6 +190,14 @@ class Reads:
         found = runs.get(pass_name(self.check, inst)) if isinstance(runs, dict) else None
         status = found.get('status') if isinstance(found, dict) else None
         return status if isinstance(status, str) else None
+
+    def connection(self, name: str, inst: InstanceInfo) -> tuple[bool, object, bool]:
+        table = self._loaded().get(CONNECTED)
+        key = connection_key(self.plugin.id, self.check.id, name)
+        if isinstance(table, dict) and key in table:
+            return True, table[key], False
+        runs = self._loaded().get('serverPasses')
+        return False, None, isinstance(runs, dict) and pass_name(self.check, inst) in runs
 
     def deploys(self, since: float) -> list[dict]:
         if not _number(since):
@@ -297,9 +338,13 @@ class Sweeper:
         seen: set[str] = set()
         results, taken, owner, keymaps = [], [], {}, []
         reads = Reads(self.store, plugin, check, self.runtime.releases)
+        connects: dict[str, tuple[str | None, bool]] = {}
         for inst, sweep in self._execute(plugin, check, targets, now, reads):
             info = None if inst is None else inst.info()
             scoped = scope(sweep, check, info)
+            connected = None if inst is None else self._connected(plugin, check, inst, info, scoped.result, reads, now, connects)
+            if scoped.result.ok and connected is not None:
+                scoped = quiet_start(scoped, plugin, connected)
             if scoped.result.ok:
                 keymaps.append(reads.keymap(info) | {a['key']: b['key'] for a, b in zip(sweep.result.found, scoped.result.found)})
                 scoped = self._without_repeats(plugin, scoped, seen)
@@ -337,6 +382,12 @@ class Sweeper:
             for i in live:
                 if taken[i][1].cleared:
                     sweepout.mark_cleared(state, plugin, taken[i][1].cleared, keymaps[i], now, owner_of(taken[i][0]))
+            if connects:
+                table = dict(state.get(CONNECTED) or {})
+                for key, (at, force) in connects.items():
+                    if force or not table.get(key):
+                        table[key] = at
+                state[CONNECTED] = table
             self._heal(state, plugin)
             state['retired'] = [t for t in tombs(state) if t['at'] >= started - RETIRED_KEEP_S]
             sections.finish(state, lambda ns, svc, image: known.get((ns, svc, image)))
@@ -356,6 +407,57 @@ class Sweeper:
             except Exception as e:
                 log.warning('deploy enrichment after a sweep failed (%s)', kind(e))
         return applied
+
+    def _connected(self, plugin: Plugin, check: Check, inst: Instance, info: InstanceInfo, result: PassResult, reads: Reads, now: float,
+                   connects: dict[str, str | None]) -> float | None:
+        own = stamp_of(getattr(inst, 'connected', None))
+        kept = self._kept(plugin, check, inst, info, result, reads, now, connects)
+        found = [at for at in (own, kept) if at is not None]
+        return min(found) if found else None
+
+    def _kept(self, plugin: Plugin, check: Check, inst: Instance, info: InstanceInfo, result: PassResult, reads: Reads, now: float,
+              connects: dict[str, tuple[str | None, bool]]) -> float | None:
+        key = connection_key(plugin.id, check.id, inst.name)
+        known, stored, legacy = reads.connection(inst.name, info)
+        if isinstance(stored, dict):
+            off = stamp_of(stored.get('off'))
+            kept = stored.get('at') if isinstance(stored.get('at'), str) else None
+            if off is not None and now - off <= RECONNECT_AFTER_S and kept is not None:
+                connects[key] = (kept, True)
+                return stamp_of(kept)
+            if read_any(result):
+                connects[key] = (iso(now), True)
+                return now
+            return None
+        if isinstance(stored, str):
+            return stamp_of(stored)
+        if legacy:
+            connects[key] = (LONG_AGO, False)
+            return 0.0
+        if read_any(result):
+            connects[key] = (iso(now), False)
+            return now
+        if not known:
+            connects[key] = (None, False)
+        return None
+
+    def forget(self, plugin_id: str, name: str) -> None:
+        plugin = self._plugin(plugin_id)
+        if plugin is None:
+            return
+        for _ in range(APPLY_ATTEMPTS):
+            state = self.store.load()
+            before = copy.deepcopy(state)
+            for check in plugin.checks:
+                went_off(state, connection_key(plugin_id, check.id, name), False, 0.0, True)
+            if state == before:
+                return
+            try:
+                self.store.save_state(state, before.get('rev', 0), before)
+            except Conflict:
+                continue
+            return
+        raise Conflict(self.store.rev()['rev'])
 
     def retire(self, plugin_id: str, target: 'InstanceInfo | str | None', now: float, check_id: str | None = None) -> int:
         plugin = self._plugin(plugin_id)
@@ -397,7 +499,7 @@ class Sweeper:
         items = [(old, msg('cards.rescoped', plugin=plugin.name, instance=old.name)), (promoted, msg('cards.rescoped', plugin=plugin.name, instance=new.name))]
         moved = tuple(c for c in plugin.checks if not c.once)
         kept = set().union(*(c.sections for c in plugin.checks if c.once))
-        return self._close(plugin, items, [None], now, f'{plugin.name} {old.name} {new.name}', touched=set().union(*(c.sections for c in moved)) - kept, among=moved)
+        return self._close(plugin, items, [None], now, f'{plugin.name} {old.name} {new.name}', touched=set().union(*(c.sections for c in moved)) - kept, among=moved, keep_connected=True)
 
     def revive(self, plugin_id: str, name: str | None, check_id: str | None = None, checks: Iterable[str] = ()) -> None:
         scopes = {check_id, *checks}
@@ -420,7 +522,7 @@ class Sweeper:
         return found.plugin if found is not None else None
 
     def _close(self, plugin: Plugin, items: list[tuple[InstanceInfo | None, str]], names: list[str | None], now: float, what: str, only: Check | None = None,
-               touched: set[str] | None = None, among: tuple[Check, ...] | None = None) -> int:
+               touched: set[str] | None = None, among: tuple[Check, ...] | None = None, keep_connected: bool = False, forget: bool = False) -> int:
         at = self.clock()
         checks = (only,) if only is not None else plugin.checks if among is None else among
         touched = set().union(*(c.sections for c in plugin.checks)) if touched is None else touched
@@ -437,8 +539,11 @@ class Sweeper:
                 for check in checks:
                     if not owned(check, info):
                         continue
+                    ran = pass_name(check, info) in (state.get('serverPasses') or {})
                     for table in ('sources', 'serverPasses'):
                         (state.get(table) or {}).pop(pass_name(check, info), None)
+                    if not keep_connected and info is not None:
+                        went_off(state, connection_key(plugin.id, check.id, info.name), ran, now, forget)
             state['retired'] = [t for t in tombs(state) if t['at'] >= at - RETIRED_KEEP_S] + [{'plugin': plugin.id, 'name': name, **mark, 'at': at} for name in names]
             if state.get('services'):
                 sections.finish(state)
@@ -588,7 +693,7 @@ class Sweeper:
             return self._refused(check, msg('sweeps.pass_sections'))
         if not isinstance(result.found, list) or not isinstance(result.status, str):
             return self._bad(check, 'card')
-        found = [{k: v for k, v in card.items() if k != SHOTS and not (check.once and k == 'cluster')} if isinstance(card, dict) else card for card in result.found]
+        found = [{k: v for k, v in card.items() if k not in (SHOTS, ALREADY_ACTIVE) and not (check.once and k == 'cluster')} if isinstance(card, dict) else card for card in result.found]
         for card in found:
             if not _text(card, CARD_TEXT) or not _storable(card) or not isinstance(card['sev'], str) or card['sev'] not in SEV_RANK or not _number(card.get('now')) or not isinstance(card.get('ranKey', ''), str):
                 return self._bad(check, 'card')

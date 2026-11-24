@@ -463,7 +463,7 @@ class SourceData:
 @dataclass(frozen=True)
 class Hooks:
     role_resolver: Callable[[dict, str], str | None] | None = None
-    settings_source: Callable[[Mapping[str, str]], dict] | None = None
+    settings_source: Callable[..., dict] | None = None
     oidc_token_request: Callable[[dict], dict] | None = None
     org_validators: Callable[[], dict] | None = None
     entitlement: Callable[[], str] | None = None

@@ -1,4 +1,7 @@
+import time
 import dataclasses
+
+import threading
 
 from fastapi.testclient import TestClient
 
@@ -332,3 +335,222 @@ def test_the_translated_assigned_note_keeps_working_with_the_mention(store: Stor
 
     # then
     assert note_texts(t) == [pack.messages['notes.state.assigned'].format(name='<@U1>') + pack.messages['notes.state.assigned_by'].format(who='paul.stone')]
+
+
+def named_assign(store: Store, members: list[dict], emails: dict, by: str = PAUL, email: str | None = None, name: str = 'Alice Smith', names: dict | None = None):
+    t = FakeSlack()
+    store.save({**state(anomaly(KEY, num=14, slackPost=POST)), 'initialized': True}, None)
+    api = FakeSlackApi(emails)
+    api.names.update(names or {})
+    api.members = members
+    slack = Slack('xoxb-test', '#ops', t, api)
+    ids = tagreport.SlackIds(slack)
+    people = tagreport.SlackPeople(slack, spawn=lambda job: job())
+    notes = StateNotes(store, slack, mention=ids.mention, name_of=ids.name, by_name=tagreport.name_mentions(people, ids))
+    a = Assigner(store, slack, settings(), BASE, notes, by_name=people.email_of)
+    return a.assign(KEY, name, email, by), t
+
+
+def slack_member(uid: str, email: str, real: str) -> dict:
+    return {'id': uid, 'name': email.split('@')[0], 'profile': {'email': email, 'real_name': real, 'display_name': ''}}
+
+
+def test_a_guessed_address_that_misses_falls_back_to_the_one_slack_member_with_that_name_for_the_note_and_the_message(store: Store):
+    # given
+    members = [slack_member('U1', 'a.smith@corp.example.com', 'Alice Smith'), slack_member('U2', 'bob@corp.example.com', 'Bob Reed')]
+
+    # when
+    out, t = named_assign(store, members, {'U1': 'a.smith@corp.example.com', 'U2': 'bob@corp.example.com'})
+
+    # then
+    assert out['dm'] == 'sent'
+    assert [p['channel'] for _, p in t.calls if not p.get('thread_ts')] == ['U1']
+    assert note_texts(t) == ['\U0001F464 Assigned: <@U1> · assigned by paul.stone']
+
+
+def test_a_guessed_address_that_misses_with_two_members_of_that_name_mentions_no_one_and_warns_once_without_the_name(store: Store, caplog):
+    # given
+    members = [slack_member('U1', 'a.smith@corp.example.com', 'Alice Smith'), slack_member('U2', 'alice@other.example.com', 'alice smith')]
+    emails = {'U1': 'a.smith@corp.example.com', 'U2': 'alice@other.example.com'}
+
+    # when
+    with caplog.at_level('WARNING'):
+        out, t = named_assign(store, members, emails)
+
+    # then
+    assert out['dm'] == 'none' and note_texts(t) == ['\U0001F464 Assigned: Alice Smith · assigned by paul.stone']
+    said = [r.getMessage() for r in caplog.records if r.name == 'skopax.tagreport']
+    assert len(said) == 1 and 'Alice' not in said[0] and 'Smith' not in said[0] and '11 characters' in said[0] and 'example.com' not in said[0]
+
+
+def test_a_guessed_address_that_resolves_to_another_person_is_never_replaced_by_the_name_match(store: Store):
+    # given
+    members = [slack_member('U1', 'alice.smith@example.com', 'Alice Jones'), slack_member('U2', 'a.smith@corp.example.com', 'Alice Smith')]
+    emails = {'U1': 'alice.smith@example.com', 'U2': 'a.smith@corp.example.com'}
+
+    # when
+    out, t = named_assign(store, members, emails, names={'U1': 'Alice Jones'})
+
+    # then
+    assert out['dm'] == 'none' and note_texts(t) == ['\U0001F464 Assigned: Alice Smith · assigned by paul.stone']
+
+
+def test_a_given_address_that_misses_does_not_fall_back_to_the_name(store: Store):
+    # given
+    members = [slack_member('U2', 'a.smith@corp.example.com', 'Alice Smith')]
+
+    # when
+    out, t = named_assign(store, members, {'U2': 'a.smith@corp.example.com'}, email='alice.smith@example.com')
+
+    # then
+    assert out['dm'] == 'none' and note_texts(t) == ['\U0001F464 Assigned: Alice Smith · assigned by paul.stone']
+
+
+def cold_assign(store: Store, jobs: list, caplog=None, patience: float = 0.5):
+    t = FakeSlack()
+    store.save({**state(anomaly(KEY, num=14, slackPost=POST)), 'initialized': True}, None)
+    api = FakeSlackApi({'U1': 'a.smith@corp.example.com'})
+    api.members = [slack_member('U1', 'a.smith@corp.example.com', 'Alice Smith')]
+    slack = Slack('xoxb-test', '#ops', t, api)
+    ids = tagreport.SlackIds(slack)
+    people = tagreport.SlackPeople(slack, spawn=jobs.append)
+    people.patience = patience
+    notes = StateNotes(store, slack, mention=ids.mention, name_of=ids.name, by_name=tagreport.name_mentions(people, ids))
+    return Assigner(store, slack, settings(), BASE, notes, by_name=people.email_of), t, people
+
+
+def test_a_cold_member_list_is_waited_for_a_moment_so_the_first_assignment_still_mentions(store: Store):
+    # given
+    jobs: list = []
+    a, t, _ = cold_assign(store, jobs)
+    starter = threading.Timer(0.1, lambda: jobs[0]())
+
+    # when
+    starter.start()
+    out = a.assign(KEY, 'Alice Smith', None, PAUL)
+    starter.join()
+
+    # then
+    assert out['dm'] == 'sent' and note_texts(t) == ['\U0001F464 Assigned: <@U1> · assigned by paul.stone']
+
+
+def test_warming_the_member_list_at_start_lets_the_first_assignment_mention_without_waiting(store: Store):
+    # given
+    jobs: list = []
+    a, t, people = cold_assign(store, jobs, patience=0)
+    people.lookup()
+    jobs.pop()()
+
+    # when
+    out = a.assign(KEY, 'Alice Smith', None, PAUL)
+
+    # then
+    assert out['dm'] == 'sent' and note_texts(t) == ['\U0001F464 Assigned: <@U1> · assigned by paul.stone']
+
+
+def test_a_loading_miss_does_not_use_up_the_warning_for_a_real_miss_later(caplog):
+    # given
+    api = FakeSlackApi({})
+    api.members = [slack_member('U1', 'a.smith@corp.example.com', 'Alice Smith'), slack_member('U2', 'alice@other.example.com', 'alice smith')]
+    jobs: list = []
+    people = tagreport.SlackPeople(Slack('xoxb-test', '#ops', FakeSlack(), api), spawn=jobs.append)
+    people.patience = 0
+
+    # when
+    with caplog.at_level('WARNING'):
+        people.email_of('Alice Smith')
+        jobs.pop()()
+        people.email_of('Alice Smith')
+        people.email_of('Alice Smith')
+
+    # then
+    said = [r.getMessage() for r in caplog.records if r.name == 'skopax.tagreport']
+    assert len(said) == 2 and said[0].endswith('loading') and said[1].endswith('several Slack members have that name')
+
+
+def test_the_dm_and_the_note_share_one_name_lookup(store: Store):
+    # given
+    asked: list[str] = []
+    store.save({**state(anomaly(KEY, num=14, slackPost=POST)), 'initialized': True}, None)
+    api = FakeSlackApi({'U1': 'a.smith@corp.example.com'})
+    api.names['U1'] = 'Alice Smith'
+    slack = Slack('xoxb-test', '#ops', FakeSlack(), api)
+    ids = tagreport.SlackIds(slack)
+
+    # when
+    def find(name):
+        asked.append(name)
+        return 'a.smith@corp.example.com' if len(asked) == 1 else None
+
+    notes = StateNotes(store, slack, mention=ids.mention, name_of=ids.name)
+    out = Assigner(store, slack, settings(), BASE, notes, by_name=find).assign(KEY, 'Alice Smith', None, PAUL)
+
+    # then
+    assert asked == ['Alice Smith'] and out['dm'] == 'sent' and out['thread'] is True
+
+
+def test_a_failing_mention_lookup_logs_no_address_and_no_name(store: Store, caplog):
+    # given
+    notes = StateNotes(store, Slack('xoxb-test', '#ops', FakeSlack(), FakeSlackApi()), mention=lambda email: (_ for _ in ()).throw(RuntimeError('boom alice.smith@example.com')))
+
+    # when
+    with caplog.at_level('WARNING'):
+        out = notes._mention('Alice Smith', 'alice.smith@example.com', True)
+
+    # then
+    assert out is None and caplog.records and all('alice' not in r.getMessage().lower() for r in caplog.records)
+
+
+def test_without_a_guessed_address_the_dm_and_the_note_still_share_one_name_lookup(store: Store):
+    # given
+    asked: list[str] = []
+    store.save({**state(anomaly(KEY, num=14, slackPost=POST)), 'initialized': True}, None)
+    api = FakeSlackApi({'U1': 'a.smith@corp.example.com'})
+    slack = Slack('xoxb-test', '#ops', FakeSlack(), api)
+    ids = tagreport.SlackIds(slack)
+
+    def find(name):
+        asked.append(name)
+        return 'a.smith@corp.example.com' if len(asked) == 1 else None
+
+    notes = StateNotes(store, slack, mention=ids.mention, name_of=ids.name)
+
+    # when
+    out = Assigner(store, slack, settings(), BASE, notes, by_name=find).assign(KEY, 'Alice Smith', None, 'token')
+
+    # then
+    assert asked == ['Alice Smith'] and out['thread'] is True
+
+
+def test_a_member_list_that_does_not_settle_is_waited_for_only_once_per_build(caplog):
+    # given
+    api = FakeSlackApi({})
+    jobs: list = []
+    people = tagreport.SlackPeople(Slack('xoxb-test', '#ops', FakeSlack(), api), spawn=jobs.append)
+    people.patience = 0.2
+    started = time.monotonic()
+
+    # when
+    people.email_of('Alice Smith')
+    people.email_of('Bob Reed')
+    people.email_of('Cara Lund')
+
+    # then
+    assert time.monotonic() - started < 0.5
+
+
+def test_a_failed_spawn_settles_the_wait_so_later_calls_do_not_wait():
+    # given
+    def broken(job):
+        raise RuntimeError('no thread')
+
+    people = tagreport.SlackPeople(Slack('xoxb-test', '#ops', FakeSlack(), FakeSlackApi({})), spawn=broken)
+    people.patience = 5
+
+    # when
+    started = time.monotonic()
+    first = people.email_of('Alice Smith')
+    second = people.email_of('Bob Reed')
+
+    # then
+    assert (first, second) == (None, None) and time.monotonic() - started < 1

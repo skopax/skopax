@@ -364,7 +364,7 @@ def test_a_draft_without_screenshots_posts_as_before(store: Store):
         send_now(client, store)
 
     # then
-    assert api.methods() == ['chat.getPermalink'] and kinds(post.posted[0])[-1] == 'context' and 'image' not in kinds(post.posted[0]) and 'api/screenshots' not in str(post.posted[0])
+    assert [m for m in api.methods() if m != 'users.list'] == ['chat.getPermalink'] and kinds(post.posted[0])[-1] == 'context' and 'image' not in kinds(post.posted[0]) and 'api/screenshots' not in str(post.posted[0])
     assert 'screenshots' not in store.anomaly(KEY)['slackDraft'] and 'screenshots' not in store.anomaly(KEY)['slackPost']
     assert slack_lines(store) == []
 

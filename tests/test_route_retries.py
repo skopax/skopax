@@ -418,3 +418,22 @@ def test_a_retried_card_and_a_new_push_to_the_same_route_in_one_pass_are_both_co
     # then
     assert sent == 2, 'the retry of one and the push of two both went to teams/tech'
     assert [r['key'] for r in store.route_retries()] == []
+
+
+def test_a_retry_is_dropped_once_its_card_is_marked_already_active(store: Store):
+    # given
+    t = Gone(403)
+    routes = routes_of(store, t, route('tech', TECH, keys='log|*'), old=False, min_sev='warn')
+    store.save(state(open_card('log|a|ERROR|one')), None)
+    routes.deliver([], NOW, pushed=store.load()['anomalies'])
+    routes.deliver([], NOW + 30)
+    store.anomalies.update_one({'_id': 'log|a|ERROR|one'}, {'$set': {'alreadyActive': {'since': '2026-10-01T00:00:00Z', 'source': 'Zabbix'}}})
+    t.down = False
+    tried = len(t.calls)
+
+    # when
+    sent = routes.deliver([], NOW + 600)
+
+    # then
+    assert sent == 0 and len(t.calls) == tried
+    assert store.route_retries() == []

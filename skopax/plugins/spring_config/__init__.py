@@ -19,6 +19,7 @@ ENV_LABEL = 'SPRING_CONFIG_LABEL'
 ENV_USER = 'SPRING_CONFIG_USER'
 ENV_PASSWORD = 'SPRING_CONFIG_PASSWORD'
 ENV_MAP = 'SPRING_CONFIG_MAP'
+ENV_TEMPLATES = 'SPRING_CONFIG_TEMPLATES'
 DEFAULT_PROFILE = 'default'
 TIMEOUT_S = 4
 REFETCH_S = 15 * 60
@@ -30,6 +31,8 @@ DEPTH_MAX = 20
 SETTING_ID = re.compile(r'[a-z][a-z0-9-]*(\.[a-z0-9-]+)+')
 SEGMENT = re.compile(r'[a-z][a-z0-9-]*')
 NAME_SEGMENT = re.compile(r'[a-z0-9][a-z0-9-]*')
+PLACEHOLDER_KEY = re.compile(r'[^\s${}:]+')
+TARGET_SHAPE = re.compile(r'[a-z0-9][a-z0-9./-]{0,199}')
 IDENTITY = ('plugin', 'name')
 OLD_CONNECTION_KEYS = ('gitlab.token', 'gitlab.group', 'jira.url', 'jira.email', 'jira.api-token', 'jira.cloud-id', 'slack.bot-token', 'slack.app-token')
 log = logging.getLogger('skopax.plugins.spring_config')
@@ -79,35 +82,88 @@ class Unresolved(Exception):
         self.key = key
 
 
+def target_of(target: str, said: str) -> tuple[str, ...]:
+    if not target:
+        raise BadMap(f'{said} has an empty target')
+    if target in OLD_CONNECTION_KEYS:
+        raise BadMap(f'{said}: {target} is a connection key that is not read as a setting; map it to <plugin>/<instance>/<field>')
+    if SETTING_ID.fullmatch(target):
+        return ('setting', target)
+    pieces = target.split('/')
+    if len(pieces) != 3 or not SEGMENT.fullmatch(pieces[0]) or not NAME_SEGMENT.fullmatch(pieces[1]) or not SEGMENT.fullmatch(pieces[2]):
+        raise BadMap(f'{said}: the target {target!r} is not a setting id or <plugin>/<instance>/<field>')
+    if pieces[2] in IDENTITY:
+        raise BadMap(f'{said}: the field {pieces[2]} names the instance and cannot be mapped')
+    return ('instance', *pieces)
+
+
 def map_of(raw: str) -> list[tuple[str, tuple[str, ...]]]:
     out: list[tuple[str, tuple[str, ...]]] = []
-    keys: set[str] = set()
     targets: set[tuple[str, ...]] = set()
     for part in (raw or '').split(','):
         entry = part.strip()
         if not entry:
             continue
-        key, sep, target = (x.strip() for x in entry.partition('='))
-        if not sep or not key or not target:
+        key, sep, listed = (x.strip() for x in entry.partition('='))
+        if not sep or not key or not listed:
             raise BadMap(f'{ENV_MAP} entry {entry.split("=")[0].strip() or "(no key)"!r} is not <config key>=<target>')
-        if target in OLD_CONNECTION_KEYS:
-            raise BadMap(f'{ENV_MAP} key {key!r}: {target} is a connection key that is not read as a setting; map it to <plugin>/<instance>/<field>')
-        if SETTING_ID.fullmatch(target):
-            where: tuple[str, ...] = ('setting', target)
-        else:
-            pieces = target.split('/')
-            if len(pieces) != 3 or not SEGMENT.fullmatch(pieces[0]) or not NAME_SEGMENT.fullmatch(pieces[1]) or not SEGMENT.fullmatch(pieces[2]):
-                raise BadMap(f'{ENV_MAP} key {key!r}: the target {target!r} is not a setting id or <plugin>/<instance>/<field>')
-            where = ('instance', *pieces)
-        if where[0] == 'instance' and where[3] in IDENTITY:
-            raise BadMap(f'{ENV_MAP} key {key!r}: the field {where[3]} names the instance and cannot be mapped')
-        if key in keys:
-            raise BadMap(f'{ENV_MAP} key {key!r} is mapped more than once')
+        said = f'{ENV_MAP} key {key!r}'
+        for target in (x.strip() for x in listed.split('|')):
+            where = target_of(target, said)
+            if where in targets:
+                raise BadMap(f'{said}: the target {target!r} is already mapped')
+            targets.add(where)
+            out.append((key, where))
+    return out
+
+
+def pieces_of(text: str, said: str) -> tuple[tuple[str, str], ...]:
+    out: list[tuple[str, str]] = []
+    i = 0
+    while True:
+        found = text.find('${', i)
+        if found < 0:
+            out.append(('text', text[i:]))
+            break
+        end = text.find('}', found + 2)
+        body = text[found + 2:end] if end >= 0 else ''
+        if end < 0 or not PLACEHOLDER_KEY.fullmatch(body):
+            raise BadMap(f'{said}: a placeholder is not ${{<config key>}}; only ${{key}} is read, with no default, nesting or other form')
+        out.append(('text', text[i:found]))
+        out.append(('key', body))
+        i = end + 1
+    pieces = tuple(p for p in out if p[1])
+    if not any(kind == 'key' for kind, _ in pieces):
+        raise BadMap(f'{said} has no ${{<config key>}} placeholder')
+    return pieces
+
+
+def templates_of(raw: str, taken: set[tuple[str, ...]] | None = None, secret: Callable[[tuple[str, ...]], bool] = lambda where: False) -> list[tuple[tuple[str, ...], tuple[tuple[str, str], ...]]]:
+    out: list[tuple[tuple[str, ...], tuple[tuple[str, str], ...]]] = []
+    targets = set(taken or ())
+    for number, line in enumerate((raw or '').splitlines(), 1):
+        entry = line.strip()
+        if not entry:
+            continue
+        target, sep, text = entry.partition('=')
+        target, text = target.strip(), text.strip()
+        if not sep or not TARGET_SHAPE.fullmatch(target):
+            raise BadMap(f'{ENV_TEMPLATES} line {number} does not start with <plugin>/<instance>/<field>=')
+        try:
+            where = target_of(target, '')
+        except BadMap:
+            raise BadMap(f'{ENV_TEMPLATES} line {number} does not start with a valid <plugin>/<instance>/<field>=') from None
+        said = f'{ENV_TEMPLATES} line {number} target {target!r}'
+        if not text:
+            raise BadMap(f'{said} has an empty template')
+        if len(text) > VALUE_MAX:
+            raise BadMap(f'{said}: the template is longer than {VALUE_MAX} characters')
         if where in targets:
-            raise BadMap(f'{ENV_MAP} key {key!r}: the target {target!r} is already mapped')
-        keys.add(key)
+            raise BadMap(f'{said} is already mapped')
+        if not secret(where):
+            raise BadMap(f'{said} is not a secret field; a template can fill only a secret field of a loaded plug-in, and only when core tells the source the field kinds')
         targets.add(where)
-        out.append((key, where))
+        out.append((where, pieces_of(text, said)))
     return out
 
 
@@ -216,6 +272,7 @@ class Setup:
         self.user = env.get(ENV_USER) or ''
         self.password = env.get(ENV_PASSWORD) or ''
         self.mapping = env.get(ENV_MAP) or ''
+        self.templates = env.get(ENV_TEMPLATES) or ''
 
     def checked(self) -> 'Setup':
         parts = urlsplit(self.url)
@@ -225,12 +282,12 @@ class Setup:
             raise BadSetup(f'{ENV_APP} is required')
         if bool(self.user) != bool(self.password):
             raise BadSetup(f'{ENV_USER} and {ENV_PASSWORD} go together')
-        if not self.mapping.strip():
-            raise BadSetup(f'{ENV_MAP} is required')
+        if not self.mapping.strip() and not self.templates.strip():
+            raise BadSetup(f'{ENV_MAP} or {ENV_TEMPLATES} is required')
         return self
 
     def identity(self) -> tuple:
-        return (self.url, self.app, self.profile, self.label, self.user, self.password, self.mapping)
+        return (self.url, self.app, self.profile, self.label, self.user, self.password, self.mapping, self.templates)
 
     def address(self) -> str:
         segments = [self.app, self.profile] + ([self.label.replace('/', '(_)')] if self.label else [])
@@ -263,24 +320,93 @@ def fetch(setup: Setup, transport: Transport) -> list:
     return sources
 
 
-def build(sources: list, mapping: list[tuple[str, tuple[str, ...]]], env: Mapping[str, str]) -> dict:
+Template = tuple[tuple[str, ...], tuple[tuple[str, str], ...]]
+
+
+def build(sources: list, mapping: list[tuple[str, tuple[str, ...]]], env: Mapping[str, str], templates: list[Template] | None = None) -> dict:
     config = flatten(sources)
+    known: dict[str, str | None] = {}
+    why: dict[str, str] = {}
+
+    def value_of(key: str) -> str | None:
+        if key not in known:
+            known[key] = None
+            if key not in config:
+                why[key] = 'is not in the config server answer'
+            else:
+                try:
+                    known[key] = resolve_value(config[key], config, env)
+                except Unresolved:
+                    why[key] = 'has a placeholder in its value that cannot be resolved'
+        return known[key]
+
     values: dict[str, str] = {}
     instances: dict[tuple[str, str], dict[str, str]] = {}
-    for key, where in mapping:
-        if key not in config:
-            log.warning('%s: the key %s is not in the config server answer, so it is left out', NAME, key)
-            continue
-        try:
-            value = resolve_value(config[key], config, env)
-        except Unresolved:
-            log.warning('%s: the key %s is left out because a placeholder in its value cannot be resolved', NAME, key)
-            continue
+
+    def place(where: tuple[str, ...], value: str) -> None:
         if where[0] == 'setting':
             values[where[1]] = value
         else:
             instances.setdefault((where[1], where[2]), {'plugin': where[1], 'name': where[2]})[where[3]] = value
+
+    warned: set[str] = set()
+    for key, where in mapping:
+        value = value_of(key)
+        if value is None:
+            if key not in warned:
+                warned.add(key)
+                log.warning('%s: the key %s %s, so it is left out', NAME, key, why[key])
+            continue
+        place(where, value)
+    for where, pieces in templates or ():
+        target = '/'.join(where[1:])
+        out: list[str] = []
+        for kind, text in pieces:
+            if kind == 'text':
+                out.append(text)
+                continue
+            value = config.get(text)
+            if value is None:
+                log.warning('%s: the template for %s is left out because the key %s is not in the config server answer', NAME, target, text)
+                break
+            out.append(value)
+        else:
+            if sum(len(x) for x in out) > VALUE_MAX:
+                log.warning('%s: the template for %s is left out because its value is longer than %s characters', NAME, target, VALUE_MAX)
+                continue
+            place(where, ''.join(out))
     return {'values': values, 'instances': list(instances.values())}
+
+
+def kind_of(where: tuple[str, ...], field_kind: Callable[[str, str], str | None] | None) -> str | None:
+    if where[0] != 'instance':
+        return 'setting'
+    if field_kind is None:
+        return None
+    try:
+        found = field_kind(where[1], where[3])
+    except Exception:
+        return None
+    return found if isinstance(found, str) else None
+
+
+def secret_field(where: tuple[str, ...], field_kind: Callable[[str, str], str | None] | None) -> bool:
+    return kind_of(where, field_kind) == 'secret'
+
+
+def spread_keys(mapping: list[tuple[str, tuple[str, ...]]]) -> dict[str, list[tuple[str, ...]]]:
+    grouped: dict[str, list[tuple[str, ...]]] = {}
+    for key, where in mapping:
+        grouped.setdefault(key, []).append(where)
+    return {key: targets for key, targets in grouped.items() if len(targets) > 1}
+
+
+def check_spread(mapping: list[tuple[str, tuple[str, ...]]], field_kind: Callable[[str, str], str | None]) -> None:
+    for key, targets in spread_keys(mapping).items():
+        kinds = {kind_of(where, field_kind) for where in targets} - {None}
+        if 'secret' in kinds and len(kinds) > 1:
+            names = ', '.join(where[1] if where[0] == 'setting' else '/'.join(where[1:]) for where in targets)
+            raise BadMap(f'{ENV_MAP} key {key!r} fills both secret and non-secret fields ({names}); a key can fill several targets only when all are secret or none is')
 
 
 class SpringConfig:
@@ -293,19 +419,28 @@ class SpringConfig:
         self._retry = 0.0
         self._error: type[SpringConfigError] | None = None
         self._said = ''
+        self._unchecked: list[str] = []
         self._lock = threading.Lock()
 
-    def __call__(self, env: Mapping[str, str]) -> dict | None:
+    def __call__(self, env: Mapping[str, str], field_kind: Callable[[str, str], str | None] | None = None) -> dict | None:
         if not (env.get(ENV_URL) or '').strip():
             return None
         try:
             setup = Setup(env).checked()
             mapping = map_of(setup.mapping)
+            templates = templates_of(setup.templates, {where for _, where in mapping}, lambda where: secret_field(where, field_kind))
+            if field_kind is not None:
+                check_spread(mapping, field_kind)
         except SpringConfigError as e:
             if e.reason != self._said:
                 self._said = e.reason
                 log.warning('%s: %s', NAME, e.reason)
             raise
+        if field_kind is None:
+            unchecked = sorted(spread_keys(mapping))
+            if unchecked and unchecked != self._unchecked:
+                log.warning('%s: core did not tell the field kinds, so it cannot be checked that the keys %s fill only secret or only non-secret fields', NAME, ', '.join(unchecked))
+            self._unchecked = unchecked
         with self._lock:
             now = self.clock()
             if self._identity != setup.identity():
@@ -315,7 +450,7 @@ class SpringConfig:
             if self._error is not None and now < self._retry:
                 raise self._error('the last read failed; the next try waits')
             try:
-                found = build(fetch(setup, self.transport), mapping, env)
+                found = build(fetch(setup, self.transport), mapping, env, templates)
             except SpringConfigError as e:
                 first = self._error is None
                 self._error, self._retry = type(e), now + RETRY_S
@@ -334,7 +469,7 @@ PLUGIN = Plugin(
     setup=PluginSetup(
         steps=(
             'This plug-in has no form. Set SPRING_CONFIG_URL to the config server address and SPRING_CONFIG_APP to the application name; SPRING_CONFIG_PROFILE and SPRING_CONFIG_LABEL are optional.',
-            'If the server asks for a sign-in, set SPRING_CONFIG_USER and SPRING_CONFIG_PASSWORD together. Set SPRING_CONFIG_MAP to the comma list of config key=Skopax target entries to read, then restart Skopax.',
+            'If the server asks for a sign-in, set SPRING_CONFIG_USER and SPRING_CONFIG_PASSWORD together. Set SPRING_CONFIG_MAP to the comma list of config key=Skopax target entries to read (key=a|b fills several targets), and SPRING_CONFIG_TEMPLATES for fields built from several keys, then restart Skopax.',
         ),
         docs='https://docs.spring.io/spring-cloud-config/reference/server.html',
         docs_label='Spring Cloud Config Server',
