@@ -39,11 +39,18 @@ def finding_rows(row: dict) -> list[dict]:
     return [text_block(f"**{msg('routes.finding')}:** {escaped(line)}" if i == 0 else escaped(line), size='Small') for i, line in enumerate(lines)]
 
 
+def thread_rows(card: dict) -> list[dict]:
+    bullets = [b for b in ((card or {}).get('threadSummary') or {}).get('bullets') or [] if isinstance(b, str) and b.strip()][:6]
+    if not bullets:
+        return []
+    return [text_block(f"**{msg('routes.thread')}:**", size='Small')] + [text_block('\u2022 ' + escaped(b), size='Small') for b in bullets]
+
+
 def card_rows(message: dict) -> list[dict]:
     blocks = []
     for c in message.get('cards') or []:
         head = f"{sev_label(c.get('sev'))}{DOT}**{escaped(c.get('svc') or '-')} / {escaped(c.get('label') or '?')}**" + (f"{DOT}#{c['number']}" if c.get('number') else '')
-        blocks += [text_block(head, separator=True)] + ([text_block(escaped(c['cameBack']), weight='Bolder', size='Small')] if c.get('cameBack') else []) + [text_block(escaped(c.get('what')), isSubtle=True, size='Small')] + finding_rows(c) + [
+        blocks += [text_block(head, separator=True)] + ([text_block(escaped(c['cameBack']), weight='Bolder', size='Small')] if c.get('cameBack') else []) + [text_block(escaped(c.get('what')), isSubtle=True, size='Small')] + finding_rows(c) + thread_rows(c) + [
                    text_block(link(msg('routes.open'), c.get('link') or '') + DOT + link(msg('routes.chat'), c.get('chat') or ''), size='Small')]
     if message.get('more'):
         blocks.append(text_block(msg('routes.more', count=message['more']) + DOT + link(msg('routes.all'), message.get('board') or ''), size='Small'))
@@ -78,7 +85,7 @@ def line_row(message: dict, line: dict, first: bool) -> dict:
 
 def business_rows(message: dict) -> list[dict]:
     lines = [line for line in message.get('lines') or [] if isinstance(line, dict)]
-    return [line_row(message, line, i == 0) for i, line in enumerate(lines)] + kid_rows(message) + [links_row(message)]
+    return [line_row(message, line, i == 0) for i, line in enumerate(lines)] + kid_rows(message) + thread_rows(message.get('card')) + [links_row(message)]
 
 
 def fixed_rows(message: dict) -> list[dict]:

@@ -17,6 +17,7 @@ class FakeSlackApi:
         self.names: dict[str, str] = {}
         self.members: list[dict] = []
         self.page_size = 200
+        self.repeat_parent = False
         self.calls: list[tuple[str, dict]] = []
         self.sleeps: list[float] = []
 
@@ -40,7 +41,15 @@ class FakeSlackApi:
             email = self.emails.get(payload['user'])
             return {'ok': True, 'user': {'id': payload['user'], 'profile': {'email': email} if email else {}}}
         if method == 'conversations.replies':
-            return {'ok': True, 'messages': list(self.thread)}
+            oldest = payload.get('oldest')
+            found = [m for m in self.thread if not oldest or m.get('ts') == payload.get('ts') or float(m.get('ts') or 0) > float(oldest)]
+            start = int(payload.get('cursor') or 0)
+            end = start + min(int(payload.get('limit') or len(found) or 1), self.page_size)
+            more = end < len(found)
+            page = found[start:end]
+            if self.repeat_parent and start and found and found[0].get('ts') == payload.get('ts'):
+                page = [found[0]] + page
+            return {'ok': True, 'messages': page, 'has_more': more, 'response_metadata': {'next_cursor': str(end) if more else ''}}
         if method == 'users.lookupByEmail':
             found = next((u for u, e in self.emails.items() if e == payload['email']), None)
             if not found:

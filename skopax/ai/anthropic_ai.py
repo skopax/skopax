@@ -35,7 +35,13 @@ def answer_text(content) -> str:
     return ''.join(parts).strip()
 
 
+ALWAYS_THINKING = ('claude-fable', 'claude-mythos')
+THINKING_ROOM = 8000
+
+
 def thinking_off(model: str) -> dict:
+    if model.startswith(ALWAYS_THINKING):
+        return {'type': 'adaptive'}
     return {'type': 'disabled'} if model.startswith('claude-haiku') else {'type': 'between_tools'}
 
 
@@ -64,6 +70,7 @@ class AnthropicAi:
 
     def once(self, model: str, system: str, messages: list[dict], max_tokens: int, effort: str, thinking: str = THINK_OFF, schema: dict | None = None) -> Turn:
         output = {'effort': effort} | ({'format': {'type': 'json_schema', 'schema': schema}} if schema is not None else {})
-        think = {'type': 'disabled'} if thinking == THINK_OFF else thinking_off(model)
+        think = {'type': 'adaptive'} if model.startswith(ALWAYS_THINKING) else {'type': 'disabled'} if thinking == THINK_OFF else thinking_off(model)
         return tracing.generation(self.provider, 'once', model, system, messages,
-                                  lambda: turn_of(self.client.messages.create(model=model, max_tokens=max_tokens, system=system, messages=messages, thinking=think, output_config=output), model))
+                                  lambda: turn_of(self.client.messages.create(model=model, max_tokens=max_tokens + (THINKING_ROOM if model.startswith(ALWAYS_THINKING) else 0), system=system, messages=messages,
+                                                                              thinking=think, output_config=output), model))

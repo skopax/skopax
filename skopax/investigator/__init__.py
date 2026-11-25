@@ -9,7 +9,7 @@ from collections.abc import Callable
 
 import anthropic
 
-from skopax import followup, history, information, tracing
+from skopax import followup, history, information, severity, tracing
 from skopax.ai import ModelSetting, key_for, maker
 from skopax.aikey import ClientBox
 from skopax.config import Setting, Settings
@@ -180,9 +180,18 @@ class Investigator:
     def chat_max_tool_calls(self) -> int:
         return self.chat_max_tool_calls_set or self.slack_max_tool_calls
 
+    def card_model(self, sevs) -> str:
+        worst = severity.worst(sevs)
+        chosen = self.settings.investigate_model_critical if worst == severity.CRIT else self.settings.investigate_model_high if worst == severity.HIGH else ''
+        return chosen if pricing.known(chosen) and pricing.provider_of(chosen) == self.provider else self.model
+
+    def overrides(self) -> dict:
+        return {name: self.card_model({sev}) for name, sev, field in (('modelCritical', severity.CRIT, 'investigate_model_critical'), ('modelHigh', severity.HIGH, 'investigate_model_high'))
+                if getattr(self.settings, field, '')}
+
     def info(self) -> dict:
         last = self.store.list_investigations(None, 1)
-        return {'mode': self.mode, 'enabled': self.enabled, 'model': self.model, 'effort': self.effort, 'maxToolCalls': self.max_tool_calls, 'rooms': self.rooms,
+        return {'mode': self.mode, 'enabled': self.enabled, 'model': self.model, **self.overrides(), 'effort': self.effort, 'maxToolCalls': self.max_tool_calls, 'rooms': self.rooms,
                 'slackModel': self.slack_model, 'slackEffort': self.slack_effort, 'slackMaxToolCalls': self.slack_max_tool_calls, 'chatEffort': self.chat_effort, 'chatMaxToolCalls': self.chat_max_tool_calls, 'stopped': self.store.investigator_stop(),
                 'spentToday': round(self.store.spent(clock.day(self.clock())), 2), 'cap': self.cap, 'lastRun': last[0]['startedAt'] if last else None}
 
@@ -222,8 +231,9 @@ class Investigator:
         since = epoch_iso(now - LIMIT_WINDOW_S)
         limits = {'slackAsks': self.store.count_actions('ask', since, source='slack'), 'slackAskCap': self.slack_ask_cap, 'gateCalls': self.store.count_gate_calls(since), 'gateCap': GATE_HOURLY_CAP,
                   'spentToday': round(self.store.spent(clock.day(now)), 2), 'cap': self.cap, 'askers': self.store.askers(since)}
+        overrides = self.overrides()
         return {'at': epoch_iso(now), 'mode': self.mode, 'enabled': self.enabled, 'halted': halted, 'problem': self._problem(halted), 'rooms': rooms, 'unplaced': [r for r in runs if r['id'] not in placed],
-                'waiting': waiting, 'recent': recent, 'limits': limits}
+                'waiting': waiting, 'recent': recent, 'limits': limits} | ({'model': self.model, 'modelOverrides': overrides} if overrides else {})
 
     def _problem(self, halted: str | None) -> str | None:
         if self.mode == 'off' or halted == 'off':
@@ -489,8 +499,9 @@ class Investigator:
                 cards = [c for c in cards if c['key'] in keys]
             report = self.store.deploy_report(report_id) if report_id else None
             cards = self._with_verdicts(cards)
+            model = self.model if ask or report or review else self.card_model(c.get('sev') for c in cards)
             record = {'id': run_id, 'mode': mode, 'trigger': trigger, 'actionId': action['id'] if action else None,
-                      'keys': keys, 'pod': self.owner, 'room': (lease or (LEASE_ID, self.owner))[0], 'startedAt': epoch_iso(now), 'model': quick_model if quick else self.slack_model if review else self.model, 'effort': (self.chat_effort if chat_ask else self.slack_effort) if quick else self.slack_effort if review else self.effort, 'outcome': 'running'}
+                      'keys': keys, 'pod': self.owner, 'room': (lease or (LEASE_ID, self.owner))[0], 'startedAt': epoch_iso(now), 'model': quick_model if quick else self.slack_model if review else model, 'effort': (self.chat_effort if chat_ask else self.slack_effort) if quick else self.slack_effort if review else self.effort, 'outcome': 'running'}
             if ask:
                 record['ask'] = {'text': ask, 'by': action.get('requestedBy')}
                 if slack_ask:
@@ -527,7 +538,7 @@ class Investigator:
                         record['images'] = len(blocks)
                     toolbox.flags += scan('slack' if slack_ask else 'chat', prompt.flat(ask) + '\n' + prompt.thread_text(action.get('thread') or []))
                 else:
-                    config = RunConfig(self.model, self.effort, self.assess_max_tool_calls if report else self.max_tool_calls)
+                    config = RunConfig(model, self.effort, self.assess_max_tool_calls if report else self.max_tool_calls)
                     brief = prompt.brief(cards, {**action, 'report': report} if report else action, self.base_url, config.max_tool_calls, None if ask or report else self._announced(cards, now)) + ('' if ask else prompt.language_note(self.language))
                 if report:
                     toolbox.flags += scan('brief', brief)

@@ -197,8 +197,20 @@ def _auto_stamp(auto: dict) -> str:
     return max(str(auto.get(f) or '') for f in ('claimedAt', 'holdAt', 'failedAt'))
 
 
+THREAD_FIELDS = ('threadSummary', 'threadSummaryDay', 'threadSeenTs', 'threadSeenAt')
+
+
+def without_thread(card: dict) -> dict:
+    return {k: v for k, v in card.items() if k not in THREAD_FIELDS}
+
+
 def keep_slack_state(incoming: dict, stored: dict) -> dict:
     out = dict(incoming)
+    for f in THREAD_FIELDS:
+        if f in stored:
+            out[f] = stored[f]
+        elif stored:
+            out.pop(f, None)
     post, old_post = incoming.get('slackPost') or {}, stored.get('slackPost') or {}
     if old_post.get('at', '') > post.get('at', ''):
         out['slackPost'] = old_post
@@ -423,6 +435,7 @@ class Store:
         self.investigations.create_index([('keys', ASCENDING), ('startedAt', DESCENDING)])
         self.investigations.create_index([('mode', ASCENDING), ('startedAt', DESCENDING)])
         self.anomalies.create_index([('slackPost.channel', ASCENDING), ('slackPost.ts', ASCENDING)])
+        self.anomalies.create_index([('threadSeenAt', ASCENDING)], sparse=True)
         self.actions.create_index([('slack.channel', ASCENDING), ('slack.threadTs', ASCENDING)])
         self.slack_seen.create_index('atDt', expireAfterSeconds=SLACK_SEEN_KEEP_DAYS * 86400)
         self.slack_seen.create_index([('at', DESCENDING)])
@@ -742,7 +755,9 @@ class Store:
         for i, a in enumerate(items):
             fresh = {**keep_slack_state(a, stored.get(a['key'], {})), 'pos': i}
             if loaded is not None and a['key'] in before and a['key'] in stored:
-                self.anomalies.update_one({'_id': a['key']}, changes(before[a['key']], fresh))
+                diff = changes(without_thread(before[a['key']]), without_thread(fresh))
+                if diff:
+                    self.anomalies.update_one({'_id': a['key']}, diff)
             else:
                 self.anomalies.replace_one({'_id': a['key']}, {**fresh, '_id': a['key']}, upsert=True)
         if gone:
@@ -1762,6 +1777,29 @@ class Store:
             rev, _ = self._claim(None)
             self.anomalies.update_one({'_id': doc['_id']}, {'$set': {'slackPost': post}})
             return rev
+
+    def mark_thread_seen(self, key: str, ts: str, at: str) -> None:
+        self.anomalies.update_one({'_id': key}, {'$max': {'threadSeenTs': ts, 'threadSeenAt': at}})
+
+    def clear_thread_mark(self, key: str, upto: str) -> None:
+        self.anomalies.update_one({'_id': key, 'threadSeenTs': {'$lte': upto}}, {'$unset': {'threadSeenTs': '', 'threadSeenAt': ''}})
+
+    def thread_marks(self, quiet_before: str, gap_before: str, day: str, cap: int, limit: int) -> list[dict]:
+        held = [{'threadSummaryDay.attemptAt': {'$gt': gap_before}}, {'threadSummary.at': {'$gt': gap_before}}, {'threadSummaryDay.day': day, 'threadSummaryDay.n': {'$gte': cap}}]
+        return [_without_ids(d) for d in self.anomalies.find({'threadSeenAt': {'$lte': quiet_before}, '$nor': held}, sort=[('threadSeenAt', 1)], limit=limit)]
+
+    def claim_thread_attempt(self, key: str, day: str, at: str, gap_before: str, cap: int) -> bool:
+        gap = {'$or': [{'threadSummaryDay.attemptAt': {'$exists': False}}, {'threadSummaryDay.attemptAt': {'$lte': gap_before}}]}
+        same = self.anomalies.update_one({'_id': key, 'threadSummaryDay.day': day, 'threadSummaryDay.n': {'$lt': cap}, **gap},
+                                         {'$inc': {'threadSummaryDay.n': 1}, '$set': {'threadSummaryDay.attemptAt': at}})
+        if same.modified_count:
+            return True
+        return bool(self.anomalies.update_one({'_id': key, 'threadSummaryDay.day': {'$ne': day}, **gap}, {'$set': {'threadSummaryDay': {'day': day, 'n': 1, 'attemptAt': at}}}).modified_count)
+
+    def set_thread_summary(self, key: str, summary: dict, attempt: str) -> bool:
+        with self._locked():
+            self._claim(None)
+            return bool(self.anomalies.update_one({'_id': key, 'threadSummaryDay.attemptAt': attempt}, {'$set': {'threadSummary': summary}}).modified_count)
 
     def offer_card(self, key: str, kind: str, offer: dict) -> bool:
         with self._locked():

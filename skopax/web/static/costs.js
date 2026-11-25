@@ -1,4 +1,4 @@
-var COST_SOURCES = [{id: 'pod', label: 'Investigator runs'}, {id: 'page', label: 'Page requests'}, {id: 'slack', label: 'Slack requests'}, {id: 'chat', label: 'Chat'}, {id: 'assess', label: 'Assessments'}, {id: 'gate', label: 'Gate'}, {id: 'smalltalk', label: 'Small talk'}, {id: 'pagescan', label: 'Page scan'}, {id: 'selfreview', label: 'Self-review'}, {id: 'mcp', label: 'MCP'}];
+var COST_SOURCES = [{id: 'pod', label: 'Investigator runs'}, {id: 'page', label: 'Page requests'}, {id: 'slack', label: 'Slack requests'}, {id: 'chat', label: 'Chat'}, {id: 'assess', label: 'Assessments'}, {id: 'gate', label: 'Gate'}, {id: 'smalltalk', label: 'Small talk'}, {id: 'pagescan', label: 'Page scan'}, {id: 'selfreview', label: 'Self-review'}, {id: 'threadsummary', label: 'Thread summary'}, {id: 'mcp', label: 'MCP'}];
 var COST_PARTS = [{id: 'cacheRead', label: 'Cache read'}, {id: 'input', label: 'Input'}, {id: 'cacheWrite5m', label: 'Cache write'}, {id: 'cacheWrite1h', label: 'Cache write, long'}, {id: 'output', label: 'Output'}, {id: 'webSearch', label: 'Web search'}];
 var COST_RANGES = [1, 7, 30];
 var COSTS = null;
@@ -25,7 +25,7 @@ function costStrip(d) {
     costTile(d.days === 1 ? 'Today, all sources' : 'Last ' + d.days + ' days', costUsd(d.total.usd), plural(d.total.runs, 'run', 'runs') + ' · ' + plural(d.total.calls, 'call', 'calls')) +
     costTile('Avg per Slack request', costUsd(d.avg.slackAsk)) + costTile('Avg per investigator run', costUsd(d.avg.podRun)) + costTile('Cache hit share', costPct(d.total.cacheHit), 'cache reads over all prompt tokens') + '</div>';
 }
-var COST_RUN_SOURCES = COST_SOURCES.filter(function (s) { return s.id !== 'gate' && s.id !== 'smalltalk' && s.id !== 'pagescan' && s.id !== 'selfreview'; });
+var COST_RUN_SOURCES = COST_SOURCES.filter(function (s) { return s.id !== 'gate' && s.id !== 'smalltalk' && s.id !== 'pagescan' && s.id !== 'selfreview' && s.id !== 'threadsummary'; });
 function costModel(m) { return String(m || '?').replace(/^claude-/, ''); }
 function costTick(t, hour) {
   if (hour) return t.slice(11, 13) + ':00';

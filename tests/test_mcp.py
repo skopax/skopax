@@ -707,3 +707,18 @@ def test_mcp_refuses_while_the_user_lookup_fails_and_lets_the_answer_decide_afte
     assert (failing.status_code, failing.json()) == (503, {'detail': msg('db.unavailable')}), 'a failed lookup refuses instead of letting a maybe-disabled user in'
     assert (paused.status_code, paused.json()) == (503, {'detail': msg('db.unavailable')}) and looked_up == 1, 'inside the pause nobody passes and Mongo is not asked again'
     assert back.status_code == 403, 'once the lookup works the stored doc decides again'
+
+
+def test_investigator_status_names_the_card_model_overrides_only_when_set(store: Store):
+    # given
+    board(store, *cards())
+
+    # when
+    with mcp_client(store) as c:
+        plain, _ = call(c, token(), 'investigator_status')
+    with mcp_client(store, mcp_settings(investigate_model_critical='claude-opus-5')) as c:
+        overridden, _ = call(c, token(), 'investigator_status')
+
+    # then
+    assert 'card model' not in plain
+    assert 'card model claude-opus-5-5 \u00b7 Critical cards claude-opus-5\n' in overridden and 'High cards' not in overridden

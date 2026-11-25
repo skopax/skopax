@@ -20,7 +20,7 @@ from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import BY_KEY as FEATURE_OF
-from skopax.investigator.pricing import ALL_MODELS, LABELS as PROVIDER_LABELS, OPENAI, effective as effective_model, models_of, provider_of
+from skopax.investigator.pricing import ALL_MODELS, LABELS as PROVIDER_LABELS, OPENAI, effective as effective_model, known as known_model, models_of, provider_of
 from skopax.investigator import web as web_sites
 from skopax.investigator.prompt import writing_languages
 from skopax.messages import languages, msg
@@ -32,7 +32,9 @@ from skopax.store import iso, utc_now
 log = logging.getLogger('skopax.tunables')
 
 MODELS = ALL_MODELS
-MODEL_ROLES = {'investigate.model': 'card', 'investigate.slack-model': 'slack', 'chat.model': 'chat', 'investigate.gate-model': 'gate', 'self-review.model': 'review'}
+SAME_AS_CARD = 'Same as Card model'
+OVERRIDE_SEVS = {'investigate.model-critical': 'Critical', 'investigate.model-high': 'High'}
+MODEL_ROLES = {'investigate.model': 'card', 'investigate.model-critical': 'card', 'investigate.model-high': 'card', 'investigate.slack-model': 'slack', 'chat.model': 'chat', 'investigate.gate-model': 'gate', 'self-review.model': 'review'}
 OFF_WITH = {OPENAI: {'investigate.web-fetches': 'ai.off_openai', 'investigate.gate-effort': 'ai.off_openai_gate_effort'}}
 CHAT_CALLS_KEY = 'chat.max-tool-calls'
 WEB_DOMAINS_KEY = 'investigate.web-domains'
@@ -238,6 +240,10 @@ STATIC = (
     T('investigate.provider', 'ai_provider', INV, 'AI provider', 'Which AI provider every model call goes to: anthropic or openai, one for the whole install. Each has its own key and models; '
       'a change applies from the next run or ask, and a model of the other provider falls back to the default of this one until you pick another', 'choice', choices=AI_PROVIDERS),
     T('investigate.model', 'investigate_model', INV, 'Card model', 'Model for card runs, Investigate clicks, page asks and deploy-report assessments', 'choice', choices=MODELS),
+    T('investigate.model-critical', 'investigate_model_critical', INV, 'Model for Critical cards', 'Card model for Critical cards; empty uses the Card model', 'choice',
+      choices=('',) + MODELS, choice_labels={'': SAME_AS_CARD}),
+    T('investigate.model-high', 'investigate_model_high', INV, 'Model for High cards', 'Card model for High cards; empty uses the Card model', 'choice',
+      choices=('',) + MODELS, choice_labels={'': SAME_AS_CARD}),
     T('investigate.effort', 'investigate_effort', INV, 'Card effort', 'Thinking effort of the card model', 'choice', choices=EFFORTS),
     T('investigate.slack-model', 'investigate_slack_model', INV, 'Slack model', 'Model for questions asked in Slack', 'choice', choices=MODELS),
     T('investigate.language', 'investigate_language', INV, 'Card language', 'Language of what the investigator writes on cards, in its Slack posts and on deploy reports: en (English), or a language a locale pack adds. Answers follow the language of the question', 'choice', choices=card_languages),
@@ -290,6 +296,7 @@ STATIC = (
     T('slack.user-ask-cap', 'slack_user_ask_cap', SLACK, 'Slack asks per person per hour', 'Questions one person can ask the bot per hour', 'int', 0, 50),
     T('slack.ask-channels', 'slack_ask_channels', SLACK, 'Channels that take questions', 'all, main (the channel cards are posted to), or channel ids separated by commas', 'text', items='channel'),
     T('slack.dm-chats', 'slack_dm_chats', SLACK, 'Direct message chats', 'Answers direct messages to the {product} bot like the Chat page: private, kept in the person\'s chats, within the chat messages per day', 'bool'),
+    T('slack.thread-summary', 'slack_thread_summary', SLACK, 'Summarise Slack threads onto cards', 'Writes a short summary of a card\'s Slack thread onto the card: corrections, decisions, who does what and open questions. It is updated after {product} answers in the thread and when the thread has been quiet for 30 minutes, with at least 3 messages from people, at most once per card per half hour and 6 times per card per day. The investigator reads it as leads to check. It uses the gate model, counts toward the AI spend and pauses while the investigator is off, stopped or at its daily spend cap', 'bool'),
     T('slack.thread-hours', 'slack_thread_hours', SLACK, 'Thread window (h)', 'A new card of a service posted in the last N hours goes into that thread; 0 posts each card on its own', 'float', 0, 72),
     T('slack.great-emoji', 'slack_great_emoji', SLACK, 'Thank-you emoji', 'The reaction the bot puts on a thank-you', 'text'),
     T('slack.remind-hours', 'slack_remind_hours', SLACK, 'Reminder after (h)', 'Reminds a posted card nobody acted on after N hours; 0 turns reminders off', 'float', 0, 168, live=False),
@@ -979,7 +986,7 @@ class Live:
         return out
 
     def refuse_other_provider(self, t: Tunable, value) -> None:
-        if not isinstance(value, str) or not t.choices or not set(choices_of(t)) <= set(MODELS):
+        if not isinstance(value, str) or not t.choices or not set(choices_of(t)) - {''} <= set(MODELS):
             return
         provider = self.current().ai_provider
         other = provider_of(value)
@@ -991,9 +998,13 @@ class Live:
         off = OFF_WITH.get(provider, {}).get(t.key)
         if off:
             out['off'] = msg(off)
-        if not out.get('choices') or not set(out['choices']) <= set(MODELS):
+        if t.key in OVERRIDE_SEVS and out['value'] and not known_model(out['value']) and provider_of(out['value']) in (provider, None):
+            out['choices'] = [''] + list(models_of(provider)) + [out['value']]
+            out['problem'] = msg('ai.model_unknown_override', model=out['value'], sev=OVERRIDE_SEVS[t.key], used=effective_model(provider, self.current().investigate_model, 'card'))
             return
-        out['choices'] = list(models_of(provider))
+        if not out.get('choices') or not set(out['choices']) - {''} <= set(MODELS):
+            return
+        out['choices'] = [''] * ('' in out['choices']) + list(models_of(provider))
         role = MODEL_ROLES.get(t.key, 'plugin')
         for part in ('base', 'default'):
             if isinstance(out.get(part), str) and provider_of(out[part]) not in (provider, None):
@@ -1006,8 +1017,8 @@ class Live:
         else:
             out['choices'] = out['choices'] + [out['value']]
             out['choiceLabels'] = {**out.get('choiceLabels', {}), out['value']: f"{out['value']} ({PROVIDER_LABELS[other]}, not used)"}
-            out['problem'] = msg('ai.model_other', model=out['value'], owner=PROVIDER_LABELS[other], provider=PROVIDER_LABELS[provider],
-                                 used=effective_model(provider, out['value'], MODEL_ROLES.get(t.key, 'plugin')))
+            used = effective_model(provider, self.current().investigate_model, 'card') if t.key in OVERRIDE_SEVS else effective_model(provider, out['value'], MODEL_ROLES.get(t.key, 'plugin'))
+            out['problem'] = msg('ai.model_other', model=out['value'], owner=PROVIDER_LABELS[other], provider=PROVIDER_LABELS[provider], used=used)
 
     def set_post_sev(self, value: str | None, by: str, old: str | None) -> dict:
         stored_old = self.overrides.get(CRIT_NOW_KEY)

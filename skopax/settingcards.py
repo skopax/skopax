@@ -19,7 +19,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     ),
     'Investigator': (
         ('Provider', ('investigate.provider',)),
-        ('Models', ('investigate.model', 'investigate.effort', 'investigate.slack-model', 'investigate.slack-effort', 'chat.model', 'chat.effort', 'investigate.gate-model', 'investigate.gate-effort')),
+        ('Models', ('investigate.model', 'investigate.effort', 'investigate.model-critical', 'investigate.model-high', 'investigate.slack-model', 'investigate.slack-effort', 'chat.model', 'chat.effort', 'investigate.gate-model', 'investigate.gate-effort')),
         ('Spend and limits', ('investigate.daily-usd', 'page.ask-cap', 'chat.max-chars', 'chat.daily-cap', 'mcp.dive-cap', 'investigate.max-cards', 'investigate.rooms',
                               'investigate.max-tool-calls', 'investigate.assess-max-tool-calls', 'investigate.slack-max-tool-calls', 'chat.max-tool-calls', 'screenshot.max-per-day')),
         ('Web', ('core.own-sites', 'investigate.web-domains', 'investigate.web-searches', 'investigate.web-fetches')),
@@ -29,7 +29,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     ),
     'Slack': (
         ('Channel and posting', ('slack.channel', 'slack.post-sev', 'slack.fallback-minutes', 'routes.wait-minutes', 'routes.slack-echo', 'slack.attach-screenshots', 'slack.push-user')),
-        ('Questions', ('slack.ask-cap', 'slack.user-ask-cap', 'slack.ask-channels', 'slack.dm-chats', 'slack.listen', 'slack.operator-cache-seconds')),
+        ('Questions', ('slack.ask-cap', 'slack.user-ask-cap', 'slack.ask-channels', 'slack.dm-chats', 'slack.thread-summary', 'slack.listen', 'slack.operator-cache-seconds')),
         ('Threads and reminders', ('slack.thread-hours', 'slack.remind-hours', 'slack.clear-note-minutes', 'slack.state-notes', 'slack.great-emoji')),
         ('Daily warnings', ('slack.warn-digest-at',)),
     ),

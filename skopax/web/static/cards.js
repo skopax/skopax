@@ -511,6 +511,16 @@ function techFold(line, inner) {
 }
 function bizTodo(a) { return !a.recommend && a.business && a.business.text && a.business.kind !== 'info'; }
 function bizSaid(a) { return !!(a.business && a.business.text && !bizTodo(a)); }
+function threadHtml(a) {
+  var t = a.threadSummary || {}, b = (t.bullets || []).filter(function (x) { return typeof x === 'string' && x.trim(); }).slice(0, 6);
+  if (!b.length) return '';
+  var meta = tx('updated {0} · {1} messages').replace('{0}', function () { return dayhm(t.at); }).replace('{1}', function () { return t.count || b.length; });
+  var link = /^https:\/\//.test(String(t.permalink || '')) ? '<a class="thread-link" href="' + esc(t.permalink) + '" target="_blank" rel="noopener">Slack thread ↗</a>' : '';
+  var li = function (x) { return '<li>' + esc(x) + '</li>'; };
+  var rest = b.slice(2);
+  var more = rest.length ? '<details class="thread-more" data-fold="thread"' + foldAttr('thread') + '><summary class="chev">' + esc(tx('Show {0} more').replace('{0}', rest.length)) + '</summary><ul class="thread-sum" data-no-tx>' + rest.map(li).join('') + '</ul></details>' : '';
+  return '<section class="card-thread"><h5>From the Slack thread<span class="h5n" data-no-tx>' + esc(meta) + '</span>' + link + '</h5><ul class="thread-sum" data-no-tx>' + b.slice(0, 2).map(li).join('') + '</ul>' + more + '</section>';
+}
 function whatHtml(a) {
   if (bizSaid(a)) return '<section class="card-what"><h5>What happened</h5><p class="biz-said">' + esc(a.business.text) + '</p></section>';
   return a.what ? '<section class="card-what"><h5>What happened</h5><p class="what">' + linkify(a.what) + '</p></section>' : '';
@@ -728,7 +738,7 @@ function anomCard(a, i, panel) {
     '<span class="c c-status">' + stateBadge(a) + (panel ? '' : warnMark(a)) + '</span><span class="c c-asg">' + asgTag(a) + '</span>' + (panel ? '' : '<span class="c c-age" title="' + esc(when) + '">' + esc(ageShort(a.firstSeen)) + '</span>') + '</div>' +
     runBanner(a.key) + '<div class="acts" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div></div>' +
     '<div class="inc-more" id="more-' + i + '" hidden>' + tabsHtml(a, i) + '<div class="cd-details" role="tabpanel" id="cdp-d-' + i + '" aria-labelledby="cdt-d-' + i + '"' + (CARD_TAB[a.key] === 'history' ? ' hidden' : '') + '>' +
-    cardState(a) + closingHtml(a) + (tags.rest ? '<div class="inc-tags">' + chipRow(tags.restList) + '</div>' : '') + whatHtml(a) + todoHtml(a, isOpen) + '<div class="last-act" hidden></div>' + bizHtml(a, i) +
+    cardState(a) + closingHtml(a) + (tags.rest ? '<div class="inc-tags">' + chipRow(tags.restList) + '</div>' : '') + threadHtml(a) + whatHtml(a) + todoHtml(a, isOpen) + '<div class="last-act" hidden></div>' + bizHtml(a, i) +
     (a.muted ? '<section class="muted-why"><h5>Muted</h5><p class="reason-line">' + esc(a.muted) + '</p></section>' : '') +
     techFold('<div class="line">' + line + '</div>' + causeHtml(a) + alreadyActiveHtml(a) + seenHtml(a) + (techTags ? '<div class="tech-tags">' + techTags + '</div>' : '') + '<div class="notif" data-i="' + i + '" data-key="' + esc(a.key) + '" hidden></div>', body(a, i)) + '</div>' + histPane(a, i) + '</div>';
   card.querySelector('.inc-title').addEventListener('click', function (e) {

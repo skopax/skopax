@@ -447,6 +447,13 @@ class Tools:
             lines.append('suspects: ' + '; '.join(clip(s, 200) for s in v['suspects']))
         if v.get('recommend'):
             lines.append(f"next: {clip(v['recommend'], 800)}")
+        thread = (card or {}).get('threadSummary') if isinstance((card or {}).get('threadSummary'), dict) else {}
+        bullets = [b for b in thread.get('bullets') or [] if isinstance(b, str) and b.strip()]
+        if bullets:
+            lines.append(f"slack thread summary ({thread.get('count') or '?'} messages, updated {thread.get('at') or '?'}):")
+            lines += [f'- {clip(b, 300)}' for b in bullets[:6]]
+            if str(thread.get('permalink') or '').startswith('https://'):
+                lines.append(f"thread: {thread['permalink']}")
         follow = next((x for x in (v.get('followUp'), (card or {}).get('followUp')) if isinstance(x, dict)), None)
         if follow and followup.line(follow):
             lines.append(f'follow-up: {followup.line(follow)}')
@@ -511,6 +518,9 @@ class Tools:
         lines = [f"Investigator: mode {b.get('mode')}" + ('' if b.get('enabled') else ' (off)') + (f" · halted: {b['halted']}" if b.get('halted') else ''),
                  f"spent today ${float(lim.get('spentToday') or 0):.2f} of ${float(lim.get('cap') or 0):.2f} · page asks this hour {lim.get('pageAsks', 0)}/{lim.get('pageAskCap', '?')}"
                  f" · your chat messages today {self.b.chat_used(user.name)}/{s.chat_daily_cap}"]
+        if b.get('modelOverrides'):
+            lines.append(f"card model {b.get('model')}" + ''.join(f" \u00b7 {label} cards {b['modelOverrides'][name]}" for name, label in (('modelCritical', 'Critical'), ('modelHigh', 'High'))
+                                                              if name in b['modelOverrides']))
         for room in b.get('rooms') or []:
             run = room.get('run')
             what = ('private chat' if run.get('trigger') == 'chat' else ', '.join(run.get('keys') or []) or '-') if run else ''

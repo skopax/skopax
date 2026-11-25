@@ -16,7 +16,7 @@ const USAGE = {since: iso(7 * 1440), runs: 4, usd: 2, turns: 30, usage: {input_t
   models: {'claude-opus-5-5': 30}, outcomes: {done: 4}, tools: [], keys: [], slowest: []};
 
 function money(parts) { const m = Object.assign({cacheRead: 0, input: 0, cacheWrite5m: 0, cacheWrite1h: 0, output: 0, webSearch: 0}, parts); m.total = PARTS.reduce((a, p) => a + m[p], 0); return m; }
-function zero() { return {pod: 0, page: 0, slack: 0, chat: 0, assess: 0, gate: 0, smalltalk: 0, pagescan: 0, selfreview: 0, mcp: 0}; }
+function zero() { return {pod: 0, page: 0, slack: 0, chat: 0, assess: 0, gate: 0, smalltalk: 0, pagescan: 0, selfreview: 0, threadsummary: 0, mcp: 0}; }
 function keysFor(days) {
   if (days === 1) return [...Array(24).keys()].map((h) => TODAY + 'T' + String(h).padStart(2, '0'));
   return [...Array(days).keys()].reverse().map((n) => new Date(Date.UTC(2026, 9, 24 - n)).toISOString().slice(0, 10));
@@ -301,14 +301,14 @@ async function spendPerDayStacksEverySourceWithALegendTooltipsAndATable() {
   assert.strictEqual(doc.querySelector('#costs-hit .cchart').getAttribute('aria-label'), 'Cache hit share per day, 7 days by source');
   assert.strictEqual(doc.querySelector('#costs-writes .cchart').getAttribute('aria-label'), 'Cache-write spend per day, 7 days by source, $0.50');
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-spend .clegend span')].map((s) => [s.textContent, s.querySelector('.sw').className]),
-    [['Investigator runs', 'sw s-pod'], ['Page requests', 'sw s-page'], ['Slack requests', 'sw s-slack'], ['Chat', 'sw s-chat'], ['Assessments', 'sw s-assess'], ['Gate', 'sw s-gate'], ['Small talk', 'sw s-smalltalk'], ['Page scan', 'sw s-pagescan'], ['Self-review', 'sw s-selfreview'], ['MCP', 'sw s-mcp']], 'the legend always lists all ten sources in slot order');
+    [['Investigator runs', 'sw s-pod'], ['Page requests', 'sw s-page'], ['Slack requests', 'sw s-slack'], ['Chat', 'sw s-chat'], ['Assessments', 'sw s-assess'], ['Gate', 'sw s-gate'], ['Small talk', 'sw s-smalltalk'], ['Page scan', 'sw s-pagescan'], ['Self-review', 'sw s-selfreview'], ['Thread summary', 'sw s-threadsummary'], ['MCP', 'sw s-mcp']], 'the legend always lists all eleven sources in slot order');
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-spend .cy span')].map((s) => s.textContent), ['$0.00', '$1.00', '$2.00', '$3.00']);
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-spend .cx span')].map((s) => s.textContent), ['18 Oct', '', '20 Oct', '', '22 Oct', '', '24 Oct'], 'seven days label every second one');
   const rows = [...doc.querySelectorAll('#costs-spend .ctable tbody tr')];
   assert.strictEqual(rows.length, 7);
-  assert.deepStrictEqual(cells(rows[6]), ['24 Oct', '$1.50', '$0.00', '$0.00', '$0.00', '$0.60', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'], 'the table view carries every value, MCP last');
+  assert.deepStrictEqual(cells(rows[6]), ['24 Oct', '$1.50', '$0.00', '$0.00', '$0.00', '$0.60', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'], 'the table view carries every value, MCP last');
   dom.window.close();
-  console.log('PASS spend per day stacks the ten sources in fixed colours with a legend, an axis, per-column tooltips and a table view');
+  console.log('PASS spend per day stacks the eleven sources in fixed colours with a legend, an axis, per-column tooltips and a table view');
 }
 
 async function theBySourceTableShowsSplitHitShareAverageAndModels() {
