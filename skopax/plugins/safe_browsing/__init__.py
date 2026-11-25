@@ -59,7 +59,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='web', description='Whether Google Safe Browsing lists your hosts as unsafe, read from the Safe Browsing API or the public site status page.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
     capabilities=Capabilities(hosts=('safebrowsing.googleapis.com', 'transparencyreport.google.com'), secrets=('api-key',)),
     fields=(Field('api-key', 'API key', 'secret', help='A Google API key with the Safe Browsing API enabled. Empty reads the public site status page of each host instead, '
                                                        'one host every few seconds, and the safebrowsing tool stays hidden from the investigator.'),

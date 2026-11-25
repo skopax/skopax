@@ -348,6 +348,30 @@ class AiKeyTestIn(BaseModel):
     key: str | None = Field(default=None, max_length=400)
 
 
+class AiModelIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    id: str = Field(max_length=200)
+    input: float | None = Field(default=None, ge=0, le=1000)
+    output: float | None = Field(default=None, ge=0, le=1000)
+
+
+class AiConnectionIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    baseUrl: str = Field(max_length=500)
+    key: str | None = Field(default=None, max_length=400)
+    models: list[AiModelIn] = Field(default_factory=list, max_length=50)
+    tools: bool = Field(default=True, strict=True)
+    images: bool = Field(default=False, strict=True)
+
+
+class AiConnectionTestIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    baseUrl: str | None = Field(default=None, max_length=500)
+    key: str | None = Field(default=None, max_length=400)
+    models: list[AiModelIn] | None = Field(default=None, max_length=50)
+    model: str | None = Field(default=None, max_length=200)
+
+
 class InstanceIn(BaseModel):
     model_config = ConfigDict(extra='forbid')
     name: str = Field(max_length=20)

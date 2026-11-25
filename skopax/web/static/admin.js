@@ -1,12 +1,12 @@
 var ADMIN_OK = false, ADMIN_ROLE = 'admin', ADMIN_WANTED = false, ADMIN = null, ADMIN_HIST = null, ADMIN_SEQ = 0, ADMIN_FIND = '', ADMIN_TALK = null;
-var ADMIN_NOTES = [], NOTES_SEQ = 0, FEATS = null, FEATS_SEQ = 0, AIKEY = null, OAIKEY = null, AIKEY_SEQ = 0, AI_TESTING = {anthropic: false, openai: false}, CHANGES_SEQ = 0;
+var ADMIN_NOTES = [], NOTES_SEQ = 0, FEATS = null, FEATS_SEQ = 0, AIKEY = null, OAIKEY = null, AIKEY_SEQ = 0, AI_TESTING = {anthropic: false, openai: false}, CHANGES_SEQ = 0, AIUSES = null, AICONN = null;
 var FEAT_PENDING = {}, FEAT_HELD = {}, FEAT_SAID = {}, FEAT_HOLD_MS = 15000;
 var TALK_NAMES = {'small-talk.enabled': 'Small talk replies', 'small-talk.hourly-cap': 'Small talk replies per hour', 'small-talk.rules': 'Small talk rules'};
 var ADMIN_FOLD = {}, ADMIN_HIST_SHOW = 10, ADMIN_HIST_STEP = 20, ADMIN_HIST_MAX = 200, ADMIN_CLIP = 140, ADMIN_LINE_MAX = 1000;
 var FEATURES_GROUP = 'Features', AI_GROUP = 'Investigator', SIGNIN_GROUP = 'Sign-in', MCP_GROUP = 'MCP', INSTANCES_GROUP = 'Workspaces', OTHER_SWITCHES = 'Other switches';
 var ADMIN_REVEAL = null, ADMIN_HIT_MS = 2000;
 var ADMIN_TITLES = {settings: 'Settings: the tunable settings', access: 'Access & sign-in: single sign-on, users, API tokens and MCP',
-  workspaces: 'Workspaces: the other workspaces the switcher opens', features: 'Features: core features to switch on or off', ai: 'Investigator: the AI provider, its API key and the investigator settings', changes: 'Changes: what was changed in Admin, with Revert'};
+  workspaces: 'Workspaces: the other workspaces the switcher opens', features: 'Features: core features to switch on or off', ai: 'Investigator: the AI providers and their keys, which model each use runs, and the investigator settings', changes: 'Changes: what was changed in Admin, with Revert'};
 function markAdminTab(id, on) {
   var tab = document.getElementById('tab-' + id);
   if (!tab) return;
@@ -36,6 +36,11 @@ function setAdminAccess(on) {
     FEAT_SAID = {};
     AIKEY = null;
     OAIKEY = null;
+    AIUSES = null;
+    AICONN = null;
+    AIU_EDIT = {};
+    AIU_PENDING = {};
+    AIU_SAID = {};
     if (typeof pqcClear === 'function') pqcClear();
     NOTES_SEQ++;
     adminNotes([]);
@@ -65,7 +70,7 @@ async function adminApi(method, path, body, signal, raw) {
   var headers = {'Accept': 'application/json'};
   if (body !== undefined) headers['Content-Type'] = raw || 'application/json';
   var r;
-  try { r = await fetch(path, {method: method, headers: headers, credentials: 'same-origin', body: body === undefined ? undefined : raw ? body : JSON.stringify(body), signal: signal}); } catch (e) {
+  try { var sent = fetch(path, {method: method, headers: headers, credentials: 'same-origin', body: body === undefined ? undefined : raw ? body : JSON.stringify(body), signal: signal}); r = await (method === 'GET' ? sent : workTrack(sent)); } catch (e) {
     if (!(e && e.name === 'AbortError')) failToast('the server did not answer (' + method + ' ' + path + ')');
     throw e;
   }
@@ -89,13 +94,14 @@ function adminFailed(box, what) {
 function adminItems() { return ADMIN && Array.isArray(ADMIN.items) ? ADMIN.items : []; }
 function featItems() { return FEATS ? FEATS.items : []; }
 function featKeys() { return featItems().map(function (f) { return f.key; }); }
+function adminCoveredKeys() { return typeof aiuCovered === 'function' ? aiuCovered() : {}; }
 function generalOf(items) {
-  var keys = featKeys();
-  return items.filter(function (i) { return [FEATURES_GROUP, AI_GROUP, SIGNIN_GROUP, MCP_GROUP, INSTANCES_GROUP].indexOf(i.group) < 0 && keys.indexOf(i.key) < 0; });
+  var keys = featKeys(), covered = adminCoveredKeys();
+  return items.filter(function (i) { return [FEATURES_GROUP, AI_GROUP, SIGNIN_GROUP, MCP_GROUP, INSTANCES_GROUP].indexOf(i.group) < 0 && keys.indexOf(i.key) < 0 && !covered[i.key]; });
 }
 function otherSwitches() {
-  var keys = featKeys();
-  return adminItems().filter(function (i) { return i.group === FEATURES_GROUP && keys.indexOf(i.key) < 0; });
+  var keys = featKeys(), covered = adminCoveredKeys();
+  return adminItems().filter(function (i) { return i.group === FEATURES_GROUP && keys.indexOf(i.key) < 0 && !covered[i.key]; });
 }
 function aiItems() { return adminItems().filter(function (i) { return i.group === AI_GROUP; }); }
 function featValid(f) { return !!f && typeof f.id === 'string' && typeof f.key === 'string'; }
@@ -173,9 +179,10 @@ async function loadAdmin() {
   var seq = ++ADMIN_SEQ, box = document.getElementById('admin');
   try {
     var r = await Promise.all([adminApi('GET', '/api/admin/settings'), adminApi('GET', '/api/admin/small-talk').catch(adminNone), adminApi('GET', '/api/admin/features').catch(adminNone),
-      adminApi('GET', '/api/admin/tags').catch(adminNone)]);
+      adminApi('GET', '/api/admin/tags').catch(adminNone), adminApi('GET', '/api/admin/ai-uses').catch(adminNone)]);
     if (seq !== ADMIN_SEQ) return;
     ADMIN = r[0]; ADMIN_TALK = r[1]; ADMIN_TAGS = r[3] && Array.isArray(r[3].tags) ? r[3] : null;
+    if (r[4] !== null) AIUSES = aiuOf(r[4]);
     if (r[2]) setFeats(r[2]);
     renderAdmin();
   } catch (e) {
@@ -204,11 +211,16 @@ async function loadFeatures() {
 async function loadAi(said, saidFor) {
   var seq = ++AIKEY_SEQ, box = document.getElementById('ai');
   try {
-    var r = await Promise.all([adminApi('GET', '/api/admin/anthropic-key'), adminApi('GET', '/api/admin/settings').catch(adminNone), adminApi('GET', '/api/admin/openai-key').catch(function () { return {failed: true}; })]);
+    var failed = function (e) { return {failed: true, code: e && e.code}; };
+    var r = await Promise.all([adminApi('GET', '/api/admin/anthropic-key'), adminApi('GET', '/api/admin/settings').catch(adminNone), adminApi('GET', '/api/admin/openai-key').catch(function () { return {failed: true}; }),
+      adminApi('GET', '/api/admin/ai-connections').catch(failed), adminApi('GET', '/api/admin/ai-uses').catch(failed)]);
     if (seq !== AIKEY_SEQ) return;
     AIKEY = keyStatus(r[0]);
     OAIKEY = r[2] && r[2].failed ? {failed: true} : keyStatus(r[2]);
     if (r[1]) ADMIN = r[1];
+    AICONN = aicOf(r[3]);
+    AIU_FAILED = !!(r[4] && r[4].failed && r[4].code !== 404);
+    AIUSES = r[4] && r[4].failed ? null : aiuOf(r[4]);
     markAdminCount();
     paintAiKey(said, saidFor);
     renderAiRows();
@@ -1112,15 +1124,19 @@ function adminValueOf(key) {
 }
 function cardModelItem() { return adminItems().filter(function (x) { return x.key === 'investigate.model'; })[0] || {}; }
 function cardModelProviderOf(model) { return (cardModelItem().modelProviders || {})[model] || null; }
+function cardModelKeyed(owner) { return (cardModelItem().keyedProviders || []).indexOf(owner) >= 0; }
 function cardModelActive() {
   var item = cardModelItem(), model = String(item.value || ''), provider = aiProvider(), owner = cardModelProviderOf(model);
-  return !owner || owner === provider ? model : (item.cardDefaults || {})[provider] || model;
+  if (!owner || owner === provider || (item.source !== 'default' && cardModelKeyed(owner))) return model;
+  return (item.cardDefaults || {})[provider] || model;
 }
 function cardModelFor(override) {
   var owner = cardModelProviderOf(override);
-  return override && owner && owner === aiProvider() ? override : cardModelActive();
+  return override && owner && (owner === aiProvider() || cardModelKeyed(owner)) ? override : cardModelActive();
 }
 function cardModelSummary() {
+  var rows = typeof aiuSummary === 'function' ? aiuSummary() : null;
+  if (rows) return rows;
   return 'Which model runs: Critical cards ' + cardModelFor(adminValueOf('investigate.model-critical')) + ' \u00b7 High cards ' + cardModelFor(adminValueOf('investigate.model-high')) +
     ' \u00b7 Warning and Info cards ' + cardModelActive();
 }
@@ -1128,8 +1144,10 @@ function renderAiRows(saved) {
   var box = document.getElementById('ai-rows');
   if (!box || !ADMIN) return;
   adminKeep(box, saved, function () {
-    var items = aiItems();
+    var covered = aiuCovered(), items = aiItems().filter(function (i) { return !covered[i.key]; });
     box.textContent = '';
+    if (AIU_FAILED) box.appendChild(aiuFailed());
+    if (AIUSES && AIUSES.length) box.appendChild(aiuSection());
     if (!items.length) return;
     var s = el('section', 'adm-grp ai-grp');
     s.dataset.group = AI_GROUP;
@@ -1145,7 +1163,7 @@ function adminReveal(tab) {
   ADMIN_REVEAL = null;
   var panel = document.getElementById('panel-' + tab), f = tab === 'features' ? featItems().filter(function (x) { return x.key === want.key; })[0] : null;
   if (!panel || panel.hidden) return;
-  var hit = [].filter.call(panel.querySelectorAll(f ? '.feat' : tab === 'access' ? '.adm-row, .sso-f, .sso-sw' : '.adm-row'), function (n) { return f ? n.dataset.id === f.id : n.dataset.key === want.key; })[0];
+  var hit = [].filter.call(panel.querySelectorAll(f ? '.feat' : tab === 'access' ? '.adm-row, .sso-f, .sso-sw' : '.adm-row, .aiu-row'), function (n) { return f ? n.dataset.id === f.id : n.dataset.key === want.key; })[0];
   if (!hit) return;
   var part = tab === 'access' ? hit.closest('.acc-part') : null;
   if (part) accSelect(part.id.slice(4), false);
@@ -1154,6 +1172,8 @@ function adminReveal(tab) {
   hit.classList.add('adm-hit');
   setTimeout(function () { hit.classList.remove('adm-hit'); }, ADMIN_HIT_MS);
   hit.scrollIntoView({block: 'center'});
+  var ctl = hit.classList.contains('aiu-row') ? hit.querySelector('select.aiu-in') : null;
+  if (ctl && !ctl.disabled) { ctl.focus({preventScroll: true}); return; }
   hit.tabIndex = -1;
   hit.focus({preventScroll: true});
 }
@@ -1272,6 +1292,7 @@ function paintAiKey(said, saidFor) {
     if (said && (saidFor || 'anthropic') === kind.id) aiSay(said, false, card);
   });
   box.appendChild(list);
+  aicPaint(box, said, saidFor);
 }
 function aiKeyFailed(kind) {
   var card = accText('section', kind.cls);
@@ -1295,7 +1316,7 @@ function aiKeyCard(kind, s, active) {
   h.id = kind.head;
   head.appendChild(h);
   head.appendChild(accText('span', 'tag ' + (s.using ? 'k-ok' : 'k-warn'), s.using === 'admin' ? 'set here' : s.using === 'config' ? 'from the configuration' : 'not set'));
-  if (active) head.appendChild(accText('span', 'tag k-act ai-active', 'AI provider in use'));
+  if (active) head.appendChild(accText('span', 'tag k-act ai-active', 'Default provider'));
   card.appendChild(head);
   var line = accText('div', 'ai-line');
   line.appendChild(accText('p', 'ai-state', s.using === 'admin' ? 'Using the key set here' : s.using === 'config' ? s.note : 'No key'));

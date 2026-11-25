@@ -193,6 +193,8 @@ class Settings:
     anthropic_api_key: str = field(default='', repr=False)
     openai_api_key: str = field(default='', repr=False)
     ai_provider: str = 'anthropic'
+    ai_models_set: tuple[str, ...] = ()
+    ai_models_held: tuple[str, ...] = ()
     investigate_mode: str = 'off'
     investigate_model: str = 'claude-opus-5-5'
     investigate_model_critical: str = ''
@@ -234,6 +236,7 @@ class Settings:
     info_auto_close_days: int = 3
     info_auto_close_days_set: bool = False
     business_days: bool = True
+    allow_private_ai: bool = False
     archive_hours: int = 48
     history_keep_days: int = 365
     recurring_count: int = 3
@@ -546,6 +549,11 @@ def choice(key: str, raw: str, allowed: tuple[str, ...]) -> str:
     return allowed[0]
 
 
+MODEL_KEYS = {'investigate.model': ('INVESTIGATE_MODEL', 'investigate_model'), 'investigate.model-critical': ('INVESTIGATE_MODEL_CRITICAL', 'investigate_model_critical'),
+              'investigate.model-high': ('INVESTIGATE_MODEL_HIGH', 'investigate_model_high'), 'investigate.slack-model': ('INVESTIGATE_SLACK_MODEL', 'investigate_slack_model'),
+              'chat.model': ('CHAT_MODEL', 'chat_model'), 'investigate.gate-model': ('INVESTIGATE_GATE_MODEL', 'investigate_gate_model'), 'self-review.model': ('SELF_REVIEW_MODEL', 'selfreview_model')}
+
+
 def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if env is None else env
     config = fetch() if fetch else {}
@@ -746,6 +754,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         anthropic_api_key=get('anthropic.api-key', 'ANTHROPIC_API_KEY', '').strip(),
         openai_api_key=get('openai.api-key', 'OPENAI_API_KEY', '').strip(),
         ai_provider=provider,
+        ai_models_set=tuple(f for k, (var, f) in MODEL_KEYS.items() if k in config or var in env),
         investigate_mode=mode,
         investigate_model=get('investigate.model', 'INVESTIGATE_MODEL', 'claude-opus-5-5').strip(),
         investigate_model_critical=get('investigate.model-critical', 'INVESTIGATE_MODEL_CRITICAL', '').strip(),
@@ -787,6 +796,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         info_auto_close_days=info_days,
         info_auto_close_days_set=info_set,
         business_days=get('core.business-days', 'SKOPAX_BUSINESS_DAYS', 'true').strip().lower() == 'true',
+        allow_private_ai=get('core.allow-private-ai', 'SKOPAX_ALLOW_PRIVATE_AI', 'false').strip().lower() == 'true',
         archive_hours=int(get('cards.archive-hours', 'CARDS_ARCHIVE_HOURS', '48').strip() or 48),
         history_keep_days=int(get('history.keep-days', 'HISTORY_KEEP_DAYS', '365').strip() or 365),
         recurring_count=int(get('recurring.count', 'RECURRING_COUNT', '3').strip() or 3),

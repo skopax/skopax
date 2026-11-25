@@ -427,8 +427,8 @@ def test_fields_of_lists_each_plugins_own_fields_and_kubernetes_also_every_agent
 
     # then
     assert [f['key'] for f in mine] == ['note'] and mine[0] == field_view(own.fields[0])
-    assert [f['key'] for f in kube] == ['mode', 'url', 'token', 'via', 'echo.url', 'echo.token']
-    assert [(f['required'], f['showIf']) for f in kube[4:]] == [(False, ['mode', 'agent'])] * 2
+    assert [f['key'] for f in kube] == ['mode', 'url', 'token', 'via', 'echo.url', 'echo.token', 'questions']
+    assert [(f['required'], f['showIf']) for f in kube[4:6]] == [(False, ['mode', 'agent'])] * 2
     assert runtime.fields_of('nope') == [] and gone.fields_of('Bad Id') == []
     assert [f.key for f in runtime.agent_fields('kubernetes')] == ['echo.url', 'echo.token'] and runtime.agent_fields('echoer') == ()
 

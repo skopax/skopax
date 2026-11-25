@@ -23,7 +23,7 @@ from skopax.features import off_text
 from skopax.jiralinks import listed, site_of, ticket_finder, ticket_projects
 from skopax import clock
 from skopax.investigator import GATE_HOURLY_CAP, prompt
-from skopax.investigator.flags import masked_scan
+from skopax.investigator.flags import REQUESTS, masked_asked, masked_scan
 from skopax.investigator.gate import GateDown
 from skopax.investigator.tools import CARD_ACTIONS, DEFAULT_MUTE_HOURS
 from skopax import messages
@@ -586,7 +586,8 @@ class Intake:
             except SlackError as e:
                 log.warning('placeholder in %s failed: %s', channel, error_kind(e))
         images = {'images': list(attached[0]), 'imagesSkipped': attached[1]} if attached[0] or attached[1] else {}
-        planted = masked_scan('chat' if dm else 'slack', '\n'.join(record.get('_raw') or []))
+        planted = masked_scan('chat' if dm else 'slack', '\n'.join(record.get('_raw') or []), REQUESTS)
+        planted += masked_asked('chat' if dm else 'slack', '\n'.join([question] + [str(t.get('text') or '') for t in thread or [] if t.get('who') != 'bot']))
         images |= {'askFlags': planted} if planted else {}
         if dm:
             action = self.store.add_action({'type': 'ask', 'source': 'chat', 'key': 'ask', 'target': f"chat:{dm['chatId']}", 'text': question, 'cards': [], 'label': question[:LABEL_LIMIT],

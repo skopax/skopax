@@ -297,7 +297,7 @@ async function aiProvidersListAnthropicAndOpenAiKeyCards() {
   assert.strictEqual(rows.length, 2);
   assert.strictEqual(anthropic.querySelector('#ai-key-h').textContent, 'Anthropic API key');
   assert.strictEqual(openai.querySelector('#oai-key-h').textContent, 'OpenAI API key');
-  assert.ok(!anthropic.querySelector('.ai-active') && openai.querySelector('.ai-active').textContent === 'AI provider in use', 'the card of the provider in use says so');
+  assert.ok(!anthropic.querySelector('.ai-active') && openai.querySelector('.ai-active').textContent === 'Default provider', 'the card of the provider in use says so');
   assert.strictEqual(openai.querySelector('.ai-state').textContent, OPENAI_FROM_CONFIG);
   assert.deepStrictEqual(masks(doc, doc.getElementById('oai-key-in')), [{onScreen: true, value: 'disc'}], 'the OpenAI key field is masked too');
   assert.ok(doc.querySelector('label[for="oai-key-in"]'));

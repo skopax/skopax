@@ -133,7 +133,7 @@ def test_the_run_records_the_override_model_for_spend(store: Store):
     assert set(store.investigation_usage('2000-01-01T00:00:00Z')['models']) == {CRITICAL}
 
 
-def test_an_override_of_the_other_provider_falls_back_and_admin_says_so(store: Store):
+def test_an_override_of_a_provider_without_a_key_is_held_and_admin_says_so(store: Store):
     # given
     s = on_openai(investigate_mode='live', investigate_model='gpt-6.2-sol', investigate_model_critical='claude-opus-5', investigate_model_high='gpt-6.1-terra')
     inv = Investigator(store, sources(), Effects(lambda key, by: {}, lambda key, text, by, *_, notice=None: {}), s)
@@ -141,17 +141,18 @@ def test_an_override_of_the_other_provider_falls_back_and_admin_says_so(store: S
 
     # when
     critical, high = setting(c, 'investigate.model-critical'), setting(c, 'investigate.model-high')
-    refused = c.put('/api/admin/settings', json={'key': 'investigate.model-high', 'value': 'claude-opus-5'}, headers=AUTH)
+    info = inv.info()
+    taken = c.put('/api/admin/settings', json={'key': 'investigate.model-high', 'value': 'claude-opus-5'}, headers=AUTH)
 
     # then
-    assert (inv.model, inv.card_model({'crit'}), inv.card_model({'high'}), inv.card_model({'warn'})) == ('gpt-6.2-sol', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6.2-sol')
+    assert (inv.model, inv.card_model({'crit'}), inv.card_model({'high'}), inv.card_model({'warn'})) == ('gpt-6.2-sol', 'claude-opus-5', 'gpt-6.1-terra', 'gpt-6.2-sol')
+    assert inv.card_route({'crit'})[0] == 'anthropic' and not inv.clients.keyed('anthropic')
     assert inv.enabled and inv.board(NOW)['problem'] is None
-    assert critical['problem'] == 'claude-opus-5 is a model of Anthropic; with OpenAI as the AI provider, gpt-6.2-sol is used until you pick one of its models'
-    assert critical['choiceLabels']['claude-opus-5'] == 'claude-opus-5 (Anthropic, not used)' and critical['choices'][0] == ''
-    assert 'problem' not in high and high['value'] == 'gpt-6.1-terra' and 'claude-opus-5' not in high['choices']
-    assert (refused.status_code, refused.json()['detail']) == (422, msg('ai.model_refused', model='claude-opus-5', owner='Anthropic', provider='OpenAI'))
-    assert setting(c, 'investigate.model-high')['value'] == 'gpt-6.1-terra'
-    assert inv.info()['modelCritical'] == 'gpt-6.2-sol' and inv.info()['modelHigh'] == 'gpt-6.1-terra'
+    assert critical['problem'] == msg('ai.use_held', owner='Anthropic')
+    assert critical['choiceGroups']['claude-opus-5'] == 'Anthropic' and critical['choices'][0] == '' and 'claude-opus-5' in critical['choices']
+    assert 'problem' not in high and high['value'] == 'gpt-6.1-terra' and 'claude-opus-5' in high['choices']
+    assert taken.status_code == 200 and setting(c, 'investigate.model-high')['problem'] == msg('ai.use_held', owner='Anthropic')
+    assert info['modelCritical'] == 'claude-opus-5' and info['modelHigh'] == 'gpt-6.1-terra'
 
 
 def test_an_unknown_override_falls_back_to_the_card_model_and_admin_says_so(store: Store):
@@ -225,12 +226,12 @@ def test_admin_lists_the_two_overrides_next_to_the_card_model_with_their_choices
     keys = list(items)
 
     # then
-    models = ['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2', 'claude-mythos-5-2']
+    models = ['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2', 'claude-mythos-5-2', 'gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna']
     for key, label, sev in (('investigate.model-critical', 'Model for Critical cards', 'Critical'), ('investigate.model-high', 'Model for High cards', 'High')):
         item = items[key]
         assert (item['label'], item['help'], item['kind'], item['card'], item['group']) == (label, f'Model for cards whose worst alert is {sev}; empty uses the Card model', 'choice', 'Models', 'Investigator')
         assert (item['value'], item['source'], item['choices']) == ('', 'default', [''] + models)
-        assert item['choiceLabels'] == {'': 'Same as Card model'}
+        assert item['choiceLabels'] == {'': 'Same as Card model'} and {item['choiceGroups'][m] for m in models} == {'Anthropic', 'OpenAI'}
     assert keys.index('investigate.model') < keys.index('investigate.model-critical') < keys.index('investigate.model-high')
     assert items['investigate.model-critical']['order'] > items['investigate.model']['order']
 

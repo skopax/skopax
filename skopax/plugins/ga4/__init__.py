@@ -104,7 +104,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 
 PLUGIN = Plugin(
     id=ID, name='Google Analytics 4', version='0.1.0', category='marketing', description='Daily drops in GA4 key events and active users, and GA4 numbers for the investigator.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
     capabilities=Capabilities(hosts=('analyticsdata.googleapis.com', 'oauth2.googleapis.com'), secrets=('credentials',)),
     fields=(Field('property-id', 'Web property id', 'text', required=True, help='The numeric id of the GA4 property of the site (Admin, Property settings). The check reads it once a day.'),
             Field('app-property-id', 'App property id', 'text',

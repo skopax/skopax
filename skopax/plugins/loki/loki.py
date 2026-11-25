@@ -101,7 +101,7 @@ def masked(text: object, limit: int) -> str:
 
 
 def planted(text: str) -> bool:
-    return bool(flags.scan(PASS, text))
+    return bool(flags.scan(PASS, text, skip=flags.REQUESTS))
 
 
 def clean(text: object, limit: int) -> str:

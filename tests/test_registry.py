@@ -175,7 +175,7 @@ def test_core_version_range_is_checked():
 
     # then
     assert loaded.state == 'incompatible'
-    assert skopax.__version__ == '0.5.18' and '0.5.18' in loaded.reason and '>=9' in loaded.reason
+    assert skopax.__version__ == '0.6.0' and '0.6.0' in loaded.reason and '>=9' in loaded.reason
     assert [p.id for p in reg.usable()] == ['demo']
 
 
@@ -1138,3 +1138,15 @@ def test_no_other_built_in_plugin_with_a_test_is_marked_as_posting():
 
     # then
     assert marked == ['teams']
+
+
+def test_every_built_in_plugin_accepts_the_next_minor(monkeypatch):
+    # given
+    monkeypatch.setattr(skopax, '__version__', '0.6.0')
+
+    # when
+    reg = Registry.load({}, entry_points=False)
+
+    # then
+    assert reg.loaded()
+    assert [x.id for x in reg.loaded() if x.state == 'incompatible'] == []

@@ -244,7 +244,7 @@ def test_capacity_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('capacity').state == 'ok'
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'capacity', 'Capacity', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        'capacity', 'Capacity', '0.1.0', 'infrastructure', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert manifest['uses'] == ['prometheus', 'pmm'] and manifest['capabilities'] == {'hosts': [], 'secrets': [], 'agentReads': False}
     assert [(f['key'], f['kind'], f['required']) for f in manifest['fields']] == [('prometheus', 'instance', True), ('jvm', 'bool', False), ('host-disks', 'bool', False), ('disks-pmm', 'instance', False), ('volume-selector', 'text', False),
                                                                                                     ('fs-selector', 'text', False)]

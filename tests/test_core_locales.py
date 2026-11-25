@@ -338,3 +338,20 @@ def test_the_idle_switch_title_is_translated_and_no_pack_quotes_the_old_langfuse
     assert quoted == []
     assert mail and mail != MAIL_HELP and page['Email me my notifications'] in mail
     assert not [k for k in page if 'switch on Email me my notifications' in k]
+
+
+def test_the_delete_connection_dialog_says_a_use_is_held_in_every_pack():
+    # given
+    import json as json_module
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent / 'skopax'
+    held = 'Its key and models are deleted. A use set to one of its models is held until another model is picked.'
+    script = (root / 'web' / 'static' / 'aiuses.js').read_text(encoding='utf-8')
+
+    # when
+    packs = {lang: json_module.loads((root / 'locale' / lang / 'page.json').read_text(encoding='utf-8'))['page'] for lang in ('de', 'es', 'fr', 'tr')}
+
+    # then
+    assert held in script and 'runs on the default provider until another model is picked' not in script
+    assert all(held in page and page[held] != held for page in packs.values())
+    assert not any('runs on the default provider until another model is picked' in k for page in packs.values() for k in page)

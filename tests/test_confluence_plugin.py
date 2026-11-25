@@ -47,7 +47,7 @@ def test_confluence_identity_and_manifest():
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert 'skopax.plugins.confluence' in BUILTIN and loaded.state == 'ok'
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'confluence', 'Confluence', '0.1.0', 'other', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        'confluence', 'Confluence', '0.1.0', 'other', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url', 'api.atlassian.com'], 'secrets': ['api-token'], 'agentReads': False}
     assert manifest['uses'] == [] and manifest['maxInstances'] == 1 and manifest['checks'] == [] and manifest['rules'] == [] and manifest['settings'] == []
     assert [(f['key'], f['kind'], f['required'], f['ui']) for f in manifest['fields']] == [('url', 'url', True, True), ('email', 'text', True, False),

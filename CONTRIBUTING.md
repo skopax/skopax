@@ -6,7 +6,7 @@ Thank you for helping with Skopax. This page covers what we accept, how to set t
 
 - Issues are welcome now. Use the issue forms for bugs and feature requests, and describe what you saw and what you expected.
 - Pull requests are welcome. Keep them small and focused, and link each one to an issue for anything beyond a typo.
-- Contributions go to the **Skopax community edition**: the public repositories of the `skopax` GitHub organization, starting with `skopax/skopax`. The community edition is open source under the Apache License, Version 2.0.
+- Contributions go to the **Skopax community edition**: the public repositories of the `skopax` GitHub organization, starting with `skopax/skopax`. The community edition is open source under the GNU Affero General Public License, version 3 (AGPL-3.0-only).
 - Skopax Cloud and the Enterprise edition, if they come, will not be open for contributions.
 - A plug-in you publish yourself is your own work under your own terms. It is not a contribution to Skopax. See `TRADEMARKS.md` for how to name it.
 - For anything larger than a small fix, open an issue first and describe what you want to change. That saves you work if the change does not fit.
@@ -46,9 +46,9 @@ Every change follows these rules. A reviewer will ask for changes that do not.
 
 ## Licence and sign-off
 
-Contributions are licensed under the Apache License, Version 2.0, the same licence as the project: what you contribute comes in under the terms it goes out under. There is no separate agreement to sign.
+By signing off a contribution, you also license it to the project under Apache-2.0. Skopax itself is distributed under AGPL-3.0-only with the plug-in exception in `NOTICE`, and the example plug-ins under `examples/` under Apache-2.0. Your contribution is covered by the plug-in exception too. There is no separate agreement to sign.
 
-Every commit in a pull request carries a `Signed-off-by` line under the Developer Certificate of Origin, version 1.1 (https://developercertificate.org). The sign-off says that you wrote the change, or have the right to submit it, under the project's licence. Add it with:
+Every commit in a pull request carries a `Signed-off-by` line under the Developer Certificate of Origin, version 1.1 (https://developercertificate.org). The sign-off says that you wrote the change, or have the right to submit it, under Apache-2.0 as above. Add it with:
 
     git commit -s -m "Explain the change"
 
@@ -66,7 +66,7 @@ Only submit code and other material that you wrote yourself, unless you tell us 
 
 - say so in the pull request description, with where it comes from and its licence;
 - keep its copyright and licence notices;
-- expect us to accept only licences that fit Apache-2.0, for example Apache-2.0, MIT or BSD. We cannot accept strong copyleft licences such as the GPL or AGPL; MPL-2.0 is accepted for dependencies.
+- expect us to accept only licences that fit AGPL-3.0-only, for example Apache-2.0, MIT, BSD, ISC, PSF or MPL-2.0. We cannot accept licences that add terms the AGPL does not allow, such as the Commons Clause, SSPL or BUSL; MPL-2.0 is accepted for dependencies.
 
 ## Reporting a security issue
 
@@ -78,8 +78,8 @@ Everyone who takes part in Skopax spaces (issues, pull requests, discussions, ch
 
 ## Name and logo
 
-The Skopax name and the Beam X logo are trademarks. You can fork and change the code under Apache-2.0, but when you distribute it or offer it as a service, a modified copy must not call itself Skopax or use the logo as its own branding. `TRADEMARKS.md` explains what is fine and what needs permission.
+The Skopax name and the Beam X logo are trademarks. You can fork and change the code under AGPL-3.0-only, but when you distribute it or offer it as a service, a modified copy must not call itself Skopax or use the logo as its own branding. `TRADEMARKS.md` explains what is fine and what needs permission.
 
 ## Licence
 
-Skopax is licensed under the Apache License, Version 2.0 (`LICENSE`). Copies you ship must include `LICENSE` and `NOTICE`.
+Skopax is licensed under the GNU Affero General Public License, version 3 only (`LICENSE`). `NOTICE` adds a plug-in exception under section 7 of the AGPL: plug-ins that use only the documented plug-in interface may carry any licence. Copies you ship must include `LICENSE` and `NOTICE`. The example plug-ins under `examples/` are Apache-2.0.

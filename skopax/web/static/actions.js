@@ -90,15 +90,16 @@ async function initActions() {
   window.__skopaxGate = gate;
   window.__boardLock = lockReason;
   window.__skopaxConfirm = confirmDialog;
-  window.__boardMove = async function (steps) {
-    var last = null;
-    for (var i = 0; i < steps.length; i++) {
-      last = await api('POST', '/api/actions', steps[i]);
-      if (last && last.status === 'failed') break;
-    }
-    await refresh();
-    if (window.__skopaxPoll) await window.__skopaxPoll();
-    return last;
+  window.__boardMove = function (steps, shown) {
+    return cardRun(steps[0] && steps[0].key, async function (live) {
+      var last = null;
+      for (var i = 0; i < steps.length; i++) {
+        if (!live()) break;
+        last = await api('POST', '/api/actions', steps[i]);
+        if (last && last.status === 'failed') break;
+      }
+      return last;
+    }, {shown: shown});
   };
   function roleName() {
     var r = me.userRole;
@@ -267,7 +268,7 @@ async function initActions() {
     if (method !== 'GET' && body && typeof watchHide === 'function') watchHide(body.key || body.target);
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     var r;
-    try { r = await fetch(path, {method: method, headers: headers, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body)}); } catch (e) {
+    try { var sent = fetch(path, {method: method, headers: headers, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body)}); r = await (method === 'GET' ? sent : workTrack(sent)); } catch (e) {
       if (method !== 'GET') failToast('the server did not answer (' + method + ' ' + path + ')');
       throw e;
     }
@@ -277,16 +278,19 @@ async function initActions() {
     return r.json();
   }
   async function queue(a, b, done) {
+    var run = cardRun(a.key || a.target, function () { return api('POST', '/api/actions', a); });
+    if (!run) return;
     b.disabled = true;
-    try { await api('POST', '/api/actions', a); await refresh(); if (window.__skopaxPoll) window.__skopaxPoll(); if (done) done(); } catch (e) { b.disabled = false; if (!e || (e.code !== 401 && e.code !== 403)) b.textContent = e && e.code === 409 && e.detail ? e.detail : 'Not saved, try again'; }
+    try { await run; if (done) done(); } catch (e) { b.disabled = false; if (!e || (e.code !== 401 && e.code !== 403)) b.textContent = e && e.code === 409 && e.detail ? e.detail : 'Not saved, try again'; }
   }
   async function cancel(x, b) {
+    var run = cardRun(x.target, function () { return api('PATCH', '/api/actions/' + encodeURIComponent(x.id), {status: 'cancelled', expect: 'requested'}); }, {quiet: true});
+    if (!run) return;
     b.disabled = true;
     b.textContent = 'Cancelling…';
     try {
-      await api('PATCH', '/api/actions/' + encodeURIComponent(x.id), {status: 'cancelled', expect: 'requested'});
+      await run;
       hint.textContent = 'Cancelled “' + label(x) + '”.';
-      await refresh();
     } catch (e) {
       if (e && e.code === 409) { hint.textContent = 'Too late to cancel “' + label(x) + '”: the investigator has already picked it up.'; b.textContent = 'Too late'; return; }
       b.disabled = false;
@@ -481,19 +485,19 @@ async function initActions() {
       if (scopeOn && sc && sc.required && !picked.length) { err.textContent = tx('Pick the {0} of this task.').replace('{0}', function () { return sc.name; }); err.hidden = false; return; }
       if (extras && extras.empty.length) { err.textContent = tx('Jira needs {0}.').replace('{0}', function () { return extras.empty.join(', '); }); err.hidden = false; return; }
       var p = parseFloat(pts.value);
+      var isTech = !!(tech && proj.value === tech), chosen = proj.value, parent = isTech ? '' : epic.value.trim();
+      var run = cardRun(a.key, function () { return api('POST', '/api/actions', {type: 'ticket', target: a.key, key: a.key, title: t, description: desc.value.trim() || undefined, points: isTech || isNaN(p) ? undefined : p,
+          project: chosen, epic: parent || undefined, scope: scopeOn ? picked : (!techPick && d.scopeField && view && view.readable && !view.scope ? [] : undefined), sprint: !isTech && d.sprintField && sprint ? sprint.checked : undefined,
+          fields: extras ? extras.values : undefined, label: 'Create ' + chosen + ' task for ' + name}); }, {quiet: true});
+      if (!run) return;
       yes.disabled = true;
       yes.textContent = 'Creating\u2026';
       try {
-        var isTech = !!(tech && proj.value === tech), chosen = proj.value, parent = isTech ? '' : epic.value.trim();
-        var made = await api('POST', '/api/actions', {type: 'ticket', target: a.key, key: a.key, title: t, description: desc.value.trim() || undefined, points: isTech || isNaN(p) ? undefined : p,
-          project: chosen, epic: parent || undefined, scope: scopeOn ? picked : (!techPick && d.scopeField && view && view.readable && !view.scope ? [] : undefined), sprint: !isTech && d.sprintField && sprint ? sprint.checked : undefined,
-          fields: extras ? extras.values : undefined, label: 'Create ' + chosen + ' task for ' + name});
+        var made = await run;
         if (made.status === 'failed') { err.textContent = made.result || 'Jira refused the task.'; err.hidden = false; yes.disabled = false; yes.textContent = 'Create task'; return; }
         save(TASK_PROJECT_KEY, chosen);
         close();
         hint.textContent = (made.result || 'Task created') + ' · ' + name;
-        await refresh();
-        if (window.__skopaxPoll) window.__skopaxPoll();
       } catch (e) {
         yes.disabled = false;
         yes.textContent = 'Create task';
@@ -874,19 +878,20 @@ async function initActions() {
     b.dataset.timer = setTimeout(function () { delete b.dataset.confirm; slackButton(a, b); }, 5000);
   }
   async function sendSlack(a, b) {
+    if (cardHeld(a.key)) return;
+    b.dataset.own = '1';
     b.disabled = true;
+    var run = cardRun(a.key, function () { return api('POST', '/api/slack-posts', {key: a.key}); }, {quiet: true});
     relabel(b, ICON_SEND, 'Sending…');
     try {
-      await api('POST', '/api/slack-posts', {key: a.key});
+      await run;
       relabel(b, ICON_SEND, 'Sent');
       menuNote(b, 'Sent to ' + (me.slackChannel || 'Slack'));
-      await refresh();
-      if (window.__skopaxPoll) window.__skopaxPoll();
     } catch (e) {
       relabel(b, ICON_SEND, e && e.code === 502 ? 'Slack refused it, see History' : e && e.code === 503 ? 'Slack is not set up' : 'Not sent, try again');
       if (e && e.code === 502) refresh();
     }
-    setTimeout(function () { b.disabled = false; slackButton(a, b); }, 3000);
+    setTimeout(function () { delete b.dataset.own; b.disabled = false; slackButton(a, b); }, 3000);
   }
   function teamsTakes(r, a) { var ids = tagIds(a); return !!r.tagged && (r.tags || []).some(function (t) { return ids.indexOf(t) >= 0; }); }
   function routeName(r) { return (r.plugin ? r.plugin + ' \u00b7 ' : '') + r.name; }
@@ -912,29 +917,35 @@ async function initActions() {
     b.dataset.timer = setTimeout(function () { delete b.dataset.confirm; teamsReset(a, r, b); }, 5000);
   }
   async function sendTeams(a, r, b) {
+    if (cardHeld(a.key)) return;
+    b.dataset.own = '1';
     b.disabled = true;
+    var run = cardRun(a.key, function () { return api('POST', '/api/routes/send', {key: a.key, route: r.id}); }, {quiet: true});
     routeSay(b, 'Sending\u2026');
     try {
-      await api('POST', '/api/routes/send', {key: a.key, route: r.id});
+      await run;
       routeSay(b, 'Sent to ' + routeName(r));
       menuNote(b, 'Sent to ' + routeName(r));
-      if (window.__skopaxPoll) window.__skopaxPoll();
     } catch (e) {
       routeSay(b, e && e.code === 502 ? (e.detail || 'The chat tool did not take it') : e && e.code === 422 && e.detail ? e.detail : 'Not sent, try again');
     }
-    setTimeout(function () { b.disabled = false; teamsReset(a, r, b); }, 3000);
+    setTimeout(function () { delete b.dataset.own; b.disabled = false; teamsReset(a, r, b); }, 3000);
   }
   var ASG_DM = {sent: ' · told on Slack', none: ' · no Slack account found for them, not messaged', failed: ' · the Slack message failed'};
   var ICON_ASSIGN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>';
   async function setAsg(a, form, msg, body, b) {
+    var run = cardRun(a.key, async function () {
+      var got = await api('PUT', '/api/assignee', Object.assign({key: a.key}, body));
+      a.owner = got.owner || undefined; a.assigned = got.assigned || undefined;
+      return got;
+    }, {quiet: true});
+    if (!run) return;
     b.disabled = true;
     try {
-      var r = await api('PUT', '/api/assignee', Object.assign({key: a.key}, body));
-      a.owner = r.owner || undefined; a.assigned = r.assigned || undefined;
+      var r = await run;
       ASG_NOTE[a.key] = (r.owner ? 'Assigned to ' + ownerName(r.owner) + (ASG_DM[r.dm] || '') : 'Assignee removed') + (r.thread ? ' · noted in the Slack thread' : '');
       msg.textContent = ASG_NOTE[a.key];
       if (form.asgSet) form.asgSet(false); else form.hidden = true;
-      if (window.__skopaxPoll) window.__skopaxPoll();
     } catch (e) {
       msg.textContent = e && e.code === 404 ? 'This card is gone' : e && e.code === 422 ? 'That name or address was not accepted' : 'Not saved, try again';
     }
@@ -1018,13 +1029,17 @@ async function initActions() {
   }
   async function toggleTag(a, b) {
     var on = b.getAttribute('aria-pressed') !== 'true', text = b.textContent;
+    var run = cardRun(a.key, async function () {
+      var got = await api('POST', '/api/tags', {key: a.key, tag: b.dataset.tag, on: on});
+      a.tags = got.tags; a.tagsOff = got.tagsOff; a.business = got.business;
+      return got;
+    }, {quiet: true});
+    if (!run) return;
     b.disabled = true;
     try {
-      var r = await api('POST', '/api/tags', {key: a.key, tag: b.dataset.tag, on: on});
-      a.tags = r.tags; a.tagsOff = r.tagsOff; a.business = r.business;
+      await run;
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
       bizNoteSync(a, b.closest('.biz'));
-      if (window.__skopaxPoll) window.__skopaxPoll();
     } catch (e) {
       b.textContent = 'Not saved';
       setTimeout(function () { b.textContent = text; }, 2000);
@@ -1033,30 +1048,35 @@ async function initActions() {
   }
   async function saveBiz(a, bbox, b) {
     var ta = bbox.querySelector('textarea');
+    var run = cardRun(a.key, async function () {
+      var got = await api('PUT', '/api/business', {key: a.key, text: ta.value, why: bbox.querySelector('.biz-why-in').value, kind: bbox.querySelector('.biz-kind').value});
+      a.business = got.business;
+      return got;
+    }, {quiet: true});
+    if (!run) return;
     b.disabled = true;
     b.textContent = 'Saving\u2026';
     try {
-      var r = await api('PUT', '/api/business', {key: a.key, text: ta.value, why: bbox.querySelector('.biz-why-in').value, kind: bbox.querySelector('.biz-kind').value});
-      a.business = r.business;
+      await run;
       ta.blur();
       bbox.querySelector('.biz-form').hidden = true;
       bizNoteSync(a, bbox);
       b.textContent = 'Save';
-      if (window.__skopaxPoll) window.__skopaxPoll();
     } catch (e) {
       b.textContent = e && e.code === 422 ? 'Too long, max 500' : 'Not saved, try again';
     }
     b.disabled = false;
   }
   async function postUpdate(a, ta, b, form) {
+    var run = cardRun(a.key, function () { return api('POST', '/api/slack-updates', {key: a.key, text: ta.value}); }, {quiet: true});
+    if (!run) return;
     b.disabled = true;
     b.textContent = 'Posting…';
     try {
-      await api('POST', '/api/slack-updates', {key: a.key, text: ta.value});
+      await run;
       ta.blur();
       form.hidden = true;
       b.textContent = 'Post to thread';
-      await refresh();
     } catch (e) {
       b.textContent = e && e.code === 409 ? 'No Slack message to reply to' : e && e.code === 502 ? 'Slack refused it, see History' : e && e.code === 422 ? 'Write the update first' : 'Not sent, try again';
       if (e && e.code === 502) refresh();
@@ -1176,10 +1196,13 @@ async function initActions() {
     b.dataset.timer = setTimeout(function () { delete b.dataset.confirm; b.innerHTML = was; }, 5000);
   }
   async function sqPost(row, b) {
+    var send = function () { return api('POST', sqPath(row), row.kind === 'report' ? undefined : {key: row.x.key}); };
+    var run = row.kind === 'report' ? send() : cardRun(row.x.key, send, {quiet: true});
+    if (!run) return;
     b.disabled = true;
     relabel(b, ICON_SEND, 'Sending…');
     try {
-      await api('POST', sqPath(row), row.kind === 'report' ? undefined : {key: row.x.key});
+      await run;
       relabel(b, ICON_SEND, 'Sent');
       await sqRefresh();
     } catch (e) {
@@ -1464,6 +1487,7 @@ async function initActions() {
     list.innerHTML = '';
     all.slice().sort(function (x, y) { return x.requestedAt < y.requestedAt ? 1 : -1; }).slice(0, 40).forEach(function (x) { list.appendChild(actRow(x)); });
     if (!all.length) list.appendChild(el('li', 'muted', 'No actions yet. Use Investigate, Mute 24 h or Known noise on an anomaly.'));
+    holdPaint();
   }
   async function refresh() {
     try { all = await api('GET', '/api/actions?limit=200'); render(); }

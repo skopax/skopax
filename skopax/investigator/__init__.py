@@ -5,26 +5,27 @@ import socket
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 import anthropic
 
 from skopax import followup, history, information, severity, tracing
-from skopax.ai import ModelSetting, key_for, maker
-from skopax.aikey import ClientBox
+from skopax.ai import IMAGES_OFF, ModelSetting, clients_for, label_of, provider_of_ref, route, wrap
 from skopax.config import Setting, Settings
 from skopax.contract import OrgPack
 from skopax.engine import iso as epoch_iso
 from skopax.errkind import Refusal, kind as error_kind, text_of
 from skopax.features import off_text
 from skopax.investigator import pricing, prompt, select
-from skopax.investigator.flags import SOFT, scan
+from skopax.investigator.flags import REQUESTS, SOFT, asked, scan
 from skopax.investigator.runner import Result, RunConfig, Runner
 from skopax.investigator.tools import Effects, Sources, Toolbox
+from skopax.investigator.toolset import Run, asked_gate
 from skopax.investigator.web import own_domains as own_web_domains, web_from
 from skopax.postdeploy import NUMBERS_BY
 from skopax import clock
 from skopax.messages import msg
+from skopax.outward import outward
 from skopax.store import LEASE_ID, ActionMoved, NotFound, Store, new_id
 
 log = logging.getLogger('skopax.investigator')
@@ -52,6 +53,7 @@ SOURCE_OF = {'cards': 'pod', 'action': 'pod', 'ask': 'page', 'slack': 'slack', '
 MCP = 'mcp'
 TRACE_NAMES = {'cards': 'card run', 'action': 'investigate click', 'ask': 'page question', 'slack': 'slack question', 'chat': 'chat answer', 'assess': 'deploy assessment', 'review': 'follow-up check'}
 TRACE_OK = ('done', 'skipped')
+USE_FIELDS = {'card': ('investigate_model', 'card'), 'slack': ('investigate_slack_model', 'slack'), 'chat': ('chat_model', 'chat')}
 
 
 def via_mcp(action: dict | None) -> bool:
@@ -133,7 +135,7 @@ class Investigator:
     rooms = Setting('investigate_rooms', lambda n: max(1, int(n)))
 
     def __init__(self, store: Store, sources: Sources, effects: Effects, settings: Settings, client=None,
-                 clock=time.time, base_url: str | None = None, talk=None, key: Callable[[], str] | None = None):
+                 clock=time.time, base_url: str | None = None, talk=None, key: Callable[[], str] | None = None, keys: Mapping[str, Callable[[], str]] | None = None):
         self.store = store
         self.talk = talk
         self.sources = sources
@@ -143,9 +145,9 @@ class Investigator:
         self.on: Callable[[], bool] = lambda: True
         self.pack: Callable[[], OrgPack | None] = lambda: None
         self.role_of: Callable[[dict | None], str | None] = lambda action: None
-        self.key = key or key_for(settings, lambda: self.provider)
-        self.box = ClientBox(self.key, maker(lambda: self.provider, lambda k: anthropic.Anthropic(api_key=k, timeout=REQUEST_TIMEOUT, max_retries=MAX_RETRIES), REQUEST_TIMEOUT, MAX_RETRIES),
-                             client, lambda: self.provider)
+        self.clients = clients_for(settings, key, lambda k: anthropic.Anthropic(api_key=k, timeout=REQUEST_TIMEOUT, max_retries=MAX_RETRIES), REQUEST_TIMEOUT, MAX_RETRIES, client, keys)
+        self.key = lambda: self.clients.key(route(self, 'investigate_model', 'card')[0])
+        self.keyed = lambda: self.clients.keyed(route(self, 'investigate_model', 'card')[0])
         self.clock = clock
         self.base_url = settings.base_url if base_url is None else base_url
         self.owner = f'{socket.gethostname()}:{uuid.uuid4().hex[:8]}'
@@ -156,19 +158,23 @@ class Investigator:
         self._card_turn = threading.Lock()
 
     @property
+    def box(self):
+        return self.clients.box()
+
+    @property
     def client(self):
-        return self.box.client
+        return self.clients.client
 
     @client.setter
     def client(self, value) -> None:
-        self.box.client = value
+        self.clients.set_client(value)
 
     @property
     def enabled(self) -> bool:
-        return self.mode != 'off' and bool(self.key()) and pricing.known(self.model)
+        return self.mode != 'off' and self.keyed() and pricing.known(self.model)
 
-    def _client(self):
-        return self.box.get()
+    def _client(self, provider: str | None = None):
+        return self.clients.get(provider or route(self, 'investigate_model', 'card')[0])
 
     def own_domains(self) -> tuple[str, ...]:
         if self.sources.own_sites is not None:
@@ -184,9 +190,31 @@ class Investigator:
         return self.chat_max_tool_calls_set or self.slack_max_tool_calls
 
     def card_model(self, sevs) -> str:
+        return self.card_route(sevs)[1]
+
+    def card_route(self, sevs) -> tuple[str, str, str | None, str, str | None]:
         worst = severity.worst(sevs)
-        chosen = self.settings.investigate_model_critical if worst == severity.CRIT else self.settings.investigate_model_high if worst == severity.HIGH else ''
-        return chosen if pricing.known(chosen) and pricing.provider_of(chosen) == self.provider else self.model
+        use = 'critical' if worst == severity.CRIT else 'high' if worst == severity.HIGH else 'card'
+        chosen = self.settings.investigate_model_critical if use == 'critical' else self.settings.investigate_model_high if use == 'high' else ''
+        provider, model, fallback = route(self, 'investigate_model', 'card')
+        if not chosen:
+            return provider, model, fallback, 'card', None
+        owner = provider_of_ref(chosen) or self.clients.default()
+        if pricing.known(chosen):
+            return owner, chosen, None, use, None
+        return provider, model, chosen, 'card', fallback
+
+    def run_route(self, quick: bool, chat: bool, asked: bool, cards: list[dict]) -> tuple[str, str, str | None, str, str | None]:
+        if quick:
+            use = 'chat' if chat else 'slack'
+            return (*self.use_route(use), use, None)
+        if asked:
+            return (*self.use_route('card'), 'card', None)
+        return self.card_route(c.get('sev') for c in cards)
+
+    def use_route(self, use: str) -> tuple[str, str, str | None]:
+        field, role = USE_FIELDS[use]
+        return route(self, field, role)
 
     def overrides(self) -> dict:
         return {name: self.card_model({sev}) for name, sev, field in (('modelCritical', severity.CRIT, 'investigate_model_critical'), ('modelHigh', severity.HIGH, 'investigate_model_high'))
@@ -241,7 +269,7 @@ class Investigator:
     def _problem(self, halted: str | None) -> str | None:
         if self.mode == 'off' or halted == 'off':
             return None
-        if not self.key():
+        if not self.keyed():
             return 'key'
         return None if pricing.known(self.model) else 'model'
 
@@ -470,7 +498,7 @@ class Investigator:
         self.store.drop_lease(self.owner)
 
     def investigate(self, cards: list[dict], action: dict | None, now: float, lease: tuple[str, str] | None = None) -> dict | None:
-        if not (self.box.injected or self.key()):
+        if not (self.clients.injected or self.keyed()):
             if action is not None:
                 self.store.requeue_action(action['id'])
             return None
@@ -480,7 +508,6 @@ class Investigator:
         slack_ask = bool(ask) and action.get('source') == 'slack'
         chat_ask = bool(ask) and action.get('source') == 'chat'
         quick = slack_ask or chat_ask
-        quick_model = self.chat_model if chat_ask else self.slack_model
         report_id = str(action.get('reportId') or '') if action and action.get('type') == 'assess' else ''
         review = str(action.get('flavor') or '') if action and action.get('type') == followup.REVIEW else ''
         claimed: list[str] = []
@@ -493,7 +520,7 @@ class Investigator:
         with self._lock:
             self._runs[run_id] = {'claimed': claimed, 'action': action, 'lease': lease or (LEASE_ID, self.owner)}
         try:
-            trace = self._trace(run_id, trigger, keys, mode, action, ask)
+            trace = self._trace(run_id, trigger, keys, mode, action, ask, self.run_route(quick or bool(review), chat_ask, bool(ask or report_id), cards)[0])
             if mode == 'live' and action is None:
                 for k in keys:
                     if self.store.claim_card(k, run_id):
@@ -502,9 +529,14 @@ class Investigator:
                 cards = [c for c in cards if c['key'] in keys]
             report = self.store.deploy_report(report_id) if report_id else None
             cards = self._with_history(self._with_verdicts(cards))
-            model = self.model if ask or report or review else self.card_model(c.get('sev') for c in cards)
+            provider, used_model, fallback, use, card_fallback = self.run_route(quick or bool(review), chat_ask, bool(ask or report), cards)
+            quick_model = model = used_model
             record = {'id': run_id, 'mode': mode, 'trigger': trigger, 'actionId': action['id'] if action else None,
-                      'keys': keys, 'pod': self.owner, 'room': (lease or (LEASE_ID, self.owner))[0], 'startedAt': epoch_iso(now), 'model': quick_model if quick else self.slack_model if review else model, 'effort': (self.chat_effort if chat_ask else self.slack_effort) if quick else self.slack_effort if review else self.effort, 'outcome': 'running'}
+                      'keys': keys, 'pod': self.owner, 'room': (lease or (LEASE_ID, self.owner))[0], 'startedAt': epoch_iso(now), 'model': used_model, 'effort': (self.chat_effort if chat_ask else self.slack_effort) if quick else self.slack_effort if review else self.effort, 'outcome': 'running'}
+            if fallback:
+                record['fallbackFrom'] = fallback
+            if card_fallback:
+                record['cardFallbackFrom'] = card_fallback
             if ask:
                 record['ask'] = {'text': ask, 'by': action.get('requestedBy')}
                 if slack_ask:
@@ -521,38 +553,53 @@ class Investigator:
             self.store.add_investigation(record)
             self.store.add_activity('run', 'investigator', f"{'follow-up check' if review == followup.VERIFY else 'settle review'} \u00b7 {', '.join(keys)}" if review else f"assessing deploy report · {report.get('summary')}" if report else 'chat message · private' + (' · via MCP' if mcp else '') if chat_ask else f"{'slack ' if slack_ask else ''}ask by {action.get('requestedBy')} · {prompt.flat(ask)[:ASK_LINE]}" if ask else f"run started · {mode} · {', '.join(keys)}" + (f" · via MCP by {action.get('requestedBy')}" if mcp else ''), runId=run_id)
             if keys or ask or report:
-                sections, index = self.sources.plugin_tools.knowledge_parts(() if chat_ask else cards) if self.sources.plugin_tools is not None else ([], [])
+                client, result = self._built(provider)
+                caps = self.clients.capabilities(provider, client) if client is not None else self.clients.capabilities(provider)
+                if client is not None and 'tools' not in caps:
+                    client, result = None, Result(outcome='failed', error=msg('ai.no_tools'))
+                searching = 'web_search' in caps
+                role = self.role_of(action)
+                gate = asked_gate(Run(read_only=quick, ask=bool(ask), report=bool(report_id), chat=chat_ask, keys=bool(keys), asker=False, shadow=mode == 'shadow', role=role, review=review or None))
+                parts = self.sources.plugin_tools.knowledge_parts if self.sources.plugin_tools is not None else None
+                sections, index = (parts(() if chat_ask else cards, allowed=gate) if gate is not None else parts(() if chat_ask else cards)) if parts is not None else ([], [])
                 pack = self.pack()
                 readable = [k for _, k in index] if pack is None or pack.plugin_sections else []
                 toolbox = Toolbox(self.sources, self.store, self.effects, keys, mode, now, self.base_url, run_id=run_id, ask=bool(ask), report_id=report_id or None, read_only=quick,
                                   strict=self.strict_tools, asker=action.get('requestedBy') if ask and not quick else None, chat=chat_ask, language=self.language,
-                                  web=web_from(self.web_domains, self.web_searches, self.web_fetches if self.provider != pricing.OPENAI else 0, self.own_domains()), settings=self.settings, role=self.role_of(action), knowledge=readable,
+                                  web=web_from(self.web_domains, self.web_searches if searching else 0, self.web_fetches if searching and getattr(wrap(client), 'provider', provider) != pricing.OPENAI else 0, self.own_domains()), settings=self.settings, role=role, knowledge=readable,
                                   review=review or None)
                 if review:
-                    config = RunConfig(self.slack_model, self.slack_effort, self.slack_max_tool_calls)
+                    config = RunConfig(quick_model, self.slack_effort, self.slack_max_tool_calls, capabilities=caps)
                     brief = prompt.review_brief(cards[0], review, self.base_url, config.max_tool_calls) + prompt.language_note(self.language)
-                    toolbox.flags += scan('brief', prompt.review_soft(cards[0]), skip=SOFT)
+                    toolbox.flags += scan('brief', prompt.review_soft(cards[0]), skip=SOFT + REQUESTS)
                 elif quick:
-                    config = RunConfig(quick_model, self.chat_effort if chat_ask else self.slack_effort, self.chat_max_tool_calls if chat_ask else self.slack_max_tool_calls, cache_ttl='1h', role='chat' if chat_ask else 'slack')
-                    blocks, images = self._images(action) if action.get('images') else ([], '')
+                    config = RunConfig(quick_model, self.chat_effort if chat_ask else self.slack_effort, self.chat_max_tool_calls if chat_ask else self.slack_max_tool_calls, cache_ttl='1h', role='chat' if chat_ask else 'slack', capabilities=caps)
+                    blocks, images = (self._images(action) if 'images' in caps else ([], IMAGES_OFF)) if action.get('images') else ([], '')
+                    if images == IMAGES_OFF:
+                        self.store.add_activity('run', 'investigator', IMAGES_OFF, runId=run_id)
                     brief = (prompt.slack_brief(cards, action, self.base_url, config.max_tool_calls, self.limits(now), images) if slack_ask
                              else prompt.chat_brief(cards, action, self.base_url, config.max_tool_calls, images))
                     if blocks:
                         record['images'] = len(blocks)
-                    toolbox.flags += scan('slack' if slack_ask else 'chat', prompt.flat(ask) + '\n' + prompt.thread_text(action.get('thread') or []))
+                    asker = 'slack' if slack_ask else 'chat'
+                    toolbox.flags += scan(asker, prompt.flat(ask) + '\n' + prompt.thread_text(action.get('thread') or []), skip=REQUESTS)
+                    toolbox.flags += asked(asker, '\n'.join([prompt.flat(ask)] + [str(t.get('text') or '') for t in action.get('thread') or [] if t.get('who', 'person') != 'bot']))
                 else:
-                    config = RunConfig(model, self.effort, self.assess_max_tool_calls if report else self.max_tool_calls)
+                    config = RunConfig(model, self.effort, self.assess_max_tool_calls if report else self.max_tool_calls, capabilities=caps)
                     brief = prompt.brief(cards, {**action, 'report': report} if report else action, self.base_url, config.max_tool_calls, None if ask or report else self._announced(cards, now)) + ('' if ask else prompt.language_note(self.language))
+                if ask and not review:
+                    brief += prompt.questions_note(toolbox.not_in_questions())
                 if report:
-                    toolbox.flags += scan('brief', brief)
+                    toolbox.flags += scan('brief', brief, skip=REQUESTS)
                 else:
                     strict, soft = scan_parts(cards, self.base_url)
-                    toolbox.flags += scan('brief', strict) + scan('brief', soft, skip=SOFT)
+                    toolbox.flags += scan('brief', strict, skip=REQUESTS) + scan('brief', soft, skip=SOFT + REQUESTS)
+                if ask and not quick:
+                    toolbox.flags += asked('page', prompt.flat(ask))
                 listed = {(f.get('tool'), f.get('phrase')) for f in toolbox.flags}
                 toolbox.flags += [f for f in (action or {}).get('askFlags') or [] if isinstance(f, dict) and (f.get('tool'), f.get('phrase')) not in listed]
                 tag = {'source': MCP if mcp else SOURCE_OF[record['trigger']], 'runId': run_id, 'actionId': action['id'] if action else None,
-                       'keys': [] if mcp and chat_ask else keys, 'by': (action or {}).get('requestedBy') or pricing.POD_BY}
-                client, result = self._built()
+                       'keys': [] if mcp and chat_ask else keys, 'by': (action or {}).get('requestedBy') or pricing.POD_BY, 'use': use} | ({'fallbackFrom': fallback} if fallback else {})
                 if client is not None:
                     extra = toolbox.start_bridge().knowledge()
                     runner = Runner(client, self.store, config, tag=tag)
@@ -574,17 +621,23 @@ class Investigator:
                  len(toolbox.calls) if toolbox else 0, done['usd'])
         return record | done
 
-    def _built(self) -> tuple[object | None, Result | None]:
+    def _built(self, provider: str | None = None) -> tuple[object | None, Result | None]:
+        label = label_of(provider or route(self, 'investigate_model', 'card')[0])
         try:
-            client = self._client()
+            client = self._client(provider)
         except Exception as e:
-            log.warning('the %s client was not built: %s', self.label, error_kind(e))
-            return None, Result(outcome='failed', error=f'the {self.label} client was not built: {error_kind(e)}')
-        return (client, None) if client is not None else (None, Result(outcome='failed', error=f'no {self.label} API key is set'))
+            log.warning('the %s client was not built: %s', label, error_kind(e))
+            return None, Result(outcome='failed', error=f'the {label} client was not built: {error_kind(e)}')
+        if client is not None:
+            return client, None
+        chosen = provider or route(self, 'investigate_model', 'card')[0]
+        if chosen != self.clients.default() and not self.clients.keyed(chosen):
+            return None, Result(outcome='failed', error=msg('ai.use_held', owner=label))
+        return None, Result(outcome='failed', error=f'no {label} API key is set')
 
     @property
     def label(self) -> str:
-        return pricing.LABELS.get(self.provider, pricing.LABELS[pricing.ANTHROPIC])
+        return label_of(route(self, 'investigate_model', 'card')[0])
 
     def _with_verdicts(self, cards: list[dict]) -> list[dict]:
         seen = [c for c in cards if isinstance(c.get('seenBefore'), dict)]
@@ -607,6 +660,7 @@ class Investigator:
         if result is None:
             outcome, error = ('failed', error_kind(crash)) if crash is not None else ('skipped', None)
             result = Result(outcome=outcome, error=error)
+        result.recap = outward(result.recap or '')
         outcome, error = result.outcome, result.error
         done = {'outcome': outcome, 'endedAt': ended, 'turns': result.turns, 'models': result.models, 'usage': result.usage, 'usd': round(result.usd, 4),
                 'toolCalls': toolbox.calls if toolbox else [], 'writes': toolbox.writes if toolbox else [], 'flags': toolbox.flags if toolbox else [],
@@ -654,8 +708,8 @@ class Investigator:
                     self._notify(claimed, action, outcome, result.recap)
         return done
 
-    def _trace(self, run_id: str, trigger: str, keys: list[str], mode: str, action: dict | None, ask: str) -> tracing.Handle:
-        handle = tracing.begin(TRACE_NAMES[trigger], runId=run_id, cards=', '.join(keys), provider=self.provider, trigger=trigger, mode=mode, source=MCP if via_mcp(action) else None)
+    def _trace(self, run_id: str, trigger: str, keys: list[str], mode: str, action: dict | None, ask: str, provider: str | None = None) -> tracing.Handle:
+        handle = tracing.begin(TRACE_NAMES[trigger], runId=run_id, cards=', '.join(keys), provider=provider or self.provider, trigger=trigger, mode=mode, source=MCP if via_mcp(action) else None)
         if handle.trace is not None:
             handle.trace.on_sent = lambda sent: self.store.update_investigation(run_id, {'trace': sent})
             try:

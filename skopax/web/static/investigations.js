@@ -54,9 +54,12 @@ function heldProposal() {
 }
 function confirmProposal(r, b) {
   var out = b.parentNode.querySelector('.prop-result');
+  var keys = (r.keys || []).length ? r.keys : ['proposal:' + r.id];
+  var run = cardRun(keys, function () { return window.__skopaxApi('POST', '/api/investigations/' + encodeURIComponent(r.id) + '/proposal'); }, {quiet: true, late: function () { out.textContent = 'Still working: refresh to see the result'; }});
+  if (!run) return;
   b.disabled = true;
   b.textContent = 'Confirming\u2026';
-  window.__skopaxApi('POST', '/api/investigations/' + encodeURIComponent(r.id) + '/proposal').then(function (x) {
+  run.then(function (x) {
     r.proposal = Object.assign({}, r.proposal, {confirmedAt: new Date().toISOString(), confirmedBy: ME_USER, result: x});
     var outcome = propOutcome(x);
     b.remove();

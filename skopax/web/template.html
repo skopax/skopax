@@ -767,6 +767,19 @@ details.grp.wait > summary.grp-h .count { color: var(--crit); font-weight: 700; 
 .tile:hover { border-color: var(--line-2); }
 .tile:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .tile { position: relative; }
+.tile.busy, .inc.busy { position: relative; cursor: progress; }
+.tile.busy { opacity: .8; }
+.tile.busy::after, .inc.busy::after, .card-drawer.busy .cd-bar::after { content: ""; flex: none; width: 12px; height: 12px; box-sizing: border-box; border: 2px solid var(--line-2); border-top-color: var(--link); border-radius: 50%; animation: chat-spin .8s linear infinite; pointer-events: none; }
+.tile.busy::after, .inc.busy::after { position: absolute; right: 8px; bottom: 8px; }
+.card-drawer .inc.busy::after { display: none; }
+.work-bar { position: fixed; z-index: 90; top: 0; left: 0; right: 0; height: 3px; overflow: hidden; pointer-events: none; }
+.work-bar[hidden] { display: none; }
+.work-bar::before { content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 40%; background: var(--link); animation: work-bar 1.2s ease-in-out infinite; }
+@keyframes work-bar { to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  .tile.busy::after, .inc.busy::after, .card-drawer.busy .cd-bar::after { animation: none; border-color: var(--link); }
+  .work-bar::before { animation: none; left: 0; width: 100%; opacity: .6; }
+}
 .tile-open { display: grid; gap: 3px; min-width: 0; margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .tile-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
 .tile-open:focus-visible { outline: none; }
@@ -1077,6 +1090,46 @@ a.shot.phone img { width: 60px; }
 .ai-provider { min-width: 0; }
 .adm-off .adm-in { opacity: 0.6; cursor: not-allowed; }
 .ai-grp > h3 { margin: 0; padding: 10px 14px; font-size: 0.95rem; }
+.aic { display: grid; gap: 10px; margin-top: 10px; min-width: 0; }
+.aic-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; min-width: 0; }
+.aic-key-in { -webkit-text-security: disc; }
+.aic-card .ai-field input { max-width: 100%; }
+.aic-models-box { display: grid; gap: 6px; width: 100%; min-width: 0; font-size: 0.82rem; color: var(--fg-2); }
+.aic-models { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.aic-model { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.aic-model input { font: inherit; font-size: 0.88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 10px; box-sizing: border-box; min-width: 0; }
+.aic-model .aic-m-id { flex: 1 1 180px; max-width: 280px; }
+.aic-model .aic-m-in, .aic-model .aic-m-out { flex: 0 1 110px; width: 110px; }
+.aic-m-ref { font-size: 0.78rem; color: var(--muted); overflow-wrap: anywhere; }
+.aic-cap { display: inline-flex; align-items: center; gap: 6px; font-size: 0.86rem; }
+.aic-co, .aic-last { margin: 0; overflow-wrap: anywhere; }
+.aic-last-k { font-weight: 600; }
+.aic-last-v.bad, .aiu-problem.bad { color: var(--crit); }
+.aic-add > summary { cursor: pointer; padding: 10px 16px; border: 1px dashed var(--line-2); border-radius: 6px; font-weight: 600; }
+.aic-add[open] > summary { margin-bottom: 10px; }
+.aic-private { margin: 0; overflow-wrap: anywhere; }
+.aiu-box { max-width: 100%; overflow-x: auto; }
+.aiu-t { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.aiu-t th, .aiu-t td { text-align: left; vertical-align: top; padding: 8px 10px; border-top: 1px solid var(--line); }
+.aiu-t thead th { font-size: 0.78rem; font-weight: 600; color: var(--fg-2); border-top: 0; }
+.aiu-t tbody th { font-weight: 400; min-width: 9rem; }
+.aiu-t select { font: inherit; font-size: 0.86rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 4px 8px; max-width: 16rem; }
+.aiu-t .aiu-msg { margin: 0; }
+.aiu-t .aiu-msg:empty { display: none; }
+#ai-rows .aiu-t .adm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; padding: 0; border: 0; box-shadow: none; }
+#ai-rows .aiu-t .adm-row > .adm-l, #ai-rows .aiu-t .adm-row > .adm-c, #ai-rows .aiu-t .adm-row > .adm-m { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; padding: 0; min-width: 0; }
+#ai-rows .aiu-t .adm-row .adm-n, #ai-rows .aiu-t .adm-row .adm-help:not(.adm-off-why):not(.adm-problem), #ai-rows .aiu-t .adm-row .adm-key, #ai-rows .aiu-t .adm-row .adm-more { display: none; }
+.aiu-k { display: none; }
+.aiu-prov { margin-left: 6px; font-size: 0.72rem; }
+.aiu-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; }
+.aiu-acts .btn[hidden] { display: none; }
+.aiu-meta .adm-m { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; }
+.aiu-help .adm-help { margin: 4px 0 0; }
+.aiu-model .adm-problem, .aiu-model .adm-off-why { margin: 4px 0 0; }
+.aiu-problem, .aiu-fit { margin: 4px 0 0; }
+.aiu-fit { color: var(--warn); }
+.aiu-row.aiu-bad > th { box-shadow: inset 3px 0 0 var(--crit); }
+.adm-body .aiu > .adm-model-summary { margin: 0; padding: 0 var(--sp-5) var(--sp-3); }
 .adm-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .adm-head input[type="search"], .adm-c .adm-in, .adm-rules input { font: inherit; font-size: 0.88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 10px; box-sizing: border-box; }
 .adm-head input[type="search"] { flex: 1 1 220px; max-width: 360px; min-width: 0; }
@@ -2568,6 +2621,15 @@ h3.sec-t { margin: 4px 0 0; font-size: 0.95rem; font-weight: 600; }
   .int-chip { min-width: 44px; }
   .user-btn { min-height: 44px; }
   .live-hide, .seg button { min-width: 44px; justify-content: center; }
+  .aiu-t, .aiu-t tbody { display: block; width: auto; }
+  .aiu-t thead { display: none; }
+  .aiu-t tr { display: block; margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; }
+  .aiu-t td, .aiu-t tbody th { display: block; min-width: 0; padding: 4px 0; border-top: 0; overflow-wrap: anywhere; }
+  .aiu-k { display: block; font-size: 0.75rem; font-weight: 600; color: var(--muted); }
+  .aiu-t select { width: 100%; max-width: 100%; min-height: 44px; }
+  .aiu-row.aiu-bad > th { box-shadow: none; }
+  .aiu-row.aiu-bad { border-color: var(--crit); }
+  .aic-model .aic-m-id { flex-basis: 100%; max-width: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .side, body.drawer-open .side, .g-chev .i,
@@ -2839,7 +2901,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
     <section class="panel" id="panel-ai" hidden>
       <div class="toolbar set-head">
         <h2 class="set-title">Investigator</h2>
-        <p class="panel-note"><span>The AI provider keys that the investigator, the chat and the self-review use, and the investigator settings. AI provider picks Anthropic or OpenAI for the whole install. A key set here is saved sealed, takes the place of ANTHROPIC_API_KEY or OPENAI_API_KEY and is never shown again.</span> <span>Test connection tries the key typed here, or the key in use when the field is empty.</span></p>
+        <p class="panel-note"><span>The AI provider keys and compatible connections that the investigator, the chat and the self-review use, which model each use runs, and the investigator settings. Each use can run on a different provider; Default provider supplies the model of any use left on its default. A key set here is saved sealed, takes the place of ANTHROPIC_API_KEY or OPENAI_API_KEY and is never shown again.</span> <span>Test connection tries the key typed here, or the key in use when the field is empty.</span></p>
       </div>
       <div class="admin" id="ai"><p class="muted">Loading the key&hellip;</p></div>
       <div class="admin" id="ai-rows"></div>
@@ -3133,6 +3195,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
 <script src="/static/costs.js"></script>
 <script src="/static/admin.js"></script>
 <script src="/static/adminui.js"></script>
+<script src="/static/aiuses.js"></script>
 <script src="/static/chips.js"></script>
 <script src="/static/admininst.js"></script>
 <script src="/static/integrations.js"></script>

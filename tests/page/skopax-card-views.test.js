@@ -443,20 +443,18 @@ async function waitingAndInvestigatedCardsStayInOpenAndOnlyALiveRunTagsTheTile()
 async function aDropAnywhereInAColumnMovesTheCardAndTheColumnsFillTheBoard() {
   //given
   const {w, doc, errors, posted} = await boot('#t=anoms/all', {'skopax-card-view': 'board'});
-  const board = doc.querySelector('#anoms .board');
   const style = (el) => w.getComputedStyle(el);
 
   //when
   const empty = colEl(doc, 'progress');
   [...empty.querySelectorAll('.tile')].forEach((t) => t.remove());
   const zero = empty.querySelectorAll('.tile').length === 0;
-  const body = empty.querySelector('.bcol-body');
   const moved = drag(w, doc, NEW, empty.dataset.col, '.bcol-body');
   await wait(80);
 
   //then
-  assert.strictEqual(style(board).getPropertyValue('align-items'), 'stretch', 'every column is as tall as the board');
-  assert.ok(/\.board \{[^}]*min-height: max\(14rem, calc\(100vh - var\(--top-h\)/.test(require('fs').readFileSync(TEMPLATE, 'utf8')) && style(body).getPropertyValue('align-content') === 'start', 'the board reaches the bottom of the screen and cards stay at the top');
+  assert.strictEqual(style(doc.querySelector('#anoms .board')).getPropertyValue('align-items'), 'stretch', 'every column is as tall as the board');
+  assert.ok(/\.board \{[^}]*min-height: max\(14rem, calc\(100vh - var\(--top-h\)/.test(require('fs').readFileSync(TEMPLATE, 'utf8')) && style(colEl(doc, 'progress').querySelector('.bcol-body')).getPropertyValue('align-content') === 'start', 'the board reaches the bottom of the screen and cards stay at the top');
   assert.ok(zero, 'the column has no cards');
   assert.ok(moved.allowed, 'the body area below the header accepts the drag, not only a tile');
   assert.deepStrictEqual(posted.map((b) => b.key), [NEW], 'the drop on the column body sent the move');

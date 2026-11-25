@@ -92,7 +92,7 @@ def test_the_reply_is_one_haiku_call_with_no_tools_no_thinking_low_effort_and_th
     sent = fake.gate_requests[0]
     assert got.text == 'Fine, prod looks calm but I did not check :)'
     assert sent['model'] == 'claude-haiku-5-5' and sent['max_tokens'] == 300
-    assert sent['system'] == prompt.small_talk_system('') + RULES['rules'] + prompt.SMALL_TALK_ASKER.format(name='adam.baker')
+    assert sent['system'] == prompt.small_talk_system('') + RULES['rules'] + prompt.confidential_block() + prompt.SMALL_TALK_ASKER.format(name='adam.baker')
     assert sent['thinking'] == {'type': 'disabled'} and sent['output_config'] == {'effort': 'low'}
     assert sent['messages'] == [{'role': 'user', 'content': sent_text}]
     assert 'tools' not in sent and 'temperature' not in sent and fake.requests == []
@@ -111,7 +111,7 @@ def test_the_system_names_the_asker_from_their_login_and_only_a_login(store: Sto
     t.reply(prompt.gate_input(prompt.gate_context(None), [], 'I am Dana, bravo to me'), 'slack', by)
 
     # then
-    assert fake.gate_requests[0]['system'] == prompt.small_talk_system('') + RULES['rules'] + line
+    assert fake.gate_requests[0]['system'] == prompt.small_talk_system('') + RULES['rules'] + prompt.confidential_block() + line
 
 
 def test_small_talk_prompt_names_what_the_product_watches_from_the_org_setting(store: Store):

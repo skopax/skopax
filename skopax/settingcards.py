@@ -18,7 +18,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
         ('Reading', ('access.public-read',)),
     ),
     'Investigator': (
-        ('Provider', ('investigate.provider',)),
+        ('Provider', ('investigate.provider', 'core.allow-private-ai')),
         ('Models', ('investigate.model', 'investigate.effort', 'investigate.model-critical', 'investigate.model-high', 'investigate.slack-model', 'investigate.slack-effort', 'chat.model', 'chat.effort', 'investigate.gate-model', 'investigate.gate-effort')),
         ('Spend and limits', ('investigate.daily-usd', 'page.ask-cap', 'chat.max-chars', 'chat.daily-cap', 'mcp.dive-cap', 'investigate.max-cards', 'investigate.rooms',
                               'investigate.max-tool-calls', 'investigate.assess-max-tool-calls', 'investigate.slack-max-tool-calls', 'chat.max-tool-calls', 'screenshot.max-per-day')),

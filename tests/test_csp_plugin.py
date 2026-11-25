@@ -205,7 +205,7 @@ def test_csp_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('csp').state == 'ok'
     assert json.loads(json.dumps(manifest)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'CSP reports', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        'CSP reports', '0.1.0', 'web', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert manifest['capabilities'] == {'hosts': [], 'secrets': [], 'agentReads': False}
     assert manifest['uses'] == ['elasticsearch'] and manifest['description'].endswith('.')
     assert manifest['checks'] == [{'id': 'csp', 'label': manifest['checks'][0]['label'], 'period': 900, 'offset': 0, 'ran': ['csp']}]

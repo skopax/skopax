@@ -105,8 +105,11 @@ def test_only_admins_and_the_token_read_and_change_settings_and_admin_counts_as_
     items = {i['key']: i for i in listed.json()['items']}
     assert items['investigate.model'] == {'key': 'investigate.model', 'group': 'Investigator', 'label': 'Card model', 'help': items['investigate.model']['help'], 'kind': 'choice', 'live': True,
                                           'value': 'claude-opus-5-5', 'base': 'claude-opus-5-5', 'default': 'claude-opus-5-5', 'source': 'default', 'by': None, 'at': None, 'card': 'Models', 'order': 100,
-                                          'choices': ['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2', 'claude-mythos-5-2'],
-                                          'modelProviders': items['investigate.model']['modelProviders'], 'cardDefaults': {'anthropic': 'claude-opus-5-5', 'openai': 'gpt-6.2-astra'}}
+                                          'choices': ['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2', 'claude-mythos-5-2',
+                                                      'gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna'],
+                                          'choiceGroups': {**dict.fromkeys(['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2', 'claude-mythos-5-2'], 'Anthropic'),
+                                                           **dict.fromkeys(['gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna'], 'OpenAI')},
+                                          'modelProviders': items['investigate.model']['modelProviders'], 'cardDefaults': {'anthropic': 'claude-opus-5-5', 'openai': 'gpt-6.2-astra'}, 'keyedProviders': []}
     assert items['slack.remind-hours']['live'] is False
     endpoints = {'sso.authorize-url', 'sso.token-url', 'sso.jwks-url'}
     assert {k for k, i in items.items() if i['group'] == 'Sign-in' and k.endswith('-url')} == endpoints and all(items[k]['kind'] == 'text' for k in endpoints)

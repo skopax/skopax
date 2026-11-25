@@ -48,7 +48,7 @@
   function ownedKnown() { return !!owned || (typeof FEATS !== 'undefined' && !!FEATS); }
   function featureOf(key) { return (owned || []).concat(typeof featItems === 'function' ? featItems() : []).filter(function (f) { return f.key === key; })[0] || null; }
   function adminTabForKey(key, group) {
-    if (group === AI_GROUP) return 'ai';
+    if (group === AI_GROUP || (typeof adminCoveredKeys === 'function' && adminCoveredKeys()[key])) return 'ai';
     if (group === INSTANCES_GROUP) return 'workspaces';
     if (group === SIGNIN_GROUP || group === MCP_GROUP) return 'access';
     if (group === FEATURES_GROUP || featureOf(key)) return 'features';
@@ -456,6 +456,12 @@
 
   window.addEventListener('resize', function () { if (!pal.hidden && pal.classList.contains('drop') && topbox) anchor(); });
 
+  window.__skopaxFindSetting = function (key) {
+    var i = (typeof adminItems === 'function' ? adminItems() : []).filter(function (x) { return x.key === key; })[0];
+    if (!i) return false;
+    adminPick(i);
+    return true;
+  };
   window.instRender = instRender;
   window.palOpen = palOpen;
   window.palClose = palClose;

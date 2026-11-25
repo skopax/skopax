@@ -24,6 +24,7 @@ PATTERNS = {
     'idp-token': ('401', '401', '401', '401'),
 }
 WRITES = {
+    ('DELETE', '/api/admin/ai-connections/{name}'): 'admin',
     ('DELETE', '/api/admin/anthropic-key'): 'admin',
     ('DELETE', '/api/admin/openai-key'): 'admin',
     ('DELETE', '/api/admin/custom-checks/{check_id}'): 'admin',
@@ -42,6 +43,7 @@ WRITES = {
     ('PATCH', '/api/admin/users/{email}'): 'admin',
     ('PATCH', '/api/me'): 'session',
     ('POST', '/api/actions'): 'operator',
+    ('POST', '/api/admin/ai-connections/{name}/test'): 'admin',
     ('POST', '/api/admin/anthropic-key/test'): 'admin',
     ('POST', '/api/admin/openai-key/test'): 'admin',
     ('POST', '/api/admin/custom-checks'): 'admin',
@@ -84,6 +86,7 @@ WRITES = {
     ('POST', '/logout'): 'open',
     ('POST', '/mcp'): 'idp-token',
     ('POST', '/setup'): 'open',
+    ('PUT', '/api/admin/ai-connections/{name}'): 'admin',
     ('PUT', '/api/admin/anthropic-key'): 'admin',
     ('PUT', '/api/admin/openai-key'): 'admin',
     ('PUT', '/api/admin/custom-checks/{check_id}'): 'admin',
@@ -121,6 +124,8 @@ READS = {
     '/actuator/health/readiness': 'open',
     '/api/actions': 'read',
     '/api/activity': 'read',
+    '/api/admin/ai-connections': 'admin',
+    '/api/admin/ai-uses': 'admin',
     '/api/admin/anthropic-key': 'admin',
     '/api/admin/openai-key': 'admin',
     '/api/admin/custom-checks': 'admin',

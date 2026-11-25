@@ -79,7 +79,7 @@ def make_client(info: InstanceInfo, transport: Transport) -> Jira:
 
 PLUGIN = Plugin(
     id=ID, name='Jira', version='0.1.0', category='tickets', description='One Jira Cloud site for Create task, ticket links on cards, release lookups and the Jira read tools.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community', capabilities=Capabilities(hosts=('@url', GATEWAY_HOST), secrets=('api-token',)),
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community', capabilities=Capabilities(hosts=('@url', GATEWAY_HOST), secrets=('api-token',)),
     client=make_client, max_instances=1,
     fields=(Field('url', 'Site', 'url', required=True, ui=True, help='Address of the Jira Cloud site, such as https://example.atlassian.net. Calls go through the Atlassian API gateway.'),
             Field('email', 'Email', 'text', required=True, help='Email of the account the API token belongs to.'),

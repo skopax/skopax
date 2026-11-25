@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 
 import pytest
+
+import skopax
 from fastapi.testclient import TestClient
 
 from skopax.app import create_app
@@ -66,7 +68,7 @@ def test_the_example_installs_to_a_target_dir_and_is_discovered(tmp_path):
     # then
     assert installed.returncode == 0, installed.stderr
     assert (target / 'skopax_hello' / 'icon.svg').is_file() and (target / 'skopax_hello' / 'panel.js').is_file()
-    assert (target / 'skopax_hello-0.1.0.dist-info' / 'licenses' / 'LICENSE').read_bytes() == (ROOT / 'LICENSE').read_bytes()
+    assert (target / 'skopax_hello-0.1.0.dist-info' / 'licenses' / 'LICENSE').read_bytes() == (ROOT / 'examples' / 'hello-plugin' / 'LICENSE').read_bytes()
     assert found.returncode == 0, found.stderr
     assert json.loads(found.stdout) == {'id': 'hello', 'origin': 'entry-point', 'state': 'ok', 'reason': None, 'home': True}
 
@@ -159,7 +161,7 @@ def test_a_fuller_example_installs_to_a_target_dir_and_is_discovered(tmp_path, p
     # then
     assert installed.returncode == 0, installed.stderr
     assert all((target / package / name).is_file() for name in data)
-    assert (target / f'{package}-0.1.0.dist-info' / 'licenses' / 'LICENSE').read_bytes() == (ROOT / 'LICENSE').read_bytes()
+    assert (target / f'{package}-0.1.0.dist-info' / 'licenses' / 'LICENSE').read_bytes() == (ROOT / 'examples' / 'hello-plugin' / 'LICENSE').read_bytes()
     assert found.returncode == 0, found.stderr
     assert json.loads(found.stdout) == {'id': plugin_id, 'origin': 'entry-point', 'state': 'ok', 'reason': None, 'home': True}
 
@@ -242,3 +244,16 @@ def test_a_second_instance_of_a_fuller_example_keeps_its_own_keys_and_clears_onl
     assert all(c['key'].startswith(f'{plugin_id}|{second.name}|') and c['key'].endswith(f'@{second.name}') for c in other.result.found)
     assert primary.result.ran == (plugin_id, f'{plugin_id}:access:metrics') and other.result.ran == (f'{plugin_id}-{second.name}', f'{plugin_id}:access:metrics-{second.name}')
     assert all(allowed(c['ranKey'], check) for c in primary.result.found) and {c['ranKey'] for c in other.result.found} == {f'{plugin_id}-{second.name}'}
+
+
+def test_every_example_plugin_accepts_the_next_minor(monkeypatch):
+    # given
+    monkeypatch.setattr(skopax, '__version__', '0.6.0')
+    plugins = [hello().PLUGIN, *(importlib.import_module(package).PLUGIN for _, package, _ in FULLER.values())]
+
+    # when
+    states = {plugin.id: Registry.of(plugin).loaded()[0].state for plugin in plugins}
+
+    # then
+    assert len(states) == 4
+    assert set(states.values()) == {'ok'}

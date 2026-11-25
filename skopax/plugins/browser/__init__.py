@@ -86,7 +86,7 @@ def browser_check(ctx: Context) -> Sweep:
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='other',
     description='A headless Chrome service that Website screenshots and the page scan load pages in; watched for whether it answers and which version it runs.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
     capabilities=Capabilities(hosts=('@url',)),
     fields=(Field('url', 'Browser URL', 'url', required=True,
                   help='Chrome DevTools endpoint of a headless browser service, for example http://browser:9222. Website instances pick it for screenshots and the page scan. '

@@ -1,0 +1,7 @@
+{
+  "uses": ["avgCost7d", "company", "fit", "label", "model", "price", "problem", "provider", "setting", "use"],
+  "connections": ["allowPrivate", "items"],
+  "connection": ["baseUrl", "company", "images", "key", "lastTest", "models", "name", "provider", "tools", "updatedAt", "updatedBy"],
+  "model": ["id", "input", "output", "ref"],
+  "test": ["ms", "ok", "summary", "tools"]
+}

@@ -1,5 +1,7 @@
 import copy
 import json
+import random
+import unicodedata
 from dataclasses import dataclass
 
 import pytest
@@ -177,6 +179,117 @@ def test_page_list_keeps_our_html_pages_once_with_the_extra_ones_first():
 
     # then
     assert urls == [f'{SITE}/', CHAIRS, f'{SITE}/brands/acme']
+
+
+def test_a_long_sentence_is_split_at_sentence_ends_not_mid_word():
+    # given
+    first = 'Bu kart ile al\u0131\u015fveri\u015fte her ay yeni f\u0131rsatlar kazan\u0131rs\u0131n\u0131z, taksit se\u00e7enekleri ve indirimler sizi bekliyor ve hepsi tek ba\u015f\u0131na yeterli olabilir mi diye d\u00fc\u015f\u00fcnmeyin.'
+    second = 'Ba\u015fvuru i\u00e7in \u015fubeye gitmeniz gerekmez ve t\u00fcm i\u015flemler internet \u00fczerinden yap\u0131l\u0131r; ka\u011f\u0131t belge istenmez ve onay h\u0131zl\u0131 verilir.'
+    third = 'Bu \u00fcr\u00fcn yal\u0131n ve ge\u00e7erli bir kredi kart\u0131d\u0131r.'
+    line = f'{first} {second} {third}'
+    assert len(line) > 300
+
+    # when
+    chunks = ps.lines_of(line)
+
+    # then
+    assert len(chunks) > 1 and all(len(c) <= ps.LINE_LIMIT for c in chunks)
+    assert ' '.join(chunks) == line
+    assert all(c[-1] in '.;' for c in chunks)
+    assert chunks[-1].endswith('kredi kart\u0131d\u0131r.')
+
+
+def test_a_sentence_longer_than_the_limit_is_split_at_a_space():
+    # given
+    line = ' '.join(f'word{n:03d}' for n in range(60))
+    assert len(line) > 300
+
+    # when
+    chunks = ps.lines_of(line)
+
+    # then
+    assert len(chunks) == 2 and all(len(c) <= ps.LINE_LIMIT for c in chunks)
+    assert ' '.join(chunks) == line
+    assert all(w.startswith('word') and len(w) == 7 for c in chunks for w in c.split(' '))
+
+
+def test_an_unbroken_run_is_cut_with_an_ellipsis():
+    # given
+    line = 'https://shop.example.com/' + 'a' * 400
+
+    # when
+    chunks = ps.lines_of(line)
+
+    # then
+    assert len(chunks[0]) == ps.LINE_LIMIT and chunks[0].endswith('\u2026')
+    assert chunks[1].startswith('\u2026')
+    assert all(len(c) <= ps.LINE_LIMIT for c in chunks)
+    assert ''.join(chunks).replace('\u2026', '') == line
+
+
+def test_a_cut_never_separates_a_combining_mark_from_its_letter():
+    # given
+    line = 'a' * 298 + 'e\u0301' + 'b' * 50
+
+    # when
+    chunks = ps.lines_of(line)
+
+    # then
+    assert all(len(c) <= ps.LINE_LIMIT for c in chunks)
+    assert not any(unicodedata.combining(c[0]) or unicodedata.combining(c[1]) for c in chunks)
+    assert ''.join(chunks).replace('\u2026', '') == line
+
+
+def test_short_lines_keep_their_hash():
+    # given
+    line = 'Garden chairs from 34.90'
+
+    # when
+    chunks = ps.lines_of(line)
+
+    # then
+    assert chunks == [line] and ps.line_hash(chunks[0]) == '87109359da87d91d'
+    assert ps.line_hash('34.90') == ps.line_hash('12.50')
+
+
+def test_the_scan_prompt_says_a_line_ending_in_an_ellipsis_was_cut():
+    # when
+    prompt = ps.msg('website.scan_prompt', site='x')
+
+    # then
+    assert 'A line that starts or ends with \u2026 may have been cut by the scan; never report a typo at a cut start or end.' in prompt
+
+
+def test_decimals_and_abbreviations_do_not_end_a_sentence():
+    # then
+    assert ps.SENTENCE_END.split('See e.g. this and i.e. that, 3.5 more.') == ['See e.g. this and i.e. that, 3.5 more.']
+
+
+def test_generated_lines_never_exceed_the_limit_and_join_back_when_uncut():
+    # given
+    rng = random.Random(7)
+    words = ['chair', 'garden', 'a', 'x' * 150, 'y' * 320, 'end.', 'what?', 'so;', 'e.g.', '3.5', 'k\u0131rm\u0131z\u0131', 'e\u0301']
+
+    # when
+    for _ in range(300):
+        line = ' '.join(rng.choice(words) for _ in range(rng.randint(1, 120)))
+        chunks = ps.chunks_of(line)
+
+        # then
+        assert all(0 < len(c) <= ps.LINE_LIMIT for c in chunks)
+        if not any('\u2026' in c for c in chunks):
+            assert ' '.join(chunks) == line
+
+
+def test_a_sentence_repeated_across_two_long_lines_is_kept_once():
+    # given
+    one, two, three = ('alpha ' * 40).strip() + '.', ('bravo ' * 40).strip() + '.', ('charlie ' * 30).strip() + '.'
+
+    # when
+    got = ps.lines_of(f'{one} {two}\n{two} {three}')
+
+    # then
+    assert got == [one, two, three]
 
 
 def test_busiest_paths_are_joined_to_the_site_by_concatenation_and_never_leave_it():
@@ -1416,3 +1529,34 @@ def test_the_digest_title_counts_one_and_many_pages_with_one_key_each(lang: str)
     assert many.endswith(', '.join(pack[f'pagescan.digest.{name}_many'].format(count=2) for name in ('typos', 'layouts')))
     if lang == 'en':
         assert one.endswith(': 1 page with typos, 1 page with layout problems, 1 page with a note') and many.endswith(': 2 pages with typos, 2 pages with layout problems')
+
+
+def test_a_run_of_combining_marks_is_chunked_fast_and_within_the_limit():
+    # given
+    import time
+    line = 'a' + '́' * 5000
+
+    # when
+    started = time.monotonic()
+    chunks = ps.chunks_of(line)
+    took = time.monotonic() - started
+
+    # then
+    assert took < 1.0
+    assert chunks and all(len(c) <= ps.LINE_LIMIT for c in chunks)
+    assert len(chunks) <= ps.MAX_CHUNKS
+
+
+def test_a_megabyte_of_combining_marks_gives_a_bounded_line_count_quickly():
+    # given
+    import time
+    text = '\n'.join(['x' + '́' * 999 for _ in range(1000)])
+
+    # when
+    started = time.monotonic()
+    lines = ps.lines_of(text)
+    took = time.monotonic() - started
+
+    # then
+    assert took < 1.0
+    assert len(lines) <= ps.MAX_PAGE_LINES

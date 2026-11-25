@@ -1,7 +1,7 @@
 import anthropic
 
 from skopax import tracing
-from skopax.ai import ANTHROPIC, THINK_OFF, ToolCall, Turn, neutral
+from skopax.ai import ANTHROPIC, PROVIDER_CAPABILITIES, THINK_AUTO, THINK_OFF, ToolCall, Turn, neutral
 
 FALLBACK_BETA = 'server-side-fallback-2026-07-01'
 CACHE = {'type': 'ephemeral'}
@@ -55,18 +55,19 @@ def turn_of(resp, model: str) -> Turn:
 
 class AnthropicAi:
     provider = ANTHROPIC
+    capabilities = PROVIDER_CAPABILITIES[ANTHROPIC]
     bad_request = anthropic.BadRequestError
     api_error = anthropic.APIError
 
     def __init__(self, client):
         self.client = client
 
-    def turn(self, model: str, effort: str, system: str, tools: list[dict], messages: list[dict], max_tokens: int, cache_ttl: str | None = None) -> Turn:
+    def turn(self, model: str, effort: str, system: str, tools: list[dict], messages: list[dict], max_tokens: int, cache_ttl: str | None = None, thinking: str = THINK_AUTO,
+             fallbacks: bool = True) -> Turn:
         cache = {**CACHE, 'ttl': cache_ttl} if cache_ttl else CACHE
+        extra = ({'thinking': {'type': 'adaptive'}, 'output_config': {'effort': effort}} if thinking != THINK_OFF else {}) | ({'betas': [FALLBACK_BETA], 'extra_body': {'fallbacks': 'default'}} if fallbacks else {})
         return tracing.generation(self.provider, 'turn', model, system, messages, lambda: turn_of(self.client.beta.messages.create(
-            model=model, max_tokens=max_tokens, system=[{'type': 'text', 'text': system, 'cache_control': cache}], tools=tools, messages=cache_marked(messages),
-            thinking={'type': 'adaptive'}, output_config={'effort': effort}, betas=[FALLBACK_BETA],
-            extra_body={'fallbacks': 'default'}), model), tools)
+            model=model, max_tokens=max_tokens, system=[{'type': 'text', 'text': system, 'cache_control': cache}], tools=tools, messages=cache_marked(messages), **extra), model), tools)
 
     def once(self, model: str, system: str, messages: list[dict], max_tokens: int, effort: str, thinking: str = THINK_OFF, schema: dict | None = None) -> Turn:
         output = {'effort': effort} | ({'format': {'type': 'json_schema', 'schema': schema}} if schema is not None else {})

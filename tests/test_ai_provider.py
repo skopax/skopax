@@ -148,17 +148,19 @@ def test_the_self_review_runs_on_openai(store: Store):
     assert store.ledger.find_one({'source': 'selfreview'})['provider'] == 'openai'
 
 
-def test_a_plugin_model_call_on_openai_uses_the_fallback_model_and_the_schema(store: Store):
+def test_a_plugin_model_call_on_openai_uses_the_openai_model_and_the_schema_and_a_chosen_model_without_a_key_is_held(store: Store):
     # given
     fake = FakeOpenAI([reply(text('{"typos": []}'), model='gpt-6.2-astra')])
     ai = PluginAi(store, lambda: 'test-key', lambda now: None, client=fake, clock=lambda: NOW, provider=lambda: 'openai')
     plugin, check = NS(id='website'), NS(id='pagescan')
 
     # when
-    made = ai.for_check(plugin, check, None, 'claude-opus-5-5')
+    held = ai.for_check(plugin, check, None, 'claude-opus-5-5')
+    made = ai.for_check(plugin, check, None, 'gpt-6.2-astra')
     out = made.complete('SYSTEM', [{'role': 'user', 'content': [{'type': 'text', 'text': 'read this page'}]}], 1000, {'type': 'object'}, 'high')
 
     # then
+    assert held is None and len(fake.requests) == 1
     assert made.model == 'gpt-6.2-astra' and out['text'] == '{"typos": []}' and out['usd'] > 0
     assert (fake.requests[0]['reasoning'], fake.requests[0]['input']) == ({'effort': 'high'}, [{'role': 'user', 'content': [{'type': 'input_text', 'text': 'read this page'}]}])
     assert store.ledger.find_one({'source': 'pagescan'})['provider'] == 'openai'
@@ -218,7 +220,7 @@ def test_the_openai_connection_test_reports_fixed_texts_for_the_openai_card_mode
     assert factory.built == [{'api_key': OPENAI_KEY, 'timeout': 10, 'max_retries': 0}] and factory.asked == ['gpt-6.2-astra']
 
 
-def test_switching_the_provider_in_admin_moves_models_key_and_choices(store: Store):
+def test_switching_the_default_provider_in_admin_moves_models_and_key_and_keeps_every_choice(store: Store):
     # given
     c = TestClient(create_app(dataclasses.replace(settings(), anthropic_api_key='test-anthropic-key', openai_api_key='test-key', investigate_mode='shadow'), store))
     inv = c.app.state.investigator
@@ -231,25 +233,27 @@ def test_switching_the_provider_in_admin_moves_models_key_and_choices(store: Sto
 
     # then
     assert put.status_code == 200
-    assert before == ('anthropic', 'claude-opus-5-5', 'test-anthropic-key', ['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2', 'claude-mythos-5-2'])
-    assert after == ('openai', 'gpt-6.2-astra', 'test-key', ['gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna'])
+    every = ['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2', 'claude-mythos-5-2', 'gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna']
+    assert before == ('anthropic', 'claude-opus-5-5', 'test-anthropic-key', every)
+    assert after == ('openai', 'gpt-6.2-astra', 'test-key', every)
 
 
-def test_admin_marks_web_page_reads_unavailable_and_a_set_model_of_the_other_provider(store: Store):
+def test_admin_marks_web_page_reads_unavailable_and_a_set_model_of_a_provider_without_a_key(store: Store):
     # given
     c = TestClient(create_app(on_openai(investigate_model='claude-opus-5'), store))
+    plain = TestClient(create_app(on_openai(), store))
     anthropic_app = TestClient(create_app(dataclasses.replace(settings(), anthropic_api_key='test-anthropic-key'), store))
 
     # when
-    fetches, model, slack = setting(c, 'investigate.web-fetches'), setting(c, 'investigate.model'), setting(c, 'investigate.slack-model')
+    fetches, model, slack = setting(plain, 'investigate.web-fetches'), setting(c, 'investigate.model'), setting(c, 'investigate.slack-model')
     notices = c.get('/api/admin/notices', headers=AUTH).json()['items']
 
     # then
     assert fetches['off'] == msg('ai.off_openai') and 'off' not in setting(anthropic_app, 'investigate.web-fetches')
-    assert model['problem'] == msg('ai.model_other', model='claude-opus-5', owner='Anthropic', provider='OpenAI', used='gpt-6.2-astra') and model['value'] == 'claude-opus-5'
+    assert model['problem'] == msg('ai.use_held', owner='Anthropic') and model['value'] == 'claude-opus-5'
     assert 'problem' not in slack and slack['value'] == 'gpt-6.2-sol' and slack['source'] == 'default'
-    assert model['choices'] == ['gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna', 'claude-opus-5'] and model['choiceLabels']['claude-opus-5'] == 'claude-opus-5 (Anthropic, not used)'
-    assert [n['text'] for n in notices if n['id'].startswith('ai-model:')] == [msg('ai.model_other', model='claude-opus-5', owner='Anthropic', provider='OpenAI', used='gpt-6.2-astra')]
+    assert 'claude-opus-5' in model['choices'] and (model['choiceGroups']['claude-opus-5'], model['choiceGroups']['gpt-6.2-astra']) == ('Anthropic', 'OpenAI')
+    assert msg('ai.use_problem', use='Card runs', problem=msg('ai.use_held', owner='Anthropic')) in [n['text'] for n in notices if n['id'].startswith('ai-use:')]
 
 
 def test_features_need_the_key_of_the_active_provider(store: Store):
@@ -403,7 +407,7 @@ def test_gate_and_small_talk_rows_carry_no_effort_under_openai_and_keep_it_under
     assert sorted((r['source'], r['provider'], r['effort']) for r in store.ledger.find({})) == [('gate', 'anthropic', 'low'), ('gate', 'openai', None), ('smalltalk', 'openai', None)]
 
 
-def test_a_plugin_call_made_before_a_provider_switch_uses_the_model_of_the_client_it_gets(store: Store):
+def test_a_plugin_call_made_before_a_provider_switch_is_held_once_its_provider_has_no_key(store: Store):
     # given
     fake = FakeOpenAI([reply(text('ok'), model='gpt-6.2-astra')])
     provider = ['anthropic']
@@ -415,21 +419,23 @@ def test_a_plugin_call_made_before_a_provider_switch_uses_the_model_of_the_clien
     out = made.complete('SYSTEM', [{'role': 'user', 'content': 'read'}], 500)
 
     # then
-    assert out['text'] == 'ok' and fake.requests[0]['model'] == 'gpt-6.2-astra'
-    assert store.ledger.find_one({'source': 'pagescan'})['model'] == 'gpt-6.2-astra'
+    assert out is None and fake.requests == []
+    assert store.ledger.count_documents({}) == 0
 
 
-def test_saving_a_model_of_the_provider_not_in_use_is_refused_and_reset_names_the_model_that_runs(store: Store):
+def test_saving_a_model_of_another_provider_is_taken_and_reset_names_the_model_that_runs(store: Store):
     # given
     c = TestClient(create_app(on_openai(), store))
 
     # when
-    refused = c.put('/api/admin/settings', json={'key': 'investigate.model', 'value': 'claude-opus-5-5'}, headers=AUTH)
+    other = c.put('/api/admin/settings', json={'key': 'investigate.model', 'value': 'claude-opus-5-5'}, headers=AUTH)
+    crossed = setting(c, 'investigate.model')
     taken = c.put('/api/admin/settings', json={'key': 'investigate.model', 'value': 'gpt-6.1-terra'}, headers=AUTH)
     model = setting(c, 'investigate.model')
 
     # then
-    assert (refused.status_code, refused.json()['detail']) == (422, msg('ai.model_refused', model='claude-opus-5-5', owner='Anthropic', provider='OpenAI'))
+    assert other.status_code == 200 and (crossed['value'], crossed['source']) == ('claude-opus-5-5', 'admin')
+    assert crossed['problem'] == msg('ai.use_held', owner='Anthropic')
     assert taken.status_code == 200 and model['value'] == 'gpt-6.1-terra'
     assert (model['base'], model['default']) == ('gpt-6.2-astra', 'gpt-6.2-astra')
 

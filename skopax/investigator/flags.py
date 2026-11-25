@@ -1,7 +1,7 @@
-from skopax.kit.flags import ESCAPE, EXCERPT, MAX_FLAGS, PHRASES, SIMPLE, SOFT, scan, unescaped
+from skopax.kit.flags import ESCAPE, EXCERPT, MAX_FLAGS, PHRASES, PLANTED, REQUESTS, SIMPLE, SOFT, asked, scan, unescaped
 from skopax.redact import redact_secrets
 
-__all__ = ['ESCAPE', 'EXCERPT', 'MAX_FLAGS', 'PHRASES', 'SIMPLE', 'SOFT', 'masked_scan', 'safe_excerpt', 'scan', 'unescaped']
+__all__ = ['ESCAPE', 'EXCERPT', 'MAX_FLAGS', 'PHRASES', 'PLANTED', 'REQUESTS', 'SIMPLE', 'SOFT', 'asked', 'masked_asked', 'masked_scan', 'safe_excerpt', 'scan', 'unescaped']
 
 EXCERPT_MARGIN = 200
 
@@ -20,3 +20,7 @@ def safe_excerpt(flag: dict, text: str) -> str:
 
 def masked_scan(tool: str, text: str, skip: tuple[str, ...] = ()) -> list[dict]:
     return [f | {'excerpt': safe_excerpt(f, text)} for f in scan(tool, text, skip)]
+
+
+def masked_asked(tool: str, text: str) -> list[dict]:
+    return masked_scan(tool, text, PLANTED)

@@ -349,12 +349,16 @@ def test_openai_prices_split_cached_written_and_long_context_tokens():
     assert pricing.provider_of('gpt-6-luna') == 'openai' and pricing.provider_of('claude-haiku-5-5') == 'anthropic' and pricing.provider_of('gpt-x') is None
 
 
-def test_a_stored_model_of_the_other_provider_falls_back_to_the_provider_default():
+def test_a_chosen_model_of_another_provider_stays_on_its_provider_and_an_unset_one_follows_the_default_provider():
+    # given
+    keyed = {'anthropic': True, 'openai': False}.get
+
     # then
-    assert pricing.effective('openai', 'claude-opus-5-5', 'card') == 'gpt-6.2-astra'
-    assert pricing.effective('openai', 'claude-haiku-5-5', 'gate') == 'gpt-6-luna'
-    assert pricing.effective('anthropic', 'gpt-6.2-sol', 'review') == 'claude-sonnet-5-5'
-    assert pricing.effective('openai', 'gpt-6.1-terra', 'card') == 'gpt-6.1-terra'
+    assert pricing.resolve('claude-opus-5-5', 'card', 'openai', keyed, chosen=False) == ('openai', 'gpt-6.2-astra', None)
+    assert pricing.resolve('claude-haiku-5-5', 'gate', 'openai', keyed) == ('anthropic', 'claude-haiku-5-5', None)
+    assert pricing.resolve('gpt-6.2-sol', 'review', 'anthropic', keyed) == ('openai', 'gpt-6.2-sol', None)
+    assert pricing.resolve('gpt-6.1-terra', 'card', 'openai', keyed) == ('openai', 'gpt-6.1-terra', None)
+    assert pricing.resolve('', 'chat', 'openai', keyed, chosen=False) == ('openai', 'gpt-6.2-sol', None) and pricing.resolve('', 'chat', 'openai', keyed) == ('openai', '', None)
 
 
 def test_the_openai_request_body_sent_by_the_real_sdk_has_no_key_in_it():

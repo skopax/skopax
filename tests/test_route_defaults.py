@@ -45,3 +45,28 @@ def test_an_explicit_lowest_severity_holds_for_tag_routes_too(store: Store):
     # then
     assert sent == {}
 
+
+
+def test_a_business_route_with_its_own_lowest_severity_sends_nothing_below_it(store: Store):
+    # given
+    cards = seeded(store, 'warn')
+    routes = routes_of(store, Transport(), route('seo', SEO, tags='seo', sev='high'), old=False)
+
+    # when
+    tagged = routes.tagged(cards, now=NOW)
+    pushed = routes.push(cards, now=NOW)
+
+    # then
+    assert (tagged, pushed) == ({}, {}), 'a lowest severity set on the route holds for a business route too'
+
+
+def test_a_business_route_without_its_own_lowest_severity_still_takes_a_warning(store: Store):
+    # given
+    cards = seeded(store, 'warn')
+    routes = routes_of(store, Transport(), route('seo', SEO, tags='seo'), old=False)
+
+    # when
+    sent = routes.tagged(cards, now=NOW)
+
+    # then
+    assert sent == {'teams/seo': [KEY]}

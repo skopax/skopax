@@ -2,14 +2,15 @@
 
 The `google_ads` tool reads the Google Ads account set on the instance, read only.
 
-- `op campaigns` (the default): the top campaigns of the last `days` with status, channel, cost, clicks, impressions and conversions.
+- `op campaigns` (the default): the top campaigns by clicks of the last `days` with status, channel, clicks, impressions and conversions.
 - `op daily`: the same totals per day, for the account or one campaign. Yesterday and today are still being counted by Google.
 - `op ads`: the enabled ads of enabled campaigns with their final URLs and approval status. With `url_contains`, it finds the ads that send visitors to a page a card is about (a removed, redirected or broken page).
-- `op query`: one read-only GAQL `SELECT`, at most 200 rows.
+- `google_ads_query`: one read-only GAQL `SELECT`, at most 200 rows, only on instances where an admin switched on Free GAQL queries (off by default).
+- Skopax reads no cost, budget, billing or conversion value data from Google Ads (conversion counts stay), and no revenue, profit, margin, cart, price or order fields either: a query that names them is refused.
 
 Reading the answer:
 
-- When conversions or site traffic change with no deploy, compare `op campaigns` or `op daily` for the same days: a paused campaign or a cost drop explains a traffic drop.
+- When conversions or site traffic change with no deploy, compare `op campaigns` or `op daily` for the same days: a paused campaign or a drop in clicks or impressions explains a traffic drop.
 - An ad that points at a broken or moved page is the marketing team's to change: name the campaign and the new address.
 - `APPROVED_LIMITED` ads still serve, to fewer people. `DISAPPROVED` ads do not serve at all.
 

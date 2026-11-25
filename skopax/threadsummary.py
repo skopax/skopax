@@ -2,19 +2,19 @@ import json
 import logging
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 import anthropic
 
 from skopax import brand, clock, tracing
-from skopax.ai import THINK_OFF, ModelSetting, key_for, maker, wrap
-from skopax.aikey import ClientBox
+from skopax.ai import THINK_OFF, ModelSetting, clients_for, route, wrap
 from skopax.config import Setting
 from skopax.engine import iso as epoch_iso, parse_iso
 from skopax.errkind import kind as error_kind
 from skopax.investigator import pricing, prompt
 from skopax.investigator.gate import GATE_TIMEOUT
-from skopax.kit.flags import SOFT, scan
+from skopax.kit.flags import REQUESTS, SOFT, scan
+from skopax.outward import outward
 from skopax.redact import redact_secrets
 from skopax.slack import SlackError
 from skopax.slackevents import FILE_SUBTYPE, MENTION, decode
@@ -58,7 +58,7 @@ def masked(text: str) -> str:
 
 
 def tidy(text: object, limit: int) -> str:
-    return masked(' '.join(str(text or '').split()))[:limit]
+    return outward(masked(' '.join(str(text or '').split())))[:limit]
 
 
 class ThreadSummaries:
@@ -68,24 +68,28 @@ class ThreadSummaries:
     switch = Setting('slack_thread_summary')
 
     def __init__(self, store, slack, settings, client=None, clock=time.time, key: Callable[[], str] | None = None, names: Callable[[str], str | None] = lambda user: None,
-                 halted: Callable[[float], str | None] = lambda now: None):
+                 halted: Callable[[float], str | None] = lambda now: None, keys: Mapping[str, Callable[[], str]] | None = None):
         self.store = store
         self.slack = slack
         self.settings = settings
-        self.key = key or key_for(settings, lambda: self.provider)
-        self.box = ClientBox(self.key, maker(lambda: self.provider, lambda k: anthropic.Anthropic(api_key=k, timeout=GATE_TIMEOUT, max_retries=0), GATE_TIMEOUT, 0), client,
-                             lambda: self.provider)
+        self.clients = clients_for(settings, key, lambda k: anthropic.Anthropic(api_key=k, timeout=GATE_TIMEOUT, max_retries=0), GATE_TIMEOUT, 0, client, keys)
+        self.key = lambda: self.clients.key(route(self, 'investigate_gate_model', 'gate')[0])
+        self.keyed = lambda: self.clients.keyed(route(self, 'investigate_gate_model', 'gate')[0])
         self.clock = clock
         self.names = names
         self.halted = halted
         self._names: dict[str, tuple[float, str]] = {}
 
     @property
+    def box(self):
+        return self.clients.box()
+
+    @property
     def on(self) -> bool:
         return bool(self.switch)
 
     def ready(self, now: float) -> bool:
-        return self.on and bool(self.key()) and pricing.known(self.model) and self.halted(now) is None
+        return self.on and self.keyed() and pricing.known(self.model) and self.halted(now) is None
 
     def seen(self, card: dict, ts: str, now: float) -> None:
         if self.on and card.get('key') and ts:
@@ -141,7 +145,7 @@ class ThreadSummaries:
         if made is None:
             return None
         said = '\n'.join([made[0], *made[1]])
-        hits = {h['phrase'] for h in scan('thread summary', said, skip=SOFT)} | ({'ignore instructions'} if ORDER.search(said) else set())
+        hits = {h['phrase'] for h in scan('thread summary', said, skip=SOFT + REQUESTS)} | ({'ignore instructions'} if ORDER.search(said) else set())
         if hits:
             log.warning('thread summary of %s dropped: it repeats planted text (%s)', key, ', '.join(sorted(hits)))
             self.store.clear_thread_mark(key, max(upto, seen))
@@ -185,10 +189,10 @@ class ThreadSummaries:
 
     def _ask(self, card: dict, lines: list[dict], earlier: list[str], now: float) -> tuple[str, list[str], str] | None:
         try:
-            ai = wrap(self.box.get())
+            ai = wrap(self.clients.get(route(self, 'investigate_gate_model', 'gate')[0]))
             if ai is None:
                 return None
-            model = pricing.effective(ai.provider, self.model, 'gate')
+            model = pricing.in_hand(ai.provider, self.model, 'gate')
             with tracing.opened('thread summary', provider=ai.provider, cards=card['key']):
                 resp = ai.once(model, prompt.thread_summary_system(self.language), [{'role': 'user', 'content': prompt.thread_summary_input(card, lines, earlier)}],
                                MAX_TOKENS, EFFORT, THINK_OFF, SCHEMA)
@@ -198,12 +202,9 @@ class ThreadSummaries:
         day = clock.day(now)
         served = resp.model or model
         try:
-            try:
-                priced = served
-                usd = pricing.usd(served, resp.usage)
-            except pricing.UnknownModel:
-                priced = max(pricing.TABLES[ai.provider], key=lambda m: pricing.usd(m, resp.usage))
-                usd = pricing.usd(priced, resp.usage)
+            usd, priced_as = pricing.charge(served, ai.provider, resp.usage)
+            priced = priced_as or served
+            if priced_as is not None:
                 log.warning('thread summary of %s came from the unpriced model %s, charged at the rate of %s', card['key'], served, priced)
         except Exception as e:
             used = resp.usage
@@ -225,7 +226,7 @@ class ThreadSummaries:
 
     def _ledger(self, day: str, provider: str, model: str, priced: str, usage, key: str) -> None:
         try:
-            self.store.add_ledger({'source': SOURCE, 'day': day, 'provider': provider, 'model': model, 'effort': None if provider == pricing.OPENAI else EFFORT, 'runId': None, 'actionId': None,
+            self.store.add_ledger({'source': SOURCE, 'use': 'gate', 'day': day, 'provider': provider, 'model': model, 'effort': None if provider == pricing.OPENAI else EFFORT, 'runId': None, 'actionId': None,
                                    'keys': [key], 'by': None, **pricing.split(priced, usage)} | ({'pricedAs': priced} if priced != model else {}))
         except Exception as e:
             log.warning('spend ledger row for a thread summary not written: %s', error_kind(e))

@@ -6,7 +6,7 @@ from skopax.engine import parse_iso
 from skopax.errkind import kind as error_kind
 from skopax import clock
 from skopax.investigator import SOURCE_OF
-from skopax.investigator.pricing import PARTS, POD_BY, PRICES, split, usd
+from skopax.investigator.pricing import ANTHROPIC, PARTS, POD_BY, charge, provider_of, split
 from skopax.store import NotFound, Store, iso
 
 log = logging.getLogger('skopax.backfill')
@@ -35,7 +35,7 @@ def requested_by(store: Store, record: dict) -> str:
 
 
 def priced_split(model: str, usage: dict, total: float) -> tuple[str, dict]:
-    priced = model if model in PRICES else max(PRICES, key=lambda m: usd(m, usage))
+    priced = charge(model, provider_of(model) or ANTHROPIC, usage)[1] or model
     parts = split(priced, usage)
     base = parts['usd']['total']
     if base > 0:

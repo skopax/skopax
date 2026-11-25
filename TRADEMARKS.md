@@ -2,7 +2,7 @@
 
 Version 1.0, 2026-11-17
 
-Skopax is open source under the Apache License, Version 2.0. That licence covers the code. It does not give permission to use the Skopax name or logo (Apache-2.0, section 6). This policy says how you may use them.
+Skopax is open source under the GNU Affero General Public License, version 3 (AGPL-3.0-only). That licence covers the code. It does not give permission to use the Skopax name or logo (AGPL-3.0, section 7). This policy says how you may use them.
 
 ## The short version
 
@@ -37,7 +37,7 @@ This policy reserves the Skopax name, the Beam X logo and the Skopax wordmark fo
 
 Whenever you use a mark, nobody should be misled, directly or by leaving something out, about what they are getting and from whom. In particular:
 
-- Do not use the marks if you are not complying with the Apache-2.0 licence for the software.
+- Do not use the marks if you are not complying with the AGPL-3.0-only licence for the software.
 - Do not use or register the marks, in whole or in part, as part of your own trademark, company name, product or service name, domain name or social media account name.
 - Do not use names that are too close to ours for similar products or services, for example "Skopex", "Scopax" or another name that starts with "Skopa" or sounds like Skopax.
 - You do not gain any rights in the marks by using them. Any goodwill from your use belongs to the Owner.
@@ -79,12 +79,12 @@ Permission, when given, is written and specific to the use. If you have it, add 
 
 ## 6. Forks
 
-You are welcome to fork Skopax. Apache-2.0 lets you change and share the code. If you distribute a fork, or offer it as a service:
+You are welcome to fork Skopax. AGPL-3.0-only lets you change and share the code. If you distribute a fork, or offer it as a service:
 
 1. **Rename it.** Choose a name that is not "Skopax" and not confusingly similar. Set your name as the display name.
 2. **Remove the logo.** Replace the Beam X mark and the wordmark, including the favicon, app icons and the files in `skopax/web/brand/`, with your own.
 3. **Say where it comes from, if you like.** "Acme Board, based on Skopax" is fine (section 4).
-4. **Keep `LICENSE` and `NOTICE`** in copies you ship. Reproducing `NOTICE`, which names Skopax, is always allowed and is not a trademark use (Apache-2.0, section 6).
+4. **Keep `LICENSE` and `NOTICE`** in copies you ship. Reproducing `NOTICE`, which names Skopax, is always allowed and is not a trademark use.
 
 The functional names (the package, the settings and the paths) may stay as they are.
 
@@ -92,7 +92,7 @@ The functional names (the package, the settings and the paths) may stay as they 
 
 **What it is.** The board pages, the card page, the login and setup forms and the Chat page end with a small line that links to https://skopax.io. By default it reads "Skopax <version>", a middle dot, then "skopax.io", all on one line. When a display name is set, it reads "<display name>", a middle dot, then "powered by Skopax <version>". Slack and Teams messages carry no line unless the chat attribution setting is on; then the messages Skopax starts there end with the same line.
 
-**What the licence requires.** Nothing about this line. Apache-2.0 cannot make anyone keep it:
+**What the licence requires.** Nothing about this line. AGPL-3.0-only cannot make anyone keep it:
 
 - you may remove it from your copy;
 - running Skopax inside your organization, or as a hosted service for others, carries no attribution duty;
@@ -113,7 +113,7 @@ The logo files are in the source repository under `skopax/web/brand/`: `mark.svg
 - Use the on-dark version on dark backgrounds and the on-light version on light ones.
 - The colours may still change before 0.1.0.
 
-The logo files are licensed under Apache-2.0 like the code, and `NOTICE` carries no exception for them. That licence covers the copyright in the files, not the right to use them as a trademark: the Skopax name and logo stay reserved under this policy.
+The logo files are licensed under AGPL-3.0-only like the code, and `NOTICE` carries no exception for them. That licence covers the copyright in the files, not the right to use them as a trademark: the Skopax name and logo stay reserved under this policy.
 
 ## 9. Writing the name
 

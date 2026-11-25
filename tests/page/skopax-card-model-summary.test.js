@@ -22,9 +22,10 @@ async function boot(values) {
   const state = {rev: 1, updatedAt: iso(0), sweptIso: iso(1), nextIso: new Date(Date.now() + 3600000).toISOString(), sources: {prom: 'ok'}, summary: {level: 'ok', headline: 'x', points: [], at: iso(1)},
     anomalies: [], services: [], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
   const v = Object.assign({'investigate.model': 'claude-opus-5-5', 'investigate.model-critical': '', 'investigate.model-high': '', 'investigate.provider': 'anthropic'}, values || {});
+  const card = Object.assign({value: v['investigate.model'], modelProviders: PROVIDERS, cardDefaults: DEFAULTS}, v.keyed ? {keyedProviders: v.keyed} : {}, v.cardSource ? {source: v.cardSource} : {});
   let list = [
     entry('investigate.provider', 'AI provider', {choices: ['anthropic', 'openai'], value: v['investigate.provider'], base: 'anthropic', default: 'anthropic'}),
-    entry('investigate.model', 'Card model', {value: v['investigate.model'], modelProviders: PROVIDERS, cardDefaults: DEFAULTS}),
+    entry('investigate.model', 'Card model', card),
     entry('investigate.model-critical', 'Model for Critical cards', {choices: [''].concat(MODELS), value: v['investigate.model-critical'], base: '', default: ''}),
     entry('investigate.model-high', 'Model for High cards', {choices: [''].concat(MODELS), value: v['investigate.model-high'], base: '', default: ''}),
     entry('investigate.effort', 'Card effort', {choices: ['low', 'high'], value: 'high', base: 'high', default: 'high'}),
@@ -187,7 +188,37 @@ async function theSummaryFollowsASavedChange() {
   console.log('PASS the summary follows a saved change');
 }
 
+async function aModelOfAnotherProviderWithAKeyRunsAsChosen() {
+  //given
+  const {w, doc, errors} = await boot({'investigate.model': 'gpt-6.2-astra', cardSource: 'admin', 'investigate.model-critical': 'orion-9', 'investigate.model-high': 'claude-fable-5-2', keyed: ['anthropic', 'openai']});
+
+  //when
+  const text = summaryOf(doc);
+
+  //then
+  assert.strictEqual(text, SUMMARY('orion-9', 'claude-fable-5-2', 'gpt-6.2-astra'));
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS a model of another provider with a key runs as chosen');
+}
+
+async function aDefaultCardModelFollowsTheDefaultProviderEvenWithBothKeys() {
+  //given
+  const {w, doc, errors} = await boot({'investigate.provider': 'openai', 'investigate.model': 'claude-opus-5-5', keyed: ['anthropic', 'openai']});
+
+  //when
+  const text = summaryOf(doc);
+
+  //then
+  assert.strictEqual(text, SUMMARY('gpt-6.2-astra', 'gpt-6.2-astra', 'gpt-6.2-astra'));
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS a default card model follows the default provider even with both keys');
+}
+
 (async () => {
+  await aModelOfAnotherProviderWithAKeyRunsAsChosen();
+  await aDefaultCardModelFollowsTheDefaultProviderEvenWithBothKeys();
   await theSummarySaysWhichModelRunsEachSeverity();
   await anEmptyOverrideShowsTheCardModel();
   await anOverrideOfAnotherProviderShowsTheCardModel();

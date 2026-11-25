@@ -330,7 +330,7 @@ def test_airbyte_identity_and_manifest():
     assert 'skopax.plugins.airbyte' in BUILTIN and found is not None and found.state == 'ok' and found.plugin is airbyte.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'airbyte', 'Airbyte', '0.1.0', 'infrastructure', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        'airbyte', 'Airbyte', '0.1.0', 'infrastructure', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url'], 'secrets': ['client-secret'], 'agentReads': False} and manifest['uses'] == []
     assert [(f.key, f.kind, f.required, f.ui) for f in fields.values()] == [('url', 'url', True, True), ('client-id', 'text', True, False), ('client-secret', 'secret', True, False),
                                                                              ('connections', 'text', False, False), ('connection-match', 'regex', False, False),

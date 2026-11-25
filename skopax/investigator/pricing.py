@@ -1,4 +1,6 @@
-from skopax.ai import ANTHROPIC, LABELS, OPENAI, PROVIDERS, Usage, neutral
+from collections.abc import Callable
+
+from skopax.ai import ANTHROPIC, LABELS, OPENAI, PROVIDERS, Usage, neutral, provider_of_ref
 
 PRICES = {
     'claude-opus-5-5': {'input_tokens': 4.00, 'output_tokens': 20.00, 'cache_read_input_tokens': 0.20, 'cache_creation_input_tokens': 5.00},
@@ -37,28 +39,60 @@ SOURCES = ('pod', 'page', 'slack', 'chat', 'assess', 'gate', 'smalltalk', 'pages
 POD_BY = 'pod'
 
 
+COMPAT: list = []
+
+
 class UnknownModel(Exception):
     pass
 
 
+def compat_prices() -> dict:
+    return COMPAT[0]() if COMPAT else {}
+
+
 def known(model: str) -> bool:
-    return model in PRICES or model in OPENAI_PRICES
+    return model in PRICES or model in OPENAI_PRICES or model in compat_prices()
 
 
 def provider_of(model: object) -> str | None:
-    return next((p for p, table in TABLES.items() if model in table), ANTHROPIC if model in FALLBACK_PRICES else None)
+    found = next((p for p, table in TABLES.items() if model in table), ANTHROPIC if model in FALLBACK_PRICES else None)
+    if found is None and isinstance(model, str) and model in compat_prices():
+        return 'compat:' + model.split('/', 1)[0]
+    return found
 
 
 def models_of(provider: str) -> tuple[str, ...]:
+    if provider.startswith('compat:'):
+        return tuple(m for m in compat_prices() if provider_of(m) == provider)
     return tuple(TABLES.get(provider) or PRICES)
+
+
+def priced_models(provider: str) -> tuple[str, ...]:
+    return tuple(TABLES.get(provider) or ()) or ALL_MODELS + tuple(m for m, p in compat_prices().items() if p is not None)
 
 
 def default_model(provider: str, role: str) -> str:
     return (DEFAULTS.get(provider) or DEFAULTS[ANTHROPIC])[role]
 
 
-def effective(provider: str, model: str, role: str) -> str:
-    return model if provider_of(model) in (provider, None) else default_model(provider, role)
+def resolve(ref: object, role: str, default: str = ANTHROPIC, keyed: Callable[[str], bool] | None = None, chosen: bool = True) -> tuple[str, str, str | None]:
+    if not isinstance(ref, str) or not ref:
+        return default, '' if chosen else default_model(default, role), None
+    owner = provider_of_ref(ref)
+    if owner in (default, None):
+        return default, ref, None
+    if not chosen:
+        return default, default_model(default, role), None
+    return owner, ref, None
+
+
+def in_hand(provider: str, model: str, role: str) -> str:
+    return model if provider_of_ref(model) in (provider, None) else default_model(provider, role)
+
+
+def price_of(model: str) -> dict | None:
+    price = PRICES.get(model) or FALLBACK_PRICES.get(model) or OPENAI_PRICES.get(model) or compat_prices().get(model)
+    return None if price is None else {'input': price['input_tokens'], 'output': price['output_tokens']}
 
 
 def _rates(model: str, used: Usage) -> dict:
@@ -66,6 +100,12 @@ def _rates(model: str, used: Usage) -> dict:
     if price is not None:
         return {'cacheRead': price['cache_read_input_tokens'], 'input': price['input_tokens'], 'cacheWrite5m': price['cache_creation_input_tokens'],
                 'cacheWrite1h': 2 * price['input_tokens'], 'output': price['output_tokens']}
+    compat = compat_prices()
+    if model in compat:
+        price = compat[model]
+        if price is None:
+            raise UnknownModel(model)
+        return {'cacheRead': price['input_tokens'], 'input': price['input_tokens'], 'cacheWrite5m': price['input_tokens'], 'cacheWrite1h': price['input_tokens'], 'output': price['output_tokens']}
     price = OPENAI_PRICES.get(model)
     if price is None:
         raise UnknownModel(model)
@@ -79,10 +119,18 @@ def split(model: str, usage) -> dict:
     used = neutral(usage)
     rates = _rates(model, used)
     tokens = {'cacheRead': used.cache_read, 'input': used.input, 'cacheWrite5m': used.cache_write, 'cacheWrite1h': used.cache_write_long, 'output': used.output, 'webSearch': used.web_searches}
-    per_unit = {p: rates[p] / 1_000_000 for p in TOKEN_PARTS} | {'webSearch': SEARCH_USD[provider_of(model) or ANTHROPIC]}
+    per_unit = {p: rates[p] / 1_000_000 for p in TOKEN_PARTS} | {'webSearch': SEARCH_USD.get(provider_of(model) or ANTHROPIC, 0.0)}
     usd = {p: tokens[p] * per_unit[p] for p in PARTS}
     return {'tokens': tokens, 'usd': usd | {'total': sum(usd[p] for p in PARTS)}}
 
 
 def usd(model: str, usage) -> float:
     return split(model, usage)['usd']['total']
+
+
+def charge(model: str, provider: str | None, usage) -> tuple[float, str | None]:
+    try:
+        return usd(model, usage), None
+    except UnknownModel:
+        priced = max(priced_models(provider or ''), key=lambda m: usd(m, usage))
+        return usd(priced, usage), priced

@@ -14,7 +14,7 @@ from pymongo.errors import DuplicateKeyError
 
 from skopax.engine import iso
 from skopax.errkind import Authored
-from skopax.investigator.flags import scan
+from skopax.investigator.flags import REQUESTS, scan
 from skopax.messages import msg
 from skopax.redact import redact_text
 from skopax.registry import NUMBER_TYPES, SCHEMA_DEPTH, SCHEMA_TYPES, _schema_ok
@@ -229,7 +229,7 @@ def schema_texts(schema: object, depth: int = 0) -> list[str]:
 
 def scan_row(row: dict) -> str | None:
     text = ' '.join([row.get('title') or '', row.get('description') or '', *schema_texts(row.get('schema'))])
-    found = scan('mcp', text)
+    found = scan('mcp', text, skip=REQUESTS)
     return found[0]['phrase'] if found else None
 
 

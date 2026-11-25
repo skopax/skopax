@@ -76,7 +76,8 @@ NO_SMS = json.dumps({'message': 'You may not do this', 'missingPermissions': ['S
 
 class Api:
     def __init__(self, sends: dict | None = None, fail: int | None = None, body: str = '', expired: tuple = (), max_days: float = 30, denied: dict | None = None,
-                 lost: tuple = (), broken: dict | None = None):
+                 lost: tuple = (), broken: dict | None = None, min_limit: int = 100):
+        self.min_limit = min_limit
         self.broken = dict(broken or {})
         self.sends = sends or {}
         self.fail = fail
@@ -111,6 +112,8 @@ class Api:
         span = dt.datetime.fromisoformat(query['endDate']) - dt.datetime.fromisoformat(query['beginDate'])
         if span > dt.timedelta(days=self.max_days):
             raise HttpError(400, url.split('?')[0], '{"code": 400, "message": "date range is too long"}')
+        if not self.min_limit <= int(query['limit']) <= 1000:
+            raise HttpError(400, url.split('?')[0], '{"code": 400, "message": "limit value must be between 100 and 1000"}')
         channel = where.path.rsplit('/', 1)[1]
         rows = [s for s in self.sends.get(channel, []) if not isinstance(s, dict) or query['beginDate'] <= str(s.get('deliveryDate')).replace('T', ' ') <= query['endDate'] or s['deliveryDate'] == 'yesterday']
         offset, limit = int(query['offset']), int(query['limit'])
@@ -800,7 +803,7 @@ def test_admins_add_an_instance_with_its_keys_and_never_see_them(store: Store):
 
     # then
     assert made['secrets'] == {'userkey': {'set': True, 'from': None}, 'password': {'set': True, 'from': None}} and listed == [made]
-    assert made['values'] == {'url': 'https://api.dengage.com/rest', 'utc-hours': '0'}, 'a new instance reads Dengage dates in UTC unless told otherwise'
+    assert made['values'] == {'url': 'https://api.dengage.com/rest', 'utc-hours': '0', 'questions': 'everyone'}, 'a new instance reads Dengage dates in UTC unless told otherwise'
     assert USERKEY not in json.dumps(listed) and PASSWORD not in json.dumps(listed)
     assert USERKEY not in json.dumps(list(store.db['instances'].find({}, {'_id': 0})), default=str)
 
@@ -846,7 +849,7 @@ def test_dengage_identity_and_manifest():
     assert 'skopax.plugins.dengage' in BUILTIN and Registry.load({}, entry_points=False).get('dengage').state == 'ok'
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'dengage', 'Dengage', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        'dengage', 'Dengage', '0.1.0', 'marketing', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert card_types_view(dengage.PLUGIN) == [{'sig': 'dengage-send', 'label': 'Dengage sends', 'alias': ''}, {'sig': 'dengage-delivery', 'label': 'Dengage delivery', 'alias': ''},
                                                {'sig': 'dengage-silence', 'label': 'Dengage silence', 'alias': ''}, {'sig': 'dengage-access', 'label': 'No access', 'alias': 'no-access'}]
     assert probe.own_findings is True and dengage.PLUGIN.migrations == ()
@@ -892,7 +895,7 @@ def test_dengage_connection_test_reports_ok_and_failures(store: Store):
     assert (got['lost']['ok'], got['lost']['summary']) == (False, 'Dengage cannot read sms: the API user is invalid or lacks the needed permission'), \
         'a 401 on a read after the sign-in passed is two-sided; only a 401 on the sign-in itself is connection.rejected'
     assert cases['ok'].logins == [{'userkey': USERKEY, 'password': PASSWORD}]
-    assert [(c['path'], c['query']['limit']) for c in cases['ok'].calls] == [('/rest/sends/push', '1'), ('/rest/sends/sms', '1')], 'one cheap read per watched channel'
+    assert [(c['path'], c['query']['limit']) for c in cases['ok'].calls] == [('/rest/sends/push', '100'), ('/rest/sends/sms', '100')], 'one cheap read per watched channel, at the lowest limit Dengage accepts'
     assert PASSWORD not in json.dumps(got) and USERKEY not in json.dumps(got)
 
 
@@ -969,7 +972,7 @@ def test_a_read_cut_at_the_row_cap_says_so_and_keeps_that_channel_open(monkeypat
     fresh = [raw(f'p{k}', 'Spring sale', 1 + k, 2_000, 1_900) for k in range(6)]
 
     # when
-    sweep = swept(Api({'push': fresh, 'sms': daily(days=3)}), channels='push, sms')
+    sweep = swept(Api({'push': fresh, 'sms': daily(days=3)}, min_limit=1), channels='push, sms')
 
     # then
     assert (sweep.result.ok, sweep.result.status) == (True, 'ok \u00b7 read 4 push sends, more not read')
@@ -981,7 +984,7 @@ def test_a_tool_read_cut_at_the_row_cap_names_the_channels_it_could_not_read_who
     # given
     monkeypatch.setattr(client, 'MAX_ROWS', 4)
     monkeypatch.setattr(client, 'PAGE', 2)
-    api = Api({'push': [raw(f'p{k}', 'Spring sale', 1 + k, 2_000, 1_900) for k in range(9)], 'sms': daily(days=1)})
+    api = Api({'push': [raw(f'p{k}', 'Spring sale', 1 + k, 2_000, 1_900) for k in range(9)], 'sms': daily(days=1)}, min_limit=1)
     d = dengage_of(api, 'push, sms')
 
     # when

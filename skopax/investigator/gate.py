@@ -2,18 +2,18 @@ import json
 import logging
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 import anthropic
 
-from skopax.ai import THINK_OFF, ModelSetting, api_errors, key_for, maker, wrap
-from skopax.aikey import ClientBox
+from skopax.ai import THINK_OFF, ModelSetting, api_errors, clients_for, route, wrap
 from skopax.config import Setting
 from skopax import clock, tracing
 from skopax.contract import OrgPack
 from skopax.errkind import kind as error_kind
 from skopax.investigator import pricing, prompt
+from skopax.outward import outward
 
 log = logging.getLogger('skopax.gate')
 GATE_TIMEOUT = 10.0
@@ -68,27 +68,32 @@ class Gate:
     effort = Setting('investigate_gate_effort')
     org = Setting('org_about')
 
-    def __init__(self, store, settings, client=None, clock=time.time, key: Callable[[], str] | None = None, pack: Callable[[], OrgPack | None] | None = None):
+    def __init__(self, store, settings, client=None, clock=time.time, key: Callable[[], str] | None = None, pack: Callable[[], OrgPack | None] | None = None,
+                 keys: Mapping[str, Callable[[], str]] | None = None):
         self.store = store
         self.settings = settings
-        self.key = key or key_for(settings, lambda: self.provider)
-        self.box = ClientBox(self.key, maker(lambda: self.provider, lambda k: anthropic.Anthropic(api_key=k, timeout=GATE_TIMEOUT, max_retries=0), GATE_TIMEOUT, 0), client,
-                             lambda: self.provider)
+        self.clients = clients_for(settings, key, lambda k: anthropic.Anthropic(api_key=k, timeout=GATE_TIMEOUT, max_retries=0), GATE_TIMEOUT, 0, client, keys)
+        self.key = lambda: self.clients.key(route(self, 'investigate_gate_model', 'gate')[0])
+        self.keyed = lambda: self.clients.keyed(route(self, 'investigate_gate_model', 'gate')[0])
         self.clock = clock
         self.pack = pack or (lambda: None)
 
     @property
     def enabled(self) -> bool:
-        return bool(self.key()) and pricing.known(self.model)
+        return self.keyed() and pricing.known(self.model)
 
     def examples(self) -> dict:
         return {**EXAMPLES_DEFAULT, **(self.store.gate_examples() or {})}
 
+    @property
+    def box(self):
+        return self.clients.box()
+
     def _client(self):
-        return self.box.get()
+        return self.clients.get(route(self, 'investigate_gate_model', 'gate')[0])
 
     def check(self, text: str, gate_for: str = 'page', by: str | None = None, keys: list[str] | tuple = ()) -> Verdict:
-        if not self.key():
+        if not self.keyed():
             raise GateDown(NO_KEY)
         if not pricing.known(self.model):
             raise GateDown(NO_PRICE)
@@ -96,7 +101,7 @@ class Gate:
             ai = wrap(self._client())
             if ai is None:
                 raise GateDown(NO_KEY)
-            model = pricing.effective(ai.provider, self.model, 'gate')
+            model = pricing.in_hand(ai.provider, self.model, 'gate')
             with tracing.opened('topic check', provider=ai.provider, gateFor=gate_for, cards=', '.join(keys)):
                 resp = ai.once(model, prompt.gate_system(self.examples()['examples'], self.org, self.pack()), [{'role': 'user', 'content': text}], GATE_MAX_TOKENS, self.effort, THINK_OFF, GATE_SCHEMA)
         except GateDown:
@@ -108,27 +113,27 @@ class Gate:
             log.warning('gate call failed unexpectedly: %s', error_kind(e))
             raise GateDown(API + type(e).__name__) from None
         try:
-            usd = pricing.usd(model, resp.usage)
+            usd, priced_as = pricing.charge(model, ai.provider, resp.usage)
         except Exception as e:
             log.warning('gate usage could not be priced: %s', error_kind(e))
             raise GateDown(NO_PRICE) from None
         day = clock.day(self.clock())
         self.store.add_spend(day, usd)
-        self._ledger(day, ai.provider, model, resp.usage, gate_for, by, keys)
+        self._ledger(day, ai.provider, model, resp.usage, gate_for, by, keys, priced_as)
         if resp.stop == 'refusal':
             raise GateDown(REFUSED)
         try:
             body = json.loads(next(iter(resp.texts)))
             if not all(isinstance(body[k], bool) for k in FLAGS) or body['cardIntent'] not in CARD_INTENTS:
                 raise ValueError('addressed, onTopic, smallTalk, agrees, mindBlown and great must be booleans, cardIntent one of its enum')
-            return Verdict(body['addressed'], body['onTopic'], language_of(body.get('language')), str(body['reason'])[:REASON_LIMIT], usd, body['smallTalk'], body['cardIntent'], body['agrees'],
+            return Verdict(body['addressed'], body['onTopic'], language_of(body.get('language')), outward(str(body['reason']))[:REASON_LIMIT], usd, body['smallTalk'], body['cardIntent'], body['agrees'],
                            body['mindBlown'], body['great'])
         except (StopIteration, ValueError, KeyError, TypeError):
             raise GateDown(SCHEMA) from None
 
-    def _ledger(self, day: str, provider: str, model: str, usage, gate_for: str, by: str | None, keys) -> None:
+    def _ledger(self, day: str, provider: str, model: str, usage, gate_for: str, by: str | None, keys, priced_as: str | None = None) -> None:
         try:
-            self.store.add_ledger({'source': 'gate', 'gateFor': gate_for, 'day': day, 'provider': provider, 'model': model, 'effort': None if provider == pricing.OPENAI else self.effort, 'runId': None, 'actionId': None,
-                                   'keys': list(keys), 'by': by, **pricing.split(model, usage)})
+            self.store.add_ledger({'source': 'gate', 'use': 'gate', 'gateFor': gate_for, 'day': day, 'provider': provider, 'model': model, 'effort': None if provider == pricing.OPENAI else self.effort, 'runId': None, 'actionId': None,
+                                   'keys': list(keys), 'by': by, **pricing.split(priced_as or model, usage)} | ({'pricedAs': priced_as} if priced_as else {}))
         except Exception as e:
             log.warning('spend ledger row for a %s gate call not written: %s', gate_for, error_kind(e))

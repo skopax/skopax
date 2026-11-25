@@ -3,7 +3,7 @@ import json
 import openai
 
 from skopax import tracing
-from skopax.ai import FETCH_TYPE, OPENAI, SEARCH_TYPE, THINK_OFF, ToolCall, Turn, Usage
+from skopax.ai import FETCH_TYPE, OPENAI, PROVIDER_CAPABILITIES, SEARCH_TYPE, THINK_AUTO, THINK_OFF, ToolCall, Turn, Usage
 
 EFFORTS = {'low': 'low', 'medium': 'medium', 'high': 'high', 'xhigh': 'xhigh', 'max': 'max'}
 NONE_MODELS = ('gpt-6.1-terra', 'gpt-6-luna')
@@ -180,17 +180,19 @@ def turn_of(resp, model: str) -> Turn:
 
 class OpenAiAi:
     provider = OPENAI
+    capabilities = PROVIDER_CAPABILITIES[OPENAI]
     bad_request = openai.BadRequestError
     api_error = (openai.APIError, ResponseFailed)
 
     def __init__(self, client):
         self.client = client
 
-    def turn(self, model: str, effort: str, system: str, tools: list[dict], messages: list[dict], max_tokens: int, cache_ttl: str | None = None) -> Turn:
+    def turn(self, model: str, effort: str, system: str, tools: list[dict], messages: list[dict], max_tokens: int, cache_ttl: str | None = None, thinking: str = THINK_AUTO,
+             fallbacks: bool = True) -> Turn:
         offered, left = tools_of(tools, messages)
         extra = {'max_tool_calls': left} if left else {}
         return tracing.generation(self.provider, 'turn', model, system, messages, lambda: turn_of(self.client.responses.create(
-            model=model, instructions=system, input=input_of(messages), tools=offered, max_output_tokens=max_tokens, reasoning={'effort': reasoning_effort(model, effort, 'auto')},
+            model=model, instructions=system, input=input_of(messages), tools=offered, max_output_tokens=max_tokens, reasoning={'effort': reasoning_effort(model, effort, thinking)},
             store=False, include=[REASONING] + ([SOURCES] if left else []), **extra), model), tools)
 
     def once(self, model: str, system: str, messages: list[dict], max_tokens: int, effort: str, thinking: str = THINK_OFF, schema: dict | None = None) -> Turn:

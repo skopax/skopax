@@ -1,4 +1,5 @@
 import base64
+import copy
 import datetime as dt
 import json
 import re
@@ -207,7 +208,7 @@ def test_windows_rows_and_bad_inputs_are_refused_before_any_call(store: Store, a
 
 def test_one_trace_comes_back_as_a_tree_with_cut_and_redacted_texts_and_no_customer_ids(store: Store):
     # given
-    b = lf_box(store, fake())
+    b = lf_box(store, fake(), instances={'main': VALUES | {'content': 'show'}})
 
     # when
     out, err = call(b, op='trace', id='t1')
@@ -845,12 +846,13 @@ def test_langfuse_identity_and_manifest():
     assert 'skopax.plugins.langfuse' in BUILTIN and got is not None and got.state == 'ok' and got.plugin is langfuse.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'langfuse', 'Langfuse', '0.1.0', 'other', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        'langfuse', 'Langfuse', '0.1.0', 'other', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url'], 'secrets': ['secret-key', 'langfuse.secret-key'], 'agentReads': True} and manifest['uses'] == []
     assert manifest['agentReads'] == [{'op': 'langfuse', 'args': ['ask'], 'keys': [r'langfuse\.(url|public-key|secret-key)']}]
     assert [(f.key, f.kind, f.required, f.ui) for f in fields.values()] == [('url', 'url', True, True), ('public-key', 'text', True, False), ('secret-key', 'secret', True, False),
                                                                              ('environment', 'text', False, False), ('namespace', 'text', False, False), ('service', 'text', False, False),
-                                                                             ('turn-name', 'text', False, False), ('ca', 'pem', False, False), ('ca-pinned', 'bool', False, False)]
+                                                                             ('turn-name', 'text', False, False), ('content', 'choice', False, False), ('ca', 'pem', False, False),
+                                                                             ('ca-pinned', 'bool', False, False)]
     assert (probe.id, probe.period, probe.offset, probe.ran, probe.sections, probe.tool, probe.once) == ('langfuse', 900, 810, ('langfuse',), ('langfuseCheck',), 'langfuse', False)
     assert probe.section_help['langfuseCheck']
     assert (rules.id, rules.label, set(rules.help) == set(rules.defaults)) == ('rules', 'Langfuse', True)
@@ -864,7 +866,7 @@ def test_langfuse_identity_and_manifest():
 def test_langfuse_defaults_are_neutral():
     # then
     assert {f.key: f.default for f in langfuse.PLUGIN.fields} == {'url': 'https://cloud.langfuse.com', 'public-key': '', 'secret-key': '', 'environment': '', 'namespace': '',
-                                                                  'service': 'langfuse', 'turn-name': '', 'ca': '', 'ca-pinned': 'false'}
+                                                                  'service': 'langfuse', 'turn-name': '', 'content': 'hide', 'ca': '', 'ca-pinned': 'false'}
     assert {f.key: f.default for f in langfuse.PLUGIN.agent_reads[0].fields} == {'langfuse.url': '', 'langfuse.public-key': '', 'langfuse.secret-key': ''}
     assert {s.key: s.default for s in langfuse.PLUGIN.settings} == {}
     assert dict(langfuse.PLUGIN.rules[0].defaults) == {'errors_warn_times': 3, 'errors_crit_times': 10, 'errors_gap': 5, 'errors_floor': 5, 'errors_crit_floor': 20,
@@ -1229,3 +1231,99 @@ def test_an_open_card_of_the_instance_closes_once_it_receives_skopax_traces(stor
 
     # then
     assert (before, after) == ('open', 'cleared')
+
+
+SECRET_TALK = 'my order 4471 never came'
+
+
+def talking() -> FakeHttp:
+    steps = [dict(s, input=SECRET_TALK, output=SECRET_TALK) for s in STEPS]
+    steps.append({'id': 'note', 'traceId': 't1', 'type': 'EVENT', 'name': 'note', 'parentObservationId': 'root', 'startTime': '2026-11-11T07:00:03.000Z', 'level': 'DEFAULT',
+                  'statusMessage': SECRET_TALK})
+    rows = [dict(r, input=SECRET_TALK, output=SECRET_TALK) for r in ROOTS]
+    failed = [dict(o, input=SECRET_TALK, output=SECRET_TALK) for o in FAILED]
+
+    def answer(q, b):
+        if q.get('traceId'):
+            return {'data': [o for o in steps if o['traceId'] == q['traceId'][0]], 'meta': {}}
+        if q.get('level'):
+            return {'data': failed if q['level'] == ['ERROR'] else WARNED, 'meta': {}}
+        if turn_rows(q):
+            return {'data': rows, 'meta': {}}
+        return observations(q, b)
+
+    return FakeHttp({('GET', OBSERVATIONS): answer, ('GET', METRICS): metrics})
+
+
+def test_conversation_text_is_hidden_by_default(store: Store):
+    # given
+    field = next(f for f in langfuse.PLUGIN.fields if f.key == 'content')
+    http = talking()
+    b = lf_box(store, http)
+
+    # when
+    found = [call(b, op=op, **extra) for op, extra in (('trace', {'id': 't1'}), ('traces', {}), ('errors', {'hours': 6}))]
+    one = found[0][0]
+    tool = next(d for d in b.definitions() if d['name'] == 'langfuse')
+
+    # then
+    assert (field.label, field.kind, field.default, field.choices, field.group) == ('Conversation text', 'choice', 'hide', ('show', 'hide'), 'advanced')
+    assert field.help == 'Show what each step received and returned (cut and masked). Hide keeps names, timings, errors, tokens and cost only.'
+    assert all(not err for _, err in found) and all(SECRET_TALK not in json.dumps(out) for out, _ in found)
+    assert all('input' not in s and 'output' not in s for s in one['observations']) and 'input' not in one['trace'] and 'output' not in one['trace']
+    assert {s['content'] for s in one['observations']} == {'hidden by the Conversation text setting'}
+    assert [s['name'] for s in one['observations']] == ['chat_turn', 'llm', 'search_products', 'note'] and one['observations'][1]['tokens']['total'] == 5510
+    assert 'Conversation text' in tool['description'] and '{field:' not in tool['description'] and 'instance: hide' not in tool['description']
+    assert all('io' not in parse_qs(urlsplit(c[1]).query).get('fields', [''])[0].split(',') for c in http.hits(OBSERVATIONS))
+
+
+def test_show_returns_cut_and_masked_text(store: Store):
+    # given
+    b = lf_box(store, fake(), instances={'main': VALUES | {'content': 'show'}})
+
+    # when
+    out, err = call(b, op='trace', id='t1')
+    steps = {s['id']: s for s in out['observations']}
+    tool = next(d for d in b.definitions() if d['name'] == 'langfuse')
+
+    # then
+    assert not err and 'content' not in steps['gen']
+    assert steps['gen']['input'].startswith('\u2026') and steps['gen']['input'].endswith('my phone is ' + REDACTED) and len(steps['gen']['input']) <= client.IO_LIMIT + 20
+    assert len(steps['gen']['output']) == client.IO_LIMIT and steps['tool']['input'] == '{"amount": 50000}'
+    assert out['trace']['input'] == 'which plan suits me' and ALICE not in json.dumps(out)
+    assert 'instance: show' not in tool['description'] and 'content: hidden' in tool['description']
+
+
+def test_error_status_messages_stay_when_text_is_hidden(store: Store):
+    # given
+    b = lf_box(store, talking())
+
+    # when
+    one, err = call(b, op='trace', id='t1')
+    errs, errs_err = call(b, op='errors', hours=6)
+    steps = {s['id']: s for s in one['observations']}
+
+    # then
+    assert not err and not errs_err
+    assert (steps['tool']['level'], steps['tool']['statusMessage']) == ('ERROR', 'Connection reset by peer')
+    assert 'statusMessage' not in steps['note']
+    assert [(g['level'], g['statusMessage']) for g in errs['groups']] == [('ERROR', 'Connection reset by peer'), ('ERROR', 'rate limited'), ('WARNING', 'second block dropped')]
+
+
+def test_hide_strips_texts_on_the_core_side_whatever_the_read_returned(store: Store, monkeypatch):
+    # given
+    leaky = {'trace': {'id': 't1', 'input': SECRET_TALK, 'output': SECRET_TALK},
+             'observations': [{'id': 'a', 'level': 'ERROR', 'statusMessage': 'Connection reset by peer', 'input': SECRET_TALK},
+                              {'id': 'b', 'statusMessage': SECRET_TALK, 'output': SECRET_TALK}, {'id': 'c', 'level': 'WARNING', 'statusMessage': 'slow'}]}
+    monkeypatch.setattr(langfuse, 'read', lambda *a, **k: copy.deepcopy(leaky))
+    hidden = lf_box(store, fake())
+    shown = lf_box(store, fake(), instances={'other': VALUES | {'content': 'show'}})
+
+    # when
+    out, err = call(hidden, op='trace', id='t1')
+    kept, kept_err = call(shown, op='trace', id='t1', instance='other')
+
+    # then
+    assert not err and SECRET_TALK not in json.dumps(out)
+    assert [s.get('statusMessage') for s in out['observations']] == ['Connection reset by peer', None, 'slow']
+    assert not kept_err and SECRET_TALK in json.dumps(kept)

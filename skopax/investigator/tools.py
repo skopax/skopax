@@ -13,7 +13,7 @@ from urllib.parse import quote, urlsplit
 from bson import Binary
 from pymongo.errors import PyMongoError
 
-from skopax import brand, causes, clock, drafts, followup, history, information, tags
+from skopax import brand, causes, clock, drafts, followup, history, information, sections, tags
 from skopax.actors import POD_BY, SYSTEM
 from skopax.engine import iso as epoch_iso, parse_iso, sibling_stem
 from skopax.config import Settings
@@ -21,10 +21,10 @@ from skopax.codehosts import name_of
 from skopax.contract import CodeHost, Knowledge, Missing, RunState, SourceDown
 from skopax.enrich import adf_text
 from skopax.errkind import Authored, kind as error_kind, text_of
-from skopax.investigator.flags import PHRASES, SOFT, safe_excerpt, scan
+from skopax.investigator.flags import PHRASES, REQUESTS, SOFT, safe_excerpt, scan
 from skopax.investigator.prompt import announced_hint, announced_text, card_link, shown_key
 from skopax.investigator.select import NO_SERVICE, announced
-from skopax.investigator.toolset import CORE, KNOWLEDGE, REVIEW_VERDICTS, Run, ToolSet
+from skopax.investigator.toolset import CORE, KNOWLEDGE, REVIEW_VERDICTS, Run, ToolSet, asked_gate
 from skopax.investigator.web import NAMES as WEB_NAMES, RESULTS as WEB_RESULTS, Web, part as block_part, result_of as web_result
 from skopax.jiralinks import ticket_finder, ticket_pattern, ticket_projects
 from skopax.messages import msg
@@ -32,6 +32,7 @@ from skopax.mcptools import PREFIX as BRIDGE_PREFIX
 from skopax.models import email_allowed
 from skopax.ownwords import REASONS as SKOPAX_REASONS
 from skopax.postdeploy import NUMBERS_BY, SERVER_BY
+from skopax.outward import outward_args
 from skopax.redact import REDACTED, masked_tree, redact, redact_secrets, redact_text
 from skopax.store import NotFound, auto_sender, draft_hash, glob_match, iso, new_id, utc_now
 
@@ -575,6 +576,7 @@ SCHEMAS = {name: t['input_schema'] for name, t in DEFINITIONS.items()}
 READ_NAMES = frozenset(name for name, spec in CORE.items() if spec.kind == 'read')
 CORE_TOOLS = frozenset(CORE) | frozenset(WEB_NAMES)
 DRAFT_NAMES = frozenset(name for name, spec in CORE.items() if spec.kind in ('write', 'propose'))
+SELF_REFUSING = frozenset({'slack_send', 'slack_draft', 'slack_update', 'report_brief', 'report_slack_draft', 'tag'}) | frozenset(REVIEW_VERDICTS.values())
 TOOL_MARKUP = re.compile(r'<(?:antml:)?parameter name=|</(?:antml:)?parameter>|</?(?:antml:)?invoke\b|</?(?:antml:)?function_calls>')
 STRICT_DROPS = ('minimum', 'maximum', 'minLength', 'maxLength', 'maxItems')
 TYPE_NAMES = {'string': 'a string', 'integer': 'an integer', 'number': 'a number', 'boolean': 'true or false', 'array': 'an array', 'object': 'an object', 'null': 'null'}
@@ -870,7 +872,7 @@ def whole_rows(rows: list) -> int:
 
 
 def quiet_name(name: str) -> str:
-    return HELD_NAME if scan('log', name) else name
+    return HELD_NAME if scan('log', name, skip=REQUESTS) else name
 
 
 def own_muted(row: dict, muted_preset: bool) -> bool:
@@ -907,7 +909,7 @@ def scan_view(row: dict, muted_preset: bool = False) -> dict:
 
 def held_row(row: dict) -> dict:
     def kept(field: str) -> object:
-        return HELD_CARD if scan('open_cards', str(row.get(field) or '')) else row.get(field)
+        return HELD_CARD if scan('open_cards', str(row.get(field) or ''), skip=REQUESTS) else row.get(field)
 
     return {'key': kept('key'), 'sev': row.get('sev'), 'svc': HELD_CARD, 'label': HELD_CARD, 'triage': row.get('triage'), 'parent': kept('parent')}
 
@@ -1059,6 +1061,9 @@ class Toolbox:
         self._code_rule: list[Callable[[str], str | None] | None] = []
         self.run_states: dict[str, RunState] = {}
         self._has_posts: bool | None = None
+        self.gate = asked_gate(self.run_kind())
+        scope = getattr(sources.plugin_tools, 'scoped', None)
+        self.plugin_tools = scope(self.run_kind()) if scope is not None else sources.plugin_tools
 
     def code_rule(self) -> Callable[[str], str | None] | None:
         if not self._code_rule:
@@ -1098,12 +1103,16 @@ class Toolbox:
         if name == PROPOSE_TICKET['name']:
             return ticket_tool(self.settings, self.org_projects)
         if name == 'pass_table':
-            return pass_table_tool(self.toolset.sections())
+            return pass_table_tool(self.toolset.sections(self.gate))
         if name == KNOWLEDGE:
             return knowledge_tool(list(self.knowledge))
         if name == 'triage' and not self.tracked():
             return untracked_triage(DEFINITIONS[name])
         return DEFINITIONS[name]
+
+    def not_in_questions(self) -> list[str]:
+        named = getattr(self.plugin_tools, 'not_in_questions', None)
+        return named() if named is not None else []
 
     def tracked(self) -> bool:
         return self.toolset.needed('jira_issue')
@@ -1114,8 +1123,8 @@ class Toolbox:
         if self.strict:
             tools = [t if t['name'] in READ_NAMES else {**t, 'strict': True, 'input_schema': strict_schema(t['input_schema'])} for t in tools]
         if self.sources.plugin_tools is not None:
-            kinds = self.sources.plugin_tools.catalog()
-            mine = [d for d in self.sources.plugin_tools.definitions(among=set(offered)) if d['name'] in offered]
+            kinds = self.plugin_tools.catalog()
+            mine = [d for d in self.plugin_tools.definitions(among=set(offered)) if d['name'] in offered]
             tools += [d if not self.strict or kinds.get(d['name']) == 'read' else {**d, 'strict': True, 'input_schema': strict_schema(closed(d['input_schema']))} for d in mine]
         tools += self.start_bridge().definitions()
         if self.web is not None:
@@ -1137,7 +1146,7 @@ class Toolbox:
                 rows, error, text = web_result(b)
                 entry.pop('pending', None)
                 entry.update(rows=rows, error=error)
-                self.flags += scan(entry['name'], text)
+                self.flags += scan(entry['name'], text, skip=REQUESTS)
                 if self.run_id:
                     shown = '(private chat)' if self.chat and error else error
                     line = f"{entry['name']}" + (f' \u00b7 {rows} rows' if rows is not None else '') + (f' \u00b7 error: {shown}' if error else '')
@@ -1153,20 +1162,20 @@ class Toolbox:
         if name == PROPOSE_TICKET['name']:
             return ticket_tool(self.settings, self.org_projects)['input_schema']
         if name == 'pass_table':
-            return pass_table_tool(self.toolset.sections())['input_schema']
+            return pass_table_tool(self.toolset.sections(self.gate))['input_schema']
         if name == KNOWLEDGE:
             if not self.knowledge:
                 raise ToolError('no plug-in knowledge is offered in this run')
             return knowledge_tool(list(self.knowledge))['input_schema']
         if name not in SCHEMAS:
-            found = next((d['input_schema'] for d in self.sources.plugin_tools.definitions() if d['name'] == name), None)
+            found = next((d['input_schema'] for d in self.plugin_tools.definitions() if d['name'] == name), None)
             if found is None:
                 raise ToolError(NO_TOOL.format(name=name))
             return found
         return SCHEMAS[name]
 
     def _spend(self, name: str) -> None:
-        cap = past_cards_cap(len(self.keys)) if name == 'past_cards' else RUN_CALLS[name] if name in RUN_CALLS else self.sources.plugin_tools.cap(name)
+        cap = past_cards_cap(len(self.keys)) if name == 'past_cards' else RUN_CALLS[name] if name in RUN_CALLS else self.plugin_tools.cap(name)
         if cap is None:
             return
         if self.used[name] >= cap:
@@ -1177,15 +1186,19 @@ class Toolbox:
         started = time.monotonic()
         entry = {'name': name, 'input': json.dumps(args, ensure_ascii=False, default=str)[:INPUT_LIMIT], 'rows': None, 'truncated': False, 'error': None}
         if name == 'kube' and isinstance(args, dict) and self.sources.plugin_tools is not None:
-            entry.update(cluster=str(args.get('cluster') or self.sources.plugin_tools.default_instance(name) or '').strip().lower()[:20], op=str(args.get('op') or '')[:20])
+            entry.update(cluster=str(args.get('cluster') or self.plugin_tools.default_instance(name) or '').strip().lower()[:20], op=str(args.get('op') or '')[:20])
         scanned = bridged = False
         kind = None
         content = None
         seen = None
         raw = None
         try:
-            found = None if name in CORE or self.sources.plugin_tools is None else self.sources.plugin_tools.get(name)
+            found = None if name in CORE or self.sources.plugin_tools is None else self.plugin_tools.get(name)
             kind = found[1].kind if found is not None else None
+            if found is None and name not in CORE and getattr(self.plugin_tools, 'held_back', lambda _: False)(name):
+                raise ToolError(msg('plugintools.tool_not_in_questions', tool=name))
+            if self.toolset.held_in_question(name, self.run_kind()):
+                raise ToolError(msg('plugintools.tool_not_in_questions', tool=name))
             if self.read_only and (name in WRITE_NAMES or kind == 'write'):
                 raise ToolError(f'{name} is not available here: this run can only read')
             if self.review and (name in WRITE_NAMES or kind in ('write', 'propose')) and name != REVIEW_VERDICTS[self.review]:
@@ -1202,16 +1215,19 @@ class Toolbox:
                 raise ToolError('propose_card_action is only for Slack asks')
             if self.bridged is not None and self.bridged.owns(name):
                 bridged = scanned = True
-                entry.update(input=redact(json.dumps(args, ensure_ascii=False, default=str))[:INPUT_LIMIT], server=self.bridged.instance(name))
+                sent = outward_args(args or {})
+                entry.update(input=redact(json.dumps(sent, ensure_ascii=False, default=str))[:INPUT_LIMIT], server=self.bridged.instance(name))
                 try:
                     check_input(name, {} if args is None else args, self.bridged.schema(name))
                 except ToolError:
                     self.bridged.refused(name, self.run_id)
                     raise
-                text, rows, cut = self.bridged.call(name, args or {}, self.run_id, self.chat)
+                text, rows, cut = self.bridged.call(name, sent, self.run_id, self.chat)
                 entry.update(rows=rows, truncated=cut)
-                self.flags += scan(name, text)
+                self.flags += scan(name, text, skip=REQUESTS)
                 return text, False
+            if name in CORE and name not in SELF_REFUSING and name not in self.offered():
+                raise ToolError(f'{name} is not available in this run')
             handler = getattr(self, f'_t_{name}', None)
             plugin = handler is None and found is not None
             if handler is None and not plugin:
@@ -1220,13 +1236,15 @@ class Toolbox:
                 check_input(name, {} if args is None else args, self._schema(name))
             except ToolError as e:
                 if plugin:
-                    refusal = self.sources.plugin_tools.refuse_input(name, args, e.args[0], among=set(self.offered()))
+                    refusal = self.plugin_tools.refuse_input(name, args, e.args[0], among=set(self.offered()))
                     refusal.refused = isinstance(e, BadInput)
                     raise refusal from None
                 raise
             if kind in ('write', 'propose'):
                 markup({} if args is None else args, '')
-            scanned = bool(plugin and self.sources.plugin_tools.scan(name))
+            if kind in ('write', 'propose') or name in DRAFT_NAMES:
+                entry['input'] = json.dumps(outward_args(args or {}) if kind is not None else self._outward(args or {}), ensure_ascii=False, default=str)[:INPUT_LIMIT]
+            scanned = bool(plugin and self.plugin_tools.scan(name))
             if plugin and found[1].image:
                 self._shot_room()
             if plugin:
@@ -1235,9 +1253,9 @@ class Toolbox:
                 entry['shadow'] = True
                 text, rows, cut = SHADOW_WRITE, None, False
             elif plugin and kind == 'propose':
-                text, rows, cut = self._propose(name, args or {}), None, False
+                text, rows, cut = self._propose(name, outward_args(args or {})), None, False
             elif plugin:
-                got = self.sources.plugin_tools.call(name, args or {}, self.now, rendered=True, states=self.run_states, among=set(self.offered()))
+                got = self.plugin_tools.call(name, outward_args(args or {}) if kind == 'write' else args or {}, self.now, rendered=True, states=self.run_states, among=set(self.offered()))
                 if isinstance(got, dict):
                     (text, content), rows, cut = self._picture(name, got), None, False
                 else:
@@ -1245,15 +1263,16 @@ class Toolbox:
                 if kind == 'write':
                     self._plugin_write(name, entry['input'])
             else:
-                out = handler(self._with_card_keys(name, unmasked(args or {}, self.aliases)))
+                given = unmasked(args or {}, self.aliases)
+                out = handler(self._with_card_keys(name, self._outward(given) if name in DRAFT_NAMES else given))
                 raw = render(out)[0]
                 shown = masked_tree(out, (), READ_LIMIT_ROWS, actors=True)
                 aliases_of(out, shown, self.aliases)
                 text, rows, cut = render(shown)
                 seen = self._scan_text(name, out)
             entry.update(rows=rows, truncated=cut)
-            if name in SOURCE_TOOLS or name in SCANNED_OUTPUT or (plugin and self.sources.plugin_tools.scan(name)):
-                found = scan(name, text if raw is None else raw) if seen is None else scan(name, seen[0]) + scan(name, seen[1], skip=SOFT)
+            if name in SOURCE_TOOLS or name in SCANNED_OUTPUT or (plugin and self.plugin_tools.scan(name)):
+                found = scan(name, text if raw is None else raw, skip=REQUESTS) if seen is None else scan(name, seen[0], skip=REQUESTS) + scan(name, seen[1], skip=SOFT + REQUESTS)
                 self.flags += found if raw is None else [f | {'excerpt': safe_excerpt(f, raw if seen is None else seen[0] + '\n' + seen[1])} for f in found]
             return (text if content is None else content), False
         except ToolError as e:
@@ -1263,7 +1282,7 @@ class Toolbox:
             elif e.refused:
                 entry['refused'] = True
             if scanned and not e.refused:
-                self.flags += scan(name, entry['error'])
+                self.flags += scan(name, entry['error'], skip=REQUESTS)
             if not bridged:
                 entry['error'] = redact(e.text)[:e.room or ERROR_LIMIT]
         except Exception as e:
@@ -1276,6 +1295,10 @@ class Toolbox:
                 line = f"{name} \u00b7 {entry['ms']} ms" + (f" \u00b7 {entry['rows']} rows" if entry['rows'] is not None else '') + (f" \u00b7 error: {'(private chat)' if self.chat else entry['error']}" if entry['error'] else '')
                 self.store.add_activity('tool', 'investigator', line, runId=self.run_id, tool=name, error='(private chat)' if self.chat and entry['error'] else entry['error'])
         return entry['error'], True
+
+    def _outward(self, args: dict) -> dict:
+        rule = self.code_rule()
+        return outward_args(args, lambda text: link_problem(text, self.link_hosts, rule) is None)
 
     def _picture(self, name: str, out: dict) -> tuple[str, list[dict]]:
         image = out.get('image') if isinstance(out.get('image'), dict) else {}
@@ -1317,7 +1340,7 @@ class Toolbox:
         return [taken[i] for i in ids][:SHOT_MAX]
 
     def _propose(self, name: str, args: dict) -> str:
-        got = self.sources.plugin_tools.proposal(name, args, self.now, states=self.run_states)
+        got = self.plugin_tools.proposal(name, args, self.now, states=self.run_states)
         out = got.pop('out')
         title = ' '.join(out.get('title').split()) if isinstance(out, dict) and isinstance(out.get('title'), str) else ''
         text = out.get('text') if isinstance(out, dict) else None
@@ -1366,14 +1389,27 @@ class Toolbox:
             raise ToolError(f'no knowledge entry {wanted[:40]}; the entries are ' + ', '.join(self.knowledge) if self.knowledge else 'no plug-in knowledge is offered in this run')
         return f'## {found.title}\n\n{found.text.strip()}'
 
+    def _unrefused(self, table: object) -> object:
+        held = getattr(self.plugin_tools, 'refused_rows', lambda: set())() if self.gate is not None else set()
+        if not held:
+            return table
+
+        def kept(rows: list) -> list:
+            return [r for r in rows if not (isinstance(r, dict) and (sections.plugin_of(r), r.get('cluster') or None) in held)]
+        if isinstance(table, list):
+            return kept(table)
+        if isinstance(table, dict):
+            return {k: kept(v) if table_rows(v) else v for k, v in table.items()}
+        return table
+
     def _t_pass_table(self, a: dict):
         source = str(req(a, 'source'))
-        tables = pass_tables(self.toolset.sections())
+        tables = pass_tables(self.toolset.sections(self.gate))
         if source not in tables:
             raise ToolError(('source must be one of ' + ', '.join(tables)) if tables else NO_TABLES)
         runs = self.store.server_runs()['passes']
         passes = {p: runs.get(p) for p in tables[source]}
-        table = self.store.state_section(source)
+        table = self._unrefused(self.store.state_section(source))
         if table is None:
             raise ToolError(f'no {source} table saved yet; ' + '; '.join(f"last {p} pass {r.get('at')}: {r.get('status')}" if r else f'{p} pass never ran' for p, r in passes.items()))
         if not (table_rows(table) or isinstance(table, dict)):
@@ -1525,12 +1561,22 @@ class Toolbox:
                             | ({'kind': kind} if kind and kind != 'handled' else {}) | ({'ref': ref} if ref else {}))
         return 'card action saved; an operator applies it with the button under your answer'
 
+    def _refused_logs(self) -> str:
+        runtime = getattr(self.sources.plugin_tools, 'runtime', None)
+        if self.gate is None or runtime is None:
+            return ''
+        primary = next((i for i in runtime.instances_of('elasticsearch') if i.primary), None)
+        return '' if primary is None or self.gate(primary) else primary.name[:60]
+
     def _t_self_review(self, a: dict):
         self._spend('self_review')
         out = {'reviews': [{k: r.get(k) for k in ('at', 'by', 'text')} for r in self.store.self_reviews()[:int(a.get('limit') or 1)]]}
         if a.get('facts'):
             if self.sources.selfreview is None:
                 raise ToolError(f"the {brand.product()}'s live review numbers are not available here")
+            refused = self._refused_logs()
+            if refused:
+                raise ToolError(msg('plugintools.not_in_questions', name=refused))
             facts = dict(self.sources.selfreview(self.now))
             facts.pop('previousReviews', None)
             out['facts'] = facts
@@ -1555,7 +1601,7 @@ class Toolbox:
     def _t_open_cards(self, a: dict):
         rows = [{k: x.get(k) for k in ('key', 'sev', 'svc', 'label', 'triage', 'parent')} for x in self.store.load().get('anomalies') or []
                 if x.get('status') == 'open' and not x.get('muted')]
-        return [held_row(r) if scan('open_cards', json.dumps(r, ensure_ascii=False, default=str)) else r for r in rows]
+        return [held_row(r) if scan('open_cards', json.dumps(r, ensure_ascii=False, default=str), skip=REQUESTS) else r for r in rows]
 
     def _t_past_cards(self, a: dict):
         key, service, text = (str(a.get(f) or '').strip() or None for f in ('key', 'service', 'text'))
@@ -1735,7 +1781,7 @@ class Toolbox:
                 raise ToolError('no successful read tool call in this run backs this verdict: check it with a read tool first' + ('' if kind == 'no_action' else ' (board reads such as card do not count)'))
             if kind == 'fixed':
                 reads = self._backing(reads, key, evidence)
-            planted = scan(tool, evidence)
+            planted = scan(tool, evidence, skip=REQUESTS)
             hold = self._flag_hold()
             if planted or hold:
                 raise Held(f"this run read {hold or 'planted text in the evidence'}, so it closes no card: give keep, or not done, and say why", 'verdict', self.flags + planted)

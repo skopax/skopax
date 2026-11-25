@@ -292,7 +292,7 @@ CARD_TYPES = (CardType('managed-redis-down', 'Managed Redis down'), CardType('ma
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='infrastructure',
     description='Example plug-in: Redis instances you cannot reach directly, such as a managed cloud Redis, read from redis_exporter series through a Grafana datasource.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.2,<0.6', uses=('grafana',),
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.2,<0.7', uses=('grafana',),
     fields=(Field('grafana', 'Grafana', 'instance', required=True, choices=('grafana',), help='The Grafana instance whose datasource holds the Redis series.'),
             Field('datasource', 'Datasource', 'text', required=True, help='The name of the Grafana Prometheus datasource that holds the Redis series.'),
             Field('prefix', 'Metric prefix', 'text', default=DEFAULT_PREFIX,

@@ -754,8 +754,8 @@ def test_a_parked_instance_keeps_only_the_values_that_validated(db):
     stored = box.instances.get('demo', 'stored')
 
     # then
-    assert bad.values == {'mode': 'slow'} and 'URL' in bad.problem and SENT not in bad.problem
-    assert stored.values == {'mode': 'slow'} and 'token' not in stored.values and stored.problem and SENT not in repr(stored) + json.dumps(stored.view())
+    assert bad.values == {'mode': 'slow', 'questions': 'everyone'} and 'URL' in bad.problem and SENT not in bad.problem
+    assert stored.values == {'mode': 'slow', 'questions': 'everyone'} and 'token' not in stored.values and stored.problem and SENT not in repr(stored) + json.dumps(stored.view())
     assert [i.name for i in box.runtime.instances_of('demo')] == []
 
 
@@ -840,7 +840,7 @@ def test_an_unexpected_error_while_reading_parks_the_instance_instead_of_droppin
 
     # then
     east = box.instances.get('demo', 'east')
-    assert east is not None and east.problem and east.values == {'mode': 'fast'}
+    assert east is not None and east.problem and east.values == {'mode': 'fast', 'questions': 'everyone'}
     assert box.instances.get('demo', 'main').problem is None
 
 

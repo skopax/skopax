@@ -253,8 +253,6 @@ class Route:
     def takes(self, card: dict) -> bool:
         if card.get('sev') not in information.CARD_SEVS:
             return False
-        if self.business:
-            return self.hit(card)
         return SEV_RANK.get(card.get('sev'), 0) >= SEV_RANK.get(self.min_sev, SEV_RANK[str(DEFAULTS['min-sev'])]) and self.hit(card)
 
     def due(self, card: dict, by_key: dict | None = None) -> bool:

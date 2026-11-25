@@ -32,7 +32,13 @@ BAD_CUSTOMER = 'customer-id must be the 10-digit Google Ads customer id, with or
 BAD_LOGIN = 'login-customer-id must be the 10-digit id of the manager account, with or without dashes, or empty'
 BAD_VERSION = 'api-version must be a Google Ads API version such as v26'
 BAD_TOKEN = 'developer-token, when set, must be 10 to 100 letters, digits, - and _'
-OPS = ('campaigns', 'daily', 'ads', 'query')
+OPS = ('campaigns', 'daily', 'ads')
+QUERY = 'query'
+NO_MONEY = 'Google Ads cost, budget, billing and conversion value data are not read by Skopax'
+MONEY_WORD = re.compile(r'cost|(?<![a-z])cp[a-z]|_cp[mcv]|bid|budget|target_cpa|target_roas|target_spend|value|micros|invoice|billing|payments|profit|revenue|margin|cart|price|orders')
+MONEY_FIELDS = ('recommendation.impact', 'change_event.new_resource', 'change_event.old_resource')
+MONEY_KEY = re.compile(r'cost|budget|billing|bid|micros$|cp[cvmea]|targetcpa|targetroas|[a-z]value|value[a-z]|amount|profit|revenue|margin|cart|price|^orders$', re.I)
+LITERAL = re.compile(r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"")
 DEFAULT_DAYS = 7
 MAX_DAYS = 90
 MAX_ROWS = 200
@@ -64,8 +70,9 @@ DEV_TOKEN = re.compile(r'[A-Za-z0-9_-]{10,100}')
 SELECT = re.compile(r'^\s*SELECT\s', re.I)
 LIMIT = re.compile(r'\bLIMIT\s+\d+\s*$', re.I)
 WEB = re.compile(r'https?://', re.I)
+DOTTED = re.compile(r'\s*\.\s*')
+TOKEN = re.compile(r'[a-z_][a-z0-9_.]*')
 TOPIC = re.compile(r'[^A-Z0-9]+')
-MICROS = 1_000_000
 ACCOUNT_QUERY = 'SELECT customer.id, customer.descriptive_name FROM customer LIMIT 1'
 POLICY_QUERY = ('SELECT campaign.id, campaign.name, ad_group.id, ad_group.name, ad_group_ad.ad.id, ad_group_ad.ad.final_urls, ad_group_ad.policy_summary.approval_status, '
                 "ad_group_ad.policy_summary.policy_topic_entries FROM ad_group_ad WHERE ad_group_ad.status = 'ENABLED' AND ad_group.status = 'ENABLED' "
@@ -160,25 +167,41 @@ def window(a: dict, today: dt.date) -> tuple[str, str, int]:
     return (today - dt.timedelta(days=days)).isoformat(), (today - dt.timedelta(days=1)).isoformat(), days
 
 
+def money_token(token: str) -> bool:
+    return MONEY_WORD.search(token) is not None or any(token == f or token.startswith(f + '.') for f in MONEY_FIELDS)
+
+
+def reads_money(query: str) -> bool:
+    flat = DOTTED.sub('.', LITERAL.sub(' ', query.lower()))
+    return '*' in flat or "'" in flat or '"' in flat or any(money_token(t) for t in TOKEN.findall(flat))
+
+
+def unpriced(value, depth: int = 0):
+    if depth > 12:
+        return None
+    if isinstance(value, list):
+        return [unpriced(v, depth + 1) for v in value]
+    if isinstance(value, dict):
+        return {k: unpriced(v, depth + 1) for k, v in value.items() if not (isinstance(k, str) and MONEY_KEY.search(k))}
+    return value
+
+
+def free_query(a: dict) -> dict:
+    q = str(a.get('query') or '').strip()
+    if not SELECT.match(q):
+        raise AdsError('query is one GAQL SELECT (read only)')
+    if ';' in q:
+        raise AdsError('one GAQL statement, without ;')
+    if reads_money(q):
+        raise AdsError(NO_MONEY)
+    return {'op': QUERY, 'query': q if LIMIT.search(q) else f'{q} LIMIT {MAX_ROWS}'}
+
+
 def wanted(a: dict) -> dict:
     op = str(a.get('op') or 'campaigns')
     if op not in OPS:
         raise AdsError('op is one of ' + ', '.join(OPS))
-    if op == 'query':
-        q = str(a.get('query') or '').strip()
-        if not SELECT.match(q):
-            raise AdsError('query is one GAQL SELECT (read only)')
-        if ';' in q:
-            raise AdsError('one GAQL statement, without ;')
-        return {'op': op, 'query': q if LIMIT.search(q) else f'{q} LIMIT {MAX_ROWS}'}
     return {'op': op, 'days': a.get('days'), 'campaign': str(a.get('campaign') or '').strip()[:100], 'url': str(a.get('url_contains') or '').strip()[:200]}
-
-
-def money(micros) -> float | None:
-    try:
-        return round(int(micros) / MICROS, 2)
-    except (TypeError, ValueError):
-        return None
 
 
 def num(value) -> float | int | None:
@@ -194,7 +217,7 @@ def quoted(text: str) -> str:
 
 
 def metrics(m: dict) -> dict:
-    return {'cost': money(m.get('costMicros')), 'clicks': num(m.get('clicks')), 'impressions': num(m.get('impressions')), 'conversions': num(m.get('conversions'))}
+    return {'clicks': num(m.get('clicks')), 'impressions': num(m.get('impressions')), 'conversions': num(m.get('conversions'))}
 
 
 def scrubbed(value, depth: int = 0):
@@ -228,7 +251,11 @@ def ad_rows(rows: list[dict], url_part: str = '') -> list[dict]:
 
 
 def read(ads: GoogleAds, w: dict, today: dt.date) -> dict:
-    if w['op'] == 'query':
+    return unpriced(priced_read(ads, w, today))
+
+
+def priced_read(ads: GoogleAds, w: dict, today: dt.date) -> dict:
+    if w['op'] == QUERY:
         rows, truncated = ads.search(w['query'])
         return {'rows': scrubbed(rows), 'truncated': truncated}
     if w['op'] == 'ads':
@@ -239,19 +266,19 @@ def read(ads: GoogleAds, w: dict, today: dt.date) -> dict:
     if w['op'] == 'daily':
         name = quoted(w['campaign'])
         source = 'campaign' if name else 'customer'
-        q = (f'SELECT segments.date, metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions FROM {source} WHERE {span}'
+        q = (f'SELECT segments.date, metrics.clicks, metrics.impressions, metrics.conversions FROM {source} WHERE {span}'
              + (f" AND campaign.name LIKE '%{name}%'" if name else '') + ' ORDER BY segments.date')
         rows, truncated = ads.search(q)
         by = {}
         for r in rows:
             d = (r.get('segments') or {}).get('date')
             m = metrics(r.get('metrics') or {})
-            acc = by.setdefault(d, {'date': d, 'cost': 0.0, 'clicks': 0, 'impressions': 0, 'conversions': 0.0})
-            for k in ('cost', 'clicks', 'impressions', 'conversions'):
+            acc = by.setdefault(d, {'date': d, 'clicks': 0, 'impressions': 0, 'conversions': 0.0})
+            for k in ('clicks', 'impressions', 'conversions'):
                 acc[k] = round(acc[k] + (m[k] or 0), 2)
         return {'from': start, 'to': end, 'days': [by[d] for d in sorted(by, key=str)], 'truncated': truncated, 'note': 'yesterday and today are still being counted by Google'}
-    q = ('SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions '
-         f'FROM campaign WHERE {span} ORDER BY metrics.cost_micros DESC LIMIT {CAMPAIGN_ROWS}')
+    q = ('SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, metrics.clicks, metrics.impressions, metrics.conversions '
+         f'FROM campaign WHERE {span} ORDER BY metrics.clicks DESC LIMIT {CAMPAIGN_ROWS}')
     rows, truncated = ads.search(q)
     out = [{'id': (r.get('campaign') or {}).get('id'), 'name': cut((r.get('campaign') or {}).get('name'), TEXT_LIMIT), 'status': (r.get('campaign') or {}).get('status'),
             'channel': (r.get('campaign') or {}).get('advertisingChannelType'), **metrics(r.get('metrics') or {})} for r in rows]

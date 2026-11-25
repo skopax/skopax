@@ -16,11 +16,12 @@ from pymongo import DESCENDING, ReturnDocument
 
 from skopax import brand, clock as zone_clock, jirafields, logs, settingcards, tags
 from skopax.config import ALERT_GLOB, ALERT_GLOBS_MAX, AI_PROVIDERS, DEFAULT_ROLES, JIRA_BACKLINK_MODES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve, TRACE_CONTENTS
-from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS, read_token_headers, token_headers_reason
+from skopax.config import MODEL_KEYS, SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS, read_token_headers, token_headers_reason
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import BY_KEY as FEATURE_OF
-from skopax.investigator.pricing import ALL_MODELS, LABELS as PROVIDER_LABELS, OPENAI, effective as effective_model, default_model, known as known_model, models_of, provider_of
+from skopax.ai import PROVIDERS, explicit, extra_models, label_of, provider_of_ref
+from skopax.investigator.pricing import ALL_MODELS, OPENAI, default_model, known as known_model, provider_of, resolve as resolve_model
 from skopax.investigator import web as web_sites
 from skopax.investigator.prompt import writing_languages
 from skopax.messages import languages, msg
@@ -35,7 +36,9 @@ MODELS = ALL_MODELS
 SAME_AS_CARD = 'Same as Card model'
 OVERRIDE_SEVS = {'investigate.model-critical': 'Critical', 'investigate.model-high': 'High'}
 MODEL_ROLES = {'investigate.model': 'card', 'investigate.model-critical': 'card', 'investigate.model-high': 'card', 'investigate.slack-model': 'slack', 'chat.model': 'chat', 'investigate.gate-model': 'gate', 'self-review.model': 'review'}
+MODEL_FIELDS = frozenset(f for _, f in MODEL_KEYS.values())
 OFF_WITH = {OPENAI: {'investigate.web-fetches': 'ai.off_openai', 'investigate.gate-effort': 'ai.off_openai_gate_effort'}}
+OFF_USES = {'investigate.web-fetches': ('investigate_model', 'card'), 'investigate.gate-effort': ('investigate_gate_model', 'gate')}
 CHAT_CALLS_KEY = 'chat.max-tool-calls'
 WEB_DOMAINS_KEY = 'investigate.web-domains'
 OWN_SITES_KEY = 'core.own-sites'
@@ -52,6 +55,9 @@ TERM_LIMIT = 200
 HISTORY_LIMIT = 200
 ACTIVITY_VALUE = 80
 REV_ID = 'rev'
+UPGRADE_MARK = 'upgrade:ai-uses'
+UPGRADE_BY = 'upgrade'
+UPGRADE_PENDING = 'upgrade:ai-uses:pending'
 NO_COLOR_SHOWN = 'off (NO_COLOR)'
 
 
@@ -87,6 +93,19 @@ def T(key, field, group, label, help, kind, low=None, high=None, choices=(), liv
 
 def choices_of(t: Tunable) -> tuple[str, ...]:
     return tuple(t.choices()) if callable(t.choices) else t.choices
+
+
+def is_model_setting(t: Tunable) -> bool:
+    offered = set(choices_of(t)) - {''}
+    return bool(offered) and offered <= set(MODELS)
+
+
+def kept_ref(t: Tunable, text: str) -> bool:
+    return is_model_setting(t) and str(provider_of_ref(text) or '').startswith('compat:') and len(text) <= 300 and not any(c.isspace() for c in text)
+
+
+def extra_models_of(t: Tunable) -> tuple[str, ...]:
+    return extra_models() if is_model_setting(t) else ()
 
 
 def offered_tag(t: Tunable, text: str) -> str:
@@ -237,8 +256,9 @@ STATIC = (
     T('sso.jwks-url', 'sso_jwks_url', SIGNIN, 'Keys (JWKS) URL', 'Replaces the signing keys (JWKS) address the provider lists; empty uses the listed one', 'text'),
     T('sso.button-text', 'sso_button_text', SIGNIN, 'Button text', 'The text of the single sign-on button on the login page, at most 40 characters, such as Sign in with Acme; empty uses Sign in with SSO', 'text'),
     T('sso.button-icon', 'sso_button_icon', SIGNIN, 'Button icon', 'The icon of the single sign-on button: auto picks a mark from the issuer host, company shows the image uploaded on the Single sign-on card, none shows the text only', 'choice', choices=SSO_BUTTON_ICONS),
-    T('investigate.provider', 'ai_provider', INV, 'AI provider', 'Which AI provider every model call goes to: anthropic or openai, one for the whole install. Each has its own key and models; '
-      'a change applies from the next run or ask, and a model of the other provider falls back to the default of this one until you pick another', 'choice', choices=AI_PROVIDERS),
+    T('investigate.provider', 'ai_provider', INV, 'Default provider', 'The AI provider, anthropic or openai, whose default model serves each use whose model is not set. Each use can pick a model of any provider that has a key; '
+      'a use whose provider has no working key falls back to the default model of this provider for that use, and Admin says so. A change applies from the next run or ask', 'choice', choices=AI_PROVIDERS),
+    T('core.allow-private-ai', 'allow_private_ai', INV, 'Private AI addresses', 'Lets an OpenAI-compatible AI connection point at a private address, for example a local Ollama', 'bool'),
     T('investigate.model', 'investigate_model', INV, 'Card model', 'Model for Warning and Info cards, and for Critical and High cards that have no model of their own below. Also used for page asks and deploy-report assessments', 'choice', choices=MODELS),
     T('investigate.model-critical', 'investigate_model_critical', INV, 'Model for Critical cards', 'Model for cards whose worst alert is Critical; empty uses the Card model', 'choice',
       choices=('',) + MODELS, choice_labels={'': SAME_AS_CARD}),
@@ -482,8 +502,8 @@ def parse(t: Tunable, raw, base: Settings, loading: bool = False):
         return text == 'true'
     if t.kind == 'choice':
         text = retired_info(t.key, offered_tag(t, text)) if (loading and t.key == POST_SEV_KEY) or (t.plugin is not None and t.key.rpartition('.')[2] == ROUTE_SEV) else offered_tag(t, text)
-        allowed = choices_of(t) + ((text_of(t, base),) if text_of(t, base) else ())
-        if text not in allowed and not (loading and callable(t.choices)):
+        allowed = choices_of(t) + extra_models_of(t) + ((text_of(t, base),) if text_of(t, base) else ())
+        if text not in allowed and not (loading and (callable(t.choices) or kept_ref(t, text))):
             raise Invalid(f'{t.label} must be one of ' + ', '.join(dict.fromkeys(allowed)))
         return text
     if t.kind == 'text':
@@ -717,6 +737,9 @@ def apply(base: Settings, overrides: dict[str, str], extra: tuple[Tunable, ...] 
         changes['auto_resolve_hours_high'] = changes['auto_resolve_hours_warn']
     if 'slack_crit_now' in changes and 'slack_post_sev' not in changes and not base.slack_post_sev_set:
         changes['slack_post_sev'] = SLACK_POST_SEV if changes['slack_crit_now'] else 'off'
+    given = tuple(t.field for t in known.values() if t.key in overrides and t.field in MODEL_FIELDS)
+    if given:
+        changes['ai_models_set'] = tuple(dict.fromkeys(base.ai_models_set + given))
     if tag_parts:
         held = dict(base.tag_rules or tags.RULES)
         held.update(tag_parts)
@@ -813,6 +836,7 @@ class Live:
         self._checked: float | None = None
         self._lock = threading.Lock()
         self.watch: Callable[[Settings], None] | None = None
+        self.keyed: Callable[[str], bool] = lambda provider: True
 
     def current(self) -> Settings:
         if self._checked is None or self.clock() - self._checked >= self.every:
@@ -833,11 +857,21 @@ class Live:
                 logs.use(self._current.log_format, self._current.log_color, self._current.log_level)
                 self.overrides = overrides
                 self._rev = rev
+            held = self._held_fields()
+            if held != self._current.ai_models_held:
+                self._current = dataclasses.replace(self._current, ai_models_held=held)
             self._seen()
         except Exception as e:
             log.warning('admin settings not read, keeping the last ones: %s', error_kind(e))
         finally:
             self._lock.release()
+
+    def _held_fields(self) -> tuple[str, ...]:
+        found = self.tunables.meta.find_one({'_id': UPGRADE_PENDING}, {'keys': 1})
+        if not found:
+            return ()
+        known = self.known()
+        return tuple(sorted({known[k].field for k in found.get('keys') or () if isinstance(k, str) and k in known}))
 
     def _tell_renamed(self, overrides: Mapping[str, dict]) -> None:
         for old, new in RENAMED.items():
@@ -947,8 +981,7 @@ class Live:
             out['choiceLabels'] = dict(t.choice_labels)
         self.provider_view(t, out)
         if t.key == 'investigate.model':
-            out['modelProviders'] = {m: provider_of(m) for m in MODELS}
-            out['cardDefaults'] = {p: default_model(p, 'card') for p in AI_PROVIDERS}
+            out.update(self.card_model_summary())
         if t.key == POST_SEV_KEY and not given and not self.base.slack_post_sev_set:
             self.mark_old_switch(out)
         if t.key in SEV_HOURS_KEYS and not given and SEV_HOURS_KEYS[t.key][1] not in self.base.auto_resolve_sev_set:
@@ -988,40 +1021,109 @@ class Live:
             self.hide_refused_links(t, out, given, configured)
         return out
 
-    def refuse_other_provider(self, t: Tunable, value) -> None:
-        if not isinstance(value, str) or not t.choices or not set(choices_of(t)) - {''} <= set(MODELS):
-            return
-        provider = self.current().ai_provider
-        other = provider_of(value)
-        if other not in (provider, None):
-            raise Invalid(msg('ai.model_refused', model=value, owner=PROVIDER_LABELS[other], provider=PROVIDER_LABELS[provider]))
+    def card_used(self) -> str:
+        now = self.current()
+        return resolve_model(now.investigate_model, 'card', now.ai_provider, self.keyed, explicit(now, 'investigate_model'))[1]
+
+    def routed(self, field: str, role: str) -> str:
+        now = self.current()
+        return resolve_model(getattr(now, field), role, now.ai_provider, self.keyed, explicit(now, field))[0]
+
+    def card_model_summary(self) -> dict:
+        offered = list(MODELS) + [m for m in extra_models() if m not in MODELS]
+        owners = {m: provider_of_ref(m) for m in offered}
+        found = list(dict.fromkeys(list(AI_PROVIDERS) + [p for p in owners.values() if p]))
+        return {'modelProviders': owners, 'cardDefaults': {p: resolve_model('', 'card', p, chosen=False)[1] for p in AI_PROVIDERS},
+                'keyedProviders': [p for p in found if self.keyed(p)]}
 
     def provider_view(self, t: Tunable, out: dict) -> None:
         provider = self.current().ai_provider
-        off = OFF_WITH.get(provider, {}).get(t.key)
+        off = OFF_WITH.get(self.routed(*OFF_USES[t.key]) if t.key in OFF_USES else provider, {}).get(t.key)
         if off:
             out['off'] = msg(off)
-        if t.key in OVERRIDE_SEVS and out['value'] and not known_model(out['value']) and provider_of(out['value']) in (provider, None):
-            out['choices'] = [''] + list(models_of(provider)) + [out['value']]
-            out['problem'] = msg('ai.model_unknown_override', model=out['value'], sev=OVERRIDE_SEVS[t.key], used=effective_model(provider, self.current().investigate_model, 'card'))
+        if not out.get('choices') or not is_model_setting(t):
             return
-        if not out.get('choices') or not set(out['choices']) - {''} <= set(MODELS):
+        offered = list(MODELS) + [m for m in extra_models() if m not in MODELS]
+        extra = [out['value']] if out['value'] and out['value'] not in offered else []
+        out['choices'] = [''] * ('' in out['choices']) + offered + extra
+        out['choiceGroups'] = {m: label_of(provider_of_ref(m)) for m in offered}
+        if t.key in OVERRIDE_SEVS and out['value'] and not known_model(out['value']) and provider_of_ref(out['value']) in (provider, None):
+            out['problem'] = msg('ai.model_unknown_override', model=out['value'], sev=OVERRIDE_SEVS[t.key], used=self.card_used())
             return
-        out['choices'] = [''] * ('' in out['choices']) + list(models_of(provider))
         role = MODEL_ROLES.get(t.key, 'plugin')
         for part in ('base', 'default'):
-            if isinstance(out.get(part), str) and provider_of(out[part]) not in (provider, None):
-                out[part] = effective_model(provider, out[part], role)
-        other = provider_of(out['value'])
-        if other in (provider, None):
+            if isinstance(out.get(part), str) and out[part] and out[part] == out.get('default'):
+                out[part] = resolve_model(out[part], role, provider, chosen=False)[1]
+        if not out['value']:
             return
         if out['source'] == 'default':
-            out['value'] = effective_model(provider, out['value'], MODEL_ROLES.get(t.key, 'plugin'))
+            out['value'] = resolve_model(out['value'], role, provider, chosen=False)[1]
+            return
+        owner = provider_of_ref(out['value'])
+        if owner in (provider, None) or self.keyed(owner):
+            return
+        out['problem'] = msg('ai.use_held', owner=label_of(owner))
+
+    def upgrade_models(self, upgraded: Callable[[], bool] = lambda: True) -> list[dict]:
+        meta = self.tunables.meta
+        if meta.find_one({'_id': UPGRADE_MARK}) is not None:
+            return []
+        pending = meta.find_one({'_id': UPGRADE_PENDING})
+        if pending is None and not upgraded():
+            meta.update_one({'_id': UPGRADE_MARK}, {'$setOnInsert': {'at': iso(utc_now()), 'changed': [], 'fresh': True}}, upsert=True)
+            return []
+        self.refresh(force=True)
+        wanted = self.upgrade_wanted()
+        if pending is not None:
+            held = pending.get('values') or {}
+            wanted = [(k, v, before) for k, v, before in wanted if k in held and held[k] == before]
+        done, failed = [], {}
+        for key, value, before in wanted:
+            try:
+                t = self.known()[key]
+                done.append(self.tunables.write(key, stored(parse(t, value, self.base)), UPGRADE_BY, before))
+            except Exception as e:
+                failed[key] = before
+                log.warning('the upgrade did not write %s and tries again on the next start: %s', key, error_kind(e))
+        if failed:
+            meta.replace_one({'_id': UPGRADE_PENDING}, {'_id': UPGRADE_PENDING, 'keys': list(failed), 'values': failed, 'at': iso(utc_now())}, upsert=True)
         else:
-            out['choices'] = out['choices'] + [out['value']]
-            out['choiceLabels'] = {**out.get('choiceLabels', {}), out['value']: f"{out['value']} ({PROVIDER_LABELS[other]}, not used)"}
-            used = effective_model(provider, self.current().investigate_model, 'card') if t.key in OVERRIDE_SEVS else effective_model(provider, out['value'], MODEL_ROLES.get(t.key, 'plugin'))
-            out['problem'] = msg('ai.model_other', model=out['value'], owner=PROVIDER_LABELS[other], provider=PROVIDER_LABELS[provider], used=used)
+            meta.update_one({'_id': UPGRADE_MARK}, {'$setOnInsert': {'at': iso(utc_now()), 'changed': [c['key'] for c in done]}}, upsert=True)
+            meta.delete_one({'_id': UPGRADE_PENDING})
+        self.refresh(force=True)
+        if done:
+            log.info('the upgrade wrote the models each use billed before as settings: %s', ', '.join(c['key'] for c in done))
+        return done
+
+    def upgrade_wanted(self) -> list[tuple[str, str, str]]:
+        now = dataclasses.replace(self.current(), ai_models_held=())
+        provider = now.ai_provider
+        wanted = []
+        for key, role in MODEL_ROLES.items():
+            t = self.known().get(key)
+            if t is None:
+                continue
+            value = self.now_text(t)
+            if not value or not (key in self.overrides or explicit(now, t.field)):
+                continue
+            owner = provider_of_ref(value)
+            if owner is not None and owner not in PROVIDERS:
+                continue
+            if key in OVERRIDE_SEVS:
+                if known_model(value) and owner != provider:
+                    wanted.append((key, '', value))
+            elif owner not in (provider, None):
+                wanted.append((key, self.billed_before(value, role, provider), value))
+        for t in self.known().values():
+            if t.plugin is not None and t.key.endswith('.model') and self.plugin_value_given(t.key):
+                value = str(self.plugin_value(t.key) or '')
+                if provider_of_ref(value) not in (provider, None) and provider_of_ref(value) in PROVIDERS:
+                    wanted.append((t.key, default_model(provider, 'plugin'), value))
+        return wanted
+
+    @staticmethod
+    def billed_before(value: str, role: str, provider: str) -> str:
+        return value if provider_of(value) in (provider, None) else default_model(provider, role)
 
     def set_post_sev(self, value: str | None, by: str, old: str | None) -> dict:
         stored_old = self.overrides.get(CRIT_NOW_KEY)
@@ -1121,7 +1223,6 @@ class Live:
             value = now
         else:
             value = None if raw is None else stored(parse(t, raw, self.base))
-        self.refuse_other_provider(t, value)
         if key == POST_SEV_KEY:
             change = self.set_post_sev(value, by, old)
         elif key in SEV_HOURS_KEYS:

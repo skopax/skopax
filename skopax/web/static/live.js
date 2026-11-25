@@ -45,7 +45,7 @@ function restoreCards(s, seen) {
   return fresh;
 }
 function initLive() {
-  var next = null, reloadDue = false, polling = false, pollAgain = false, retry = 0;
+  var next = null, nextEpoch = 0, nextPaint = 0, shownEpoch = 0, waiters = [], reloadDue = false, polling = false, pollAgain = false, freshAgain = false, retry = 0;
   function json(path) {
     return fetch(path, {headers: {'Accept': 'application/json'}, credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(10000)}).then(function (r) {
       if (!r.ok) throw {code: r.status};
@@ -71,31 +71,41 @@ function initLive() {
     window.scrollTo(0, y);
     flash(fresh);
   }
+  function take(state, epoch, painted) { next = state; nextEpoch = epoch; nextPaint = painted == null ? epoch : painted; }
   function settle() {
     clearTimeout(retry);
     if (!next && !reloadDue) return;
+    if (next && nextEpoch !== HOLD_EPOCH) { next = null; poll(true); return; }
     if (busy()) { retry = setTimeout(settle, 1000); return; }
     if (reloadDue) { location.reload(); return; }
     var state = next;
     next = null;
+    PAINT_EPOCH = nextPaint;
+    shownEpoch = nextPaint;
     try { apply(state); } catch (e) { location.reload(); }
   }
-  async function poll() {
-    if (!document || document.hidden) return;
-    if (polling) { pollAgain = true; return; }
+  async function poll(fresh) {
+    if (!document || document.hidden) { if (fresh) { if (!next) take(D, HOLD_EPOCH); settle(); } return; }
+    if (polling) { pollAgain = true; freshAgain = freshAgain || !!fresh; return new Promise(function (r) { waiters.push(r); }); }
     polling = true;
+    var epoch = HOLD_EPOCH;
     try {
       var now = await json('/api/rev');
       if (typeof now.rev === 'number' && now.rev !== (next ? next.rev : D.rev)) {
-        try { next = await json('/api/state'); }
+        try { take(await json('/api/state'), epoch); }
         catch (e) { if (e && [401, 403, 404, 'parse'].indexOf(e.code) >= 0) reloadDue = true; }
       }
     } catch (e) {}
+    if (next && nextEpoch !== HOLD_EPOCH) { next = null; pollAgain = true; freshAgain = freshAgain || !!fresh; }
+    else if (fresh && !next) take(D, HOLD_EPOCH);
     polling = false;
     settle();
-    if (pollAgain) { pollAgain = false; poll(); }
+    var done = waiters.splice(0);
+    if (pollAgain) { var again = freshAgain; pollAgain = false; freshAgain = false; await poll(again); }
+    done.forEach(function (r) { r(); });
   }
   window.__skopaxPoll = poll;
+  window.__skopaxRepaint = function () { if (!next) take(D, HOLD_EPOCH, shownEpoch); settle(); };
   setInterval(poll, 15000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
   window.addEventListener('pageshow', function (e) { if (e.persisted) poll(); });

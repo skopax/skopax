@@ -31,7 +31,7 @@ from skopax.mcptools import (CALL_DEADLINE_S, CONNECT_TIMEOUT_S, LIST_DEADLINE_S
 
 log = logging.getLogger('skopax.mcptools')
 
-REFUSED_NETS = tuple(ipaddress.ip_network(net) for net in ('169.254.0.0/16', 'fe80::/10', 'fd00:ec2::254/128', '0.0.0.0/8', '::/128', '100.100.100.200/32'))
+REFUSED_NETS = tuple(ipaddress.ip_network(net) for net in ('169.254.0.0/16', 'fe80::/10', 'fd00:ec2::254/128', '0.0.0.0/8', '::/128', '100.100.100.200/32', '192.0.0.192/32'))
 NAT64 = ipaddress.ip_network('64:ff9b::/96')
 LOCAL_HOSTS = ('localhost', '127.0.0.1', '::1')
 LOOPBACK_NAMES = ('localhost',)

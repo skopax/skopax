@@ -23,9 +23,9 @@ async function until(check, ms) {
   return check();
 }
 
-function runs() {
+function runs(keys) {
   return [
-    {id: 'r1', mode: 'live', trigger: 'slack', startedAt: iso(2), outcome: 'done', usd: 0.2, keys: [KEY], recap: 'A restart is proposed.', toolCalls: 3,
+    {id: 'r1', mode: 'live', trigger: 'slack', startedAt: iso(2), outcome: 'done', usd: 0.2, keys: keys || [KEY], recap: 'A restart is proposed.', toolCalls: 3,
      ask: {text: 'Can you restart it?', by: 'bob@example.com', source: 'slack'},
      proposal: {tool: 'demo_propose', plugin: 'demo', title: 'Restart the demo worker', text: 'It is stuck since 14:00.'}},
     {id: 'r2', mode: 'live', trigger: 'slack', startedAt: iso(5), outcome: 'done', usd: 0.1, keys: [], recap: 'Proposed.', toolCalls: 1,
@@ -51,11 +51,12 @@ async function boot(operator, answer, meLate) {
     beforeParse(w) {
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () {};
+      if (answer.timers) { const realSet = w.setTimeout.bind(w); w.setTimeout = (fn, ms, ...rest) => { if (ms === 30000) { answer.timers.push(fn); return 0; } return realSet(fn, ms, ...rest); }; }
       w.fetch = async (p, opt) => {
         const path = String(p);
         const ok = (body, status) => ({ok: !status || status < 400, status: status || 200, json: async () => JSON.parse(JSON.stringify(body)), text: async () => JSON.stringify(body)});
-        if (opt && opt.method === 'POST' && /^\/api\/investigations\/[^/]+\/proposal$/.test(path)) { posts.push(path); return ok(answer.body, answer.status); }
-        if (path.startsWith('/api/investigations?limit=')) return ok(runs());
+        if (opt && opt.method === 'POST' && /^\/api\/investigations\/[^/]+\/proposal$/.test(path)) { posts.push(path); if (answer.hold) await answer.hold; return ok(answer.body, answer.status); }
+        if (path.startsWith('/api/investigations?limit=')) return ok(runs(answer.keys));
         if (path.startsWith('/api/server')) return ok({investigate: {mode: 'live', enabled: true, stopped: null, spentToday: 0.5, cap: 20}});
         if (path.startsWith('/api/me')) { if (meLate) await wait(150); return ok({loginEnabled: true, user: operator ? 'nina.white@example.com' : 'carol@example.com', operator: !!operator}); }
         if (path.startsWith('/api/rev')) return ok({rev: 1});
@@ -213,9 +214,64 @@ async function anEvilTitleIsText() {
   console.log('PASS a proposal title and text that hold markup show as text');
 }
 
+async function aConfirmLocksItsCardUntilItIsDone() {
+  //given
+  let open;
+  const hold = new Promise((r) => { open = r; });
+  const {w, doc, errors, posts} = await boot(true, {body: {ok: true, summary: 'demo worker restarted'}, hold});
+  const go = row(doc, 'r1').querySelector('button.prop-go');
+
+  //when
+  go.click();
+  await wait(30);
+  const during = {held: w.cardHeld(KEY), bar: !doc.querySelector('[role="progressbar"]').hidden};
+  go.disabled = false;
+  go.click();
+  open();
+  await wait(120);
+
+  //then
+  assert.deepStrictEqual(during, {held: true, bar: true}, 'the card of the run is locked and the top bar shows while the confirm runs');
+  assert.deepStrictEqual(posts, ['/api/investigations/r1/proposal'], 'a second click sends nothing');
+  assert.ok(!w.cardHeld(KEY) && doc.querySelector('[role="progressbar"]').hidden, 'both clear once it is done');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS a proposal confirm locks the card of its run until it is done, and a second click sends nothing');
+}
+
+async function aLateConfirmLocksEveryCardOfTheRunAndSaysSoOnce() {
+  //given
+  const OTHER = 'log|payments-api|ERROR|npe';
+  let open;
+  const hold = new Promise((r) => { open = r; });
+  const timers = [];
+  const {w, doc, errors} = await boot(true, {body: {ok: true, summary: 'demo worker restarted'}, hold, keys: [KEY, OTHER], timers});
+  const go = row(doc, 'r1').querySelector('button.prop-go');
+  const out = row(doc, 'r1').querySelector('.prop-result');
+
+  //when
+  go.click();
+  await wait(30);
+  const during = [w.cardHeld(KEY), w.cardHeld(OTHER)];
+  timers.splice(0).forEach((fn) => fn());
+  await wait(30);
+  const late = {said: out.textContent, toast: ((doc.getElementById('toasts') || {}).textContent || '').includes('Still working'), held: [w.cardHeld(KEY), w.cardHeld(OTHER)]};
+  open();
+  await wait(120);
+
+  //then
+  assert.deepStrictEqual(during, [true, true], 'every card of the run is locked while the confirm runs');
+  assert.deepStrictEqual(late, {said: 'Still working: refresh to see the result', toast: false, held: [false, false]}, 'past 30 s the proposal says so itself, once, and the cards are released');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  console.log('PASS a proposal confirm locks every card of its run, and past 30 s only the proposal says it is still working');
+}
+
 (async () => {
   await theProposalShowsAndOnlyAnOperatorGetsConfirm();
   await aConfirmClickPostsAndShowsTheSummary();
+  await aConfirmLocksItsCardUntilItIsDone();
+  await aLateConfirmLocksEveryCardOfTheRunAndSaysSoOnce();
   await aTimedOutConfirmSaysItMayStillComplete();
   for (const outcome of OUTCOMES) await anOutcomeIsHeadedMarkedAndFocused(...outcome);
   await aRefusedConfirmShowsTheDetail();

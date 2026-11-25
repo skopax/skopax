@@ -68,7 +68,7 @@ from skopax.engine import Applied, PassResult, apply, iso as epoch_iso, new_push
 from skopax.enrich import Enricher
 from skopax.investigator import JOB_OFFSET as INVESTIGATE_OFFSET, JOB_PERIOD as INVESTIGATE_PERIOD, Investigator, prompt, select
 from skopax.investigator.gate import Gate, GateDown
-from skopax.investigator.pricing import ANTHROPIC, OPENAI, effective as effective_model, provider_of
+from skopax.investigator.pricing import ANTHROPIC, OPENAI, default_model, provider_of
 from skopax.investigator.smalltalk import DEFAULTS as SMALL_TALK_DEFAULTS, Reply, SmallTalk, WINDOW_S as SMALL_TALK_WINDOW_S
 from skopax.investigator.tools import CORE_TOOLS, FIX_FIELDS, Effects, Sources, allowed_link_hosts, draft_problem
 from skopax.investigator.toolset import NoProposal, ProposalClosed, ProposalUnavailable, Proposals, ToolSet
@@ -78,7 +78,7 @@ from skopax.chatui.text import set_texts as set_chat_texts
 from skopax.assign import Assigner, Invalid as AssignInvalid, people_of, slug
 from skopax.jiralinks import ticket_projects
 from skopax.autoassign import AutoAssign
-from skopax.models import email_allowed, NoticesReadIn, NameIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, TagOwnersIn, TagAutoIn, TagColorIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, FieldSuggestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn
+from skopax.models import email_allowed, NoticesReadIn, NameIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, TagOwnersIn, TagAutoIn, TagColorIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, FieldSuggestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn, AiConnectionIn, AiConnectionTestIn
 from skopax.selfreview import BY as SELF_REVIEW_BY, SelfReview, self_service, gather as review_facts, review_slot_offset
 from skopax.slackhealth import OFFSET as SLACK_POSTS_OFFSET, PASS as SLACK_POSTS, PERIOD as SLACK_POSTS_PERIOD, slack_posts_pass
 from skopax.jiraaccess import PASS as JIRA_ACCESS, access_pass as jira_access_pass
@@ -92,7 +92,7 @@ from skopax.settingsources import core_knowledge_ids, core_setting_ids
 from skopax.tunables import SESSIONS_AFTER_KEY, SLACK_CHANNEL_KEY, SSO_SWITCH_KEY, Invalid as TunableInvalid, Live, TunableStore, View, apply as apply_tunables, parse as parse_tunable, plugin_tunables, stored as stored_text
 from skopax.tunables import KEY_ALIASES, current_instance, instance_menu
 from skopax.push import Pusher, push_users
-from skopax.investigator.flags import masked_scan
+from skopax.investigator.flags import REQUESTS, masked_asked, masked_scan
 from skopax.redact import redact
 from skopax.scheduler import Job, Scheduler
 from skopax.settle import Settle, ignore_doc, ignored
@@ -129,7 +129,9 @@ from skopax.promqlchecks import JOB_OFFSET as CUSTOM_CHECKS_OFFSET, JOB_PERIOD a
 from skopax.sweepout import Outputs
 from skopax.sweeps import Reads, Sweeper, owned, pass_name, watched
 from skopax.sealer import Sealer, master_key, stored_key
-from skopax.aikey import AiKey, AiKeys, InvalidKey, TestBusy
+from skopax import ai as ai_module, aiuses
+from skopax.ai import Clients, compat_ai, route as ai_route
+from skopax.aikey import AiConnections, AiKey, AiKeys, InvalidKey, TestBusy, UnknownConnection
 from skopax.remote import Transport
 from skopax.sessions import LOGIN_KIND, SESSION_KIND, Sessions, User, role_at_least, session_secret
 from skopax.roles import Resolvers, role_map
@@ -216,6 +218,7 @@ TEST_TIMEOUT_S = 15
 SUGGEST_TIMEOUT_S = 10
 CHECK_MS_MAX_S = 1800
 INVESTIGATOR_WORK = ('ask', 'dive', 'assess')
+UPGRADE_EVIDENCE = (('tunables', {'by': {'$exists': True}}), ('runs', {}), ('investigations', {}), ('investigator_spend', {}))
 
 log = logging.getLogger('skopax')
 
@@ -504,7 +507,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                investigator: Investigator | None = None, anthropic_client=None, slack_socket=None,
                kube: Kube | None = None, operators_lookup: Callable[[str], bool] | None = None, registry: Registry | None = None,
                transport: Transport | None = None, sources: SourceSet | None = None, ai_factory: Callable[..., object] | None = None, openai_factory: Callable[..., object] | None = None,
-               clients: Mapping[str, object] | None = None, probe: Probe | None = None, sso_http: SsoHttp | None = None,
+               compat_factory: Callable[..., object] | None = None, clients: Mapping[str, object] | None = None, probe: Probe | None = None, sso_http: SsoHttp | None = None,
                clock: Callable[[], float] | None = None) -> FastAPI:
     clock = clock or time.time
     if settings is None:
@@ -548,7 +551,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def probe_all() -> list[dict]:
         found = runtime.probe_targets()
         try:
-            more = core_targets(slack.enabled, settings.ai_provider, bool(ai_keys.current()), os.environ, google_hosts([p for p, _ in runtime.serving()]), settings.probe_extra)
+            more = core_targets(slack.enabled, routed_providers(), True, os.environ, google_hosts([p for p, _ in runtime.serving()]), settings.probe_extra)
         except Exception as e:
             log.warning('probe: the core targets were skipped (%s)', kind(e))
             more = []
@@ -1063,6 +1066,20 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     aikey = AiKey(db, get_sealer, lambda: live.base.anthropic_api_key, lambda: stored_key(db), live.tunables, factory=ai_factory)
     openai_key = AiKey(db, get_sealer, lambda: live.base.openai_api_key, lambda: stored_key(db), live.tunables, factory=openai_factory, provider=OPENAI)
     ai_keys = AiKeys(lambda: settings.ai_provider, {ANTHROPIC: aikey, OPENAI: openai_key})
+    ai_connections = AiConnections(db, get_sealer, lambda: stored_key(db), live.tunables, lambda: bool(settings.allow_private_ai), make=compat_factory)
+    compat_ai.bind(ai_connections, lambda: bool(settings.allow_private_ai), compat_factory)
+    compat_ai.register(ai_module)
+    ai_connections.changed = lambda: live.refresh(force=True)
+    try:
+        ai_connections.refresh()
+    except Exception as e:
+        log.warning('the stored AI connections were not read at start, reading them again shortly: %s', kind(e))
+    provider_keys = {ANTHROPIC: aikey.current, OPENAI: openai_key.current}
+    keyed_clients = Clients(lambda: settings.ai_provider, provider_keys, lambda k: None, 10.0, 0, anthropic_client)
+    live.keyed = keyed_clients.keyed
+
+    def upgrade_models() -> None:
+        live.upgrade_models(lambda: any(db[name].find_one(found, {'_id': 1}) is not None for name, found in UPGRADE_EVIDENCE))
 
     def org_pack() -> OrgPack | None:
         found = runtime.org_pack()
@@ -1075,12 +1092,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                                          lambda key: runtime.setting(MCPTOOLS_ID, key), FieldRefused, oauth=mcptools_auth)
     mcptools_bridge = ToolBridge(mcptools_deps, runtime, features, store)
 
-    talk = SmallTalk(store, settings, client=anthropic_client, key=ai_keys.current, pack=org_pack)
+    talk = SmallTalk(store, settings, client=anthropic_client, keys=provider_keys, pack=org_pack)
     investigator = investigator or Investigator(
         store, Sources(gitlab=gitlab, jira=jira, plugin_tools=PluginTools(runtime), selfreview=lambda now: review_facts(store, server_info() | store.server_runs(), runtime.client('elasticsearch') if settings.self_log_index else None, now, own_commits, self_service(settings), settings.self_log_index, PluginTools(runtime)),
                               link_hosts=lambda: allowed_link_hosts(settings, runtime.org()['link_hosts'] + runtime.ui_hosts()), org=runtime.org,
                               bridge=mcptools_bridge, own_sites=lambda: live.own_sites()[0]),
-        Effects(pod_slack_send, functools.partial(slack_thread_update, linked=True), replier.reply, state_note, tell=slack_tell, fixes=lambda key: post_fixes(key), slack_file=slack.file, autopost=lambda: auto.on(), wake=lambda: auto.wake()), settings, client=anthropic_client, base_url=base_url, talk=talk, key=ai_keys.current)
+        Effects(pod_slack_send, functools.partial(slack_thread_update, linked=True), replier.reply, state_note, tell=slack_tell, fixes=lambda key: post_fixes(key), slack_file=slack.file, autopost=lambda: auto.on(), wake=lambda: auto.wake()), settings, client=anthropic_client, base_url=base_url, talk=talk, keys=provider_keys)
 
     def after_follow_close(key: str, before: dict) -> None:
         notes.triaged(key, before)
@@ -1098,8 +1115,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         investigator.pack = org_pack
         investigator.role_of = lambda action: asker_role(action, users)
 
-    gate = Gate(store, settings, client=anthropic_client, key=ai_keys.current, pack=org_pack)
-    threads = ThreadSummaries(store, slack, settings, client=anthropic_client, key=ai_keys.current, names=email_names(operators), halted=lambda now: investigator.why_halted(now))
+    gate = Gate(store, settings, client=anthropic_client, keys=provider_keys, pack=org_pack)
+    threads = ThreadSummaries(store, slack, settings, client=anthropic_client, keys=provider_keys, names=email_names(operators), halted=lambda now: investigator.why_halted(now))
 
     intake = Intake(store, slack, operators, gate, talk, investigator, settings, base_url=base_url, ticket_extra=plugin_projects, on=lambda: features.on('slack-listener') and slack.enabled,
                     chat=lambda: features.on('chat'), not_ready=lambda: not_ready_text('slackevents.not_ready', 'slackevents.needs'), jira_site=jira_site, threads=threads)
@@ -1300,7 +1317,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     self_review = SelfReview(store, settings, lambda now: review_facts(store, server_info() | store.server_runs(), runtime.client('elasticsearch') if settings.self_log_index else None, now, own_commits, self_service(settings), settings.self_log_index, PluginTools(runtime)),
                              lambda text: save_review(text, SELF_REVIEW_BY, *review_targets()) if slack.enabled else save_review(text, SELF_REVIEW_BY, []),
-                             client=anthropic_client, key=ai_keys.current)
+                             client=anthropic_client, keys=provider_keys)
 
     def check_slack_scopes() -> None:
         try:
@@ -1401,7 +1418,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     runtime.after_refresh = lambda: sweeper.heal()
     instances.on_primary_moved = lambda plugin_id, old, new: sweeper.primary_changed(plugin_id, old, new, time.time())
     runtime.reader = lambda plugin: Reads(store, plugin, None)
-    runtime.ai = PluginAi(store, ai_keys.current, lambda now: investigator.why_halted(now), client=anthropic_client, provider=lambda: settings.ai_provider).for_check
+    plugin_ai = PluginAi(store, None, lambda now: investigator.why_halted(now), client=anthropic_client, provider=lambda: settings.ai_provider, keys=provider_keys,
+                         given=lambda plugin_id: live.plugin_value_given(f'{plugin_id}.model'))
+    runtime.ai = plugin_ai.for_check
     runtime.memos = store.plugin_memo
     core_jobs = [
         Job('enrich', SWEEP_PERIOD, ENRICH_OFFSET, lambda now: enricher.sweep(), lambda: enricher.enabled),
@@ -1685,7 +1704,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     async def lifespan(_: FastAPI):
         boot_id = secrets.token_hex(8)
         writer = Writer(instances)
-        runtime.migrate = lambda: migrations.attempt(db, registry, boot_id, writer=writer)
+        runtime.migrate = lambda: migrations.attempt(db, registry, boot_id, writer=writer, steps=(upgrade_models,))
         checked = False
         try:
             store.ensure_indexes()
@@ -1704,7 +1723,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             await asyncio.to_thread(instances.ensure_indexes)
             await asyncio.to_thread(mcptools_auth.ensure_indexes)
             try:
-                caught_up = await asyncio.to_thread(migrations.wait_and_run, db, registry, boot_id, writer=writer)
+                caught_up = await asyncio.to_thread(migrations.wait_and_run, db, registry, boot_id, writer=writer, steps=(upgrade_models,))
             except PyMongoError as e:
                 log.warning('%s', msg('migrations.lease_error', error=kind(e)))
                 caught_up = None
@@ -1719,6 +1738,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 log.warning('%s', msg('integrations.browser_move_failed', error=kind(e), instance='-'))
             await asyncio.to_thread(aikey.refresh)
             await asyncio.to_thread(openai_key.refresh)
+            await asyncio.to_thread(ai_connections.refresh)
             await asyncio.to_thread(sso_secret.refresh)
             await asyncio.to_thread(lambda: slack.enabled and slack_people.lookup())
         except PyMongoError as e:
@@ -1763,6 +1783,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         following = asyncio.create_task(follow_sources())
         keying = asyncio.create_task(aikey.loop())
         openai_keying = asyncio.create_task(openai_key.loop())
+        compat_keying = asyncio.create_task(ai_connections.loop())
         sso_keying = asyncio.create_task(sso_secret.loop())
         deciding = None
         if instances.age() is not None or listen_mode == 'off':
@@ -1774,7 +1795,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             async with mcp_manager.run():
                 yield
         finally:
-            running = [t for t in (task, jobs, ticking, following, keying, openai_keying, sso_keying, first_probe, first_version, deciding, redrawing) if t is not None]
+            running = [t for t in (task, jobs, ticking, following, keying, openai_keying, compat_keying, sso_keying, first_probe, first_version, deciding, redrawing) if t is not None]
             for t in running:
                 t.cancel()
             await asyncio.gather(*running, return_exceptions=True)
@@ -1818,11 +1839,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     def investigator_ready() -> bool:
         return features.on('investigator') and investigator.enabled
 
-    def no_ai_key() -> bool:
-        return not ai_keys.current()
+    def no_ai_key(provider: str) -> bool:
+        return provider_keys.get(provider) is not None and not provider_keys[provider]()
+
+    def needs_key(owner, field: str, role: str, provider: str) -> bool:
+        used = ai_route(owner, field, role)[0] if isinstance(owner, (Investigator, SelfReview)) else settings.ai_provider
+        return used == provider and no_ai_key(provider)
 
     feature_needs = {
-        'investigator': (('anthropic_key', lambda: settings.ai_provider != OPENAI and no_ai_key()), ('openai_key', lambda: settings.ai_provider == OPENAI and no_ai_key()),
+        'investigator': (('anthropic_key', lambda: needs_key(investigator, 'investigate_model', 'card', ANTHROPIC)), ('openai_key', lambda: needs_key(investigator, 'investigate_model', 'card', OPENAI)),
                          ('mode', lambda: investigator.mode == 'off')),
         'chat': (('investigator', lambda: not investigator_ready()), ('chat_ui', lambda: not (settings.chat_ui and signon.active()))),
         'slack-autosend': (('slack_token', lambda: not slack.enabled),),
@@ -1834,7 +1859,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         'push': (('bot_token', lambda: link.token() == ''), ('push_users', lambda: not pusher.users)),
         'postdeploy': (('prometheus', lambda: not prom_watching()),),
         'langfuse-tracing': (('trace_instance', lambda: trace_target() is None),),
-        'self-review': (('anthropic_key', lambda: settings.ai_provider != OPENAI and no_ai_key()), ('openai_key', lambda: settings.ai_provider == OPENAI and no_ai_key()), ('self_project', lambda: not (settings.self_project and settings.self_log_index))),
+        'self-review': (('anthropic_key', lambda: needs_key(self_review, 'selfreview_model', 'review', ANTHROPIC)), ('openai_key', lambda: needs_key(self_review, 'selfreview_model', 'review', OPENAI)), ('self_project', lambda: not (settings.self_project and settings.self_log_index))),
     }
 
     def need_text(family: str, need: str) -> str:
@@ -1887,11 +1912,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     app.state.settle = settle
     app.state.pusher = pusher
     app.state.investigator = investigator
+    app.state.probe = probe
     app.state.server_apply = server_apply
     app.state.post_fixes = post_fixes
     app.state.operators = operators
     app.state.gate = gate
     app.state.aikey = aikey
+    app.state.ai_connections = ai_connections
     app.state.openai_key = openai_key
     app.state.self_review = self_review
     app.state.replier = replier
@@ -2203,6 +2230,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return JSONResponse({'detail': msg('aikey.invalid')}, status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
         if getattr(request.scope.get('route'), 'path', '').startswith('/api/admin/openai-key'):
             return JSONResponse({'detail': msg('openaikey.invalid')}, status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
+        if getattr(request.scope.get('route'), 'path', '').startswith('/api/admin/ai-connections'):
+            return JSONResponse({'detail': msg('compat.invalid')}, status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
         if getattr(request.scope.get('route'), 'path', '').startswith('/api/admin/users'):
             return refused_user(e)
         return await refused_request(request, e)
@@ -2817,7 +2846,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/chats')
     def get_chats(by: Annotated[str, Depends(require_login)]) -> dict:
-        return {'chats': store.chats(by, CHAT_LIST), 'cap': settings.chat_daily_cap, 'usedToday': chat_used(by), 'model': effective_model(settings.ai_provider, settings.chat_model, 'chat')}
+        return {'chats': store.chats(by, CHAT_LIST), 'cap': settings.chat_daily_cap, 'usedToday': chat_used(by), 'model': ai_route(investigator, 'chat_model', 'chat')[1] if isinstance(investigator, Investigator) else settings.chat_model}
 
     @app.get('/api/chats/{chat_id}')
     def get_chat(chat_id: str, by: Annotated[str, Depends(require_login)]) -> dict:
@@ -2893,7 +2922,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                 continue
             cards.append(k)
         earlier = (chat['messages'] if chat else [])[-CHAT_THREAD:]
-        planted = masked_scan('chat', '\n'.join([question] + [t for m in earlier for t in (m.get('text') or '', m.get('answer') or '')]))
+        planted = masked_scan('chat', '\n'.join([question] + [t for m in earlier for t in (m.get('text') or '', m.get('answer') or '')]), REQUESTS)
+        planted += masked_asked('chat', '\n'.join([question] + [m.get('text') or '' for m in earlier]))
         question = redact(question)
         thread = []
         for m in earlier:
@@ -3589,6 +3619,45 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             log.warning('the sign-in connection test could not run: %s', kind(e))
             return {'ok': False, 'summary': msg('sso.test.unavailable'), 'ms': 0, 'checks': []}
 
+    def ai_routes() -> dict[str, tuple[str, str, str | None]]:
+        found: dict[str, tuple[str, str, str | None]] = {}
+        if isinstance(investigator, Investigator):
+            found |= {use: investigator.use_route(use) for use in ('card', 'slack', 'chat')}
+            for use, sev, field in (('critical', 'crit', 'investigate_model_critical'), ('high', 'high', 'investigate_model_high')):
+                provider, model, fallback, _, _ = investigator.card_route({sev})
+                found[use] = (provider, model, fallback if getattr(settings, field) else None)
+        else:
+            found |= {use: (settings.ai_provider, settings.investigate_model, None) for use in ('card', 'critical', 'high', 'slack', 'chat')}
+        found['gate'] = ai_route(gate, 'investigate_gate_model', 'gate')
+        found['review'] = ai_route(self_review, 'selfreview_model', 'review')
+        try:
+            plugin_model = live.plugin_value(aiuses.PLUGIN_MODEL_KEY)
+        except KeyError:
+            plugin_model = ''
+        found['plugin'] = plugin_ai.route(plugin_model or default_model(settings.ai_provider, 'plugin'), aiuses.PLUGIN_MODEL_KEY.split('.')[0])
+        return found
+
+    def routed_providers() -> tuple[str, ...]:
+        return tuple(sorted({provider for provider, _, _ in ai_routes().values() if keyed_clients.keyed(provider)}))
+
+    def ai_routes_listed() -> list[dict]:
+        found = ai_routes()
+        return [{'use': use, 'label': label, 'provider': found[use][0], 'model': found[use][1], 'fallbackFrom': found[use][2]} for use, label, _ in aiuses.USES if use != 'plugin']
+
+    def plugin_model_notices() -> list[dict]:
+        out = []
+        for t in live.known().values():
+            if t.plugin is None or not t.key.endswith('.model') or not live.plugin_value_given(t.key):
+                continue
+            provider, model, fallback = plugin_ai.route(str(live.plugin_value(t.key) or ''), t.plugin)
+            if fallback or (model and provider != settings.ai_provider and not keyed_clients.keyed(provider)):
+                out.append({'id': f'ai-plugin:{t.key}', 'level': 'warn', 'text': msg('ai.use_problem', use=f'{t.group}: {t.label}', problem=aiuses.problem_of('plugin', provider, model, fallback, settings.ai_provider, keyed=keyed_clients.keyed))})
+        return out
+
+    @app.get('/api/admin/ai-uses')
+    def get_admin_ai_uses(by: Annotated[str, Depends(require_admin)]) -> dict:
+        return {'uses': aiuses.rows(ai_routes(), settings.ai_provider, store.ledger_since(aiuses.since(clock())), keyed_clients.capabilities, keyed_clients.keyed)}
+
     @app.get('/api/admin/notices')
     def get_admin_notices(by: Annotated[str, Depends(require_admin)]) -> dict:
         items = []
@@ -3613,8 +3682,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             items.append({'id': 'ai-key', 'level': 'warn', 'text': msg('aikey.unreadable')})
         if openai_key.status()['unreadable']:
             items.append({'id': 'openai-key', 'level': 'warn', 'text': msg('openaikey.unreadable')})
-        items += [{'id': f"ai-model:{i['key']}", 'level': 'warn', 'text': i['problem']} for i in live.entries()
-                  if i.get('problem') and provider_of(i['value']) not in (None, settings.ai_provider)]
+        items += aiuses.notices(ai_routes_listed(), settings.ai_provider, keyed_clients.keyed) + plugin_model_notices()
+        items += [{'id': f'ai-connection:{name}', 'level': 'warn', 'text': msg('compat.unreadable', name=name)} for name in ai_connections.unreadable()]
         slack_scopes = store.slack_scopes() if slack.enabled else {'missing': []}
         if slack_scopes['missing']:
             items.append({'id': 'slack-scopes', 'level': 'warn', 'text': msg('integrations.slack_scopes', scopes=', '.join(slack_scopes['missing'])), 'at': slack_scopes['at']})
@@ -3696,7 +3765,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         @app.post(path + '/test')
         def post_admin_ai_key_test(body: AiKeyTestIn, by: Annotated[str, Depends(require_admin)]) -> dict:
             try:
-                return key.test(body.key, effective_model(provider, settings.investigate_model, 'card'), lambda: store.add_activity(ADMIN_KIND, by, msg(prefix + 'test_used')))
+                card = ai_route(investigator, 'investigate_model', 'card')[1] if isinstance(investigator, Investigator) else settings.investigate_model
+                return key.test(body.key, card if provider_of(card) == provider else default_model(provider, 'card'), lambda: store.add_activity(ADMIN_KIND, by, msg(prefix + 'test_used')))
             except InvalidKey:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, msg(prefix + 'invalid')) from None
             except TestBusy:
@@ -3707,6 +3777,41 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     key_routes('/api/admin/anthropic-key', aikey, ANTHROPIC)
     key_routes('/api/admin/openai-key', openai_key, OPENAI)
+
+    @app.get('/api/admin/ai-connections')
+    def get_admin_ai_connections(by: Annotated[str, Depends(require_admin)]) -> dict:
+        return {'items': ai_connections.views(), 'allowPrivate': bool(settings.allow_private_ai)}
+
+    @app.put('/api/admin/ai-connections/{name}')
+    def put_admin_ai_connection(name: str, body: AiConnectionIn, by: Annotated[str, Depends(require_admin)]) -> dict:
+        try:
+            found = ai_connections.put(name, body.model_dump(), by)
+        except compat_ai.Refused as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, e.text) from None
+        store.add_activity(ADMIN_KIND, by, msg('compat.set', name=name))
+        log.info('OpenAI-compatible AI connection %s saved in Admin by %s', name, by)
+        return found
+
+    @app.delete('/api/admin/ai-connections/{name}', status_code=status.HTTP_204_NO_CONTENT)
+    def delete_admin_ai_connection(name: str, by: Annotated[str, Depends(require_admin)]) -> Response:
+        if ai_connections.delete(name, by):
+            store.add_activity(ADMIN_KIND, by, msg('compat.cleared', name=name))
+            log.info('OpenAI-compatible AI connection %s removed in Admin by %s', name, by)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.post('/api/admin/ai-connections/{name}/test')
+    def post_admin_ai_connection_test(name: str, body: AiConnectionTestIn, by: Annotated[str, Depends(require_admin)]) -> dict:
+        try:
+            return ai_connections.test(name, body.model_dump(exclude_none=True), lambda: store.add_activity(ADMIN_KIND, by, msg('compat.test_used', name=name)))
+        except compat_ai.Refused as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, e.text) from None
+        except UnknownConnection:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, msg('compat.unknown')) from None
+        except TestBusy:
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('compat.test_busy')) from None
+        except Exception as e:
+            log.warning('the connection test of %s could not run: %s', name, kind(e))
+            return {'ok': False, 'tools': False, 'summary': msg('compat.test_failed'), 'ms': 0}
 
     def plugin_found(plugin_id: str):
         found = registry.get(plugin_id)

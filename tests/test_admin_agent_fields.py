@@ -33,8 +33,8 @@ def test_the_admin_form_and_routes_take_every_field_an_agent_instance_accepts(st
         stored = c.app.state.instances.get('kubernetes', 'east')
 
     # then
-    assert [f['key'] for f in row['fields']] == ['mode', 'url', 'token', 'via', 'echo.url', 'echo.token']
-    assert [f['kind'] for f in row['fields'][-2:]] == ['url', 'secret']
+    assert [f['key'] for f in row['fields']] == ['mode', 'url', 'token', 'via', 'echo.url', 'echo.token', 'questions']
+    assert [f['kind'] for f in row['fields'][-3:-1]] == ['url', 'secret']
     assert tested.status_code == 200 and set(tested.json()) == {'ok', 'summary', 'ms'}
     assert (added.status_code, edited.status_code) == (201, 200)
     assert stored.values['echo.url'] == 'https://echo-two.example.com' and stored.secrets['echo.token'] == 'echo-token-0003'
@@ -54,7 +54,7 @@ def test_a_plugins_own_agent_read_fields_are_not_fields_of_its_own_instances(sto
 
     # then
     assert tested.status_code == 422 and 'ns' in tested.text
-    assert plain.status_code == 200 and fields == ['url', 'token', 'ca', 'mode']
+    assert plain.status_code == 200 and fields == ['url', 'token', 'ca', 'mode', 'questions']
 
 
 SEEN_CONFIG: list[dict] = []
@@ -100,7 +100,7 @@ def test_the_test_instance_holds_every_agent_read_value_and_agent_read_defaults(
 
     # then
     assert tested.json() == {'ok': True, 'summary': 'probed', 'ms': 1}
-    assert SEEN_CONFIG == [{'mode': 'agent', 'url': 'https://agent.example.com', 'token': 'agent-token-0001', 'echo.url': 'https://echo.example.com', 'echo.token': 'echo-token-0002', 'echo.zone': 'eu-west'}]
+    assert SEEN_CONFIG == [{'mode': 'agent', 'url': 'https://agent.example.com', 'token': 'agent-token-0001', 'echo.url': 'https://echo.example.com', 'echo.token': 'echo-token-0002', 'echo.zone': 'eu-west', 'questions': 'everyone'}]
 
 
 def test_a_moved_agent_address_asks_for_every_stored_secret_by_its_own_label(store):

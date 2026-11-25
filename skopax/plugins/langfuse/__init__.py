@@ -8,7 +8,7 @@ from skopax.contract import AgentRead, Capabilities, Check, Context, Field, Inst
 from skopax.kit import access, connection
 from skopax.messages import msg
 from skopax.plugins.langfuse import check
-from skopax.plugins.langfuse.client import (DAYS_MAX, HEALTH, HOURS_MAX, OPS, PERMISSION, PROJECTS, ROWS_MAX, TAGS_MAX, Langfuse, LangfuseError, query, read, wanted)
+from skopax.plugins.langfuse.client import (DAYS_MAX, HEALTH, HOURS_MAX, OPS, PERMISSION, PROJECTS, ROWS_MAX, TAGS_MAX, Langfuse, LangfuseError, hidden, query, read, wanted)
 
 ID = 'langfuse'
 CLOUD = 'https://cloud.langfuse.com'
@@ -36,7 +36,8 @@ DESCRIPTION = ('Langfuse, where the traced app records every turn, read only. '
                'with name, time, latency (s), cost (USD), tags, release and version and how many ERROR / WARNING steps each had; narrow with name, tags, user_id or session_id. '
                'Customer ids (user_id, session_id) come back only when you filter by them; otherwise only how many distinct users and sessions the rows hold. '
                'op trace (id): one turn as a tree of its steps: generations with model, tokens, cost, latency, level and status message, tool calls and spans with their level, '
-               'status message and latency; what each step got and gave back, cut and redacted (a generation shows the tail of its prompt). '
+               'status message and latency; what each step got and gave back, cut and redacted (a generation shows the tail of its prompt), only on an instance whose Conversation text '
+               'setting is show; otherwise each step says content: hidden by the Conversation text setting, and names, timings, ERROR and WARNING messages, tokens and cost stay. '
                'op errors: the ERROR and WARNING steps of the window grouped by step name and status message, with counts, first and last time and up to 3 trace ids each. '
                f'op stats: per day for the last `days` (default 7, at most {DAYS_MAX}) the turn and step counts and cost, tokens and cost by model; name narrows it to one trace name. '
                'Use it on lf-* cards, failing or slow turns, costly turns and tool failures of the traced app: errors first, then trace on a sample id. '
@@ -114,7 +115,9 @@ def langfuse(ctx: Context, args: dict) -> object:
     except LangfuseError as e:
         raise ReadError(e.status, e.text) from None
     try:
-        return read(Langfuse.of(ctx.instance.config, ctx.http(), TOOL_BUDGET_S), asked, ctx.now, f'instance {ctx.instance.name}')
+        show = ctx.instance.config.get('content') == 'show'
+        out = read(Langfuse.of(ctx.instance.config, ctx.http(), TOOL_BUDGET_S), asked, ctx.now, f'instance {ctx.instance.name}', show)
+        return out if show else hidden(out)
     except LangfuseError as e:
         raise ReadError(e.status, e.text) from None
 
@@ -163,7 +166,7 @@ PLUGIN = Plugin(
         docs_label='Langfuse: roles and project API key permissions',
     ),
     id=ID, name='Langfuse', version='0.1.0', category='other', description='Errors, traffic, latency and cost of the turns an AI app traces to Langfuse, and a read-only trace tool.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
     capabilities=Capabilities(hosts=('@url',), secrets=('secret-key', 'langfuse.secret-key'), agent_reads=True),
     fields=(Field('url', 'URL', 'url', required=True, default=CLOUD, ui=True, help='Address of Langfuse, the cloud region or your own server.'),
             Field('public-key', 'Public key', 'text', required=True, help='Public key (pk-lf-...) of the Langfuse project.'),
@@ -173,6 +176,8 @@ PLUGIN = Plugin(
             Field('service', 'Service', 'text', default=SERVICE, help='Card service of the traced app; give each instance its own so their cards stay apart.'),
             Field('turn-name', 'Turn name', 'text', help='Name of the observation that is one turn of the app. Empty counts the root observation of each trace (needs a Langfuse version '
                                                        'that knows isRootObservation).'),
+            Field('content', 'Conversation text', 'choice', default='hide', choices=('show', 'hide'), choice_labels={'show': 'Show', 'hide': 'Hide'}, group='advanced',
+                  help='Show what each step received and returned (cut and masked). Hide keeps names, timings, errors, tokens and cost only.'),
             Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),
             Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), group='advanced', help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on.")),
     test=test,

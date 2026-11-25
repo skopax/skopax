@@ -53,7 +53,7 @@ def test_teams_identity_and_manifest():
     # then
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['category'], manifest['version'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'teams', 'Microsoft Teams', 'chat', '0.1.0', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        'teams', 'Microsoft Teams', 'chat', '0.1.0', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert manifest['capabilities'] == {'hosts': [], 'secrets': ['webhook'], 'agentReads': False} and manifest['uses'] == [] and manifest['checks'] == []
     assert 'Workflows' in manifest['description'] and manifest['description'].endswith('.')
     assert teams.PLUGIN.outbound == Outbound(teams.post, 'tags', 'mentions', link_field='webhook', keys_field='keys', sev_field='min-sev')

@@ -49,7 +49,7 @@ PLUGIN = Plugin(
     ),
     id=ID, name='Varnish', version='0.1.0', category='web',
     description='Varnish cache hit ratio against the day and the week before, and a daily list of the paths that miss the cache most, read from Varnish logs in Elasticsearch.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
     uses=('elasticsearch',),
     fields=(Field('elasticsearch', 'Elasticsearch', 'instance', required=True, choices=('elasticsearch',), help='The Elasticsearch instance that holds the Varnish logs.'),
             Field('index', 'Index', 'text', help='Index pattern of the Varnish logs. Empty means the log index of that Elasticsearch instance.'),

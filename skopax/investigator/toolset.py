@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from skopax import tags
+from skopax.contract import QUESTIONS_FIELD
 from skopax.errkind import Authored, kind as error_kind
 from skopax.messages import msg
 from skopax.probe import PROBE_PLUGIN
@@ -21,6 +22,7 @@ CARD_WRITES = ('assess', 'note', 'triage', 'group', 'tag')
 SLACK_WRITES = ('slack_draft', 'slack_send', 'slack_update')
 REPORT_WRITES = ('report_brief', 'report_slack_draft')
 REVIEW_VERDICTS = {'verify': 'follow_up_verdict', 'settle': 'settle_verdict'}
+ASKED_ROLES = ('operator', 'admin')
 
 
 @dataclass(frozen=True)
@@ -94,11 +96,22 @@ def _reaches(runtime, plugin, tool, found: list) -> bool:
     return bool(tool.instance_input) or not plugin.fields or primary_of(runtime, plugin, found) is not None
 
 
-def _gated(runtime) -> list[tuple]:
+def asked_gate(run: Run | None) -> Callable[[object], bool] | None:
+    if run is None or not run.ask or run.review:
+        return None
+    trusted = run.role in ASKED_ROLES
+
+    def allowed(instance) -> bool:
+        wanted = str((getattr(instance, 'values', None) or {}).get(QUESTIONS_FIELD) or '')
+        return wanted != 'none' and (wanted != 'operators' or trusted)
+    return allowed
+
+
+def _gated(runtime, allowed: Callable[[object], bool] | None = None) -> list[tuple]:
     if runtime is None:
         return []
     out = []
-    for plugin, found in runtime.serving():
+    for plugin, found in runtime.serving(allowed):
         for tool in plugin.tools:
             if not _reaches(runtime, plugin, tool, found):
                 continue
@@ -107,8 +120,8 @@ def _gated(runtime) -> list[tuple]:
     return out
 
 
-def runnable(runtime) -> list[tuple]:
-    return [(plugin, tool, found) for plugin, tool, found, ready in _gated(runtime) if ready]
+def runnable(runtime, allowed: Callable[[object], bool] | None = None) -> list[tuple]:
+    return [(plugin, tool, found) for plugin, tool, found, ready in _gated(runtime, allowed) if ready]
 
 
 def held(runtime) -> list[tuple]:
@@ -141,8 +154,13 @@ class ToolSet:
     def __init__(self, runtime=None):
         self.runtime = runtime
 
-    def serving(self) -> set[str]:
-        return set() if self.runtime is None else {plugin.id for plugin, _ in self.runtime.serving()}
+    def serving(self, allowed: Callable[[object], bool] | None = None) -> set[str]:
+        return set() if self.runtime is None else {plugin.id for plugin, _ in self.runtime.serving(allowed)}
+
+    def held_in_question(self, name: str, run: Run) -> bool:
+        spec = CORE.get(name)
+        allowed = asked_gate(run)
+        return allowed is not None and spec is not None and spec.needs is not None and spec.needs in self.serving() and spec.needs not in self.serving(allowed)
 
     def declared(self) -> dict:
         return {} if self.runtime is None else {tool.name: tool for plugin in self.runtime.registry.usable() for tool in plugin.tools}
@@ -173,19 +191,19 @@ class ToolSet:
             names += (list(CARD_WRITES) + (['slack_update'] if run.asker else []) if run.keys else []) + (['slack_tell'] if run.asker else [])
         else:
             names += list(CARD_WRITES + SLACK_WRITES)
-        serving = self.serving()
+        serving = self.serving(asked_gate(run))
         names = [n for n in names if (n != TAG or tags.all_tags()) and self.needed(n, serving)]
         writes = not run.read_only and not run.report and (not run.ask or run.keys)
         proposes = run.read_only and not run.report and not run.chat
-        for _, tool, _ in runnable(self.runtime):
+        for _, tool, _ in runnable(self.runtime, asked_gate(run)):
             if tool.kind == 'read' or (tool.kind == 'write' and writes) or (tool.kind == 'propose' and proposes):
                 names.append(tool.name)
         return names
 
-    def sections(self) -> list[tuple[str, str, str, str]]:
+    def sections(self, allowed: Callable[[object], bool] | None = None) -> list[tuple[str, str, str, str]]:
         if self.runtime is None:
             return []
-        return [(section, check.id, plugin.name, str(check.section_help.get(section) or '')) for plugin, _ in self.runtime.serving() for check in plugin.checks
+        return [(section, check.id, plugin.name, str(check.section_help.get(section) or '')) for plugin, _ in self.runtime.serving(allowed) for check in plugin.checks
                 for section in check.sections]
 
     def status(self, name: str, probe: dict | None) -> dict:

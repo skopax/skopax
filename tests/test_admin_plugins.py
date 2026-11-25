@@ -96,7 +96,7 @@ def test_catalog_lists_every_plugin_with_state_and_reason(store):
     # then
     assert body['edition'] == 'community' and body['secretsKey'] == 'generated' and 'secretsNote' not in body and 'sources' not in body
     assert (rows['demo']['state'], rows['demo']['reason'], rows['demo']['enabled'], rows['demo']['icon']) == ('ok', None, True, True)
-    assert [f['key'] for f in rows['demo']['fields']] == ['url', 'token', 'ca', 'mode'] and rows['demo']['instances'] == []
+    assert [f['key'] for f in rows['demo']['fields']] == ['url', 'token', 'ca', 'mode', 'questions'] and rows['demo']['instances'] == []
     assert rows['demo']['category'] == 'other' and rows['demo']['edition'] == 'community' and rows['demo']['setup'] is None
     assert rows['enterprise-demo']['state'] == 'locked' and rows['enterprise-demo']['reason'] == msg('plugins.needs_edition', name='Enterprise demo', edition='Enterprise')
     broken = rows['tests.plugins.broken_plugin']
@@ -494,7 +494,7 @@ def test_the_form_fields_of_a_plugin_leave_out_the_fields_its_agent_reads_ask_fo
         none = c.app.state.runtime.fields_of('nope')
 
     # then
-    assert [f['key'] for f in row['fields']] == ['url', 'token', 'ca', 'mode'] == [f['key'] for f in fields]
+    assert [f['key'] for f in row['fields']] == ['url', 'token', 'ca', 'mode', 'questions'] == [f['key'] for f in fields]
     assert none == []
 
 
