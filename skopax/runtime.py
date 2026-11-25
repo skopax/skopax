@@ -185,8 +185,10 @@ def _stem(card: dict) -> str | None:
 
 
 class RunContext:
-    def __init__(self, runtime: 'Runtime', plugin: Plugin, instance: Instance | None, now: float, reads=None, run_state: RunState | None = None):
+    def __init__(self, runtime: 'Runtime', plugin: Plugin, instance: Instance | None, now: float, reads=None, run_state: RunState | None = None,
+                 allowed: Callable[[Instance], bool] | None = None):
         self.runtime = runtime
+        self.allowed = allowed
         self.plugin = plugin
         self.now = now
         self.instance = None if instance is None else instance.info()
@@ -212,6 +214,8 @@ class RunContext:
         chosen = next((i for i in self.runtime.instances_of(used) if i.name == value), None) if plugin is not None else None
         if chosen is None:
             raise ReadError(503, msg('peers.unavailable', plugin=self.runtime.plugin_name(used), instance=value))
+        if self.allowed is not None and not self.allowed(chosen):
+            raise ReadError(403, msg('plugintools.not_in_questions', name=value[:60]))
         return self.runtime.peer_of(plugin, chosen)
 
     def peers(self, plugin_id: str) -> list[Peer]:
@@ -219,7 +223,7 @@ class RunContext:
             raise ReadError(403, msg('peers.not_used', plugin=str(plugin_id)[:40]))
         plugin = next((p for p in self.runtime.active() if p.id == plugin_id), None)
         found = sorted(self.runtime.instances_of(plugin_id), key=lambda i: (not i.primary, i.name)) if plugin is not None else []
-        return [self.runtime.peer_of(plugin, i) for i in found]
+        return [self.runtime.peer_of(plugin, i) for i in found if self.allowed is None or self.allowed(i)]
 
     def users(self) -> list[InstanceInfo]:
         if self.instance is None:
@@ -230,7 +234,7 @@ class RunContext:
             if plugin.id == self.plugin.id or not picks:
                 continue
             for found in self.runtime.instances_of(plugin.id):
-                if any(found.values.get(k) == self.instance.name for k in picks):
+                if any(found.values.get(k) == self.instance.name for k in picks) and (self.allowed is None or self.allowed(found)):
                     out.append(InstanceInfo(found.name, found.primary, None if found.primary else found.name, dict(found.values)))
         return out
 
@@ -735,10 +739,10 @@ class Runtime:
             raise SuggestFailed(400 if refused_here(e) else 502, scrubbed(suggest_failure(e), secrets.values())[:SUGGEST_DETAIL_MAX])
         return answered(box.get('value'), f.separator, secrets.values())
 
-    def serving(self) -> list[tuple[Plugin, list[Instance]]]:
+    def serving(self, allowed: Callable[[Instance], bool] | None = None) -> list[tuple[Plugin, list[Instance]]]:
         out = []
         for plugin in self.active():
-            found = [i for i in self.instances.all(plugin.id) if i.enabled and not i.problem]
+            found = [i for i in self.instances.all(plugin.id) if i.enabled and not i.problem and (allowed is None or allowed(i))]
             if found or not plugin.fields:
                 out.append((plugin, found))
         return out
@@ -829,8 +833,8 @@ class Runtime:
     def knowledge(self) -> list[Knowledge]:
         return [k for _, k, _ in self._known()]
 
-    def knowledge_parts(self, cards: Sequence[dict] = ()) -> tuple[list[Knowledge], list[tuple[str, Knowledge]]]:
-        serving = self.serving()
+    def knowledge_parts(self, cards: Sequence[dict] = (), allowed: Callable[[Instance], bool] | None = None) -> tuple[list[Knowledge], list[tuple[str, Knowledge]]]:
+        serving = self.serving(allowed)
         known = self._known(serving)
         active = [plugin for plugin, _ in serving]
         owners = {owner.id for owner in (self._owner(card, active) for card in cards if isinstance(card, dict)) if owner is not None}
@@ -846,8 +850,9 @@ class Runtime:
                 index.append((plugin.name, k))
         return inline, index
 
-    def context(self, plugin: Plugin, instance: Instance | None, now: float, reads=None, run_state: RunState | None = None) -> RunContext:
-        return RunContext(self, plugin, instance, now, reads, run_state)
+    def context(self, plugin: Plugin, instance: Instance | None, now: float, reads=None, run_state: RunState | None = None,
+                allowed: Callable[[Instance], bool] | None = None) -> RunContext:
+        return RunContext(self, plugin, instance, now, reads, run_state, allowed)
 
     def linker(self) -> Callable[[dict], list[dict] | None]:
         deadline = time.monotonic() + self.hook_timeout

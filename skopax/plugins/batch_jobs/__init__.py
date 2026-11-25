@@ -428,7 +428,7 @@ SETUP = Setup(
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='infrastructure',
     description='Scheduled batch jobs read through a Prometheus instance: failing, missed and slow jobs against the same hour 1 and 7 days earlier.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community', uses=('prometheus',), setup=SETUP,
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community', uses=('prometheus',), setup=SETUP,
     fields=(Field('prometheus', 'Prometheus', 'instance', required=True, choices=('prometheus',), help='The Prometheus instance that holds the batch job timers.'),
             Field('metric', 'Metric', 'text', default=DEFAULTS['metric'],
                   help='The timer of each run, without its suffix: the plug-in reads its _count, _sum and _max series.'),

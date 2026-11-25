@@ -1157,6 +1157,11 @@
   "+ Add integration": "+ Entegrasyon ekle",
   "+ Add custom MCP": "+ Özel MCP ekle",
   "Advanced": "Gelişmiş",
+  "Available in questions": "Sorularda kullanılabilir",
+  "Everyone": "Herkes",
+  "Operators and admins only": "Yalnızca operatörler ve yöneticiler",
+  "Card investigations only": "Yalnızca kart incelemeleri",
+  "Who may have Skopax read this connection when answering a Slack ask, a chat message or a page ask. Card investigations always may.": "Skopax bir Slack sorusunu, bir sohbet mesajını ya da bir sayfa sorusunu yanıtlarken bu bağlantıyı kimin okutabileceği. Kart incelemeleri her zaman okuyabilir.",
   "Categories": "Kategoriler",
   "Connect": "Bağlan",
   "Connected": "Bağlı",
@@ -1796,7 +1801,58 @@
   "Id of the Jira sprint field (Jira Software), such as customfield_10020; empty puts no task in a sprint": "Jira sprint alanının id'si (Jira Software), örneğin customfield_10020; boş bırakılırsa hiçbir task sprint'e eklenmez",
   "Warning: {0}": "Uyar\u0131: {0}",
   "{0} warnings: {1}": "{0} uyar\u0131: {1}",
-  "Page gone": "Sayfa yok"
+  "Page gone": "Sayfa yok",
+  "Working": "\u0130\u015fleniyor",
+  "Still working: refresh to see the result": "H\u00e2l\u00e2 s\u00fcr\u00fcyor: sonucu g\u00f6rmek i\u00e7in sayfay\u0131 yenileyin",
+  "Use": "Kullan\u0131m",
+  "Model": "Model",
+  "Effort": "\u00c7aba",
+  "Price per million tokens (input / output)": "Milyon token ba\u015f\u0131na fiyat (girdi / \u00e7\u0131kt\u0131)",
+  "Average cost per run (7 days)": "\u00c7al\u0131\u015fma ba\u015f\u0131na ortalama maliyet (7 g\u00fcn)",
+  "Data goes to": "Verinin gitti\u011fi yer",
+  "Cheap models often miss steps in long investigations": "Ucuz modeller uzun incelemelerde s\u0131k s\u0131k ad\u0131m atlar",
+  "Who does what": "Kim ne yap\u0131yor",
+  "Default": "Varsay\u0131lan",
+  "No price": "Fiyat yok",
+  "No runs in 7 days": "7 g\u00fcnde \u00e7al\u0131\u015fma yok",
+  "The compatible connections did not load; open the tab again.": "Uyumlu ba\u011flant\u0131lar y\u00fcklenemedi; sekmeyi yeniden a\u00e7\u0131n.",
+  "Add compatible connection": "Uyumlu ba\u011flant\u0131 ekle",
+  "Private and loopback addresses are allowed for compatible connections (core.allow-private-ai is on).": "Uyumlu ba\u011flant\u0131lar i\u00e7in \u00f6zel ve loopback adreslerine izin veriliyor (core.allow-private-ai a\u00e7\u0131k).",
+  "Private and loopback addresses are refused for compatible connections (core.allow-private-ai is off).": "Uyumlu ba\u011flant\u0131lar i\u00e7in \u00f6zel ve loopback adresleri reddediliyor (core.allow-private-ai kapal\u0131).",
+  "Not tested yet": "Hen\u00fcz test edilmedi",
+  "New compatible connection": "Yeni uyumlu ba\u011flant\u0131",
+  "key set": "anahtar ayarl\u0131",
+  "no key": "anahtar yok",
+  "Last test": "Son test",
+  "Base URL": "Temel URL",
+  "Models, with prices in USD per million tokens (input, output)": "Modeller, milyon token ba\u015f\u0131na USD fiyatlar\u0131yla (girdi, \u00e7\u0131kt\u0131)",
+  "Add model": "Model ekle",
+  "Uses tools": "Ara\u00e7 kullan\u0131r",
+  "Reads images": "G\u00f6rsel okur",
+  "Enter a name": "Bir isim girin",
+  "Delete this compatible connection?": "Bu uyumlu ba\u011flant\u0131 silinsin mi?",
+  "Its key and models are deleted. A use set to one of its models is held until another model is picked.": "Anahtar\u0131 ve modelleri silinir. Modellerinden birine ayarl\u0131 bir kullan\u0131m, ba\u015fka bir model se\u00e7ilene kadar bekletilir.",
+  "Delete connection": "Ba\u011flant\u0131y\u0131 sil",
+  "Deleting\u2026": "Siliniyor\u2026",
+  "Not deleted, try again": "Silinemedi, tekrar deneyin",
+  "Deleted": "Silindi",
+  "Key": "Anahtar",
+  "Testing\u2026": "Test ediliyor\u2026",
+  "The test could not run": "Test \u00e7al\u0131\u015ft\u0131r\u0131lamad\u0131",
+  "Saved, live within {0} s on every pod": "Kaydedildi, {0} sn i\u00e7inde her pod\u2019da etkin",
+  "Default provider": "Varsay\u0131lan sa\u011flay\u0131c\u0131",
+  "The uses table did not load; open the tab again.": "Kullan\u0131m tablosu y\u00fcklenemedi; sekmeyi yeniden a\u00e7\u0131n.",
+  "Not fit for investigations: the model did not call the tool": "\u0130ncelemelere uygun de\u011fil: model arac\u0131 \u00e7a\u011f\u0131rmad\u0131",
+  "That name is already used by another connection: pick another one": "Bu ismi ba\u015fka bir ba\u011flant\u0131 kullan\u0131yor: ba\u015fka bir isim se\u00e7in",
+  "Open the setting": "Ayar\u0131 a\u00e7\u0131n",
+  "Model {0} id": "Model {0}: kimlik",
+  "Model {0} input price, USD per million tokens": "Model {0}: girdi fiyat\u0131, milyon token ba\u015f\u0131na USD",
+  "Model {0} output price, USD per million tokens": "Model {0}: \u00e7\u0131kt\u0131 fiyat\u0131, milyon token ba\u015f\u0131na USD",
+  "Remove model {0}": "Model {0} kald\u0131r",
+  "The AI provider keys and compatible connections that the investigator, the chat and the self-review use, which model each use runs, and the investigator settings. Each use can run on a different provider; Default provider supplies the model of any use left on its default. A key set here is saved sealed, takes the place of ANTHROPIC_API_KEY or OPENAI_API_KEY and is never shown again.": "Investigator\u2019\u0131n, sohbetin ve self-review\u2019un kulland\u0131\u011f\u0131 yapay zeka sa\u011flay\u0131c\u0131 anahtarlar\u0131 ve uyumlu ba\u011flant\u0131lar, her kullan\u0131m\u0131n hangi modelle \u00e7al\u0131\u015ft\u0131\u011f\u0131 ve Investigator ayarlar\u0131. Her kullan\u0131m farkl\u0131 bir sa\u011flay\u0131c\u0131yla \u00e7al\u0131\u015fabilir; varsay\u0131lan sa\u011flay\u0131c\u0131, varsay\u0131lan\u0131nda b\u0131rak\u0131lan her kullan\u0131m\u0131n modelini verir. Burada ayarlanan anahtar m\u00fch\u00fcrl\u00fc kaydedilir, ANTHROPIC_API_KEY veya OPENAI_API_KEY yerine ge\u00e7er ve bir daha g\u00f6sterilmez.",
+  "Investigator: the AI providers and their keys, which model each use runs, and the investigator settings": "Investigator: yapay zeka sa\u011flay\u0131c\u0131lar\u0131 ve anahtarlar\u0131, her kullan\u0131m\u0131n hangi modelle \u00e7al\u0131\u015ft\u0131\u011f\u0131 ve Investigator ayarlar\u0131",
+  "Reset to empty": "Bo\u015f de\u011fere s\u0131f\u0131rland\u0131",
+  "default": "varsay\u0131lan"
  },
  "rules": [
   [
@@ -2262,6 +2318,22 @@
   [
    "^Already active when (.+) was connected \\(since (\\d{1,2}) ([A-Z][a-z]{2})( \\d{4})? (\\d{1,2}:\\d{2})\\)$",
    "$1 bağlandığında zaten etkindi ($2 $3$4 $5 tarihinden beri)"
+  ],
+  [
+   "^Set by (\\S+) (.+)$",
+   "Ayarlayan $1 $2"
+  ],
+  [
+   "^Reset to (.+)$",
+   "$1 de\u011ferine s\u0131f\u0131rland\u0131"
+  ],
+  [
+   "^Which model runs: Critical cards (\\S+) \u00b7 High cards (\\S+) \u00b7 Warning and Info cards (\\S+)$",
+   "Hangi model \u00e7al\u0131\u015f\u0131yor: Kritik kartlar $1 \u00b7 Y\u00fcksek kartlar $2 \u00b7 Uyar\u0131 ve Bilgi kartlar\u0131 $3"
+  ],
+  [
+   "^Not done: the Who does what table could not be redrawn: (.+)\\.$",
+   "Yap\u0131lmad\u0131: Kim ne yap\u0131yor tablosu yeniden \u00e7izilemedi: $1."
   ]
  ],
  "months": {

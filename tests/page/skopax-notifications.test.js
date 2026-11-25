@@ -65,6 +65,7 @@ async function boot(opts) {
           if (p.startsWith('/api/notifications/count')) return ok({unread: srv.count()});
           if (p.startsWith('/api/notifications/read')) {
             const b = JSON.parse(init.body);
+            if (b.all && o.holdRead) await o.holdRead;
             const hit = srv.list.filter((n) => !n.read && (b.all || b.ids.indexOf(n.id) >= 0));
             hit.forEach((n) => { n.read = true; });
             return ok({read: hit.length, unread: srv.count()});
@@ -417,6 +418,36 @@ async function markAllReadClearsTheUnreadLookOfWhatIsShowing() {
   return 'Mark all read clears the unread look of what is showing, also when the server already counts them read';
 }
 
+async function markAllReadCannotRunTwice() {
+  //given
+  let open;
+  const holdRead = new Promise((r) => { open = r; });
+  const {w, doc, errors, calls, arrive} = await boot({unread: 2, holdRead});
+  await show(doc, 'slack');
+  await arrive('n99');
+  const all = doc.getElementById('nt-read-all');
+
+  //when
+  all.click();
+  await wait(20);
+  const during = {disabled: all.disabled, bar: !!doc.querySelector('[role="progressbar"]') && !doc.querySelector('[role="progressbar"]').hidden};
+  all.disabled = false;
+  all.click();
+  await w.__ntCount();
+  const stillOff = all.disabled;
+  open();
+  await wait(80);
+
+  //then
+  assert.deepStrictEqual(during, {disabled: true, bar: true}, 'Mark all read disables itself and the top bar shows while it runs');
+  assert.ok(stillOff, 'a count poll does not enable it while it runs');
+  assert.strictEqual(posts(calls).filter((c) => c[2] && c[2].all).length, 1, 'a second click sends nothing');
+  assert.ok(all.disabled && doc.querySelector('[role="progressbar"]').hidden, 'after it is done nothing is unread and the bar hides');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  return 'Mark all read cannot run twice and shows the top bar while it runs';
+}
+
 (async () => {
   console.log('PASS ' + await aRefusedMailIsMarkedOnItsNotificationWithTheReason());
   console.log('PASS ' + await theRowCountsUnreadAndThePanelListsNewestFirst());
@@ -431,4 +462,5 @@ async function markAllReadClearsTheUnreadLookOfWhatIsShowing() {
   console.log('PASS ' + await aSignedOutBoardNeverAsksForTheCount());
   console.log('PASS ' + await theNotificationsPageShowsOnlyNotifications());
   console.log('PASS ' + await aHeldPostCountsOnActivityNotOnNotifications());
+  console.log('PASS ' + await markAllReadCannotRunTwice());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

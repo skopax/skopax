@@ -13,7 +13,8 @@ var NT_TONE = {
 var NT = {on: false, ready: false, tab: false, mark: false, items: [], unread: 0, more: false, busy: false};
 
 async function ntApi(method, path, body) {
-  var r = await fetch(path, {method: method, credentials: 'same-origin', headers: Object.assign({'Accept': 'application/json'}, body ? {'Content-Type': 'application/json'} : {}), body: body ? JSON.stringify(body) : undefined});
+  var sent = fetch(path, {method: method, credentials: 'same-origin', headers: Object.assign({'Accept': 'application/json'}, body ? {'Content-Type': 'application/json'} : {}), body: body ? JSON.stringify(body) : undefined});
+  var r = await (method === 'GET' ? sent : workTrack(sent));
   if (!r.ok) throw {code: r.status};
   return r.json();
 }
@@ -33,7 +34,7 @@ function ntBadge(n) {
     b.hidden = !n;
   }
   var all = document.getElementById('nt-read-all');
-  if (all) all.disabled = !n && !NT.items.some(function (x) { return x.fresh; });
+  if (all) all.disabled = !!NT.readingAll || (!n && !NT.items.some(function (x) { return x.fresh; }));
   if (typeof sideMarkFolds === 'function') sideMarkFolds();
   var tb = document.getElementById('top-bell-badge'), bell = document.getElementById('top-bell');
   if (tb) {
@@ -214,7 +215,12 @@ function ntTab(on) {
   badge.appendChild(document.createTextNode('0'));
   badge.appendChild(el('span', 'sr')).textContent = ' unread';
   end.appendChild(badge);
-  all.addEventListener('click', function () { ntRead(null); });
+  all.addEventListener('click', async function () {
+    if (NT.readingAll) return;
+    NT.readingAll = true;
+    all.disabled = true;
+    try { await ntRead(null); } finally { NT.readingAll = false; ntBadge(NT.unread); }
+  });
   document.getElementById('nt-more').addEventListener('click', function () { ntLoad(true); });
   var bell = document.getElementById('top-bell');
   if (bell) {

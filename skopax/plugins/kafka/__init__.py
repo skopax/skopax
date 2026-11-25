@@ -178,7 +178,7 @@ PLUGIN = Plugin(
         docs_label='kafka_exporter',
     ),
     id=ID, name='Kafka', version='0.1.0', category='infrastructure', description='Kafka brokers, partitions, consumer groups and the Kafka calls of each service, read from kafka_exporter and Spring Kafka series in Prometheus.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community', uses=('prometheus',),
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community', uses=('prometheus',),
     fields=(Field('prometheus', 'Prometheus', 'instance', required=True, choices=('prometheus',), help='The Prometheus instance that holds the kafka_exporter and Spring Kafka series.'),
             Field('preset', 'Preset', 'choice', default=DEFAULT_PRESET, choices=PRESETS,
                   help='strimzi groups the clusters by namespace and adds broker disks and pod restarts; kafka-exporter groups them by the exporter job.'),

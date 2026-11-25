@@ -66,7 +66,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 
 PLUGIN = Plugin(
     id=ID, name='Dengage', version='0.1.0', category='marketing', description='Completed push, e-mail and SMS sends read from Dengage: large sends, poor delivery and quiet channels.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
     capabilities=Capabilities(hosts=('@url',), secrets=('userkey', 'password')),
     fields=(Field('url', 'API URL', 'url', required=True, default=API, ui=True, help='Address of the Dengage REST API (https).'),
             Field('userkey', 'User key', 'secret', required=True, help='User key of a read-only Dengage API user.'),

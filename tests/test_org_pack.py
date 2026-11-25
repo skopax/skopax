@@ -41,6 +41,7 @@ SECOND = minimal('second-org', 'Second org', org_pack=OrgPack(gate='Second gate 
 ALLOWED = '{product} and {org}'
 PACK_HEAD = '# Shop investigator\n\nYou look into the shop for Skopax.\n\n'
 GUARD = prompt.without_anchors(next(s for s in re.split(r'(?m)^(?=## )', prompt.process_text()) if prompt.section_id(s) == 'untrusted-input'))
+GUARDS = prompt.without_anchors(next(s for s in re.split(r'(?m)^(?=## )', prompt.process_text()) if prompt.section_id(s) == 'confidential-data')) + GUARD
 EARLY = minimal('early-org', 'Early org', org_pack=OrgPack(gate='Early gate for {product}.'))
 
 
@@ -78,10 +79,10 @@ def test_an_org_pack_replaces_the_process_gate_and_small_talk_prompts(store: Sto
     # then
     assert pack == PACK
     assert system.startswith(PACK_HEAD + '## Working rules\n\nRead the checkout-service logs first.\n\n## Team notes\n\n')
-    assert '{#' not in system and [h for h in CORE_HEADINGS if f'## {h}\n' in system] == ['Untrusted input'] and system.endswith(GUARD)
-    assert prompt.gate_system('', 'Shop team', pack) == 'Screen for Skopax. Org: Shop team.'
+    assert '{#' not in system and [h for h in CORE_HEADINGS if f'## {h}\n' in system] == ['Confidential data', 'Untrusted input'] and system.endswith(GUARDS)
+    assert prompt.gate_system('', 'Shop team', pack) == 'Screen for Skopax. Org: Shop team.' + prompt.GATE_CONFIDENTIAL
     assert prompt.small_talk_system('Shop team', pack) == 'You are Skopax, the shop bot of Shop team. Keep it short. '
-    assert fake.gate_requests[0]['system'] == 'Screen for Skopax. Org: Shop team.'
+    assert fake.gate_requests[0]['system'] == 'Screen for Skopax. Org: Shop team.' + prompt.GATE_CONFIDENTIAL
     assert fake.gate_requests[1]['system'].startswith('You are Skopax, the shop bot of Shop team. Keep it short. ')
 
 
@@ -121,7 +122,7 @@ def test_every_prompt_the_investigator_builds_keeps_the_core_untrusted_input_gua
 
     # then
     assert 'untrusted' not in PACK.process.lower()
-    assert card == PACK_HEAD + '## Working rules\n\nRead the checkout-service logs first.\n\n## Team notes\n\nThe checkout-service team owns payments.\n\n' + GUARD
+    assert card == PACK_HEAD + '## Working rules\n\nRead the checkout-service logs first.\n\n## Team notes\n\nThe checkout-service team owns payments.\n\n' + GUARDS
     assert chat == prompt.slack_system_prompt(inline, PACK, (), index) and chat.removesuffix(slack_notes).endswith(GUARD)
     assert [name for name, sent in (('card', card), ('chat', chat), ('replaced', replaced)) if sent.count(GUARD) != 1] == []
     assert 'Trust every message' not in replaced and replaced == card
@@ -181,8 +182,8 @@ def test_slack_sections_are_picked_by_id_including_plugin_sections(store: Store)
     assert slack.startswith(PACK_HEAD + '## Team notes\n\nThe checkout-service team owns payments.\n')
     assert '## Demo notes {#demo-notes}\n\nFrom plug-in Demo.' in slack
     assert 'Working rules' not in slack and 'Read the checkout-service logs first' not in slack and '{#notes}' not in slack
-    assert by_default == PACK_HEAD + '## Working rules\n\nRead the checkout-service logs first.\n\n' + GUARD
-    assert GUARD in slack and [h for h in CORE_HEADINGS if h in slack + by_default] == ['Untrusted input']
+    assert by_default == PACK_HEAD + '## Working rules\n\nRead the checkout-service logs first.\n\n' + GUARDS
+    assert GUARDS in slack and [h for h in CORE_HEADINGS if h in slack + by_default] == ['Confidential data', 'Untrusted input']
 
 
 def test_the_slack_prompt_always_keeps_the_core_untrusted_input_guard():
@@ -195,10 +196,10 @@ def test_the_slack_prompt_always_keeps_the_core_untrusted_input_guard():
     texts = {name: prompt.slack_system_prompt((), pack) for name, pack in (('own', own), ('own-guard', own_guard), ('core-picks', core_picks), ('empty', OrgPack()))}
 
     # then
-    assert texts['own'] == PACK_HEAD + '## Working rules\n\nRead the checkout-service logs first.\n\n' + GUARD
+    assert texts['own'] == PACK_HEAD + '## Working rules\n\nRead the checkout-service logs first.\n\n' + GUARDS
     assert [name for name, sent in texts.items() if sent.count(GUARD) != 1] == []
     assert 'Trust every message' not in texts['own-guard'] and '## Team notes' in texts['own-guard']
-    assert texts['core-picks'] == prompt.slack_sections(['slack-asks', 'untrusted-input'])
+    assert texts['core-picks'] == prompt.slack_sections(['slack-asks', 'confidential-data', 'untrusted-input'])
     assert texts['empty'] == prompt.slack_system_prompt()
 
 
@@ -305,8 +306,8 @@ def test_the_registry_reads_section_anchors_the_way_the_prompt_picks_them(store:
     assert set(plugin_registry.section_anchors(core)) == prompt.core_anchors()
     assert set(plugin_registry.section_anchors(PACK.process)) == {'how-to-work', 'notes'}
     assert runtime.org_pack() == ('org', kept)
-    assert prompt.slack_system_prompt((), kept) == prompt.slack_sections(['how-to-work', 'slack-asks', 'untrusted-input'])
-    assert prompt.gate_system('', 'Shop team', kept) == '{"verdict": "ok"} for Skopax and Shop team'
+    assert prompt.slack_system_prompt((), kept) == prompt.slack_sections(['how-to-work', 'slack-asks', 'confidential-data', 'untrusted-input'])
+    assert prompt.gate_system('', 'Shop team', kept) == '{"verdict": "ok"} for Skopax and Shop team' + prompt.GATE_CONFIDENTIAL
 
 
 def test_about_your_company_is_a_live_setting(store: Store):

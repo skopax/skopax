@@ -1,6 +1,10 @@
 # What reaches the AI provider
 
-Skopax sends text to one AI provider (Anthropic or OpenAI, see [The AI provider and its key](setup.md#the-ai-provider-and-its-key)) when it investigates a card, answers a Slack ask, a chat message or a page ask, checks whether a Slack message is meant for it (the topic gate), writes small talk, summarises a Slack thread, writes a self-review or scans a page. This page says what is masked before that text leaves, and what is not.
+Skopax sends text to the AI provider of each use (Anthropic, OpenAI, or the host of an OpenAI-compatible connection; see [The AI provider and its key](setup.md#the-ai-provider-and-its-key) and [Where AI data goes](configuration.md#where-ai-data-goes)) when it investigates a card, answers a Slack ask, a chat message or a page ask, checks whether a Slack message is meant for it (the topic gate), writes small talk, summarises a Slack thread, writes a self-review or scans a page. This page says what is masked before that text leaves, and what is not.
+
+## Where it goes
+
+Each use sends its text to the company that runs its model: Anthropic models to Anthropic, OpenAI models to OpenAI, and a model of an OpenAI-compatible connection to the host of its base URL (or to your own network for a local Ollama). Admin > Investigator shows that company for each use under Data goes to. The masking below applies the same way to every provider.
 
 ## What is sent
 
@@ -30,6 +34,16 @@ Rows that Skopax stored before 0.5.18 (earlier asks, chat messages and answers) 
 - Numbers that do not look like a card number or another masked shape, such as amounts, order ids or counts.
 - Free text that is not a secret or a masked shape: names, addresses, error messages, customer names in a log line or a ticket summary.
 - The card brief of the card under investigation: its label can carry the start of a log line. Use `message-mask` on the Elasticsearch instance to mask parts of log lines before they become card labels.
+
+## What Skopax will not hand out
+
+Skopax uses what its tools read to find the cause, but its answers, card notes, Slack posts, chats and summaries carry conclusions, counts, statuses and short excerpts. Every prompt carries a core section on confidential data that a language or prompt pack cannot drop:
+
+- Sensitive values in an answer are masked (`[redacted]`), shortened, or summed up as a count or a status: "3 customers hit this error; their ids are masked". Names of colleagues acting on a card or in its thread are not masked; customer names are.
+- A request whose purpose is the sensitive data itself, such as a password, an export of all customers with their phone numbers or a salary table, gets a plain no for that part, what Skopax can give instead (a count, a status, or where an authorised person can look it up), and an answer to the rest.
+- Skopax never unmasks a masked value and never moves such data to another place (Slack, Teams, mail, Jira, a card note) with a tool.
+
+Every text that leaves for people passes the same mask once more before it is stored or posted: the answer to an ask, a chat or an MCP ask, Slack posts and replies, card notes, suspects and next steps, ticket proposals, deploy report summaries, thread summaries, small talk, the topic gate's reason shown to the asker, and the self-review. Every text value a write tool sends, core or plug-in, and every argument of an outside MCP server's tool, is masked by default; only identifier fields (such as a card key, a repository, a path, a commit ref, a line range or a routing address) stay as they are, and code suggestions are masked too. A list, a table, a run of plain lines or a fenced code block of more than 20 rows in a row that look like records (emails, phone numbers, street addresses, a full name followed by more fields, or `[redacted]` marks that stand for personal data, in most rows) is cut to its first 5 rows with the line "Cut: Skopax shows at most 5 records here". Log lines, stack traces, pod lists and metric tables are not cut. Records separated by blank lines count as one run. The cut is a simple backstop with plain limits; the prompt section is what keeps such dumps out. A question a person asks for a password, a key, a token or a full customer or user export (in a Slack ask or its thread, a chat or a page ask) is flagged on the run like planted text; the run still goes ahead. A tool answer that asks for such a value and to post, send, mail or forward it is flagged as planted text, so that run posts nothing to Slack and closes no card.
 
 ## What is never read
 

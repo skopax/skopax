@@ -880,7 +880,7 @@ function businessTitle(a, full) {
 }
 function svcLabel(a) { var s = svcName(a), l = svcReal(a.label); return l && l !== s ? s + ' \u00b7 ' + l : s; }
 function cardTitle(a, full) { return businessTitle(a, full) || patternTitle(a, full) || ''; }
-function tileBusy(key) { return !!(window.__cardBusy && window.__cardBusy(key)); }
+function tileBusy(key) { return cardHeld(key) || !!(window.__cardBusy && window.__cardBusy(key)); }
 function tileDraggable(key) { return !(window.__boardLock ? window.__boardLock() : 'Log in to move cards') && !tileBusy(key); }
 window.__tileBusy = tileBusy;
 window.__tileDraggable = tileDraggable;
@@ -910,6 +910,7 @@ function tile(a) {
   });
   b.addEventListener('dragend', dragDone);
   if (DRAWER === a.key) b.classList.add('on');
+  if (cardHeld(a.key)) { b.classList.add('busy'); b.setAttribute('aria-busy', 'true'); }
   return b;
 }
 var TILES = {};
@@ -941,6 +942,12 @@ function moveSteps(a, to) {
   if (to === 'muted') return !a.muted && (a.status === 'open' || stale.indexOf(a) >= 0) ? 'ask' : null;
   return null;
 }
+function movedTo(a, to) {
+  if (to === 'progress') return Object.assign({}, a, {muted: false, triage: 'progress'});
+  if (to === 'done') return Object.assign({}, a, {muted: false, triage: 'handled'});
+  if (to === 'muted') return Object.assign({}, a, {muted: true});
+  return Object.assign({}, a, {muted: false, triage: undefined});
+}
 function boardNote(text, bad) {
   var n = document.getElementById('board-note');
   if (!n) return;
@@ -952,13 +959,15 @@ async function dropOn(a, to) {
   if (!steps) return;
   if (steps === 'ask') {
     var got = to === 'done' ? await resolveDialog(a) : await muteDialog(a);
-    if (!got) return;
+    if (!got || tileBusy(a.key)) return;
     steps = (to === 'done' && a.muted ? [{type: 'unmute', label: 'Unmute ' + svcName(a) + ' ' + a.label, target: a.key, key: a.key}] : []).concat([Object.assign({target: a.key, key: a.key}, got)]);
   }
   if (!window.__boardMove) return;
+  var run = window.__boardMove(steps, movedTo(a, to));
+  if (!run) return;
   boardNote('Moving ' + name + '…');
   try {
-    var last = await window.__boardMove(steps);
+    var last = await run;
     if (last && last.status === 'failed') boardNote('Not moved: ' + (last.result || brandName() + ' refused it'), true);
     else boardNote('Moved ' + name + ' to ' + BOARD_COLS.filter(function (c) { return c[0] === to; })[0][1] + '.');
   } catch (e) {
@@ -1631,10 +1640,10 @@ function loginHint(a, shown) {
 function looseAct(a, b, type, lead) {
   var api = window.__skopaxApi;
   if (!api) return;
+  var run = cardRun(a.key, function () { return api('POST', '/api/actions', {type: type, key: a.key, target: a.key, label: lead + svcName(a) + ' ' + a.label}); });
+  if (!run) return;
   b.disabled = true;
-  api('POST', '/api/actions', {type: type, key: a.key, target: a.key, label: lead + svcName(a) + ' ' + a.label}).then(function (x) {
-    if (x && x.status === 'failed') failToast(x.result || 'the action was not saved');
-    if (window.__skopaxActions) window.__skopaxActions();
+  run.then(function () {
     return api('GET', '/api/cards/' + encodeURIComponent(a.num)).catch(function () { return null; });
   }).then(function (c) {
     b.disabled = false;
@@ -1765,6 +1774,7 @@ function clearCardFilters() {
 function renderAnoms() {
   SHOWN_KEYS = null;
   paintAnoms();
+  holdPaint();
   hideCheck();
 }
 function paintAnoms() {

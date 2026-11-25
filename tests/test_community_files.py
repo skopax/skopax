@@ -1,4 +1,5 @@
 import re
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -125,13 +126,16 @@ def test_contributing_welcomes_pull_requests_with_conventional_titles_and_dco_si
     assert 'type: summary' in flat
     assert all(f'`{kind}`' in flat for kind in ('feat', 'fix', 'docs', 'ci', 'test', 'chore', 'build', 'perf', 'refactor'))
     assert 'becomes the squash commit' in flat
-    assert 'Apache License, Version 2.0' in flat
+    assert 'GNU Affero General Public License, version 3 (AGPL-3.0-only)' in flat
     assert 'Developer Certificate of Origin' in flat
     assert 'https://developercertificate.org' in flat
     assert 'git commit -s' in flat
     assert 'Signed-off-by' in flat
     assert 'docs/development.md' in flat
     assert 'CLA' not in text
+    assert 'By signing off a contribution, you also license it to the project under Apache-2.0' in flat
+    assert 'Skopax itself is distributed under AGPL-3.0-only' in flat
+    assert 'comes in under the terms it goes out under' not in flat
     assert 'Contributor License Agreement' not in text
 
 
@@ -152,7 +156,7 @@ def test_security_points_to_private_vulnerability_reporting():
     assert '@' not in text
 
 
-def test_trademarks_reserves_the_name_and_logo_and_keeps_the_files_apache():
+def test_trademarks_reserves_the_name_and_logo_and_licenses_the_files_like_the_code():
     # given
     text = read('TRADEMARKS.md')
 
@@ -162,7 +166,7 @@ def test_trademarks_reserves_the_name_and_logo_and_keeps_the_files_apache():
     # then
     assert 'Version 1.0, 2026-11-17' in text
     assert 'reserves the Skopax name, the Beam X logo and the Skopax wordmark' in flat
-    assert 'The logo files are licensed under Apache-2.0 like the code' in flat
+    assert 'The logo files are licensed under AGPL-3.0-only like the code' in flat
     assert 'does not give permission to use the Skopax name or logo' in flat
     assert 'Creative Commons Attribution 4.0' in flat
     assert 'Derived from Model Trademark Guidelines, available at www.modeltrademarkguidelines.org.' in text
@@ -187,7 +191,8 @@ def test_trademarks_lets_a_plug_in_package_carry_the_skopax_prefix_as_a_function
     assert 'name = "skopax-hello"' in example and 'description = "Example plug-in for Skopax:' in example
     assert all(f'name = "skopax-{name}"' in text and 'description = "Example plug-in for Skopax:' in text for name, text in fuller.items())
     assert all('license = "Apache-2.0"' in text and 'license-files = ["LICENSE"]' in text for text in [example, *fuller.values()])
-    assert all(read(f'examples/{name}-plugin/LICENSE') == read('LICENSE') for name in ('hello', *fuller))
+    assert all(read(f'examples/{name}-plugin/LICENSE') == read('examples/hello-plugin/LICENSE') for name in fuller)
+    assert read('examples/hello-plugin/LICENSE').lstrip().startswith('Apache License')
 
 
 def test_code_of_conduct_is_the_contributor_covenant_with_the_hello_contact():
@@ -239,6 +244,7 @@ def test_issue_forms_and_the_pull_request_template_carry_no_comments_or_secrets_
     assert 'Pull requests are welcome' in template
     assert 'Conventional Commits' in template and 'type: summary' in template
     assert 'Closes #' in template and 'linked to an issue' in template
+    assert 'By signing off, I license this contribution to the project under Apache-2.0; Skopax is distributed under AGPL-3.0-only' in template
     assert 'CLA' not in template
 
 
@@ -295,5 +301,42 @@ def test_contributing_and_the_readme_state_the_fork_rule_and_the_licence_rule_as
     # then
     assert 'Skopax Cloud and the Enterprise edition, if they come, will not be open for contributions' in contributing
     assert 'when you distribute it or offer it as a service' in contributing and 'when you distribute it or offer it as a service' in readme
-    assert 'strong copyleft licences such as the GPL or AGPL' in contributing and 'MPL-2.0 is accepted for dependencies' in contributing
+    assert 'licences that add terms the AGPL does not allow' in contributing and 'MPL-2.0 is accepted for dependencies' in contributing
     assert 'We cannot accept copyleft licences' not in contributing
+
+
+def test_the_license_is_agpl_3_only():
+    # given
+    license_text = read('LICENSE').splitlines()
+    pyproject = tomllib.loads(read('pyproject.toml'))['project']
+    dockerfile = read('Dockerfile')
+
+    # then
+    assert license_text[0].strip() == 'GNU AFFERO GENERAL PUBLIC LICENSE'
+    assert license_text[1].strip() == 'Version 3, 19 November 2007'
+    assert pyproject['license'] == 'AGPL-3.0-only'
+    assert 'License :: OSI Approved :: GNU Affero General Public License v3' in pyproject['classifiers']
+    assert 'org.opencontainers.image.licenses="AGPL-3.0-only"' in dockerfile
+    assert 'Apache' not in read('LICENSE')
+    assert 'AGPL-3.0-only' in read('NOTICE')
+
+
+def test_the_plugin_exception_is_in_notice_and_named_where_plugin_authors_read():
+    # given
+    notice = ' '.join(read('NOTICE').split())
+    readme = read('README.md')
+    contributing = read('CONTRIBUTING.md')
+    extending = read('docs/extending.md')
+
+    # when
+    heading = 'Additional permission under GNU AGPL version 3 section 7'
+
+    # then
+    assert heading in notice
+    assert 'only through its documented plug-in interface' in notice
+    assert 'under terms of your choice for those plug-ins' in notice
+    assert 'does not cover Skopax itself or any modification of Skopax' in notice
+    assert 'You may remove this additional permission' in notice
+    assert 'GNU AFFERO GENERAL PUBLIC LICENSE' in read('LICENSE') and heading not in read('LICENSE')
+    assert 'plug-in exception' in readme and 'plug-in exception' in contributing
+    assert 'any licence' in extending and 'NOTICE' in extending

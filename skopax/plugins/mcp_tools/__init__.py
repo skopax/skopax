@@ -7,7 +7,7 @@ PRESET_NAMES = {'atlassian': 'Atlassian (Jira and Confluence)', 'notion': 'Notio
 PLUGIN = Plugin(
     id=ID, name='MCP server', version='0.1.0', category='other',
     description='Adds the tools of an outside MCP server to the investigator and the chat, and can search one folder of company documents', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('header-value', 'oauth-client-secret')),
+    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('header-value', 'oauth-client-secret')),
     max_instances=20,
     setup=Setup(
         steps=(
@@ -27,8 +27,9 @@ PLUGIN = Plugin(
             Field('oauth-scopes', 'OAuth scopes', 'text', show_if=('auth', 'oauth'), group='sign-in', help='Scopes to ask for, separated by spaces.'),
             Field('oauth-client-id', 'OAuth client id', 'text', show_if=('auth', 'oauth'), group='sign-in', help='Only for servers that register no clients themselves.'),
             Field('oauth-client-secret', 'OAuth client secret', 'secret', show_if=('auth', 'oauth'), group='sign-in', help='Only for servers that register no clients themselves.'),
-            Field('chat-role', 'Who may use it in chat and asks', 'choice', default='operator', choices=('viewer', 'operator', 'admin'),
-                  choice_labels={'viewer': 'Everyone', 'operator': 'Operators and admins', 'admin': 'Admins only'}, group='access', help='Card runs always may.'),
+            Field('chat-role', 'Who may use it in chat and asks', 'choice', default='operator', choices=('viewer', 'operator', 'admin', 'cards'),
+                  choice_labels={'viewer': 'Everyone', 'operator': 'Operators and admins', 'admin': 'Admins only', 'cards': 'Card investigations only'}, group='access',
+                  help='Card runs always may.'),
             Field('knowledge', 'Knowledge source', 'bool', default='false', group='access', help='Works only for a catalog entry with a ready adapter.'),
             Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.')),
     settings=(Setting('allow-local-http', 'Allow plain http to this machine', 'Lets a connection use http://localhost; for local testing only', 'bool', 'false'),

@@ -97,11 +97,11 @@ def test_an_investigator_that_is_on_but_cannot_run_says_why_and_one_switched_off
     # given
     busy(store)
     inv, _ = slack_investigator(store, [])
-    inv.key = lambda: ''
+    inv.keyed = lambda: False
 
     # when
     no_key = inv.board(NOW)
-    inv.key = lambda: 'sk-test'
+    inv.keyed = lambda: True
     inv.model = 'claude-unknown-9'
     no_model = inv.board(NOW)
     inv.model = 'claude-sonnet-5-5'

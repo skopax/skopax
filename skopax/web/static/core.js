@@ -366,7 +366,7 @@ function fineMs(v) { return v == null ? num(null) : v < 0.01 ? '&lt;0.01 ms' : v
 function derive(data) {
   D = data || {};
   if (Array.isArray(D.plugins)) useTypes(D.plugins);
-  ALL = D.anomalies || []; S = D.services || []; H = D.history || [];
+  ALL = (D.anomalies || []).map(heldCard); S = D.services || []; H = D.history || [];
   KIDS = {};
   var byKey = {};
   ALL.forEach(function (a) { byKey[a.key] = a; });
@@ -464,3 +464,108 @@ function derive(data) {
   window.addEventListener('scroll', function () { hide(); }, true);
   window.__skopaxTipHide = hide;
 })();
+var WORK = {n: 0}, HOLDS = {}, HOLD_MS = 30000, HOLD_SEQ = 0, HOLD_EPOCH = 0, PAINT_EPOCH = 0;
+function workBar() {
+  var on = WORK.n > 0 || Object.keys(HOLDS).length > 0, b = document.getElementById('work-bar');
+  if (!b) {
+    if (!on || !document.body) return;
+    b = document.createElement('div');
+    b.id = 'work-bar';
+    b.className = 'work-bar';
+    b.setAttribute('role', 'progressbar');
+    b.setAttribute('aria-label', 'Working');
+    document.body.appendChild(b);
+  }
+  b.hidden = !on;
+}
+function workTrack(p) {
+  WORK.n += 1;
+  workBar();
+  var done = function () { WORK.n = Math.max(0, WORK.n - 1); workBar(); };
+  return Promise.resolve(p).then(function (v) { done(); return v; }, function (e) { done(); throw e; });
+}
+function cardHeld(key) { return !!(key && Object.hasOwn(HOLDS, key)); }
+function heldCard(a) {
+  var h = a && cardHeld(a.key) ? HOLDS[a.key] : null, card = h && h.cards[a.key];
+  if (!card || (h.done && PAINT_EPOCH >= h.epoch)) return a;
+  h.painted = true;
+  return card;
+}
+function holdPaint() {
+  document.querySelectorAll('#anoms .tile, #anoms article.inc, #anoms .card-drawer').forEach(function (n) {
+    var on = cardHeld(n.dataset.key);
+    n.classList.toggle('busy', on);
+    if (on) n.setAttribute('aria-busy', 'true'); else n.removeAttribute('aria-busy');
+    if (n.classList.contains('tile')) n.draggable = window.__tileDraggable ? window.__tileDraggable(n.dataset.key) : !on;
+    if (n.tagName !== 'ARTICLE') return;
+    n.querySelectorAll('button.btn:not(.free)').forEach(function (b) {
+      if (b.dataset.own) return;
+      if (on && !b.disabled) { b.disabled = true; b.dataset.held = '1'; }
+      else if (!on && b.dataset.held) { delete b.dataset.held; b.disabled = false; }
+    });
+  });
+}
+function holdRepaint() {
+  if (typeof window.__skopaxRepaint === 'function') window.__skopaxRepaint();
+  else { paint(D); setFilter(filter); }
+}
+function holdSettled(h) {
+  if (h.done) return;
+  h.done = true;
+  HOLD_EPOCH += 1;
+  h.epoch = HOLD_EPOCH;
+}
+function holdLive(h) { return !!h && HOLDS[h.key] === h; }
+function cardFree(h) {
+  if (!holdLive(h)) return false;
+  clearTimeout(h.timer);
+  h.keys.forEach(function (k) { if (HOLDS[k] === h) delete HOLDS[k]; });
+  holdPaint();
+  if (window.__skopaxRender) window.__skopaxRender();
+  workBar();
+  return true;
+}
+async function holdAfter(h) {
+  try {
+    if (window.__skopaxActions) await window.__skopaxActions();
+    if (window.__skopaxPoll) await window.__skopaxPoll(!!(h.painted || h.shown));
+  } catch (e) {}
+}
+function cardRun(key, run, opts) {
+  var o = opts || {}, keys = (Array.isArray(key) ? key : [key]).filter(Boolean);
+  if (!keys.length || keys.some(cardHeld)) return null;
+  var h = {key: keys[0], keys: keys, id: ++HOLD_SEQ, shown: !!o.shown, painted: false, done: false, epoch: 0, cards: {}};
+  keys.forEach(function (k) {
+    var c = o.shown && k === keys[0] ? o.shown : ALL.filter(function (a) { return a.key === k; })[0];
+    if (c) h.cards[k] = c;
+    HOLDS[k] = h;
+  });
+  h.timer = setTimeout(function () {
+    if (!holdLive(h)) return;
+    if (h.done) { cardFree(h); return; }
+    holdSettled(h);
+    cardFree(h);
+    if (o.late) o.late(); else noticeToast('Still working: refresh to see the result');
+    if (h.painted || h.shown) holdAfter(h);
+  }, HOLD_MS);
+  workBar();
+  if (o.shown) holdRepaint();
+  holdPaint();
+  var live = function () { return holdLive(h); };
+  var finish = async function () {
+    if (!live()) return;
+    holdSettled(h);
+    await holdAfter(h);
+    cardFree(h);
+  };
+  var p;
+  try { p = Promise.resolve(run(live)); } catch (e) { p = Promise.reject(e); }
+  return p.then(async function (v) {
+    if (!o.quiet && v && v.status === 'failed') failToast(v.result || 'the action was not saved');
+    await finish();
+    return v;
+  }, async function (e) {
+    await finish();
+    throw e;
+  });
+}

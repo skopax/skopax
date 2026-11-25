@@ -18,7 +18,7 @@ from skopax.actors import SYSTEM
 from skopax.agentproto import KEYS_MAX, VALUE_LIMIT
 from skopax.bounded import HOOK_TIMEOUT_S, Bound, TimedOut
 from skopax.config import retired_info
-from skopax.contract import NODE_FIELD, AgentRead, Field, InstanceInfo, Plugin, ReadError, SourceData
+from skopax.contract import ASKED_ACCESS, NODE_FIELD, QUESTION_CORE_OWNERS, AgentRead, Field, InstanceInfo, Plugin, ReadError, SourceData
 from skopax.errkind import InvalidInstance, SourceOwned, kind
 from skopax.messages import msg
 from skopax.registry import ALONE_ADDRESS, HOSTS_ADDRESS, Registry
@@ -189,10 +189,15 @@ def limit_text(limit: int) -> str:
     return msg('instances.max_one') if limit == 1 else msg('instances.max', count=limit)
 
 
+def asks_gated(plugin: Plugin) -> bool:
+    return bool(plugin.fields) and (plugin.id in QUESTION_CORE_OWNERS or any(t.kind == 'read' for t in plugin.tools))
+
+
 def effective_fields(plugin: Plugin, extra: Iterable[Field] = ()) -> tuple[Field, ...]:
     seen: set[str] = set()
     out: list[Field] = []
-    for f in (*plugin.fields, *extra):
+    asked = (ASKED_ACCESS,) if asks_gated(plugin) else ()
+    for f in (*plugin.fields, *extra, *asked):
         if f.key not in seen:
             seen.add(f.key)
             out.append(f)

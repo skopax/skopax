@@ -310,16 +310,18 @@ def google_hosts(plugins: list) -> list[str]:
     return sorted(found)
 
 
-def core_targets(slack_on: bool, provider: str, ai_key: bool, env: dict, google: list[str], extra: str) -> list[dict]:
+def core_targets(slack_on: bool, provider: str | tuple[str, ...], ai_key: bool, env: dict, google: list[str], extra: str) -> list[dict]:
     out = []
     if slack_on:
         out.append({'name': 'Slack API', 'url': SLACK_URL, 'plugin': PROBE_PLUGIN, 'instance': 'slack'})
-    if ai_key and provider in PROVIDER_URLS:
-        name, url, var = PROVIDER_URLS[provider]
+    for one in ((provider,) if isinstance(provider, str) else provider) if ai_key else ():
+        if one not in PROVIDER_URLS:
+            continue
+        name, url, var = PROVIDER_URLS[one]
         custom = str(env.get(var) or '').strip()
         if custom:
             url = '' if url_rule(custom) else urlunsplit(urlsplit(custom)._replace(query='', fragment=''))
-        out.append({'name': name, 'url': url, 'plugin': PROBE_PLUGIN, 'instance': provider})
+        out.append({'name': name, 'url': url, 'plugin': PROBE_PLUGIN, 'instance': one})
     out.extend({'name': host, 'url': f'https://{host}/', 'plugin': PROBE_PLUGIN, 'instance': 'google'} for host in google)
     out.extend(read_extra(extra)[0])
     return out

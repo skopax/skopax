@@ -22,7 +22,7 @@ GRAPH = ('method', 'graph')
 PLUGIN = Plugin(
     id=ID, name='Mail server', version='0.1.0', category='chat',
     description='The connection that sends mail: your SMTP server, or Microsoft 365 through Microsoft Graph. Set it up once; Email routes and personal notification mail send through it.', icon='icon.svg',
-    author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community',
+    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
     capabilities=Capabilities(hosts=('@authority', '@graph-url'), secrets=('password', 'client-cert', 'client-secret')),
     max_instances=1,
     fields=(Field('method', 'Send with', 'choice', required=True, default='smtp', choices=mail.METHODS, group='connection',

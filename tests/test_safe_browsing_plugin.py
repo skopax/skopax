@@ -419,7 +419,7 @@ def test_safe_browsing_identity_and_manifest():
     assert 'skopax.plugins.safe_browsing' in BUILTIN and got is not None and got.state == 'ok' and got.plugin is safe_browsing.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'safe-browsing', 'Safe Browsing', '0.1.0', 'web', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        'safe-browsing', 'Safe Browsing', '0.1.0', 'web', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert manifest['capabilities'] == {'hosts': ['safebrowsing.googleapis.com', 'transparencyreport.google.com'], 'secrets': ['api-key'], 'agentReads': False}
     assert manifest['uses'] == []
     assert [(f.key, f.kind, f.required, f.ui) for f in safe_browsing.PLUGIN.fields] == [('api-key', 'secret', False, False), ('hosts', 'text', True, False)]

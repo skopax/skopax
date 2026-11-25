@@ -101,7 +101,7 @@ def test_the_final_stage_carries_the_open_container_labels():
     found = labels()
 
     # then
-    assert found['org.opencontainers.image.licenses'] == 'Apache-2.0'
+    assert found['org.opencontainers.image.licenses'] == 'AGPL-3.0-only'
     assert found['org.opencontainers.image.source'] == 'https://github.com/skopax/skopax'
     assert found['org.opencontainers.image.title'] == 'Skopax'
     assert found['org.opencontainers.image.url'] == 'https://skopax.io'

@@ -5,12 +5,12 @@ from tools import dockerhub_overview as overview
 
 def test_the_overview_names_the_release_and_its_minor_tag():
     # given
-    version = '0.5.18'
+    version = '0.6.0'
     # when
     text = overview.render(version)
     # then
-    assert '`0.5.18` exact release, `0.5` latest patch of 0.5' in text
-    assert 'skopax/skopax:0.5\n' in text
+    assert '`0.6.0` exact release, `0.6` latest patch of 0.6' in text
+    assert 'skopax/skopax:0.6\n' in text
     assert '{' not in text.replace('${', '')
     assert len(text) <= overview.LIMIT
     assert text.isascii()
@@ -22,7 +22,7 @@ def test_an_overview_without_the_version_mark_is_refused(tmp_path):
     path.write_text('# Skopax\n', encoding='utf-8')
     # when / then
     with pytest.raises(ValueError):
-        overview.render('0.5.18', path)
+        overview.render('0.6.0', path)
 
 
 def test_a_failed_update_warns_and_never_fails_the_release(monkeypatch, capsys):
@@ -33,7 +33,7 @@ def test_a_failed_update_warns_and_never_fails_the_release(monkeypatch, capsys):
         raise OSError('offline')
     monkeypatch.setattr(overview, 'call', refuse)
     # when
-    code = overview.main(['0.5.18'])
+    code = overview.main(['0.6.0'])
     # then
     assert code == 0
     err = capsys.readouterr().err
@@ -45,7 +45,7 @@ def test_check_renders_without_calling_docker_hub(monkeypatch, capsys):
     # given
     monkeypatch.setattr(overview, 'call', lambda *a, **k: pytest.fail('no network in check'))
     # when
-    code = overview.main(['0.5.18', '--check'])
+    code = overview.main(['0.6.0', '--check'])
     # then
     assert code == 0
-    assert 'overview renders for 0.5.18' in capsys.readouterr().out
+    assert 'overview renders for 0.6.0' in capsys.readouterr().out

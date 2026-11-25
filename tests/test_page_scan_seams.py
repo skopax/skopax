@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from skopax import clock
 from skopax.app import create_app
 from skopax.contract import Check, Field, PassResult, Planted, ReadError, Setting, Sweep
+from skopax.investigator import prompt
 from skopax.engine import anomaly, iso
 from skopax.kube import Kube
 from skopax.messages import msg
@@ -251,7 +252,7 @@ def test_the_schema_and_effort_reach_the_model_and_thinking_follows_the_model(st
     # then
     shaped, plain = fake.gate_requests
     assert shaped['output_config'] == {'effort': 'low', 'format': {'type': 'json_schema', 'schema': schema}} and shaped['thinking'] == {'type': 'disabled'}
-    assert (shaped['model'], shaped['system'], shaped['messages'], shaped['max_tokens']) == (MODEL, SYSTEM, ASKED, 500)
+    assert (shaped['model'], shaped['system'], shaped['messages'], shaped['max_tokens']) == (MODEL, SYSTEM + prompt.confidential_block(), ASKED, 500)
     assert plain['output_config'] == {'effort': 'medium'} and plain['thinking'] == {'type': 'between_tools'} and plain['model'] == 'claude-sonnet-5-5'
 
 

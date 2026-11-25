@@ -15,6 +15,8 @@ from fastapi.testclient import TestClient
 
 from skopax import agent, app as app_module, brand, clock, engine, locales, mail, messages, probe, redact, sections, tags, tracing, versioncheck
 from skopax.remote import Unreachable
+from skopax import ai
+from skopax.ai import compat_ai
 from skopax.app import create_app
 from skopax.chatui.text import reset as reset_chat_texts
 from skopax.investigator import prompt, select
@@ -135,6 +137,15 @@ def offline_version_check(monkeypatch):
 @pytest.fixture(autouse=True)
 def offline_probe(monkeypatch):
     monkeypatch.setattr(app_module, 'Probe', lambda targets, **kw: probe.Probe(targets, checker=lambda target, timeout: {'error': 'dns: gaierror'}))
+
+
+@pytest.fixture(autouse=True)
+def unbound_ai_connections():
+    compat_ai.unbind()
+    ai.unregister_provider('compat')
+    yield
+    compat_ai.unbind()
+    ai.unregister_provider('compat')
 
 
 @pytest.fixture(autouse=True)

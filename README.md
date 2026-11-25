@@ -15,7 +15,7 @@ Behind it, alerts and errors are grouped into one card per problem, so the team 
 
 The name comes from the Greek *skopos*, "lookout": the one who stands on a high place, scans the horizon and calls out what is coming.
 
-Status: 0.5.18 is the current release; 0.1.0 was the first stable one. Since 0.1.0, settings and the plug-in contract follow semantic versioning: before 1.0, no breaking change ships without a note in [CHANGELOG.md](CHANGELOG.md).
+Status: 0.6.0 is the current release; 0.1.0 was the first stable one. Since 0.1.0, settings and the plug-in contract follow semantic versioning: before 1.0, no breaking change ships without a note in [CHANGELOG.md](CHANGELOG.md).
 
 ## What it looks like
 
@@ -69,7 +69,7 @@ Everything Skopax watches comes through plug-ins, and more than 30 of them ship 
 
 ## AI costs: see them, tune them, cap them
 
-The investigator calls the AI provider you pick, Anthropic or OpenAI, with your own key, so you pay the provider directly and Skopax shows where the money goes.
+The investigator calls the AI providers you pick, Anthropic, OpenAI or an OpenAI-compatible connection, each use on its own model and with your own key, so you pay the provider directly and Skopax shows where the money goes.
 
 <a href="docs/images/costs-dark.png#gh-dark-mode-only"><img width="420" src="docs/images/costs-dark.png#gh-dark-mode-only" alt="The Skopax Costs page for the last 7 days: 2.31 dollars today of a 10 dollar daily cap, 19.71 dollars over the week, averages per Slack ask and per investigator run, a 79 percent cache hit share, spend per day stacked by source and the by-source table with models"></a><a href="docs/images/costs-light.png#gh-light-mode-only"><img width="420" src="docs/images/costs-light.png#gh-light-mode-only" alt="The Skopax Costs page for the last 7 days: 2.31 dollars today of a 10 dollar daily cap, 19.71 dollars over the week, averages per Slack ask and per investigator run, a 79 percent cache hit share, spend per day stacked by source and the by-source table with models"></a>
 
@@ -80,7 +80,7 @@ The investigator calls the AI provider you pick, Anthropic or OpenAI, with your 
 
 ## Quickstart
 
-Skopax ships as a ready image, so there is nothing to clone or build: `ghcr.io/skopax/skopax:0.5.18`, built for `linux/amd64` and `linux/arm64`. Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. [Operations](docs/operations.md#the-image) has more on the image.
+Skopax ships as a ready image, so there is nothing to clone or build: `ghcr.io/skopax/skopax:0.6.0`, built for `linux/amd64` and `linux/arm64`. Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. [Operations](docs/operations.md#the-image) has more on the image.
 
 Run it with a MongoDB of your own. The first line makes the secret key once:
 
@@ -91,7 +91,7 @@ Run it with a MongoDB of your own. The first line makes the secret key once:
       -e MONGO_URI=mongodb://skopax-mongo:27017/skopax \
       -e SKOPAX_BASE_URL=http://localhost:8080 \
       -e SKOPAX_SECRET_KEY="$SKOPAX_SECRET_KEY" \
-      ghcr.io/skopax/skopax:0.5.18
+      ghcr.io/skopax/skopax:0.6.0
 
 Then open http://localhost:8080. Keep that key, for example in your password manager (`echo "$SKOPAX_SECRET_KEY"` prints it), and pass the same value on every start. With another key, Skopax cannot open the integration secrets sealed with the old one, so each has to be entered again, and everyone has to sign in again (see [Settings](docs/configuration.md#settings)).
 
@@ -110,7 +110,7 @@ Save this as `compose.yml` in an empty folder:
           interval: 10s
           retries: 10
       skopax:
-        image: ghcr.io/skopax/skopax:0.5.18
+        image: ghcr.io/skopax/skopax:0.6.0
         restart: unless-stopped
         ports:
           - "127.0.0.1:8080:8080"
@@ -174,7 +174,7 @@ The full guide is in [docs/](docs/README.md):
 
 ## Contributing
 
-Issues and pull requests are welcome. Contributions come in under Apache-2.0, the licence they go out under, and every commit carries a `Signed-off-by` line under the Developer Certificate of Origin 1.1 (`git commit -s`). There is no separate agreement to sign. A pull request title follows Conventional Commits, such as `fix: ...` or `feat(slack): ...`.
+Issues and pull requests are welcome. Contributions come in under Apache-2.0 and Skopax goes out under AGPL-3.0-only; every commit carries a `Signed-off-by` line under the Developer Certificate of Origin 1.1 (`git commit -s`). There is no separate agreement to sign. A pull request title follows Conventional Commits, such as `fix: ...` or `feat(slack): ...`.
 
 - [CONTRIBUTING.md](CONTRIBUTING.md): what we accept, the project rules and the sign-off.
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md): the Contributor Covenant 2.1. Report a conduct problem to hello@skopax.io.
@@ -186,8 +186,8 @@ Do not open a public issue for a security problem. Report it privately with GitH
 
 ## License
 
-Skopax is licensed under the Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Bundled icons and their licences are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Skopax is licensed under the GNU Affero General Public License v3 (AGPL-3.0-only). See [LICENSE](LICENSE) and [NOTICE](NOTICE). Versions up to 0.5.18 are Apache-2.0. Running Skopax unchanged needs nothing new; if you offer a modified Skopax to others over a network, you must offer them its source. The example plug-ins under `examples/` stay Apache-2.0 so you can copy them freely. A plug-in exception in [NOTICE](NOTICE) lets plug-ins that use only the documented plug-in interface carry any licence, including a closed one; Skopax itself and changes to it stay AGPL. Bundled icons and their licences are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 The image carries its licence material in `/usr/share/doc/skopax/`: `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, and the lists the image build generates, `third-party-python.md` (every Python distribution in the image, with its licence and licence texts) and `third-party-debian.md` (every Debian library copied in, with its package, licence and copyright file). The build fails on a dependency whose licence is not allowed; see [The licence gate](docs/development.md#the-licence-gate). The Python interpreter in the image is CPython 3.15, under the PSF-2.0 licence, with its licence text at `/usr/local/lib/python3.15/LICENSE.txt`.
 
-The Skopax name, the Beam X logo and the Skopax wordmark are reserved by [TRADEMARKS.md](TRADEMARKS.md). The logo files themselves are Apache-2.0 like the code. A fork may change the code under Apache-2.0, but when you distribute it or offer it as a service, it must use its own name and drop the logo.
+The Skopax name, the Beam X logo and the Skopax wordmark are reserved by [TRADEMARKS.md](TRADEMARKS.md). The logo files themselves are AGPL-3.0-only like the code. A fork may change the code under AGPL-3.0-only, but when you distribute it or offer it as a service, it must use its own name and drop the logo.

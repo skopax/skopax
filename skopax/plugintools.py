@@ -1,12 +1,13 @@
+import copy
 import logging
 import re
 import threading
-from collections.abc import Collection, MutableMapping, Sequence
+from collections.abc import Callable, Collection, MutableMapping, Sequence
 
 from skopax.contract import Knowledge, Plugin, ReadError, RunState, Tool
-from skopax.instances import Instance
+from skopax.instances import Instance, asks_gated
 from skopax.investigator.tools import ERROR_LIMIT, READ_LIMIT_ROWS, BadInput, ToolError, render, test_cluster, test_error
-from skopax.investigator.toolset import held, primary_of, runnable
+from skopax.investigator.toolset import Run, asked_gate, held, primary_of, runnable
 from skopax.messages import msg
 from skopax.monitor import refusal
 from skopax.redact import masked_tree, redact_text
@@ -61,6 +62,46 @@ class PluginTools:
     def __init__(self, runtime: Runtime, timeout: float = TOOL_TIMEOUT_S):
         self.runtime = runtime
         self.timeout = timeout
+        self.allowed: Callable[[Instance], bool] | None = None
+
+    def scoped(self, run: Run) -> 'PluginTools':
+        allowed = asked_gate(run)
+        if allowed is None:
+            return self
+        view = copy.copy(self)
+        view.allowed = allowed
+        return view
+
+    def _kept(self, instance: Instance | None) -> bool:
+        return instance is None or self.allowed is None or self.allowed(instance)
+
+    def _held_back(self, plugin_id: str) -> list[Instance]:
+        if self.allowed is None:
+            return []
+        seen: dict[str, Instance] = {}
+        for plugin, _, found in runnable(self.runtime):
+            if plugin.id == plugin_id:
+                seen |= {i.name: i for i in found if not self.allowed(i)}
+        return list(seen.values())
+
+    def refused(self) -> list[tuple[Plugin, Instance]]:
+        if self.allowed is None:
+            return []
+        return [(plugin, i) for plugin, found in self.runtime.serving() if asks_gated(plugin) for i in found if not self.allowed(i)]
+
+    def not_in_questions(self) -> list[str]:
+        return sorted({f'{plugin.name} {i.name}' for plugin, i in self.refused()}, key=str.lower)
+
+    def refused_rows(self) -> set[tuple[str, str | None]]:
+        return {(plugin.id, None if i.primary else i.name) for plugin, i in self.refused()}
+
+    def held_back(self, name: str) -> bool:
+        return self.allowed is not None and self._entry(name) is None and any(tool.name == name for _, tool, _ in runnable(self.runtime))
+
+    def _asked_refused(self, plugin: Plugin, asked: object) -> ToolError | None:
+        if isinstance(asked, str) and any(i.name == asked for i in self._held_back(plugin.id)):
+            return BadInput(msg('plugintools.not_in_questions', name=asked[:60]))
+        return None
 
     def _bounded(self, run, ctx, given: dict) -> object:
         box: dict = {}
@@ -82,7 +123,7 @@ class PluginTools:
         return box['out']
 
     def _offered(self) -> list[tuple[Plugin, Tool, list[Instance]]]:
-        return runnable(self.runtime)
+        return runnable(self.runtime, self.allowed)
 
     def _entry(self, name: str) -> tuple[Plugin, Tool, list[Instance]] | None:
         return next((e for e in self._offered() if e[1].name == name), None)
@@ -109,13 +150,14 @@ class PluginTools:
             return text
         plain = {f.key for f in plugin.fields if f.kind != 'secret'}
         primary = self.runtime.instances.primary(plugin.id)
-        values = primary.values if primary is not None else {}
+        values = primary.values if primary is not None and self._kept(primary) else {}
         return FIELD.sub(lambda m: str(values.get(m.group(1)) or '') if m.group(1) in plain else '', text)
 
     def _definition(self, plugin: Plugin, tool: Tool, found: list[Instance], offered: list[tuple[Plugin, Tool, list[Instance]]]) -> dict:
         schema = tool.input_schema
         if tool.instance_input and plugin.fields and found:
             named = self.runtime.instances.primary(plugin.id)
+            named = named if self._kept(named) else None
             usable = self._primary(plugin, found)
             note = f'Instance (default: {usable.name})' if usable is not None else f'Instance ({named.name} is not available, name one)' if named is not None else 'Instance'
             names = [i.name for i in found]
@@ -144,6 +186,9 @@ class PluginTools:
         entry = self._entry(name)
         field = entry[1].instance_input if entry is not None else None
         asked = args.get(field) if field and isinstance(args, dict) else None
+        held = self._asked_refused(entry[0], asked) if entry is not None and field else None
+        if held is not None:
+            return held
         if entry is not None and field and isinstance(asked, str) and asked not in [i.name for i in entry[2]] and text.startswith(f'{field} must be one of'):
             text += self._not_here(entry[1], field, asked, [i.name for i in entry[2]], among)
         elif entry is not None and field and isinstance(args, dict):
@@ -168,8 +213,12 @@ class PluginTools:
             if usable is not None:
                 return usable
             named = self.runtime.instances.primary(plugin.id)
+            named = named if self._kept(named) else None
             raise ToolError(f"the default instance{f' {named.name}' if named is not None else ''} of {plugin.id} is not available; {field or 'instance'} must be one of {names}")
         chosen = next((i for i in found if i.name == asked), None) if isinstance(asked, str) else None
+        held = self._asked_refused(plugin, asked) if chosen is None else None
+        if held is not None:
+            raise held
         if chosen is None:
             raise self._refuse(f'{field} must be one of {names}' + (self._not_here(tool, field, asked, [i.name for i in found], among) if isinstance(asked, str) else ''), asked, True)
         return chosen
@@ -182,7 +231,7 @@ class PluginTools:
         given = dict(args or {})
         instance = self._instance(plugin, tool, found, given, among)
         try:
-            out = self._bounded(tool.run, self.runtime.context(plugin, instance, now, run_state=None if states is None else states.setdefault(plugin.id, RunState())), given)
+            out = self._bounded(tool.run, self.runtime.context(plugin, instance, now, run_state=None if states is None else states.setdefault(plugin.id, RunState()), allowed=self.allowed), given)
             if rendered and tool.scan and tool.kind == 'read':
                 out = masked(out, sorted((s for s in (instance.secrets.values() if instance is not None else ()) if isinstance(s, str) and s), key=len, reverse=True))
             if rendered and isinstance(out, dict) and isinstance(out.get('image'), dict):
@@ -225,8 +274,8 @@ class PluginTools:
     def knowledge(self) -> list[Knowledge]:
         return self.runtime.knowledge()
 
-    def knowledge_parts(self, cards: Sequence[dict] = ()) -> tuple[list[Knowledge], list[tuple[str, Knowledge]]]:
-        return self.runtime.knowledge_parts(cards)
+    def knowledge_parts(self, cards: Sequence[dict] = (), allowed: Callable[[Instance], bool] | None = None) -> tuple[list[Knowledge], list[tuple[str, Knowledge]]]:
+        return self.runtime.knowledge_parts(cards, allowed) if allowed is not None else self.runtime.knowledge_parts(cards)
 
     def catalog(self) -> dict[str, str]:
         return {tool.name: tool.kind for _, tool in held(self.runtime)} | {tool.name: tool.kind for _, tool, _ in self._offered()}

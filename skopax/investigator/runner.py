@@ -4,10 +4,10 @@ from dataclasses import dataclass, field, replace
 from typing import Callable
 
 from skopax import tracing
-from skopax.ai import wrap
+from skopax.ai import THINK_OFF, provider_of_ref, wrap
 from skopax.ai.anthropic_ai import CACHE, FALLBACK_BETA, answer_text, cache_marked
 from skopax.errkind import kind as error_kind
-from skopax.investigator.pricing import TABLES, UnknownModel, effective, known, provider_of, split, usd
+from skopax.investigator.pricing import charge, default_model, known, split
 from skopax.investigator.web import is_web_tool
 
 log = logging.getLogger('skopax.investigator.runner')
@@ -34,6 +34,7 @@ class RunConfig:
     max_seconds: float = 900
     cache_ttl: str | None = None
     role: str = 'card'
+    capabilities: frozenset[str] | None = None
 
 
 @dataclass
@@ -66,7 +67,9 @@ class Runner:
         self.tag = tag
 
     def request(self, system: str, tools: list[dict], messages: list[dict]):
-        return self.ai.turn(self.config.model, self.config.effort, system, tools, messages, MAX_TOKENS, self.config.cache_ttl)
+        caps = self.config.capabilities
+        extra = {} if caps is None else ({} if 'thinking' in caps else {'thinking': THINK_OFF}) | ({} if 'fallbacks' in caps else {'fallbacks': False})
+        return self.ai.turn(self.config.model, self.config.effort, system, tools, messages, MAX_TOKENS, self.config.cache_ttl, **extra)
 
     def count(self, result: Result, turn, day: str) -> None:
         usage = turn.usage
@@ -74,11 +77,9 @@ class Runner:
         result.models.append(served)
         for f, n in usage.fields().items():
             result.usage[f] += n
-        try:
-            priced, cost = served, usd(served, usage)
-        except UnknownModel:
-            priced = max(TABLES[self.ai.provider], key=lambda m: usd(m, usage))
-            cost = usd(priced, usage)
+        cost, priced_as = charge(served, self.ai.provider, usage)
+        priced = priced_as or served
+        if priced_as is not None:
             result.error = f'unpriced model {served}, charged at the highest known rate'[:ERROR_LIMIT]
         result.usd += cost
         self.store.add_spend(day, cost)
@@ -100,10 +101,10 @@ class Runner:
         if not known(self.config.model):
             result.outcome, result.error = 'failed', f'unknown model {self.config.model}'[:ERROR_LIMIT]
             return result
-        if provider_of(self.config.model) not in (self.ai.provider, None):
-            log.info('run %s: %s is a model of the other AI provider, %s runs instead', (self.tag or {}).get('runId'), self.config.model,
-                     effective(self.ai.provider, self.config.model, self.config.role))
-            self.config = replace(self.config, model=effective(self.ai.provider, self.config.model, self.config.role))
+        if provider_of_ref(self.config.model) not in (self.ai.provider, None):
+            instead = default_model(self.ai.provider, self.config.role)
+            log.info('run %s: %s is a model of another AI provider than the client in hand, %s runs instead', (self.tag or {}).get('runId'), self.config.model, instead)
+            self.config = replace(self.config, model=instead)
         if not str(system or '').strip():
             result.outcome, result.error = 'failed', NO_SYSTEM
             return result

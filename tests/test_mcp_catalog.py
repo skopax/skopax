@@ -153,7 +153,7 @@ def test_mcp_tools_identity_and_defaults_are_neutral():
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (loaded.state, loaded.reason) == ('ok', None) and 'skopax.plugins.mcp_tools' in BUILTIN
     assert (plugin.id, plugin.name, plugin.category, plugin.version, plugin.author, plugin.licence, plugin.core, plugin.edition) == \
-        ('mcp-tools', 'MCP server', 'other', '0.1.0', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        ('mcp-tools', 'MCP server', 'other', '0.1.0', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert plugin.description == 'Adds the tools of an outside MCP server to the investigator and the chat, and can search one folder of company documents'
     assert (plugin.capabilities.hosts, plugin.capabilities.secrets, plugin.max_instances) == (('@url',), ('header-value', 'oauth-client-secret'), 20)
     assert {f.key: f.default for f in plugin.fields} == {'url': '', 'preset': '', 'auth': 'none', 'header-name': 'Authorization', 'header-value': '', 'oauth-scopes': '', 'oauth-client-id': '',
@@ -162,7 +162,7 @@ def test_mcp_tools_identity_and_defaults_are_neutral():
                                                       'oauth-client-id': 'text', 'oauth-client-secret': 'secret', 'chat-role': 'choice', 'knowledge': 'bool', 'ca': 'pem'}
     fields = {f.key: f for f in plugin.fields}
     assert fields['url'].required and fields['header-value'].required and fields['header-value'].show_if == ('auth', 'header')
-    assert fields['auth'].choices == ('none', 'header', 'oauth') and fields['chat-role'].choices == ('viewer', 'operator', 'admin')
+    assert fields['auth'].choices == ('none', 'header', 'oauth') and fields['chat-role'].choices == ('viewer', 'operator', 'admin', 'cards')
     assert fields['preset'].choices == tuple(p.id for p in presets.load() if not p.soon)
     assert {k for k, f in fields.items() if f.show_if == ('auth', 'oauth')} == {'oauth-scopes', 'oauth-client-id', 'oauth-client-secret'}
     assert (plugin.checks, plugin.tools, plugin.test, plugin.env_instances, plugin.knowledge) == ((), (), None, None, ())

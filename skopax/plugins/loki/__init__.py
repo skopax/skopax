@@ -104,7 +104,7 @@ PLUGIN = Plugin(
     ),
     id=PASS, name=NAME, version='0.1.0', category='logs',
     description='New and growing error log patterns per service, read from Grafana Loki with LogQL, and read tools for log lines, counts and labels.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.5,<0.6', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token', 'password')),
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.5,<0.7', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token', 'password')),
     fields=(Field('url', 'URL', 'url', required=True, group='connection', help='Base address of Loki, without /loki/api/v1, such as https://loki.example.com.'),
             Field('tenant', 'Tenant', 'text', default='', group='connection', check=tenant_problem,
                   help='Sent as X-Scope-OrgID for a multi-tenant Loki. Empty sends no tenant. One tenant only: a | (several tenants) is refused.'),

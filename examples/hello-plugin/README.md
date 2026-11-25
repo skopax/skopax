@@ -37,11 +37,11 @@ From the root of the Skopax repository:
 The Skopax image is distroless, so it has no `pip`. The layer image installs the plug-in in a Python build stage and copies it into the Skopax image's `site-packages`:
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.5.18 -t skopax-hello examples/hello-plugin
+docker build --build-arg SKOPAX_VERSION=0.6.0 -t skopax-hello examples/hello-plugin
 ```
 
-Pin `SKOPAX_VERSION` to the Skopax release you run. The plug-in's `core` range (`>=0.1,<0.6`) says which Skopax versions it works with. Start the image like the plain Skopax image. Hello is then listed in Connect > Integrations, and `GET /api/admin/plugins` lists it with the id `hello`.
+Pin `SKOPAX_VERSION` to the Skopax release you run. The plug-in's `core` range (`>=0.1,<0.7`) says which Skopax versions it works with. Start the image like the plain Skopax image. Hello is then listed in Connect > Integrations, and `GET /api/admin/plugins` lists it with the id `hello`.
 
 ## Licence
 
-Apache-2.0, like Skopax (see `LICENSE`). Copyright 2026 Maksut Spahi.
+Apache-2.0, so you can copy it freely (see `LICENSE`). Copyright 2026 Maksut Spahi.

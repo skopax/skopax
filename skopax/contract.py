@@ -58,6 +58,10 @@ __all__ = [
     'ROUTE_ECHO',
     'NODE_FIELD',
     'NODE_VIA',
+    'QUESTIONS_FIELD',
+    'QUESTIONS',
+    'QUESTION_CORE_OWNERS',
+    'ASKED_ACCESS',
     'AgentRead',
     'ReadError',
     'SourceDown',
@@ -379,6 +383,12 @@ ECHO_FIELD = 'slack-echo'
 ROUTE_ECHO = Field(ECHO_FIELD, 'Also post to Slack', 'choice', choices=('default', 'on', 'off'),
                    choice_labels={'default': 'Use the default', 'on': 'On', 'off': 'Off'},
                    help='On posts a card to Slack too when this route sends it, if Slack has not posted it yet, and says in its Slack thread which channel got it; Off never does; Use the default (or not set) follows the install-wide Slack echo setting.')
+QUESTIONS_FIELD = 'questions'
+QUESTIONS = ('everyone', 'operators', 'none')
+QUESTION_CORE_OWNERS = ('jira',)
+ASKED_ACCESS = Field(QUESTIONS_FIELD, 'Available in questions', 'choice', default='everyone', choices=QUESTIONS,
+                     choice_labels={'everyone': 'Everyone', 'operators': 'Operators and admins only', 'none': 'Card investigations only'}, group='advanced',
+                     help='Who may have Skopax read this connection when answering a Slack ask, a chat message or a page ask. Card investigations always may.')
 NODE_VIA = Field(NODE_FIELD, 'Through agent node', 'instance', choices=('kubernetes',), group='advanced', help='Name of a Kubernetes agent instance that reaches this service. Empty means Skopax connects directly.')
 
 

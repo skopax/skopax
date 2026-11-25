@@ -514,7 +514,7 @@ def test_crashlytics_identity_and_manifest():
     assert 'skopax.plugins.crashlytics' in BUILTIN and found is not None and found.state == 'ok' and found.plugin is crashlytics.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'crashlytics', 'Crashlytics', '0.1.0', 'apps', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        'crashlytics', 'Crashlytics', '0.1.0', 'apps', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert manifest['capabilities'] == {'hosts': ['firebasecrashlytics.googleapis.com', 'oauth2.googleapis.com'], 'secrets': ['credentials'], 'agentReads': False}
     assert manifest['uses'] == []
     assert [(f.key, f.kind, f.required) for f in fields.values()] == [('project', 'text', False), ('android-app-id', 'text', False), ('ios-app-id', 'text', False),

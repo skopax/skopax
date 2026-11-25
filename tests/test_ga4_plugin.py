@@ -561,7 +561,7 @@ def test_ga4_identity_and_manifest():
     assert 'skopax.plugins.ga4' in BUILTIN and found is not None and found.state == 'ok' and found.plugin is ga4.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'ga4', 'Google Analytics 4', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        'ga4', 'Google Analytics 4', '0.1.0', 'marketing', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert manifest['capabilities'] == {'hosts': ['analyticsdata.googleapis.com', 'oauth2.googleapis.com'], 'secrets': ['credentials'], 'agentReads': False}
     assert manifest['uses'] == []
     assert [(f.key, f.kind, f.required) for f in ga4.PLUGIN.fields] == [('property-id', 'text', True), ('app-property-id', 'text', False), ('site', 'text', False),

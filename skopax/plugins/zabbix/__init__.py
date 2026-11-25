@@ -84,7 +84,7 @@ PLUGIN = Plugin(
         docs_label='Zabbix: API tokens',
     ),
     id='zabbix', name=NAME, version='0.1.0', category='alerts', description='A card for each active Zabbix problem, by trigger, and read tools for problems, hosts and item history.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.5,<0.6', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.5,<0.7', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)),
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Address of the Zabbix frontend, for example https://zabbix.example.com. The API is <URL>/api_jsonrpc.php.'),
             Field('token', 'Token', 'secret', required=True, help='A Zabbix API token of a user with read access to the host groups to watch.'),
             Field('host-groups', 'Host groups', 'text', default='', help='Comma-separated host group names to watch. Empty watches every group the user can read.'),

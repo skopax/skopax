@@ -204,7 +204,7 @@ class ToolBridge:
             values = values_of(self.deps, inst)
             if moved_away(self.deps, inst.name, values):
                 return None
-            if run.role is not None and RANK.get(run.role, -1) < RANK.get(values.get('chat-role') or CHAT_ROLE, len(ROLES)):
+            if (run.ask or run.role is not None) and RANK.get(run.role or ROLES[0], -1) < RANK.get(values.get('chat-role') or CHAT_ROLE, len(ROLES)):
                 return None
             scope = adapter_tools(values)
             if knowledge_on(values) and (scope is None or not on_origin(values)):

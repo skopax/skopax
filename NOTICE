@@ -1,2 +1,20 @@
 Skopax
 Copyright 2026 Maksut Spahi
+
+Skopax is licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only). See LICENSE.
+Versions up to 0.5.18 were licensed under the Apache License, Version 2.0.
+The plug-ins under examples/ are licensed under the Apache License, Version 2.0.
+
+Additional permission under GNU AGPL version 3 section 7
+
+As an additional permission under section 7 of the GNU Affero General Public
+License version 3, the copyright holders of Skopax give you permission to
+combine Skopax with plug-ins that interact with Skopax only through its
+documented plug-in interface (the plug-in entry points and the plug-in contract
+described in docs/extending.md), and to run, distribute and offer such
+combinations over a network, under terms of your choice for those plug-ins,
+without those plug-ins becoming subject to the GNU Affero General Public
+License. This permission does not cover Skopax itself or any modification of
+Skopax, which remain under the GNU Affero General Public License version 3. You
+may remove this additional permission from your copy of Skopax or from a work
+based on it.

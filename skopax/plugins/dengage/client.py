@@ -291,7 +291,7 @@ class Dengage:
         return dt.datetime.combine(day, dt.time(), self.zone).timestamp()
 
     def first(self, channel: str, now: float) -> dict:
-        return self.get(f'/sends/{channel}', beginDate=self.stamp(now - DAY), endDate=self.stamp(now), limit=1, offset=0)
+        return self.get(f'/sends/{channel}', beginDate=self.stamp(now - DAY), endDate=self.stamp(now), limit=ROWS, offset=0)
 
     def sends(self, channel: str, begin: float, end: float) -> list[dict]:
         if channel not in CHANNELS:

@@ -66,7 +66,7 @@ def test_slack_identity_and_manifest():
     assert 'skopax.plugins.slack' in BUILTIN and loaded.get('slack').state == 'ok' and loaded.get('slack').plugin is plugin
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'slack', 'Slack', '0.1.0', 'chat', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        'slack', 'Slack', '0.1.0', 'chat', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert manifest['capabilities'] == {'hosts': ['slack.com'], 'secrets': ['bot-token', 'app-token'], 'agentReads': False}
     assert (manifest['uses'], manifest['maxInstances'], manifest['checks'], manifest['tools'], manifest['settings'], manifest['panels']) == ([], 1, [], [], [], [])
     assert [(f['key'], f['kind'], f['required']) for f in manifest['fields']] == [('bot-token', 'secret', True), ('app-token', 'secret', False)]

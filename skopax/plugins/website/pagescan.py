@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import time
+import unicodedata
 from collections.abc import Callable
 from urllib.parse import urlsplit
 
@@ -39,6 +40,8 @@ DEADLINE_SHARE = 0.8
 GAP_S = 10.0
 GONE = (404, 410)
 LINE_LIMIT = 300
+MAX_CHUNKS = 50
+MAX_PAGE_LINES = 2000
 SITE_KEEP = 60_000
 MIN_LETTERS = 3
 BATCH_CHARS = 12_000
@@ -63,6 +66,7 @@ REFUSED = (401, 403)
 UNREAD = (401, 403, 429)
 ARROW = '\u2192'
 ELLIPSIS = '\u2026'
+SENTENCE_END = re.compile('(?<!e\\.g\\.)(?<!i\\.e\\.)(?<=[.!?;:\u2026\u3002\uff01\uff1f\uff1b\uff1a\u061f\u061b]) +')
 DOT = ' \u00b7 '
 HANDLED = ('handled', 'progress')
 VERDICTS = {'overflow': 'page', 'cut': 'cut', 'swipe': 'scrolls'}
@@ -182,7 +186,7 @@ def cleaned(item: dict) -> dict | None:
 
 
 def held(line: str) -> bool:
-    return bool(flags.scan(PASS, line))
+    return bool(flags.scan(PASS, line, skip=flags.REQUESTS))
 
 
 def close(wrong: str, fix: str) -> bool:
@@ -279,16 +283,52 @@ def line_hash(line: str) -> str:
     return hashlib.sha1(DIGITS.sub('0', line.casefold()).encode()).hexdigest()[:16]
 
 
+def chunks_of(line: str) -> list[str]:
+    if len(line) <= LINE_LIMIT:
+        return [line]
+    out, cur = [], ''
+    for sentence in SENTENCE_END.split(line[:LINE_LIMIT * MAX_CHUNKS]):
+        if len(out) >= MAX_CHUNKS:
+            break
+        while len(sentence) > LINE_LIMIT and len(out) < MAX_CHUNKS:
+            if cur:
+                out.append(cur)
+                cur = ''
+            space = sentence.rfind(' ', 0, LINE_LIMIT + 1)
+            if space > 0:
+                out.append(sentence[:space])
+                sentence = sentence[space + 1:]
+            else:
+                at = LINE_LIMIT - 1
+                while at > 1 and unicodedata.combining(sentence[at]):
+                    at -= 1
+                if at <= 1:
+                    at = LINE_LIMIT - 1
+                out.append(sentence[:at] + ELLIPSIS)
+                sentence = ELLIPSIS + sentence[at:]
+        if len(sentence) > LINE_LIMIT:
+            break
+        if cur and len(cur) + 1 + len(sentence) > LINE_LIMIT:
+            out.append(cur)
+            cur = ''
+        cur = f'{cur} {sentence}' if cur else sentence
+    return (out + [cur] if cur else out)[:MAX_CHUNKS]
+
+
 def lines_of(text: object) -> list[str]:
     out, seen = [], set()
     for raw in str(text or '').splitlines():
-        line = SPACES.sub(' ', raw).strip()[:LINE_LIMIT]
-        if len(LETTER.findall(line)) < MIN_LETTERS:
-            continue
-        h = line_hash(line)
-        if h not in seen:
-            seen.add(h)
-            out.append(line)
+        if len(out) >= MAX_PAGE_LINES:
+            break
+        for line in chunks_of(SPACES.sub(' ', raw).strip()):
+            if len(out) >= MAX_PAGE_LINES:
+                break
+            if len(LETTER.findall(line)) < MIN_LETTERS:
+                continue
+            h = line_hash(line)
+            if h not in seen:
+                seen.add(h)
+                out.append(line)
     return out
 
 

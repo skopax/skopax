@@ -2,6 +2,52 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.6.0 (2026-11-25)
+
+Skopax moves to the AGPL, each AI use picks its own provider and model, OpenAI-compatible connections arrive with a Who does what table in Admin, connections can be kept out of questions, and a confidential-data guard covers every prompt.
+
+### License
+
+- Skopax is now licensed under the GNU AGPL v3 (AGPL-3.0-only). Versions up to 0.5.18 remain Apache-2.0. Running Skopax unchanged needs nothing new; if you offer a modified Skopax to others over a network, you must offer them its source. The example plug-ins stay Apache-2.0.
+- Contributions are accepted under Apache-2.0 (inbound) with the DCO; Skopax is distributed under AGPL-3.0-only.
+- A plug-in exception in NOTICE (AGPL section 7): plug-ins that use only the documented plug-in interface may carry any licence, including a closed one. Skopax itself and changes to it stay AGPL.
+
+### Added
+
+- OpenAI-compatible AI connections (DeepSeek, Groq, Mistral, OpenRouter, a local Ollama and others).
+- Admin > Investigator shows who does what: each use's provider, model, price, average cost and problems in one table, plus OpenAI-compatible connection cards.
+- A one-time upgrade step at the first start writes the model each use billed before as an Admin setting (by `upgrade`, revertable in Changes), so billing stays the same.
+- Plug-ins can add an AI provider through the `register_provider` hook.
+- Each connection can be limited to card investigations, or to operators and admins, when Skopax answers Slack asks, chat and page asks (Available in questions).
+
+### Changed
+
+- Each use (cards, Critical, High, Slack, chat, gate, self-review, plug-ins) picks its own provider and model.
+- Third-party plug-ins that declare a `core` range ending at `<0.6` are refused by 0.6.0 until their range is raised; the Admin notices strip names each refused plug-in. The built-in and example plug-ins now declare `<0.7`.
+- A card is locked with a spinner while its action runs, and a thin bar shows work in progress.
+- The spend backfill of runs from before the ledger now prices OpenAI and older rows by their own model; only a model with no known price is charged at the highest known rate of its provider (Anthropic for unknown older models), with `pricedAs`.
+- Google Ads: free GAQL queries by the investigator are off by default (Free GAQL queries); it uses campaigns, daily and ads unless an admin switches them on.
+- Google Ads: Skopax reads no cost, budget, billing or conversion value data from Google Ads; campaigns are ranked by clicks, conversion counts stay, and a free query that names such data is refused.
+- Langfuse: conversation text of traced turns is hidden from the investigator by default (Conversation text); names, timings, errors and cost stay.
+
+### Security
+
+- A confidential-data guard in every prompt: Skopax uses what it reads to diagnose; answers with masked or summed-up values; never hands out secrets, personal or bulk customer data or internal confidential material as such, even when asked. Outward answers are masked and bulk record dumps are cut.
+- A use whose chosen model runs on a provider with no working key, or on a compatible connection that is gone or whose key cannot be read, is held instead of moving to another provider; Admin says so.
+- Write tools, plug-in write tools and outside MCP tools get every text argument masked unless it is an identifier, code suggestions included; record dumps in code blocks and plain lines are cut too.
+- Questions cannot read a refused connection through another one (peers) or through the self-review facts; a core tool that was not offered in a run is refused.
+- A tool answer that asks to send a secret or customer data out is flagged as planted text.
+- The page scan cannot be stalled by a long run of combining marks, and caps chunks per line and lines per page.
+- Compatible connections: the metadata address 192.0.0.192 is refused, a failed test on a private address reads the same whatever failed, the key field is a password field, and a moved base URL is recorded with its old and new origin in Changes.
+- Google Ads: revenue, profit, margin, cart, price and order fields are refused and dropped like cost.
+
+### Fixed
+
+- A Teams or mail route for business tags now keeps to its lowest severity. Before, such a route sent a Warning card even when its lowest severity was High.
+- Dengage: Test connection no longer fails with "limit value must be between 100 and 1000"; it reads at the smallest page Dengage accepts.
+- A refresh no longer snaps a moved card back.
+- The page scan no longer cuts long sentences mid-word, which made it report typos that were not on the page.
+
 ## 0.5.18 (2026-11-25)
 
 Card investigations read the card's recent History, more secrets are masked before text reaches the AI provider, ES|QL is confined to the connection's indices, Admin says which model runs which cards, and fields set by a settings source show as disabled.

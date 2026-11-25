@@ -53,6 +53,11 @@
   "Admin · Security update available": "Verwaltung · Sicherheitsupdate verfügbar",
   "Admin · Update available": "Verwaltung · Update verfügbar",
   "Advanced": "Erweitert",
+  "Available in questions": "In Fragen verfügbar",
+  "Everyone": "Alle",
+  "Operators and admins only": "Nur Operatoren und Admins",
+  "Card investigations only": "Nur Karten-Untersuchungen",
+  "Who may have Skopax read this connection when answering a Slack ask, a chat message or a page ask. Card investigations always may.": "Wer Skopax diese Verbindung lesen lassen darf, wenn es eine Slack-Frage, eine Chat-Nachricht oder eine Frage auf der Seite beantwortet. Karten-Untersuchungen dürfen es immer.",
   "After GC": "Nach GC",
   "Age": "Alter",
   "Airbyte failures": "Airbyte-Fehlschläge",
@@ -1796,7 +1801,58 @@
   "Last action": "Letzte Maßnahme",
   "Warning: {0}": "Warnung: {0}",
   "{0} warnings: {1}": "{0} Warnungen: {1}",
-  "Page gone": "Seite weg"
+  "Page gone": "Seite weg",
+  "Working": "In Arbeit",
+  "Still working: refresh to see the result": "L\u00e4uft noch: Seite neu laden, um das Ergebnis zu sehen",
+  "Use": "Einsatz",
+  "Model": "Modell",
+  "Effort": "Aufwand",
+  "Price per million tokens (input / output)": "Preis pro Million Tokens (Eingabe / Ausgabe)",
+  "Average cost per run (7 days)": "Durchschnittliche Kosten pro Lauf (7 Tage)",
+  "Data goes to": "Daten gehen an",
+  "Cheap models often miss steps in long investigations": "G\u00fcnstige Modelle \u00fcberspringen in langen Untersuchungen oft Schritte",
+  "Who does what": "Wer macht was",
+  "Default": "Standard",
+  "No price": "Kein Preis",
+  "No runs in 7 days": "Keine L\u00e4ufe in 7 Tagen",
+  "The compatible connections did not load; open the tab again.": "Die kompatiblen Verbindungen wurden nicht geladen; \u00f6ffnen Sie den Tab erneut.",
+  "Add compatible connection": "Kompatible Verbindung hinzuf\u00fcgen",
+  "Private and loopback addresses are allowed for compatible connections (core.allow-private-ai is on).": "Private und Loopback-Adressen sind f\u00fcr kompatible Verbindungen erlaubt (core.allow-private-ai ist an).",
+  "Private and loopback addresses are refused for compatible connections (core.allow-private-ai is off).": "Private und Loopback-Adressen werden f\u00fcr kompatible Verbindungen abgelehnt (core.allow-private-ai ist aus).",
+  "Not tested yet": "Noch nicht getestet",
+  "New compatible connection": "Neue kompatible Verbindung",
+  "key set": "Key gesetzt",
+  "no key": "kein Key",
+  "Last test": "Letzter Test",
+  "Base URL": "Basis-URL",
+  "Models, with prices in USD per million tokens (input, output)": "Modelle, mit Preisen in USD pro Million Tokens (Eingabe, Ausgabe)",
+  "Add model": "Modell hinzuf\u00fcgen",
+  "Uses tools": "Nutzt Werkzeuge",
+  "Reads images": "Liest Bilder",
+  "Enter a name": "Geben Sie einen Namen ein",
+  "Delete this compatible connection?": "Diese kompatible Verbindung l\u00f6schen?",
+  "Its key and models are deleted. A use set to one of its models is held until another model is picked.": "Ihr Key und ihre Modelle werden gel\u00f6scht. Ein Einsatz mit einem ihrer Modelle wird angehalten, bis ein anderes Modell gew\u00e4hlt wird.",
+  "Delete connection": "Verbindung l\u00f6schen",
+  "Deleting\u2026": "Wird gel\u00f6scht\u2026",
+  "Not deleted, try again": "Nicht gel\u00f6scht, bitte erneut versuchen",
+  "Deleted": "Gel\u00f6scht",
+  "Key": "Key",
+  "Testing\u2026": "Wird getestet\u2026",
+  "The test could not run": "Der Test konnte nicht laufen",
+  "Saved, live within {0} s on every pod": "Gespeichert, innerhalb von {0} s auf jedem Pod aktiv",
+  "Default provider": "Standardanbieter",
+  "The uses table did not load; open the tab again.": "Die Einsatz-Tabelle wurde nicht geladen; \u00f6ffnen Sie den Tab erneut.",
+  "Not fit for investigations: the model did not call the tool": "Nicht f\u00fcr Untersuchungen geeignet: Das Modell hat das Werkzeug nicht aufgerufen",
+  "That name is already used by another connection: pick another one": "Dieser Name wird schon von einer anderen Verbindung genutzt: w\u00e4hlen Sie einen anderen",
+  "Open the setting": "Zur Einstellung",
+  "Model {0} id": "Modell {0}: ID",
+  "Model {0} input price, USD per million tokens": "Modell {0}: Eingabepreis, USD pro Million Tokens",
+  "Model {0} output price, USD per million tokens": "Modell {0}: Ausgabepreis, USD pro Million Tokens",
+  "Remove model {0}": "Modell {0} entfernen",
+  "The AI provider keys and compatible connections that the investigator, the chat and the self-review use, which model each use runs, and the investigator settings. Each use can run on a different provider; Default provider supplies the model of any use left on its default. A key set here is saved sealed, takes the place of ANTHROPIC_API_KEY or OPENAI_API_KEY and is never shown again.": "Die Keys der KI-Anbieter und die kompatiblen Verbindungen, die der Investigator, der Chat und das Self-Review nutzen, welches Modell jeder Einsatz verwendet, und die Investigator-Einstellungen. Jeder Einsatz kann bei einem anderen Anbieter laufen; der Standardanbieter liefert das Modell jedes Einsatzes, der auf seinem Standard bleibt. Ein hier gesetzter Key wird versiegelt gespeichert, ersetzt ANTHROPIC_API_KEY oder OPENAI_API_KEY und wird nie wieder angezeigt.",
+  "Investigator: the AI providers and their keys, which model each use runs, and the investigator settings": "Investigator: die KI-Anbieter und ihre Keys, welches Modell jeder Einsatz verwendet, und die Investigator-Einstellungen",
+  "Reset to empty": "Auf leer zur\u00fcckgesetzt",
+  "default": "Standard"
  },
  "rules": [
   [
@@ -2262,6 +2318,22 @@
   [
    "^Already active when (.+) was connected \\(since (\\d{1,2}) ([A-Z][a-z]{2})( \\d{4})? (\\d{1,2}:\\d{2})\\)$",
    "Bereits aktiv, als $1 verbunden wurde (seit $2. $3$4 $5)"
+  ],
+  [
+   "^Set by (\\S+) (.+)$",
+   "Gesetzt von $1 $2"
+  ],
+  [
+   "^Reset to (.+)$",
+   "Zur\u00fcckgesetzt auf $1"
+  ],
+  [
+   "^Which model runs: Critical cards (\\S+) \u00b7 High cards (\\S+) \u00b7 Warning and Info cards (\\S+)$",
+   "Welches Modell l\u00e4uft: Kritische Karten $1 \u00b7 Hohe Karten $2 \u00b7 Warn- und Info-Karten $3"
+  ],
+  [
+   "^Not done: the Who does what table could not be redrawn: (.+)\\.$",
+   "Nicht erledigt: Die Tabelle \u201eWer macht was\u201c konnte nicht neu gezeichnet werden: $1."
   ]
  ],
  "months": {

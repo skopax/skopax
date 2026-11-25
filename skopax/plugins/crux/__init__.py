@@ -86,7 +86,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='web', description='Page speed (INP, LCP and CLS) real Chrome users had on your origins, read from the Chrome UX Report API.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.6', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
     capabilities=Capabilities(hosts=('chromeuxreport.googleapis.com',), secrets=('api-key',)),
     fields=(Field('api-key', 'API key', 'secret', required=True, help='A Google API key with the Chrome UX Report API enabled.'),
             Field('origins', 'Origins', 'text', required=True, help='Comma list of the origins to watch, for example https://www.example.com, https://shop.example.com. '

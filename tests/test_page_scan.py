@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from skopax import clock, remote
 from skopax.app import create_app
-from skopax.investigator import pricing
+from skopax.investigator import pricing, prompt
 from skopax.kit import browser as browser_kit
 from skopax.kube import Kube
 from skopax.messages import OUTBOUND, msg
@@ -224,7 +224,7 @@ def test_the_scan_prompt_setting_replaces_the_built_in_prompt(store: Store, tmp_
     # then
     built_in, replaced = (r['system'] for r in fake.gate_requests)
     assert f'{SITE} (An online shop for garden furniture.)' in built_in and 'Skopax' in built_in and 'anchor' in built_in
-    assert replaced == f"{msg('website.scan_frame')}\n\n{own}" and fake.gate_requests[1]['output_config']['format']['schema'] == ps.REVIEW_SCHEMA
+    assert replaced == f"{msg('website.scan_frame')}\n\n{own}" + prompt.confidential_block() and fake.gate_requests[1]['output_config']['format']['schema'] == ps.REVIEW_SCHEMA
     assert built_in.startswith(msg('website.scan_frame'))
 
 

@@ -42,4 +42,4 @@ Then open http://localhost:8080. A Docker Compose file and all settings are in t
 - Source and docs: https://github.com/skopax/skopax
 - Changelog: https://github.com/skopax/skopax/blob/main/CHANGELOG.md
 - Website: https://skopax.io
-- Licence: Apache-2.0
+- Licence: AGPL-3.0-only

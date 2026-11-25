@@ -11,11 +11,11 @@ from fastapi.testclient import TestClient
 
 from skopax import clock
 from skopax.app import create_app
-from skopax.contract import InstanceInfo, Peer, ReadError
+from skopax.contract import InstanceInfo, Peer, ReadError, RunState
 from skopax.engine import iso
 from skopax.instances import Instances, PluginState
 from skopax.investigator import prompt
-from skopax.investigator.tools import CORE_TOOLS
+from skopax.investigator.tools import CORE_TOOLS, Effects, Toolbox
 from skopax.investigator.toolset import ToolSet
 from skopax.kit import web
 from skopax.kit.google import TOKEN_URL, GoogleAuth
@@ -23,8 +23,8 @@ from skopax.kube import Kube
 from skopax.messages import msg
 from skopax.plugins import google_ads, website
 from skopax.plugins.google_ads import engine
-from skopax.plugins.google_ads.engine import (ADS_API, BROKEN, MOVED, NEEDS, NO_ACCESS, POLICY_QUERY, SCOPES, AdsError, GoogleAds, read, scrubbed, untracked,
-                                              verdict, wanted)
+from skopax.plugins.google_ads.engine import (ADS_API, BROKEN, MOVED, NEEDS, NO_ACCESS, POLICY_QUERY, SCOPES, AdsError, GoogleAds, free_query, read, scrubbed,
+                                              untracked, verdict, wanted)
 from skopax.plugintools import PluginTools
 from skopax.registry import BUILTIN, Registry, describe
 from skopax.remote import HttpError, Unreachable
@@ -34,7 +34,7 @@ from skopax.store import Store
 from tests.conftest import AUTH, settings
 from tests.fake_google import ACCESS, KEY, Google
 from tests.plugin_kit import add_instance
-from tests.test_investigator_tools import NOW, box
+from tests.test_investigator_tools import NOW, box, sources
 from tests.website_kit import Clock, page
 
 CUSTOMER = '1234567890'
@@ -621,15 +621,15 @@ def test_a_search_posts_gaql_with_the_developer_token_and_manager_id_and_follows
 
 def test_inputs_are_checked_and_a_raw_query_is_one_read_only_select_with_a_limit():
     # then
-    assert wanted({'op': 'query', 'query': 'SELECT campaign.name FROM campaign'})['query'] == 'SELECT campaign.name FROM campaign LIMIT 200'
-    assert wanted({'op': 'query', 'query': 'SELECT x FROM y LIMIT 5'})['query'] == 'SELECT x FROM y LIMIT 5'
-    for bad, why in (({'op': 'query', 'query': 'DELETE x'}, 'one GAQL SELECT'), ({'op': 'query', 'query': 'SELECT a FROM b; SELECT c FROM d'}, 'without ;'), ({'op': 'nope'}, 'op is one of')):
+    assert free_query({'query': 'SELECT campaign.name FROM campaign'})['query'] == 'SELECT campaign.name FROM campaign LIMIT 200'
+    assert free_query({'query': 'SELECT x FROM y LIMIT 5'})['query'] == 'SELECT x FROM y LIMIT 5'
+    for bad, why in (({'query': 'DELETE x'}, 'one GAQL SELECT'), ({'query': 'SELECT a FROM b; SELECT c FROM d'}, 'without ;'), ({'op': 'nope'}, 'op is one of')):
         with pytest.raises(AdsError) as e:
-            wanted(bad)
+            (wanted if 'op' in bad else free_query)(bad)
         assert why in e.value.message
 
 
-def test_campaigns_daily_and_ads_come_back_as_plain_rows_with_cost_in_the_account_currency():
+def test_campaigns_daily_and_ads_come_back_as_plain_rows():
     # given
     campaign_rows = {'results': [{'campaign': {'id': '7', 'name': 'Chairs Search', 'status': 'ENABLED', 'advertisingChannelType': 'SEARCH'},
                                   'metrics': {'costMicros': '1234560000', 'clicks': '420', 'impressions': '9000', 'conversions': 31.5}}]}
@@ -649,8 +649,8 @@ def test_campaigns_daily_and_ads_come_back_as_plain_rows_with_cost_in_the_accoun
 
     # then
     assert camps == {'from': '2026-11-03', 'to': '2026-11-09', 'truncated': False,
-                     'campaigns': [{'id': '7', 'name': 'Chairs Search', 'status': 'ENABLED', 'channel': 'SEARCH', 'cost': 1234.56, 'clicks': 420, 'impressions': 9000, 'conversions': 31.5}]}
-    assert daily['days'] == [{'date': '2026-11-08', 'cost': 1.5, 'clicks': 4, 'impressions': 15, 'conversions': 1}]
+                     'campaigns': [{'id': '7', 'name': 'Chairs Search', 'status': 'ENABLED', 'channel': 'SEARCH', 'clicks': 420, 'impressions': 9000, 'conversions': 31.5}]}
+    assert daily['days'] == [{'date': '2026-11-08', 'clicks': 4, 'impressions': 15, 'conversions': 1}]
     assert "LIKE '%Chairs DROP%'" in queries(http)[1], 'quotes never reach the GAQL'
     assert found['ads'] == [{'campaign': 'Chairs', 'adGroup': 'Garden', 'adId': '9', 'finalUrls': [f'{SITE}/garden/chairs-oak'], 'approval': 'APPROVED_LIMITED'}]
 
@@ -694,13 +694,13 @@ def test_google_ads_campaign_and_ad_group_names_are_redacted_and_final_urls_stay
     # when
     camps = read(ads_of(google(over={('POST', SEARCH): {'results': [record]}})), wanted({'op': 'campaigns'}), TODAY)
     found = read(ads_of(google(over={('POST', SEARCH): {'results': [record]}})), wanted({'op': 'ads'}), TODAY)
-    raw = read(ads_of(google(over={('POST', SEARCH): {'results': [record]}})), wanted({'op': 'query', 'query': 'SELECT campaign.name FROM ad_group_ad'}), TODAY)
+    raw = read(ads_of(google(over={('POST', SEARCH): {'results': [record]}})), free_query({'query': 'SELECT campaign.name FROM ad_group_ad'}), TODAY)
 
     # then
     assert camps['campaigns'][0]['name'] == REDACTED
     assert (found['ads'][0]['campaign'], found['ads'][0]['adGroup'], found['ads'][0]['finalUrls']) == (REDACTED, 'group [redacted]', [f'{SITE}/sofas?ref={ALICE}'])
     assert raw['rows'][0]['campaign']['name'] == REDACTED and raw['rows'][0]['adGroup']['name'] == 'group [redacted]'
-    assert raw['rows'][0]['adGroupAd']['ad']['finalUrls'] == [f'{SITE}/sofas?ref={ALICE}'] and raw['rows'][0]['metrics'] == {'costMicros': '1000000'}
+    assert raw['rows'][0]['adGroupAd']['ad']['finalUrls'] == [f'{SITE}/sofas?ref={ALICE}'] and raw['rows'][0]['metrics'] == {}
 
 
 def test_the_google_ads_tool_is_offered_once_an_instance_serves_and_reads_with_its_values(store: Store):
@@ -779,13 +779,13 @@ def test_google_ads_identity_and_manifest():
     assert 'skopax.plugins.google_ads' in BUILTIN and found is not None and found.state == 'ok' and found.plugin is google_ads.PLUGIN
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'google-ads', 'Google Ads', '0.1.0', 'marketing', 'Skopax', 'Apache-2.0', '>=0.1,<0.6', 'community')
+        'google-ads', 'Google Ads', '0.1.0', 'marketing', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
     assert manifest['capabilities'] == {'hosts': ['googleads.googleapis.com', 'oauth2.googleapis.com', '*'], 'secrets': ['developer-token', 'credentials'], 'agentReads': False}
     assert 'only that site' in next(f for f in google_ads.PLUGIN.fields if f.key == 'website').help
     assert manifest['uses'] == ['website']
     assert [(f.key, f.kind, f.required) for f in google_ads.PLUGIN.fields] == [('customer-id', 'text', True), ('login-customer-id', 'text', False),
                                                                             ('developer-token', 'secret', False), ('credentials', 'secret', True),
-                                                                            ('api-version', 'text', False), ('website', 'instance', False)]
+                                                                            ('api-version', 'text', False), ('website', 'instance', False), ('free-query', 'bool', False)]
     assert (gads.id, gads.period, gads.offset, gads.ran, gads.sections, gads.tool, gads.once, gads.timeout, gads.background) == (
         'gads', 900, 750, ('gads',), ('adLinks',), 'google_ads', False, 900, True)
     assert (policy.id, policy.period, policy.offset, policy.ran, policy.sections, policy.tool, policy.once, policy.timeout, policy.background) == (
@@ -798,7 +798,7 @@ def test_google_ads_identity_and_manifest():
 def test_google_ads_defaults_are_neutral():
     # then
     assert {f.key: f.default for f in google_ads.PLUGIN.fields} == {'customer-id': '', 'login-customer-id': '', 'developer-token': '', 'credentials': '',
-                                                                   'api-version': 'v26', 'website': ''}
+                                                                   'api-version': 'v26', 'website': '', 'free-query': 'false'}
     assert {s.key: s.default for s in google_ads.PLUGIN.settings} == {'auto-resolve-hours': '24'}
 
 
@@ -1096,6 +1096,7 @@ class Ctx:
         self.config = config
         self.transport = transport
         self.now = now
+        self.run_state = RunState()
         self.name = name
         self.primary = primary
         self.rows = rows or {}
@@ -1164,3 +1165,261 @@ def test_connection_test_without_a_developer_token_is_ok_and_a_malformed_one_is_
     assert (ok['ok'], ok['summary']) == (True, 'Google Ads \u00b7 Example Shop')
     assert http.hits(SEARCH) and all('developer-token' not in h[2] for h in http.hits(SEARCH))
     assert (bad['ok'], bad['summary']) == (False, engine.BAD_TOKEN)
+
+
+def offered_tools(b) -> dict[str, dict]:
+    return {d['name']: d for d in b.definitions()}
+
+
+def test_free_queries_off_by_default(store: Store):
+    # given
+    field = next(f for f in google_ads.PLUGIN.fields if f.key == 'free-query')
+    http = google([row('Chairs', f'{SITE}/a')])
+    b = ads_box(store, http)
+
+    # when
+    tools = offered_tools(b)
+    refused, err = call(b, op='query')
+    with_text, text_err = call(b, op='query', query='SELECT campaign.name FROM campaign')
+
+    # then
+    assert (field.label, field.kind, field.default, field.group) == ('Free GAQL queries', 'bool', 'false', 'advanced')
+    assert field.help == 'Lets the investigator run its own read-only GAQL queries. Off leaves only campaigns, daily and ads.'
+    assert tools['google_ads']['input_schema']['properties']['op']['enum'] == ['campaigns', 'daily', 'ads'] and 'google_ads_query' not in tools
+    assert 'GAQL' not in tools['google_ads']['description'] and 'op query' not in tools['google_ads']['description']
+    assert err and 'campaigns, daily, ads' in refused and text_err and 'no field query' in with_text and queries(http) == []
+
+
+def test_free_queries_off_hides_the_query_op_and_refuses_it(store: Store):
+    # given
+    http = google([row('Chairs', f'{SITE}/a')])
+    b = ads_box(store, http, instances={'main': VALUES | {'free-query': 'false'}, 'east': VALUES | {'free-query': 'true', 'customer-id': '222-333-4444'}})
+
+    # when
+    tools = offered_tools(b)
+    refused, err = b.call('google_ads_query', {'instance': 'main', 'query': 'SELECT campaign.name FROM campaign'})
+
+    # then
+    assert tools['google_ads_query']['input_schema']['properties']['instance']['enum'] == ['east']
+    assert tools['google_ads']['input_schema']['properties']['op']['enum'] == ['campaigns', 'daily', 'ads']
+    assert err and 'east' in refused and queries(http) == []
+
+
+def test_free_queries_on_offers_the_query_op(store: Store):
+    # given
+    http = google(over={('POST', SEARCH): {'results': [{'campaign': {'name': 'Chairs'}}]}})
+    b = ads_box(store, http, instances={'main': VALUES | {'free-query': 'true'}})
+
+    # when
+    tools = offered_tools(b)
+    text, err = b.call('google_ads_query', {'query': 'SELECT campaign.name FROM campaign'})
+
+    # then
+    assert 'google_ads_query' in tools and 'GAQL' in tools['google_ads_query']['description']
+    assert not err and json.loads(text)['rows'] == [{'campaign': {'name': 'Chairs'}}]
+    assert queries(http) == ['SELECT campaign.name FROM campaign LIMIT 200']
+
+
+def test_campaigns_and_daily_carry_no_cost():
+    # given
+    campaign_rows = {'results': [{'campaign': {'id': '7', 'name': 'Chairs Search', 'status': 'ENABLED', 'advertisingChannelType': 'SEARCH'},
+                                  'metrics': {'costMicros': '1234560000', 'clicks': '420', 'impressions': '9000', 'conversions': 31.5}}]}
+    daily_rows = {'results': [{'segments': {'date': '2026-11-08'}, 'metrics': {'costMicros': '1000000', 'clicks': '3', 'impressions': '10', 'conversions': 1}}]}
+    answers = [campaign_rows, daily_rows]
+    http = google(over={('POST', SEARCH): lambda q, b: answers.pop(0)})
+    client = ads_of(http)
+
+    # when
+    camps = read(client, wanted({'op': 'campaigns', 'days': 7}), TODAY)
+    daily = read(client, wanted({'op': 'daily', 'days': 3}), TODAY)
+    sent = queries(http)
+
+    # then
+    assert camps['campaigns'] == [{'id': '7', 'name': 'Chairs Search', 'status': 'ENABLED', 'channel': 'SEARCH', 'clicks': 420, 'impressions': 9000, 'conversions': 31.5}]
+    assert daily['days'] == [{'date': '2026-11-08', 'clicks': 3, 'impressions': 10, 'conversions': 1}]
+    assert not any('cost' in q.lower() or 'budget' in q.lower() for q in sent)
+    assert 'ORDER BY metrics.clicks DESC' in sent[0]
+    assert 'cost' not in google_ads.DESCRIPTION.replace('no cost, budget, billing or conversion value data', '') and 'no cost, budget, billing or conversion value data' in google_ads.DESCRIPTION
+
+
+@pytest.mark.parametrize('query', [
+    'SELECT campaign.name, metrics.cost_micros FROM campaign',
+    'select campaign.name, METRICS.Cost_Micros from campaign',
+    'SELECT campaign.name FROM campaign WHERE metrics.cost_micros > 0',
+    'SELECT campaign.name FROM campaign ORDER BY metrics.cost_micros DESC',
+    'SELECT campaign.name, metrics.average_cpc FROM campaign',
+    'SELECT campaign.name, metrics.average_cpm FROM campaign',
+    'SELECT campaign.name, metrics.average_cost FROM campaign',
+    'SELECT campaign.name, metrics.cost_per_conversion FROM campaign',
+    'SELECT campaign.name, metrics.all_conversions_cost FROM campaign',
+    'SELECT campaign.name, metrics . cost_micros FROM campaign',
+    'SELECT campaign.campaign_budget FROM campaign',
+    'SELECT campaign_budget.amount_micros FROM campaign',
+    'SELECT account_budget.id FROM account_budget',
+    'SELECT account_budget_proposal.id FROM account_budget_proposal',
+    'SELECT billing_setup.id FROM billing_setup',
+    'SELECT invoice.id FROM invoice',
+    'SELECT payments_account.name FROM payments_account',
+    'SELECT campaign.name FROM Campaign_Budget',
+    'SELECT campaign.name, metrics.average_cpv FROM campaign',
+    'SELECT campaign.name, metrics.active_view_cpm FROM campaign',
+    'SELECT ad_group_criterion.cpc_bid_micros FROM ad_group_criterion',
+    'SELECT ad_group_criterion.effective_cpc_bid_micros FROM ad_group_criterion',
+    'SELECT campaign.target_cpa.target_cpa_micros FROM campaign',
+    'SELECT recommendation.campaign_budget_recommendation.recommended_budget_amount_micros FROM recommendation',
+    'SELECT campaign.name, metrics.search_budget_lost_impression_share FROM campaign',
+    'SELECT recommendation.impact FROM recommendation',
+    'SELECT change_event.new_resource FROM change_event',
+    'SELECT change_event.old_resource FROM change_event',
+    'SELECT campaign.bidding_strategy_type FROM campaign',
+    'SELECT campaign.target_roas.target_roas FROM campaign',
+    'SELECT metrics.value_per_conversion FROM campaign',
+    "SELECT campaign.name FROM campaign WHERE campaign.name = 'x' AND metrics.cost_micros > 0",
+    'SELECT * FROM campaign',
+    'SELECT campaign.name, metrics.conversions_value FROM campaign',
+    'SELECT campaign.name, metrics.all_conversions_value FROM campaign',
+    'SELECT campaign.name FROM campaign WHERE metrics.conversions_value > 10',
+    'SELECT conversion_action.value_settings.default_value FROM conversion_action',
+    'SELECT conversion_action.value_settings FROM conversion_action',
+    'SELECT metrics.Conversions_Value_By_Conversion_Date FROM campaign',
+])
+def test_a_free_query_for_cost_or_budget_is_refused(store: Store, query):
+    # given
+    http = google()
+    b = ads_box(store, http, instances={'main': VALUES | {'free-query': 'true'}})
+
+    # when
+    text, err = b.call('google_ads_query', {'query': query})
+
+    # then
+    assert err and 'Google Ads cost, budget, billing and conversion value data are not read by Skopax' in text
+    assert queries(http) == []
+
+
+def test_a_free_query_without_cost_runs(store: Store):
+    # given
+    http = google(over={('POST', SEARCH): {'results': [{'campaign': {'name': 'Cost cutters'}, 'metrics': {'clicks': '3'}}]}})
+    b = ads_box(store, http, instances={'main': VALUES | {'free-query': 'true'}})
+
+    # when
+    text, err = b.call('google_ads_query', {'query': "SELECT campaign.name, metrics.clicks FROM campaign WHERE campaign.name LIKE '%Cost%' LIMIT 5"})
+
+    # then
+    assert not err and json.loads(text)['rows'] == [{'campaign': {'name': 'Cost cutters'}, 'metrics': {'clicks': '3'}}]
+    assert queries(http) == ["SELECT campaign.name, metrics.clicks FROM campaign WHERE campaign.name LIKE '%Cost%' LIMIT 5"]
+
+
+def test_a_free_query_answer_never_carries_cost_or_budget_keys(store: Store):
+    # given
+    answer = {'results': [{'campaign': {'name': 'Chairs', 'campaignBudget': 'customers/1/campaignBudgets/2', 'targetCpa': {'targetCpaMicros': '5'}},
+                           'metrics': {'clicks': '3', 'costMicros': '1000000', 'averageCpv': 0.2, 'conversionsValuePerCost': 2},
+                           'adGroupCriterion': {'cpcBidMicros': '10', 'status': 'ENABLED'}, 'billing': {'amountMicros': '9'}, 'nested': [{'amountMicros': '7', 'kept': 'yes'}]}]}
+    http = google(over={('POST', SEARCH): answer})
+    b = ads_box(store, http, instances={'main': VALUES | {'free-query': 'true'}})
+
+    # when
+    text, err = b.call('google_ads_query', {'query': 'SELECT campaign.name, metrics.clicks FROM campaign'})
+    rows = json.loads(text)['rows']
+
+    # then
+    assert not err
+    assert rows == [{'campaign': {'name': 'Chairs'}, 'metrics': {'clicks': '3'}, 'adGroupCriterion': {'status': 'ENABLED'}, 'nested': [{'kept': 'yes'}]}]
+
+
+def test_campaigns_daily_and_ads_answers_are_scrubbed_of_money_keys_too():
+    # given
+    rows = {'results': [{'campaign': {'id': '7', 'name': 'Chairs', 'status': 'ENABLED', 'advertisingChannelType': 'SEARCH'}, 'metrics': {'clicks': '1', 'costMicros': '5'}}]}
+    client = ads_of(google(over={('POST', SEARCH): rows}))
+
+    # when
+    camps = read(client, wanted({'op': 'campaigns'}), TODAY)
+
+    # then
+    assert 'cost' not in json.dumps(camps).lower() and camps['campaigns'][0]['clicks'] == 1
+
+
+def test_a_literal_mentioning_invoice_is_not_refused(store: Store):
+    # given
+    http = google(over={('POST', SEARCH): {'results': []}})
+    b = ads_box(store, http, instances={'main': VALUES | {'free-query': 'true'}})
+
+    # when
+    text, err = b.call('google_ads_query', {'query': "SELECT campaign.name FROM campaign WHERE campaign.name LIKE '%invoice * budget%'"})
+
+    # then
+    assert not err and queries(http) == ["SELECT campaign.name FROM campaign WHERE campaign.name LIKE '%invoice * budget%' LIMIT 200"]
+
+
+def test_google_ads_and_google_ads_query_share_one_cap_of_six_calls(store: Store):
+    # given
+    http = google(over={('POST', SEARCH): {'results': []}})
+    b = ads_box(store, http, instances={'main': VALUES | {'free-query': 'true'}})
+
+    # when
+    done = [b.call('google_ads', {'op': 'ads'})[1] for _ in range(4)] + [b.call('google_ads_query', {'query': 'SELECT campaign.name FROM campaign'})[1] for _ in range(3)]
+    tools = offered_tools(b)
+
+    # then
+    assert done == [False] * 6 + [True]
+    assert 'together' in tools['google_ads']['description'] and 'together' in tools['google_ads_query']['description']
+
+
+def test_the_query_tool_is_not_offered_in_a_question_when_its_instance_is_card_only(store: Store):
+    # given
+    runtime = tool_runtime(store, google(), instances={'main': VALUES | {'free-query': 'true', 'questions': 'none'}})
+    b = Toolbox(sources(plugin_tools=PluginTools(runtime)), store, Effects(lambda key, by: {}, lambda key, text, by, *_, notice=None: {}), [], 'live', NOW, 'https://skopax.example.com',
+                ask=True, role='admin', settings=settings())
+
+    # when
+    names = set(offered_tools(b))
+
+    # then
+    assert 'google_ads_query' not in names and 'google_ads' not in names
+
+
+def test_conversion_value_keys_are_scrubbed_and_counts_stay(store: Store):
+    # given
+    answer = {'results': [{'metrics': {'conversions': 4, 'allConversions': 6, 'conversionsValue': 120.5, 'allConversionsValue': 130, 'valuePerConversion': 30,
+                                       'conversionsValueByConversionDate': 99},
+                           'conversionAction': {'name': 'Purchase', 'valueSettings': {'defaultValue': 50, 'alwaysUseDefaultValue': True}}}]}
+    http = google(over={('POST', SEARCH): answer})
+    b = ads_box(store, http, instances={'main': VALUES | {'free-query': 'true'}})
+
+    # when
+    text, err = b.call('google_ads_query', {'query': 'SELECT metrics.conversions, conversion_action.name FROM conversion_action'})
+
+    # then
+    assert not err
+    assert json.loads(text)['rows'] == [{'metrics': {'conversions': 4, 'allConversions': 6}, 'conversionAction': {'name': 'Purchase'}}]
+    assert 'conversion value' in google_ads.DESCRIPTION and 'conversion value' in google_ads.QUERY_DESCRIPTION
+
+
+def test_a_refused_money_query_does_not_count_against_the_shared_cap(store: Store):
+    # given
+    http = google(over={('POST', SEARCH): {'results': []}})
+    b = ads_box(store, http, instances={'main': VALUES | {'free-query': 'true'}})
+
+    # when
+    refused = [b.call('google_ads_query', {'query': 'SELECT metrics.cost_micros FROM campaign'})[1] for _ in range(3)]
+    bad_op = b.call('google_ads', {'op': 'campaigns', 'days': 'many'})[1]
+    done = [b.call('google_ads', {'op': 'ads'})[1] for _ in range(3)] + [b.call('google_ads_query', {'query': 'SELECT campaign.name FROM campaign'})[1] for _ in range(4)]
+
+    # then
+    assert refused == [True] * 3 and bad_op is True
+    assert done == [False] * 6 + [True]
+
+
+def test_profit_revenue_margin_cart_price_and_orders_are_money_too():
+    # given
+    from skopax.plugins.google_ads import engine
+    refused = ['SELECT metrics.gross_profit_margin FROM campaign', 'SELECT metrics.revenue_micros FROM campaign', 'SELECT metrics.cross_sell_gross_profit FROM campaign',
+               'SELECT metrics.average_cart_size FROM campaign', 'SELECT metrics.orders FROM campaign', 'SELECT segments.product_price FROM shopping_performance_view']
+    answer = {'metrics': {'grossProfitMargin': 0.4, 'revenueMicros': 1, 'averageCartSize': 2, 'orders': 3, 'clicks': 7}, 'segments': {'productPrice': 9, 'date': '2026-11-25'}}
+
+    # when
+    flags = [engine.reads_money(q) for q in refused]
+    kept = engine.unpriced(answer)
+
+    # then
+    assert flags == [True] * len(refused) and not engine.reads_money('SELECT metrics.clicks, campaign.name FROM campaign')
+    assert kept == {'metrics': {'clicks': 7}, 'segments': {'date': '2026-11-25'}}

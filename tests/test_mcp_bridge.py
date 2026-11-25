@@ -1547,3 +1547,42 @@ def test_the_plugin_calls_setting_matches_the_bridge_limits():
 
     # then
     assert (setting.default, setting.low, setting.high) == (str(RUN_CALLS_MAX), RUN_CALLS_LOW, RUN_CALLS_HIGH)
+
+
+def test_card_investigations_only_keeps_an_mcp_server_out_of_every_question_but_not_card_runs(store):
+    # given
+    fake = Server(tools=[read('search')])
+    with app(store, fake) as c:
+        connect(c)
+        saved = c.patch(f'{INSTANCES}/main', json={'values': {'chat-role': 'cards'}})
+
+        # when
+        admin_chat = offered(ran(c, store, action=chat(ALICE))[1])
+        admin_page = offered(ran(c, store, action=page_ask(ALICE))[1])
+        card = offered(ran(c, store)[1])
+
+    # then
+    assert saved.status_code == 200
+    assert admin_chat == [] and admin_page == [] and card == ['mcp_main_search']
+    assert dict(mcp_tools.PLUGIN.fields[[f.key for f in mcp_tools.PLUGIN.fields].index('chat-role')].choice_labels)['cards'] == 'Card investigations only'
+
+
+def test_a_question_with_no_known_role_counts_as_a_viewer_for_an_mcp_server(store):
+    # given
+    fake = Server(tools=[read('search')])
+    with app(store, fake) as c:
+        connect(c)
+
+        def names(**run) -> list[str]:
+            kind = Run(read_only=False, ask=False, report=False, chat=False, keys=True, asker=False, shadow=False) if not run else Run(read_only=False, report=False, chat=False, keys=True,
+                                                                                                                            asker=False, shadow=False, **run)
+            return sorted(d['name'] for d in bridge(c).start(kind, None).definitions())
+
+        # when
+        unknown = names(ask=True, role=None)
+        card = names()
+        c.patch(f'{INSTANCES}/main', json={'values': {'chat-role': 'viewer'}})
+        open_to_all = names(ask=True, role=None)
+
+    # then
+    assert unknown == [] and card == ['mcp_main_search'] and open_to_all == ['mcp_main_search']

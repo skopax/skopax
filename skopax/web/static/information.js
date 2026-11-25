@@ -38,10 +38,11 @@ function infoRow(r) {
 }
 async function infoUnmute(r, b) {
   if (b.getAttribute('aria-disabled') === 'true' || typeof window.__skopaxApi !== 'function') return;
+  var run = cardRun(r.key, function () { return window.__skopaxApi('POST', '/api/actions', {type: 'unmute', key: r.key, target: r.key, label: 'Unmute ' + (r.svc || '-') + ' / ' + (r.label || '?')}); });
+  if (!run) return;
   b.disabled = true;
   try {
-    await window.__skopaxApi('POST', '/api/actions', {type: 'unmute', key: r.key, target: r.key, label: 'Unmute ' + (r.svc || '-') + ' / ' + (r.label || '?')});
-    if (window.__skopaxPoll) window.__skopaxPoll();
+    await run;
   } catch (e) {
     b.disabled = false;
     if (!e || (e.code !== 401 && e.code !== 403)) b.textContent = e && e.detail ? e.detail : 'Not saved, try again';
@@ -49,10 +50,11 @@ async function infoUnmute(r, b) {
 }
 async function infoBack(r, b) {
   if (b.getAttribute('aria-disabled') === 'true' || typeof window.__skopaxApi !== 'function') return;
+  var run = cardRun(r.key, function () { return window.__skopaxApi('POST', '/api/actions', {type: 'severity', key: r.key, target: r.key, sev: 'auto', label: 'Severity back to the signal: ' + (r.svc || '-') + ' / ' + (r.label || '?')}); });
+  if (!run) return;
   b.disabled = true;
   try {
-    await window.__skopaxApi('POST', '/api/actions', {type: 'severity', key: r.key, target: r.key, sev: 'auto', label: 'Severity back to the signal: ' + (r.svc || '-') + ' / ' + (r.label || '?')});
-    if (window.__skopaxPoll) window.__skopaxPoll();
+    await run;
   } catch (e) {
     b.disabled = false;
     if (!e || (e.code !== 401 && e.code !== 403)) b.textContent = e && e.detail ? e.detail : 'Not saved, try again';

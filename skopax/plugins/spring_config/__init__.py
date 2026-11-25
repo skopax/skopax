@@ -503,6 +503,6 @@ PLUGIN = Plugin(
         docs_label='Spring Cloud Config Server',
     ),
     id=ID, name=NAME, version='0.1.0', category='infrastructure', description='Settings and instances read from a Spring Cloud Config server, set by environment variables.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.2,<0.6', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.2,<0.7', edition='community',
     hooks=Hooks(settings_source=SpringConfig()),
 )

@@ -53,6 +53,11 @@
   "Admin · Security update available": "Administration · Mise à jour de sécurité disponible",
   "Admin · Update available": "Administration · Mise à jour disponible",
   "Advanced": "Avancé",
+  "Available in questions": "Disponible dans les questions",
+  "Everyone": "Tout le monde",
+  "Operators and admins only": "Opérateurs et administrateurs uniquement",
+  "Card investigations only": "Enquêtes de cartes uniquement",
+  "Who may have Skopax read this connection when answering a Slack ask, a chat message or a page ask. Card investigations always may.": "Qui peut faire lire cette connexion par Skopax pour répondre à une question Slack, à un message de chat ou à une question de la page. Les enquêtes de cartes le peuvent toujours.",
   "After GC": "Après GC",
   "Age": "Âge",
   "Airbyte failures": "Échecs Airbyte",
@@ -1796,7 +1801,58 @@
   "Id of the Jira sprint field (Jira Software), such as customfield_10020; empty puts no task in a sprint": "Identifiant du champ de sprint Jira (Jira Software), comme customfield_10020 ; vide ne place aucune tâche dans un sprint",
   "Warning: {0}": "Avertissement : {0}",
   "{0} warnings: {1}": "{0} avertissements : {1}",
-  "Page gone": "Page disparue"
+  "Page gone": "Page disparue",
+  "Working": "En cours",
+  "Still working: refresh to see the result": "Toujours en cours : actualisez la page pour voir le r\u00e9sultat",
+  "Use": "Usage",
+  "Model": "Mod\u00e8le",
+  "Effort": "Effort",
+  "Price per million tokens (input / output)": "Prix par million de tokens (entr\u00e9e / sortie)",
+  "Average cost per run (7 days)": "Co\u00fbt moyen par ex\u00e9cution (7 jours)",
+  "Data goes to": "Donn\u00e9es envoy\u00e9es \u00e0",
+  "Cheap models often miss steps in long investigations": "Les mod\u00e8les bon march\u00e9 sautent souvent des \u00e9tapes dans les longues enqu\u00eates",
+  "Who does what": "Qui fait quoi",
+  "Default": "Par d\u00e9faut",
+  "No price": "Pas de prix",
+  "No runs in 7 days": "Aucune ex\u00e9cution en 7 jours",
+  "The compatible connections did not load; open the tab again.": "Les connexions compatibles n\u2019ont pas pu \u00eatre charg\u00e9es ; rouvrez l\u2019onglet.",
+  "Add compatible connection": "Ajouter une connexion compatible",
+  "Private and loopback addresses are allowed for compatible connections (core.allow-private-ai is on).": "Les adresses priv\u00e9es et de bouclage sont autoris\u00e9es pour les connexions compatibles (core.allow-private-ai est activ\u00e9).",
+  "Private and loopback addresses are refused for compatible connections (core.allow-private-ai is off).": "Les adresses priv\u00e9es et de bouclage sont refus\u00e9es pour les connexions compatibles (core.allow-private-ai est d\u00e9sactiv\u00e9).",
+  "Not tested yet": "Pas encore test\u00e9e",
+  "New compatible connection": "Nouvelle connexion compatible",
+  "key set": "cl\u00e9 d\u00e9finie",
+  "no key": "pas de cl\u00e9",
+  "Last test": "Dernier test",
+  "Base URL": "URL de base",
+  "Models, with prices in USD per million tokens (input, output)": "Mod\u00e8les, avec les prix en USD par million de tokens (entr\u00e9e, sortie)",
+  "Add model": "Ajouter un mod\u00e8le",
+  "Uses tools": "Utilise des outils",
+  "Reads images": "Lit les images",
+  "Enter a name": "Saisissez un nom",
+  "Delete this compatible connection?": "Supprimer cette connexion compatible ?",
+  "Its key and models are deleted. A use set to one of its models is held until another model is picked.": "Sa cl\u00e9 et ses mod\u00e8les sont supprim\u00e9s. Un usage r\u00e9gl\u00e9 sur l\u2019un de ses mod\u00e8les est suspendu jusqu\u2019au choix d\u2019un autre mod\u00e8le.",
+  "Delete connection": "Supprimer la connexion",
+  "Deleting\u2026": "Suppression\u2026",
+  "Not deleted, try again": "Non supprim\u00e9e, r\u00e9essayez",
+  "Deleted": "Supprim\u00e9e",
+  "Key": "Cl\u00e9",
+  "Testing\u2026": "Test en cours\u2026",
+  "The test could not run": "Le test n\u2019a pas pu s\u2019ex\u00e9cuter",
+  "Saved, live within {0} s on every pod": "Enregistr\u00e9, actif sous {0} s sur chaque pod",
+  "Default provider": "Fournisseur par d\u00e9faut",
+  "The uses table did not load; open the tab again.": "Le tableau des usages n\u2019a pas pu \u00eatre charg\u00e9 ; rouvrez l\u2019onglet.",
+  "Not fit for investigations: the model did not call the tool": "Inadapt\u00e9 aux enqu\u00eates : le mod\u00e8le n\u2019a pas appel\u00e9 l\u2019outil",
+  "That name is already used by another connection: pick another one": "Ce nom est d\u00e9j\u00e0 utilis\u00e9 par une autre connexion : choisissez-en un autre",
+  "Open the setting": "Ouvrir le param\u00e8tre",
+  "Model {0} id": "Mod\u00e8le {0} : id",
+  "Model {0} input price, USD per million tokens": "Mod\u00e8le {0} : prix d\u2019entr\u00e9e, USD par million de tokens",
+  "Model {0} output price, USD per million tokens": "Mod\u00e8le {0} : prix de sortie, USD par million de tokens",
+  "Remove model {0}": "Retirer le mod\u00e8le {0}",
+  "The AI provider keys and compatible connections that the investigator, the chat and the self-review use, which model each use runs, and the investigator settings. Each use can run on a different provider; Default provider supplies the model of any use left on its default. A key set here is saved sealed, takes the place of ANTHROPIC_API_KEY or OPENAI_API_KEY and is never shown again.": "Les cl\u00e9s des fournisseurs d\u2019IA et les connexions compatibles qu\u2019utilisent l\u2019enqu\u00eateur, le chat et l\u2019auto-revue, le mod\u00e8le de chaque usage, et les param\u00e8tres de l\u2019enqu\u00eateur. Chaque usage peut passer par un fournisseur diff\u00e9rent ; le fournisseur par d\u00e9faut donne le mod\u00e8le de tout usage laiss\u00e9 sur sa valeur par d\u00e9faut. Une cl\u00e9 d\u00e9finie ici est enregistr\u00e9e scell\u00e9e, remplace ANTHROPIC_API_KEY ou OPENAI_API_KEY et n\u2019est plus jamais affich\u00e9e.",
+  "Investigator: the AI providers and their keys, which model each use runs, and the investigator settings": "Enqu\u00eateur : les fournisseurs d\u2019IA et leurs cl\u00e9s, le mod\u00e8le de chaque usage, et les param\u00e8tres de l\u2019enqu\u00eateur",
+  "Reset to empty": "R\u00e9tabli \u00e0 vide",
+  "default": "par d\u00e9faut"
  },
  "rules": [
   [
@@ -2262,6 +2318,22 @@
   [
    "^Already active when (.+) was connected \\(since (\\d{1,2}) ([A-Z][a-z]{2})( \\d{4})? (\\d{1,2}:\\d{2})\\)$",
    "Déjà actif quand $1 a été connecté (depuis le $2 $3$4 $5)"
+  ],
+  [
+   "^Set by (\\S+) (.+)$",
+   "D\u00e9fini par $1 $2"
+  ],
+  [
+   "^Reset to (.+)$",
+   "R\u00e9tabli \u00e0 $1"
+  ],
+  [
+   "^Which model runs: Critical cards (\\S+) \u00b7 High cards (\\S+) \u00b7 Warning and Info cards (\\S+)$",
+   "Quel mod\u00e8le tourne : cartes critiques $1 \u00b7 cartes hautes $2 \u00b7 cartes d\u2019avertissement et d\u2019info $3"
+  ],
+  [
+   "^Not done: the Who does what table could not be redrawn: (.+)\\.$",
+   "Non fait : le tableau Qui fait quoi n\u2019a pas pu \u00eatre redessin\u00e9 : $1."
   ]
  ],
  "months": {

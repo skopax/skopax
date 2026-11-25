@@ -1,6 +1,7 @@
 import logging
 import threading
 import time
+from collections.abc import Callable
 
 from pymongo.errors import ConnectionFailure, DuplicateKeyError, PyMongoError
 
@@ -219,7 +220,17 @@ def _plugins(db, col, registry: Registry, boot_id: str, clock, applied: list[str
 _interrupted: dict[str, str] = {}
 
 
-def _try(db, registry: Registry, boot_id: str, clock, writer: InstanceWriter | None = None) -> tuple[list[str] | None, bool]:
+def _steps(steps: tuple[Callable[[], object], ...]) -> None:
+    for step in steps:
+        try:
+            step()
+        except PyMongoError:
+            raise
+        except Exception as e:
+            log.warning('%s', msg('migrations.step_failed', error=kind(e)))
+
+
+def _try(db, registry: Registry, boot_id: str, clock, writer: InstanceWriter | None = None, steps: tuple[Callable[[], object], ...] = ()) -> tuple[list[str] | None, bool]:
     col = db['schema_version']
     if not _lease(col, boot_id, clock()):
         return None, False
@@ -233,6 +244,9 @@ def _try(db, registry: Registry, boot_id: str, clock, writer: InstanceWriter | N
             except Exception as e:
                 raise MigrationFailed(msg('migrations.core_failed', error=kind(e)), CORE_OWNER, kind(e)) from None
             _plugins(db, col, registry, boot_id, clock, applied, writer)
+            if steps:
+                _renew(col, boot_id, clock)
+                _steps(steps)
             _pending_required(db, registry)
     except LeaseLost:
         log.warning('%s', msg('migrations.lease_lost'))
@@ -249,12 +263,12 @@ def _try(db, registry: Registry, boot_id: str, clock, writer: InstanceWriter | N
     return applied, False
 
 
-def attempt(db, registry: Registry, boot_id: str, clock=time.time, writer: InstanceWriter | None = None) -> list[str] | None:
-    return _try(db, registry, boot_id, clock, writer)[0]
+def attempt(db, registry: Registry, boot_id: str, clock=time.time, writer: InstanceWriter | None = None, steps: tuple[Callable[[], object], ...] = ()) -> list[str] | None:
+    return _try(db, registry, boot_id, clock, writer, steps)[0]
 
 
-def run(db, registry: Registry, boot_id: str, clock=time.time, writer: InstanceWriter | None = None) -> list[str]:
-    found = attempt(db, registry, boot_id, clock, writer)
+def run(db, registry: Registry, boot_id: str, clock=time.time, writer: InstanceWriter | None = None, steps: tuple[Callable[[], object], ...] = ()) -> list[str]:
+    found = attempt(db, registry, boot_id, clock, writer, steps)
     if found is None:
         log.info('migrations are being applied by another instance; skipping')
         return []
@@ -262,11 +276,11 @@ def run(db, registry: Registry, boot_id: str, clock=time.time, writer: InstanceW
 
 
 def wait_and_run(db, registry: Registry, boot_id: str, clock=time.time, sleep=time.sleep, wait_s: float | None = None, poll_s: float | None = None,
-                 writer: InstanceWriter | None = None) -> list[str] | None:
+                 writer: InstanceWriter | None = None, steps: tuple[Callable[[], object], ...] = ()) -> list[str] | None:
     deadline = clock() + (WAIT_S if wait_s is None else wait_s)
     while True:
         try:
-            found, interrupted = _try(db, registry, boot_id, clock, writer)
+            found, interrupted = _try(db, registry, boot_id, clock, writer, steps)
         except PyMongoError:
             _pending_required(db, registry)
             raise
