@@ -302,7 +302,29 @@ async function aTileWithManyInstancesWrapsInsideThePage() {
   console.log('PASS a tile with many instances wraps inside the page instead of pushing it sideways at 390 px');
 }
 
+async function aFailingSourceKeepsTheStripClosedUntilClicked() {
+  //given
+  const plugins = [{id: 'teams', name: 'Microsoft Teams', icon: '/plugins/teams/icon.svg', tab: null, passes: [], queued: false,
+    instances: [{name: 'seo', primary: true, pass: null, status: null, state: 'error', text: 'error: seo: HTTP 400'}]}];
+  const t = await boot(plugins);
+  const {doc} = t;
+  const pill = doc.querySelector('#meta .sg-pill');
+  const body = doc.getElementById('sg-integrations');
+  const before = {crit: pill.classList.contains('k-crit'), expanded: pill.getAttribute('aria-expanded'), hidden: body.hidden};
+
+  //when
+  pill.click();
+
+  //then
+  assert.deepStrictEqual(before, {crit: true, expanded: 'false', hidden: true}, 'an error colours the pill but does not open the strip');
+  assert.deepStrictEqual({expanded: pill.getAttribute('aria-expanded'), hidden: doc.getElementById('sg-integrations').hidden}, {expanded: 'true', hidden: false}, 'one click opens it');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS a failing source colours the strip pill and leaves the strip closed until clicked');
+}
+
 (async () => {
+  await aFailingSourceKeepsTheStripClosedUntilClicked();
   noProdIsHardcoded();
   await tilesComeFromThePluginsList();
   await aPluginWithoutChecksShowsItsInstancesNeutrally();

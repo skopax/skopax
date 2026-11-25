@@ -6,6 +6,8 @@ PRICES = {
     'claude-opus-4-8': {'input_tokens': 5.00, 'output_tokens': 25.00, 'cache_read_input_tokens': 0.50, 'cache_creation_input_tokens': 6.25},
     'claude-sonnet-5-5': {'input_tokens': 2.00, 'output_tokens': 10.00, 'cache_read_input_tokens': 0.10, 'cache_creation_input_tokens': 2.50},
     'claude-haiku-5-5': {'input_tokens': 0.10, 'output_tokens': 0.50, 'cache_read_input_tokens': 0.01, 'cache_creation_input_tokens': 0.125},
+    'claude-fable-5-2': {'input_tokens': 8.00, 'output_tokens': 40.00, 'cache_read_input_tokens': 0.20, 'cache_creation_input_tokens': 10.00},
+    'claude-mythos-5-2': {'input_tokens': 8.00, 'output_tokens': 40.00, 'cache_read_input_tokens': 0.20, 'cache_creation_input_tokens': 10.00},
 }
 FALLBACK_PRICES = {
     'claude-sonnet-5': {'input_tokens': 2.00, 'output_tokens': 10.00, 'cache_read_input_tokens': 0.20, 'cache_creation_input_tokens': 2.50},
@@ -31,7 +33,7 @@ DEFAULTS = {
 SEARCH_USD = {ANTHROPIC: 0.01, OPENAI: 0.01}
 TOKEN_PARTS = ('cacheRead', 'input', 'cacheWrite5m', 'cacheWrite1h', 'output')
 PARTS = TOKEN_PARTS + ('webSearch',)
-SOURCES = ('pod', 'page', 'slack', 'chat', 'assess', 'gate', 'smalltalk', 'pagescan', 'selfreview', 'mcp')
+SOURCES = ('pod', 'page', 'slack', 'chat', 'assess', 'gate', 'smalltalk', 'pagescan', 'selfreview', 'threadsummary', 'mcp')
 POD_BY = 'pod'
 
 

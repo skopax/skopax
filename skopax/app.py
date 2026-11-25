@@ -97,6 +97,8 @@ from skopax.scheduler import Job, Scheduler
 from skopax.settle import Settle, ignore_doc, ignored
 from skopax.slackevents import Clicks, Intake, Listener, Replier, TicketRefused, socket_client, way_in
 from skopax.clearnotes import ClearNotes
+from skopax import threadsummary
+from skopax.threadsummary import ThreadSummaries, email_names
 from skopax.notices import Notices
 from skopax import mail as mail_out, noticemail
 from skopax.noticemail import NoticeMail
@@ -1049,7 +1051,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise ValueError('this card is being posted to Slack already')
         return {'result': 'posting to Slack now' if said == 'queued' else 'not posted: Slack auto-send is off'}
 
-    replier = Replier(store, slack, settings, attach=attacher, base_url=base_url, hosts=site_hosts)
+    replier = Replier(store, slack, settings, attach=attacher, base_url=base_url, hosts=site_hosts, summarise=lambda action: threads.answered(action))
 
     def state_note(key: str, before: dict) -> None:
         notes.triaged(key, before)
@@ -1096,9 +1098,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         investigator.role_of = lambda action: asker_role(action, users)
 
     gate = Gate(store, settings, client=anthropic_client, key=ai_keys.current, pack=org_pack)
+    threads = ThreadSummaries(store, slack, settings, client=anthropic_client, key=ai_keys.current, names=email_names(operators), halted=lambda now: investigator.why_halted(now))
 
     intake = Intake(store, slack, operators, gate, talk, investigator, settings, base_url=base_url, ticket_extra=plugin_projects, on=lambda: features.on('slack-listener') and slack.enabled,
-                    chat=lambda: features.on('chat'), not_ready=lambda: not_ready_text('slackevents.not_ready', 'slackevents.needs'), jira_site=jira_site)
+                    chat=lambda: features.on('chat'), not_ready=lambda: not_ready_text('slackevents.not_ready', 'slackevents.needs'), jira_site=jira_site, threads=threads)
 
     def refuse_information(key: str) -> None:
         try:
@@ -1408,6 +1411,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         Job('slack-fallback', SLACK_FALLBACK_PERIOD, SLACK_FALLBACK_OFFSET, fallback.run_once, lambda: slack.enabled and fallback.enabled),
         Job('slack-reminders', REMINDER_PERIOD, REMINDER_OFFSET, lambda now: and_notify(reminders.run_once(now), notices.reminded), lambda: reminders.enabled),
         Job('slack-clear-notes', CLEAR_NOTE_PERIOD, CLEAR_NOTE_OFFSET, clear_notes.run_once, lambda: clear_notes.enabled),
+        Job('slack-thread-summary', threadsummary.SWEEP_PERIOD, threadsummary.SWEEP_OFFSET, threads.sweep, lambda: slack.enabled and threads.on),
         Job('self-review', DAY_S, lambda now, hour=max(settings.selfreview_hour, 0): review_slot_offset(hour, now), self_review.scheduled, lambda: self_review.configured, background=True),
         Job('probe', PROBE_PERIOD, PROBE_OFFSET, probe_run, enabled=lambda: settings.probe),
         Job('version-check', VERSION_PERIOD, VERSION_OFFSET + jitter_of(base_settings.mongo_uri + base_settings.mongo_db), versions.scheduled, lambda: features.on('update-check')),

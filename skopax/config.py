@@ -142,6 +142,7 @@ class Settings:
     slack_user_ask_cap: int = 4
     page_ask_cap: int = 6
     slack_dm_chats: bool = True
+    slack_thread_summary: bool = True
     slack_operator_cache_s: int = 600
     slack_fallback_minutes: int = 15
     slack_crit_now: bool = True
@@ -194,6 +195,8 @@ class Settings:
     ai_provider: str = 'anthropic'
     investigate_mode: str = 'off'
     investigate_model: str = 'claude-opus-5-5'
+    investigate_model_critical: str = ''
+    investigate_model_high: str = ''
     investigate_effort: str = 'medium'
     investigate_daily_usd: float = 25.0
     investigate_max_cards: int = 5
@@ -692,6 +695,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         slack_user_ask_cap=int(get('slack.user-ask-cap', 'SLACK_USER_ASK_CAP', '4').strip() or 4),
         page_ask_cap=int(get('page.ask-cap', 'PAGE_ASK_CAP', '6').strip() or 6),
         slack_dm_chats=get('slack.dm-chats', 'SLACK_DM_CHATS', 'true').strip().lower() == 'true',
+        slack_thread_summary=get('slack.thread-summary', 'SLACK_THREAD_SUMMARY', 'true').strip().lower() == 'true',
         slack_operator_cache_s=int(get('slack.operator-cache-seconds', 'SLACK_OPERATOR_CACHE_SECONDS', '600')),
         slack_fallback_minutes=int(get('slack.fallback-minutes', 'SLACK_FALLBACK_MINUTES', '15').strip() or 15),
         routes_slack_echo=get('routes.slack-echo', 'ROUTES_SLACK_ECHO', 'false').strip().lower() == 'true',
@@ -744,6 +748,8 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         ai_provider=provider,
         investigate_mode=mode,
         investigate_model=get('investigate.model', 'INVESTIGATE_MODEL', 'claude-opus-5-5').strip(),
+        investigate_model_critical=get('investigate.model-critical', 'INVESTIGATE_MODEL_CRITICAL', '').strip(),
+        investigate_model_high=get('investigate.model-high', 'INVESTIGATE_MODEL_HIGH', '').strip(),
         investigate_effort=get('investigate.effort', 'INVESTIGATE_EFFORT', 'medium').strip(),
         investigate_daily_usd=float(get('investigate.daily-usd', 'INVESTIGATE_DAILY_USD', '25')),
         investigate_max_cards=int(get('investigate.max-cards', 'INVESTIGATE_MAX_CARDS', '5')),

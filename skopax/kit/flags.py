@@ -12,6 +12,7 @@ PHRASES = (
     ('ignore all', re.compile(r'\bignore\s+all\b', re.I)),
     ('you are', re.compile(r'\byou\s+are\s+(?:an?|the|now)\b', re.I)),
     ('assistant', re.compile(r'(?<![\w/-])assistant(?![\w/-])(?!\s+service)', re.I)),
+    ('ignore instructions', re.compile(r'\bignore\s+(?:all\s+)?(?:of\s+)?your\s+(?:(?:previous|prior|earlier)\s+)?instructions\b', re.I)),
 )
 SOFT = ('known noise', 'assistant')
 ESCAPE = re.compile(r'\\(?:u([0-9a-fA-F]{4})|(["\\/bfnrt]))')

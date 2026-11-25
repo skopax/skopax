@@ -24,7 +24,8 @@ async function boot(me, opts) {
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
   const state = {rev: 1, updatedAt: iso(0), sweptIso: iso(1), nextIso: new Date(Date.now() + 3600000).toISOString(), sources: {prom: 'ok'}, summary: {level: 'ok', headline: 'x', points: [], at: iso(1)},
     anomalies: [], services: [], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
-  const html = pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state));
+  const page = pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state));
+  const html = opts.width && opts.width <= 768 ? page.replace('<meta charset="utf-8">', '<meta charset="utf-8"><style>.top .hamb#side-open { display: inline-grid; }</style>') : page;
   const dom = new JSDOM(html, {
     url: 'https://skopax.example.com' + (opts.path || '/') + '#t=anoms', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(w) {

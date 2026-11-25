@@ -44,6 +44,7 @@ WEB_LINK = re.compile(r'https?://[^\s"<>]+')
 SEV_COLOURS = {'crit': '#b42318', 'high': '#b54400', 'warn': '#fdb022', 'info': '#175cd3'}
 SEV_INKS = {'warn': '#8a5a00'}
 SEV_OUTLINED = ('warn',)
+THREAD_BULLETS = 6
 INK, MUTED, PAPER, PAGE, EDGE, BUTTON = '#0f1720', '#4a5560', '#ffffff', '#f4f6f8', '#d5dbe1', '#1f5fbf'
 FONT = '-apple-system,Segoe UI,Helvetica,Arial,sans-serif'
 
@@ -536,6 +537,12 @@ def card_text(title: str, head: str, sev_text: str, status: str, lines: list[str
     return '\n'.join(parts) + '\n'
 
 
+def thread_lines(card: dict) -> list[str]:
+    summary = card.get('threadSummary') if isinstance(card.get('threadSummary'), dict) else {}
+    bullets = [flat(b) for b in summary.get('bullets') or [] if isinstance(b, str) and b.strip()][:THREAD_BULLETS]
+    return [msg('mail.thread') + ':'] + [f'\u2022 {b}' for b in bullets] if bullets else []
+
+
 def card_mail(card: dict, link: str, *, head: str, body_lines: list[str], lang: str | None = None) -> tuple[str, str, str]:
     with speaking(lang) if lang else contextlib.nullcontext():
         title = title_of(card)
@@ -544,6 +551,7 @@ def card_mail(card: dict, link: str, *, head: str, body_lines: list[str], lang: 
         status = msg(f'mail.state.{state_of(card)}')
         shown_head = flat(head)
         lines = [str(line) for line in body_lines or [] if str(line or '').strip()]
+        lines += thread_lines(card)
         web = link if isinstance(link, str) and WEB_LINK.fullmatch(link) else None
         footer = msg('mail.footer')
         attribution = brand.attribution_line()

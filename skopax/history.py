@@ -35,7 +35,7 @@ ASK_EVENT = 'slack-ask'
 ADDRESSED = ('progress', 'handled')
 CARD_FIELDS = ('key', 'num', 'svc', 'label', 'sub', 'ns', 'src', 'sev', 'unit', 'firstSeen', 'lastSeen', 'clearedAt', 'peak', 'triage', 'ticket', 'owner', 'triagedBy', 'autoResolvedAt', 'parent', 'teamsPosts', 'resolution')
 MUTED_PRESET = 'mutedPreset'
-STORED_FIELDS = {f: 1 for f in CARD_FIELDS + ('note', 'noteBy', 'recommend', 'recommendBy', 'muted', MUTED_PRESET, 'status', 'slackPost', 'autoSend', 'pushedAt', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'clearNote', 'routeEcho')}
+STORED_FIELDS = {f: 1 for f in CARD_FIELDS + ('note', 'noteBy', 'recommend', 'recommendBy', 'muted', MUTED_PRESET, 'status', 'slackPost', 'autoSend', 'pushedAt', 'teamsPosts', 'tags', 'tagsOff', 'business', 'tagsAt', 'fixPosts', 'clearNote', 'routeEcho', 'threadSummary', 'threadSummaryDay', 'threadSeenTs', 'threadSeenAt')}
 PAST_FIELDS = ('key', 'num', 'svc', 'label', 'sub', 'ns', 'src', 'sev', 'unit', 'firstSeen', 'lastSeen', 'clearedAt', 'peak', 'outcome', 'triage', 'ticket', 'owner', 'triagedBy',
                'muted', 'note', 'noteBy', 'recommend', 'recommendBy', 'runId', 'recap', 'reopens', 'asks', 'said', 'backfill', 'resolution', 'clearNote')
 ASK_FIELDS = ('at', 'by', 'question', 'answer', 'thread', 'usd', 'runId')

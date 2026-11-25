@@ -309,6 +309,12 @@ def route_of(plugin, item) -> Parsed:
     return Parsed(route, None, unknown, dropped)
 
 
+def thread_of(card: dict) -> dict:
+    summary = card.get('threadSummary') if isinstance(card.get('threadSummary'), dict) else {}
+    bullets = [str(b) for b in summary.get('bullets') or [] if isinstance(b, str) and b.strip()]
+    return {'threadSummary': {'bullets': bullets}} if bullets else {}
+
+
 class Routes:
     def __init__(self, store, runtime, settings, clock: Callable[[], float] = time.time, attribution: Callable[[], dict | None] = lambda: None,
                  timeout: float = HOOK_TIMEOUT_S, base: Callable[[], str] | None = None, autostart: bool = False, only_new: bool = False):
@@ -598,7 +604,7 @@ class Routes:
 
     def _card(self, card: dict) -> dict:
         return {'key': card.get('key'), 'svc': str(card.get('svc') or ''), 'ns': str(card.get('ns') or ''), 'sev': str(card.get('sev') or 'info'), 'label': str(card.get('label') or ''),
-                'short': str(card.get('short') or ''), 'number': number(card)} | ({'cameBack': came_back_line(card)} if came_back_line(card) else {})
+                'short': str(card.get('short') or ''), 'number': number(card)} | ({'cameBack': came_back_line(card)} if came_back_line(card) else {}) | thread_of(card)
 
     def _message(self, kind_: str, title: str, card: dict, mention: Iterable[str], **extra) -> dict:
         base = self._base()

@@ -203,8 +203,9 @@ class Intake:
 
     def __init__(self, store, slack, operators, gate, talk, investigator, settings, clock=time.time, base_url: str = '', ticket_extra=lambda: (),
                  on: Callable[[], bool] = lambda: True, chat: Callable[[], bool] = lambda: True, not_ready: Callable[[], str] = lambda: msg('slackevents.not_ready'),
-                 jira_site: Callable[[], str] = lambda: ''):
+                 jira_site: Callable[[], str] = lambda: '', threads=None):
         self.jira_site = jira_site
+        self.threads = threads
         self.on = on
         self.chat = chat
         self.not_ready = not_ready
@@ -243,6 +244,7 @@ class Intake:
             where, root, born, tagged, soft = 'dm', thread_ts if is_reply else ts, None, True, False
         elif card:
             where, root, born = 'card', thread_ts, (card.get('slackPost') or {}).get('at')
+            self._thread_seen(card, ts)
         elif (tagged or soft) and not is_reply:
             if not (self._ask_channel(channel) if tagged else self._main_channel(channel)):
                 return None
@@ -272,6 +274,14 @@ class Intake:
             except Exception as inner:
                 log.error('slack intake record for %s in %s failed: %s', ts, channel, error_kind(inner))
             return 'error'
+
+    def _thread_seen(self, card: dict, ts: str) -> None:
+        if self.threads is None:
+            return
+        try:
+            self.threads.seen(card, ts, self.clock())
+        except Exception as e:
+            log.warning('thread mark of %s failed: %s', card.get('key'), error_kind(e))
 
     def _ask_channel(self, channel: str) -> bool:
         if self.ask_channels == 'main':
@@ -619,8 +629,10 @@ class Intake:
 
 
 class Replier:
-    def __init__(self, store, slack, settings, clock=time.time, attach=None, base_url: str = '', hosts: Callable[[], tuple[str, ...]] = lambda: ()):
+    def __init__(self, store, slack, settings, clock=time.time, attach=None, base_url: str = '', hosts: Callable[[], tuple[str, ...]] = lambda: (),
+                 summarise: Callable[[dict], object] | None = None):
         self.base_url = base_url.rstrip('/')
+        self.summarise = summarise
         self.hosts = hosts
         self.store = store
         self.slack = slack
@@ -687,7 +699,13 @@ class Replier:
                 self.attach(s['channel'], s.get('threadTs') or s.get('ts'), shots, 'slack ask', action.get('runId'))
             except Exception as e:
                 log.warning('screenshots for the slack reply of %s were not attached: %s', action.get('id'), error_kind(e))
-        return self._keep(action, {'ts': sent.get('ts'), 'text': text, 'at': at} | ({'button': True} if proposal or card_action or run_proposal else {}) | ({'cardAction': True} if card_action else {}))
+        kept = self._keep(action, {'ts': sent.get('ts'), 'text': text, 'at': at} | ({'button': True} if proposal or card_action or run_proposal else {}) | ({'cardAction': True} if card_action else {}))
+        if answered and s.get('where') == 'card' and self.summarise is not None:
+            try:
+                self.summarise(action)
+            except Exception as e:
+                log.warning('thread summary after the slack reply of %s failed: %s', action.get('id'), error_kind(e))
+        return kept
 
     def _card(self, call: dict | None) -> dict | None:
         if not call:

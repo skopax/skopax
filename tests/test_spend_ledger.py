@@ -147,7 +147,7 @@ def test_an_unpriced_served_model_gets_a_row_priced_at_the_rate_it_was_charged(s
     row = store.ledger_since(DAY)[0]
 
     # then
-    assert (row['model'], row['pricedAs']) == ('claude-fable-9', 'claude-opus-5')
+    assert (row['model'], row['pricedAs']) == ('claude-fable-9', 'claude-fable-5-2')
     assert row['usd']['total'] == pytest.approx(result.usd)
 
 

@@ -40,6 +40,7 @@ FILE_HOST = 'files.slack.com'
 IMAGE_BYTES_MAX = 3_750_000
 IMAGE_MIMES = ('image/png', 'image/jpeg', 'image/gif', 'image/webp')
 REPLIES_PAGE = 200
+REPLIES_PAGES = 10
 MEMBERS_PAGE = 200
 MEMBERS_PAGES_MAX = 100
 RATE_LIMITED = 'ratelimited'
@@ -432,8 +433,25 @@ class Slack:
     def history(self, channel: str, latest: str, limit: int = 5) -> list[dict]:
         return self.call('conversations.history', {'channel': channel, 'latest': latest, 'limit': limit}).get('messages') or []
 
-    def replies(self, channel: str, thread_ts: str, limit: int = 10) -> list[dict]:
-        return (self.call('conversations.replies', {'channel': channel, 'ts': thread_ts, 'limit': REPLIES_PAGE}).get('messages') or [])[-limit:]
+    def replies(self, channel: str, thread_ts: str, limit: int = 10, oldest: str | None = None) -> list[dict]:
+        found, whole = self._replies_from(channel, thread_ts, None)
+        if not whole and oldest:
+            found, _ = self._replies_from(channel, thread_ts, oldest)
+        return found[-limit:]
+
+    def _replies_from(self, channel: str, thread_ts: str, oldest: str | None) -> tuple[list[dict], bool]:
+        found, seen, cursor = [], set(), None
+        for _ in range(REPLIES_PAGES):
+            body = self.call('conversations.replies', {'channel': channel, 'ts': thread_ts, 'limit': REPLIES_PAGE, 'cursor': cursor, 'oldest': oldest})
+            for m in body.get('messages') or []:
+                ts = m.get('ts') if isinstance(m, dict) else None
+                if ts is None or ts not in seen:
+                    found.append(m)
+                    seen.add(ts)
+            cursor = (body.get('response_metadata') or {}).get('next_cursor')
+            if not body.get('has_more') or not cursor:
+                return found, True
+        return found, False
 
     def channel_name(self, channel: str) -> str | None:
         self._renew()

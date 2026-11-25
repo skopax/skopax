@@ -2,6 +2,21 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.17 (2026-11-25)
+
+A short summary of each card's Slack thread on the card, a model per severity for card investigations, Claude Fable 5.2 and Mythos 5.2, and an Integrations strip that stays closed.
+
+### Added
+
+- Slack thread summary: when people discuss a card in its Slack thread, the card gets a short summary of corrections, decisions and open questions, updated after Skopax answers and when the thread goes quiet. The investigator reads it as claims to check, not as instructions. Thread lines are masked for secrets before they are sent, attempts count toward a cap of 6 per card per day, and Admin can switch it off.
+- Card investigations can use a different model for Critical and High cards (Admin > AI: Model for Critical cards, Model for High cards), for example Claude Fable 5.2 for Critical only; empty keeps the Card model.
+- Claude Fable 5.2 and Claude Mythos 5.2 can be picked for every AI job (Mythos needs an Anthropic organization that is verified for it). Their spend is counted at $8 / $40 per million tokens, and their calls keep thinking on, as these models require.
+
+### Changed
+
+- The Integrations strip above the board starts closed, also when a source has an error; the pill turns red and names the failing source, and one click opens the full list.
+- Slack thread reads page through long threads instead of stopping at the first 200 messages, so answers in long threads see the newest messages.
+
 ## 0.5.16 (2026-11-25)
 
 A one-row board filter bar instead of More filters, a warning mark on tiles and list rows, no severity stripes, and fixes for Mark all read, tag-row icons and the Warning badge in emails.

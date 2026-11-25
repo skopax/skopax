@@ -36,6 +36,7 @@ async function boot(opts) {
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
   let html = pageHtml(TEMPLATE, {brand: opts.brand || PLAIN}).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state()));
+  if (opts.width && opts.width <= 768) html = html.replace('<meta charset="utf-8">', '<meta charset="utf-8"><style>.top .hamb#side-open { display: inline-grid; }</style>');
   if (opts.listen) html = html.replace('<script type="text/plain" id="plugin-scripts"></script>', '<script>document.addEventListener("skopax:page", function (e) { window.__pages = (window.__pages || []).concat([e.detail.tab]); e.detail.section.textContent = "filled by " + e.detail.tab; });</script>');
   const me = Object.assign({loginEnabled: true, user: 'alice@example.com', operator: true, admin: false, teams: [], tags: [], chat: true}, opts.me || {});
   const dom = new JSDOM(html, {

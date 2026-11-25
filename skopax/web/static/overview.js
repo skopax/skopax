@@ -42,7 +42,7 @@ function renderMeta() {
     if (!ks.length) return;
     var bad = ks.filter(function (k) { return srcState(k) === 'error' || srcState(k) === 'warn' || srcState(k) === 'pending'; });
     var kk = bad.some(function (k) { return srcState(k) === 'error'; }) ? 'k-crit' : bad.length ? 'k-warn' : ks.every(function (k) { return srcState(k) === 'none'; }) ? 'k-muted' : 'k-ok';
-    var on = srcOpen[g.id] != null ? srcOpen[g.id] : kk === 'k-crit';
+    var on = !!srcOpen[g.id];
     var badTxt = bad.slice(0, 2).map(function (k) { return SRC_TAB[k][0] + ' ' + srcText(k); }).join(', ') + (bad.length > 2 ? ' +' + (bad.length - 2) : '');
     var title = g.label + ': ' + ks.map(function (k) { return SRC_TAB[k][0] + ' ' + srcText(k); }).join(' \u00b7 ') + ' \u00b7 Last check ' + lastPassAt();
     pills += '<button type="button" class="sg-pill ' + kk + '" data-grp="' + g.id + '" aria-expanded="' + on + '" aria-controls="sg-' + g.id + '" title="' + esc(title) + '">' + esc(g.label) +

@@ -231,7 +231,7 @@ def test_switching_the_provider_in_admin_moves_models_key_and_choices(store: Sto
 
     # then
     assert put.status_code == 200
-    assert before == ('anthropic', 'claude-opus-5-5', 'test-anthropic-key', ['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5'])
+    assert before == ('anthropic', 'claude-opus-5-5', 'test-anthropic-key', ['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2', 'claude-mythos-5-2'])
     assert after == ('openai', 'gpt-6.2-astra', 'test-key', ['gpt-6.2-astra', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna'])
 
 
