@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from tests.conftest import settings
 from tests.test_engine import NOW, ago, item, stored
 from tests.test_prometheus import HARD, NOW as PROM_NOW, prom_data
+from tests.test_severity_lean import ratio
 from skopax import mail, severity, slack
 from skopax.app import create_app
 from skopax.config import SLACK_POST_SEV, load_settings
@@ -249,8 +250,21 @@ def test_every_outbound_mark_has_a_colour_per_level():
 
     # then
     assert (slack.EMOJI['crit'], slack.EMOJI['high'], slack.EMOJI['warn'], slack.EMOJI['info']) == (':red_circle:', ':large_orange_circle:', ':large_yellow_circle:', ':large_blue_circle:')
-    assert mail.SEV_COLOURS['high'] in html['high'] and mail.SEV_COLOURS['warn'] in html['warn'] and 'color:#0f1720' in html['warn']
+    assert mail.SEV_COLOURS['high'] in html['high'] and mail.SEV_COLOURS['warn'] in html['warn']
     assert len(set(mail.SEV_COLOURS.values())) == 4
+
+
+def test_a_warning_badge_is_outlined_so_a_dark_mail_client_cannot_make_it_look_like_high():
+    # when
+    html = {sev: mail.card_html('t', 'h', sev, sev, 's', [], None, 'f', None) for sev in ('crit', 'high', 'warn')}
+    small = {sev: mail.sev_badge(sev, sev) for sev in ('crit', 'high', 'warn')}
+
+    # then
+    for page in (html, small):
+        assert f'background-color:{mail.SEV_COLOURS["high"]};color:#ffffff;' in page['high'] and f'background-color:{mail.SEV_COLOURS["crit"]};color:#ffffff;' in page['crit']
+        assert 'background-color:' not in page['warn'].split('>warn<')[0].rsplit('<span', 1)[1]
+        assert f'border:1px solid {mail.SEV_COLOURS["warn"]};color:{mail.SEV_INKS["warn"]};' in page['warn']
+    assert ratio(mail.SEV_INKS['warn'], '#ffffff') >= 4.5
 
 
 def test_a_card_whose_value_is_its_age_is_pushed_on_doubling_but_keeps_its_level():

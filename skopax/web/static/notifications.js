@@ -33,7 +33,7 @@ function ntBadge(n) {
     b.hidden = !n;
   }
   var all = document.getElementById('nt-read-all');
-  if (all) all.disabled = !n;
+  if (all) all.disabled = !n && !NT.items.some(function (x) { return x.fresh; });
   if (typeof sideMarkFolds === 'function') sideMarkFolds();
   var tb = document.getElementById('top-bell-badge'), bell = document.getElementById('top-bell');
   if (tb) {

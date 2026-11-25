@@ -95,13 +95,14 @@ function isPersonF(t) { return String(t).startsWith('who:u:'); }
 function fParts(t) { return String(t || '').split('+').filter(Boolean); }
 function fKind(p) { return isTagF(p) ? 'tag' : isWhoF(p) ? 'who' : 'type'; }
 function hasF(p) { return fParts(typeF).indexOf(p) >= 0; }
-var F_ORDER = {type: 0, who: 1, tag: 2};
+var F_ORDER = {type: 0, who: 1, tag: 2}, F_MAX = 40;
+function fKinds(t) { var by = {}; fParts(t).forEach(function (p) { (by[fKind(p)] = by[fKind(p)] || []).push(p); }); return Object.keys(by).map(function (k) { return by[k]; }); }
 function toggledF(p) {
-  var parts = fParts(typeF).filter(function (x) { return fKind(x) !== fKind(p); });
-  if (!hasF(p)) parts.push(p);
+  var me = fKind(p) === 'who', parts = fParts(typeF).filter(function (x) { return x !== p && !(me && fKind(x) === 'who' && (p === 'who:me' || x === 'who:me')); });
+  if (!hasF(p)) { if (parts.length >= F_MAX) return typeF; parts.push(p); }
   return parts.sort(function (x, y) { return F_ORDER[fKind(x)] - F_ORDER[fKind(y)]; }).join('+');
 }
-function typeIs(a, t) { return String(t).indexOf('+') > 0 ? fParts(t).every(function (p) { return typeIs(a, p); }) : isWhoF(t) ? (t === 'who:none' ? !a.owner : t === 'who:any' ? !!a.owner : isPersonF(t) ? !!a.owner && personSlug(a.owner) === t.slice(6) : isMine(a)) : isTagF(t) ? (t === UNTAGGED_F ? !tagIds(a).length : tagIds(a).indexOf(t.slice(4)) >= 0) : typeOf(a) === (TYPE_ALIAS[t] || t); }
+function typeIs(a, t) { return String(t).indexOf('+') > 0 ? fKinds(t).every(function (ps) { return ps.some(function (p) { return typeIs(a, p); }); }) : isWhoF(t) ? (t === 'who:none' ? !a.owner : t === 'who:any' ? !!a.owner : isPersonF(t) ? !!a.owner && personSlug(a.owner) === t.slice(6) : isMine(a)) : isTagF(t) ? (t === UNTAGGED_F ? !tagIds(a).length : tagIds(a).indexOf(t.slice(4)) >= 0) : typeOf(a) === (TYPE_ALIAS[t] || t); }
 function typeName(t) { return String(t).indexOf('+') > 0 ? fParts(t).map(typeName).join(' \u00b7 ') : WHO_NAMES[t] || (isPersonF(t) ? 'Assigned to ' + t.slice(6) : isTagF(t) ? (t === UNTAGGED_F ? 'Untagged' : tagName(t.slice(4))) : TYPE_NAMES[TYPE_ALIAS[t] || t] || String(t).replace(/-/g, ' ')); }
 function typed(list) { return typeF ? list.filter(function (a) { return typeIs(a, typeF); }) : list; }
 var searchQ = '', searchBack = '';

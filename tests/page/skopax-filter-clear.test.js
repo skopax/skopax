@@ -39,9 +39,9 @@ async function boot() {
   return {w: dom.window, doc: dom.window.document, errors};
 }
 
-const pressed = (doc) => [...doc.querySelectorAll('#panel-anoms .qf-c[aria-pressed="true"]')].map((b) => b.dataset.f || b.dataset.type);
-const chip = (doc, f) => doc.querySelector('#panel-anoms .qf-c[data-f="' + f + '"]');
-const who = (doc) => doc.querySelector('#panel-anoms .qf-c[data-type="who:none"]');
+const pressed = (doc) => [...doc.querySelectorAll('#bf-lists .fb-i[aria-checked="true"]')].map((b) => b.dataset.f || b.dataset.type);
+const chip = (doc, f) => doc.querySelector('#bf-lists .fb-i[data-f="' + f + '"]');
+const who = (doc) => doc.querySelector('#bf-lists .fb-i[data-type="who:none"]');
 const note = (doc) => doc.getElementById('filter-note');
 
 async function turnOn(t, search) {

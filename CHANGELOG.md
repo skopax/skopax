@@ -2,6 +2,23 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.16 (2026-11-25)
+
+A one-row board filter bar instead of More filters, a warning mark on tiles and list rows, no severity stripes, and fixes for Mark all read, tag-row icons and the Warning badge in emails.
+
+### Changed
+
+- The board filters are one row: Open, Mine, Critical and Done, then Status, Tags, Assignee and Type lists with counts and search, and the Board/List switch; More filters is gone. Several picks in one list show cards matching any of them; picks in different lists must all match.
+- Board tiles and list rows show a small warning mark when a card has a Slack post that failed or was held back, a page that is gone, or a back tag; hover names it.
+- Board tiles and Closed list rows no longer carry a severity stripe; severity colour is on the severity badge only, and Closed rows now show that badge.
+- In emails a Warning badge is outlined in yellow instead of filled, so a mail app in dark mode can no longer make it look like High.
+
+### Fixed
+
+- Mark all read in Notifications works again while the shown items still look unread.
+- Icons in the opened card's tag row are small again.
+- An alert card with no service (for example a batch-job alert that carries only a namespace) no longer gets an Elasticsearch Logs link that searches for the service "-" and finds nothing; deploy report rows without a service get none either.
+
 ## 0.5.15 (2026-11-24)
 
 A calmer opened card: a short More menu, one short last-action and status line, at most three tags in view and long blocks folded. Also picking the agent node from a list, and the Skopax link opening in a new tab.

@@ -447,8 +447,8 @@ def test_the_tag_report_mail_shows_a_coloured_severity_links_only_the_card_name_
     page = bob['html']
     assert f'<a href="{card_url(BASE, "a", 1)}" style="color:{mail.INK};">#1 Checkout down</a>' in page
     for sev, word in (('crit', 'Critical'), ('high', 'High')):
-        assert f'background-color:{mail.SEV_COLOURS[sev]};color:{mail.SEV_INKS.get(sev, "#ffffff")};' in page and f'>{word}</span>' in page
-    assert f'background-color:{mail.SEV_COLOURS["warn"]};color:{mail.SEV_INKS["warn"]};' in alice['html']
+        assert mail.sev_style(sev) in page and f'>{word}</span>' in page
+    assert mail.sev_style('warn') in alice['html'] and mail.sev_style('warn').startswith('border:')
     assert hrefs(bob['html'])[-2] == tagreport.board_link(BASE, 'developer') and f'background-color:{mail.BUTTON};' in bob['html']
     assert f'Open the board: {tagreport.board_link(BASE, "developer")}' in bob['text'].split('\n')
     assert f'Open the board: {tagreport.open_link(BASE)}' in alice['text'].split('\n')

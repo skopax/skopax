@@ -132,7 +132,7 @@ async function aRowOpensItsPageAndMarksItself() {
   //then
   assert.deepStrictEqual(current(svcs.doc), ['tab-svcs'], '#t=svcs opens Services');
   assert.deepStrictEqual(current(open.doc), ['tab-anoms'], '#t=anoms/all opens the Board');
-  assert.strictEqual(open.doc.querySelector('#panel-anoms .qf-c[aria-pressed="true"]').dataset.f, 'all', 'on the All filter');
+  assert.strictEqual(open.doc.querySelector('#bf-lists .fb-i[data-f][aria-checked="true"]').dataset.f, 'all', 'on the All filter');
   assert.strictEqual(open.doc.getElementById('crumb-page').textContent, 'Board');
   assert.match(open.doc.getElementById('copy-f').title, /^Copies a link that opens Board with this filter/, 'tooltips name the Board too');
   assert.deepStrictEqual(current(linked.doc), ['tab-anoms'], '#a= opens the Board');

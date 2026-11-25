@@ -189,10 +189,10 @@ async function recurringTagOnTheRowAndInTheSideMenu() {
   const serve = {state: stateAt(5, [card(KEY, {recurring: true, recurringCount: 3, recurringDays: 7}), card(TICKETED, {recurring: true, recurringCount: 4, recurringDays: 7, triage: 'progress', ticket: 'OPS-1'}), card(NEW)]), runs: []};
   const quiet = await boot({state: stateAt(5, [card(NEW)]), runs: []});
   const {dom, doc, errors} = await boot(serve);
-  const item = (d) => d.querySelector('#panel-anoms .qf-c[data-f="recurring"]');
+  const item = (d) => d.querySelector('#bf-lists .fb-i[data-f="recurring"]');
   const keys = () => [...doc.querySelectorAll('#anoms article.inc')].map((c) => c.dataset.key);
   //when
-  doc.querySelector('#panel-anoms .qf-c[data-f="all"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-f="all"]').click();
   const tag = article(doc, KEY).querySelector('.tech-fold .tag.recurring');
   const others = [article(doc, TICKETED).querySelector('.tag.recurring'), article(doc, NEW).querySelector('.tag.recurring')];
   const label = [item(doc).querySelector('.lbl').textContent, item(doc).querySelector('.count').textContent, item(doc).classList.contains('zero')];
@@ -209,7 +209,7 @@ async function recurringTagOnTheRowAndInTheSideMenu() {
   assert.ok(note.includes('Recurring') && note.includes('1'), note);
   assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-f="open"]').getAttribute('aria-pressed'), 'true', 'a second click goes back to Open');
   assert.deepStrictEqual(keys(), [KEY, NEW]);
-  assert.ok(item(quiet.doc) && item(quiet.doc).classList.contains('zero'), 'with no card recurring the Recurring chip stays in More filters, dimmed at zero');
+  assert.ok(item(quiet.doc) && item(quiet.doc).classList.contains('zero'), 'with no card recurring the Recurring entry stays in the Status list, dimmed at zero');
   assert.deepStrictEqual(errors.concat(quiet.errors), []);
   close(dom);
   close(quiet.dom);

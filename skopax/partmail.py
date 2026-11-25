@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 from skopax import brand, tags
 from skopax.errkind import kind as error_kind
-from skopax.mail import BUTTON, INK, PAPER, SEV_COLOURS, SEV_INKS, SIDE, SUBJECT_MAX, WEB_LINK, MailDown, MailRefused, Mailer, address_ok, cell, esc, flat, footer_cell, footer_lines, framed, head_cells, line_cell
+from skopax.mail import BUTTON, INK, PAPER, SIDE, SUBJECT_MAX, WEB_LINK, MailDown, MailRefused, Mailer, address_ok, cell, esc, flat, footer_cell, footer_lines, framed, head_cells, line_cell, sev_badge
 from skopax.messages import msg
 from skopax.noticemail import WHY_LIMIT, masked, scrub
 
@@ -40,10 +40,7 @@ def linked(text: str, link: str | None, style: str) -> str:
 
 
 def badge(sev: str, text: str) -> str:
-    if sev not in SEV_COLOURS:
-        return ''
-    return (f' <span style="background-color:{SEV_COLOURS[sev]};color:{SEV_INKS.get(sev, "#ffffff")};padding:1px 6px;border-radius:4px;font-size:12px;font-weight:bold;">'
-            f'{esc(text)}</span>')
+    return sev_badge(sev, text)
 
 
 def row_html(r: Row) -> str:

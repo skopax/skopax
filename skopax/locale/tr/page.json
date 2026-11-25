@@ -1241,7 +1241,13 @@
   "Docs": "Dokümanlar",
   "General": "Genel",
   "More": "Daha fazla",
-  "More filters": "Daha fazla filtre",
+  "Clear all": "Tümünü temizle",
+  "Clear {0} filter": "{0} filtresini temizle",
+  "Search tags": "Etiket ara",
+  "Search people": "Kişi ara",
+  "{0} ({1})": "{0} ({1})",
+  "Filter lists": "Filtre listeleri",
+  "or": "veya",
   "Mine": "Benim",
   "Observe": "İzle",
   "Switch workspace": "Çalışma alanı değiştir",
@@ -1784,7 +1790,10 @@
   "Id of the Jira option field that holds the scope of a task, such as customfield_10100; the Create task dialog offers its values. Empty sends no scope": "Task'ın scope'unu tutan Jira seçenek alanının id'si, örneğin customfield_10100; Task oluştur penceresi bu alanın değerlerini sunar. Boş bırakılırsa scope gönderilmez",
   "Id of the Jira number field for story points, such as customfield_10200; empty sends no points": "Story point için Jira sayı alanının id'si, örneğin customfield_10200; boş bırakılırsa puan gönderilmez",
   "Id of a Jira user field set to whoever creates the task, next to the assignee; empty leaves it out": "Atanan kişinin yanında, task'ı oluşturan kişiyle doldurulan Jira kullanıcı alanının id'si; boş bırakılırsa bu alan gönderilmez",
-  "Id of the Jira sprint field (Jira Software), such as customfield_10020; empty puts no task in a sprint": "Jira sprint alanının id'si (Jira Software), örneğin customfield_10020; boş bırakılırsa hiçbir task sprint'e eklenmez"
+  "Id of the Jira sprint field (Jira Software), such as customfield_10020; empty puts no task in a sprint": "Jira sprint alanının id'si (Jira Software), örneğin customfield_10020; boş bırakılırsa hiçbir task sprint'e eklenmez",
+  "Warning: {0}": "Uyar\u0131: {0}",
+  "{0} warnings: {1}": "{0} uyar\u0131: {1}",
+  "Page gone": "Sayfa yok"
  },
  "rules": [
   [

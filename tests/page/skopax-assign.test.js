@@ -60,13 +60,13 @@ const shown = (doc) => [...doc.querySelectorAll('#anoms article.inc')].map((c) =
 async function everyCardShowsItsAssigneeOnTheRowAndTheSideMenuFiltersAssignedMineAndUnassigned() {
   //given
   const {w, doc, errors} = await boot();
-  const row = doc.querySelector('#card-qf [aria-label="Assignee"]');
-  const chips = () => ['who:any', 'who:me', 'who:none'].map((t) => doc.querySelector('#panel-anoms .qf-c[data-type="' + t + '"]')).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent);
+  const row = doc.querySelector('#fb-m-who');
+  const chips = () => ['who:any', 'who:me', 'who:none'].map((t) => doc.querySelector('#panel-anoms [data-type="' + t + '"]')).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent);
   const acts = (k) => [...cardOf(doc, k).querySelectorAll('.acts .card-main > .btn')].map((b) => b.textContent.trim());
   const form = (k) => [...cardOf(doc, k).querySelectorAll('.acts .asg-form button')].map((b) => b.textContent.trim());
 
   //then
-  assert.strictEqual(row.querySelector('.qf-l').textContent, 'Assignee');
+  assert.strictEqual(doc.getElementById(row.getAttribute('aria-labelledby')).textContent, 'Assignee');
   assert.deepStrictEqual(chips(), ['Assigned 2', 'Mine 1', 'Unassigned 1']);
   assert.strictEqual(cardOf(doc, PICKED).querySelector('.inc-title .asg-tag').textContent, '@Nina White');
   assert.ok(cardOf(doc, PICKED).querySelector('.asg-tag').title.includes('set by zoe.hart'));
@@ -80,10 +80,11 @@ async function everyCardShowsItsAssigneeOnTheRowAndTheSideMenuFiltersAssignedMin
   assert.ok(!mineBtn || mineBtn.hidden, 'no Assign to me on a card that is already yours');
 
   //when
-  doc.querySelector('#panel-anoms .qf-c[data-type="who:none"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-type="who:none"]').click();
   await wait(20);
   const unassigned = shown(doc);
-  doc.querySelector('#panel-anoms .qf-c[data-type="who:any"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-type="who:none"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-type="who:any"]').click();
   await wait(20);
   const assigned = shown(doc);
   doc.querySelector('#panel-anoms .qf-c[data-type="who:me"]').click();

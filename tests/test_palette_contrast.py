@@ -139,7 +139,7 @@ def test_the_chrome_keeps_to_blue_and_neutral():
 
 RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
 SEVERITY_VAR = re.compile(r"var\(--(?:c|cb)\b")
-DOT_SELECTOR = re.compile(r"::before|::after|\.sdot\b|\.cl-sev\b")
+DOT_SELECTOR = re.compile(r"::before|::after|\.sdot\b")
 SEVERITY_EXCEPTIONS = {
     "span.acc-chip": "account role chip, a tone of its own and not a card severity",
     ".acc-table select.acc-chip": "account role select, same chip",

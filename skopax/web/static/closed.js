@@ -50,7 +50,7 @@ function markClosedChip() {
   var c = CH.filter(function (x) { return x.id === 'closed'; })[0];
   if (!c || !CLOSED.data) return;
   c.n = CLOSED.data.total;
-  var b = document.querySelector('#more-filters-box button[data-f="closed"] .count');
+  var b = document.querySelector('#bf-lists .fb-i[data-f="closed"] .count');
   if (b) b.textContent = String(CLOSED.data.total);
   if (filter === 'closed') renderFilterNote(c);
 }
@@ -128,7 +128,7 @@ function closedRow(r) {
     (r.ticket && !(res && res.ref === r.ticket) ? (jiraHref(r.ticket) ? ' <a class="cl-ticket" href="' + esc(jiraHref(r.ticket)) + '" target="_blank" rel="noopener">' + esc(r.ticket) + '</a>' : ' <span class="cl-ticket">' + esc(r.ticket) + '</span>') : '') +
     (r.owner ? ' <span class="cl-owner muted">' + esc(String(r.owner).split('@')[0]) + '</span>' : '');
   var when = '<span title="' + esc('first seen ' + (r.firstSeen || '–') + ' · last seen ' + (r.lastSeen || '–') + ' (UTC)') + '">' + esc(dayhm(r.firstSeen)) + ' → ' + esc(dayhm(r.lastSeen)) + '</span>';
-  row.innerHTML = '<span class="cl-sev" aria-hidden="true"></span><span class="cl-num">' + num + '</span><span class="cl-main">' + main + '</span><span class="cl-res">' + out + '</span><span class="cl-when">' + when + '</span>';
+  row.innerHTML = '<span class="cl-sevc">' + sev(r.sev) + '</span><span class="cl-num">' + num + '</span><span class="cl-main">' + main + '</span><span class="cl-res">' + out + '</span><span class="cl-when">' + when + '</span>';
   return row;
 }
 function paintClosedBody() {

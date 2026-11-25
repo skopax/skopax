@@ -109,6 +109,13 @@ function renderBrief() {
   r.querySelectorAll('[data-open-anoms]').forEach(function (b) { b.addEventListener('click', function () { showTab('anoms'); setFilter('open'); }); });
 }
 
+function noteName(t) {
+  var known = whoPeople(A.concat(ARCHIVED));
+  return fKinds(t).map(function (ps) {
+    if (ps.length < 2) return typeName(ps[0]);
+    return ps.map(function (p) { return isPersonF(p) && known[p.slice(6)] ? known[p.slice(6)].name : typeName(p); }).join(' ' + tx('or') + ' ');
+  }).join(' \u00b7 ');
+}
 function whoPeople(base) {
   var people = {};
   base.forEach(function (a) {
@@ -163,7 +170,8 @@ function openTabPath(raw) {
   if (id === 'svcs') { kind = KIND.some(function (c) { return c.id === sub; }) ? sub : 'all'; renderSvcs(); }
   if (id === 'anoms') {
     var known = LINK_FILTERS.indexOf(sub) >= 0, given = known ? parts[2] : sub;
-    typeF = /^(tag:|who:(u:)?)?[a-z0-9.-]{1,60}(\+(tag:|who:(u:)?)?[a-z0-9.-]{1,60}){0,2}$/.test(given || '') ? given : '';
+    var picks = String(given || '').split('+');
+    typeF = given && picks.every(function (p) { return /^(tag:|who:(u:)?)?[a-z0-9.-]{1,60}$/.test(p); }) ? picks.slice(0, F_MAX).join('+') : '';
     showTab(id);
     setFilter(known ? sub : 'open');
     return;
@@ -280,7 +288,7 @@ function renderFilterNote(c) {
   var f = c ? c.id : 'open';
   note.className = 'filter-note ' + (c ? c.k : SEV[worst][1]) + (f !== 'open' || typeF || searchQ ? ' on' : '');
   note.title = [[openBySev('crit').length, 'critical'], [openBySev('high').length, 'high'], [openBySev('warn').length, 'warning'], [inprog.length, 'in progress'], [taken.length, 'done'], [muted.length, 'muted'], [cleared.length, 'stopped firing'], [recurringL.length, 'recurring']].filter(function (x) { return x[0]; }).map(function (x) { return x[0] + ' ' + x[1]; }).join(' · ') || 'nothing on the page';
-  note.innerHTML = '<span class="fn-cur">Showing <b>' + esc(c ? c.label : 'Open') + '</b>' + (typeF ? ' · <b>' + esc(typeName(typeF)) + '</b>' : '') +
+  note.innerHTML = '<span class="fn-cur">Showing <b>' + esc(c ? c.label : 'Open') + '</b>' + (typeF ? ' · <b>' + esc(noteName(typeF)) + '</b>' : '') +
     '<span class="count">' + esc(typeF ? shownN : c ? c.n : openAll().length) + '</span></span>' +
     (f === 'svc' ? '<button class="xlink" type="button" id="back-svcs">← Back to Services</button>' : '') +
     (typeF ? '<button class="xlink" type="button" id="clear-type">Every type ›</button>' : '') +

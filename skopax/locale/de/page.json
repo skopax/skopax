@@ -490,7 +490,13 @@
   "Mode": "Modus",
   "Models": "Modelle",
   "More": "Mehr",
-  "More filters": "Weitere Filter",
+  "Clear all": "Alle entfernen",
+  "Clear {0} filter": "Filter {0} entfernen",
+  "Search tags": "Tags suchen",
+  "Search people": "Personen suchen",
+  "{0} ({1})": "{0} ({1})",
+  "Filter lists": "Filterlisten",
+  "or": "oder",
   "Mine": "Meine",
   "More actions": "Weitere Aktionen",
   "More actions: mute, known noise, group, resolve, copy link": "Weitere Aktionen: stummschalten, bekanntes Rauschen, gruppieren, lösen, Link kopieren",
@@ -1784,7 +1790,10 @@
   "Id of the Jira number field for story points, such as customfield_10200; empty sends no points": "ID des Jira-Zahlenfelds für Story Points, etwa customfield_10200; leer sendet keine Punkte",
   "Id of a Jira user field set to whoever creates the task, next to the assignee; empty leaves it out": "ID eines Jira-Benutzerfelds, das neben dem Bearbeiter auf die Person gesetzt wird, die den Task erstellt; leer lässt es weg",
   "Id of the Jira sprint field (Jira Software), such as customfield_10020; empty puts no task in a sprint": "ID des Jira-Sprint-Felds (Jira Software), etwa customfield_10020; leer setzt keinen Task in einen Sprint",
-  "Last action": "Letzte Maßnahme"
+  "Last action": "Letzte Maßnahme",
+  "Warning: {0}": "Warnung: {0}",
+  "{0} warnings: {1}": "{0} Warnungen: {1}",
+  "Page gone": "Seite weg"
  },
  "rules": [
   [

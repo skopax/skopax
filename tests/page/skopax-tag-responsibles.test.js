@@ -163,8 +163,8 @@ async function aSlackLinkOpensTheBoardOnOpenFilteredToTheTagWithARemovableChip()
   const cards = [card('log|checkout-service|ERROR|a', 'crit', 'developer'), card('log|shop-web|ERROR|b', 'warn', 'data'), card('log|payments-api|ERROR|c', 'warn', null)];
   const {w, doc, errors} = await boot({cards: cards, hash: '#t=anoms/open/tag:developer'});
   const shown = () => [...doc.querySelectorAll('#anoms article.inc')].map((a) => a.dataset.key);
-  const chip = () => doc.querySelector('#card-qf [data-type="tag:developer"]');
-  const first = {shown: shown(), pressed: chip().getAttribute('aria-pressed'), note: doc.querySelector('#filter-note .fn-cur').textContent, hash: decodeURIComponent(w.location.hash)};
+  const chip = () => doc.querySelector('#bf-lists [data-type="tag:developer"]');
+  const first = {shown: shown(), pressed: chip().getAttribute('aria-checked'), note: doc.querySelector('#filter-note .fn-cur').textContent, hash: decodeURIComponent(w.location.hash)};
 
   //when
   doc.getElementById('clear-type').click();
@@ -172,10 +172,10 @@ async function aSlackLinkOpensTheBoardOnOpenFilteredToTheTagWithARemovableChip()
   const cleared = {shown: shown().length, hash: decodeURIComponent(w.location.hash)};
   chip().click();
   await wait(60);
-  const again = {shown: shown(), pressed: chip().getAttribute('aria-pressed')};
+  const again = {shown: shown(), pressed: chip().getAttribute('aria-checked')};
   chip().click();
   await wait(60);
-  const off = {shown: shown().length, pressed: chip().getAttribute('aria-pressed')};
+  const off = {shown: shown().length, pressed: chip().getAttribute('aria-checked')};
 
   //then
   assert.deepStrictEqual(first.shown, ['log|checkout-service|ERROR|a']);

@@ -54,7 +54,7 @@ function initLive() {
   }
   function busy() {
     var f = document.activeElement;
-    var typing = !!f && /^(INPUT|TEXTAREA|SELECT)$/.test(f.tagName) && f.id !== 'card-search' && document.hasFocus();
+    var typing = !!f && /^(INPUT|TEXTAREA|SELECT)$/.test(f.tagName) && f.id !== 'card-search' && !f.classList.contains('fb-q') && document.hasFocus();
     return typing || !!document.querySelector('[data-confirm]');
   }
   function flash(fresh) {

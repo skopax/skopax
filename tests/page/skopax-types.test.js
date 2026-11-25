@@ -48,7 +48,7 @@ async function boot(hash) {
   const doc = dom.window.document;
   return {w: dom.window, doc, errors,
     shown: () => [...doc.querySelectorAll('#anoms article.inc')].map((c) => c.dataset.key),
-    chip: (t) => doc.querySelector('#panel-anoms .qf-c[data-type="' + t + '"]'),
+    chip: (t) => doc.querySelector('#bf-lists .fb-i[data-type="' + t + '"]'),
     note: () => doc.getElementById('filter-note')};
 }
 
@@ -59,12 +59,13 @@ async function aLinkOpensTheFilterAndTypeAndTheChipsKeepTheLinkCurrent() {
   //then
   assert.deepStrictEqual(shown(), ['page-typos|pages//shipping-calculator', 'page-typos|pages//gift-cards'], 'all typo cards, open and cleared');
   assert.ok(note().classList.contains('on') && /Showing All \u00b7 Typos\s*2/.test(note().querySelector('.fn-cur').textContent));
-  assert.strictEqual(chip('page-typos').getAttribute('aria-pressed'), 'true');
-  assert.deepStrictEqual([...doc.querySelectorAll('#panel-anoms [aria-label="Types"] .qf-c[data-type]')].map((b) => [b.querySelector('.lbl').textContent, b.querySelector('.count').textContent]),
+  assert.strictEqual(chip('page-typos').getAttribute('aria-checked'), 'true');
+  assert.deepStrictEqual([...doc.querySelectorAll('#fb-m-type .fb-i[data-type]')].map((b) => [b.querySelector('.lbl').textContent, b.querySelector('.count').textContent]),
     [['Typos', '2'], ['Layout', '1'], ['Log errors', '1']], 'the types on the page, most cards first, with readable names');
   assert.strictEqual(w.location.hash, '#t=anoms/all/page-typos');
 
   //when
+  chip('page-typos').click();
   chip('page-layout').click();
 
   //then
@@ -87,9 +88,10 @@ async function anOpenTypeWithNothingOpenSaysSoAndEveryTypeClearsIt() {
   const {w, doc, errors, shown, chip, note} = await boot('#t=anoms/open/page-layout');
 
   //when
+  chip('page-layout').click();
   chip('page-typos').click();
   const typos = shown();
-  doc.querySelector('#panel-anoms .qf-c[data-f="cleared"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-f="cleared"]').click();
   const cleared = shown();
   const hash = w.location.hash;
   doc.getElementById('clear-type').click();
@@ -138,7 +140,7 @@ async function aShortTypeLinkOpensOpenWithThatType() {
 async function typeCountsFollowTheFilterAndTheViewCopiesItsLink() {
   //given
   const {w, doc, errors, chip, note} = await boot('#t=anoms/cleared');
-  const types = () => [...doc.querySelectorAll('#panel-anoms [aria-label="Types"] .qf-c[data-type]')].map((b) => [b.dataset.type, b.querySelector('.count').textContent]);
+  const types = () => [...doc.querySelectorAll('#fb-m-type .fb-i[data-type]')].map((b) => [b.dataset.type, b.querySelector('.count').textContent]);
   let copied = null;
   Object.defineProperty(w.navigator, 'clipboard', {configurable: true, value: {writeText: async (t) => { copied = t; }}});
 
