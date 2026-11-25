@@ -63,8 +63,8 @@ const shown = (doc) => [...doc.querySelectorAll('#anoms article.inc')].map((c) =
 async function cardsShowTheirBusinessTagsAndTheTagRowFiltersThem() {
   //given
   const {w, doc, errors} = await boot();
-  const row = doc.querySelector('#card-qf [aria-label="Tags"]');
-  const chips = () => [...row.querySelectorAll('.qf-c')].map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent);
+  const row = doc.querySelector('#fb-m-tags');
+  const chips = () => [...row.querySelectorAll('.fb-i')].map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent);
 
   //then
   assert.deepStrictEqual([...cardOf(doc, TYPO).querySelectorAll('.tech-fold .biz-tag')].map((t) => t.textContent), ['SEO']);
@@ -72,7 +72,7 @@ async function cardsShowTheirBusinessTagsAndTheTagRowFiltersThem() {
   assert.ok(cardOf(doc, LOG).querySelector('.biz-tag').title.includes('No action written yet'));
   assert.strictEqual(cardOf(doc, PLAIN).querySelector('.biz-tag'), null);
   assert.deepStrictEqual(chips(), ['Business development 1', 'Marketing 0', 'SEO 1', 'Product 0', 'Developer 0', 'Data 0', 'Infrastructure 0', 'Analyst 0', 'Untagged 1']);
-  assert.strictEqual(row.querySelector('.qf-l').textContent, 'Tags');
+  assert.strictEqual(doc.getElementById(row.getAttribute('aria-labelledby')).textContent, 'Tags');
 
   //when
   row.querySelector('[data-type="tag:seo"]').click();
@@ -84,7 +84,7 @@ async function cardsShowTheirBusinessTagsAndTheTagRowFiltersThem() {
   assert.ok(doc.querySelector('.filter-note').textContent.includes('SEO'));
 
   //when
-  doc.querySelector('#panel-anoms .qf-c[data-type="tag:seo"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-type="tag:seo"]').click();
   await wait(20);
 
   //then
@@ -153,15 +153,15 @@ async function theDeveloperTagShowsOnTheCardNeedsNoSentenceAndItsRouteShowsOnlyO
   assert.strictEqual(cardOf(doc, FIX).querySelector('.biz-txt').textContent, 'Tag a business team to write a note', 'the Developer tag asks for no sentence');
   assert.deepStrictEqual(teams(FIX), ['Microsoft Teams \u00b7 eng', 'Microsoft Teams \u00b7 tech']);
   assert.deepStrictEqual(teams(PLAIN), ['Microsoft Teams \u00b7 tech'], 'the Developer channel shows only on cards with the tag');
-  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-type="tag:developer"] .count').textContent, '1');
-  assert.ok(doc.querySelector('#panel-anoms .qf-c[data-type="tag:developer"]').title.includes('engineering has to change the code or config of a service'));
+  assert.strictEqual(doc.querySelector('#bf-lists .fb-i[data-type="tag:developer"] .count').textContent, '1');
+  assert.ok(doc.querySelector('#bf-lists .fb-i[data-type="tag:developer"]').title.includes('engineering has to change the code or config of a service'));
   assert.ok(cardOf(doc, PLAIN).querySelector('.biz-tb[data-tag="infra"]').title.includes('infrastructure has to change') && cardOf(doc, PLAIN).querySelector('.biz-tb[data-tag="infra"]').title.includes('tag:infra'));
   assert.ok(cardOf(doc, PLAIN).querySelector('.biz-tb[data-tag="developer"]').title.includes('tag:developer'));
 
   //when
   cardOf(doc, PLAIN).querySelector('.biz-tb[data-tag="developer"]').click();
   await wait(30);
-  doc.querySelector('#panel-anoms .qf-c[data-type="tag:developer"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-type="tag:developer"]').click();
   await wait(20);
 
   //then
@@ -215,11 +215,11 @@ async function theTagNamesComeFromTheServerOnly() {
   const plain = await boot([{key: 'log|odd-service|ERROR|x', sig: 'log', tags: [{id: odd, by: 'rule', at: iso(5)}]}], null, core);
   const plugged = await boot(null, null, core.concat([{id: 'release-gate', label: 'Release gate'}]));
   const silent = await boot(null, null, false);
-  const labels = (t) => [...t.doc.querySelectorAll('#card-qf [aria-label="Tags"] .qf-c .lbl')].map((l) => l.textContent);
+  const labels = (t) => [...t.doc.querySelectorAll('#fb-m-tags .fb-i .lbl')].map((l) => l.textContent);
 
   //then
   assert.deepStrictEqual(labels(plain), ['Developer', 'Data', 'Infrastructure', 'Analyst', 'Untagged']);
-  assert.ok(!/Business development|Marketing|SEO|Product/.test(plain.doc.getElementById('more-filters-box').textContent), 'no tag the server did not send');
+  assert.ok(!/Business development|Marketing|SEO|Product/.test(plain.doc.getElementById('bf-lists').textContent), 'no tag the server did not send');
   assert.deepStrictEqual([...cardOf(plain.doc, 'log|odd-service|ERROR|x').querySelectorAll('.biz-tag')].map((t) => t.textContent), [odd]);
   assert.strictEqual(cardOf(plain.doc, 'log|odd-service|ERROR|x').querySelectorAll('.biz-tag b').length, 0, 'an unknown tag id stays text');
   assert.deepStrictEqual(labels(plugged), ['Developer', 'Data', 'Infrastructure', 'Analyst', 'Release gate', 'Untagged']);
@@ -228,19 +228,19 @@ async function theTagNamesComeFromTheServerOnly() {
   plain.w.close();
   plugged.w.close();
   silent.w.close();
-  console.log('PASS the tag row and card tags show only the tags the server sends, with its labels, and an unknown id as escaped text');
+  console.log('PASS the Tags list and card tags show only the tags the server sends, with its labels, and an unknown id as escaped text');
 }
 
 async function anUntaggedEntryEndsTheTagRowAndFiltersCardsWithNoTag() {
   //given
   const {w, doc, errors} = await boot();
-  const btn = () => doc.querySelector('#panel-anoms .qf-c[data-type="tag:-"]');
+  const btn = () => doc.querySelector('#bf-lists .fb-i[data-type="tag:-"]');
 
   //then
   assert.strictEqual(btn().querySelector('.lbl').textContent, 'Untagged');
   assert.strictEqual(btn().querySelector('.count').textContent, '1');
-  assert.strictEqual(btn().parentNode.lastElementChild, btn(), 'the last entry of the Tags group');
-  assert.strictEqual(btn().getAttribute('aria-pressed'), 'false');
+  assert.strictEqual(btn().parentNode.lastElementChild, btn(), 'the last entry of the Tags list');
+  assert.strictEqual(btn().getAttribute('aria-checked'), 'false');
 
   //when
   btn().click();
@@ -248,7 +248,7 @@ async function anUntaggedEntryEndsTheTagRowAndFiltersCardsWithNoTag() {
 
   //then
   assert.deepStrictEqual(shown(doc), [PLAIN]);
-  assert.strictEqual(btn().getAttribute('aria-pressed'), 'true');
+  assert.strictEqual(btn().getAttribute('aria-checked'), 'true');
   assert.ok(decodeURIComponent(w.location.hash).endsWith('/tag:-'), w.location.hash);
   assert.ok(doc.querySelector('.filter-note').textContent.includes('Untagged'));
 
@@ -258,7 +258,7 @@ async function anUntaggedEntryEndsTheTagRowAndFiltersCardsWithNoTag() {
 
   //then
   assert.deepStrictEqual(shown(doc).sort(), [LOG, PLAIN, TYPO].sort());
-  assert.strictEqual(btn().getAttribute('aria-pressed'), 'false');
+  assert.strictEqual(btn().getAttribute('aria-checked'), 'false');
 
   //when
   w.location.hash = '#t=anoms/all/tag:-';
@@ -266,46 +266,14 @@ async function anUntaggedEntryEndsTheTagRowAndFiltersCardsWithNoTag() {
 
   //then
   assert.deepStrictEqual(shown(doc), [PLAIN], 'a link with the filter opens it');
-  assert.strictEqual(btn().getAttribute('aria-pressed'), 'true');
+  assert.strictEqual(btn().getAttribute('aria-checked'), 'true');
   assert.deepStrictEqual(errors, []);
   w.close();
-  console.log('PASS an Untagged entry ends the Tags row, counts and filters the cards with no tag, toggles off, and round-trips through the link');
-}
-
-async function theQuickFilterTagsGroupEndsWithAnUntaggedChip() {
-  //given
-  const {w, doc, errors} = await boot();
-  const chip = () => doc.querySelector('#card-qf [data-type="tag:-"]');
-
-  //then
-  assert.ok(chip(), 'the quick filters offer Untagged');
-  assert.strictEqual(chip().firstChild.textContent, 'Untagged');
-  assert.strictEqual(chip().querySelector('.count').textContent, '1');
-  assert.strictEqual(chip().parentNode.lastElementChild, chip(), 'the last chip of the Tags group');
-  assert.strictEqual(chip().getAttribute('aria-pressed'), 'false');
-
-  //when
-  chip().click();
-  await wait(20);
-
-  //then
-  assert.deepStrictEqual(shown(doc), [PLAIN]);
-  assert.strictEqual(chip().getAttribute('aria-pressed'), 'true');
-
-  //when
-  chip().click();
-  await wait(20);
-
-  //then
-  assert.deepStrictEqual(shown(doc).sort(), [LOG, PLAIN, TYPO].sort());
-  assert.deepStrictEqual(errors, []);
-  w.close();
-  console.log('PASS the quick filters Tags group ends with an Untagged chip that filters the cards with no tag and toggles off');
+  console.log('PASS an Untagged entry ends the Tags list, counts and filters the cards with no tag, toggles off, and round-trips through the link');
 }
 
 (async () => {
   await anUntaggedEntryEndsTheTagRowAndFiltersCardsWithNoTag();
-  await theQuickFilterTagsGroupEndsWithAnUntaggedChip();
   await cardsShowTheirBusinessTagsAndTheTagRowFiltersThem();
   await theDeveloperTagShowsOnTheCardNeedsNoSentenceAndItsRouteShowsOnlyOnTaggedCards();
   await anOperatorTagsAndWritesTheSentenceAndOnlyTaggedCardsOfferTheBusinessChannel();

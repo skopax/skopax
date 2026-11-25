@@ -491,7 +491,13 @@
   "Mode": "Mode",
   "Models": "Modèles",
   "More": "Plus",
-  "More filters": "Plus de filtres",
+  "Clear all": "Tout effacer",
+  "Clear {0} filter": "Effacer le filtre {0}",
+  "Search tags": "Rechercher des tags",
+  "Search people": "Rechercher des personnes",
+  "{0} ({1})": "{0} ({1})",
+  "Filter lists": "Listes de filtres",
+  "or": "ou",
   "Mine": "Les miens",
   "More actions": "Plus d'actions",
   "More actions: mute, known noise, group, resolve, copy link": "Plus d'actions : sourdine, bruit connu, grouper, résoudre, copier le lien",
@@ -1784,7 +1790,10 @@
   "Id of the Jira option field that holds the scope of a task, such as customfield_10100; the Create task dialog offers its values. Empty sends no scope": "Identifiant du champ à options Jira qui porte le périmètre d'une tâche, comme customfield_10100 ; la boîte Créer une tâche propose ses valeurs. Vide n'envoie aucun périmètre",
   "Id of the Jira number field for story points, such as customfield_10200; empty sends no points": "Identifiant du champ numérique Jira des story points, comme customfield_10200 ; vide n'envoie aucun point",
   "Id of a Jira user field set to whoever creates the task, next to the assignee; empty leaves it out": "Identifiant d'un champ utilisateur Jira rempli avec la personne qui crée la tâche, en plus du responsable ; vide le laisse de côté",
-  "Id of the Jira sprint field (Jira Software), such as customfield_10020; empty puts no task in a sprint": "Identifiant du champ de sprint Jira (Jira Software), comme customfield_10020 ; vide ne place aucune tâche dans un sprint"
+  "Id of the Jira sprint field (Jira Software), such as customfield_10020; empty puts no task in a sprint": "Identifiant du champ de sprint Jira (Jira Software), comme customfield_10020 ; vide ne place aucune tâche dans un sprint",
+  "Warning: {0}": "Avertissement : {0}",
+  "{0} warnings: {1}": "{0} avertissements : {1}",
+  "Page gone": "Page disparue"
  },
  "rules": [
   [

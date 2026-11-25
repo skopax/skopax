@@ -138,7 +138,7 @@ async function warnRowOpensItsCards() {
   assert.strictEqual(chip(doc, 'bad').getAttribute('aria-pressed'), 'true', 'service kind chip kept');
   assert.strictEqual(doc.activeElement, row(doc, 'catalog-service').querySelector('button.go'), 'focus back on the row it came from');
   assert.ok(/^Showing Open/.test(doc.getElementById('filter-note').textContent) && !doc.getElementById('back-svcs'), 'anomaly filter reset to Open, the default');
-  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[aria-pressed="true"]').dataset.f, 'open');
+  assert.strictEqual(doc.querySelector('#bf-lists .fb-i[data-f][aria-checked="true"]').dataset.f, 'open');
 
   //when
   row(doc, 'orders-service').querySelector('button.go').click();
@@ -231,13 +231,13 @@ async function severityChipsFilterTheOpenCards() {
   ];
   const serve = {rev: 5, state: base(5, anomalies, [svc('catalog-service', 'store', 'app', 'ok', 9000)])};
   const {doc, errors, dom} = await boot(serve);
-  const sevItem = (f) => doc.querySelector('#panel-anoms .qf-c[data-f="' + f + '"]');
+  const sevItem = (f) => doc.querySelector('#bf-lists .fb-i[data-f="' + f + '"]');
   const txt = (b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent;
-  const statusPressed = () => ['open', 'taken', 'all', 'progress', 'muted', 'cleared'].map(sevItem).find((b) => b.getAttribute('aria-pressed') === 'true') || null;
+  const statusPressed = () => ['open', 'taken', 'all', 'progress', 'muted', 'cleared'].map(sevItem).find((b) => b.getAttribute('aria-checked') === 'true') || null;
 
   //then
-  assert.deepStrictEqual(['crit', 'high', 'warn'].map(sevItem).map(txt), ['Critical 1', 'High 0', 'Warning 2'], 'open counts on the chips; muted and cleared cards left out, and no Info filter');
-  assert.deepStrictEqual(['archived', 'closed'].map(sevItem).map(txt), ['Archived 0', 'Closed '], 'the fold holds Archived and Closed; Closed has no count until its list is loaded');
+  assert.deepStrictEqual(['crit', 'high', 'warn'].map(sevItem).map(txt), ['Critical 1', 'High 0', 'Warning 2'], 'open counts in the Status list; muted and cleared cards left out, and no Info filter');
+  assert.deepStrictEqual(['archived', 'closed'].map(sevItem).map(txt), ['Archived 0', 'Closed '], 'the Status list holds Archived and Closed; Closed has no count until its list is loaded');
   assert.deepStrictEqual(['crit', 'high', 'warn', 'archived', 'closed'].map(sevItem).filter((b) => b.classList.contains('zero')).map((b) => b.dataset.f), ['high', 'archived', 'closed'], 'zero items are faded');
   assert.ok(!doc.getElementById('sev-chips') && !doc.getElementById('anom-chips') && !doc.getElementById('filters'), 'the chips row is gone from the Anomalies tab');
   assert.match(sevItem('crit').title, /^open critical items \(pushed\) \u00b7 opens Board filtered to Critical, click again for all open$/);
@@ -251,7 +251,7 @@ async function severityChipsFilterTheOpenCards() {
 
   //then
   assert.deepStrictEqual(cards(doc), ['5xx|store/catalog-service', 'err|payments/orders-service'], 'Warning shows the open warning cards only');
-  assert.strictEqual(sevItem('warn').getAttribute('aria-pressed'), 'true');
+  assert.strictEqual(sevItem('warn').getAttribute('aria-checked'), 'true');
   assert.strictEqual(statusPressed(), null, 'Open is not pressed while a severity filters');
   assert.match(doc.getElementById('filter-note').textContent, /^Showing Warning2Copy linkAllClear filters \u2715/);
 
@@ -275,7 +275,7 @@ async function inProgressSplitsFromActionTaken() {
   ];
   const serve = {rev: 5, state: base(5, anomalies, [svc('catalog-service', 'store', 'app', 'ok', 9000)])};
   const {doc, errors, dom} = await boot(serve);
-  const seg = (f) => doc.querySelector('#panel-anoms .qf-c[data-f="' + f + '"]');
+  const seg = (f) => doc.querySelector('#bf-lists .fb-i[data-f="' + f + '"]');
 
   //then
   assert.deepStrictEqual(['all', 'open', 'progress', 'taken', 'muted', 'cleared'].map(seg).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['All 3', 'Open 1', 'In progress 1', 'Done 1', 'Muted 0', 'Stopped firing 0'], 'All first, the default; In progress is its own filter, after Open, before Done');
@@ -351,7 +351,7 @@ async function highSitsBetweenCriticalAndWarning() {
   ];
   const serve = {rev: 7, state: base(7, anomalies, [svc('catalog-service', 'store', 'app', 'ok', 9000), svc('orders-service', 'store', 'app', 'ok', 8000), svc('pricing-service', 'store', 'app', 'ok', 7000)])};
   const {doc, errors, dom} = await boot(serve);
-  const sevItem = (f) => doc.querySelector('#panel-anoms .qf-c[data-f="' + f + '"]');
+  const sevItem = (f) => doc.querySelector('#bf-lists .fb-i[data-f="' + f + '"]');
   const chips = ['crit', 'high', 'warn'].map(sevItem).map((b) => b.dataset.f + ':' + b.querySelector('.count').textContent);
   const tpl = require('fs').readFileSync(TEMPLATE, 'utf8');
 

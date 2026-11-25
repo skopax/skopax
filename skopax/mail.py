@@ -42,7 +42,8 @@ KIND = re.compile(r'[A-Za-z0-9._-]{1,40}')
 BREAKS = re.compile(r'[\r\n\x00]')
 WEB_LINK = re.compile(r'https?://[^\s"<>]+')
 SEV_COLOURS = {'crit': '#b42318', 'high': '#b54400', 'warn': '#fdb022', 'info': '#175cd3'}
-SEV_INKS = {'warn': '#0f1720'}
+SEV_INKS = {'warn': '#8a5a00'}
+SEV_OUTLINED = ('warn',)
 INK, MUTED, PAPER, PAGE, EDGE, BUTTON = '#0f1720', '#4a5560', '#ffffff', '#f4f6f8', '#d5dbe1', '#1f5fbf'
 FONT = '-apple-system,Segoe UI,Helvetica,Arial,sans-serif'
 
@@ -492,10 +493,22 @@ def footer_cell(footer: str, attribution: dict | None, extra: str = '') -> str:
                 f'padding-top:12px;padding-bottom:12px;{SIDE}border-top:1px solid {EDGE};font-size:12px;color:{MUTED};background-color:{PAPER};')
 
 
+def sev_style(sev: str) -> str:
+    if sev in SEV_OUTLINED:
+        return f'border:1px solid {SEV_COLOURS[sev]};color:{SEV_INKS[sev]};'
+    return f'background-color:{SEV_COLOURS[sev]};color:{SEV_INKS.get(sev, "#ffffff")};'
+
+
+def sev_badge(sev: str, text: str) -> str:
+    if sev not in SEV_COLOURS:
+        return ''
+    return f' <span style="{sev_style(sev)}padding:1px 6px;border-radius:4px;font-size:12px;font-weight:bold;">{esc(text)}</span>'
+
+
 def card_html(title: str, head: str, sev: str, sev_text: str, status: str, lines: list[str], link: str | None, footer: str, attribution: dict | None) -> str:
     side = SIDE
     rows = head_cells(head, title) + [
-            cell(f'<span style="background-color:{SEV_COLOURS[sev]};color:{SEV_INKS.get(sev, '#ffffff')};padding:2px 8px;border-radius:4px;font-weight:bold;">{esc(sev_text)}</span>'
+            cell(f'<span style="{sev_style(sev)}padding:2px 8px;border-radius:4px;font-weight:bold;">{esc(sev_text)}</span>'
                  f'<span style="color:{MUTED};"> &nbsp;{esc(msg("mail.status"))}: {esc(status)}</span>', f'padding-bottom:16px;{side}font-size:14px;background-color:{PAPER};')]
     rows += [line_cell(html_lines(line)) for line in lines]
     if link:

@@ -239,7 +239,7 @@ function onAPhoneTheStylesGiveOneColumnAFullScreenDrawerBigTargetsAnd16pxInputs(
     headClip: [value(phone, '.board .bcol-h', 'clip'), value(phone, '.board .bcol-h', 'position')],
     viewIcon: value(phone, '#card-view > button[data-view]', 'font-size'),
     switchHit: value(phone, '.feat-sw::before, .int-switch::before, .adm-c .adm-sw::before'.split(', ')[0], 'inset'),
-    chips: value(phone, '#card-qf .qf-g', 'flex-wrap'),
+    lists: [value(phone, '.fb-w', 'position'), value(phone, '.fb-pop', 'left'), value(phone, '.fb-pop', 'right')],
     drawer: value(phone, '.card-drawer > .cd-panel', 'width'),
     drawerEdge: value(phone, '.card-drawer > .cd-panel', 'border-left-width') || value(phone, '.card-drawer > .cd-panel', 'border-left'),
     ibtn: [value(phone, '.ibtn', 'width'), value(phone, '.ibtn', 'height')],
@@ -253,7 +253,7 @@ function onAPhoneTheStylesGiveOneColumnAFullScreenDrawerBigTargetsAnd16pxInputs(
   //then
   assert.ok(phone.length > 10, 'the phone rules are read: ' + phone.length);
   assert.deepStrictEqual(got, {
-    tabsHidden: 'none', tabsShown: 'flex', snap: 'x mandatory', column: '100%', colSnap: 'start', headClip: ['rect(0px 0px 0px 0px)', 'absolute'], viewIcon: '0px', switchHit: '-14px -8px', chips: 'nowrap',
+    tabsHidden: 'none', tabsShown: 'flex', snap: 'x mandatory', column: '100%', colSnap: 'start', headClip: ['rect(0px 0px 0px 0px)', 'absolute'], viewIcon: '0px', switchHit: '-14px -8px', lists: ['static', '0px', '0px'],
     drawer: '100%', drawerEdge: '0px', ibtn: ['44px', '44px'], btn: '44px',
     input: '16px', inputPriority: 'important', chat: 'calc(100dvh - 150px)', safeTop: 'max(16px, env(safe-area-inset-left))',
   });
@@ -269,13 +269,13 @@ function onAPhoneTheBoardHeaderKeepsItsDomOrderOnScreen() {
   //when
   const reordered = phone.filter((r) => r.style.getPropertyValue('order') !== '').map((r) => r.selectorText);
   const flattened = phone.filter((r) => r.style.getPropertyValue('display') === 'contents').map((r) => r.selectorText);
-  const ids = [...panel.querySelectorAll('#card-search, #card-view, #card-qf, #filter-note, #anoms')].map((e) => e.id);
+  const ids = [...panel.querySelectorAll('#card-search, #board-filters, #bf-lists, #card-view, #filter-note, #anoms')].map((e) => e.id);
   dom.window.close();
 
   //then
   assert.deepStrictEqual(reordered, [], 'no phone rule moves a control away from its place in the page, so the visual order is the focus order');
   assert.deepStrictEqual(flattened, ['#panel-anoms:not(.closed-on) > .card-search, #panel-anoms:not(.closed-on) > #filter-note'], 'the header boxes are flattened into one row flow, not reordered');
-  assert.deepStrictEqual(ids, ['card-search', 'card-qf', 'card-view', 'filter-note', 'anoms'], 'search, the fold with the assignee and tag chips and Board/List, the Showing line with Filters, then the board');
+  assert.deepStrictEqual(ids, ['card-search', 'board-filters', 'bf-lists', 'card-view', 'filter-note', 'anoms'], 'search, the filter row with its lists and Board/List, the Showing line with Filters, then the board');
   return 'the compact phone board header sets no CSS order, so search, Board/List, chips, the Showing line with Filters and the board read in DOM order';
 }
 

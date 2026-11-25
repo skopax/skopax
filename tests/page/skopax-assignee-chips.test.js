@@ -41,8 +41,8 @@ async function boot(hash, stored) {
 }
 
 const shown = (doc) => [...doc.querySelectorAll('#anoms article.inc')].map((c) => c.dataset.key).sort();
-const name = (b) => (b.querySelector('.lbl') || b.querySelector('.qf-n')).textContent;
-const items = (doc) => ['who:any', 'who:me', 'who:none'].map((t) => doc.querySelector('#panel-anoms .qf-c[data-type="' + t + '"]')).concat([...doc.querySelectorAll('#card-qf [aria-label="Assignee"] .qf-p')]).map((b) => name(b) + ' ' + b.querySelector('.count').textContent);
+const name = (b) => b.querySelector('.lbl').textContent;
+const items = (doc) => ['who:any', 'who:me', 'who:none'].map((t) => doc.querySelector('#panel-anoms [data-type="' + t + '"]')).concat([...doc.querySelectorAll('#fb-m-who .fb-i[data-type^="who:u:"]')]).map((b) => name(b) + ' ' + b.querySelector('.count').textContent);
 
 async function everyAssigneeIsAFilterUnderAssignee() {
   //given
@@ -50,19 +50,22 @@ async function everyAssigneeIsAFilterUnderAssignee() {
 
   //when
   const listed = items(doc);
-  doc.querySelector('#panel-anoms .qf-c[data-type="who:u:paul.stone"]').click();
-  const paul = {cards: shown(doc), hash: w.location.hash, pressed: doc.querySelector('#panel-anoms .qf-c[data-type="who:u:paul.stone"]').getAttribute('aria-pressed')};
-  doc.querySelector('#panel-anoms .qf-c[data-type="who:u:nina.white"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-type="who:u:paul.stone"]').click();
+  const paul = {cards: shown(doc), hash: w.location.hash, pressed: doc.querySelector('#bf-lists .fb-i[data-type="who:u:paul.stone"]').getAttribute('aria-checked')};
+  doc.querySelector('#bf-lists .fb-i[data-type="who:u:nina.white"]').click();
   const nina = shown(doc);
-  doc.querySelector('#panel-anoms .qf-c[data-type="who:u:nina.white"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-type="who:u:nina.white"]').click();
+  const paulAgain = shown(doc);
+  doc.querySelector('#bf-lists .fb-i[data-type="who:u:paul.stone"]').click();
   const back = shown(doc);
   const reload = await boot('#t=anoms/open/who%3Au%3Apaul.stone');
 
   //then
   assert.deepStrictEqual(listed, ['Assigned 3', 'Mine 2', 'Unassigned 1', 'Nina White 2', 'Paul Stone 1'], 'after Assigned / Mine / Unassigned each person with cards, most first; a name and an email of one person count once');
   assert.deepStrictEqual(paul, {cards: [M1], hash: '#t=anoms/open/who%3Au%3Apaul.stone', pressed: 'true'});
-  assert.deepStrictEqual(nina, [A2, A1].sort(), 'both spellings of one person are theirs');
-  assert.deepStrictEqual(back, [A1, A2, FREE, M1].sort(), 'a second click shows everyone again');
+  assert.deepStrictEqual(nina, [A2, A1, M1].sort(), 'a second person adds their cards, both spellings of one person are theirs');
+  assert.deepStrictEqual(paulAgain, [M1], 'a second click drops that person');
+  assert.deepStrictEqual(back, [A1, A2, FREE, M1].sort(), 'dropping the last person shows everyone again');
   assert.deepStrictEqual(shown(reload.doc), [M1], 'a copied link keeps the person');
   assert.deepStrictEqual(errors.concat(reload.errors), []);
   w.close(); reload.w.close();

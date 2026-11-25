@@ -222,7 +222,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
                 dict(label=f'All {svc} errors in Kibana', url=service_logs_link(config, svc, SINCE))]
     if card.get('src') == 'apm':
         return [dict(label=f'{svc} errors in Kibana', url=service_logs_link(config, svc, SINCE))]
-    if svc and ns and ns != '-' and '/' not in svc:
+    if svc and svc != '-' and ns and ns != '-' and '/' not in svc:
         return [dict(label='Logs', url=service_logs_link(config, svc, SINCE))]
     return None
 
@@ -231,7 +231,7 @@ def row_links(row: dict, span: dict, info: InstanceInfo) -> dict[str, str]:
     config = info.config
     svc = str(row.get('svc') or '')
     start, end = epoch(span.get('from')), epoch(span.get('to'))
-    if not str(config.get('ui-url') or '') or not svc or '/' in svc or start is None or end is None or end < start:
+    if not str(config.get('ui-url') or '') or not svc or svc == '-' or '/' in svc or start is None or end is None or end < start:
         return {}
     until = max(end, start + REPORT_MIN_S) + REPORT_PAD_S
     return {'logs': service_logs_link(config, svc, iso(start - REPORT_PAD_S), iso(until))}

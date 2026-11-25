@@ -108,7 +108,7 @@ async function postUpdateRepliesInTheThread() {
   const post = {channel: 'C1', ts: '1.2', at: iso(15), by: 'op@example.com', draft: true};
   const serve = {rev: 5, state: boardAt(5, {handled: {triage: 'progress', ticket: 'OPS-118', slackPost: post}})};
   const {w, doc, errors, calls, dom} = await boot(serve);
-  doc.querySelector('#panel-anoms .qf-c[data-f="progress"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-f="progress"]').click();
   const c = card(doc, HANDLED);
   assert.strictEqual(c.querySelector('.slack-btn').textContent, 'Send again', 'Send stays the first Slack button');
 

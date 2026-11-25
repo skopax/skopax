@@ -1173,6 +1173,23 @@ def test_a_read_that_works_is_never_second_guessed_by_the_privileges_api(store: 
     assert http.hits(PRIVILEGES) == [], 'the privileges API answers for the pattern as typed, not for the indices a read reached'
 
 
+def test_an_alert_card_without_a_service_gets_no_logs_link():
+    # given
+    found = info()
+    alert = {'src': 'prom', 'sig': 'JobFailed', 'ns': 'members-prod', 'svc': '-', 'key': 'alert|JobFailed|namespace=members-prod'}
+    row = {'svc': '-'}
+    span = {'from': '2026-11-25T05:00:00Z', 'to': '2026-11-25T06:00:00Z'}
+
+    # when
+    links = elasticsearch.links(alert, found)
+    rows = checks.row_links(row, span, found)
+
+    # then
+    assert links is None
+    assert rows == {}
+    assert elasticsearch.links(dict(alert, svc='orders-service'), found)[0]['label'] == 'Logs'
+
+
 def test_access_and_fields_cards_get_no_kibana_links():
     # given
     config = info().config

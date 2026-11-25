@@ -254,7 +254,7 @@ async function markAllReadAndOlderPages() {
   assert.strictEqual(capped, '9+', 'the badge stops at 9+');
   assert.ok(more && moreText === 'Show more' && listed === 23, 'a full page offers older ones, which load after the last');
   assert.ok(calls.some((c) => c[1] === '/api/notifications?limit=20&before=n19'));
-  assert.deepStrictEqual([idle, ready], [true, false], 'Mark all read waits for something unread');
+  assert.deepStrictEqual([idle, ready], [false, false], 'Mark all read stays usable while the list still shows unread ones');
   assert.deepStrictEqual(posts(calls).map((c) => c[2]), [{ids: Array.from({length: 12}, (_, i) => 'n' + i)}, {all: true}], 'the showing, then Mark all read');
   assert.deepStrictEqual(after, {badge: false, unread: 0, disabled: true});
   assert.deepStrictEqual(errors, []);
@@ -394,6 +394,29 @@ async function aRefusedMailIsMarkedOnItsNotificationWithTheReason() {
   return 'a notification whose email the mail server refused says Email not sent, with the reason as its tooltip, also in German';
 }
 
+async function markAllReadClearsTheUnreadLookOfWhatIsShowing() {
+  // given
+  const {w, doc, errors, calls} = await boot({total: 5, unread: 3});
+  await show(doc, 'slack');
+  await wait(50);
+  const looked = doc.querySelectorAll('#nt-list .nt-item.unread').length;
+  const usable = !doc.getElementById('nt-read-all').disabled;
+
+  // when
+  doc.getElementById('nt-read-all').click();
+  await wait(50);
+
+  // then
+  assert.strictEqual(looked, 3, 'the shown ones still look unread while the tab is open');
+  assert.ok(usable, 'Mark all read is usable while some look unread');
+  assert.deepStrictEqual(posts(calls).map((c) => c[2]).slice(-1), [{all: true}]);
+  assert.strictEqual(doc.querySelectorAll('#nt-list .nt-item.unread').length, 0, 'nothing looks unread after Mark all read');
+  assert.ok(doc.getElementById('nt-read-all').disabled, 'then it waits for something new');
+  assert.deepStrictEqual(errors, []);
+  w.close();
+  return 'Mark all read clears the unread look of what is showing, also when the server already counts them read';
+}
+
 (async () => {
   console.log('PASS ' + await aRefusedMailIsMarkedOnItsNotificationWithTheReason());
   console.log('PASS ' + await theRowCountsUnreadAndThePanelListsNewestFirst());
@@ -402,6 +425,7 @@ async function aRefusedMailIsMarkedOnItsNotificationWithTheReason() {
   console.log('PASS ' + await theUnreadLookLastsUntilTheTabIsLeft());
   console.log('PASS ' + await clickingOneOpensItsCardOrChat());
   console.log('PASS ' + await markAllReadAndOlderPages());
+  console.log('PASS ' + await markAllReadClearsTheUnreadLookOfWhatIsShowing());
   console.log('PASS ' + await guestsSeeNoFeedAndAnotherLanguageKeepsCardTitles());
   console.log('PASS ' + await anAutoResolveShowsWhyUnderTheTitleInEnglishAndTurkish());
   console.log('PASS ' + await aSignedOutBoardNeverAsksForTheCount());

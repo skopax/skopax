@@ -76,7 +76,7 @@ async function liveUpdateKeepsTheView() {
   const {w, doc, errors, calls, scrolls, dom} = await boot(serve);
   assert.ok(!expanded(card(doc, 'err|orders-service|ERROR')), 'a reload starts collapsed, even with an old skopax-open key in localStorage');
   expand(card(doc, 'err|orders-service|ERROR'));
-  doc.querySelector('#panel-anoms .qf-c[data-f="all"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-f="all"]').click();
   doc.querySelector('#svc-chips button[data-f="app"]').click();
   const knownBtn = [...card(doc, 'err|orders-service|ERROR').querySelectorAll('.acts button')].find((b) => b.textContent === 'Known noise');
   knownBtn.click();
@@ -100,7 +100,7 @@ async function liveUpdateKeepsTheView() {
   assert.strictEqual(before.svcTab, 'page');
   assert.strictEqual(doc.getElementById('tab-svcs').getAttribute('aria-current'), 'page', 'Services tab still selected');
   assert.ok(!doc.getElementById('panel-svcs').hidden && doc.getElementById('panel-anoms').hidden, 'panels unchanged');
-  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-f="all"]').getAttribute('aria-pressed'), 'true', 'All filter kept');
+  assert.strictEqual(doc.querySelector('#bf-lists .fb-i[data-f="all"]').getAttribute('aria-checked'), 'true', 'All filter kept');
   assert.match(doc.getElementById('filter-note').textContent, /^Showing All3/, 'the filter line follows the live update: ' + doc.getElementById('filter-note').textContent);
   assert.strictEqual(doc.querySelector('#svc-chips button[data-f="app"]').getAttribute('aria-pressed'), 'true', 'service kind chip kept');
   const orders = card(doc, 'err|orders-service|ERROR');
@@ -121,11 +121,11 @@ async function liveUpdateKeepsTheView() {
   assert.ok(!doc.getElementById('tiles') && !doc.querySelector('.pill'), 'no count pills');
   assert.strictEqual(doc.getElementById('tab-anoms').title, '1 critical \u00b7 1 warning', 'the Anomalies tab tooltip counts the new card and never information');
   assert.ok(doc.getElementById('tab-anoms').classList.contains('k-crit') && doc.getElementById('tab-anoms').classList.contains('hot'), 'and takes the worst open severity');
-  assert.deepStrictEqual([...doc.querySelectorAll('#panel-anoms .qf-c')].filter((b) => ['crit', 'warn', 'info', 'slack'].includes(b.dataset.f)).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['Critical 1', 'Warning 1'], 'the severity chips follow the live update');
+  assert.deepStrictEqual([...doc.querySelectorAll('#bf-lists .fb-i')].filter((b) => ['crit', 'warn', 'info', 'slack'].includes(b.dataset.f)).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['Critical 1', 'Warning 1'], 'the severity entries follow the live update');
   await wait(4100);
   assert.ok(!card(doc, 'restart|payments-api|restarts').classList.contains('linked'), 'highlight is brief');
   dom.window.close();
-  return 'live update re-renders in place: no reload, tab/filter/kind/expanded card/notes/form/scroll kept, new card highlighted, flash shown; the overview stays the summary and the source pills, the side menu severity filters, the filter line and the Anomalies tab colour follow';
+  return 'live update re-renders in place: no reload, tab/filter/kind/expanded card/notes/form/scroll kept, new card highlighted, flash shown; the overview stays the summary and the source pills, the Status list severity entries, the filter line and the Anomalies tab colour follow';
 }
 
 async function typingAndConfirmDeferTheUpdate() {
@@ -209,7 +209,7 @@ async function pastedCardLinkJumpsInAnOpenTab() {
   const handled = anomaly('restart|payments-api|restarts', 'warn', {status: 'cleared', triage: 'handled', clearedAt: iso(10)});
   const serve = {rev: 5, state: stateAt(5, {headline: 'one', ordersNow: 40, extra: [handled]})};
   const {w, doc, errors, dom} = await boot(serve);
-  const pressed = () => doc.querySelector('#panel-anoms .qf-c[aria-pressed="true"]').dataset.f;
+  const pressed = () => doc.querySelector('#bf-lists .fb-i[data-f][aria-checked="true"]').dataset.f;
   assert.strictEqual(pressed(), 'open', 'Anomalies opens on Open');
   doc.querySelector('#panel-anoms .qf-c[data-f="open"]').click();
   assert.strictEqual(pressed(), 'open');
@@ -311,7 +311,7 @@ async function cardsCollapseToOneRow() {
   //given
   const serve = {rev: 5, state: rowState(5, 40)};
   const {w, doc, errors, dom} = await boot(serve);
-  doc.querySelector('#panel-anoms .qf-c[data-f="all"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-f="all"]').click();
   const c = (key) => card(doc, key);
   const fold = (key) => c(key).querySelector('.inc-title .fold');
   const panel = (key) => c(key).querySelector('.inc-more');
@@ -418,10 +418,10 @@ async function anomalyFiltersInTheToolbar() {
   ];
   const serve = {rev: 5, tab: 'anoms', state: stateAt(5, {headline: 'h', ordersNow: 40, extra})};
   const {w, doc, errors, dom} = await boot(serve);
-  const items = () => [...doc.querySelectorAll('#panel-anoms .qf-c[data-f]')];
-  const item = (f) => doc.querySelector('#panel-anoms .qf-c[data-f="' + f + '"]');
+  const items = () => [...doc.querySelectorAll('#bf-lists .fb-i[data-f]')];
+  const item = (f) => doc.querySelector('#bf-lists .fb-i[data-f="' + f + '"]');
   const kOf = (b) => [...b.classList].find((c) => c.startsWith('k-'));
-  const pressed = () => items().filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.f);
+  const pressed = () => items().filter((b) => b.getAttribute('aria-checked') === 'true').map((b) => b.dataset.f);
   const note = () => doc.getElementById('filter-note');
   const refresh = async (rev, more) => {
     serve.rev = rev;
@@ -432,8 +432,8 @@ async function anomalyFiltersInTheToolbar() {
 
   //then
   assert.deepStrictEqual([...doc.querySelectorAll('#snav .s-grp[data-grp="main"] a.tab')].map((a) => a.id), ['tab-anoms', 'tab-reqs', 'tab-chat', 'tab-inv'], 'Board, Requests, Chat and Investigator lead the sidebar');
-  assert.deepStrictEqual(items().map((b) => b.dataset.f), ['open', 'crit', 'taken', 'all', 'progress', 'muted', 'cleared', 'investigating', 'dived', 'high', 'warn', 'recurring', 'archived', 'closed'], 'four chips in view, the rest in the fold');
-  assert.deepStrictEqual(items().map((b) => b.querySelector('.lbl').textContent), ['Open', 'Critical', 'Done', 'All', 'In progress', 'Muted', 'Stopped firing', 'Investigating', 'Investigated', 'High', 'Warning', 'Recurring', 'Archived', 'Closed'], 'short labels');
+  assert.deepStrictEqual(items().map((b) => b.dataset.f), ['all', 'open', 'progress', 'taken', 'muted', 'cleared', 'investigating', 'dived', 'recurring', 'archived', 'closed', 'crit', 'high', 'warn'], 'the Status list holds every filter, State then Severity');
+  assert.deepStrictEqual(items().map((b) => b.querySelector('.lbl').textContent), ['All', 'Open', 'In progress', 'Done', 'Muted', 'Stopped firing', 'Investigating', 'Investigated', 'Recurring', 'Archived', 'Closed', 'Critical', 'High', 'Warning'], 'short labels');
   assert.deepStrictEqual(['taken', 'muted', 'cleared', 'all', 'crit', 'high', 'warn'].map((f) => kOf(item(f))), ['k-good', 'k-muted', 'k-cleared', 'k-act', 'k-crit', 'k-high', 'k-warn'], 'with their colours');
   assert.deepStrictEqual(['open', 'progress', 'taken', 'muted', 'cleared', 'all'].map((f) => item(f).querySelector('.count').textContent), ['3', '1', '1', '0', '1', '6'], 'Open counts the stopped card nobody acted on too, as the board does');
   assert.ok(item('crit').classList.contains('zero') && item('muted').classList.contains('zero') && !item('warn').classList.contains('zero'), 'a zero count is faded');

@@ -75,7 +75,7 @@ The example carries a copy of the Apache License 2.0. `license-files = ["LICENSE
 
 Skopax is not published to a package index; only its images are. A plug-in in a repository of its own runs its tests against a clone of Skopax at the release it targets, next to the plug-in's folder. From the plug-in's folder:
 
-    git clone --branch v0.5.15 https://github.com/skopax/skopax ../skopax
+    git clone --branch v0.5.16 https://github.com/skopax/skopax ../skopax
     (cd ../skopax && uv sync --frozen)
     PYTHONPATH=../skopax:. ../skopax/.venv/bin/python -m pytest -q tests
 
@@ -87,7 +87,7 @@ The Skopax image is distroless, so it has no `pip` and no shell. Install the plu
 
 ```dockerfile
 ARG BASE_IMAGE=ghcr.io/skopax/skopax
-ARG SKOPAX_VERSION=0.5.15
+ARG SKOPAX_VERSION=0.5.16
 
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS build
 
@@ -102,7 +102,7 @@ COPY --from=build /plugins /usr/local/lib/python3.15/site-packages/
 ```
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.5.15 -t skopax-hello examples/hello-plugin
+docker build --build-arg SKOPAX_VERSION=0.5.16 -t skopax-hello examples/hello-plugin
 ```
 
 - `BASE_IMAGE` (default `ghcr.io/skopax/skopax`) names the Skopax image to build on, for example a mirror or your own registry. `SKOPAX_VERSION` (default: the current release) picks its tag.
@@ -280,7 +280,7 @@ A `settings_source` hook is called as `settings_source(env)`. A hook that also t
 - **Known cause.** A card a check raises may carry `knownCause`, a short text a person wrote in the plug-in's settings about that kind of problem, such as the Known causes field of [Batch jobs](plugins.md#batch-jobs). The opened card and the board show it as text under Known cause, and the investigator's brief gives it as a hint the team wrote that may be out of date, with `<` and `>` replaced and cut at 300 characters. Since a person wrote it, it is scanned apart from the card, like the note of a person's earlier verdict, so only the hard phrases flag in it. It is set again at every pass, so a card raised without it drops it.
 - **Ids.** A plug-in setting or rule set may not take the id of a core setting. When two plug-ins share an id, the first one loaded wins, built-in plug-ins first, and the other is broken with a reason that names where the winning copy came from: built in, an installed package, or `SKOPAX_PLUGINS`. Skopax still starts: the refused copy contributes nothing, its reason is logged once as a warning at start and shows on the notices strip in Admin and on its row in Connect > Integrations, and the winning copy keeps serving the instances, rules, checks and cards saved under that id. So when a later release ships a plug-in your own package also registers, such as Dengage, the built-in one takes over on upgrade; keep the same id, field keys, check ids and card keys in both if the saved instances and open cards should carry over, then drop your copy and its entry point.
 - **Own findings.** A check whose cards explain themselves, such as a send report, sets `own_findings=True`. The investigator never picks the cards whose `src` is that check's id, and neither does the Slack fallback nor the at-once post of a critical card, as for core's own page scan and Slack health cards. This holds while the plug-in is broken, locked or switched off too, so the cards its check already raised stay out of reach. Anything other than True or False breaks the plug-in.
-- **Card types.** `card_types` names the plug-in's card types for the page: `CardType(sig, label, alias='')`. The board's type chips and filters then show `label` for a card whose `sig` (or, without one, `src`) is `sig`, instead of the raw id. With an `alias`, such a card is counted and filtered as that type instead, so `CardType('x-access', 'No access', alias='no-access')` puts its cards under core's No access chip. A sig and an alias are lower-case letters, digits and dashes (at most 30), a label is 1 to 40 printable characters, and a sig is not repeated; a sig that is one of the types the page already names (`CORE_SIGS` in `skopax.registry`) breaks the plug-in, while an alias may name one. The types reach the page with the plug-in list (`plugins[].types` in `GET /api/server`, and in the first render), so a type shows by its label from the first paint. Two plug-ins that name the same sig: the first one in load order wins.
+- **Card types.** `card_types` names the plug-in's card types for the page: `CardType(sig, label, alias='')`. The board's Type filter list then shows `label` for a card whose `sig` (or, without one, `src`) is `sig`, instead of the raw id. With an `alias`, such a card is counted and filtered as that type instead, so `CardType('x-access', 'No access', alias='no-access')` puts its cards under core's No access entry. A sig and an alias are lower-case letters, digits and dashes (at most 30), a label is 1 to 40 printable characters, and a sig is not repeated; a sig that is one of the types the page already names (`CORE_SIGS` in `skopax.registry`) breaks the plug-in, while an alias may name one. The types reach the page with the plug-in list (`plugins[].types` in `GET /api/server`, and in the first render), so a type shows by its label from the first paint. Two plug-ins that name the same sig: the first one in load order wins.
 - **Own auto-resolve window.** `auto_resolve` gives some of the plug-in's card kinds a window of their own: `AutoResolve(check, sig, hours, setting='')`. A card whose `sig` is `sig` and that one of the check `check`'s ran keys raised is closed as auto-resolved `hours` after it first appeared, firing or not, instead of following the general rule of core (`core.auto-resolve-hours-crit` and `core.auto-resolve-hours-warn`, counted from when a card cleared). A card someone acted on (taken, linked to a ticket, in progress, investigating, muted or already resolved) is left alone, and a resolved card that still fires stays resolved. With a `setting`, the hours come from that plug-in setting (declare it in `settings` with kind `int`, such as `Setting('auto-resolve-hours', ..., 'int', '24', 0, 720)`), so an admin can change it; a setting of 0 drops the window and the general rule applies. An entry that is not shaped as `AutoResolve` is skipped with one warning, and a setting that cannot be read falls back to `hours`. While `core.business-days` is on (the default), these hours count only Monday to Friday in the install time zone, like the general rule.
 
 ### Tools and proposals
