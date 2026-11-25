@@ -1,3 +1,4 @@
+import re
 import dataclasses
 import json
 import logging
@@ -173,7 +174,7 @@ def test_a_region_outside_the_list_has_no_host():
         vertex_ai.host_of('evil.example.com/x')
 
     # then
-    assert vertex_ai.REGIONS[:3] == ('global', 'us', 'eu') and all(vertex_ai.host_of(r).endswith('googleapis.com') for r in vertex_ai.REGIONS)
+    assert vertex_ai.REGIONS[:3] == ('global', 'us', 'eu') and all(re.fullmatch(r'[a-z0-9-]+(\.[a-z0-9-]+)*\.googleapis\.com', vertex_ai.host_of(r)) for r in vertex_ai.REGIONS)
 
 
 def test_the_environment_cannot_move_the_client_to_another_host_or_region(monkeypatch):
