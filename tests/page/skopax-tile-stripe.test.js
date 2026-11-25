@@ -5,7 +5,7 @@ const {boot} = require('./skopax-closed.test.js');
 const TEMPLATE = process.argv[2];
 
 function rule(css, selector) {
-  const m = css.match(new RegExp('(?:^|\\n)' + selector.replace(/[.]/g, '\\.') + ' \\{([^}]*)\\}'));
+  const m = css.match(new RegExp('(?:^|\\n)' + selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' \\{([^}]*)\\}'));
   return m ? m[1] : '';
 }
 
