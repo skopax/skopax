@@ -881,7 +881,7 @@ def test_a_gateway_timeout_tells_the_model_how_to_narrow_the_query(store: Store)
 def test_esql_refuses_an_unbounded_scan_over_many_daily_indices(store: Store, query, ok):
     # given
     http = FakeHttp({('POST', QUERY): esql([{'c': 1}])})
-    tools = PluginTools(es_runtime(store, {'main': {}}, http))
+    tools = PluginTools(es_runtime(store, {'main': {'log-index': 'logs-*, traces-apm*, a-*'}}, http))
 
     # when
     text, err = tool(tools, {'cluster': 'logs', 'query': query})

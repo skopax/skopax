@@ -17,7 +17,7 @@ BARE = 'FROM app-logs-2026.11.04 | STATS n = COUNT(*)'
 
 
 def ctx(http: FakeHttp):
-    return SimpleNamespace(instance=SimpleNamespace(config={'url': ES_URL, 'api-key': 'esql-test-key-0123456789'}), http=lambda: http)
+    return SimpleNamespace(instance=SimpleNamespace(config={'url': ES_URL, 'api-key': 'esql-test-key-0123456789', 'log-index': 'app-logs-*, k8s-*'}), http=lambda: http)
 
 
 def scripted(*answers):
@@ -127,7 +127,7 @@ def test_a_slow_first_call_and_a_quick_retry_fit_the_tool_limit_and_render_like_
             raise TimedOut(f'{QUERY} gave no full answer within {timeout:g} s')
         return Reply(rows, {})
 
-    tools = PluginTools(es_runtime(store, {'main': {}}, transport))
+    tools = PluginTools(es_runtime(store, {'main': {'log-index': 'app-logs-*'}}, transport))
 
     # when
     text, count, cut = tools.call('esql', {'query': THREE}, NOW, rendered=True)

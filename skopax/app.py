@@ -92,6 +92,7 @@ from skopax.settingsources import core_knowledge_ids, core_setting_ids
 from skopax.tunables import SESSIONS_AFTER_KEY, SLACK_CHANNEL_KEY, SSO_SWITCH_KEY, Invalid as TunableInvalid, Live, TunableStore, View, apply as apply_tunables, parse as parse_tunable, plugin_tunables, stored as stored_text
 from skopax.tunables import KEY_ALIASES, current_instance, instance_menu
 from skopax.push import Pusher, push_users
+from skopax.investigator.flags import masked_scan
 from skopax.redact import redact
 from skopax.scheduler import Job, Scheduler
 from skopax.settle import Settle, ignore_doc, ignored
@@ -2891,12 +2892,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             except NotFound:
                 continue
             cards.append(k)
+        earlier = (chat['messages'] if chat else [])[-CHAT_THREAD:]
+        planted = masked_scan('chat', '\n'.join([question] + [t for m in earlier for t in (m.get('text') or '', m.get('answer') or '')]))
+        question = redact(question)
         thread = []
-        for m in (chat['messages'] if chat else [])[-CHAT_THREAD:]:
-            thread += [{'who': 'person', 'text': m.get('text') or ''}] + ([{'who': 'bot', 'text': m['answer']}] if m.get('answer') else [])
+        for m in earlier:
+            thread += [{'who': 'person', 'text': redact(m.get('text') or '')}] + ([{'who': 'bot', 'text': redact(m['answer'])}] if m.get('answer') else [])
         chat_id = chat['id'] if chat else wanted_id if fresh else new_id()
         action = {'type': 'ask', 'source': 'chat', 'key': 'ask', 'target': f'chat:{chat_id}', 'text': question, 'label': question[:300], 'cards': cards[:CHAT_CARDS],
-                  'requestedBy': by, 'chat': {'id': chat_id}, 'thread': thread} | ({'via': via} if via else {}) | ({'mcpRole': role} if role else {})
+                  'requestedBy': by, 'chat': {'id': chat_id}, 'thread': thread} | ({'via': via} if via else {}) | ({'mcpRole': role} if role else {}) | ({'askFlags': planted} if planted else {})
         try:
             said = page_topic_check(question, action['cards'], by, thread, 'chat')
         except HTTPException as e:
@@ -4396,9 +4400,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             action['cards'] = [k for k in dict.fromkeys(body.cards or []) if k]
             for k in action['cards']:
                 refuse_information(k)
+            planted = masked_scan('page', question + '\n' + (body.label or ''))
+            if planted:
+                action['askFlags'] = planted
+            question = redact(question)
             said = page_topic_check(question, action['cards'], by)
             action['text'] = question
-            action['label'] = (body.label or question)[:300]
+            action['label'] = redact(body.label or question)[:300]
             action['source'] = 'api' if is_token(by) else 'page'
             if said is not None:
                 return store.add_action(action | {'smallTalk': True, 'usd': round(said.usd, 6)}, 'done', said.text)

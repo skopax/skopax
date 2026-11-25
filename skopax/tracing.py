@@ -131,7 +131,7 @@ class Trace:
         self.id = uuid.uuid4().hex
         self.root = span_id()
         self.name = name
-        self.meta = {k: cut(str(v), META_MAX) for k, v in meta.items() if v not in (None, '')}
+        self.meta = {k: cut(redact_secrets(str(v)), META_MAX) for k, v in meta.items() if v not in (None, '')}
         self.sampled = sampled
         self.full = full
         self.started = started
@@ -157,7 +157,7 @@ class Trace:
         return self.failed or (self.sampled and self.calls > 0)
 
     def fail(self, why: str) -> None:
-        self.error = cut(str(why or 'failed'), META_MAX)
+        self.error = cut(redact_secrets(str(why or 'failed')), META_MAX)
 
     def note_brief(self, **fields) -> None:
         self.brief.update({k: v for k, v in fields.items() if isinstance(v, (str, int, float, bool))})

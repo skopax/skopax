@@ -82,6 +82,25 @@ PERSON_QUERY = {'$or': [{'outcome': {'$in': list(MUTE_KINDS)}},
 MACHINE_QUERY = {'$nor': [PERSON_QUERY]}
 DIGEST_FIELDS = ('key', 'num', 'svc', 'label', 'sev', 'peak', 'unit', 'firstSeen', 'clearedAt', 'outcome', 'outcomeText', 'ticket', 'muted', 'reopens', 'runId')
 CAUSE_LIMIT = 160
+HISTORY_TAIL = 10
+HISTORY_LINE = 160
+HISTORY_SCAN = 60
+HISTORY_RUNS = 10
+HISTORY_HIDDEN = ('access',)
+HISTORY_WORDS = {'take': 'Started progress', 'resolve': 'Resolved', 'ticket': 'Ticket created', 'link': 'Ticket linked', 'mute': 'Muted', 'unmute': 'Unmuted', 'known': 'Marked known noise',
+                 'reopen': 'Reopened', 'dive': 'Investigation queued', 'group': 'Grouped', 'severity': 'Severity changed', 'ask': 'Asked the investigator', 'keep': 'Kept open'}
+HISTORY_TRIED_WORDS = {'take': 'Start progress', 'resolve': 'Resolve', 'ticket': 'Create task', 'link': 'Link ticket', 'mute': 'Mute', 'unmute': 'Unmute', 'known': 'Mark as known noise',
+                       'reopen': 'Reopen', 'dive': 'Investigate', 'group': 'Group', 'severity': 'Change severity', 'ask': 'Ask the investigator', 'keep': 'Keep open'}
+HISTORY_TRIED = {'failed': ' failed', 'cancelled': ' cancelled'}
+HISTORY_SEV = {'crit': 'Critical', 'high': 'High', 'warn': 'Warning', 'info': 'Info'}
+HISTORY_ROUTED = {'teams': 'Posted to Teams', 'email': 'Sent by email'}
+HISTORY_SYSTEM = ('server', 'auto', 'system')
+HISTORY_ROUTE_S = 120
+HISTORY_RULED_S = 120
+HISTORY_RULED_KIND = {'mute': 'muted', 'known': 'known'}
+HISTORY_AT = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$')
+HISTORY_SEV_RESULT = re.compile(r'\(([A-Za-z]+)\)$')
+HISTORY_SEV_SIGNAL = re.compile(r'the signal says ([A-Za-z]+)')
 
 
 def doc_id(key: str, first_seen: str) -> str:
@@ -557,3 +576,142 @@ def backfill(store, now: float, names: Iterable[str] = ()) -> int:
     written = store.add_card_history_backfill(docs)
     store.mark_backfill(BACKFILL_ID, written)
     return written
+
+
+def hist_who(by) -> str:
+    s = str(by or '')
+    if not s:
+        return 'system'
+    if s in HISTORY_SYSTEM:
+        return 'system'
+    return 'Investigator' if s in ('Claude', 'pod') else who_text(s)
+
+
+def hist_cut(text) -> str:
+    t = cut(' '.join(str(text or '').split()), HISTORY_LINE)
+    return t
+
+
+def hist_first(text) -> str:
+    return next((x.strip() for x in str(text or '').split('\n') if x.strip()), '')
+
+
+def hist_label(ident, names) -> str:
+    return (names or {}).get(ident) or ident
+
+
+def hist_plain(r: dict, key: str = '') -> str:
+    t = str(r.get('text') or '')
+    tail = f' \u00b7 {key}'
+    t = t[:-len(tail)] if key and t.endswith(tail) else t
+    return t[:1].upper() + t[1:]
+
+
+def hist_at(x: dict) -> str | None:
+    return x.get('doneAt') or x.get('failedAt') or x.get('cancelledAt') or x.get('requestedAt')
+
+
+def hist_time(s) -> float | None:
+    try:
+        return stamp(s)
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def card_rows(card: dict | None, actions, activity, runs, names: dict | None = None) -> list[dict]:
+    c = card or {}
+    key = c.get('key') or ''
+    rows: list[dict] = []
+    acts = sorted((dict(x) for x in actions or []), key=lambda x: x.get('doneAt') or x.get('requestedAt') or '')
+    log = list(activity or [])
+
+    def add(at, who, label, data='', **extra) -> None:
+        if not at or not (label or data):
+            return
+        bare = extra.get('bare')
+        what = (label + (' ' if bare else ': ') + data) if label and data else label or data
+        rows.append({'at': at, 'who': who, 'label': label, 'data': data, 'what': what, 'kind': extra.pop('kind', None), **extra})
+
+    said = [f"{r.get('kind')}:{hist_plain(r, key).lower()}" for r in log]
+    assign_logged = any(r.get('kind') == 'assign' for r in log)
+    sev_now = None
+    for x in acts:
+        if x.get('type') not in HISTORY_WORDS or x.get('status') not in ('done', 'failed', 'cancelled'):
+            continue
+        at, who = hist_at(x), hist_who(x.get('requestedBy'))
+        if x['status'] != 'done':
+            add(at, who, HISTORY_TRIED_WORDS[x['type']] + HISTORY_TRIED[x['status']], hist_cut(x['result']) if x.get('result') else '', kind='action', src=x)
+            continue
+        if x['type'] == 'severity':
+            result = x.get('result') or ''
+            to = HISTORY_SEV.get(x.get('sev')) or (HISTORY_SEV_RESULT.search(result) or [None, None])[1] or x.get('sev') or ''
+            was = sev_now or (HISTORY_SEV_SIGNAL.search(result) or [None, None])[1] or ''
+            add(at, who, 'Severity changed', '', kind='severity', **{'from': was if was and was != to else '', 'to': to}, src=x)
+            sev_now = to
+            continue
+        detail = hist_cut(x['result']) if x.get('result') else ''
+        add(at, who, HISTORY_WORDS[x['type']], detail, kind='action', src=x)
+
+    def route_recorded(r: dict) -> bool:
+        at = hist_time(r.get('t'))
+        return at is not None and any(isinstance(p, dict) and p.get('route') and f" \u00b7 {p['route']} \u00b7 " in str(r.get('text') or '')
+                                      and hist_time(p.get('at')) is not None and abs(hist_time(p['at']) - at) <= HISTORY_ROUTE_S for p in c.get('teamsPosts') or [])
+
+    for r in log:
+        if r.get('kind') == 'routes' and route_recorded(r):
+            continue
+        add(r.get('t'), hist_who(r.get('who')), '', hist_cut(hist_plain(r, key)), kind=r.get('kind'))
+    for r in runs or []:
+        if not isinstance(r, dict) or not r.get('id'):
+            continue
+        line = hist_first(r.get('recap'))
+        add(r.get('startedAt'), 'Investigator', 'Investigation run', hist_cut(line) if line else r.get('outcome') or '', kind='run')
+    for t in c.get('tags') or []:
+        label = hist_label(t.get('id'), names)
+        if f'tags:tagged {label.lower()}' in said:
+            continue
+        add(t.get('at'), 'rule' if t.get('by') == 'rule' else hist_who(t.get('by')), 'Tag added', label, kind='tags')
+    b = c.get('business')
+    if isinstance(b, dict) and b.get('text') and b.get('at') and 'tags:business sentence saved' not in said:
+        add(b['at'], 'rule' if b.get('by') == 'rule' else hist_who(b.get('by')), 'Business note written', '', kind='tags')
+    a = c.get('assigned')
+    if isinstance(a, dict) and a.get('at') and not assign_logged:
+        add(a['at'], hist_who(a.get('by')), 'Assigned to', str(c.get('owner') or '').split('@')[0], kind='assign', bare=True)
+    sv = c.get('sevSet')
+    if isinstance(sv, dict) and sv.get('at') and not any(x.get('type') == 'severity' for x in acts):
+        add(sv['at'], hist_who(sv.get('by')), 'Severity changed', '', kind='severity', **{'from': HISTORY_SEV.get(sv.get('auto'), ''), 'to': HISTORY_SEV.get(sv.get('sev')) or sv.get('sev')})
+    p = c.get('slackPost')
+    if isinstance(p, dict) and p.get('at'):
+        add(p['at'], hist_who(p.get('by')), 'Posted to Slack', '', kind='slack')
+    for t in c.get('teamsPosts') or []:
+        plugin = t.get('plugin') or 'teams'
+        add(t.get('at'), hist_who(t.get('by')), HISTORY_ROUTED.get(plugin) or f'Posted by the {plugin} route', hist_label(t.get('route'), names), kind='teams')
+    if c.get('clearedAt'):
+        add(c['clearedAt'], 'signal', 'Stopped firing', '', kind='signal')
+    again = any((x.get('doneAt') or x.get('requestedAt') or '') < (c.get('firstSeen') or '') for x in acts) or bool((c.get('seenBefore') or {}).get('count'))
+    if c.get('firstSeen'):
+        add(c['firstSeen'], 'signal', 'Fired again' if again else 'Fired', '', kind='signal')
+    return sorted(rows, key=lambda r: r['at'], reverse=True)
+
+
+def ruled_already(x: dict, verdicts: list[dict]) -> bool:
+    if x.get('status') != 'done':
+        return False
+    kind = (x.get('kind') or 'handled') if x.get('type') == 'resolve' else HISTORY_RULED_KIND.get(x.get('type'))
+    at = hist_time(hist_at(x))
+    return kind is not None and at is not None and any(v.get('kind') == kind and v.get('by') == x.get('requestedBy') and v.get('at') and hist_time(v['at']) is not None
+                                                       and abs(hist_time(v['at']) - at) <= HISTORY_RULED_S for v in verdicts)
+
+
+def row_text(r: dict) -> str:
+    if r.get('kind') == 'severity' and r.get('to'):
+        return f"{r['what']} from {r['from']} to {r['to']}" if r.get('from') else f"{r['what']} to {r['to']}"
+    return r['what']
+
+
+def tail(card: dict | None, actions, activity, runs, verdicts=(), names: dict | None = None, limit: int = HISTORY_TAIL) -> list[dict]:
+    ruled = [v for v in verdicts or [] if isinstance(v, dict)]
+    kept = [x for x in actions or [] if x.get('source') != 'chat' and not ruled_already(x, ruled)]
+    rows = [r for r in card_rows(card, kept, activity, runs, names) if HISTORY_AT.match(str(r['at']))]
+    out = [{'at': r['at'], 'who': r['who'], 'text': row_text(r)} for r in reversed(rows[:limit])]
+    return [] if [r['text'] for r in out] == ['Fired'] else out

@@ -21,7 +21,7 @@ from skopax.codehosts import name_of
 from skopax.contract import CodeHost, Knowledge, Missing, RunState, SourceDown
 from skopax.enrich import adf_text
 from skopax.errkind import Authored, kind as error_kind, text_of
-from skopax.investigator.flags import PHRASES, SOFT, scan
+from skopax.investigator.flags import PHRASES, SOFT, safe_excerpt, scan
 from skopax.investigator.prompt import announced_hint, announced_text, card_link, shown_key
 from skopax.investigator.select import NO_SERVICE, announced
 from skopax.investigator.toolset import CORE, KNOWLEDGE, REVIEW_VERDICTS, Run, ToolSet
@@ -32,7 +32,7 @@ from skopax.mcptools import PREFIX as BRIDGE_PREFIX
 from skopax.models import email_allowed
 from skopax.ownwords import REASONS as SKOPAX_REASONS
 from skopax.postdeploy import NUMBERS_BY, SERVER_BY
-from skopax.redact import redact, redact_text
+from skopax.redact import REDACTED, masked_tree, redact, redact_secrets, redact_text
 from skopax.store import NotFound, auto_sender, draft_hash, glob_match, iso, new_id, utc_now
 
 log = logging.getLogger('skopax.investigator.tools')
@@ -53,6 +53,8 @@ JIRA_COMMENT_LIMIT = 500
 JIRA_COMMENTS = 3
 GIT_REF = re.compile(r'\w[\w./-]{0,99}')
 RELEASE_SHOWN = ('kind', 'cluster', 'title')
+BARE_MASK = re.compile(r'[^\s:=]{0,40}\s*[:=]\s*' + re.escape(REDACTED))
+ID_FIELDS = frozenset({'key', 'keys', 'parent', 'children', 'absorb', 'twin', 'group'})
 SCANNED_OUTPUT = ('deploys_since', 'card', 'past_cards', 'past_runs')
 RUN_PROSE = ('answer', 'queries')
 HELD_CARD = '[held: this card text reads like instructions to an AI, so it is not shown]'
@@ -910,6 +912,36 @@ def held_row(row: dict) -> dict:
     return {'key': kept('key'), 'sev': row.get('sev'), 'svc': HELD_CARD, 'label': HELD_CARD, 'triage': row.get('triage'), 'parent': kept('parent')}
 
 
+def id_field(name: object) -> bool:
+    return isinstance(name, str) and (name in ID_FIELDS or name.endswith('Key'))
+
+
+def aliasable(shown: str) -> bool:
+    return shown != REDACTED and BARE_MASK.fullmatch(shown) is None
+
+
+def aliases_of(raw: object, shown: object, found: dict[str, str | None], named: bool = False) -> None:
+    if isinstance(raw, str) and isinstance(shown, str):
+        if named and aliasable(shown):
+            found[shown] = raw if found.get(shown, raw) == raw else None
+    elif isinstance(raw, dict) and isinstance(shown, dict):
+        for k, v in raw.items():
+            aliases_of(v, shown.get(k), found, id_field(k))
+    elif isinstance(raw, (list, tuple)) and isinstance(shown, list):
+        for v, w in zip(raw, shown):
+            aliases_of(v, w, found, named)
+
+
+def unmasked(value: object, aliases: dict[str, str | None], named: bool = False) -> object:
+    if isinstance(value, str):
+        return (aliases.get(value) or value) if named else value
+    if isinstance(value, list):
+        return [unmasked(v, aliases, named) for v in value]
+    if isinstance(value, dict):
+        return {k: unmasked(v, aliases, id_field(k)) for k, v in value.items()}
+    return value
+
+
 def render(out) -> tuple[str, int | None, bool]:
     rows, note, lead = None, None, ''
     if isinstance(out, dict) and set(out) == {'note', 'rows'} and isinstance(out['note'], str) and isinstance(out['rows'], list):
@@ -1010,6 +1042,7 @@ class Toolbox:
         self.calls: list[dict] = []
         self.writes: list[dict] = []
         self.flags: list[dict] = []
+        self.aliases: dict[str, str | None] = {}
         self.marks_down = False
         self.verified_tickets: set[str] = set()
         self.drafted: dict[str, str] = {}
@@ -1149,6 +1182,7 @@ class Toolbox:
         kind = None
         content = None
         seen = None
+        raw = None
         try:
             found = None if name in CORE or self.sources.plugin_tools is None else self.sources.plugin_tools.get(name)
             kind = found[1].kind if found is not None else None
@@ -1211,15 +1245,16 @@ class Toolbox:
                 if kind == 'write':
                     self._plugin_write(name, entry['input'])
             else:
-                out = handler(self._with_card_keys(name, args or {}))
-                text, rows, cut = render(out)
+                out = handler(self._with_card_keys(name, unmasked(args or {}, self.aliases)))
+                raw = render(out)[0]
+                shown = masked_tree(out, (), READ_LIMIT_ROWS, actors=True)
+                aliases_of(out, shown, self.aliases)
+                text, rows, cut = render(shown)
                 seen = self._scan_text(name, out)
             entry.update(rows=rows, truncated=cut)
             if name in SOURCE_TOOLS or name in SCANNED_OUTPUT or (plugin and self.sources.plugin_tools.scan(name)):
-                if seen is None:
-                    self.flags += scan(name, text)
-                else:
-                    self.flags += scan(name, seen[0]) + scan(name, seen[1], skip=SOFT)
+                found = scan(name, text if raw is None else raw) if seen is None else scan(name, seen[0]) + scan(name, seen[1], skip=SOFT)
+                self.flags += found if raw is None else [f | {'excerpt': safe_excerpt(f, raw if seen is None else seen[0] + '\n' + seen[1])} for f in found]
             return (text if content is None else content), False
         except ToolError as e:
             entry['error'] = e.text[:e.room or ERROR_LIMIT]
@@ -1229,8 +1264,10 @@ class Toolbox:
                 entry['refused'] = True
             if scanned and not e.refused:
                 self.flags += scan(name, entry['error'])
+            if not bridged:
+                entry['error'] = redact(e.text)[:e.room or ERROR_LIMIT]
         except Exception as e:
-            entry['error'] = text_of(e)[:ERROR_LIMIT]
+            entry['error'] = redact_secrets(text_of(e))[:ERROR_LIMIT]
         finally:
             entry['ms'] = round((time.monotonic() - started) * 1000)
             self.calls.append(entry)

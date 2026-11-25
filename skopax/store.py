@@ -1503,6 +1503,15 @@ class Store:
         query = {'target': {'$in': [key, f'slack:{key}', f'slack-update:{key}']}}
         return [_with_id(a) for a in self.actions.find(query, sort=[('requestedAt', DESCENDING), ('_id', DESCENDING)], limit=min(limit, CARD_HISTORY_MAX))]
 
+    def history_runs(self, key: str) -> list[dict]:
+        docs = self.investigations.find({'keys': key} | NOT_CHAT, {'startedAt': 1, 'recap': 1, 'outcome': 1}, sort=[('startedAt', DESCENDING), ('_id', DESCENDING)], limit=history.HISTORY_RUNS)
+        return [{'id': d['_id']} | {k: d[k] for k in ('startedAt', 'recap', 'outcome') if k in d} for d in docs]
+
+    def card_history_tail(self, card: dict, verdicts: list[dict] | None = None) -> list[dict]:
+        key = card['key']
+        return history.tail(card, [x for x in self.card_actions(key, history.HISTORY_SCAN) if x.get('source') != 'chat'], self.card_activity(key, history.HISTORY_SCAN, history.HISTORY_HIDDEN),
+                            self.history_runs(key), verdicts or [])
+
     def set_investigator_stop(self, stopped: bool, by: str) -> dict | None:
         if not stopped:
             self.meta.delete_one({'_id': STOP_ID})

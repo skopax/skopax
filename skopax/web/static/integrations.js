@@ -201,6 +201,16 @@ function intPicker(form, p, inst, w) {
 function intFlushPickers(form) {
   form.querySelectorAll('.int-field').forEach(function (w) { if (typeof w._sugFlush === 'function') w._sugFlush(); });
 }
+function intLockFields(form, inst) {
+  form.querySelectorAll('.int-field[data-owned="1"]').forEach(function (w) {
+    var title = tx('Set by {0}; change it there').replace('{0}', inst.source);
+    w.querySelectorAll('input, select, textarea, button').forEach(function (c) {
+      c.disabled = true;
+      c.title = title;
+      if (c.getAttribute('role') === 'switch' || c.getAttribute('role') === 'radio') c.setAttribute('aria-disabled', 'true');
+    });
+  });
+}
 function intFieldHtml(p, f, inst) {
   var id = 'int-' + p.id + '-' + (inst ? inst.name : 'new') + '-' + f.key;
   var init = intInit(f, inst);
@@ -212,7 +222,7 @@ function intFieldHtml(p, f, inst) {
   var input, tag = 'label', extra = '', side = '';
   if (f.kind === 'secret') {
     var locked = owned, held = inst && inst.secrets && inst.secrets[f.key];
-    input = '<div class="int-sec-row"><input id="' + esc(id) + '" class="int-in" type="password" autocomplete="new-password" maxlength="4000" placeholder="' + esc(intPlaceholder(f, inst)) + '"' + (locked ? ' readonly' : '') + '>' +
+    input = '<div class="int-sec-row"><input id="' + esc(id) + '" class="int-in" type="password" autocomplete="new-password" maxlength="4000" placeholder="' + esc(intPlaceholder(f, inst)) + '">' +
       (locked ? '' : '<button type="button" class="int-eye" aria-pressed="false" aria-controls="' + esc(id) + '" data-label="' + esc(f.label) + '" aria-label="Show ' + esc(f.label) + '">Show</button>') + '</div>';
     if (held && held.set) {
       var said = held.from ? 'From ' + held.from : 'Set';
@@ -253,10 +263,10 @@ function intFieldHtml(p, f, inst) {
       '<input id="' + esc(id) + '" class="int-sug-in" type="text" maxlength="1000"' + combo + '>' : '<input id="' + esc(id) + '" class="int-in int-sug-in" type="text" maxlength="1000" value="' + esc(init) + '"' + combo + '><span class="int-sug-tag int-sug-one" hidden>not in the list</span>') +
       '<div class="int-sug-pop" hidden><ul id="' + esc(id) + '-list" class="int-sug-list" role="listbox" aria-label="' + esc(f.label) + '"></ul><p class="int-sug-note" aria-live="polite"></p></div></div>';
   } else {
-    input = '<input id="' + esc(id) + '" class="int-in" type="text" maxlength="1000" value="' + esc(init) + '"' + (owned ? ' readonly' : '') + '>';
+    input = '<input id="' + esc(id) + '" class="int-in" type="text" maxlength="1000" value="' + esc(init) + '">';
   }
   var lab = '<' + tag + (tag === 'label' ? ' for="' + esc(id) + '"' : ' class="int-lab"') + ' id="' + esc(id) + '-l">' + esc(f.label) + (f.required ? '<span class="int-req"> *</span>' : '') + '</' + tag + '>';
-  return '<div class="int-field" data-key="' + esc(f.key) + '" data-kind="' + esc(f.kind) + '" data-initial="' + esc(init) + '"' + extra + show + '>' +
+  return '<div class="int-field" data-key="' + esc(f.key) + '" data-kind="' + esc(f.kind) + '" data-initial="' + esc(init) + '"' + (owned ? ' data-owned="1"' : '') + extra + show + '>' +
     '<div class="int-lrow">' + lab + side + '</div>' + input +
     (f.help ? '<span class="adm-help">' + esc(f.help) + '</span>' : '') +
     (owned && f.kind !== 'secret' ? '<span class="adm-msg">from ' + esc(inst.source) + '</span>' : '') +
@@ -1165,8 +1175,8 @@ function intValues(form, mode) {
   form.querySelectorAll('.int-field').forEach(function (w) {
     if (w.hidden || !w.querySelector('.int-in') || w.classList.contains('int-name')) return;
     var key = w.dataset.key, input = w.querySelector('.int-in');
+    if (w.dataset.owned === '1') return;
     if (w.dataset.kind === 'secret') {
-      if (input.readOnly) return;
       if (w.dataset.clear === '1') out[key] = '';
       else if (input.value !== '') out[key] = input.value;
       else if (mode !== 'create') out[key] = null;
@@ -1187,7 +1197,7 @@ function intFail(form, e, fallback) {
   else intSay(form.querySelector('.int-form-msg'), e && e.detail ? e.detail : fallback, true);
 }
 function intBusy(form, on) {
-  form.querySelectorAll('button').forEach(function (b) { b.disabled = on || b.dataset.off === '1'; });
+  form.querySelectorAll('button').forEach(function (b) { b.disabled = on || b.dataset.off === '1' || !!b.closest('[data-owned="1"]'); });
 }
 function intOffChecks(form) {
   return [].filter.call(form.querySelectorAll('.int-check'), function (c) { return !c.checked; }).map(function (c) { return c.dataset.check; });
@@ -1254,6 +1264,7 @@ function intMoveBrowser(form, p, inst) {
 function intForm(slot, p, inst) {
   slot.innerHTML = intFormHtml(p, inst);
   var form = slot.querySelector('form'), result = form.querySelector('.int-result');
+  if (inst) intLockFields(form, inst);
   intShowIf(form);
   form.addEventListener('input', function () { intShowIf(form); });
   form.addEventListener('change', function () { intShowIf(form); });
@@ -1382,11 +1393,13 @@ function intWidgets(form) {
   form.querySelectorAll('.int-entry').forEach(function (box) {
     var w = box.closest('.int-field'), input = w.querySelector('.int-in'), change = box.querySelector('.int-entry-change');
     change.addEventListener('click', function () {
+      if (input.disabled) return;
       w.dataset.pick = '1';
       intSync(form);
       input.focus();
     });
     box.querySelector('.int-entry-clear').addEventListener('click', function () {
+      if (input.disabled) return;
       intPut(input, '');
       change.focus();
     });

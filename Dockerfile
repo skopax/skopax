@@ -58,7 +58,7 @@ RUN python3 -m tools.licences check --site /usr/local/lib/python3.15/site-packag
 
 FROM base
 
-ARG SKOPAX_VERSION=0.5.17
+ARG SKOPAX_VERSION=0.5.18
 ARG COMMIT_ID=dev
 LABEL org.opencontainers.image.title="Skopax" \
       org.opencontainers.image.licenses="Apache-2.0" \

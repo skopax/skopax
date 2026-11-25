@@ -115,7 +115,7 @@ async function savedValuesShowAsChipsAndAnUntouchedValueIsSentByteForByte() {
   const tested = t.calls.filter((c) => c[1].endsWith('/test'))[0][2];
   assert.strictEqual(tested.values.zones, SAVED, 'the stored string is sent exactly as it was');
   assert.strictEqual(suggestCalls(t, 'zones').length, 0, 'the list loads only when the box is used');
-  assert.ok(!field(t.doc, 'owned').querySelector('[role="combobox"]') && field(t.doc, 'owned').querySelector('.int-in').readOnly, 'a value owned by a source stays read-only with no picker');
+  assert.ok(!field(t.doc, 'owned').querySelector('[role="combobox"]') && field(t.doc, 'owned').querySelector('.int-in').disabled, 'a value owned by a source stays disabled with no picker');
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
   console.log('PASS Admin, Integrations: a picker field shows saved values as removable chips and sends an untouched value byte for byte');
@@ -152,7 +152,7 @@ async function theListLoadsOnFocusFiltersAndAddsByKeyboard() {
 
   //then
   assert.deepStrictEqual(loading, ['Loading\u2026', 'true']);
-  assert.deepStrictEqual(sent, {name: 'main', values: {token: null, zones: SAVED, 'status-components': 'CDN/Cache', region: 'eu', owned: 'a.example.com'}}, 'the form values go along like a connection test');
+  assert.deepStrictEqual(sent, {name: 'main', values: {token: null, zones: SAVED, 'status-components': 'CDN/Cache', region: 'eu'}}, 'the form values go along like a connection test, without the value a source owns');
   assert.deepStrictEqual(listed, ['blog.example.com', 'docs.example.org', EVIL], 'chosen values are hidden from the list, whatever their case');
   assert.ok(press.defaultPrevented, 'pressing inside the list keeps focus in the box');
   assert.ok(!field(t.doc, 'zones').querySelector('[role="listbox"] img'), 'text only');

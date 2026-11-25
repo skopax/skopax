@@ -228,7 +228,7 @@ def test_admin_lists_the_two_overrides_next_to_the_card_model_with_their_choices
     models = ['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2', 'claude-mythos-5-2']
     for key, label, sev in (('investigate.model-critical', 'Model for Critical cards', 'Critical'), ('investigate.model-high', 'Model for High cards', 'High')):
         item = items[key]
-        assert (item['label'], item['help'], item['kind'], item['card'], item['group']) == (label, f'Card model for {sev} cards; empty uses the Card model', 'choice', 'Models', 'Investigator')
+        assert (item['label'], item['help'], item['kind'], item['card'], item['group']) == (label, f'Model for cards whose worst alert is {sev}; empty uses the Card model', 'choice', 'Models', 'Investigator')
         assert (item['value'], item['source'], item['choices']) == ('', 'default', [''] + models)
         assert item['choiceLabels'] == {'': 'Same as Card model'}
     assert keys.index('investigate.model') < keys.index('investigate.model-critical') < keys.index('investigate.model-high')

@@ -20,7 +20,7 @@ from skopax.config import SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import BY_KEY as FEATURE_OF
-from skopax.investigator.pricing import ALL_MODELS, LABELS as PROVIDER_LABELS, OPENAI, effective as effective_model, known as known_model, models_of, provider_of
+from skopax.investigator.pricing import ALL_MODELS, LABELS as PROVIDER_LABELS, OPENAI, effective as effective_model, default_model, known as known_model, models_of, provider_of
 from skopax.investigator import web as web_sites
 from skopax.investigator.prompt import writing_languages
 from skopax.messages import languages, msg
@@ -239,10 +239,10 @@ STATIC = (
     T('sso.button-icon', 'sso_button_icon', SIGNIN, 'Button icon', 'The icon of the single sign-on button: auto picks a mark from the issuer host, company shows the image uploaded on the Single sign-on card, none shows the text only', 'choice', choices=SSO_BUTTON_ICONS),
     T('investigate.provider', 'ai_provider', INV, 'AI provider', 'Which AI provider every model call goes to: anthropic or openai, one for the whole install. Each has its own key and models; '
       'a change applies from the next run or ask, and a model of the other provider falls back to the default of this one until you pick another', 'choice', choices=AI_PROVIDERS),
-    T('investigate.model', 'investigate_model', INV, 'Card model', 'Model for card runs, Investigate clicks, page asks and deploy-report assessments', 'choice', choices=MODELS),
-    T('investigate.model-critical', 'investigate_model_critical', INV, 'Model for Critical cards', 'Card model for Critical cards; empty uses the Card model', 'choice',
+    T('investigate.model', 'investigate_model', INV, 'Card model', 'Model for Warning and Info cards, and for Critical and High cards that have no model of their own below. Also used for page asks and deploy-report assessments', 'choice', choices=MODELS),
+    T('investigate.model-critical', 'investigate_model_critical', INV, 'Model for Critical cards', 'Model for cards whose worst alert is Critical; empty uses the Card model', 'choice',
       choices=('',) + MODELS, choice_labels={'': SAME_AS_CARD}),
-    T('investigate.model-high', 'investigate_model_high', INV, 'Model for High cards', 'Card model for High cards; empty uses the Card model', 'choice',
+    T('investigate.model-high', 'investigate_model_high', INV, 'Model for High cards', 'Model for cards whose worst alert is High; empty uses the Card model', 'choice',
       choices=('',) + MODELS, choice_labels={'': SAME_AS_CARD}),
     T('investigate.effort', 'investigate_effort', INV, 'Card effort', 'Thinking effort of the card model', 'choice', choices=EFFORTS),
     T('investigate.slack-model', 'investigate_slack_model', INV, 'Slack model', 'Model for questions asked in Slack', 'choice', choices=MODELS),
@@ -946,6 +946,9 @@ class Live:
         if t.choice_labels:
             out['choiceLabels'] = dict(t.choice_labels)
         self.provider_view(t, out)
+        if t.key == 'investigate.model':
+            out['modelProviders'] = {m: provider_of(m) for m in MODELS}
+            out['cardDefaults'] = {p: default_model(p, 'card') for p in AI_PROVIDERS}
         if t.key == POST_SEV_KEY and not given and not self.base.slack_post_sev_set:
             self.mark_old_switch(out)
         if t.key in SEV_HOURS_KEYS and not given and SEV_HOURS_KEYS[t.key][1] not in self.base.auto_resolve_sev_set:

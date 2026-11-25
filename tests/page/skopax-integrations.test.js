@@ -454,7 +454,7 @@ async function theAddFormShowsTokenOnlyForBearerAuth() {
   console.log('PASS Integrations: the add form shows token only for auth=bearer');
 }
 
-async function anAddressIsReadOnlyWhenASourceOwnsTheInstance() {
+async function anAddressIsDisabledWhenASourceOwnsTheInstance() {
   //given
   const t = await boot();
   await open(t);
@@ -462,18 +462,18 @@ async function anAddressIsReadOnlyWhenASourceOwnsTheInstance() {
   //when
   openInstance(t, 'acme', 'main');
   const owned = field(t.doc, 'url');
-  const ownedUrl = [owned.querySelector('.int-in').readOnly, owned.querySelector('.int-in').value, owned.textContent.includes('from config file')];
+  const ownedUrl = [owned.querySelector('.int-in').disabled, owned.querySelector('.int-in').value, owned.textContent.includes('from config file')];
   itab(t.doc, 'east').click();
   const mine = field(t.doc, 'url').querySelector('.int-in');
 
   //then
   assert.deepStrictEqual(ownedUrl, [true, 'https://main.example.com', true]);
-  assert.deepStrictEqual([mine.readOnly, mine.value], [false, 'https://east.example.com']);
+  assert.deepStrictEqual([mine.disabled, mine.value], [false, 'https://east.example.com']);
   t.w.close();
-  console.log('PASS Integrations: the address of an instance a source owns is read-only');
+  console.log('PASS Integrations: the address of an instance a source owns is disabled');
 }
 
-async function aSecretShowsWhereItComesFromAndIsReadOnlyWhenASourceOwnsIt() {
+async function aSecretShowsWhereItComesFromAndIsDisabledWhenASourceOwnsIt() {
   //given
   const t = await boot();
   await open(t);
@@ -481,16 +481,16 @@ async function aSecretShowsWhereItComesFromAndIsReadOnlyWhenASourceOwnsIt() {
   //when
   openInstance(t, 'acme', 'main');
   const owned = field(t.doc, 'token').querySelector('.int-in');
-  const ownedHint = [owned.placeholder, owned.readOnly, owned.value, !!field(t.doc, 'token').querySelector('.int-clear')];
+  const ownedHint = [owned.placeholder, owned.disabled, owned.value, !!field(t.doc, 'token').querySelector('.int-clear')];
   itab(t.doc, 'east').click();
   const mine = field(t.doc, 'token').querySelector('.int-in');
 
   //then
   assert.deepStrictEqual(ownedHint, ['set \u00b7 from config file', true, '', false]);
-  assert.deepStrictEqual([mine.placeholder, mine.readOnly, mine.value], ['set', false, '']);
+  assert.deepStrictEqual([mine.placeholder, mine.disabled, mine.value], ['set', false, '']);
   assert.ok(!t.doc.body.innerHTML.includes('tok-'), 'no secret value is in the page');
   t.w.close();
-  console.log('PASS Integrations: a secret reads "set \u00b7 from config file", is blank, and is read-only when a source owns it');
+  console.log('PASS Integrations: a secret reads "set \u00b7 from config file", is blank, and is disabled when a source owns it');
 }
 
 async function theInstanceShowsItsRoleSourceHealthAndProblem() {
@@ -2823,8 +2823,8 @@ async function aSavedAgentNodeThatIsGoneStaysSelectedWithAMarker() {
   await cancelGoesBackToTheFirstInstanceOrClosesThePanel();
   await theAddFormShowsTokenOnlyForBearerAuth();
   await thePinSwitchShowsOnlyOnceACertificateIsPasted();
-  await aSecretShowsWhereItComesFromAndIsReadOnlyWhenASourceOwnsIt();
-  await anAddressIsReadOnlyWhenASourceOwnsTheInstance();
+  await aSecretShowsWhereItComesFromAndIsDisabledWhenASourceOwnsIt();
+  await anAddressIsDisabledWhenASourceOwnsTheInstance();
   await theInstanceShowsItsRoleSourceHealthAndProblem();
   await aRoutePluginShowsNoPrimaryControls();
   await testConnectionShowsTheSummaryAndKeepsAnUntouchedSecretNull();

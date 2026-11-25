@@ -12,7 +12,7 @@ body:
     attributes:
       label: Skopax version
       description: The version shown at the bottom of the page, or the image tag.
-      placeholder: 0.5.17
+      placeholder: 0.5.18
     validations:
       required: true
   - type: dropdown

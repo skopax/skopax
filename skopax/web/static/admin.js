@@ -1103,7 +1103,26 @@ function aiPair(model, effort, title) {
   pair.appendChild(h);
   pair.appendChild(adminRow(model));
   pair.appendChild(adminRow(effort));
+  if (model.key === 'investigate.model') pair.appendChild(accText('p', 'adm-help adm-model-summary', cardModelSummary()));
   return pair;
+}
+function adminValueOf(key) {
+  var i = adminItems().filter(function (x) { return x.key === key; })[0];
+  return i ? String(i.value || '') : '';
+}
+function cardModelItem() { return adminItems().filter(function (x) { return x.key === 'investigate.model'; })[0] || {}; }
+function cardModelProviderOf(model) { return (cardModelItem().modelProviders || {})[model] || null; }
+function cardModelActive() {
+  var item = cardModelItem(), model = String(item.value || ''), provider = aiProvider(), owner = cardModelProviderOf(model);
+  return !owner || owner === provider ? model : (item.cardDefaults || {})[provider] || model;
+}
+function cardModelFor(override) {
+  var owner = cardModelProviderOf(override);
+  return override && owner && owner === aiProvider() ? override : cardModelActive();
+}
+function cardModelSummary() {
+  return 'Which model runs: Critical cards ' + cardModelFor(adminValueOf('investigate.model-critical')) + ' \u00b7 High cards ' + cardModelFor(adminValueOf('investigate.model-high')) +
+    ' \u00b7 Warning and Info cards ' + cardModelActive();
 }
 function renderAiRows(saved) {
   var box = document.getElementById('ai-rows');
