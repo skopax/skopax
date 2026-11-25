@@ -30,6 +30,8 @@ KEY = 'log|checkout-service|ERROR|boom'
 NOW = 1_794_240_000.0
 SAID = {'text': 'We recommend adding a redirect for the old spring sale page.', 'why': 'Visitors from the old campaign land on an empty page.', 'by': 'pod', 'at': AT}
 INFO = {'text': 'Newsletter sign-ups fail right now; engineering is fixing it.', 'kind': 'info', 'by': 'pod', 'at': AT}
+SAID_QUOTE = '\n> Visitors from the old campaign land on an empty page.\n> We recommend adding a redirect for the old spring sale page.'
+QUOTE = '\n> Newsletter sign-ups fail right now; engineering is fixing it.'
 THREAD = {'channel': 'C123', 'ts': '1791900000.000001', 'at': AT}
 
 
@@ -157,7 +159,7 @@ def test_one_tag_reads_as_tag_and_a_key_route_names_no_tag(store: Store):
     routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
 
     # then
-    assert sorted(t for _, t in fake.said) == ['Sent to seo-team on Microsoft Teams (tag: seo)', 'Sent to tech on Microsoft Teams']
+    assert sorted(t for _, t in fake.said) == ['Sent to seo-team on Microsoft Teams (tag: seo)' + QUOTE, 'Sent to tech on Microsoft Teams']
     assert fake.posted.count(KEY) == 1 and len(fake.posted) == 2
 
 
@@ -172,7 +174,7 @@ def test_a_card_matching_two_routes_gets_one_line_that_names_both(store: Store):
 
     # then
     assert fake.posted == [KEY] and len(fake.said) == 1
-    assert fake.said[0][1] == 'Sent to devs on Microsoft Teams (tag: developer); seo on Microsoft Teams (tag: seo)'
+    assert fake.said[0][1] == 'Sent to devs on Microsoft Teams (tag: developer); seo on Microsoft Teams (tag: seo)\nseo:' + SAID_QUOTE
 
 
 def test_only_the_routes_that_echo_are_named(store: Store):
@@ -198,7 +200,7 @@ def test_a_card_that_already_has_a_slack_post_is_not_posted_again_but_the_line_s
     routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
 
     # then
-    assert fake.posted == [] and fake.said == [({'channel': 'C9', 'ts': '1791800000.000009', 'at': AT}, 'Sent to seo on Microsoft Teams (tag: seo)')]
+    assert fake.posted == [] and fake.said == [({'channel': 'C9', 'ts': '1791800000.000009', 'at': AT}, 'Sent to seo on Microsoft Teams (tag: seo)' + QUOTE)]
 
 
 def test_a_repeat_post_to_the_same_route_adds_no_line_but_a_new_route_does(store: Store):
@@ -214,7 +216,7 @@ def test_a_repeat_post_to_the_same_route_adds_no_line_but_a_new_route_does(store
 
     # then
     assert [u for u, _ in t.calls] == [SEO, SEO, TECH]
-    assert [text for _, text in fake.said] == ['Sent to seo on Microsoft Teams (tag: seo)', 'Sent to devs on Microsoft Teams (tag: developer)']
+    assert [text for _, text in fake.said] == ['Sent to seo on Microsoft Teams (tag: seo)' + SAID_QUOTE, 'Sent to devs on Microsoft Teams (tag: developer)']
     assert fake.posted == [KEY]
 
 
@@ -241,7 +243,7 @@ def test_only_the_route_that_posted_is_echoed(store: Store):
     routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
 
     # then
-    assert [t for _, t in fake.said] == ['Sent to seo on Microsoft Teams (tag: seo)']
+    assert [t for _, t in fake.said] == ['Sent to seo on Microsoft Teams (tag: seo)' + SAID_QUOTE]
 
 
 def test_a_slack_failure_never_undoes_or_retries_the_teams_post_and_leaks_no_text(store: Store, caplog):
@@ -477,7 +479,7 @@ def test_a_card_that_gets_its_slack_post_during_a_backoff_hears_the_line_at_once
     routes.deliver([], NOW + 60, [])
 
     # then
-    assert len(fake.attempts) == 1 and [t for _, t in fake.said] == ['Sent to seo on Microsoft Teams (tag: seo)']
+    assert len(fake.attempts) == 1 and [t for _, t in fake.said] == ['Sent to seo on Microsoft Teams (tag: seo)' + QUOTE]
 
 
 def test_five_failed_slack_posts_drop_the_entry_with_an_info_log(store: Store, caplog):
@@ -572,7 +574,7 @@ def test_a_manual_send_answers_and_clears_its_retry_before_slack_is_told(store: 
     assert ('teams/seo', KEY) not in routes._records(time.time())
     assert [p['id'] for p in store.anomaly(KEY)['routeEcho']['pending']] == ['teams/seo']
     routes.deliver([], NOW, [])
-    assert [t for _, t in fake.said] == ['Sent to seo on Microsoft Teams (tag: seo)'] and fake.posted == [KEY]
+    assert [t for _, t in fake.said] == ['Sent to seo on Microsoft Teams (tag: seo)' + QUOTE] and fake.posted == [KEY]
 
 
 def test_echo_waits_for_slack_and_expires_after_a_day_with_an_info_log(store: Store, caplog):
@@ -607,7 +609,7 @@ def test_the_pass_budget_leaves_the_rest_pending(store: Store):
     routes.deliver([], NOW + 60, [])
 
     # then
-    assert [t for _, t in fake.said] == ['Sent to seo on Microsoft Teams (tag: seo)']
+    assert [t for _, t in fake.said] == ['Sent to seo on Microsoft Teams (tag: seo)' + QUOTE]
 
 
 def test_markdown_and_channel_mentions_in_a_route_name_stay_inert(store: Store):
@@ -646,7 +648,7 @@ def test_a_renamed_route_instance_is_named_by_its_current_name(store: Store):
     routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
 
     # then
-    assert fake.said[0][1] == 'Sent to search-team on Microsoft Teams (tag: seo)'
+    assert fake.said[0][1] == 'Sent to search-team on Microsoft Teams (tag: seo)' + QUOTE
 
 
 def test_a_muted_card_is_neither_posted_to_teams_nor_slack(store: Store):
@@ -701,7 +703,7 @@ def test_a_future_route_plugin_gets_the_echo_with_its_own_name_and_no_new_code(s
     routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
 
     # then
-    assert [t for _, t in fake.said] == ['Sent to web on Hook (tag: seo)']
+    assert [t for _, t in fake.said] == ['Sent to web on Hook (tag: seo)' + QUOTE]
 
 
 def test_every_outbound_plugin_carries_the_route_field_and_others_do_not():
@@ -746,7 +748,7 @@ class SlackT:
 
 
 DRAFT = {'text': 'Checkout is failing for some visitors.', 'at': AT, 'by': 'pod'}
-LINE = 'Sent to seo-team on Microsoft Teams (tag: seo)'
+LINE = 'Sent to seo-team on Microsoft Teams (tag: seo)' + QUOTE
 
 
 def armed(**auto) -> dict:
@@ -1037,7 +1039,7 @@ def test_a_line_in_another_cards_thread_names_its_own_card_and_why_it_is_there(s
 
     # then
     assert fake.said == [(PLACED, '<https://skopax.example.com/c/5|#5 checkout-service / ERROR lines> \u00b7 Same service as #3 checkout-service / ERROR lines: '
-                                  'Sent to seo on Microsoft Teams (tag: seo)')]
+                                  'Sent to seo on Microsoft Teams (tag: seo)' + QUOTE)]
 
 
 def test_a_line_in_a_shared_digest_thread_names_its_own_card(store: Store):
@@ -1051,7 +1053,7 @@ def test_a_line_in_a_shared_digest_thread_names_its_own_card(store: Store):
     routes.deliver([store.anomaly(KEY)], NOW, [store.anomaly(KEY)])
 
     # then
-    assert fake.said == [(digest, '<https://skopax.example.com/c/5|#5 checkout-service / ERROR lines>: Sent to seo on Microsoft Teams (tag: seo)')]
+    assert fake.said == [(digest, '<https://skopax.example.com/c/5|#5 checkout-service / ERROR lines>: Sent to seo on Microsoft Teams (tag: seo)' + QUOTE)]
 
 
 def test_a_host_card_that_cannot_be_read_still_leaves_a_named_line(store: Store, monkeypatch):
@@ -1072,4 +1074,154 @@ def test_a_host_card_that_cannot_be_read_still_leaves_a_named_line(store: Store,
     routes.deliver([read(KEY)], NOW, [read(KEY)])
 
     # then
-    assert fake.said == [(PLACED, '<https://skopax.example.com/c/5|#5 checkout-service / ERROR lines>: Sent to seo on Microsoft Teams (tag: seo)')]
+    assert fake.said == [(PLACED, '<https://skopax.example.com/c/5|#5 checkout-service / ERROR lines>: Sent to seo on Microsoft Teams (tag: seo)' + QUOTE)]
+
+
+def said_texts(fake: Fake) -> list[str]:
+    return [t for _, t in fake.said]
+
+
+def test_a_business_route_echo_quotes_the_sentence_and_the_why_the_route_sent(store: Store):
+    # given
+    seed(store, open_card(KEY, 'warn', tags=tag('seo'), business=SAID))
+    fake, t = Fake(store), Transport()
+    routes = echoing(store, fake, route('seo', SEO, tags='seo'), core=True, transport=t)
+
+    # when
+    routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
+
+    # then
+    assert said_texts(fake) == ['Sent to seo on Microsoft Teams (tag: seo)\n> Visitors from the old campaign land on an empty page.\n> We recommend adding a redirect for the old spring sale page.']
+    assert SAID['text'] in str(t.calls) and SAID['why'] in str(t.calls)
+
+
+def test_an_info_route_echo_quotes_the_info_sentence(store: Store):
+    # given
+    seed(store, seo_info())
+    fake = Fake(store)
+    routes = echoing(store, fake, route('seo', SEO, tags='seo'), core=True)
+
+    # when
+    routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
+
+    # then
+    assert said_texts(fake) == ['Sent to seo on Microsoft Teams (tag: seo)\n> Newsletter sign-ups fail right now; engineering is fixing it.']
+
+
+def test_a_technical_route_echo_quotes_the_finding_it_sent(store: Store):
+    # given
+    note = {'text': 'The checkout pod restarts because the heap is full.', 'at': '2026-11-09T11:00:00Z'}
+    seed(store, open_card('log|a|ERROR|keyed', 'crit', noteBy='pod', note=note))
+    fake = Fake(store)
+    routes = echoing(store, fake, route('tech', TECH, keys='log|a|*'), core=True)
+
+    # when
+    routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
+
+    # then
+    assert said_texts(fake) == ['Sent to tech on Microsoft Teams\n> The checkout pod restarts because the heap is full.']
+
+
+def test_a_technical_route_without_a_finding_adds_no_quote(store: Store):
+    # given
+    seed(store, open_card('log|a|ERROR|keyed', 'crit'))
+    fake = Fake(store)
+    routes = echoing(store, fake, route('tech', TECH, keys='log|a|*'), core=True)
+
+    # when
+    routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
+
+    # then
+    assert said_texts(fake) == ['Sent to tech on Microsoft Teams']
+
+
+def test_a_long_sent_text_is_cut_to_about_four_hundred_characters(store: Store):
+    # given
+    long = {'text': 'word ' * 200, 'kind': 'info', 'by': 'pod', 'at': AT}
+    seed(store, open_card(KEY, 'warn', tags=tag('seo'), business=long))
+    fake = Fake(store)
+    routes = echoing(store, fake, route('seo', SEO, tags='seo'), core=True)
+
+    # when
+    routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
+
+    # then
+    quote = said_texts(fake)[0].split('\n> ', 1)[1]
+    assert 380 <= len(quote) <= 400 and quote.endswith('…')
+
+
+def test_a_secret_in_the_sent_text_is_masked_once_and_a_redacted_mark_stays(store: Store):
+    # given
+    leaky = {'text': 'Login failed, password=hunter2hunter2 for [redacted] on the form.', 'kind': 'info', 'by': 'pod', 'at': AT}
+    seed(store, open_card(KEY, 'warn', tags=tag('seo'), business=leaky))
+    fake = Fake(store)
+    routes = echoing(store, fake, route('seo', SEO, tags='seo'), core=True)
+
+    # when
+    routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
+
+    # then
+    line = said_texts(fake)[0]
+    assert 'hunter2' not in line and line.endswith('> Login failed, password=[redacted] for [redacted] on the form.')
+    assert 'hunter2' not in str(store.anomaly(KEY).get('routeEcho'))
+
+
+def test_the_quoted_text_is_inert_in_slack(store: Store):
+    # given
+    odd = {'text': 'Page <!channel> says *loud* and <@U1> `c` &', 'kind': 'info', 'by': 'pod', 'at': AT}
+    seed(store, open_card(KEY, 'warn', tags=tag('seo'), business=odd))
+    fake = Fake(store)
+    routes = echoing(store, fake, route('seo', SEO, tags='seo'), core=True)
+
+    # when
+    routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
+
+    # then
+    assert said_texts(fake)[0].endswith('> Page &lt;!channel&gt; says ∗loud∗ and &lt;@U1&gt; ˋcˋ &amp;')
+
+
+def test_two_routes_that_sent_the_same_text_show_it_once_with_both_names(store: Store):
+    # given
+    seed(store, seo_info(tags=tag('seo', 'developer')))
+    fake = Fake(store)
+    routes = echoing(store, fake, route('seo', SEO, tags='seo'), route('devs', BIZDEV, tags='developer'), core=True)
+
+    # when
+    routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
+
+    # then
+    lines = said_texts(fake)
+    assert len(lines) == 1 and lines[0].count('> Newsletter sign-ups fail right now; engineering is fixing it.') == 1
+    assert lines[0].startswith('Sent to ') and 'seo on Microsoft Teams' in lines[0] and 'devs on Microsoft Teams' in lines[0]
+
+
+def test_routes_with_different_texts_each_show_theirs_under_their_names(store: Store):
+    # given
+    note = {'text': 'The checkout pod restarts because the heap is full.', 'at': '2026-11-09T11:00:00Z'}
+    seed(store, open_card(KEY, 'warn', tags=tag('seo'), business=INFO, noteBy='pod', note=note))
+    fake = Fake(store)
+    routes = echoing(store, fake, route('seo', SEO, tags='seo'), route('tech', TECH, keys='log|checkout-service|*'), core=True)
+
+    # when
+    routes.deliver(store.load()['anomalies'], NOW, store.load()['anomalies'])
+
+    # then
+    lines = said_texts(fake)
+    assert len(lines) == 1
+    assert 'seo:\n> Newsletter sign-ups fail right now; engineering is fixing it.' in lines[0] and 'tech:\n> The checkout pod restarts because the heap is full.' in lines[0]
+
+
+def test_a_post_made_outside_a_delivery_leaves_no_text_for_a_later_echo(store: Store):
+    # given
+    seed(store, seo_info())
+    fake = Fake(store)
+    routes = echoing(store, fake, route('seo', SEO, tags='seo'), core=True)
+    card = store.anomaly(KEY)
+    live = routes.routes()[0]
+
+    # when
+    failed = routes.attempt(live, routes.business_message(card, 'seo', []))
+
+    # then
+    assert failed is None and routes._sent_text == {}
+    assert routes.echo_entry(card, live, NOW)['id'] == live.id and 'text' not in routes.echo_entry(card, live, NOW)

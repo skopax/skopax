@@ -135,7 +135,7 @@ class FakeChrome:
                 self._decided(ws, nav, params['requestId'], method == 'Fetch.continueRequest')
             elif method == 'Runtime.evaluate':
                 expression = str(params.get('expression') or '')
-                if expression.startswith('((needle)') and nav:
+                if expression.startswith('((needle') and nav:
                     reply({'result': {'type': 'object', 'value': nav['site'].focus}})
                 elif expression.startswith('((marks)') and nav:
                     reply({'result': {'type': 'object', 'value': nav['site'].mark}})

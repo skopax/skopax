@@ -23,6 +23,7 @@ log = logging.getLogger('skopax.plugins.website.pagescan')
 TRIED_AT = re.compile(r'error: pages \(tried (\S+)\):')
 
 PASS = 'pagescan'
+ABOUT_MAX = 300
 DIGEST = 'pagescan-digest'
 TOOL = 'page_scan'
 NS = 'pages'
@@ -896,11 +897,11 @@ class Scan:
         for card in cards:
             self.evidence(url, card, pic, issues if card['key'].startswith(LAYOUT) else typos, memo)
 
-    def extra(self, url: str, focus: str | None = None, mark: list | None = None) -> Picture | None:
+    def extra(self, url: str, focus: str | None = None, mark: list | None = None, about: str | None = None) -> Picture | None:
         if self.left() <= 0 or len(self.shots) >= SHOTS_MAX:
             return None
         try:
-            pic = self.browser.shoot(url, self.site, 'phone', False, None, True, self.headers, focus, mark)
+            pic = self.browser.shoot(url, self.site, 'phone', False, None, True, self.headers, focus, mark, about=about)
         except BrowserDown:
             raise
         except ShotError as e:
@@ -939,9 +940,10 @@ class Scan:
         scrolled = [p for p in pic.scrolled if p.data and verdict_of(p) in wanted]
         if scrolled:
             pics += ([] if pics or not pic.data else [pic]) + scrolled
-        anchor = next((i['anchor'] for i in items if i.get('kind') == 'visual' and i.get('anchor')), '')
+        found = next((i for i in items if i.get('kind') == 'visual' and i.get('anchor')), None)
+        anchor = found['anchor'] if found else ''
         if anchor:
-            shot = self.extra(url, focus=anchor)
+            shot = self.extra(url, focus=anchor, about=' '.join(x for x in (found.get('wrong'), found.get('where')) if x)[:ABOUT_MAX] or None)
             pics += [shot] if shot else []
         if not pics and pic.data:
             pics = [pic]

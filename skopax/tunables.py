@@ -101,7 +101,7 @@ def is_model_setting(t: Tunable) -> bool:
 
 
 def kept_ref(t: Tunable, text: str) -> bool:
-    return is_model_setting(t) and str(provider_of_ref(text) or '').startswith('compat:') and len(text) <= 300 and not any(c.isspace() for c in text)
+    return is_model_setting(t) and ':' in str(provider_of_ref(text) or '') and len(text) <= 300 and not any(c.isspace() for c in text)
 
 
 def extra_models_of(t: Tunable) -> tuple[str, ...]:
@@ -932,7 +932,7 @@ class Live:
             if raw is None:
                 continue
             try:
-                return parse(t, raw, self.base)
+                return parse(t, raw, self.base, loading=is_model_setting(t))
             except Invalid as e:
                 mark = hashlib.sha256(str(raw).encode()).hexdigest()
                 if self._warned.get((key, where)) != mark:
@@ -1060,6 +1060,9 @@ class Live:
             out['value'] = resolve_model(out['value'], role, provider, chosen=False)[1]
             return
         owner = provider_of_ref(out['value'])
+        if str(owner).startswith('vertex:') and not known_model(out['value']):
+            out['problem'] = msg('ai.model_unknown', model=out['value'])
+            return
         if owner in (provider, None) or self.keyed(owner):
             return
         out['problem'] = msg('ai.use_held', owner=label_of(owner))

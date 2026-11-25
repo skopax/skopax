@@ -2,6 +2,32 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.6.1 (2026-11-26)
+
+Skopax can run Claude through your own Google Cloud project on Vertex AI, and the board and the page scan get small fixes.
+
+### Added
+
+- Claude through Google Vertex AI: named connections to your own Google Cloud project, with credentials by service-account key, workload identity federation or the pod's own identity, a model list with Vertex model ids and prices, and Test connection with a result for each model. Current Claude models run on the `global`, `us` and `eu` locations (`eu` keeps processing in the EU); a single region serves older models only. Admin > Investigator has a Vertex AI card for it, the models are named `<connection>/<model>` in the Who does what selects, spend goes through the usual ledger, and Where AI data goes names Google Cloud Vertex AI. The API is `GET /api/admin/ai-vertex` and `GET/PUT/DELETE /api/admin/ai-vertex/{name}`; `SKOPAX_VERTEX_TOKEN_DIR` limits where a federation token file may live. See [Run Claude on Vertex AI in your own Google Cloud](docs/setup.md#run-claude-on-vertex-ai-in-your-own-google-cloud).
+
+### Changed
+
+- The `anthropic[vertex]` extra (google-auth) joins the dependencies.
+- Page reads are now offered only to providers that can do them (a `web_fetch` capability).
+- Critical cards on the board glow so they stand out.
+- The Slack line that says a card went to a Teams or mail route now quotes what the route sent (masked, cut at about 400 characters, shown once when routes sent the same text).
+
+### Security
+
+- A Critical or High card model, or a plug-in model, set to a model of a Vertex or compatible connection that was later deleted is now held with a problem on its use row, instead of falling back to the default provider.
+
+### Fixed
+
+- A page-scan finding inside an image now marks the image in the screenshot, not the caption under it.
+- A tile on the board no longer shows its own hint on top of the tooltip of a badge inside it.
+- An instance switch under a plug-in that is switched off is greyed with Plug-in off beside it, keeps its stored value, and the status says the plug-in is off or the instance is, instead of showing On.
+- A card that came back after No action needed now says "Came back after No action needed" and its tip names both times.
+
 ## 0.6.0 (2026-11-25)
 
 Skopax moves to the AGPL, each AI use picks its own provider and model, OpenAI-compatible connections arrive with a Who does what table in Admin, connections can be kept out of questions, and a confidential-data guard covers every prompt.

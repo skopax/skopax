@@ -284,7 +284,7 @@ async function tilesAndRowsTitleACardByItsMessageOrItsBusinessSentence() {
   //then
   assert.deepStrictEqual(got, ['Store not found', 'Store not found', 'OrderDetailPage \u00b7 getStoreDetails', 'Error in HTTP response', 'Recommended: change "a.b" to "a. b" in the copy.', '']);
   assert.strictEqual(info, 'The sale page is down for visitors.', 'an info sentence is not a recommendation');
-  assert.ok(east.querySelector('.tile-sig').textContent.endsWith('instance east') && east.title.includes('instance east'), 'the tile names the instance');
+  assert.ok(east.querySelector('.tile-sig').textContent.endsWith('instance east') && east.querySelector('.tile-open').title.includes('instance east') && !east.title, 'the tile names the instance');
   assert.deepStrictEqual([tileOfNew.querySelector('.tile-title').textContent, tileOfNew.querySelector('.tile-sig').textContent], ['boom', 'checkout-service \u00b7 ERROR lines'], 'the tile leads with the message and puts the service and signal under it');
   assert.deepStrictEqual(errors, []);
   w.close();

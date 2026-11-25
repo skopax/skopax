@@ -1,10 +1,10 @@
 # What reaches the AI provider
 
-Skopax sends text to the AI provider of each use (Anthropic, OpenAI, or the host of an OpenAI-compatible connection; see [The AI provider and its key](setup.md#the-ai-provider-and-its-key) and [Where AI data goes](configuration.md#where-ai-data-goes)) when it investigates a card, answers a Slack ask, a chat message or a page ask, checks whether a Slack message is meant for it (the topic gate), writes small talk, summarises a Slack thread, writes a self-review or scans a page. This page says what is masked before that text leaves, and what is not.
+Skopax sends text to the AI provider of each use (Anthropic, OpenAI, Google Cloud Vertex AI, or the host of an OpenAI-compatible connection; see [The AI provider and its key](setup.md#the-ai-provider-and-its-key) and [Where AI data goes](configuration.md#where-ai-data-goes)) when it investigates a card, answers a Slack ask, a chat message or a page ask, checks whether a Slack message is meant for it (the topic gate), writes small talk, summarises a Slack thread, writes a self-review or scans a page. This page says what is masked before that text leaves, and what is not.
 
 ## Where it goes
 
-Each use sends its text to the company that runs its model: Anthropic models to Anthropic, OpenAI models to OpenAI, and a model of an OpenAI-compatible connection to the host of its base URL (or to your own network for a local Ollama). Admin > Investigator shows that company for each use under Data goes to. The masking below applies the same way to every provider.
+Each use sends its text to the company that runs its model: Anthropic models to Anthropic, OpenAI models to OpenAI, a Claude model of a Vertex AI connection to Google Cloud Vertex AI in the location you chose (processed there, under your own Google Cloud project and contract; `eu` keeps processing in the EU, while `global` gives no residency guarantee), and a model of an OpenAI-compatible connection to the host of its base URL (or to your own network for a local Ollama). Admin > Investigator shows that company for each use under Data goes to; for Vertex it reads Google Cloud Vertex AI (<region>). The masking below applies the same way to every provider.
 
 ## What is sent
 

@@ -192,8 +192,10 @@ class AiConnections:
         self.every = every
         self._held: dict[str, Connection] = {}
         self.changed: Callable[[], None] = lambda: None
+        self.taken: Callable[[str], bool] = lambda name: False
         self._lost: set[str] = set()
         self._dropped: set[str] = set()
+        self._clashed: set[str] = set()
         self._write = threading.Lock()
         self._testing: threading.Thread | None = None
         self._test_guard = threading.Lock()
@@ -229,8 +231,14 @@ class AiConnections:
     def _load(self) -> None:
         out: dict[str, Connection] = {}
         dropped: set[str] = set()
+        clashed: set[str] = set()
         for doc in self.col.find({'_id': {'$regex': '^compat[.]'}}):
             name = str(doc['_id'])[len(COMPAT_ID):]
+            if self.col.find_one({'_id': 'vertex.' + name}, {'_id': 1}) is not None:
+                clashed.add(name)
+                if name not in self._clashed:
+                    log.warning('%s', msg('vertex.name_clash', name=name[:40]))
+                continue
             try:
                 compat_ai.checked_name(name)
                 models = compat_ai.checked_models(doc.get('models') or [])
@@ -246,6 +254,7 @@ class AiConnections:
                                    test if isinstance(test, dict) else None, lost)
         self._lost = {n for n, c in out.items() if c.unreadable}
         self._dropped = dropped
+        self._clashed = clashed
         before = self.shape()
         self._held = out
         if self.shape() != before:
@@ -267,11 +276,16 @@ class AiConnections:
     def views(self) -> list[dict]:
         return [c.view() for c in self.all()]
 
+    def clashes(self) -> list[str]:
+        return sorted(self._clashed)
+
     def unreadable(self) -> list[str]:
         return [c.name for c in self.all() if c.unreadable]
 
     def put(self, name: str, body: dict, by: str) -> dict:
         name = compat_ai.checked_name(name)
+        if self.taken(name):
+            raise Refused(msg('vertex.name_taken'))
         url = compat_ai.check_url(body.get('baseUrl'), bool(self.allow_private()))
         models = compat_ai.checked_models(body.get('models') or [])
         typed = body.get('key')

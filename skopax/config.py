@@ -237,6 +237,7 @@ class Settings:
     info_auto_close_days_set: bool = False
     business_days: bool = True
     allow_private_ai: bool = False
+    vertex_token_dir: str = '/var/run/secrets/tokens'
     archive_hours: int = 48
     history_keep_days: int = 365
     recurring_count: int = 3
@@ -797,6 +798,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         info_auto_close_days_set=info_set,
         business_days=get('core.business-days', 'SKOPAX_BUSINESS_DAYS', 'true').strip().lower() == 'true',
         allow_private_ai=get('core.allow-private-ai', 'SKOPAX_ALLOW_PRIVATE_AI', 'false').strip().lower() == 'true',
+        vertex_token_dir=get('core.vertex-token-dir', 'SKOPAX_VERTEX_TOKEN_DIR', '/var/run/secrets/tokens').strip() or '/var/run/secrets/tokens',
         archive_hours=int(get('cards.archive-hours', 'CARDS_ARCHIVE_HOURS', '48').strip() or 48),
         history_keep_days=int(get('history.keep-days', 'HISTORY_KEEP_DAYS', '365').strip() or 365),
         recurring_count=int(get('recurring.count', 'RECURRING_COUNT', '3').strip() or 3),

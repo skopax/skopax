@@ -1,3 +1,4 @@
+import contextlib
 import dataclasses
 import fnmatch
 import hashlib
@@ -20,6 +21,7 @@ from skopax.investigator.select import own_findings
 from skopax.investigator.tools import draft_problem
 from skopax.kit.links import sendable
 from skopax.messages import msg
+from skopax.outward import outward
 from skopax.slack import ENTITY_CUT, SLACK_MARKS, cut, esc, thread_why
 from skopax.store import NotFound
 
@@ -47,6 +49,7 @@ STOPPED = 'the server stopped before it was posted'
 NOT_TRIED = (BUSY, GONE, STOPPED)
 EMAIL = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
 ECHO_LINE_MAX = 2900
+ECHO_TEXT_MAX = 400
 ECHO_TTL_S = 86400
 ECHO_PASS_S = 30.0
 ECHO_WAIT_S = 300.0
@@ -127,6 +130,18 @@ def finished(card: dict) -> bool:
     note = card.get('note') if isinstance(card.get('note'), dict) else {}
     at, since = stamp_of(note.get('at')), stamp_of(card.get('firstSeen'))
     return card.get('noteBy') == 'pod' and bool(str(note.get('text') or '').strip()) and at is not None and (since is None or at >= since)
+
+
+def sent_texts(message: dict) -> dict[str, str]:
+    kind_ = message.get('kind')
+    if kind_ in ('action', 'info'):
+        key = (message.get('card') or {}).get('key')
+        lines = [str(line.get('text') or '').strip() for line in message.get('lines') or [] if isinstance(line, dict)]
+        text = '\n'.join(line for line in lines if line)
+        return {key: text} if key and text else {}
+    if kind_ == 'card':
+        return {row['key']: str(row['finding']).strip() for row in message.get('cards') or [] if isinstance(row, dict) and row.get('key') and str(row.get('finding') or '').strip()}
+    return {}
 
 
 def signature(route: 'Route') -> str:
@@ -324,6 +339,9 @@ class Routes:
         self.attribution = attribution
         self.timeout = timeout
         self._bound = Bound('outbound')
+        self._sent_lock = threading.Lock()
+        self._sent_text: dict[tuple[str, str], str] = {}
+        self._collect = threading.local()
         self.autostart = autostart
         self.echo: Echo | None = None
         self.echo_budget = ECHO_PASS_S
@@ -453,9 +471,15 @@ class Routes:
     def inert(self, text: object) -> str:
         return esc(text).translate(SLACK_MARKS)
 
-    def echo_entry(self, card: dict, route: Route, now: float) -> dict:
+    def echo_entry(self, card: dict, route: Route, now: float, text: str = '') -> dict:
         mine = tags.ids(card)
-        return {'id': route.id, 'route': route.name, 'plugin': self.runtime.plugin_name(route.plugin), 'tags': [t for t in ordered(route.tags) if t in mine], 'at': epoch_iso(now)}
+        said_text = cut(outward(text.strip()), ECHO_TEXT_MAX) if text.strip() else ''
+        return ({'id': route.id, 'route': route.name, 'plugin': self.runtime.plugin_name(route.plugin), 'tags': [t for t in ordered(route.tags) if t in mine], 'at': epoch_iso(now)}
+                | ({'text': said_text} if said_text else {}))
+
+    def quote(self, text: object) -> str:
+        found = cut(str(text or '').strip(), ECHO_TEXT_MAX)
+        return '\n'.join('> ' + self.inert(line) for line in found.splitlines() if line.strip())
 
     def echo_text(self, entries: list[dict]) -> str:
         items = []
@@ -463,7 +487,13 @@ class Routes:
             named = [self.inert(t) for t in e.get('tags') or []]
             suffix = msg('routes.echo_tag' if len(named) == 1 else 'routes.echo_tags', tags=', '.join(named)) if named else ''
             items.append(msg('routes.echo_item', route=self.inert(e.get('route')), plugin=self.inert(e.get('plugin')), tags=suffix))
-        return ENTITY_CUT.sub('\u2026', cut(msg('routes.echo_line', routes='; '.join(items)), ECHO_LINE_MAX))
+        quotes: dict[str, list[str]] = {}
+        for e in sorted(entries, key=lambda e: str(e.get('id'))):
+            if quoted := self.quote(e.get('text')):
+                quotes.setdefault(quoted, []).append(self.inert(e.get('route')))
+        covered = sum(len(names) for names in quotes.values()) == len(entries)
+        blocks = [(msg('routes.echo_for', names=', '.join(names)) + '\n' if len(quotes) > 1 or not covered else '') + quoted for quoted, names in quotes.items()]
+        return ENTITY_CUT.sub('\u2026', cut('\n'.join([msg('routes.echo_line', routes='; '.join(items))] + blocks), ECHO_LINE_MAX))
 
     def placed_text(self, card: dict, post: dict, text: str) -> str:
         host_key = str(post.get('threadOf') or '')
@@ -479,6 +509,13 @@ class Routes:
         return msg('routes.echo_placed', card=name, why=why, line=text) if why else msg('routes.echo_named', card=name, line=text)
 
     def _pend(self, sent: dict[str, list[str]], live: list[Route], now: float) -> None:
+        try:
+            self._pend_sent(sent, live, now)
+        finally:
+            with self._sent_lock:
+                self._sent_text.clear()
+
+    def _pend_sent(self, sent: dict[str, list[str]], live: list[Route], now: float) -> None:
         if self.echo is None or not sent:
             return
         known = {r.id: r for r in live}
@@ -492,7 +529,9 @@ class Routes:
         for key, group in told.items():
             try:
                 card = self.store.anomaly(key)
-                self.store.route_echo_pend(key, [self.echo_entry(card, r, now) for r in group])
+                with self._sent_lock:
+                    lines = {r.id: self._sent_text.get((r.id, key), '') for r in group}
+                self.store.route_echo_pend(key, [self.echo_entry(card, r, now, lines[r.id]) for r in group])
             except Exception as e:
                 log.warning('route post of %s not queued for the Slack echo: %s', key, kind(e))
 
@@ -660,12 +699,35 @@ class Routes:
             return self._failed(route, kind(e))
         if isinstance(answer, dict) and answer.get('ok') is True:
             self._outcome(route, reason_of(answer))
+            self._remember(route.id, message)
             return None
         status = answer.get('status') if isinstance(answer, dict) else None
         reason = (reason_of(answer) if isinstance(answer, dict) else None) or (f'HTTP {status}' if isinstance(status, int) and not isinstance(status, bool) and status > 0 else 'no usable answer')
         if isinstance(answer, dict) and answer.get('retry') is False:
             return self._failed(route, Final(reason))
         return self._failed(route, Waiting(reason) if isinstance(answer, dict) and answer.get('progress') is True else reason)
+
+    @contextlib.contextmanager
+    def _collecting(self):
+        self._collect.on = True
+        try:
+            yield
+        finally:
+            self._collect.on = False
+            with self._sent_lock:
+                self._sent_text.clear()
+
+    def _remember(self, route_id: str, message: dict) -> None:
+        found = sent_texts(message) if getattr(self._collect, 'on', False) else {}
+        if found:
+            with self._sent_lock:
+                self._sent_text.update({(route_id, key): text for key, text in found.items()})
+
+    def _copy_sent(self, source: str, key: str, targets: Iterable[str]) -> None:
+        with self._sent_lock:
+            text = self._sent_text.get((source, key))
+            if text:
+                self._sent_text.update({(target, key): text for target in targets})
 
     def _failed(self, route: Route, reason: str) -> str:
         log.warning('route %s post failed: %s', route.id, reason)
@@ -883,6 +945,7 @@ class Routes:
             failed = self.attempt(group[0], build(a))
             if failed is None:
                 posted.add(a['key'])
+                self._copy_sent(group[0].id, a['key'], [r.id + suffix for _, _, r in mine])
                 self._done(records, [r.id + suffix for _, _, r in mine], a['key'])
                 for card, post, _ in mine:
                     self.delivered(card, post)
@@ -1088,19 +1151,24 @@ class Routes:
 
     def _deliver(self, changed: list[dict], now: float, pushed: list[dict], by: str) -> int:
         try:
-            live = self.routes()
-            if not live:
-                self.marks(live, now)
-                return 0
-            records = self._records(now)
-            since = self.marks(live, now, list(changed) + list(pushed))
-            sent = joined(self._again(live, by, now, records, since), self.push(list(pushed), by=by, now=now, live=live, records=records, since=since) if pushed else {},
-                          self.tagged(list(changed), by, now, live, records, since))
-            self._pend(sent, live, now)
+            with self._collecting():
+                sent = self._deliver_cards(changed, now, pushed, by)
         except Exception as e:
             log.warning('route delivery skipped: %s', kind(e))
             return 0
         return sum(len(keys) for keys in sent.values())
+
+    def _deliver_cards(self, changed: list[dict], now: float, pushed: list[dict], by: str) -> dict[str, list[str]]:
+        live = self.routes()
+        if not live:
+            self.marks(live, now)
+            return {}
+        records = self._records(now)
+        since = self.marks(live, now, list(changed) + list(pushed))
+        sent = joined(self._again(live, by, now, records, since), self.push(list(pushed), by=by, now=now, live=live, records=records, since=since) if pushed else {},
+                      self.tagged(list(changed), by, now, live, records, since))
+        self._pend(sent, live, now)
+        return sent
 
     def later(self, changed: list[dict], now: float, pushed: list[dict] = (), by: str = 'server') -> None:
         if not self.autostart:
@@ -1189,10 +1257,11 @@ class Routes:
             if not picked:
                 raise Refused(422, msg('integrations.route_none'))
         failed: dict[str, str] = {}
-        sent = self.push([card], picked, by, failed=failed)
-        for route_id in sent:
-            self._done(None, [route_id], key)
-        self._pend(sent, picked, self.clock())
+        with self._collecting():
+            sent = self.push([card], picked, by, failed=failed)
+            for route_id in sent:
+                self._done(None, [route_id], key)
+            self._pend(sent, picked, self.clock())
         if sent:
             self.nudge()
         if not sent:

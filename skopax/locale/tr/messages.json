@@ -274,6 +274,7 @@
  "reminder.event": "Olaydan sonra durdu ama işaretlenmedi; sebebi bir sonraki olayda tekrar ortaya çıkabilir.",
  "routes.echo_failed": "Slack, kartın bir rotaya gittiğini bildiren satırı almadı (deneme {tries}/{limit})",
  "routes.echo_item": "{route} · {plugin}{tags}",
+ "routes.echo_for": "{names}:",
  "routes.echo_line": "Gönderildi: {routes}",
  "routes.echo_tag": " (etiket: {tags})",
  "routes.echo_tags": " (etiketler: {tags})",

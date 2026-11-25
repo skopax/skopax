@@ -72,7 +72,7 @@ Mentions use each person's e-mail and need the bot scope `users:read.email` (see
 
 ### The AI provider and its key
 
-Each use picks its own model, and the model decides the provider: card runs, Critical and High cards, Slack answers, chat, the topic gate (with small talk and thread summaries), the self-review and plug-in AI. A model is an Anthropic model, an OpenAI model, or a model of an OpenAI-compatible connection (see [OpenAI-compatible connections](configuration.md#openai-compatible-connections)). Default provider in Admin > Investigator (`investigate.provider`, or `SKOPAX_AI_PROVIDER`), Anthropic or OpenAI, supplies the model of every use left on its default. A use whose chosen provider has no working key, or whose compatible connection is gone or has a key that cannot be read, is never sent to another provider: the chosen provider is not usable; runs of this use are held, and Admin says so. A use left on its default follows the default provider. A change applies from the next run or ask; a run already started keeps its provider.
+Each use picks its own model, and the model decides the provider: card runs, Critical and High cards, Slack answers, chat, the topic gate (with small talk and thread summaries), the self-review and plug-in AI. A model is an Anthropic model, an OpenAI model, a model of an OpenAI-compatible connection (see [OpenAI-compatible connections](configuration.md#openai-compatible-connections)), or a Claude model on your own Google Cloud project (see [Run Claude on Vertex AI in your own Google Cloud](#run-claude-on-vertex-ai-in-your-own-google-cloud)). Default provider in Admin > Investigator (`investigate.provider`, or `SKOPAX_AI_PROVIDER`), Anthropic or OpenAI, supplies the model of every use left on its default. A use whose chosen provider has no working key, or whose compatible connection is gone or has a key that cannot be read, is never sent to another provider: the chosen provider is not usable; runs of this use are held, and Admin says so. A use left on its default follows the default provider. A change applies from the next run or ask; a run already started keeps its provider.
 
 Each provider has its own key. Set it in Admin > Investigator. It is write-only: it is sealed with `SKOPAX_SECRET_KEY` (or the generated key), never shown again, and never written to the activity log or the change history. Test connection tells you in a fixed sentence whether the key works, never with the API's own error text. A key set in Admin takes the place of `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` from the environment; remove it to fall back to the environment value. The spend limits stay on, with or without a key set here.
 
@@ -80,6 +80,7 @@ Admin > Investigator lists the AI providers, in this order, and below them a Who
 
 - **Anthropic API key** and **OpenAI API key:** one card each. The card of the default provider is tagged Default provider. A card shows where its key comes from (set here, from the configuration, or not set), an input labelled Key (New key once a key is in use), Save, Test connection, and Remove while a key is set here. Test connection tries the key typed in the input, or the key in use when the input is empty, against the card model of that provider. Remove deletes the key set here; the key from the configuration is then used again, if there is one.
 - **Compatible connections:** one card per OpenAI-compatible connection, with its base URL, a write-only key, its models and prices, Uses tools, Reads images, Save, Test connection and Delete, and Add compatible connection below them. A model that did not call the test tool is marked not fit for investigations.
+- **Vertex AI connections:** one card per Google Cloud project and region, with its credentials mode, its models and prices, Save, Test connection and Delete, and Add Vertex AI connection below them. See the next section.
 
 Each model sits next to its thinking effort in one row of Admin > Investigator (card, Slack and topic gate); both stay separate settings with their own help, source and Reset. The model settings (card, Critical, High, Slack, chat, topic gate, self-review and the Website page scan) list the models of every provider, grouped by provider, plus the models of each compatible connection. A chosen model whose provider has no working key is never sent anywhere, and no other provider runs in its place: the chosen provider is not usable; runs of this use are held, and Admin shows a notice until you add the key or pick another model. A use left on its default runs the default model of the default provider (OpenAI: `gpt-6.2-astra` for cards and plug-ins, `gpt-6.2-sol` for Slack, chat and the self-review, `gpt-6-luna` for the topic gate).
 
@@ -90,6 +91,40 @@ With OpenAI, a few things work differently:
 - **Effort** maps one to one to OpenAI's reasoning effort (low, medium, high, xhigh, max). The topic gate and small talk run with no reasoning on `gpt-6-luna` and `gpt-6.1-terra`, and with low reasoning on the other models, so Topic gate effort is greyed out with the reason. A single call that reasons (self-review, plug-in calls) gets 4000 more output tokens for that reasoning.
 - **Prompt caching** is automatic. Cached input counts as cache reads; cache writes are priced at OpenAI's write price.
 - **Requests are not stored** at OpenAI (`store: false`); the reasoning of a turn is sent back encrypted on the next turn.
+
+### Run Claude on Vertex AI in your own Google Cloud
+
+A Vertex AI connection runs Claude through your own Google Cloud project, under your Google Cloud contract and billing, and the AI provider is your own cloud account, not a separate Anthropic API account. Each use can pick one of its models like any other model (for example card runs on Vertex in the EU and the topic gate on a local model).
+
+Pick the region with care, because it decides which models you can run and where prompts and answers are processed:
+
+- **`eu`** is the choice to keep processing in the EU. It is a multi-region location, and current Claude models run on it.
+- **`us`** is the same for the United States.
+- **`global`** serves current Claude models from wherever Google has capacity, so it gives no guarantee about where processing happens.
+- **A single region** such as `europe-west1` or `europe-west4` serves older Claude models only. A current model there is refused, and Test connection says to pick `global`, `us` or `eu`.
+
+The multi-regions and a single region can cost more than `global`, so check your Google Cloud price sheet.
+
+Set it up in this order:
+
+1. **Enable the API.** In the Google Cloud project, enable the Vertex AI API (`aiplatform.googleapis.com`).
+2. **Request model access in the region.** In Model Garden, open the Claude model you want and enable it for the project (accept the terms). Access is per model, and a single region serves older models only: for a current model choose `global`, `us` or `eu`. Note the model id that Model Garden shows for it; Vertex ids can differ from the Claude API ids, so Skopax never guesses them.
+3. **Give the identity a role.** The identity that Skopax uses needs the Agent Platform User role (`roles/aiplatform.user`) on the project, and nothing more. Skopax calls no other Google API with these credentials.
+4. **Add the connection.** In Admin > Investigator, open Add Vertex AI connection and fill in:
+   - **Name:** 1 to 20 characters (lower-case letters, digits and dashes); a use picks its models as `<name>/<model name>`, for example `vertex-eu/claude-opus-5-5`. A name is shared with the OpenAI-compatible connections: one name cannot be used by both.
+   - **Project id** and **Region:** the select lists `global`, `us`, `eu` and the single regions, and says which serve current models. Skopax calls only the Google endpoint of the region you pick (`aiplatform.googleapis.com` for `global`, `aiplatform.us.rep.googleapis.com` and `aiplatform.eu.rep.googleapis.com` for `us` and `eu`, `{region}-aiplatform.googleapis.com` for a single region); there is no URL to type.
+   - **Credentials:** one of the three modes below.
+   - **Models:** for each model, the Skopax name, the Vertex model id from step 2, and the input and output price in USD per million tokens. The prices start from the Anthropic list prices and are yours to edit: multi-region and regional endpoints can cost more than `global`, so check your Google Cloud price sheet.
+5. **Test connection.** It asks every listed model for a one-line answer and forces one tool call, and shows the result for each model on the card. Problems are named in plain words: no access to the model in that region (a current model needs `global`, `us` or `eu`), the project is not enabled for Claude, a permission is missing, or the quota is used up.
+6. **Pick the models.** In Who does what, the models of the connection are listed under it. A use set to a Vertex model whose connection is gone or cannot be used is held, never moved to another provider.
+
+The three credentials modes:
+
+- **Service-account key.** Prefer federation or the pod's Google identity where you can use them, since they store no secret. Otherwise create a service account that holds only the Agent Platform User role, create a JSON key for it and paste it into the key field. It is sealed with the secret key, never shown again and never written to logs, errors or Changes. Changing the project or the region needs the key entered again.
+- **Workload identity federation** (for a Kubernetes cluster on another cloud or on premises, when the cluster's OIDC issuer can be reached by Google). Nothing secret is stored. Create a workload identity pool and an OIDC provider for the cluster's service-account issuer, let the pool's principal use the Agent Platform User role, generate the external-account credential configuration (`gcloud iam workload-identity-pools create-cred-config`) with the projected service-account token file as its source, mount that token in the Skopax pod, and paste the JSON into the federation field. The token file has to be under the directory set by `SKOPAX_VERTEX_TOKEN_DIR` (`/var/run/secrets/tokens` by default). The deployment sets it, not Admin; see [Claude on Vertex AI](configuration.md#claude-on-vertex-ai). A config that points at a token file outside that directory is refused.
+- **The pod's Google identity** (for installs on GKE). Nothing is stored and Admin asks for nothing. Skopax signs in as the pod's own Google identity, which it reads from the metadata server of the node (Application Default Credentials). Bind the pod's Kubernetes service account to a Google service account (Workload Identity on GKE) and give that identity only the Agent Platform User role (`roles/aiplatform.user`) on the project, because every workload that can use the pod's identity can use it too.
+
+On Vertex, a few things work differently from the Anthropic API: web page reads and server-side fallback models are not offered, web search uses the basic tool type, and the Batches, Files and Models APIs and `inference_geo` are not used (the region is chosen by the endpoint). Prompt caching, images, PDFs, tools and thinking work as on the Anthropic API. Spend is counted under the Vertex AI provider and shows in the cost views like the other providers. In Where AI data goes the company reads Google Cloud Vertex AI with the region.
 
 ### Event causes
 

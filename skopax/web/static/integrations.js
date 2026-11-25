@@ -1015,7 +1015,7 @@ function intCard(p, i, cur, said) {
   });
   c.appendChild(b);
   if (i.primary && ranked && p.id !== INT_MCP) meta.appendChild(accText('span', 'tag k-act int-icard-p', 'primary'));
-  meta.appendChild(accText('span', 'int-icard-s', i.enabled ? 'On' : 'Off'));
+  meta.appendChild(accText('span', 'int-icard-s', p.enabled !== true ? 'Plug-in off' : i.enabled ? 'On' : 'Off'));
   c.appendChild(meta);
   line.appendChild(accText('span', 'int-dot ' + (h ? h.state : 'off')));
   if (!(h && h.none)) line.appendChild(accText('span', 'int-icard-l', h ? h.text : 'Not checked yet'));
@@ -1067,9 +1067,13 @@ function intInstHead(p, inst) {
     on.disabled = true;
     on.setAttribute('aria-describedby', 'int-mcp-warn-h');
   }
+  if (p.enabled !== true) {
+    on.disabled = true;
+  }
   label.appendChild(on);
   label.appendChild(document.createTextNode('On'));
   line.appendChild(label);
+  if (p.enabled !== true) line.appendChild(accText('span', 'tag plain int-plugoff', 'Plug-in off'));
   var mk = null;
   if (!inst.primary && inst.enabled && ranked && p.id !== INT_MCP) {
     mk = accText('button', 'btn sec small int-primary-btn', 'Make primary');

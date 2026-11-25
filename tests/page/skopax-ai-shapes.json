@@ -3,5 +3,13 @@
   "connections": ["allowPrivate", "items"],
   "connection": ["baseUrl", "company", "images", "key", "lastTest", "models", "name", "provider", "tools", "updatedAt", "updatedBy"],
   "model": ["id", "input", "output", "ref"],
-  "test": ["ms", "ok", "summary", "tools"]
+  "test": ["ms", "ok", "summary", "tools"],
+  "vertexes": ["items", "regions"],
+  "vertex": ["company", "credentials", "lastTest", "models", "name", "project", "region"],
+  "vertexCredentials": ["mode", "set"],
+  "vertexModel": ["id", "input", "output", "vertexId"],
+  "vertexTest": ["models", "ms", "ok", "summary", "tools"],
+  "vertexTestModel": ["id", "ok", "summary"],
+  "vertexLast": ["at", "models", "ms", "ok", "summary", "tools"],
+  "vertexRegions": ["global", "us", "eu", "us-east5", "europe-west1", "europe-west4"]
 }

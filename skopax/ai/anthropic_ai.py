@@ -62,16 +62,22 @@ class AnthropicAi:
     def __init__(self, client):
         self.client = client
 
-    def turn(self, model: str, effort: str, system: str, tools: list[dict], messages: list[dict], max_tokens: int, cache_ttl: str | None = None, thinking: str = THINK_AUTO,
-             fallbacks: bool = True) -> Turn:
+    def turn_args(self, model: str, effort: str, system: str, tools: list[dict], messages: list[dict], max_tokens: int, cache_ttl: str | None, thinking: str) -> dict:
         cache = {**CACHE, 'ttl': cache_ttl} if cache_ttl else CACHE
-        extra = ({'thinking': {'type': 'adaptive'}, 'output_config': {'effort': effort}} if thinking != THINK_OFF else {}) | ({'betas': [FALLBACK_BETA], 'extra_body': {'fallbacks': 'default'}} if fallbacks else {})
-        return tracing.generation(self.provider, 'turn', model, system, messages, lambda: turn_of(self.client.beta.messages.create(
-            model=model, max_tokens=max_tokens, system=[{'type': 'text', 'text': system, 'cache_control': cache}], tools=tools, messages=cache_marked(messages), **extra), model), tools)
+        think = {'thinking': {'type': 'adaptive'}, 'output_config': {'effort': effort}} if thinking != THINK_OFF else {}
+        return {'model': model, 'max_tokens': max_tokens, 'system': [{'type': 'text', 'text': system, 'cache_control': cache}], 'tools': tools, 'messages': cache_marked(messages)} | think
 
-    def once(self, model: str, system: str, messages: list[dict], max_tokens: int, effort: str, thinking: str = THINK_OFF, schema: dict | None = None) -> Turn:
+    def once_args(self, model: str, system: str, messages: list[dict], max_tokens: int, effort: str, thinking: str, schema: dict | None) -> dict:
         output = {'effort': effort} | ({'format': {'type': 'json_schema', 'schema': schema}} if schema is not None else {})
         think = {'type': 'adaptive'} if model.startswith(ALWAYS_THINKING) else {'type': 'disabled'} if thinking == THINK_OFF else thinking_off(model)
+        return {'model': model, 'max_tokens': max_tokens + (THINKING_ROOM if model.startswith(ALWAYS_THINKING) else 0), 'system': system, 'messages': messages, 'thinking': think, 'output_config': output}
+
+    def turn(self, model: str, effort: str, system: str, tools: list[dict], messages: list[dict], max_tokens: int, cache_ttl: str | None = None, thinking: str = THINK_AUTO,
+             fallbacks: bool = True) -> Turn:
+        extra = {'betas': [FALLBACK_BETA], 'extra_body': {'fallbacks': 'default'}} if fallbacks else {}
+        return tracing.generation(self.provider, 'turn', model, system, messages, lambda: turn_of(self.client.beta.messages.create(
+            **self.turn_args(model, effort, system, tools, messages, max_tokens, cache_ttl, thinking), **extra), model), tools)
+
+    def once(self, model: str, system: str, messages: list[dict], max_tokens: int, effort: str, thinking: str = THINK_OFF, schema: dict | None = None) -> Turn:
         return tracing.generation(self.provider, 'once', model, system, messages,
-                                  lambda: turn_of(self.client.messages.create(model=model, max_tokens=max_tokens + (THINKING_ROOM if model.startswith(ALWAYS_THINKING) else 0), system=system, messages=messages,
-                                                                              thinking=think, output_config=output), model))
+                                  lambda: turn_of(self.client.messages.create(**self.once_args(model, system, messages, max_tokens, effort, thinking, schema)), model))

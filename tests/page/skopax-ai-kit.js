@@ -35,7 +35,7 @@ function settings() {
 }
 
 function company(model) {
-  return model.indexOf('deepseek/') === 0 ? 'api.deepseek.example.com' : model.indexOf('gpt-') === 0 ? 'OpenAI' : 'Anthropic';
+  return model.indexOf('eu/') === 0 ? 'Google Cloud Vertex AI (europe-west1)' : model.indexOf('deepseek/') === 0 ? 'api.deepseek.example.com' : model.indexOf('gpt-') === 0 ? 'OpenAI' : 'Anthropic';
 }
 
 const SHAPES = JSON.parse(fs.readFileSync(path.join(__dirname, 'skopax-ai-shapes.json'), 'utf8'));
@@ -47,7 +47,7 @@ function shaped(kind, obj) {
 }
 
 function provider(model) {
-  return model.indexOf('deepseek/') === 0 ? 'compat:deepseek' : model.indexOf('gpt-') === 0 ? 'openai' : 'anthropic';
+  return model.indexOf('eu/') === 0 ? 'vertex:eu' : model.indexOf('deepseek/') === 0 ? 'compat:deepseek' : model.indexOf('gpt-') === 0 ? 'openai' : 'anthropic';
 }
 
 const USES = [['card', 'Card runs', 'investigate.model'], ['critical', 'Critical cards', 'investigate.model-critical'], ['high', 'High cards', 'investigate.model-high'], ['slack', 'Slack answers', 'investigate.slack-model'],
@@ -71,6 +71,29 @@ function connection(name, extra) {
   return Object.assign(base, extra || {});
 }
 
+const REGIONS = SHAPES.vertexRegions;
+
+function vertex(name, extra) {
+  const base = shaped('vertex', {name, project: 'shop-prod-1', region: 'europe-west1', credentials: shaped('vertexCredentials', {mode: 'key', set: true}),
+    models: [shaped('vertexModel', {id: 'claude-opus-5-5', vertexId: 'claude-opus-5-5@20261101', input: 5, output: 25})], lastTest: null, company: 'Google Cloud Vertex AI (europe-west1)'});
+  return Object.assign(base, extra || {});
+}
+
+function vertexTest(extra) {
+  return Object.assign(shaped('vertexTest', {ok: true, tools: true, summary: 'Answers, uses tools', models: [shaped('vertexTestModel', {id: 'claude-opus-5-5', ok: true, summary: 'Answers, uses tools'})], ms: 300}), extra || {});
+}
+
+function vertexLast(extra) {
+  const t = vertexTest(extra);
+  return shaped('vertexLast', {ok: t.ok, tools: t.tools, summary: t.summary, models: t.models, ms: t.ms, at: iso(30)});
+}
+
+function vertexFrom(name, body, was) {
+  const c = body.credentials || {}, keep = !!was && was.credentials.mode === c.mode && was.credentials.set;
+  return vertex(name, {project: body.project, region: body.region, credentials: shaped('vertexCredentials', {mode: c.mode, set: c.mode === 'pod' ? false : !!(c.key || c.config) || keep}),
+    models: body.models.map((m) => shaped('vertexModel', {id: m.id, vertexId: m.vertexId, input: m.input === undefined ? null : m.input, output: m.output === undefined ? null : m.output})),
+    company: 'Google Cloud Vertex AI (' + body.region + ')', lastTest: was ? was.lastTest : null});
+}
 
 function pack(template, lang) {
   const raw = JSON.parse(fs.readFileSync(path.join(path.dirname(template), '..', 'locale', lang, 'page.json'), 'utf8'));
@@ -85,7 +108,8 @@ async function boot(template, opts) {
   const state = {rev: 1, updatedAt: iso(0), sweptIso: iso(1), nextIso: new Date(Date.now() + 3600000).toISOString(), sources: {prom: 'ok'}, summary: {level: 'ok', headline: 'x', points: [], at: iso(1)},
     anomalies: [], services: [], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
   const srv = {items: o.items || settings(), extra: o.uses || {}, conns: o.connections || [], allowPrivate: !!o.allowPrivate, refuse: null, test: shaped('test', {ok: true, tools: true, summary: 'Answers, uses tools', ms: 300}), hold: null, rows: o.rows || null,
-    usesFail: o.usesFail || 0, putHold: null, inflight: 0, most: 0, lastTest: null};
+    usesFail: o.usesFail || 0, putHold: null, inflight: 0, most: 0, lastTest: null,
+    vertex: o.vertex || null, regions: o.regions || REGIONS, vertexFail: o.vertexFail || 0, vtest: vertexTest(), vlast: null, vhold: null};
   const keyStatus = {using: 'admin', admin: true, config: false, updatedBy: ADMIN_USER, updatedAt: iso(30), note: null};
   const dom = new JSDOM(pageHtml(template).replace('/*__SKOPAX_DATA__*/', JSON.stringify(state)), {
     url: 'https://skopax.example.com/' + (o.hash || '#t=ai'), runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc,
@@ -106,6 +130,26 @@ async function boot(template, opts) {
             const snap = JSON.parse(JSON.stringify(shaped('connections', {items: srv.conns, allowPrivate: srv.allowPrivate})));
             if (srv.connHold) { const h = srv.connHold; srv.connHold = null; await h; }
             return ok(snap);
+          }
+          if (p === '/api/admin/ai-vertex') {
+            if (srv.vertexFail) return bad(srv.vertexFail, 'down');
+            if (!srv.vertex) return bad(404, 'none');
+            return ok(shaped('vertexes', {items: srv.vertex, regions: srv.regions}));
+          }
+          const vx = /^\/api\/admin\/ai-vertex\/([^/]+)(\/test)?$/.exec(p);
+          if (vx) {
+            const name = decodeURIComponent(vx[1]);
+            if (vx[2]) {
+              if (srv.vhold) await srv.vhold;
+              if (srv.vlast) srv.vertex = srv.vertex.map((c) => c.name === name ? Object.assign({}, c, {lastTest: srv.vlast}) : c);
+              return ok(srv.vtest);
+            }
+            if (method === 'DELETE') { srv.vertex = srv.vertex.filter((c) => c.name !== name); return {ok: true, status: 204, json: async () => { throw new Error('no body'); }}; }
+            if (srv.refuse) return bad(422, srv.refuse);
+            const was = srv.vertex.find((c) => c.name === name);
+            const next = vertexFrom(name, body, was);
+            srv.vertex = was ? srv.vertex.map((c) => c.name === name ? next : c) : srv.vertex.concat([next]);
+            return ok(next);
           }
           const conn = /^\/api\/admin\/ai-connections\/([^/]+)(\/test)?$/.exec(p);
           if (conn) {
@@ -166,4 +210,4 @@ function nameOf(doc, c) {
 
 const typeIn = (w, inp, v) => { inp.value = v; inp.dispatchEvent(new w.Event('input', {bubbles: true})); };
 
-module.exports = {boot, settings, uses, connection, nameOf, typeIn, wait, iso, GROUPS, MODELS, ADMIN_USER};
+module.exports = {boot, settings, uses, connection, vertex, vertexTest, vertexLast, REGIONS, nameOf, typeIn, wait, iso, GROUPS, MODELS, ADMIN_USER};
