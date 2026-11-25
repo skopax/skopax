@@ -2,6 +2,32 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.5.18 (2026-11-25)
+
+Card investigations read the card's recent History, more secrets are masked before text reaches the AI provider, ES|QL is confined to the connection's indices, Admin says which model runs which cards, and fields set by a settings source show as disabled.
+
+### Added
+
+- Card investigations read the card's recent history (the last 10 entries of its History tab: who took, assigned, muted, reopened or resolved it and when).
+
+### Changed
+
+- Admin shows which model runs Critical, High and Warning/Info cards.
+- Fields set by a settings source (for example Spring Config) show as disabled in Integrations.
+
+### Security
+
+- More secrets are masked before text reaches the AI provider: bare Slack, GitHub, GitLab, OpenAI, Anthropic, AWS, Google and Stripe style keys, private key blocks, `Authorization` header values (Basic and other schemes), cookies, `x-api-key`, `api-key` and session values. Commit SHAs, UUIDs, trace ids and pod names stay readable.
+- Card numbers are now masked in plug-in tool answers too, also when a JSON answer holds them as numbers; other numbers are left as they are.
+- The investigator's own tools (cards, past cards and runs, open cards, deploys, check tables) are masked the same way as plug-in answers before the model reads them. A masked card key still works when the investigator passes it back in the same run.
+- Slack asks, the Slack thread lines around them, chat messages, earlier chat answers given as context, Slack direct messages and page asks are masked before they reach the topic gate, small talk or the investigator, and the stored ask is the masked text. Images attached to a Slack ask are still sent as they are.
+- ES|QL queries may read only the indices set on the Elasticsearch connection (log index and log flow index; APM index, `logs-apm.error-*` and `metrics-apm.*`) or narrower patterns of them; any other index, alias or remote cluster in FROM or LOOKUP JOIN, ENRICH, and comments are refused with a message naming the allowed patterns. Hints for a missing index only suggest allowed patterns.
+- Langfuse traces in `full` mode also mask run errors and card keys.
+- ES|QL queries may also read the indices that admins set on enabled plug-in instances reading through that Elasticsearch connection (such as CSP reports and Varnish), so investigations of their cards keep working.
+- A planted instruction in an ask is still flagged when masking hides part of it.
+- Rows stored before 0.5.18 (asks, chat messages and answers) stay as they were in the database; a continued chat masks them when it gives them to the model.
+- New page [What reaches the AI provider](docs/privacy.md).
+
 ## 0.5.17 (2026-11-25)
 
 A short summary of each card's Slack thread on the card, a model per severity for card investigations, Claude Fable 5.2 and Mythos 5.2, and an Integrations strip that stays closed.

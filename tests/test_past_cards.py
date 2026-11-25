@@ -1,5 +1,6 @@
 import json
 
+from skopax.redact import REDACTED
 from tests.conftest import anomaly
 from tests.test_investigator import NOW
 from tests.test_investigator_tools import box, sources
@@ -125,7 +126,7 @@ def test_the_brief_and_past_cards_say_how_an_earlier_occurrence_was_resolved(sto
     # then
     assert 'seen before: once, last 24 Oct 11:05 UTC, ended Fixed (OPS-120) · via page · nina.white;' in brief
     assert 'ended Resolved;' in legacy, 'an occurrence resolved before the kinds existed reads Resolved'
-    assert (row['outcomeText'], row['resolution']) == ('Fixed (OPS-120) · via page · nina.white', how)
+    assert (row['outcomeText'], row['resolution']) == ('Fixed (OPS-120) · via page · nina.white', how | {'by': REDACTED})
 
 
 def test_no_seen_before_line_for_a_first_timer():
@@ -195,4 +196,4 @@ def test_what_people_said_in_the_thread_comes_back_with_the_card(store: Store):
     rows, _ = call(box(store, keys=(KEY,)), {'key': KEY, 'detail': True, 'firstSeen': ago(DAY)})
 
     # then
-    assert rows[0]['said'] == [{'at': ago(3600), 'by': 'gary.cole@example.com', 'text': 'ShipCorp added the IP, fixed now', 'kind': 'resolve', 'agreed': True}]
+    assert rows[0]['said'] == [{'at': ago(3600), 'by': REDACTED, 'text': 'ShipCorp added the IP, fixed now', 'kind': 'resolve', 'agreed': True}]

@@ -9,7 +9,7 @@ from skopax.investigator.tools import ERROR_LIMIT, READ_LIMIT_ROWS, BadInput, To
 from skopax.investigator.toolset import held, primary_of, runnable
 from skopax.messages import msg
 from skopax.monitor import refusal
-from skopax.redact import REDACTED, SECRET_HEADER, redact_lines, redact_text, secrets_masked
+from skopax.redact import masked_tree, redact_text
 from skopax.runtime import Runtime
 
 log = logging.getLogger('skopax.plugintools')
@@ -23,37 +23,8 @@ class _TimedOut(Exception):
     pass
 
 
-class _Leaf(int):
-    pass
-
-
 def masked(out: object, secrets: list[str]) -> object:
-    texts: list[str] = []
-
-    def strip(x: object) -> object:
-        if isinstance(x, str):
-            for secret in secrets:
-                x = x.replace(secret, '***')
-            texts.append(secrets_masked(x))
-            return _Leaf(len(texts) - 1)
-        if isinstance(x, (list, tuple)):
-            return [strip(v) for v in x]
-        if isinstance(x, dict):
-            return {k: REDACTED if isinstance(k, str) and isinstance(v, str) and v and SECRET_HEADER.search(k) else v if k == 'image' else strip(v) for k, v in x.items()}
-        return x
-
-    def fill(x: object) -> object:
-        if isinstance(x, _Leaf):
-            return done[x]
-        if isinstance(x, list):
-            return [fill(v) for v in x]
-        if isinstance(x, dict):
-            return {k: fill(v) for k, v in x.items()}
-        return x
-
-    shape = [strip(v) for v in out[:READ_LIMIT_ROWS]] + list(out[READ_LIMIT_ROWS:]) if isinstance(out, list) else strip(out)
-    done = redact_lines(texts, cards=False)
-    return fill(shape)
+    return masked_tree(out, secrets, READ_LIMIT_ROWS)
 
 
 def unwatched(field: str, asked: str) -> str:

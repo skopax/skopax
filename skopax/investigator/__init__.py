@@ -81,6 +81,9 @@ def scan_parts(cards: list[dict], base: str) -> tuple[str, str]:
             soft.append(str(c[prompt.KNOWN_CAUSE] or ''))
             c = {k: v for k, v in c.items() if k != prompt.KNOWN_CAUSE}
         soft.append(str(line or ''))
+        if c.get('history'):
+            soft.append('\n'.join(prompt.history_lines(c)[1:]))
+            c = {k: v for k, v in c.items() if k != 'history'}
         strict.append(c)
     return prompt.cards_text(strict, base), '\n'.join(t for t in soft if t)
 
@@ -498,7 +501,7 @@ class Investigator:
                 keys = list(claimed)
                 cards = [c for c in cards if c['key'] in keys]
             report = self.store.deploy_report(report_id) if report_id else None
-            cards = self._with_verdicts(cards)
+            cards = self._with_history(self._with_verdicts(cards))
             model = self.model if ask or report or review else self.card_model(c.get('sev') for c in cards)
             record = {'id': run_id, 'mode': mode, 'trigger': trigger, 'actionId': action['id'] if action else None,
                       'keys': keys, 'pod': self.owner, 'room': (lease or (LEASE_ID, self.owner))[0], 'startedAt': epoch_iso(now), 'model': quick_model if quick else self.slack_model if review else model, 'effort': (self.chat_effort if chat_ask else self.slack_effort) if quick else self.slack_effort if review else self.effort, 'outcome': 'running'}
@@ -545,6 +548,8 @@ class Investigator:
                 else:
                     strict, soft = scan_parts(cards, self.base_url)
                     toolbox.flags += scan('brief', strict) + scan('brief', soft, skip=SOFT)
+                listed = {(f.get('tool'), f.get('phrase')) for f in toolbox.flags}
+                toolbox.flags += [f for f in (action or {}).get('askFlags') or [] if isinstance(f, dict) and (f.get('tool'), f.get('phrase')) not in listed]
                 tag = {'source': MCP if mcp else SOURCE_OF[record['trigger']], 'runId': run_id, 'actionId': action['id'] if action else None,
                        'keys': [] if mcp and chat_ask else keys, 'by': (action or {}).get('requestedBy') or pricing.POD_BY}
                 client, result = self._built()
@@ -584,6 +589,13 @@ class Investigator:
     def _with_verdicts(self, cards: list[dict]) -> list[dict]:
         seen = [c for c in cards if isinstance(c.get('seenBefore'), dict)]
         return with_verdicts(cards, self.store.history_verdicts(seen) if seen else {})
+
+    def _with_history(self, cards: list[dict]) -> list[dict]:
+        out = []
+        for c in cards:
+            rows = self.store.card_history_tail(c, (c.get('seenBefore') or {}).get('verdicts')) if c.get('key') else []
+            out.append(c | {'history': rows} if rows else c)
+        return out
 
     def _announced(self, cards: list[dict], now: float) -> dict[str, dict]:
         others = self.store.load().get('anomalies') or []

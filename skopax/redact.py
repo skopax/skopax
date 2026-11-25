@@ -2,7 +2,7 @@ import logging
 import re
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -20,8 +20,19 @@ WORDS = re.compile(r'[A-Za-z0-9]+(?: [A-Za-z0-9]+)*')
 IBAN_HEAD = re.compile(r'[A-Za-z]{2}\d{2}[A-Za-z0-9]*')
 IBAN_GROUPS = 9
 BEARER = re.compile(r'\bBearer\s+[\w.~+/=-]{8,}', re.I)
+TOKEN = re.compile(r'(?<![\w-])(?:xox[abposr]-[A-Za-z0-9-]{10,}|xapp-[A-Za-z0-9-]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|glpat-[\w-]{20,}'
+                   r'|sk-[\w-]{20,}|[sr]k_(?:live|test)_[A-Za-z0-9]{10,}|(?:AKIA|ASIA)[0-9A-Z]{16}(?![0-9A-Za-z])|AIza[\w-]{35}(?![\w-]))')
+AUTH_HEADER = re.compile(r'(?i)(\b(?:proxy-)?authorization["\']?\s*[:=]\s*["\']?)(?:[A-Za-z][\w-]{1,20}\s+(?=[\w.~+/=-]*[\d+/=])[\w.~+/=-]{8,}|(?=[\w.~+/=-]*[\d+/=])[\w.~+/=-]{16,})')
+COOKIE_HEADER = re.compile(r'(?i)(\b(?:set-)?cookie["\']?\s*[:=]\s*["\']?)(?:[^\s;="\']+=[^\s;"\']*(?:;[ \t]*[^\s;="\']+(?:=[^\s;"\']*)?)*|(?=[^\s;="\'&,]*\d)[^\s;="\'&,]{16,})')
+KEY_HEADER = re.compile(r'(?i)(\b(?:x-api-key["\']?(?:\s*[:=]\s*|\s+)|(?:api[-_]?key|session(?:[-_]?id)?|jsessionid|phpsessid)["\']?\s*[:=]\s*)["\']?)(?!\d{4}-\d\d-\d\d)(?=[\w.~+/=%-]*\d)[\w.~+/=%-]{8,}')
+HEADER_KEY = re.compile(r'(?i)(?:proxy-)?authorization|(?:set-)?cookie|x-api-key')
+SESSION_KEY = re.compile(r'(?i)session(?:[-_]?id)?|jsessionid|phpsessid')
+SESSION_VALUE = re.compile(r'(?!\d{4}-\d\d-\d\d)(?=[\w.~+/=%-]*\d)[\w.~+/=%-]{8,}')
 JWT = re.compile(r'(?<![\w-])eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]{5,}')
 DIGIT_RUN = re.compile(r'(?<![\d.])(?:\d[ -]?){10,18}\d(?!\d)(?!\.\d)')
+ACTOR_TOKEN = re.compile(r'token:[a-z0-9][a-z0-9._-]{0,79}')
+HEX_TOKEN = re.compile(r'[0-9A-Fa-f]{12,}')
+UUID = re.compile(r'(?<![\w-])[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}(?![\w-])')
 NATIONAL_ID = re.compile(r'(?<![\w.])[1-9]\d{10}(?!\w)(?!\.\d)(?!,\d{1,2}(?!\d))')
 MOBILE = r'5(?:0[15-9]|[3-6]\d)'
 COUNTRY = r'(?:00)?90[ .-]?'
@@ -74,7 +85,11 @@ SECRET_VALUE = re.compile(rf'(?i)({SECRET_KEY}["\'\u2019\u201d`]?)([ \t]*(?:[:=]
 SECRET_ELEMENT = re.compile(rf'(?i)(<[\w.:-]*?{SECRET_KEY}(?:\s[^<>]*)?>)([^<]+)(?=</)')
 SECRET_HEADER = re.compile(rf'(?i){SECRET_KEY}\b')
 CREDENTIALS = re.compile(r'://[^@/\s]+@')
-PEM = re.compile(r'-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)', re.S)
+PEM_BREAK = r'(?:\r?\n|\\r\\n|\\n)'
+PEM = re.compile(r'-----BEGIN [A-Z ]*PRIVATE KEY-----(?:.{0,20000}?-----END [A-Z ]*PRIVATE KEY-----'
+                 rf'|[ \t]*{PEM_BREAK}?[A-Za-z0-9+/=]{{0,4096}}(?:{PEM_BREAK}[A-Za-z0-9+/=]{{16,4096}}(?={PEM_BREAK}|\Z|["\'\s])){{0,400}})', re.S)
+SK_RUN = re.compile(r'[A-Za-z0-9]{20}')
+SK_SEGMENT = re.compile(r'(?=[^-]*[A-Za-z])(?=[^-]*\d)[^-]+')
 HTML_BLOCKS = frozenset({'p', 'div', 'br', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre', 'blockquote', 'ul', 'ol', 'hr'})
 HTML_CELLS = frozenset({'td', 'th'})
 HTML_TABLE = re.compile(r'<table\b', re.I)
@@ -141,7 +156,18 @@ def _sensitive(d: str) -> bool:
     return 13 <= len(d) <= 19 and d[0] in '23456789' and luhn(d)
 
 
+def _hex_glued(m: re.Match) -> bool:
+    text, start, end = m.string, m.start(), m.end()
+    while start > 0 and text[start - 1].isascii() and text[start - 1].isalnum():
+        start -= 1
+    while end < len(text) and text[end].isascii() and text[end].isalnum():
+        end += 1
+    return (start, end) != m.span() and HEX_TOKEN.fullmatch(text[start:end]) is not None
+
+
 def _digit_run(m: re.Match) -> str:
+    if _hex_glued(m):
+        return m.group(0)
     groups = re.findall(r'\d+', m.group(0))
     for i in range(len(groups)):
         for j in range(i + 1, len(groups) + 1):
@@ -185,14 +211,39 @@ def _timed_out(took: list[tuple[float, object]]) -> str:
     return TIMEOUT_MARK
 
 
+def _card_numbers(text: str) -> str:
+    parts, at = [], 0
+    for m in UUID.finditer(text):
+        parts += [DIGIT_RUN.sub(_digit_run, text[at:m.start()]), m.group(0)]
+        at = m.end()
+    return ''.join(parts) + DIGIT_RUN.sub(_digit_run, text[at:])
+
+
+def sk_key(body: str) -> bool:
+    return SK_RUN.search(body) is not None or sum(1 for part in body.split('-') if SK_SEGMENT.fullmatch(part)) >= 4
+
+
+def _token(m: re.Match) -> str:
+    found = m.group(0)
+    return found if found.startswith('sk-') and not sk_key(found[3:]) else REDACTED
+
+
+def _keep_name(m: re.Match) -> str:
+    return m.group(1) + REDACTED
+
+
 def _core(text: str, cards: bool = True) -> str:
+    text = PEM.sub(REDACTED, text)
+    for pattern in (AUTH_HEADER, COOKIE_HEADER, KEY_HEADER):
+        text = pattern.sub(_keep_name, text)
+    text = TOKEN.sub(_token, text)
     for pattern in (BEARER, JWT, EMAIL):
         text = pattern.sub(REDACTED, text)
     text = WORDS.sub(_ibans, text)
     text = PHONE.sub(REDACTED, text)
     text = NATIONAL_PHONE.sub(REDACTED, text)
     text = NATIONAL_ID.sub(_national_id, text)
-    return DIGIT_RUN.sub(_digit_run, text) if cards else text
+    return _card_numbers(text) if cards else text
 
 
 def redact_lines(texts: list[str], cards: bool = True) -> list[str]:
@@ -221,6 +272,55 @@ def redact_lines(texts: list[str], cards: bool = True) -> list[str]:
 
 def redact(text: str) -> str:
     return redact_lines([text])[0]
+
+
+class _Leaf(int):
+    pass
+
+
+def secret_key(key: object, value: object) -> bool:
+    if not isinstance(key, str) or not isinstance(value, str) or not value:
+        return False
+    return bool(SECRET_HEADER.search(key) or HEADER_KEY.fullmatch(key) or (SESSION_KEY.fullmatch(key) and SESSION_VALUE.fullmatch(value.strip())))
+
+
+def card_number(x: object) -> bool:
+    return isinstance(x, int) and not isinstance(x, bool) and x > 0 and _sensitive(str(x))
+
+
+def actor_token(key: object, value: object) -> bool:
+    return isinstance(key, str) and (key in ('by', 'owner', 'assignee') or key.endswith('By')) and isinstance(value, str) and ACTOR_TOKEN.fullmatch(value) is not None
+
+
+def masked_tree(out: object, secrets: Sequence[str] = (), rows: int | None = None, actors: bool = False) -> object:
+    texts: list[str] = []
+
+    def strip(x: object) -> object:
+        if isinstance(x, str):
+            for secret in secrets:
+                x = x.replace(secret, '***')
+            texts.append(secrets_masked(x))
+            return _Leaf(len(texts) - 1)
+        if card_number(x):
+            return REDACTED
+        if isinstance(x, (list, tuple)):
+            return [strip(v) for v in x]
+        if isinstance(x, dict):
+            return {k: REDACTED if secret_key(k, v) else v if k == 'image' or (actors and actor_token(k, v)) else strip(v) for k, v in x.items()}
+        return x
+
+    def fill(x: object) -> object:
+        if isinstance(x, _Leaf):
+            return done[x]
+        if isinstance(x, list):
+            return [fill(v) for v in x]
+        if isinstance(x, dict):
+            return {k: fill(v) for k, v in x.items()}
+        return x
+
+    shape = [strip(v) for v in out[:rows]] + list(out[rows:]) if isinstance(out, list) and rows is not None else strip(out)
+    done = redact_lines(texts)
+    return fill(shape)
 
 
 def secrets_masked(text: str) -> str:

@@ -32,7 +32,7 @@ ROWS = {'columns': [{'name': 'n'}], 'values': [[7]]}
 
 
 def es_ctx(http: FakeHttp, now: float = TODAY):
-    return SimpleNamespace(instance=SimpleNamespace(config={'url': ES_URL, 'api-key': 'esql-test-key-0123456789'}), http=lambda: http, now=now)
+    return SimpleNamespace(instance=SimpleNamespace(config={'url': ES_URL, 'api-key': 'esql-test-key-0123456789', 'log-index': 'app-*, pmm.*'}), http=lambda: http, now=now)
 
 
 RESOLVE = f'{ES_URL}/_resolve/index/*'

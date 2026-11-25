@@ -221,6 +221,19 @@ class RunContext:
         found = sorted(self.runtime.instances_of(plugin_id), key=lambda i: (not i.primary, i.name)) if plugin is not None else []
         return [self.runtime.peer_of(plugin, i) for i in found]
 
+    def users(self) -> list[InstanceInfo]:
+        if self.instance is None:
+            return []
+        out = []
+        for plugin in self.runtime.active():
+            picks = [f.key for f in plugin.fields if f.kind == 'instance' and self.plugin.id in f.choices]
+            if plugin.id == self.plugin.id or not picks:
+                continue
+            for found in self.runtime.instances_of(plugin.id):
+                if any(found.values.get(k) == self.instance.name for k in picks):
+                    out.append(InstanceInfo(found.name, found.primary, None if found.primary else found.name, dict(found.values)))
+        return out
+
     def previous(self, section: str) -> list | None:
         reads = self._reads if self._reads is not None else self._stored()
         return None if reads is None else reads.previous(self.instance, section)

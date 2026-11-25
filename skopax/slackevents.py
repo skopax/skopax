@@ -23,6 +23,7 @@ from skopax.features import off_text
 from skopax.jiralinks import listed, site_of, ticket_finder, ticket_projects
 from skopax import clock
 from skopax.investigator import GATE_HOURLY_CAP, prompt
+from skopax.investigator.flags import masked_scan
 from skopax.investigator.gate import GateDown
 from skopax.investigator.tools import CARD_ACTIONS, DEFAULT_MUTE_HOURS
 from skopax import messages
@@ -120,7 +121,7 @@ def decode(text: str, bot_id: str = '') -> str:
 
 
 def question_text(text: str, bot_id: str) -> str:
-    return decode(text, bot_id)[:QUESTION_LIMIT]
+    return redact(decode(text, bot_id))[:QUESTION_LIMIT]
 
 
 def from_bot(message: dict, bot_id: str) -> bool:
@@ -135,10 +136,12 @@ def recent_people(posts: list[dict], bot_id: str, skip_ts: str) -> list[dict]:
     return [m for m in posts if m.get('ts') != skip_ts and float(m.get('ts') or 0) < float(skip_ts) and not from_bot(m, bot_id)][-THREAD_FULL:]
 
 
-def thread_view(posts: list[dict], bot_id: str, skip_ts: str) -> list[dict]:
+def thread_view(posts: list[dict], bot_id: str, skip_ts: str, raw: list[str] | None = None) -> list[dict]:
     full = {id(m) for m in recent_people(posts, bot_id, skip_ts)}
+    if raw is not None:
+        raw.extend(decode(m.get('text') or '', bot_id) for m in posts[-THREAD_KEEP - 1:] if m.get('ts') != skip_ts)
     out = [{'who': 'bot' if from_bot(m, bot_id) else 'person',
-            'text': cut_line(decode(m.get('text') or '', bot_id), prompt.SLACK_THREAD_LINE_FULL if id(m) in full else prompt.SLACK_THREAD_LINE)}
+            'text': cut_line(redact(decode(m.get('text') or '', bot_id)), prompt.SLACK_THREAD_LINE_FULL if id(m) in full else prompt.SLACK_THREAD_LINE)}
            for m in posts if m.get('ts') != skip_ts]
     return out[-THREAD_KEEP:]
 
@@ -309,11 +312,12 @@ class Intake:
             login = self.operators.email_of(user) or f'slack:{user}'
         record['operator'] = operator
         question = question_text(text, bot)
+        record['_raw'] = [decode(text, bot)]
         if not question and not tagged:
             return self._record(channel, ts, record, 'empty')
         record['login'] = login
         images, skipped, fetched = self._images(event, channel, root, ts, tagged)
-        thread = thread_view(fetched, bot, ts) if fetched else None
+        thread = thread_view(fetched, bot, ts, record['_raw']) if fetched else None
         if images or skipped:
             record['images'] = len(images)
         if not question and images:
@@ -326,7 +330,8 @@ class Intake:
             if picked is None:
                 return self._say(channel, ts, root, record, 'empty-tag', msg('slackevents.empty_tag'))
             record['questionFrom'], question = picked
-            thread = thread_view([m for m in posts if m.get('ts') != picked[0]], bot, ts)
+            record['_raw'] = [decode(m.get('text') or '', bot) for m in posts if m.get('ts') == picked[0]]
+            thread = thread_view([m for m in posts if m.get('ts') != picked[0]], bot, ts, record['_raw'])
         if tagged:
             record['question'] = question[:LABEL_LIMIT]
         return self._decide(channel, ts, root, where, user, login, question, card, tagged, record, now, thread, (images, skipped))
@@ -458,7 +463,8 @@ class Intake:
             return self._say(channel, ts, root, record, 'dm-cap', msg('slackevents.dm.capped', cap=self.chat_cap) + site)
         thread = []
         for m in ((chat or {}).get('messages') or [])[-DM_THREAD:]:
-            thread += [{'who': 'person', 'text': m.get('text') or ''}] + ([{'who': 'bot', 'text': m['answer']}] if m.get('answer') else [])
+            record.setdefault('_raw', []).extend([m.get('text') or '', m.get('answer') or ''])
+            thread += [{'who': 'person', 'text': redact(m.get('text') or '')}] + ([{'who': 'bot', 'text': redact(m['answer'])}] if m.get('answer') else [])
         record['_dm'] = {'chatId': chat_id or new_id(), 'text': question, 'thread': thread, 'channel': channel}
         return None
 
@@ -542,7 +548,7 @@ class Intake:
         return cut(redact(esc(said.text)), SECTION_LIMIT)
 
     def _thread(self, channel: str, root: str, ts: str, record: dict | None = None) -> list[dict]:
-        return thread_view(self._replies(channel, root, record), self.slack.bot_user(), ts)
+        return thread_view(self._replies(channel, root, record), self.slack.bot_user(), ts, record.setdefault('_raw', []) if record is not None else None)
 
     def _recent_posts(self, channel: str, ts: str, record: dict | None = None) -> list[dict]:
         try:
@@ -555,7 +561,7 @@ class Intake:
         return sorted(kept, key=lambda m: float(m.get('ts') or 0))
 
     def _recent(self, channel: str, ts: str, record: dict | None = None) -> list[dict]:
-        return thread_view(self._recent_posts(channel, ts, record), self.slack.bot_user(), ts)
+        return thread_view(self._recent_posts(channel, ts, record), self.slack.bot_user(), ts, record.setdefault('_raw', []) if record is not None else None)
 
     def _replies(self, channel: str, root: str, record: dict | None = None) -> list[dict]:
         try:
@@ -580,6 +586,8 @@ class Intake:
             except SlackError as e:
                 log.warning('placeholder in %s failed: %s', channel, error_kind(e))
         images = {'images': list(attached[0]), 'imagesSkipped': attached[1]} if attached[0] or attached[1] else {}
+        planted = masked_scan('chat' if dm else 'slack', '\n'.join(record.get('_raw') or []))
+        images |= {'askFlags': planted} if planted else {}
         if dm:
             action = self.store.add_action({'type': 'ask', 'source': 'chat', 'key': 'ask', 'target': f"chat:{dm['chatId']}", 'text': question, 'cards': [], 'label': question[:LABEL_LIMIT],
                                             'requestedBy': login, 'chat': {'id': dm['chatId'], 'dm': channel}, 'slack': slack, 'thread': thread} | images)
@@ -623,7 +631,7 @@ class Intake:
             log.warning('ephemeral line in %s failed: %s', channel, error_kind(e))
 
     def _record(self, channel: str, ts: str, record: dict, decision: str) -> str:
-        kept = {k: v for k, v in record.items() if k != '_dm' and not (record.get('where') == 'dm' and k in DM_HIDDEN)}
+        kept = {k: v for k, v in record.items() if k not in ('_dm', '_raw') and not (record.get('where') == 'dm' and k in DM_HIDDEN)}
         self.store.record_intake(channel, ts, {**kept, 'decision': decision})
         return decision
 

@@ -7,7 +7,7 @@ from urllib.parse import quote
 from skopax import brand, causes, clock
 from skopax.contract import Knowledge, OrgPack
 from skopax.engine import parse_iso
-from skopax.history import MACHINE, MUTE_KINDS, RESOLVE_KINDS, kind_text, outcome_text, who_text
+from skopax.history import HISTORY_LINE, HISTORY_TAIL, MACHINE, MUTE_KINDS, RESOLVE_KINDS, cut, kind_text, outcome_text, who_text
 from skopax.investigator.select import ANNOUNCE_WINDOW_S
 
 PROCESS = Path(__file__).with_name('process.md')
@@ -386,6 +386,21 @@ def announced_hint(twin: dict) -> str:
     return 'reply there with slack_update on that card instead' if twin.get('posted') else 'leave it, the post on its way covers it'
 
 
+HISTORY_HEAD = '  recent history (oldest first, UTC):'
+HISTORY_WHO = 40
+
+
+def history_line(r: dict) -> str:
+    stamp = f"{r['at'][:10]} {r['at'][11:16]} "
+    by = f", by {cut(str(r.get('who') or 'system'), HISTORY_WHO)}"
+    return '    - ' + stamp + quoted(cut(r['text'], HISTORY_LINE - len(stamp) - len(by) - 1), HISTORY_LINE) + by
+
+
+def history_lines(x: dict) -> list[str]:
+    rows = [r for r in x.get('history') or [] if isinstance(r, dict) and r.get('at') and r.get('text')][-HISTORY_TAIL:]
+    return [HISTORY_HEAD] + [history_line(r) for r in rows] if rows else []
+
+
 def card_brief(x: dict, base: str, twin: dict | None = None) -> str:
     lines = [(f"- card #{x['num']}, " if x.get('num') else '- ') + f"key {shown_key(x['key'])}: {flat(x.get('svc'))} / {flat(x.get('label'))}" + (f" \u00b7 {flat(x['sub'])}" if x.get('sub') else '')
              + f", {flat(x.get('sev'))}, {flat(x.get('status'))}, first seen {flat(x.get('firstSeen'))} (UTC)"]
@@ -403,6 +418,7 @@ def card_brief(x: dict, base: str, twin: dict | None = None) -> str:
         at = f" ({clock.date(parse_iso(x['note']['at']))} {clock.label(parse_iso(x['note']['at']))})" if x['note'].get('at') else ''
         lines.append(f"  earlier note{at}: {flat(x['note']['text'])}")
     lines += thread_summary_lines(x)
+    lines += history_lines(x)
     if x.get('ticket'):
         lines.append(f"  ticket: {flat(x['ticket'])}" + (f" (owner {flat(x['owner'])})" if x.get('owner') else ''))
     elif x.get('owner'):

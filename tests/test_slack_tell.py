@@ -42,7 +42,7 @@ def test_a_page_ask_can_tell_a_person_on_its_card_or_in_a_new_thread(store: Stor
 
     # then
     assert 'slack_tell' in [d['name'] for d in b.definitions()]
-    assert wrong == ('adam.baker@example.com belongs to Adam White in Slack, not Adam Baker; ask the asker who they meant', True)
+    assert wrong == ('[redacted] belongs to Adam White in Slack, not Adam Baker; ask the asker who they meant', True)
     assert not on_card[1] and on_card[0] == f'slack_tell saved on {KEY}; told Gary Cole in the card thread; {LINK}'
     assert not in_channel[1] and in_channel[0].startswith('slack_tell saved on channel')
     assert told == [(KEY, 'gary.cole@example.com', 'Can you look at the cert alert on this card?', ASKER, 'Gary Cole'),

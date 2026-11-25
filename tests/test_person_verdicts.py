@@ -15,6 +15,7 @@ from skopax.engine import iso, merge
 from skopax.investigator import prompt, scan_parts
 from skopax.investigator.flags import SOFT, scan
 from skopax.investigator.tools import DEFINITIONS, RUN_CALLS, RUN_DIGEST, SCANNED_OUTPUT, past_cards_cap
+from skopax.redact import REDACTED
 from skopax.store import Store
 
 BASE = 'https://skopax.example.com'
@@ -293,7 +294,7 @@ def test_the_card_tool_shows_the_newest_ruling_without_any_person_text(store: St
     out, err = b.call('card', {'key': KEY})
 
     # then
-    assert not err and json.loads(out)['seenBefore']['ruled'] == {'kind': 'handled', 'by': NINA, 'at': ago(DAY)}
+    assert not err and json.loads(out)['seenBefore']['ruled'] == {'kind': 'handled', 'by': REDACTED, 'at': ago(DAY)}
     assert b.flags == []
 
 
@@ -343,7 +344,7 @@ def test_a_default_row_is_a_short_digest_with_the_person_words_verbatim(store: S
     assert not err and len(raw) < 1500
     assert long not in raw and 'answer' not in raw and 'said' not in raw and 'recap' not in raw and 'recommend' not in raw
     ruled, auto = rows
-    assert ruled['verdict'] == {'kind': 'handled', 'by': NINA, 'at': ago(2 * DAY), 'note': 'ShipCorp allow-listed us, nothing to do'}
+    assert ruled['verdict'] == {'kind': 'handled', 'by': REDACTED, 'at': ago(2 * DAY), 'note': 'ShipCorp allow-listed us, nothing to do'}
     assert (ruled['num'], ruled['asks'], ruled['decidedBy'], ruled['durationS']) == (41, 1, 'person', 0)
     assert auto['cause'] == {'text': 'Burst after the 09:00 deploy', 'by': 'investigator'} and 'verdict' not in auto
     assert (auto['peak'], auto['unit'], auto['outcomeText']) == (40, '/min', 'auto-resolved')

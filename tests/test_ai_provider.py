@@ -443,3 +443,17 @@ def test_the_chat_list_names_the_chat_model_that_will_run(store: Store):
 
     # then
     assert got['model'] == 'gpt-6.2-sol'
+
+
+def test_the_card_model_item_tells_the_page_each_models_provider_and_each_providers_card_default(store: Store):
+    # given
+    c = TestClient(create_app(on_openai(investigate_model='claude-opus-5-5'), store))
+
+    # when
+    item = setting(c, 'investigate.model')
+
+    # then
+    assert item['modelProviders']['claude-fable-5-2'] == 'anthropic'
+    assert item['modelProviders']['gpt-6.2-astra'] == 'openai'
+    assert item['cardDefaults'] == {'anthropic': 'claude-opus-5-5', 'openai': 'gpt-6.2-astra'}
+    assert 'modelProviders' not in setting(c, 'investigate.model-critical')

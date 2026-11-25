@@ -75,7 +75,7 @@ def test_a_chat_page_message_over_the_limit_is_refused_with_the_limit_instead_of
     assert [m['text'] for m in kept['messages']] == ['y' * 1000] and len(fake.gate_requests) == 1
 
 
-def test_a_chat_answer_is_shown_redacted_while_the_stored_answer_and_the_follow_up_context_stay_as_written(store: Store, tmp_path):
+def test_a_chat_answer_is_shown_redacted_and_masked_in_the_follow_up_context_while_the_stored_answer_stays_as_written(store: Store, tmp_path):
     # given
     raw = 'paul.stone@example.com got an error with +44 7700 900123.'
     app, _ = gated(store, tmp_path, [verdict(), verdict()])
@@ -92,4 +92,4 @@ def test_a_chat_answer_is_shown_redacted_while_the_stored_answer_and_the_follow_
     # then
     assert read['messages'][0]['answer'] == '[redacted] got an error with [redacted].' and bridged['messages'][0]['answer'] == read['messages'][0]['answer']
     assert store.get_action(asked['id'])['result'] == raw
-    assert store.list_actions('requested', 10)[0]['thread'] == [{'who': 'person', 'text': 'Which client got the error?'}, {'who': 'bot', 'text': raw}]
+    assert store.list_actions('requested', 10)[0]['thread'] == [{'who': 'person', 'text': 'Which client got the error?'}, {'who': 'bot', 'text': '[redacted] got an error with [redacted].'}]

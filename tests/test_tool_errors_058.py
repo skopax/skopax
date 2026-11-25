@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -100,7 +101,8 @@ def test_an_unknown_short_index_name_suggests_existing_patterns_that_contain_it(
 
     # when
     with pytest.raises(ReadError) as raised:
-        run_esql(ctx(http), {'query': 'FROM checkout* | WHERE @timestamp >= NOW() - 1 hour | LIMIT 5'})
+        run_esql(SimpleNamespace(instance=SimpleNamespace(config={'url': ES_URL, 'api-key': 'esql-test-key-0123456789', 'log-index': '*checkout*'}), http=lambda: http),
+                 {'query': 'FROM checkout* | WHERE @timestamp >= NOW() - 1 hour | LIMIT 5'})
 
     # then
     message = raised.value.message

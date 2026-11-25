@@ -747,16 +747,16 @@ def test_a_plugin_tool_that_hangs_is_a_fixed_timed_out_error(rig, caplog):
     assert 'tool slow_tool of plug-in slow did not answer within 0.2 s' in caplog.text
 
 
-def test_a_plugin_answer_keeps_a_long_numeric_id_and_masks_the_rest():
+def test_a_plugin_answer_masks_a_card_number_and_keeps_a_long_id_that_is_not_one():
     # given
     from skopax.plugintools import masked
-    answer = 'order=4242424242424242 mail alice@example.com iban GB82WEST12345698765432 call +44 20 7946 0958 password: hunter2x'
+    answer = 'order=4242424242424242 id=4242424242424243 mail alice@example.com iban GB82WEST12345698765432 call +44 20 7946 0958 password: hunter2x'
 
     # when
     out = masked(answer, [])
 
     # then
-    assert 'order=4242424242424242' in out
+    assert 'order=4242424242424242' not in out and 'id=4242424242424243' in out
     assert 'alice@example.com' not in out
     assert 'GB82WEST12345698765432' not in out
     assert '7946 0958' not in out

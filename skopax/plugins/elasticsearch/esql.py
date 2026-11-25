@@ -15,6 +15,13 @@ LOWER_BOUND = re.compile(r'(@timestamp`?\s*(?:>=|>)\s*)(?:NOW\(\)\s*-\s*(\d+)\s*
 UNIT_HOURS = {'minute': 1 / 60, 'min': 1 / 60, 'hour': 1, 'h': 1, 'day': 24, 'd': 24, 'week': 168, 'w': 168}
 WINDOWS = (('day', 24, 'NOW() - 1 day'), ('hour', 1, 'NOW() - 1 hour'))
 MAX_INDICES = 3
+APM_EXTRA = ['logs-apm.error-*', 'metrics-apm.*']
+FROM_ALL = re.compile(r'^\s*FROM\s+(.+)$', re.I | re.S)
+METADATA_SPLIT = re.compile(r'\s+METADATA\s+', re.I)
+METADATA_FIELDS = re.compile(r'_\w+(?:\s*,\s*_\w+)*')
+COMMAND = re.compile(r'[|(]\s*(FROM|ENRICH|LOOKUP\s+JOIN|LOOKUP)\s+([^\s|(),]+)', re.I)
+LITERAL = re.compile(r'"(\d+)"')
+SOURCE = re.compile(r'[A-Za-z0-9_.*][A-Za-z0-9_.*:-]*')
 COLUMNS_SHOWN = 5
 COLUMNS_CLOSE = 0.5
 MISSING_NAME = re.compile(r'(?:no such index|Unknown index) \[([^\]]+)\]')
@@ -48,6 +55,7 @@ DESCRIPTION = ('ES|QL query on Elasticsearch, read only. instance picks the Elas
                'cluster apm reads the APM cluster: {field:apm-index}, logs-apm.error-* and metrics-apm.*. '
                'Daily index names follow UTC dates, so never write a dated index name: use the pattern above with a wildcard and a WHERE on @timestamp. '
                'FROM comes first and names one to three indices; a wildcard or more indices is refused unless WHERE bounds @timestamp. '
+               'FROM and LOOKUP JOIN may only name the indices above (on cluster logs also the log flow index) or narrower patterns of them; any other index, alias, remote cluster, ENRICH or comment is refused. '
                'Long answers are cut, so aggregate with STATS. A WHERE on a field that does not exist returns zero rows, not an error. '
                'first and last are reserved words, so never name a column first or last (use oldest / newest). '
                'Log fields: the line is in {field:message-field}, the level in {field:level-field}, the service in {field:service-field}.')
@@ -152,6 +160,100 @@ def check_scope(query: str, index: str) -> None:
                              f'or add a @timestamp range to WHERE, like FROM {index} | WHERE @timestamp >= NOW() - 1 hour')
 
 
+def allowed_indices(config: Mapping[str, str], cluster: str, extra: list[str] = ()) -> list[str]:
+    names = index_of(config, cluster).split(',') + (APM_EXTRA if cluster == 'apm' else str(config.get('logflow-index') or '').split(',')) + list(extra)
+    return list(dict.fromkeys(n.strip() for n in names if n.strip()))
+
+
+def user_indices(ctx: Context) -> list[str]:
+    users = getattr(ctx, 'users', None)
+    if users is None:
+        return []
+    out: list[str] = []
+    for info in users():
+        out += str(info.config.get('index') or '').split(',') + list(sources_of(str(info.config.get('query') or '')))
+    return out
+
+
+def covered(source: str, pattern: str) -> bool:
+    return re.fullmatch('.*'.join(re.escape(p) for p in pattern.split('*')), source, re.S) is not None
+
+
+def lexed(query: str) -> tuple[str, list[str]] | None:
+    if '\r' in query:
+        return None
+    out, literals, i = [], [], 0
+    while i < len(query):
+        if query.startswith('"""', i):
+            end = query.find('"""', i + 3)
+            if end < 0 or '\n' in query[i + 3:end]:
+                return None
+            end += 3
+            for _ in range(2):
+                if end < len(query) and query[end] == '"':
+                    end += 1
+            literals.append(query[i + 3:end - 3])
+            out.append(f'"{len(literals) - 1}"')
+            i = end
+        elif query[i] == '"':
+            j = i + 1
+            while j < len(query) and query[j] not in '"\n':
+                j += 2 if query[j] == '\\' else 1
+            if j >= len(query) or query[j] != '"':
+                return None
+            literals.append(query[i + 1:j])
+            out.append(f'"{len(literals) - 1}"')
+            i = j + 1
+        elif query[i] == '`':
+            j = i + 1
+            while j < len(query) and (query[j] != '`' or query.startswith('``', j)):
+                j += 2 if query[j] == '`' else 1
+            if j >= len(query):
+                return None
+            literals.append(query[i + 1:j].replace('``', '`'))
+            out.append(f'"{len(literals) - 1}"')
+            i = j + 1
+        elif query.startswith('//', i) or query.startswith('/*', i):
+            return None
+        else:
+            out.append(query[i])
+            i += 1
+    return ''.join(out), literals
+
+
+def source_name(raw: str, literals: list[str]) -> str:
+    quoted = LITERAL.fullmatch(raw)
+    return literals[int(quoted.group(1))] if quoted else raw
+
+
+def check_sources(query: str, allowed: list[str]) -> None:
+    shown = ', '.join(allowed)
+    read = lexed(query)
+    if read is None:
+        raise ReadError(400, f'write the query without comments, carriage returns or unclosed quotes; FROM reads only these indices of this Elasticsearch connection: {shown}')
+    cleaned, literals = read
+    head = cleaned.split('|', 1)[0]
+    m = FROM_ALL.match(head)
+    if not m:
+        raise ReadError(400, 'the query must start with FROM <index>')
+    parts = METADATA_SPLIT.split(m.group(1).strip(), maxsplit=1)
+    named, fields = parts[0], parts[1] if len(parts) > 1 else ''
+    if len(parts) > 1 and not METADATA_FIELDS.fullmatch(fields.strip()):
+        raise ReadError(400, f'METADATA takes only metadata field names such as _index or _id, and FROM reads only these indices of this Elasticsearch connection: {shown}')
+    sources = [(f'FROM {name}', name) for name in (source_name(x.strip(), literals) for x in named.split(','))]
+    for found in COMMAND.finditer(cleaned):
+        verb, name = ' '.join(found.group(1).upper().split()), source_name(found.group(2), literals)
+        if verb == 'FROM':
+            raise ReadError(400, f'FROM {name[:80]}: a query reads through its first FROM only, from these indices of this Elasticsearch connection: {shown}')
+        if verb == 'ENRICH':
+            raise ReadError(400, f'ENRICH {name[:80]}: enrich policies are not read here; FROM and LOOKUP JOIN read only these indices of this Elasticsearch connection: {shown}')
+        sources.append((f'{verb} {name}', name))
+    for said, name in sources:
+        pool = [p for p in allowed if (':' in p) == (':' in name)]
+        if not SOURCE.fullmatch(name) or not any(covered(name, p) for p in pool):
+            raise ReadError(400, f'{said[:120]} reads outside the indices this Elasticsearch connection may read: {shown}. Name one of these patterns, or a narrower one, and no other index, alias, remote cluster or enrich policy')
+
+
 def named_cluster(cluster: object, names: list[str]) -> str | None:
     found = NAMED_CLUSTER.fullmatch(cluster.strip()) if isinstance(cluster, str) else None
     if found is None:
@@ -227,6 +329,8 @@ def run_esql(ctx: Context, args: dict) -> object:
         raise ReadError(400, 'query is required')
     config = ctx.instance.config
     check_scope(query, index_of(config, cluster))
+    allowed = allowed_indices(config, cluster, user_indices(ctx) if cluster == 'logs' else [])
+    check_sources(query, allowed)
     es = client_of(ctx, cluster)
     try:
         return es.query(query, timeout=QUERY_S)
@@ -238,8 +342,8 @@ def run_esql(ctx: Context, args: dict) -> object:
         if e.missing:
             earlier = yesterday(query, ctx.now, missing_names(e.detail), es) if DAY_STAMP.search(query) else None
             if earlier is not None:
-                return day_before(es, query, earlier, status, first, config)
-            raise ReadError(status, first + missing_hint(es, query), HINT_ROOM) from None
+                return day_before(es, query, earlier, status, first, config, allowed)
+            raise ReadError(status, first + missing_hint(es, query, allowed), HINT_ROOM) from None
         if e.unknown:
             raise ReadError(status, first + column_hint(es, query, e.unknown), HINT_ROOM) from None
         slow = e.status == 504 or e.timed_out
@@ -288,11 +392,11 @@ def found_day(found: re.Match) -> dt.date | None:
         return None
 
 
-def day_before(es: Elastic | NodeElastic, query: str, earlier: str, status: int, first: str, config: Mapping[str, str]) -> object:
+def day_before(es: Elastic | NodeElastic, query: str, earlier: str, status: int, first: str, config: Mapping[str, str], allowed: list[str]) -> object:
     try:
         rows = es.query(earlier, timeout=QUERY_S)
     except ElasticError as again:
-        raise ReadError(status, msg('esql.retry_day_before', first=first, again=answer(again.text, again.status, config), hint=missing_hint(es, query)), HINT_ROOM) from None
+        raise ReadError(status, msg('esql.retry_day_before', first=first, again=answer(again.text, again.status, config), hint=missing_hint(es, query, allowed)), HINT_ROOM) from None
     named, used = ', '.join(sources_of(query)), ', '.join(sources_of(earlier))
     return {'note': msg('esql.day_before_note', named=named, used=used), 'rows': rows}
 
@@ -314,9 +418,9 @@ def unserved_range(e: ElasticError) -> bool:
     return e.status in (400, 503) and not e.unknown and e.code in RANGE_KINDS
 
 
-def missing_hint(es: Elastic | NodeElastic, query: str) -> str:
+def missing_hint(es: Elastic | NodeElastic, query: str, allowed: list[str]) -> str:
     sources = sources_of(query)
-    close = closest_patterns(sources, es.index_patterns()) if sources else []
+    close = closest_patterns(sources, [x for x in es.index_patterns() if any(covered(x, p) for p in allowed)]) if sources else []
     if not close:
         return ''
     return msg('esql.no_index', sources=', '.join(sources[:MAX_INDICES]), patterns=', '.join(close))

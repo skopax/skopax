@@ -15,7 +15,7 @@ from skopax.errkind import kind as error_kind
 from skopax.investigator import pricing, prompt
 from skopax.investigator.gate import GATE_TIMEOUT
 from skopax.kit.flags import SOFT, scan
-from skopax.redact import REDACTED, redact_secrets
+from skopax.redact import redact_secrets
 from skopax.slack import SlackError
 from skopax.slackevents import FILE_SUBTYPE, MENTION, decode
 from skopax.statenotes import who_of
@@ -40,8 +40,6 @@ TEXT_LIMIT = 300
 SOMEONE = 'someone'
 NAME_TTL_S = 3600
 OWN_ANSWER = ' (its own earlier answer, not a person)'
-TOKEN = re.compile(r'(?<![\w-])(?:xox[abposr]-[A-Za-z0-9-]{10,}|xapp-[A-Za-z0-9-]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}'
-                   r'|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})')
 ORDER = re.compile(r'\bignore\s+(?:all\s+)?(?:your|my|the|these|those|any|its)\s+(?:(?:previous|prior|earlier|own)\s+)?instructions\b', re.I)
 PEOPLE_SUBTYPES = (None, 'thread_broadcast', FILE_SUBTYPE)
 SCHEMA = {'type': 'object', 'additionalProperties': False, 'required': ['text', 'bullets'],
@@ -56,7 +54,7 @@ def email_names(operators) -> Callable[[str], str | None]:
 
 
 def masked(text: str) -> str:
-    return redact_secrets(TOKEN.sub(REDACTED, text))
+    return redact_secrets(text)
 
 
 def tidy(text: object, limit: int) -> str:
