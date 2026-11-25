@@ -1,13 +1,13 @@
 var SYSTEM_ACTOR = 'system';
 var BRAND = (function () {
-  var out = {name: 'Skopax', slug: 'skopax', version: '0.6.0'};
+  var out = {name: 'Skopax', slug: 'skopax', version: '0.6.1'};
   try {
     var d = JSON.parse(document.getElementById('brand-data').textContent);
     if (d && d.name) out = d;
   } catch (e) {}
   if (out.attribution === null) return out;
   if (!out.attribution || !out.attribution.text) {
-    var v = out.version || '0.6.0';
+    var v = out.version || '0.6.1';
     out.attribution = {text: out.name === 'Skopax' ? 'Skopax ' + v + ' \u00b7 skopax.io' : out.name + ' \u00b7 powered by Skopax ' + v, href: 'https://skopax.io'};
   }
   return out;

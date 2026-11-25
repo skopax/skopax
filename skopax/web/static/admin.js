@@ -1,5 +1,5 @@
 var ADMIN_OK = false, ADMIN_ROLE = 'admin', ADMIN_WANTED = false, ADMIN = null, ADMIN_HIST = null, ADMIN_SEQ = 0, ADMIN_FIND = '', ADMIN_TALK = null;
-var ADMIN_NOTES = [], NOTES_SEQ = 0, FEATS = null, FEATS_SEQ = 0, AIKEY = null, OAIKEY = null, AIKEY_SEQ = 0, AI_TESTING = {anthropic: false, openai: false}, CHANGES_SEQ = 0, AIUSES = null, AICONN = null;
+var ADMIN_NOTES = [], NOTES_SEQ = 0, FEATS = null, FEATS_SEQ = 0, AIKEY = null, OAIKEY = null, AIKEY_SEQ = 0, AI_TESTING = {anthropic: false, openai: false}, CHANGES_SEQ = 0, AIUSES = null, AICONN = null, AIVTX = null;
 var FEAT_PENDING = {}, FEAT_HELD = {}, FEAT_SAID = {}, FEAT_HOLD_MS = 15000;
 var TALK_NAMES = {'small-talk.enabled': 'Small talk replies', 'small-talk.hourly-cap': 'Small talk replies per hour', 'small-talk.rules': 'Small talk rules'};
 var ADMIN_FOLD = {}, ADMIN_HIST_SHOW = 10, ADMIN_HIST_STEP = 20, ADMIN_HIST_MAX = 200, ADMIN_CLIP = 140, ADMIN_LINE_MAX = 1000;
@@ -38,6 +38,7 @@ function setAdminAccess(on) {
     OAIKEY = null;
     AIUSES = null;
     AICONN = null;
+    AIVTX = null;
     AIU_EDIT = {};
     AIU_PENDING = {};
     AIU_SAID = {};
@@ -213,12 +214,13 @@ async function loadAi(said, saidFor) {
   try {
     var failed = function (e) { return {failed: true, code: e && e.code}; };
     var r = await Promise.all([adminApi('GET', '/api/admin/anthropic-key'), adminApi('GET', '/api/admin/settings').catch(adminNone), adminApi('GET', '/api/admin/openai-key').catch(function () { return {failed: true}; }),
-      adminApi('GET', '/api/admin/ai-connections').catch(failed), adminApi('GET', '/api/admin/ai-uses').catch(failed)]);
+      adminApi('GET', '/api/admin/ai-connections').catch(failed), adminApi('GET', '/api/admin/ai-uses').catch(failed), adminApi('GET', '/api/admin/ai-vertex').catch(failed)]);
     if (seq !== AIKEY_SEQ) return;
     AIKEY = keyStatus(r[0]);
     OAIKEY = r[2] && r[2].failed ? {failed: true} : keyStatus(r[2]);
     if (r[1]) ADMIN = r[1];
     AICONN = aicOf(r[3]);
+    AIVTX = aivOf(r[5]);
     AIU_FAILED = !!(r[4] && r[4].failed && r[4].code !== 404);
     AIUSES = r[4] && r[4].failed ? null : aiuOf(r[4]);
     markAdminCount();
@@ -1293,6 +1295,7 @@ function paintAiKey(said, saidFor) {
   });
   box.appendChild(list);
   aicPaint(box, said, saidFor);
+  aivPaint(box);
 }
 function aiKeyFailed(kind) {
   var card = accText('section', kind.cls);

@@ -274,6 +274,7 @@
 "reminder.event": "Arrêtée après l'événement mais non marquée ; la cause peut revenir au prochain.",
 "routes.echo_failed": "Slack n'a pas accepté la ligne indiquant qu'une carte est partie vers une route (essai {tries} sur {limit})",
 "routes.echo_item": "{route} sur {plugin}{tags}",
+"routes.echo_for": "{names} :",
 "routes.echo_line": "Envoyée à {routes}",
 "routes.echo_tag": " (tag : {tags})",
 "routes.echo_tags": " (tags : {tags})",

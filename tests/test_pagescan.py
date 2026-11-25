@@ -38,6 +38,7 @@ class Call:
     focus: str | None
     mark: list | None
     overflow: bool
+    about: str | None = None
 
 
 class FakeBrowser:
@@ -50,8 +51,8 @@ class FakeBrowser:
         self.scrolled = scrolled or {}
         self.calls: list[Call] = []
 
-    def shoot(self, url, site, viewport='desktop', full=False, probe=None, capture=True, headers=None, focus=None, mark=None, overflow=False):
-        self.calls.append(Call(url, viewport, full, probe is not None, capture, dict(headers or {}), focus, mark, overflow))
+    def shoot(self, url, site, viewport='desktop', full=False, probe=None, capture=True, headers=None, focus=None, mark=None, overflow=False, about=None):
+        self.calls.append(Call(url, viewport, full, probe is not None, capture, dict(headers or {}), focus, mark, overflow, about))
         if url in self.fail:
             raise self.fail[url]
         status = self.statuses.get(url, 200)
@@ -706,6 +707,31 @@ def test_an_overflow_finding_s_shot_marks_every_offender():
     assert shot['marked'] is True and shot['key'] == f'{ps.LAYOUT}|shop.example.com/garden/chairs'
 
 
+def test_a_visual_picture_is_told_what_the_finding_says_so_the_marker_can_tell_an_image_from_text():
+    # given
+    browser = FakeBrowser({CHAIRS: probe('Garden chairs\nSummer sale')})
+    ai = FakeAi([[visual('The banner image is cropped at phone width', anchor='Summer sale')]])
+
+    # when
+    run(Ctx(browser, ai, extra=(CHAIRS,)))
+
+    # then
+    [call] = [c for c in browser.calls if c.focus]
+    assert call.focus == 'Summer sale' and 'banner image is cropped' in call.about
+
+
+def test_a_typo_picture_is_focused_without_a_finding_text():
+    # given
+    browser = FakeBrowser({CHAIRS: probe('Garden Chiars')})
+    ctx = Ctx(browser, FakeAi([[typo('Garden Chiars', 'Garden Chairs')]]), extra=(CHAIRS,))
+
+    # when
+    run(ctx)
+
+    # then
+    assert [c.about for c in browser.calls if c.focus] == [None]
+
+
 def test_a_visual_finding_is_marked_at_its_anchor_and_says_so_when_the_anchor_is_not_on_the_page():
     # given
     browser = FakeBrowser({CHAIRS: probe('Garden chairs\nOrder now'), TABLES: probe('Garden tables\nOrder now')})
@@ -892,10 +918,10 @@ def test_a_site_whose_every_page_fails_on_the_server_fails_the_pass():
 
 
 class DownOnEvidence(FakeBrowser):
-    def shoot(self, url, site, viewport='desktop', full=False, probe=None, capture=True, headers=None, focus=None, mark=None, overflow=False):
+    def shoot(self, url, site, viewport='desktop', full=False, probe=None, capture=True, headers=None, focus=None, mark=None, overflow=False, about=None):
         if focus is not None or mark is not None:
             raise BrowserDown('down')
-        return super().shoot(url, site, viewport, full, probe, capture, headers, focus, mark, overflow)
+        return super().shoot(url, site, viewport, full, probe, capture, headers, focus, mark, overflow, about)
 
 
 def test_a_browser_lost_while_taking_evidence_keeps_the_page_it_read_and_lists_it_once():
@@ -1560,3 +1586,16 @@ def test_a_megabyte_of_combining_marks_gives_a_bounded_line_count_quickly():
     # then
     assert took < 1.0
     assert len(lines) <= ps.MAX_PAGE_LINES
+
+
+def test_the_finding_text_handed_to_the_marker_is_cut_to_three_hundred_characters():
+    # given
+    browser = FakeBrowser({CHAIRS: probe('Garden chairs\nSummer sale')})
+    ai = FakeAi([[visual('The banner image is cropped ' + 'at phone width ' * 60, anchor='Summer sale')]])
+
+    # when
+    run(Ctx(browser, ai, extra=(CHAIRS,)))
+
+    # then
+    [call] = [c for c in browser.calls if c.focus]
+    assert 0 < len(call.about) <= 300 and call.about.startswith('The banner image is cropped')

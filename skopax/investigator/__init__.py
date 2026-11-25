@@ -200,7 +200,7 @@ class Investigator:
         if not chosen:
             return provider, model, fallback, 'card', None
         owner = provider_of_ref(chosen) or self.clients.default()
-        if pricing.known(chosen):
+        if pricing.known(chosen) or '/' in chosen:
             return owner, chosen, None, use, None
         return provider, model, chosen, 'card', fallback
 
@@ -566,7 +566,7 @@ class Investigator:
                 readable = [k for _, k in index] if pack is None or pack.plugin_sections else []
                 toolbox = Toolbox(self.sources, self.store, self.effects, keys, mode, now, self.base_url, run_id=run_id, ask=bool(ask), report_id=report_id or None, read_only=quick,
                                   strict=self.strict_tools, asker=action.get('requestedBy') if ask and not quick else None, chat=chat_ask, language=self.language,
-                                  web=web_from(self.web_domains, self.web_searches if searching else 0, self.web_fetches if searching and getattr(wrap(client), 'provider', provider) != pricing.OPENAI else 0, self.own_domains()), settings=self.settings, role=role, knowledge=readable,
+                                  web=web_from(self.web_domains, self.web_searches if searching else 0, self.web_fetches if searching and 'web_fetch' in caps and getattr(wrap(client), 'provider', provider) != pricing.OPENAI else 0, self.own_domains()), settings=self.settings, role=role, knowledge=readable,
                                   review=review or None)
                 if review:
                     config = RunConfig(quick_model, self.slack_effort, self.slack_max_tool_calls, capabilities=caps)

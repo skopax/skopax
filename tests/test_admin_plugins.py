@@ -817,7 +817,7 @@ def test_admin_plugins_carry_health_and_checks(store):
         rows = listed(c)
 
     # then
-    ok, pending, off = msg('integrations.health.ok'), msg('integrations.health.pending'), msg('integrations.health.off')
+    ok, pending, off = msg('integrations.health.ok'), msg('integrations.health.pending'), msg('integrations.health.plugin_off', plugin='Other')
     assert [(x['id'], x['label']) for x in rows['demo']['checks']] == [('pulse', 'Demo pulse')]
     assert rows['demo']['health'] == {'state': 'error', 'text': BAD_PASS, 'at': iso(NOW + 5), 'instances': [
         {'name': 'main', 'state': 'ok', 'text': ok, 'at': iso(NOW)}, {'name': 'east', 'state': 'error', 'text': BAD_PASS, 'at': iso(NOW + 5)},
@@ -1177,3 +1177,25 @@ def test_a_delete_still_answers_when_its_connection_time_cannot_be_forgotten(sto
     # then
     assert gone.status_code == 204
     assert any('the connection time of demo east was not forgotten: ' in r.getMessage() for r in caplog.records)
+
+
+def test_health_names_the_reason_an_instance_is_off_the_plugin_or_the_instance(store):
+    # given
+    other = minimal('other', 'Other', fields=(Field('url', 'URL', 'url'),))
+    with served(store, DEMO, other) as c:
+        c.app.state.scheduler.nudge = lambda name: None
+        add(c, 'main', True)
+        add(c, 'east', False, values=EAST)
+        add(c, 'main', True, values={'url': 'https://other.example.com'}, plugin='other')
+        c.put('/api/admin/plugins/other', json={'enabled': False}, headers=AUTH)
+
+        # when
+        rows = listed(c)
+
+    # then
+    mine = {r['name']: r for r in rows['demo']['health']['instances']}
+    assert mine['east']['text'] == msg('integrations.health.off') == 'Off \u00b7 this instance is switched off'
+    assert mine['main']['text'] != msg('integrations.health.off')
+    theirs = rows['other']['health']
+    assert theirs['text'] == msg('integrations.health.plugin_off', plugin='Other') == 'Off \u00b7 the Other plug-in is switched off'
+    assert theirs['instances'][0]['text'] == theirs['text'] and rows['other']['instances'][0]['enabled'] is True

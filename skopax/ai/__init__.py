@@ -10,7 +10,7 @@ FETCH_TYPE = 'web_fetch_20250910'
 THINK_OFF = 'off'
 THINK_AUTO = 'auto'
 COMPAT = 'compat'
-CAPABILITIES = frozenset({'tools', 'images', 'web_search', 'thinking', 'cache', 'fallbacks'})
+CAPABILITIES = frozenset({'tools', 'images', 'web_search', 'web_fetch', 'thinking', 'cache', 'fallbacks'})
 PROVIDER_CAPABILITIES = {ANTHROPIC: CAPABILITIES, OPENAI: frozenset({'tools', 'images', 'web_search', 'thinking', 'cache'})}
 IMAGES_OFF = 'images not sent: this model does not read images'
 FACTORIES: dict[str, 'Provider'] = {}
@@ -22,6 +22,7 @@ class Provider:
     capabilities: object
     models: Callable[[], Iterable[str]] | None = None
     company: Callable[[str], str] | None = None
+    owns: Callable[[str], bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -113,8 +114,8 @@ def maker(provider: Callable[[], str], claude: Callable[[str], object], timeout:
 
 
 def register_provider(prefix: str, factory: Callable[[str, float, int], object | None], capabilities: Iterable[str] | Callable[[str], Iterable[str]],
-                      models: Callable[[], Iterable[str]] | None = None, company: Callable[[str], str] | None = None) -> None:
-    FACTORIES[prefix] = Provider(factory, capabilities, models, company)
+                      models: Callable[[], Iterable[str]] | None = None, company: Callable[[str], str] | None = None, owns: Callable[[str], bool] | None = None) -> None:
+    FACTORIES[prefix] = Provider(factory, capabilities, models, company, owns)
 
 
 def extra_models() -> tuple[str, ...]:
@@ -144,12 +145,24 @@ def unregister_provider(prefix: str) -> None:
     FACTORIES.pop(prefix, None)
 
 
+def owned(held: Provider, name: str) -> bool:
+    try:
+        return bool(held.owns(name))
+    except Exception:
+        return False
+
+
 def provider_of_ref(ref: object) -> str | None:
     if not isinstance(ref, str) or not ref:
         return None
     if '/' in ref:
         name = ref.split('/', 1)[0]
-        return f'{COMPAT}:{name}' if name else None
+        if not name:
+            return None
+        for prefix, held in list(FACTORIES.items()):
+            if held.owns is not None and owned(held, name):
+                return f'{prefix}:{name}'
+        return f'{COMPAT}:{name}'
     from skopax.investigator.pricing import provider_of
     return provider_of(ref)
 

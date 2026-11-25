@@ -2,8 +2,11 @@ var AIU_HEADS = ['Use', 'Model', 'Effort', 'Price per million tokens (input / ou
 var AIU_FIT = 'Cheap models often miss steps in long investigations', AIU_FIT_USES = ['card', 'critical', 'high'];
 var AIU_SAID = {}, AIU_SEQ = 0, AIU_EDIT = {}, AIU_PENDING = {}, AIU_CHAIN = Promise.resolve(), AIU_FAILED = false;
 var AIC_TESTING = {}, AIC_SEQ = 0, AIC_PRIVATE_KEY = 'core.allow-private-ai';
+var AIV_TESTING = {}, AIV_MODES = ['key', 'federation', 'pod'];
+var AIV_REGION_TEXT = {global: 'global (current models, no residency guarantee)', us: 'us (current models, processing stays in the US)', eu: 'eu (current models, processing stays in the EU)'};
+var AIV_REGION_NOTE = 'Current Claude models run on global, us and eu only; a single region serves older models. Choose eu to keep processing in the EU.';
 var AIC_NOT_FIT = 'Not fit for investigations: the model did not call the tool';
-var AIU_PROVIDERS = {anthropic: 'Anthropic', openai: 'OpenAI'};
+var AIU_PROVIDERS = {anthropic: 'Anthropic', openai: 'OpenAI', vertex: 'Vertex AI'};
 function aiuText(v) { return typeof v === 'string' ? v : ''; }
 function aiuNum(v) { return typeof v === 'number' && isFinite(v) ? v : null; }
 function aiuOf(r) {
@@ -13,11 +16,16 @@ function aiuOf(r) {
       avgCost7d: aiuNum(u.avgCost7d), problem: aiuText(u.problem) || null, fit: u.fit === 'cheap' ? 'cheap' : 'ok'};
   });
 }
+function aicLast(t) {
+  return t && typeof t === 'object' ? {ok: t.ok === true, tools: t.tools !== false, summary: aiuText(t.summary), model: aiuText(t.model), at: aiuText(t.at), models: aivTested(t.models)} : null;
+}
+function aivTested(list) {
+  return (Array.isArray(list) ? list : []).filter(function (m) { return m && typeof m.id === 'string' && m.id; }).map(function (m) { return {id: m.id, ok: m.ok === true, summary: aiuText(m.summary)}; });
+}
 function aicConn(c) {
-  var t = c.lastTest && typeof c.lastTest === 'object' ? c.lastTest : null;
   return {name: c.name, baseUrl: aiuText(c.baseUrl), keySet: !!(c.key && c.key.set === true), tools: c.tools !== false, images: c.images === true, company: aiuText(c.company),
     models: (Array.isArray(c.models) ? c.models : []).filter(function (m) { return m && typeof m.id === 'string'; }).map(function (m) { return {id: m.id, ref: aiuText(m.ref), input: aiuNum(m.input), output: aiuNum(m.output)}; }),
-    lastTest: t ? {ok: t.ok === true, tools: t.tools !== false, summary: aiuText(t.summary), model: aiuText(t.model), at: aiuText(t.at)} : null};
+    lastTest: aicLast(c.lastTest)};
 }
 function aicOf(r) {
   if (r && r.failed) return {failed: true, code: r.code};
@@ -53,6 +61,7 @@ function aiuKey(n, id) {
 }
 function aiuProvider(p) {
   if (AIU_PROVIDERS[p]) return AIU_PROVIDERS[p];
+  if (p.indexOf('vertex:') === 0) return AIU_PROVIDERS.vertex;
   return p.indexOf('compat:') === 0 ? p.slice(7) : p;
 }
 function aiuSection() {
@@ -573,6 +582,359 @@ function aicCard(c) {
     var note = document.querySelector('#ai .aic-said');
     if (note) { note.textContent = 'Deleted'; note.className = 'adm-msg aic-said ok'; }
     var to = next && (next.querySelector('.aic-card[data-conn] .aic-url') || next.querySelector('summary'));
+    if (to) to.focus();
+  });
+  return card;
+}
+function aivSay(card, text, bad) {
+  var msg = card && card.querySelector('.aiv-msg');
+  if (!msg) return;
+  msg.textContent = text || '';
+  msg.className = 'adm-msg aic-msg aiv-msg' + (bad ? ' bad' : text ? ' ok' : '');
+}
+function aivConn(c) {
+  var cr = c.credentials && typeof c.credentials === 'object' ? c.credentials : {};
+  return {name: c.name, project: aiuText(c.project), region: aiuText(c.region), mode: AIV_MODES.indexOf(cr.mode) >= 0 ? cr.mode : 'key', set: cr.set === true, company: aiuText(c.company),
+    models: (Array.isArray(c.models) ? c.models : []).filter(function (m) { return m && typeof m.id === 'string'; }).map(function (m) { return {id: m.id, vertexId: aiuText(m.vertexId), input: aiuNum(m.input), output: aiuNum(m.output)}; }),
+    lastTest: aicLast(c.lastTest)};
+}
+function aivOf(r) {
+  if (r && r.failed) return {failed: true, code: r.code};
+  if (!r || !Array.isArray(r.items)) return null;
+  return {regions: (Array.isArray(r.regions) ? r.regions : []).filter(function (x) { return typeof x === 'string' && x; }),
+    connections: r.items.filter(function (c) { return c && typeof c.name === 'string' && c.name; }).map(aivConn)};
+}
+function aivFind(name) { return AIVTX && AIVTX.connections ? AIVTX.connections.filter(function (c) { return c.name === name; })[0] || null : null; }
+function aivCardEl(name) { return [].filter.call(document.querySelectorAll('#ai .aiv-card[data-vertex]'), function (k) { return k.dataset.vertex === name; })[0] || null; }
+function aivResults(models) {
+  var list = accText('ul', 'aiv-res');
+  list.setAttribute('aria-label', 'Test result per model');
+  models.forEach(function (m) {
+    var li = accText('li', 'aiv-res-m ' + (m.ok ? 'ok' : 'bad'));
+    li.appendChild(accText('code', 'aiv-res-id', m.id));
+    li.appendChild(document.createTextNode(' ' + (m.ok ? '\u2713 ' : '') + m.summary));
+    list.appendChild(li);
+  });
+  return list;
+}
+function aivNewLi() {
+  var add = accText('li', 'ai-provider aiv-add-li'), fold = el('details', 'aiv-add');
+  fold.appendChild(accText('summary', 'aiv-add-s', 'Add Vertex AI connection'));
+  fold.appendChild(aivCard(null));
+  add.appendChild(fold);
+  return add;
+}
+function aivConnLi(c) {
+  var li = accText('li', 'ai-provider');
+  li.appendChild(aivCard(c));
+  return li;
+}
+function aivPaint(box) {
+  if (!AIVTX) return;
+  var wrap = el('div', 'aiv');
+  if (AIVTX.failed) {
+    if (AIVTX.code !== 404) {
+      wrap.appendChild(accText('p', 'adm-msg bad aiv-failed', 'The Vertex AI connections did not load; open the tab again.'));
+      box.appendChild(wrap);
+    }
+    return;
+  }
+  var list = accText('ul', 'aic-list aiv-list');
+  AIVTX.connections.forEach(function (c) { list.appendChild(aivConnLi(c)); });
+  list.appendChild(aivNewLi());
+  wrap.appendChild(list);
+  box.appendChild(wrap);
+}
+var AIV_REFRESH_SEQ = 0, AIV_REFRESH = null;
+function aivRefresh() {
+  var seq = ++AIV_REFRESH_SEQ;
+  AIV_REFRESH = aivRead(seq);
+  return AIV_REFRESH;
+}
+async function aivRead(seq) {
+  var r = await Promise.all([adminApi('GET', '/api/admin/ai-vertex').catch(adminNone), adminApi('GET', '/api/admin/settings').catch(adminNone), adminApi('GET', '/api/admin/ai-uses').catch(adminNone)]);
+  if (seq !== AIV_REFRESH_SEQ) return AIV_REFRESH;
+  var fresh = aivOf(r[0]);
+  if (fresh && !fresh.failed) AIVTX = fresh;
+  if (r[1]) ADMIN = r[1];
+  if (r[2] !== null) AIUSES = aiuOf(r[2]);
+  adminPaintAll('+connections');
+}
+function aivRegion(c, regions) {
+  var sel = el('select', 'aiv-region'), seen = {};
+  var add = function (value, text) {
+    var o = accText('option', null, text);
+    o.value = value;
+    sel.appendChild(o);
+  };
+  add('', 'Choose a region');
+  regions.forEach(function (r) { seen[r] = 1; add(r, AIV_REGION_TEXT[r] || r); });
+  if (c && c.region && !seen[c.region]) add(c.region, c.region);
+  sel.value = c ? c.region : '';
+  return sel;
+}
+function aivModeSelect(c) {
+  var sel = el('select', 'aiv-mode');
+  [['key', 'Service-account key'], ['federation', 'Workload identity federation'], ['pod', 'The pod\'s Google identity']].forEach(function (m) {
+    var o = accText('option', null, m[1]);
+    o.value = m[0];
+    sel.appendChild(o);
+  });
+  sel.value = c ? c.mode : 'key';
+  return sel;
+}
+var AIV_NOTES = {
+  key: 'The key is saved sealed and never shown again. Enter it again when the project or region changes.',
+  federation: 'The config holds no secret: it names the token file mounted in the pod. The token file must be under the directory set by SKOPAX_VERTEX_TOKEN_DIR, or the config is refused.',
+  pod: 'Nothing secret is stored. The pod runs as its own Google identity (for example workload identity on GKE).'
+};
+function aivSecret(box, id, c, mode) {
+  box.textContent = '';
+  var held = !!c && c.mode === mode && c.set;
+  if (mode === 'key') {
+    var key = aicInput('aiv-key-in', id + '-key', '');
+    key.type = 'password';
+    key.setAttribute('autocomplete', 'new-password');
+    key.maxLength = 8000;
+    key.placeholder = 'Paste a new key';
+    key.setAttribute('data-1p-ignore', '');
+    key.setAttribute('data-lpignore', 'true');
+    key.setAttribute('data-bwignore', '');
+    key.setAttribute('data-form-type', 'other');
+    aicField(box, held ? 'New key' : 'Key', key);
+  } else if (mode === 'federation') {
+    var conf = document.createElement('textarea');
+    conf.className = 'aiv-fed-in';
+    conf.id = id + '-fed';
+    conf.rows = 6;
+    conf.maxLength = 8000;
+    conf.placeholder = 'Paste the external-account JSON config';
+    conf.setAttribute('autocomplete', 'off');
+    conf.setAttribute('spellcheck', 'false');
+    conf.setAttribute('autocapitalize', 'off');
+    conf.setAttribute('autocorrect', 'off');
+    aicField(box, held ? 'New federation config (JSON)' : 'Federation config (JSON)', conf);
+  }
+  box.appendChild(accText('p', 'adm-help aiv-mode-note', AIV_NOTES[mode]));
+}
+function aivNumber(list) {
+  [].forEach.call(list.querySelectorAll('.aiv-model'), function (li, n) {
+    var at = String(n + 1);
+    li.querySelector('.aiv-m-name').setAttribute('aria-label', 'Model ' + at + ' name');
+    li.querySelector('.aiv-m-vid').setAttribute('aria-label', 'Model ' + at + ' Vertex id');
+    li.querySelector('.aiv-m-in').setAttribute('aria-label', 'Model ' + at + ' input price, USD per million tokens');
+    li.querySelector('.aiv-m-out').setAttribute('aria-label', 'Model ' + at + ' output price, USD per million tokens');
+    li.querySelector('.aiv-m-x').setAttribute('aria-label', 'Remove model ' + at);
+  });
+}
+function aivModel(m, list, conn) {
+  var li = accText('li', 'aic-model aiv-model');
+  li.appendChild(aicInput('aiv-m-name', '', m.id));
+  li.appendChild(aicInput('aiv-m-vid', '', m.vertexId));
+  li.appendChild(aicPrice('aiv-m-in', m.input));
+  li.appendChild(aicPrice('aiv-m-out', m.output));
+  if (m.id && conn) li.appendChild(accText('code', 'aic-m-ref aiv-m-ref', conn + '/' + m.id));
+  var x = accText('button', 'btn sec small aiv-m-x', 'Remove');
+  x.type = 'button';
+  x.addEventListener('click', function () {
+    var next = li.nextElementSibling || li.previousElementSibling;
+    li.remove();
+    aivNumber(list);
+    var to = next ? next.querySelector('.aiv-m-name') : list.parentNode.querySelector('.aiv-m-add');
+    if (to) to.focus();
+  });
+  li.appendChild(x);
+  return li;
+}
+function aivBody(card) {
+  var mode = card.querySelector('.aiv-mode').value, cr = {mode: mode};
+  var key = card.querySelector('.aiv-key-in'), conf = card.querySelector('.aiv-fed-in');
+  if (mode === 'key' && key && key.value.trim()) cr.key = key.value.trim();
+  if (mode === 'federation' && conf && conf.value.trim()) cr.config = conf.value.trim();
+  var body = {project: card.querySelector('.aiv-project').value.trim(), region: card.querySelector('.aiv-region').value, credentials: cr, models: []};
+  card.querySelectorAll('.aiv-model').forEach(function (li) {
+    var id = li.querySelector('.aiv-m-name').value.trim(), vid = li.querySelector('.aiv-m-vid').value.trim(), a = li.querySelector('.aiv-m-in').value.trim(), b = li.querySelector('.aiv-m-out').value.trim();
+    if (!id && !vid) return;
+    var m = {id: id, vertexId: vid};
+    if (a !== '') m.input = Number(a);
+    if (b !== '') m.output = Number(b);
+    body.models.push(m);
+  });
+  return body;
+}
+function aivTag(c) {
+  if (c.mode === 'pod') return ['pod identity', 'k-ok'];
+  if (c.mode === 'federation') return c.set ? ['config set', 'k-ok'] : ['no config', 'k-warn'];
+  return c.set ? ['key set', 'k-ok'] : ['no key', 'k-warn'];
+}
+function aivCard(c) {
+  var id = 'aiv-' + (++AIC_SEQ), card = accText('section', 'ai-key aic-card aiv-card' + (c ? '' : ' aiv-new'));
+  card.classList.remove('aic-card');
+  if (c) card.dataset.vertex = c.name;
+  card.setAttribute('aria-labelledby', id + '-h');
+  var head = accText('div', 'ai-head'), h = accText('h3', null, c ? c.name : 'New Vertex AI connection');
+  h.id = id + '-h';
+  head.appendChild(h);
+  var tagBox = null;
+  if (c) {
+    var tag = aivTag(c);
+    tagBox = accText('span', 'tag aiv-credtag ' + tag[1], tag[0]);
+    head.appendChild(tagBox);
+  }
+  card.appendChild(head);
+  if (c) {
+    var co = accText('p', 'ai-state aic-co');
+    co.appendChild(accText('span', null, 'Data goes to'));
+    co.appendChild(document.createTextNode(' '));
+    co.appendChild(accText('b', 'aiv-co-v', c.company));
+    card.appendChild(co);
+    card.appendChild(aicLastLine(c));
+  }
+  var nameIn = null;
+  if (!c) {
+    nameIn = aicInput('aiv-n', id + '-n', '');
+    nameIn.maxLength = 20;
+    nameIn.placeholder = 'vertex-eu';
+    aicField(card, 'Name', nameIn);
+  }
+  var project = aicInput('aiv-project', id + '-project', c ? c.project : '');
+  project.maxLength = 100;
+  project.placeholder = 'my-project-id';
+  aicField(card, 'Project id', project);
+  var regions = AIVTX && AIVTX.regions ? AIVTX.regions : [], region = aivRegion(c, regions);
+  region.id = id + '-region';
+  aicField(card, 'Region', region);
+  card.appendChild(accText('p', 'adm-help aiv-region-note', AIV_REGION_NOTE));
+  var mode = aivModeSelect(c);
+  mode.id = id + '-mode';
+  aicField(card, 'Credentials', mode);
+  var secret = accText('div', 'aiv-secret');
+  aivSecret(secret, id, c, mode.value);
+  card.appendChild(secret);
+  mode.addEventListener('change', function () { aivSecret(secret, id, c, mode.value); });
+  var mbox = accText('div', 'aic-models-box aiv-models-box'), mh = accText('span', 'aic-mh aiv-mh', 'Models: Skopax name, Vertex model id, prices in USD per million tokens (input, output)'), list = accText('ul', 'aic-models');
+  mh.id = id + '-mh';
+  mbox.setAttribute('role', 'group');
+  mbox.setAttribute('aria-labelledby', mh.id);
+  mbox.appendChild(mh);
+  (c && c.models.length ? c.models : [{id: '', vertexId: '', input: null, output: null}]).forEach(function (m) { list.appendChild(aivModel(m, list, c && c.name)); });
+  aivNumber(list);
+  mbox.appendChild(list);
+  var more = accText('button', 'btn sec small aiv-m-add', 'Add model');
+  more.type = 'button';
+  more.addEventListener('click', function () {
+    var li = aivModel({id: '', vertexId: '', input: null, output: null}, list, c && c.name);
+    list.appendChild(li);
+    aivNumber(list);
+    li.querySelector('.aiv-m-name').focus();
+  });
+  mbox.appendChild(more);
+  mbox.appendChild(accText('p', 'adm-help aiv-price-note', 'Check your Google Cloud price sheet: regional prices can differ from the Anthropic list prices.'));
+  card.appendChild(mbox);
+  var acts = accText('div', 'adm-acts ai-acts aic-acts');
+  var saveB = accText('button', 'btn small aiv-save', 'Save'), testB = accText('button', 'btn sec small aiv-test', 'Test connection'), delB = null;
+  saveB.type = testB.type = 'button';
+  acts.appendChild(saveB);
+  acts.appendChild(testB);
+  if (c) {
+    delB = accText('button', 'btn sec small ai-remove aiv-del', 'Delete');
+    delB.type = 'button';
+    acts.appendChild(delB);
+  }
+  var msg = accText('span', 'adm-msg aic-msg aiv-msg');
+  msg.setAttribute('role', 'status');
+  acts.appendChild(msg);
+  card.appendChild(acts);
+  var results = aivResults(c && c.lastTest ? c.lastTest.models : []);
+  card.appendChild(results);
+  var say = function (text, bad) { aivSay(card, text, bad); };
+  var ready = function (adding) {
+    var name = c ? c.name : nameIn.value.trim();
+    if (!name) { say('Enter a name', true); nameIn.focus(); return ''; }
+    if (adding && AIVTX && AIVTX.connections && AIVTX.connections.some(function (x) { return x.name.toLowerCase() === name.toLowerCase(); })) {
+      say('That name is already used by another connection: pick another one', true);
+      nameIn.focus();
+      return '';
+    }
+    if (!project.value.trim()) { say('Enter a project id', true); project.focus(); return ''; }
+    if (!region.value) { say('Choose a region', true); region.focus(); return ''; }
+    return name;
+  };
+  var path = function (name) { return '/api/admin/ai-vertex/' + encodeURIComponent(name); };
+  var testKey = c ? c.name : id;
+  testB.disabled = !!AIV_TESTING[testKey];
+  saveB.addEventListener('click', async function () {
+    var name = ready(!c);
+    if (!name) return;
+    saveB.disabled = true;
+    say('Saving\u2026');
+    try {
+      await adminApi('PUT', path(name), aivBody(card));
+    } catch (e) {
+      [].forEach.call(card.querySelectorAll('.aiv-key-in, .aiv-fed-in'), function (x) { x.value = ''; });
+      say(e && e.detail ? e.detail : 'Not saved, try again', true);
+      saveB.disabled = false;
+      return;
+    }
+    adminNotices();
+    await aivRefresh();
+    var conn = aivFind(name), li = card.closest('li');
+    if (!conn || !li || !li.isConnected) { say('Saved'); saveB.disabled = false; return; }
+    var fresh = aivConnLi(conn);
+    if (c) li.replaceWith(fresh);
+    else {
+      li.parentNode.insertBefore(fresh, li);
+      li.replaceWith(aivNewLi());
+    }
+    aivSay(fresh.firstChild, 'Saved');
+    fresh.querySelector('.aiv-save').focus();
+  });
+  testB.addEventListener('click', async function () {
+    if (AIV_TESTING[testKey]) return;
+    var name = ready(false);
+    if (!name) return;
+    AIV_TESTING[testKey] = true;
+    testB.disabled = true;
+    say('Testing\u2026');
+    try {
+      var r = await adminApi('POST', path(name) + '/test', aivBody(card));
+      var ok = aicResult(msg, r || {}, ' \u00b7 ' + Number((r && r.ms) || 0) + ' ms');
+      msg.className = 'adm-msg aic-msg aiv-msg ' + (ok ? 'ok' : 'bad');
+      results.replaceWith(results = aivResults(aivTested(r && r.models)));
+    } catch (e) {
+      say(e && e.detail ? e.detail : 'The test could not run', true);
+    }
+    AIV_TESTING[testKey] = false;
+    testB.disabled = false;
+    var live = c ? aivCardEl(c.name) : document.querySelector('#ai .aiv-new');
+    if (live) live.querySelector('.aiv-test').disabled = false;
+    var seen = await adminApi('GET', '/api/admin/ai-vertex').catch(adminNone), fresh = aivOf(seen);
+    if (fresh && !fresh.failed) {
+      AIVTX = fresh;
+      var conn = c && aivFind(c.name), at = live && live.querySelector('.aic-last');
+      if (conn && at) at.replaceWith(aicLastLine(conn));
+    }
+    if (await aiuReload()) renderAiRows();
+  });
+  if (delB) delB.addEventListener('click', async function () {
+    var ask = window.__skopaxConfirm;
+    if (typeof ask !== 'function') return;
+    var ok = await ask('Delete this Vertex AI connection?', 'Its credentials and models are deleted. A use set to one of its models is held until another model is picked.', 'Delete connection');
+    if (!ok) { if (delB.isConnected) delB.focus(); return; }
+    delB.disabled = true;
+    say('Deleting\u2026');
+    try {
+      await adminApi('DELETE', path(c.name));
+    } catch (e) {
+      delB.disabled = false;
+      say(e && e.detail ? e.detail : 'Not deleted, try again', true);
+      return;
+    }
+    adminNotices();
+    await aivRefresh();
+    var li = card.closest('li'), next = li && (li.nextElementSibling || li.previousElementSibling);
+    if (li) li.remove();
+    var to = next && (next.querySelector('.aiv-card[data-vertex] .aiv-project') || next.querySelector('summary'));
     if (to) to.focus();
   });
   return card;

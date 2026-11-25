@@ -71,5 +71,7 @@ def rows(routes: dict[str, tuple[str, str, str | None]], default: str, ledger: I
 def notices(found: list[dict], default: str, keyed: Callable[[str], bool] | None = None) -> list[dict]:
     def held(r: dict) -> bool:
         return keyed is not None and bool(r['model']) and r['provider'] != default and not keyed(r['provider'])
+    def unknown(r: dict) -> bool:
+        return str(r['provider']).startswith('vertex:') and bool(r['model']) and not pricing.known(r['model'])
     return [{'id': f"ai-use:{r['use']}", 'level': 'warn', 'text': msg('ai.use_problem', use=r['label'], problem=problem_of(r['use'], r['provider'], r['model'], r['fallbackFrom'], default, keyed=keyed))}
-            for r in found if r.get('fallbackFrom') or held(r)]
+            for r in found if r.get('fallbackFrom') or held(r) or unknown(r)]

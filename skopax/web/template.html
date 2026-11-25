@@ -28,6 +28,7 @@ try {
   --side-w: 252px; --top-h: 52px; --row-h: 28px; --grp-h: 18px; --grp-gap: 6px; --search-h: 30px; --inst-h: 36px;
   --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
   --crit: #b42318; --crit-bg: #fcefee;
+  --crit-glow: 0 0 0 1px rgba(92, 100, 214, 0.35), 0 0 12px 1px rgba(80, 88, 220, 0.2); --crit-tile-bg: linear-gradient(#eff0ff, #e6e8fd); --crit-tile-line: #8e97e8; --crit-tile-line-hover: #646ed6;
   --high: #b54400; --high-bg: #fff0e3;
   --warn: #866800; --warn-bg: #fbf5dc;
   --info: #0a5f7d; --info-bg: #e3f4fa;
@@ -49,6 +50,7 @@ try {
     --link: #5fd0f0; --ring: #3cc8f0; --btn-bg: #3cc8f0; --btn-fg: #08141a; --btn-hover: #b3eefc; --btn-line: #3a4a56;
     --bar-bg: #0a0d10; --bar-line: #20282f; --bar-pop: #181f25;
     --hover: #1a222a; --active: #22303a; --new-fg: #6fd8f5; --new-bg: rgba(60, 200, 240, .13);
+    --crit-glow: 0 0 0 1px rgba(110, 118, 240, 0.55), 0 0 16px 2px rgba(80, 88, 220, 0.45); --crit-tile-bg: linear-gradient(#161d3f, #111733); --crit-tile-line: #4b55b8; --crit-tile-line-hover: #7078dc;
     --crit: #f0857a; --crit-bg: #391f1d; --high: #ff7a2e; --high-bg: #3d2210; --warn: #ebc350; --warn-bg: #302a16; --info: #5fd0f0; --info-bg: #12303c;
     --good: #5fd0f0; --good-bg: #12303c; --clear: #9aa8b4; --clear-bg: #1f282f; --mute: #94a1ab; --mute-bg: #1d252c; --act: #a9b6c0; --act-bg: #212b33; --by: #8a98a3;
     --s-pod: #3987e5; --s-page: #d95926; --s-slack: #199e70; --s-assess: #c98500; --s-gate: #d55181; --s-smalltalk: #9a7ce3; --s-pagescan: #8094a8; --s-selfreview: #6aa9bb; --s-chat: #9bbf4f; --s-threadsummary: #e5675a; --s-mcp: #c97a4e;
@@ -63,6 +65,7 @@ try {
   --link: #5fd0f0; --ring: #3cc8f0; --btn-bg: #3cc8f0; --btn-fg: #08141a; --btn-hover: #b3eefc; --btn-line: #3a4a56;
   --bar-bg: #0a0d10; --bar-line: #20282f; --bar-pop: #181f25;
   --hover: #1a222a; --active: #22303a; --new-fg: #6fd8f5; --new-bg: rgba(60, 200, 240, .13);
+  --crit-glow: 0 0 0 1px rgba(110, 118, 240, 0.55), 0 0 16px 2px rgba(80, 88, 220, 0.45); --crit-tile-bg: linear-gradient(#161d3f, #111733); --crit-tile-line: #4b55b8; --crit-tile-line-hover: #7078dc;
   --crit: #f0857a; --crit-bg: #391f1d; --high: #ff7a2e; --high-bg: #3d2210; --warn: #ebc350; --warn-bg: #302a16; --info: #5fd0f0; --info-bg: #12303c;
   --good: #5fd0f0; --good-bg: #12303c; --clear: #9aa8b4; --clear-bg: #1f282f; --mute: #94a1ab; --mute-bg: #1d252c; --act: #a9b6c0; --act-bg: #212b33; --by: #8a98a3;
   --s-pod: #3987e5; --s-page: #d95926; --s-slack: #199e70; --s-assess: #c98500; --s-gate: #d55181; --s-smalltalk: #9a7ce3; --s-pagescan: #8094a8; --s-selfreview: #6aa9bb; --s-chat: #9bbf4f; --s-threadsummary: #e5675a; --s-mcp: #c97a4e;
@@ -786,6 +789,9 @@ details.grp.wait > summary.grp-h .count { color: var(--crit); font-weight: 700; 
 .tile:has(.tile-open:focus-visible) { outline: 2px solid var(--ring); outline-offset: 1px; }
 .tile-foot { position: relative; z-index: 1; }
 .tile.on { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 45%, transparent); }
+.tile.k-crit { background: var(--crit-tile-bg); border-color: var(--crit-tile-line); box-shadow: var(--crit-glow); }
+.tile.k-crit:hover { border-color: var(--crit-tile-line-hover); }
+.tile.k-crit.on { box-shadow: 0 0 0 2px var(--ring), var(--crit-glow); }
 .tile-top { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--muted); }
 .tile-top .sev { font-size: 0.7rem; }
 .tile-top .tile-asg { margin-left: auto; }
@@ -1092,8 +1098,19 @@ a.shot.phone img { width: 60px; }
 .ai-grp > h3 { margin: 0; padding: 10px 14px; font-size: 0.95rem; }
 .aic { display: grid; gap: 10px; margin-top: 10px; min-width: 0; }
 .aic-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; min-width: 0; }
-.aic-key-in { -webkit-text-security: disc; }
-.aic-card .ai-field input { max-width: 100%; }
+.aic-key-in, .aiv-key-in { -webkit-text-security: disc; }
+.aic-card .ai-field input, .aiv-card .ai-field input, .aiv-card .ai-field select, .aiv-card .ai-field textarea { max-width: 100%; }
+.aiv-card .ai-field select, .aiv-card .ai-field textarea { font: inherit; font-size: 0.88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 10px; box-sizing: border-box; width: 100%; min-width: 0; }
+.aiv-card .ai-field select:focus-visible, .aiv-card .ai-field textarea:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.aiv-model .aiv-m-name, .aiv-model .aiv-m-vid { flex: 1 1 180px; max-width: 280px; }
+.aiv-model .aiv-m-in, .aiv-model .aiv-m-out { flex: 0 1 110px; width: 110px; }
+.aiv-model input { font: inherit; font-size: 0.88rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 6px 10px; box-sizing: border-box; min-width: 0; }
+.aiv-add > summary { cursor: pointer; padding: 10px 16px; border: 1px dashed var(--line-2); border-radius: 6px; font-weight: 600; }
+.aiv-add[open] > summary { margin-bottom: 10px; }
+.aiv-mode-note, .aiv-price-note, .aiv-region-note { margin: 0; overflow-wrap: anywhere; }
+.aiv-res { list-style: none; margin: 6px 0 0; padding: 0; font-size: 0.85rem; overflow-wrap: anywhere; }
+.aiv-res-m.bad { color: var(--crit); }
+.aiv-res-id { margin-right: 4px; }
 .aic-models-box { display: grid; gap: 6px; width: 100%; min-width: 0; font-size: 0.82rem; color: var(--fg-2); }
 .aic-models { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .aic-model { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
@@ -2629,7 +2646,7 @@ h3.sec-t { margin: 4px 0 0; font-size: 0.95rem; font-weight: 600; }
   .aiu-t select { width: 100%; max-width: 100%; min-height: 44px; }
   .aiu-row.aiu-bad > th { box-shadow: none; }
   .aiu-row.aiu-bad { border-color: var(--crit); }
-  .aic-model .aic-m-id { flex-basis: 100%; max-width: none; }
+  .aic-model .aic-m-id, .aiv-model .aiv-m-name, .aiv-model .aiv-m-vid { flex-basis: 100%; max-width: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .side, body.drawer-open .side, .g-chev .i,
@@ -2901,7 +2918,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
     <section class="panel" id="panel-ai" hidden>
       <div class="toolbar set-head">
         <h2 class="set-title">Investigator</h2>
-        <p class="panel-note"><span>The AI provider keys and compatible connections that the investigator, the chat and the self-review use, which model each use runs, and the investigator settings. Each use can run on a different provider; Default provider supplies the model of any use left on its default. A key set here is saved sealed, takes the place of ANTHROPIC_API_KEY or OPENAI_API_KEY and is never shown again.</span> <span>Test connection tries the key typed here, or the key in use when the field is empty.</span></p>
+        <p class="panel-note"><span>The AI provider keys, Vertex AI connections and compatible connections that the investigator, the chat and the self-review use, which model each use runs, and the investigator settings. Each use can run on a different provider; Default provider supplies the model of any use left on its default. A key set here is saved sealed, takes the place of ANTHROPIC_API_KEY or OPENAI_API_KEY and is never shown again.</span> <span>Test connection tries the key typed here, or the key in use when the field is empty.</span></p>
       </div>
       <div class="admin" id="ai"><p class="muted">Loading the key&hellip;</p></div>
       <div class="admin" id="ai-rows"></div>

@@ -493,6 +493,72 @@ async function aSecretShowsWhereItComesFromAndIsDisabledWhenASourceOwnsIt() {
   console.log('PASS Integrations: a secret reads "set \u00b7 from config file", is blank, and is disabled when a source owns it');
 }
 
+async function aSwitchUnderASwitchedOffPluginIsDisabledWithItsReasonAndKeepsItsValue() {
+  //given
+  const cat = catalog();
+  const acme = cat.plugins[0];
+  acme.enabled = false;
+  const reason = 'Off ' + DOT + ' the Acme metrics plug-in is switched off';
+  acme.health = health('off', reason, null, [{name: 'main', state: 'off', text: reason, at: null}, {name: 'east', state: 'off', text: reason, at: null}]);
+  const own = 'Off ' + DOT + ' this instance is switched off';
+  cat.plugins[3].instances = [instance('solo', {enabled: false})];
+  const t = await boot({catalog: cat});
+  await open(t);
+  const {doc} = t;
+
+  //when
+  openInstance(t, 'acme', 'main');
+  const off = [inPanel(doc, '.int-on').disabled, inPanel(doc, '.int-on').checked, inPanel(doc, '.int-plugoff').textContent, inPanel(doc, '.int-ihealth').textContent.indexOf('the Acme metrics plug-in is switched off') >= 0];
+  const card = [...panel(doc).querySelectorAll('.int-icard')].map((c) => c.querySelector('.int-icard-s').textContent);
+  inPanel(doc, '.int-close').click();
+  const calls = t.calls.filter((c) => c[0] === 'PATCH').length;
+  const live = await boot();
+  await open(live);
+  openInstance(live, 'acme', 'main');
+  const on = [inPanel(live.doc, '.int-on').disabled, inPanel(live.doc, '.int-on').checked, !!inPanel(live.doc, '.int-plugoff')];
+  const mine = catalog();
+  mine.plugins[0].instances[1].enabled = false;
+  mine.plugins[0].health = health('ok', 'Healthy', iso(2), [{name: 'main', state: 'ok', text: 'Healthy', at: iso(2)}, {name: 'east', state: 'off', text: own, at: null}]);
+  const other = await boot({catalog: mine});
+  await open(other);
+  openInstance(other, 'acme', 'east');
+  const east = [inPanel(other.doc, '.int-on').disabled, inPanel(other.doc, '.int-on').checked, !!inPanel(other.doc, '.int-plugoff'), inPanel(other.doc, '.int-ihealth').textContent.indexOf(own) >= 0];
+
+  //then
+  assert.deepStrictEqual(off, [true, true, 'Plug-in off', true], 'a switch under a plug-in that is off is greyed with the reason beside it, and its stored value stays');
+  assert.deepStrictEqual(card, ['Plug-in off', 'Plug-in off'], 'the instance cards say why they are off instead of On');
+  assert.strictEqual(calls, 0);
+  assert.deepStrictEqual(on, [false, true, false], 'with the plug-in on the switch is live again and shows its value');
+  assert.deepStrictEqual(east, [false, false, false, true], 'an instance that is off on its own shows the instance reason and a live switch');
+  t.w.close();
+  live.w.close();
+  other.w.close();
+  console.log('PASS Integrations: a switch under a plug-in that is off is disabled with Plug-in off, keeps its value, and the status names the plug-in or the instance');
+}
+
+async function thePlugInOffReasonAndLabelAreTranslated() {
+  //given
+  const cat = catalog();
+  cat.plugins[0].enabled = false;
+  const reason = 'Off ' + DOT + ' the Acme metrics plug-in is switched off';
+  cat.plugins[0].health = health('off', reason, null, [{name: 'main', state: 'off', text: reason, at: null}, {name: 'east', state: 'off', text: reason, at: null}]);
+  const want = {de: ['Plug-in aus'], es: ['Plug-in desactivado'], fr: ['Plug-in d\u00e9sactiv\u00e9'], tr: ['Eklenti kapal\u0131']};
+
+  //when / then
+  for (const lang of Object.keys(want)) {
+    const pack = {[lang]: JSON.parse(require('fs').readFileSync(require('path').join(require('path').dirname(TEMPLATE), '..', 'locale', lang, 'page.json'), 'utf8'))};
+    const page = Object.assign({}, pack[lang].page, {'@rules': pack[lang].rules, '@months': pack[lang].months, '@days': pack[lang].days, '@tails': pack[lang].tails, '@th': pack[lang].headers});
+    const t = await boot({catalog: cat, pack: {[lang]: page}});
+    await open(t);
+    openInstance(t, 'acme', 'main');
+    await wait(30);
+    assert.strictEqual(inPanel(t.doc, '.int-plugoff').textContent, want[lang][0], lang + ' label');
+    assert.ok(inPanel(t.doc, '.int-ihealth').textContent.indexOf('Acme metrics') >= 0 && inPanel(t.doc, '.int-ihealth').textContent.indexOf('plug-in is switched off') < 0, lang + ' reason');
+    t.w.close();
+  }
+  console.log('PASS Integrations: the Plug-in off label and the plug-in off reason are translated into de, es, fr and tr');
+}
+
 async function theInstanceShowsItsRoleSourceHealthAndProblem() {
   //given
   const cat = catalog();
@@ -2887,6 +2953,8 @@ async function aSavedAgentNodeThatIsGoneStaysSelectedWithAMarker() {
   await aRefusalOnAHiddenFieldStillShowsAMessage();
   await dottedFieldKeysEditAndCarryTheirRefusal();
   await aSwitchedOffInstanceOffersNoMakePrimary();
+  await aSwitchUnderASwitchedOffPluginIsDisabledWithItsReasonAndKeepsItsValue();
+  await thePlugInOffReasonAndLabelAreTranslated();
   await leavingTheTabOrTheRoleClosesThePanelAndTheCatalog();
   await theSidePanelIsAViewportOverlayAndFullScreenOnAPhone();
   await aNonAdminSeesNoIntegrationsTab();

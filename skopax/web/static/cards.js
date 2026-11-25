@@ -618,7 +618,7 @@ function backInfo(a) {
   var p = a.previousResolution;
   if (!p || typeof p !== 'object' || a.triage === 'handled') return null;
   if (p.kind === 'fixed' && a.cameBack) return {cls: 'k-high came-back', text: 'Came back after fix', ref: p.ref, tip: 'Fixed on ' + daytime(p.at) + ', then it fired again'};
-  if (p.kind === 'handled') return {cls: 'plain was-noaction', text: 'Was no action needed', tip: 'Resolved as no action needed on ' + daytime(p.at)};
+  if (p.kind === 'handled') return {cls: 'plain was-noaction', text: 'Came back after No action needed', tip: 'Resolved as no action needed on ' + daytime(p.at) + ', then it fired again at ' + daytime(a.firstSeen)};
   return null;
 }
 function backTag(a) {
@@ -894,10 +894,10 @@ function tile(a) {
   var lock = window.__boardLock ? window.__boardLock() : 'Log in to move cards';
   b.draggable = tileDraggable(a.key);
   var where = a.cluster && !svcFromCluster(a) ? ' \u00b7 instance ' + a.cluster : '';
-  b.title = svcName(a) + ' / ' + a.label + where + (a.num ? ' \u00b7 #' + a.num : '') + ' \u00b7 opens the card' + (lock ? '' : '; drag it to another column to change its status');
+  var hint = svcName(a) + ' / ' + a.label + where + (a.num ? ' \u00b7 #' + a.num : '') + ' \u00b7 opens the card' + (lock ? '' : '; drag it to another column to change its status');
   var who = a.owner ? '<span class="tile-asg" role="img" aria-label="' + esc('Assignee: ' + ownerName(a.owner)) + '" title="' + esc('Assigned to ' + a.owner) + '">' + esc(ownerName(a.owner).split(/[._-]/).map(function (p) { return p.charAt(0); }).join('').slice(0, 2).toUpperCase()) + '</span>' : '';
   b.innerHTML = '<span class="tile-top">' + sev(a.sev) + (a.num ? '<span class="tile-num">#' + esc(a.num) + '</span>' : '') + warnMark(a) + '<span class="tile-age">' + esc(ageShort(a.firstSeen)) + '</span>' + who + '</span>' +
-    '<button type="button" class="tile-open" aria-haspopup="dialog"><span class="sr"><span>' + esc((SEV[a.sev] || [a.sev])[0]) + '</span>, ' + (a.num ? '<span>#' + esc(a.num) + '</span>, ' : '') + '<span class="tile-age-sr">' + esc(ageShort(a.firstSeen)) + '</span>, ' + warnSr(a) + '</span>' + (cardTitle(a) ? '<span class="tile-svc tile-title">' + esc(cardTitle(a)) + '</span><span class="tile-sig">' + esc(svcLabel(a) + where) + '</span>'
+    '<button type="button" class="tile-open" aria-haspopup="dialog" title="' + esc(hint) + '"><span class="sr"><span>' + esc((SEV[a.sev] || [a.sev])[0]) + '</span>, ' + (a.num ? '<span>#' + esc(a.num) + '</span>, ' : '') + '<span class="tile-age-sr">' + esc(ageShort(a.firstSeen)) + '</span>, ' + warnSr(a) + '</span>' + (cardTitle(a) ? '<span class="tile-svc tile-title">' + esc(cardTitle(a)) + '</span><span class="tile-sig">' + esc(svcLabel(a) + where) + '</span>'
       : '<span class="tile-svc">' + esc(svcName(a)) + '</span>' + (svcReal(a.label) && svcReal(a.label) !== svcName(a) ? '<span class="tile-sig">' + esc(a.label + where) + '</span>' : where ? '<span class="tile-sig">' + esc(where.slice(3)) + '</span>' : '')) + '</button>' +
     '<span class="tile-foot">' + tileRun(a) + bizTags(a) + (draftOf(a) && !draftSent(a) ? '<span class="tag k-act">Slack draft</span>' : '') + (recurs(a) ? '<span class="tag k-warn">Recurring</span>' : '') + '</span>';
   b.addEventListener('click', function () { openDrawer(a.key); cardUrl(a, true); });

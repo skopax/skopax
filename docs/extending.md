@@ -79,7 +79,7 @@ The example plug-ins are Apache-2.0, so you can copy them freely. The example ca
 
 Skopax is not published to a package index; only its images are. A plug-in in a repository of its own runs its tests against a clone of Skopax at the release it targets, next to the plug-in's folder. From the plug-in's folder:
 
-    git clone --branch v0.6.0 https://github.com/skopax/skopax ../skopax
+    git clone --branch v0.6.1 https://github.com/skopax/skopax ../skopax
     (cd ../skopax && uv sync --frozen)
     PYTHONPATH=../skopax:. ../skopax/.venv/bin/python -m pytest -q tests
 
@@ -91,7 +91,7 @@ The Skopax image is distroless, so it has no `pip` and no shell. Install the plu
 
 ```dockerfile
 ARG BASE_IMAGE=ghcr.io/skopax/skopax
-ARG SKOPAX_VERSION=0.6.0
+ARG SKOPAX_VERSION=0.6.1
 
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS build
 
@@ -106,7 +106,7 @@ COPY --from=build /plugins /usr/local/lib/python3.15/site-packages/
 ```
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.6.0 -t skopax-hello examples/hello-plugin
+docker build --build-arg SKOPAX_VERSION=0.6.1 -t skopax-hello examples/hello-plugin
 ```
 
 - `BASE_IMAGE` (default `ghcr.io/skopax/skopax`) names the Skopax image to build on, for example a mirror or your own registry. `SKOPAX_VERSION` (default: the current release) picks its tag.
@@ -341,7 +341,7 @@ The echo is a queue the route worker drains, never a call on the request or the 
 - A card with a Slack post gets the line in its thread. A card without one is posted to Slack in the normal way only when Slack is on, the `slack-autosend` feature is on, the card is not muted, no unsent Slack post text exists for it (on its way or kept for a person), no post claim is on it, auto-send would still treat the card as live (not handled, not a merged child, not cleared below warning) and no Slack post of it is in flight. Pods share one store: before posting, a pod takes a short claim on the card there, and the line is named in one conditional write that reports which routes it named, so two pods never post twice or say a line twice. The claim lasts about twice the route timeout, measured from the moment it is taken; a duplicate is possible only if a hung Slack post outlives the claim and the 5 minute backoff of a failed try. A post Slack accepted but core could not record counts as a failure. The backoff applies only to top-level posts and failed lines: a card that gets its Slack post by another path hears its line at the next pass. Otherwise the line waits, and the pass after Slack posts the card by any path (auto-send, an operator, a critical card) says it. A waiting line is dropped after 24 hours, with an info log. A failed Slack post or line backs the card off, 5 minutes doubling to 6 hours, is recorded in Activity, and after 5 failures the queued entries are dropped with an info log. Cards drain oldest queued line first.
 - One line names every route queued for the card: `Sent to <route> on <plug-in name> (tag: <tag>)`, routes separated by `;`, no tag part for a route that took the card by key. The route is the instance name and the plug-in name is `Plugin.name`.
 - A route is named once per Slack thread, and the name is recorded before the Slack call, so a timed-out call can lose a line but never repeats it. A later post to a named route adds no line; a route not named before adds a line naming only the new routes. Fixed posts are not echoed.
-- The wording is the messages `routes.echo_line`, `routes.echo_item`, `routes.echo_tag` and `routes.echo_tags`, so a locale pack or layer can reword them. Every name reaches Slack escaped, with its markdown characters swapped for look-alikes, so `<!channel>` and bold marks in a name stay inert, and a long line is cut without splitting an entity.
+- The wording is the messages `routes.echo_line`, `routes.echo_item`, `routes.echo_tag`, `routes.echo_tags` and `routes.echo_for`, so a locale pack or layer can reword them. Under the line the echo quotes what the route sent, taken from the posted message and not written again: the sentence and the why of a business route, or the finding of a technical one. The text is masked once, cut at about 400 characters, and a text that several routes sent shows once; when the routes sent different texts each one is shown under its route names. Every name and every quoted text reaches Slack escaped, with its markdown characters swapped for look-alikes, so `<!channel>` and bold marks in a name stay inert, and a long line is cut without splitting an entity.
 - A Slack failure is logged without the error's text and never blocks or retries the route post; a failed route post queues nothing.
 
 ### Card sentences

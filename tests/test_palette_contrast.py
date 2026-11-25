@@ -8,7 +8,7 @@ HEX = re.compile(r"#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{
 RGB = re.compile(r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)")
 DECL = re.compile(r"(--[\w-]+)\s*:\s*([^;}]+)")
 
-SEVERITY_TOKENS = {"--crit", "--crit-bg", "--high", "--high-bg", "--warn", "--warn-bg"}
+SEVERITY_TOKENS = {"--crit", "--crit-bg", "--crit-glow", "--crit-tile-bg", "--crit-tile-line", "--crit-tile-line-hover", "--high", "--high-bg", "--warn", "--warn-bg"}
 SERIES_PREFIXES = ("--s-", "--p-")
 BRAND_MANDATED = "sso-btn-microsoft"
 NEUTRAL_SPREAD = 30

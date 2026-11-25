@@ -253,6 +253,49 @@ async function aBackTagIsAWarningToo() {
   assert.deepStrictEqual(errors, []);
 }
 
+async function aCameBackAfterNoActionTagSaysSoAndNamesBothTimes() {
+  //given
+  const {w, errors} = await boot('board');
+  const c = card('log|shop-web|ERROR|noaction', 63, {previousResolution: {kind: 'handled', at: iso(900)}, firstSeen: iso(30)});
+
+  //when
+  const warns = w.cardWarns(c);
+
+  //then
+  assert.deepStrictEqual([...warns.map((x) => x.text)], ['Came back after No action needed']);
+  assert.strictEqual(warns[0].tip, 'Resolved as no action needed on ' + w.daytime(iso(900)) + ', then it fired again at ' + w.daytime(iso(30)));
+  assert.match(w.cardTags(c).rest, /Came back after No action needed/);
+  assert.ok(!/Was no action needed/.test(w.cardTags(c).rest));
+  assert.deepStrictEqual(errors, []);
+}
+
+async function theCameBackAfterNoActionTagIsTranslated() {
+  //given
+  const c = card('log|shop-web|ERROR|noaction', 63, {previousResolution: {kind: 'handled', at: iso(900)}, firstSeen: iso(30)});
+  const out = {};
+
+  //when
+  for (const lang of ['de', 'es', 'fr', 'tr']) {
+    const {w, errors} = await boot('board', undefined, lang);
+    const tag = w.backTag(c);
+    const host = w.document.createElement('div');
+    host.innerHTML = tag;
+    const part = (iso) => { const m = /^(\d+) (\w+) (\S+)$/.exec(w.daytime(iso)); return {d: m[1], mon: m[2], t: m[3]}; };
+    out[lang] = {at: part(iso(900)), again: part(iso(30)), raw: host.firstChild.textContent, text: w.tx(host.firstChild.textContent), tip: w.tx(host.firstChild.getAttribute('title')), errors};
+  }
+
+  //then
+  const months = JSON.parse(fs.readFileSync(require('path').join(require('path').dirname(TEMPLATE), '..', 'locale', 'de', 'page.json'), 'utf8')).months;
+  const at = out.de.at, again = out.de.again;
+  assert.strictEqual(out.de.tip, 'Am ' + at.d + '. ' + months[at.mon] + ' ' + at.t + ' als kein Handlungsbedarf gel\u00f6st, dann am ' + again.d + '. ' + months[again.mon] + ' ' + again.t + ' wieder aktiv');
+  for (const lang of Object.keys(out)) {
+    assert.strictEqual(out[lang].raw, 'Came back after No action needed');
+    assert.notStrictEqual(out[lang].text, 'Came back after No action needed', lang + ' label is translated');
+    assert.ok(!/Resolved as no action needed|then it fired again/.test(out[lang].tip), lang + ' tip is translated: ' + out[lang].tip);
+    assert.deepStrictEqual(out[lang].errors, []);
+  }
+}
+
 function everyIconInTheTagRowsIsSmall() {
   //given
   const css = fs.readFileSync(TEMPLATE, 'utf8');
@@ -296,6 +339,8 @@ async function theTeamsTagInsideTheOpenedCardCarriesAnIconTheRuleSizes() {
     ['goes away', theMarkGoesAwayWhenThePostSucceedsOnTheNextRender],
     ['tag row unchanged', theWarningsStillShowInTheOpenedCardTagRow],
     ['back tag', aBackTagIsAWarningToo],
+    ['came back after no action', aCameBackAfterNoActionTagSaysSoAndNamesBothTimes],
+    ['came back after no action translated', theCameBackAfterNoActionTagIsTranslated],
     ['tag row icons small', async () => everyIconInTheTagRowsIsSmall()],
     ['teams icon in tag row', theTeamsTagInsideTheOpenedCardCarriesAnIconTheRuleSizes],
   ];

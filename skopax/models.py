@@ -1,8 +1,10 @@
 import datetime as dt
+import json
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StrictFloat, StrictInt, StringConstraints, field_validator, model_validator
 
+from skopax.ai.vertex_ai import FEDERATION_MAX as VERTEX_FEDERATION_MAX, KEY_MAX as VERTEX_KEY_MAX
 from skopax.config import SETTING_TEXT_MAX
 from skopax.history import REF_LIMIT, resolve_problem
 from skopax.messages import msg
@@ -370,6 +372,46 @@ class AiConnectionTestIn(BaseModel):
     key: str | None = Field(default=None, max_length=400)
     models: list[AiModelIn] | None = Field(default=None, max_length=50)
     model: str | None = Field(default=None, max_length=200)
+
+
+class VertexModelIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    id: str = Field(max_length=100)
+    vertexId: str = Field(max_length=100)
+    input: float | None = Field(default=None, ge=0, le=1000)
+    output: float | None = Field(default=None, ge=0, le=1000)
+
+
+class VertexCredentialsIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    mode: str = Field(max_length=20)
+    key: str | dict | None = Field(default=None)
+    config: str | dict | None = Field(default=None)
+
+    @field_validator('key', 'config')
+    @classmethod
+    def small(cls, value, info):
+        limit = VERTEX_KEY_MAX if info.field_name == 'key' else VERTEX_FEDERATION_MAX
+        size = len(value) if isinstance(value, str) else len(json.dumps(value, default=str)) if isinstance(value, dict) else 0
+        if size > limit:
+            raise ValueError(f'must be at most {limit} characters')
+        return value
+
+
+class VertexConnectionIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    project: str = Field(max_length=40)
+    region: str = Field(max_length=40)
+    credentials: VertexCredentialsIn
+    models: list[VertexModelIn] = Field(default_factory=list, max_length=20)
+
+
+class VertexConnectionTestIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    project: str | None = Field(default=None, max_length=40)
+    region: str | None = Field(default=None, max_length=40)
+    credentials: VertexCredentialsIn | None = None
+    models: list[VertexModelIn] | None = Field(default=None, max_length=20)
 
 
 class InstanceIn(BaseModel):

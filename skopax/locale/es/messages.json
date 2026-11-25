@@ -274,6 +274,7 @@
  "reminder.event": "Detenida tras el evento, pero sin marcar; la causa puede volver con el próximo.",
  "routes.echo_failed": "Slack no aceptó la línea que indica que una tarjeta fue a una ruta (intento {tries} de {limit})",
  "routes.echo_item": "{route} en {plugin}{tags}",
+ "routes.echo_for": "{names}:",
  "routes.echo_line": "Enviada a {routes}",
  "routes.echo_tag": " (etiqueta: {tags})",
  "routes.echo_tags": " (etiquetas: {tags})",

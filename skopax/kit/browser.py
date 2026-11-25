@@ -17,6 +17,7 @@ from skopax.kit.web import API, CHALLENGE, CHALLENGE_PAGE, Site, allowed_host, c
 from skopax.remote import addresses, unproxied
 
 DEFAULT_PORT = 9222
+ABOUT_MAX = 300
 MAX_MESSAGE = 64 * 1024 * 1024
 GAP_S = 5.0
 CONNECT_S = 3.0
@@ -57,16 +58,29 @@ REVEALED_MAX = 10
 REVEALED_TEXT = 80
 VERDICTS = ('scrolls', 'cut', 'page')
 PINNED = "(() => { let n = 0; for (const e of document.querySelectorAll('body *')) { if (getComputedStyle(e).position === 'fixed') { e.style.setProperty('visibility', 'hidden', 'important'); n++; } } return n; })()"
-FOCUS = r"""((needle) => {
+FOCUS = r"""((needle, about) => {
   const key = s => (s || '').replace(/\s+/g, ' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const want = key(needle);
-  let best = null;
+  const said = typeof about === 'string' && about.trim() !== '';
+  const named = said && /\b(image|banner|picture|photo|logo|bild|foto|imagen|logotipo|banniere|resim|gorsel|afis|fotograf)/.test(key(about));
+  const beside = (a, b) => { for (let up = a.parentElement, n = 0; up && up !== document.body && n < 3; up = up.parentElement, n++) if (up.contains(b)) return true; return false; };
+  const seen = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const backed = el => { const v = getComputedStyle(el).backgroundImage; return !!v && v !== 'none' && v.includes('url('); };
+  const labelled = el => ['alt', 'title', 'aria-label'].some(a => key(el.getAttribute(a)).includes(want));
+  let text = null, image = null;
   for (const el of document.body.querySelectorAll('*')) {
-    if (!key(el.textContent).includes(want)) continue;
+    if (!image && seen(el) && ((el.tagName === 'IMG' && labelled(el)) || (backed(el) && labelled(el)))) image = el;
+    if (text || !key(el.textContent).includes(want)) continue;
     if ([...el.children].some(c => key(c.textContent).includes(want))) continue;
-    const r = el.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) { best = el; break; }
+    if (seen(el)) text = el;
   }
+  if (!image && text && named) {
+    for (let up = text.parentElement, n = 0; up && up !== document.body && n < 3 && !image; up = up.parentElement, n++) {
+      image = [...up.querySelectorAll('img')].find(seen) || null;
+    }
+    for (let up = text; !image && up && up !== document.body; up = up.parentElement) if (backed(up) && seen(up)) image = up;
+  }
+  const best = image && (named || !text || (said && beside(text, image))) ? image : text;
   if (!best) return null;
   best.style.outline = '3px solid #e5484d';
   best.style.outlineOffset = '2px';
@@ -450,7 +464,7 @@ def revealed_of(found: object, key: str = 'revealed') -> list[str]:
 
 class Shot:
     def __init__(self, browser: 'Browser', url: str, site: Site, viewport: str, full: bool, probe: str | None = None, capture: bool = True, headers: dict[str, str] | None = None,
-                 focus: str | None = None, mark: list | None = None, overflow: bool = False):
+                 focus: str | None = None, mark: list | None = None, overflow: bool = False, about: str | None = None):
         self.browser = browser
         self.url = url
         self.site = site
@@ -462,6 +476,7 @@ class Shot:
         self.focus = focus
         self.mark = mark
         self.overflow = overflow
+        self.about = about[:ABOUT_MAX] if isinstance(about, str) else about
         self.blocked = dict.fromkeys(CATEGORIES, 0)
         self.hosts: set[str] = set()
         self.main: str | None = None
@@ -566,7 +581,8 @@ class Shot:
             got = self.value(conn, f'{MARK}({json.dumps(marks_of(self.mark))})', s, deadline)
             found = got if isinstance(got, dict) else None
         if self.focus and found is None:
-            got = self.value(conn, f'{FOCUS}({json.dumps(self.focus)})', s, deadline)
+            args = json.dumps(self.focus) if self.about is None else f'{json.dumps(self.focus)}, {json.dumps(self.about)}'
+            got = self.value(conn, f'{FOCUS}({args})', s, deadline)
             base['focused'] = isinstance(got, dict)
             found = got if isinstance(got, dict) else None
         if self.mark is not None or self.focus:
@@ -753,7 +769,7 @@ class Browser:
         return endpoint(self.url, CONNECT_S, self.transport, self.resolve)[1]
 
     def shoot(self, url: str, site: Site, viewport: str = 'desktop', full: bool = False, probe: str | None = None, capture: bool = True, headers: dict[str, str] | None = None,
-              focus: str | None = None, mark: list | None = None, overflow: bool = False) -> Picture:
+              focus: str | None = None, mark: list | None = None, overflow: bool = False, about: str | None = None) -> Picture:
         if not self.enabled:
             raise ShotError(OFF, 503)
         if viewport not in VIEWPORTS:
@@ -767,4 +783,4 @@ class Browser:
                 if wait > 0:
                     self.sleep(wait)
             self.last = self.clock()
-            return Shot(self, clean(url), site, viewport, bool(full), probe, capture, headers, focus, mark, overflow).take()
+            return Shot(self, clean(url), site, viewport, bool(full), probe, capture, headers, focus, mark, overflow, about).take()

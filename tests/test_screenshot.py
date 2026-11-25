@@ -425,6 +425,20 @@ def test_each_shot_carries_the_utc_time_its_load_started(chrome: FakeChrome):
     assert (first.facts['at'], second.facts['at']) == ('2026-10-17T08:00:00Z', '2026-10-17T08:00:05Z')
 
 
+def test_a_focused_shot_hands_the_finding_text_to_the_marker_when_it_has_one():
+    # given
+    c = FakeChrome({CHAIRS: Site(height=3400, focus={'y': 1500, 'h': 40})})
+    b = browser(c)
+
+    # when
+    found = b.shoot(CHAIRS, SHOP, 'phone', focus='Summer sale', about='The banner image is cropped')
+    c.close()
+
+    # then
+    assert c.params('Runtime.evaluate')[1]['expression'] == f"{FOCUS}({json.dumps('Summer sale')}, {json.dumps('The banner image is cropped')})"
+    assert found.facts['focused'] is True
+
+
 def test_a_focused_shot_crops_around_the_text_and_falls_back_to_the_first_screen():
     # given
     c = FakeChrome({CHAIRS: Site(height=3400, focus={'y': 1500, 'h': 40}), SHOE: Site(height=3400)})
@@ -1018,3 +1032,17 @@ def test_boxes_that_lose_nothing_readable_do_not_use_up_the_cut_slots():
     # then
     assert pic.facts['overflow'] == [{'verdict': 'cut', 'revealed': [], 'offscreen': [], 'box': {'x': 16, 'y': 2500, 'w': 358, 'h': 120}}]
     assert [p['expression'] for p in c.params('Runtime.evaluate') if p['expression'].startswith('((box)')] == [f'{browser_kit.NAMES}(6)']
+
+
+def test_a_focused_shot_cuts_the_finding_text_to_three_hundred_characters_before_it_reaches_the_page():
+    # given
+    c = FakeChrome({CHAIRS: Site(height=3400, focus={'y': 1500, 'h': 40})})
+    b = browser(c)
+    long = 'The banner image is cropped ' + 'x' * 900
+
+    # when
+    b.shoot(CHAIRS, SHOP, 'phone', focus='Summer sale', about=long)
+    c.close()
+
+    # then
+    assert c.params('Runtime.evaluate')[1]['expression'] == f"{FOCUS}({json.dumps('Summer sale')}, {json.dumps(long[:300])})"

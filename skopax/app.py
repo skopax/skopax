@@ -68,7 +68,7 @@ from skopax.engine import Applied, PassResult, apply, iso as epoch_iso, new_push
 from skopax.enrich import Enricher
 from skopax.investigator import JOB_OFFSET as INVESTIGATE_OFFSET, JOB_PERIOD as INVESTIGATE_PERIOD, Investigator, prompt, select
 from skopax.investigator.gate import Gate, GateDown
-from skopax.investigator.pricing import ANTHROPIC, OPENAI, default_model, provider_of
+from skopax.investigator.pricing import ANTHROPIC, OPENAI, default_model, known as known_model, provider_of
 from skopax.investigator.smalltalk import DEFAULTS as SMALL_TALK_DEFAULTS, Reply, SmallTalk, WINDOW_S as SMALL_TALK_WINDOW_S
 from skopax.investigator.tools import CORE_TOOLS, FIX_FIELDS, Effects, Sources, allowed_link_hosts, draft_problem
 from skopax.investigator.toolset import NoProposal, ProposalClosed, ProposalUnavailable, Proposals, ToolSet
@@ -78,7 +78,7 @@ from skopax.chatui.text import set_texts as set_chat_texts
 from skopax.assign import Assigner, Invalid as AssignInvalid, people_of, slug
 from skopax.jiralinks import ticket_projects
 from skopax.autoassign import AutoAssign
-from skopax.models import email_allowed, NoticesReadIn, NameIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, TagOwnersIn, TagAutoIn, TagColorIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, FieldSuggestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn, AiConnectionIn, AiConnectionTestIn
+from skopax.models import email_allowed, NoticesReadIn, NameIn, PasswordIn, AssigneeIn, ChatIn, ChatShareIn, ActionIn, ActionPatch, ActionStatus, Assessment, DeployIn, DeployReportIn, GateExamplesIn, InvestigateIn, PostdeployIgnoreIn, Note, ReportBriefIn, SelfReviewIn, ReportSlackDraftIn, SlackDraftIn, SlackHoldIn, SlackPostIn, SlackUpdateIn, SmallTalkIn, TagIn, TagOwnersIn, TagAutoIn, TagColorIn, BusinessIn, AdminSettingIn, InstanceIn, InstancePatch, PluginSwitchIn, PluginTestIn, FieldSuggestIn, TokenIn, UserIn, UserPatch, FeatureIn, AiKeyIn, AiKeyTestIn, AiConnectionIn, AiConnectionTestIn, VertexConnectionIn, VertexConnectionTestIn
 from skopax.selfreview import BY as SELF_REVIEW_BY, SelfReview, self_service, gather as review_facts, review_slot_offset
 from skopax.slackhealth import OFFSET as SLACK_POSTS_OFFSET, PASS as SLACK_POSTS, PERIOD as SLACK_POSTS_PERIOD, slack_posts_pass
 from skopax.jiraaccess import PASS as JIRA_ACCESS, access_pass as jira_access_pass
@@ -130,8 +130,9 @@ from skopax.sweepout import Outputs
 from skopax.sweeps import Reads, Sweeper, owned, pass_name, watched
 from skopax.sealer import Sealer, master_key, stored_key
 from skopax import ai as ai_module, aiuses
-from skopax.ai import Clients, compat_ai, route as ai_route
+from skopax.ai import Clients, compat_ai, vertex_ai, route as ai_route
 from skopax.aikey import AiConnections, AiKey, AiKeys, InvalidKey, TestBusy, UnknownConnection
+from skopax.vertexkey import VertexConnections
 from skopax.remote import Transport
 from skopax.sessions import LOGIN_KIND, SESSION_KIND, Sessions, User, role_at_least, session_secret
 from skopax.roles import Resolvers, role_map
@@ -507,7 +508,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                investigator: Investigator | None = None, anthropic_client=None, slack_socket=None,
                kube: Kube | None = None, operators_lookup: Callable[[str], bool] | None = None, registry: Registry | None = None,
                transport: Transport | None = None, sources: SourceSet | None = None, ai_factory: Callable[..., object] | None = None, openai_factory: Callable[..., object] | None = None,
-               compat_factory: Callable[..., object] | None = None, clients: Mapping[str, object] | None = None, probe: Probe | None = None, sso_http: SsoHttp | None = None,
+               compat_factory: Callable[..., object] | None = None, vertex_factory: Callable[..., object] | None = None, clients: Mapping[str, object] | None = None, probe: Probe | None = None, sso_http: SsoHttp | None = None,
                clock: Callable[[], float] | None = None) -> FastAPI:
     clock = clock or time.time
     if settings is None:
@@ -1070,10 +1071,20 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     compat_ai.bind(ai_connections, lambda: bool(settings.allow_private_ai), compat_factory)
     compat_ai.register(ai_module)
     ai_connections.changed = lambda: live.refresh(force=True)
+    vertex_connections = VertexConnections(db, get_sealer, lambda: stored_key(db), live.tunables, lambda: settings.vertex_token_dir, make=vertex_factory)
+    vertex_ai.bind(vertex_connections, lambda: settings.vertex_token_dir, vertex_factory)
+    vertex_ai.register(ai_module)
+    vertex_connections.changed = lambda: live.refresh(force=True)
+    vertex_connections.taken = lambda name: ai_connections.get(name) is not None
+    ai_connections.taken = lambda name: vertex_connections.get(name) is not None
     try:
         ai_connections.refresh()
     except Exception as e:
         log.warning('the stored AI connections were not read at start, reading them again shortly: %s', kind(e))
+    try:
+        vertex_connections.refresh()
+    except Exception as e:
+        log.warning('the stored Vertex AI connections were not read at start, reading them again shortly: %s', kind(e))
     provider_keys = {ANTHROPIC: aikey.current, OPENAI: openai_key.current}
     keyed_clients = Clients(lambda: settings.ai_provider, provider_keys, lambda k: None, 10.0, 0, anthropic_client)
     live.keyed = keyed_clients.keyed
@@ -1542,7 +1553,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     def instance_health(plugin, inst, passes: dict, on: bool, beats: list[dict] | None = None) -> dict:
         checks = watched(plugin, inst)
-        if not on or not inst.enabled:
+        if not on:
+            found = {'state': 'off', 'text': msg('integrations.health.plugin_off', plugin=runtime.plugin_name(plugin.id)), 'at': None}
+        elif not inst.enabled:
             found = {'state': 'off', 'text': msg('integrations.health.off'), 'at': None}
         elif inst.problem:
             found = {'state': 'error', 'text': inst.problem, 'at': None}
@@ -1575,7 +1588,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if not found and plugin.fields:
             top = {'state': 'off', 'text': msg('integrations.health.unset'), 'at': None}
         elif not on:
-            top = {'state': 'off', 'text': msg('integrations.health.off'), 'at': None}
+            top = {'state': 'off', 'text': msg('integrations.health.plugin_off', plugin=runtime.plugin_name(plugin.id)), 'at': None}
         elif not found:
             top = pass_health(plugin.checks, None, passes)
         elif not live:
@@ -1739,6 +1752,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             await asyncio.to_thread(aikey.refresh)
             await asyncio.to_thread(openai_key.refresh)
             await asyncio.to_thread(ai_connections.refresh)
+            await asyncio.to_thread(vertex_connections.refresh)
             await asyncio.to_thread(sso_secret.refresh)
             await asyncio.to_thread(lambda: slack.enabled and slack_people.lookup())
         except PyMongoError as e:
@@ -1784,6 +1798,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         keying = asyncio.create_task(aikey.loop())
         openai_keying = asyncio.create_task(openai_key.loop())
         compat_keying = asyncio.create_task(ai_connections.loop())
+        vertex_keying = asyncio.create_task(vertex_connections.loop())
         sso_keying = asyncio.create_task(sso_secret.loop())
         deciding = None
         if instances.age() is not None or listen_mode == 'off':
@@ -1795,7 +1810,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             async with mcp_manager.run():
                 yield
         finally:
-            running = [t for t in (task, jobs, ticking, following, keying, openai_keying, compat_keying, sso_keying, first_probe, first_version, deciding, redrawing) if t is not None]
+            running = [t for t in (task, jobs, ticking, following, keying, openai_keying, compat_keying, vertex_keying, sso_keying, first_probe, first_version, deciding, redrawing) if t is not None]
             for t in running:
                 t.cancel()
             await asyncio.gather(*running, return_exceptions=True)
@@ -1919,6 +1934,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     app.state.gate = gate
     app.state.aikey = aikey
     app.state.ai_connections = ai_connections
+    app.state.vertex_connections = vertex_connections
     app.state.openai_key = openai_key
     app.state.self_review = self_review
     app.state.replier = replier
@@ -2232,6 +2248,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             return JSONResponse({'detail': msg('openaikey.invalid')}, status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
         if getattr(request.scope.get('route'), 'path', '').startswith('/api/admin/ai-connections'):
             return JSONResponse({'detail': msg('compat.invalid')}, status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
+        if getattr(request.scope.get('route'), 'path', '').startswith('/api/admin/ai-vertex'):
+            return JSONResponse({'detail': msg('vertex.invalid')}, status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
         if getattr(request.scope.get('route'), 'path', '').startswith('/api/admin/users'):
             return refused_user(e)
         return await refused_request(request, e)
@@ -3650,7 +3668,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             if t.plugin is None or not t.key.endswith('.model') or not live.plugin_value_given(t.key):
                 continue
             provider, model, fallback = plugin_ai.route(str(live.plugin_value(t.key) or ''), t.plugin)
-            if fallback or (model and provider != settings.ai_provider and not keyed_clients.keyed(provider)):
+            if fallback or (model and provider != settings.ai_provider and not keyed_clients.keyed(provider)) or (str(provider).startswith('vertex:') and model and not known_model(str(model))):
                 out.append({'id': f'ai-plugin:{t.key}', 'level': 'warn', 'text': msg('ai.use_problem', use=f'{t.group}: {t.label}', problem=aiuses.problem_of('plugin', provider, model, fallback, settings.ai_provider, keyed=keyed_clients.keyed))})
         return out
 
@@ -3684,6 +3702,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             items.append({'id': 'openai-key', 'level': 'warn', 'text': msg('openaikey.unreadable')})
         items += aiuses.notices(ai_routes_listed(), settings.ai_provider, keyed_clients.keyed) + plugin_model_notices()
         items += [{'id': f'ai-connection:{name}', 'level': 'warn', 'text': msg('compat.unreadable', name=name)} for name in ai_connections.unreadable()]
+        items += [{'id': f'ai-name-clash:{name}', 'level': 'warn', 'text': msg('vertex.name_clash', name=name)} for name in sorted(set(vertex_connections.clashes()) | set(ai_connections.clashes()))]
+        items += [{'id': f'ai-vertex:{name}', 'level': 'warn', 'text': msg('vertex.unreadable', name=name)} for name in vertex_connections.unreadable()]
+        items += [{'id': f'ai-vertex-token:{name}', 'level': 'warn', 'text': msg('vertex.token_path_blocked' if vertex_ai.token_dir_ok(vertex_connections.token_dir()) else 'vertex.token_dir_invalid', name=name)} for name in vertex_connections.blocked()]
         slack_scopes = store.slack_scopes() if slack.enabled else {'missing': []}
         if slack_scopes['missing']:
             items.append({'id': 'slack-scopes', 'level': 'warn', 'text': msg('integrations.slack_scopes', scopes=', '.join(slack_scopes['missing'])), 'at': slack_scopes['at']})
@@ -3812,6 +3833,48 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         except Exception as e:
             log.warning('the connection test of %s could not run: %s', name, kind(e))
             return {'ok': False, 'tools': False, 'summary': msg('compat.test_failed'), 'ms': 0}
+
+    @app.get('/api/admin/ai-vertex')
+    def get_admin_ai_vertex_list(by: Annotated[str, Depends(require_admin)]) -> dict:
+        return {'items': vertex_connections.views(), 'regions': list(vertex_ai.REGIONS)}
+
+    @app.get('/api/admin/ai-vertex/{name}')
+    def get_admin_ai_vertex(name: str, by: Annotated[str, Depends(require_admin)]) -> dict:
+        found = vertex_connections.get(name)
+        if found is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, msg('vertex.unknown'))
+        return found.view()
+
+    @app.put('/api/admin/ai-vertex/{name}')
+    def put_admin_ai_vertex(name: str, body: VertexConnectionIn, by: Annotated[str, Depends(require_admin)]) -> dict:
+        try:
+            found = vertex_connections.put(name, body.model_dump(), by)
+        except compat_ai.Refused as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, e.text) from None
+        store.add_activity(ADMIN_KIND, by, msg('vertex.set', name=name))
+        log.info('Vertex AI connection %s saved in Admin by %s', name, by)
+        return found
+
+    @app.delete('/api/admin/ai-vertex/{name}', status_code=status.HTTP_204_NO_CONTENT)
+    def delete_admin_ai_vertex(name: str, by: Annotated[str, Depends(require_admin)]) -> Response:
+        if vertex_connections.delete(name, by):
+            store.add_activity(ADMIN_KIND, by, msg('vertex.cleared', name=name))
+            log.info('Vertex AI connection %s removed in Admin by %s', name, by)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.post('/api/admin/ai-vertex/{name}/test')
+    def post_admin_ai_vertex_test(name: str, body: VertexConnectionTestIn, by: Annotated[str, Depends(require_admin)]) -> dict:
+        try:
+            return vertex_connections.test(name, body.model_dump(exclude_none=True), lambda: store.add_activity(ADMIN_KIND, by, msg('vertex.test_used', name=name)))
+        except compat_ai.Refused as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, e.text) from None
+        except UnknownConnection:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, msg('vertex.unknown')) from None
+        except TestBusy:
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('vertex.test_busy')) from None
+        except Exception as e:
+            log.warning('the connection test of %s could not run: %s', name, kind(e))
+            return {'ok': False, 'tools': False, 'summary': msg('vertex.test_failed'), 'ms': 0}
 
     def plugin_found(plugin_id: str):
         found = registry.get(plugin_id)
