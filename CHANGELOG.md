@@ -2,6 +2,28 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.6.3 (unreleased)
+
+### Added
+
+- Advisor model: Card runs, Critical cards, High cards, Slack answers and Chat can each consult a stronger Anthropic advisor model on the hard decisions. Admin > Investigator > Who does what has an Advisor select per use (None by default, greyed out with Anthropic only on other providers) and, once a model is picked, Advisor consultations per run (1 to 10) and Advisor answer size. Costs shows advisor spend as its own line under its use and a run shows how many times it consulted. Nothing changes until an advisor is set. See [Advisor model](docs/setup.md#advisor-model).
+- An advisor model for the investigator, server side: Card runs, Critical cards, High cards, Slack answers and Chat can each name a stronger Anthropic model that the run consults through the Claude API advisor tool for hard decisions. Per use there are three settings, for example `investigate.model-critical-advisor`, `investigate.model-critical-advisor-uses` (consultations per run, 1 to 10, default 3) and `investigate.model-critical-advisor-tokens` (answer size, 1024 to 4096, default 2000). It is off by default, so an upgrade changes nothing.
+- Only valid pairings can be saved: the advisor must be one the Claude API allows for the model of the use. A use on another provider than Anthropic cannot hold an advisor; a stored one is ignored, shown as a problem on the use row, and never moves the run to another provider. A pairing the API refuses on the first turn drops the advisor for that run and says so on the run.
+- Advisor spend is priced by the advisor model, written to the ledger as its own line (`role` advisor, same use and run) and counts in the daily limit; the limit is checked before each request, so the consultations inside one request can finish just past it. Runs record `advisorCalls`; the advice itself is never stored, logged or traced.
+- The consultation count holds for the whole run, not per request: the API counts it across the tool loop of one turn, and a run stops as capped if a reply ever reports more consultations than allowed. Costs marks estimated advisor spend as estimated.
+- `get_self_review` over MCP: a read-only tool, open to every role that may read the Review page, that returns the daily self-review (the latest, or the one of a day with `date`, or the latest few with `limit`, at most 7), with its findings when they are stored. The text goes out masked.
+
+### Changed
+
+- Clearer tool errors from the self-review. An ES|QL query with an unknown column lists the valid columns (up to 40, the ones with the asked prefix first), and a query that cannot reach Elasticsearch is retried once on the last day or hour and says so. The triage tool and its refusal say that High and Critical cards take progress with a Jira ticket and handled is only for a Warning card. The tag tool states the wording rules it refuses on. A missing GitLab or GitHub path lists up to 10 nearest real paths, a missing tag or ref up to 10 nearest tags, and a line range past the end of the file names the file length and the accepted format. A GitLab or GitHub line range that starts at 0 is now refused with the "120-160" format shown. A promql cluster that is an instance of another tool, or a near miss, names the clusters it may mean.
+- Chat effort no longer has a Same as Slack choice. It is one of the effort levels, `medium` by default, and an empty `CHAT_EFFORT` counts as not set. A one-time upgrade step writes the current Slack effort into an unset Chat effort (listed in Changes), so chat keeps its effort and the two settings are independent after that. During a rolling update, chat keeps following the Slack effort until that step has run.
+- Dengage judges a send of a recurring campaign against that campaign's own earlier large sends of the 4 weeks before once it has at least `campaign_min_sends` of them (new rule, default 5); with fewer it still uses the whole channel. The card says which baseline it used. The Dengage excluded-share gap (`blacklist_gap`) default rises from 5 to 15 points; a value you set stays as it is.
+
+### Fixed
+
+- Changing a card's severity by hand (including Back to the signal) now tells the card's holder every time; a second change within a minute used to be dropped from Notifications. The Slack post is redrawn with the new severity; a stopped or resolved post shows a hand-set severity in its headline, and a redraw that could not happen is written to the card history.
+- Dengage cards, the tool and the docs now say "excluded" instead of "blacklist": Dengage excludes contacts that cannot be reached (for push: no notification permission, no push token, a duplicate token) or are on the blacklist, and each channel's card names its own reasons. The card title is "Push send excluded many contacts", the tool field is `excluded`, and card keys and rule names are unchanged.
+
 ## 0.6.2 (2026-11-26)
 
 ### Changed

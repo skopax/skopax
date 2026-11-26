@@ -10,7 +10,9 @@ FETCH_TYPE = 'web_fetch_20250910'
 THINK_OFF = 'off'
 THINK_AUTO = 'auto'
 COMPAT = 'compat'
-CAPABILITIES = frozenset({'tools', 'images', 'web_search', 'web_fetch', 'thinking', 'cache', 'fallbacks'})
+ADVISOR = 'advisor'
+CAPABILITIES = frozenset({'tools', 'images', 'web_search', 'web_fetch', 'thinking', 'cache', 'fallbacks', ADVISOR})
+UNDECLARED = CAPABILITIES - {ADVISOR}
 PROVIDER_CAPABILITIES = {ANTHROPIC: CAPABILITIES, OPENAI: frozenset({'tools', 'images', 'web_search', 'thinking', 'cache'})}
 IMAGES_OFF = 'images not sent: this model does not read images'
 FACTORIES: dict[str, 'Provider'] = {}
@@ -75,6 +77,7 @@ class Turn:
     calls: list[ToolCall] = field(default_factory=list)
     native: list = field(default_factory=list)
     server: list = field(default_factory=list)
+    advisor: list = field(default_factory=list)
 
 
 def provider_named(value: object) -> str:
@@ -179,7 +182,7 @@ def capabilities_of(client: object) -> frozenset[str]:
         return frozenset(found) & CAPABILITIES
     adapter = wrap(client)
     found = getattr(adapter, 'capabilities', None) if adapter is not None else None
-    return CAPABILITIES if found is None or callable(found) else frozenset(found) & CAPABILITIES
+    return UNDECLARED if found is None or callable(found) else frozenset(found) & CAPABILITIES
 
 
 def explicit(settings, field: str) -> bool:
@@ -260,7 +263,7 @@ class Clients:
         if prefix in FACTORIES:
             caps = FACTORIES[prefix].capabilities
             return frozenset(caps(provider) if callable(caps) else caps) & CAPABILITIES
-        return PROVIDER_CAPABILITIES.get(provider or '', CAPABILITIES)
+        return PROVIDER_CAPABILITIES.get(provider or '', UNDECLARED)
 
     def resolve(self, ref: object, role: str, chosen: bool = True) -> tuple[str, str, str | None]:
         from skopax.investigator.pricing import resolve

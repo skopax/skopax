@@ -199,6 +199,21 @@ class Settings:
     investigate_model: str = 'claude-opus-5-5'
     investigate_model_critical: str = ''
     investigate_model_high: str = ''
+    investigate_model_advisor: str = ''
+    investigate_model_advisor_uses: int = 3
+    investigate_model_advisor_tokens: int = 2000
+    investigate_model_critical_advisor: str = ''
+    investigate_model_critical_advisor_uses: int = 3
+    investigate_model_critical_advisor_tokens: int = 2000
+    investigate_model_high_advisor: str = ''
+    investigate_model_high_advisor_uses: int = 3
+    investigate_model_high_advisor_tokens: int = 2000
+    investigate_slack_model_advisor: str = ''
+    investigate_slack_model_advisor_uses: int = 3
+    investigate_slack_model_advisor_tokens: int = 2000
+    chat_model_advisor: str = ''
+    chat_model_advisor_uses: int = 3
+    chat_model_advisor_tokens: int = 2000
     investigate_effort: str = 'medium'
     investigate_daily_usd: float = 25.0
     investigate_max_cards: int = 5
@@ -214,7 +229,9 @@ class Settings:
     investigate_gate_effort: str = 'low'
     investigate_slack_model: str = 'claude-sonnet-5-5'
     chat_model: str = 'claude-sonnet-5-5'
-    chat_effort: str = ''
+    chat_effort: str = 'medium'
+    chat_effort_set: bool = False
+    chat_effort_follows: bool = False
     chat_max_tool_calls: int = 0
     investigate_language: str = 'en'
     chat_daily_cap: int = 30
@@ -485,6 +502,7 @@ def bounded(key: str, raw: str, low: int, high: int, default: int) -> int:
 
 
 CHAT_EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
+CHAT_EFFORT_DEFAULT = 'medium'
 TRACE_CONTENTS = ('metadata', 'full')
 
 
@@ -497,10 +515,11 @@ def trace_content(raw: str) -> str:
 
 
 def chat_effort_of(raw: str) -> str:
-    if raw in ('',) + CHAT_EFFORTS:
+    if raw in CHAT_EFFORTS:
         return raw
-    log.warning('chat.effort %r is not one of %s; it follows the Slack effort', raw, ', '.join(CHAT_EFFORTS))
-    return ''
+    if raw:
+        log.warning('chat.effort %r is not one of %s; using %s', raw, ', '.join(CHAT_EFFORTS), CHAT_EFFORT_DEFAULT)
+    return CHAT_EFFORT_DEFAULT
 
 
 def clamped(key: str, raw: str, low: int, high: int, default: int) -> int:
@@ -760,6 +779,21 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         investigate_model=get('investigate.model', 'INVESTIGATE_MODEL', 'claude-opus-5-5').strip(),
         investigate_model_critical=get('investigate.model-critical', 'INVESTIGATE_MODEL_CRITICAL', '').strip(),
         investigate_model_high=get('investigate.model-high', 'INVESTIGATE_MODEL_HIGH', '').strip(),
+        investigate_model_advisor=get('investigate.model-advisor', 'INVESTIGATE_MODEL_ADVISOR', '').strip(),
+        investigate_model_advisor_uses=clamped('investigate.model-advisor-uses', get('investigate.model-advisor-uses', 'INVESTIGATE_MODEL_ADVISOR_USES', '3').strip(), 1, 10, 3),
+        investigate_model_advisor_tokens=clamped('investigate.model-advisor-tokens', get('investigate.model-advisor-tokens', 'INVESTIGATE_MODEL_ADVISOR_TOKENS', '2000').strip(), 1024, 4096, 2000),
+        investigate_model_critical_advisor=get('investigate.model-critical-advisor', 'INVESTIGATE_MODEL_CRITICAL_ADVISOR', '').strip(),
+        investigate_model_critical_advisor_uses=clamped('investigate.model-critical-advisor-uses', get('investigate.model-critical-advisor-uses', 'INVESTIGATE_MODEL_CRITICAL_ADVISOR_USES', '3').strip(), 1, 10, 3),
+        investigate_model_critical_advisor_tokens=clamped('investigate.model-critical-advisor-tokens', get('investigate.model-critical-advisor-tokens', 'INVESTIGATE_MODEL_CRITICAL_ADVISOR_TOKENS', '2000').strip(), 1024, 4096, 2000),
+        investigate_model_high_advisor=get('investigate.model-high-advisor', 'INVESTIGATE_MODEL_HIGH_ADVISOR', '').strip(),
+        investigate_model_high_advisor_uses=clamped('investigate.model-high-advisor-uses', get('investigate.model-high-advisor-uses', 'INVESTIGATE_MODEL_HIGH_ADVISOR_USES', '3').strip(), 1, 10, 3),
+        investigate_model_high_advisor_tokens=clamped('investigate.model-high-advisor-tokens', get('investigate.model-high-advisor-tokens', 'INVESTIGATE_MODEL_HIGH_ADVISOR_TOKENS', '2000').strip(), 1024, 4096, 2000),
+        investigate_slack_model_advisor=get('investigate.slack-model-advisor', 'INVESTIGATE_SLACK_MODEL_ADVISOR', '').strip(),
+        investigate_slack_model_advisor_uses=clamped('investigate.slack-model-advisor-uses', get('investigate.slack-model-advisor-uses', 'INVESTIGATE_SLACK_MODEL_ADVISOR_USES', '3').strip(), 1, 10, 3),
+        investigate_slack_model_advisor_tokens=clamped('investigate.slack-model-advisor-tokens', get('investigate.slack-model-advisor-tokens', 'INVESTIGATE_SLACK_MODEL_ADVISOR_TOKENS', '2000').strip(), 1024, 4096, 2000),
+        chat_model_advisor=get('chat.model-advisor', 'CHAT_MODEL_ADVISOR', '').strip(),
+        chat_model_advisor_uses=clamped('chat.model-advisor-uses', get('chat.model-advisor-uses', 'CHAT_MODEL_ADVISOR_USES', '3').strip(), 1, 10, 3),
+        chat_model_advisor_tokens=clamped('chat.model-advisor-tokens', get('chat.model-advisor-tokens', 'CHAT_MODEL_ADVISOR_TOKENS', '2000').strip(), 1024, 4096, 2000),
         investigate_effort=get('investigate.effort', 'INVESTIGATE_EFFORT', 'medium').strip(),
         investigate_daily_usd=float(get('investigate.daily-usd', 'INVESTIGATE_DAILY_USD', '25')),
         investigate_max_cards=int(get('investigate.max-cards', 'INVESTIGATE_MAX_CARDS', '5')),
@@ -776,6 +810,7 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         investigate_slack_model=get('investigate.slack-model', 'INVESTIGATE_SLACK_MODEL', 'claude-sonnet-5-5').strip(),
         chat_model=get('chat.model', 'CHAT_MODEL', 'claude-sonnet-5-5').strip(),
         chat_effort=chat_effort_of(get('chat.effort', 'CHAT_EFFORT', '').strip()),
+        chat_effort_set=get('chat.effort', 'CHAT_EFFORT', '').strip() in CHAT_EFFORTS,
         chat_max_tool_calls=chat_calls_of(get('chat.max-tool-calls', 'CHAT_MAX_TOOL_CALLS', '0').strip() or '0'),
         investigate_language=(get('investigate.language', 'INVESTIGATE_LANGUAGE', 'en').strip() or 'en'),
         chat_daily_cap=int(get('chat.daily-cap', 'CHAT_DAILY_CAP', '30').strip() or 30),

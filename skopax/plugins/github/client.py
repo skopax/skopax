@@ -319,6 +319,10 @@ class GitHub:
             raise Missing(folder)
         return [r for r in body if isinstance(r, dict)]
 
+    def tags(self, repo, limit: int = 100) -> list[str]:
+        rows = self._get(f'{self._at(repo)}/tags', per_page=limit).body
+        return [str(r['name']) for r in rows if isinstance(r, dict) and r.get('name')] if isinstance(rows, list) else []
+
     def file(self, repo, path: str, ref: str) -> str:
         return self.decoded(self.raw_file(repo, path, ref), path)
 

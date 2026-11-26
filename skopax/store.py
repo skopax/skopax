@@ -89,7 +89,7 @@ NOTICE_KEEP_DAYS = 30
 NOTICE_PAGE_MAX = 100
 PAST_RUN_FIELDS = {'startedAt': 1, 'trigger': 1, 'keys': 1, 'ask': 1, 'recap': 1, 'toolCalls': 1}
 LEDGER_ROW_LIMIT = 50_000
-RUN_COST_FIELDS = {'trigger': 1, 'outcome': 1, 'startedAt': 1, 'endedAt': 1, 'keys': 1, 'ask.text': 1, 'report.summary': 1, 'toolCalls.name': 1}
+RUN_COST_FIELDS = {'advisorCalls': 1, 'trigger': 1, 'outcome': 1, 'startedAt': 1, 'endedAt': 1, 'keys': 1, 'ask.text': 1, 'report.summary': 1, 'toolCalls.name': 1}
 RUN_FIELDS = {'keys': 1, 'startedAt': 1, 'outcome': 1, 'trigger': 1}
 USAGE_FIELDS = ('input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens')
 USAGE_RUN_LIMIT = 2000
@@ -109,7 +109,7 @@ OPEN_ACTIONS = ('requested', 'processing')
 CHAT_FIELDS = {'text': 1, 'status': 1, 'requestedAt': 1, 'doneAt': 1, 'failedAt': 1, 'result': 1, 'cards': 1, 'chat': 1}
 CHAT_RUN_FIELDS = {'actionId': 1, 'outcome': 1, 'recap': 1, 'usd': 1, 'cardAction': 1, 'startedAt': 1}
 CHAT_SCAN = 1000
-CHAT_RUN_PUBLIC = ('id', 'mode', 'trigger', 'pod', 'room', 'startedAt', 'endedAt', 'outcome', 'usd', 'turns', 'model', 'effort', 'models', 'usage')
+CHAT_RUN_PUBLIC = ('id', 'mode', 'trigger', 'pod', 'room', 'startedAt', 'endedAt', 'outcome', 'usd', 'turns', 'model', 'effort', 'models', 'usage', 'advisorCalls')
 NOT_CHAT = {'trigger': {'$ne': 'chat'}}
 CARD_RUNS_DAYS = 30
 META_OWN = ('anomalies', 'rev', 'updatedAt', '_id', 'writing')
@@ -1466,7 +1466,7 @@ class Store:
             quiet = now - dt.timedelta(seconds=same_s.get(row['kind'], 0))
             if any(r['user'] == row['user'] and r.get('key') == row.get('key') and r['kind'] == row['kind'] for r in fresh):
                 continue
-            if self.notices.find_one({'user': row['user'], 'key': row.get('key'), 'kind': row['kind'], 'at': {'$gte': quiet}}, {'_id': 1}):
+            if same_s.get(row['kind'], 0) and self.notices.find_one({'user': row['user'], 'key': row.get('key'), 'kind': row['kind'], 'at': {'$gte': quiet}}, {'_id': 1}):
                 continue
             fresh.append({'_id': new_id(), 'at': now, 't': iso(now), 'read': False, **row})
         if fresh:

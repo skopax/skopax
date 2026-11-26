@@ -9,6 +9,9 @@ from skopax.plugins.dengage.client import BASE_DAYS, CHANNELS, DAY, HOUR, NEEDED
 CHECK = 'dengage'
 SECTION = 'dengage'
 NO_DATA = f'{CHECK}:no-data'
+EXCLUDED_WHY = {'push': 'no notification permission, no push token, a duplicate token, or the blacklist', 'email': 'no valid address, unsubscribed, or the blacklist',
+                'sms': 'no valid number, opted out, or the blacklist'}
+EXCLUDED_OTHER = "Dengage's own filters or the blacklist"
 DOT = ' \u00b7 '
 APP = 'https://app.dengage.com/'
 READ_DAYS = BASE_DAYS + 1
@@ -16,18 +19,19 @@ RECENT_KEPT = 50
 BUDGET_S = 200
 PERMISSION_LIMIT = 200
 RESERVED_ROW_KEYS = ('plugin', 'cluster')
-RULES = {'event_min_selected': 1000, 'card_hours': 24, 'delivery_min_selected': 500, 'usual_share': 0.95, 'relay_drop': 0.7, 'blacklist_gap': 0.05,
-         'blacklist_floor': 0.05, 'baseline_min_sends': 5, 'silence_hours': 48, 'silence_active_days': 15}
+RULES = {'event_min_selected': 1000, 'card_hours': 24, 'delivery_min_selected': 500, 'usual_share': 0.95, 'relay_drop': 0.7, 'blacklist_gap': 0.15,
+         'blacklist_floor': 0.05, 'baseline_min_sends': 5, 'campaign_min_sends': 5, 'silence_hours': 48, 'silence_active_days': 15}
 RULE_HELP = {
     'event_min_selected': 'A completed send gets its own info card only when it selected at least this many contacts; smaller sends stay in the dengage tool.',
     'card_hours': 'A send is looked at, and its card stays up, for this many hours after it went out.',
     'delivery_min_selected': 'Delivery is judged only on sends that selected at least this many contacts, and only such large sends make up the usual shares.',
-    'usual_share': 'What counts as usual: the share of the channel\'s large sends of the 4 weeks before that a send is compared with (0.95 = the blacklisted share 95 % of them '
+    'usual_share': 'What counts as usual: the share of the campaign\'s or, without enough campaign sends, the channel\'s large sends of the 4 weeks before that a send is compared with (0.95 = the excluded share 95 % of them '
                    'stayed under, the relayed share 95 % of them reached), so a campaign part that always loses many contacts is not news.',
     'relay_drop': 'Warning when a send relays less than this share of that usual relayed share (0.7 = under 70 % of it); without a baseline, of the contacts it selected.',
-    'blacklist_gap': 'Warning when the blacklisted share of a send is more than this above that usual blacklisted share (0.05 = 5 points more).',
-    'blacklist_floor': 'The blacklist warning needs at least this share of the selected contacts dropped (0.05 = 5 %).',
+    'blacklist_gap': 'Warning when the excluded share of a send (contacts Dengage excluded, for push: no notification permission, no push token, a duplicate token, or the blacklist) is more than this above what is usual (0.15 = 15 points more).',
+    'blacklist_floor': 'The excluded warning needs at least this share of the selected contacts excluded (0.05 = 5 %).',
     'baseline_min_sends': 'A channel\'s usual shares count only when the 4 weeks before hold at least this many large sends.',
+    'campaign_min_sends': 'A recurring campaign (or send name) is judged against its own earlier large sends of the 4 weeks before when it has at least this many; with fewer, against the channel.',
     'silence_hours': 'Warning when a channel has completed no send for this many hours, and the gap is longer than its longest gap of the 4 weeks before.',
     'silence_active_days': 'Silence is checked only on a channel that sent on at least this many of the 28 days before its last send.',
 }
@@ -54,7 +58,7 @@ def pct(v: float | None) -> str:
 
 
 def counts(r: dict) -> str:
-    return f"selected {num(r['selected'])}, prepared {num(r['prepared'])}, relayed {num(r['relayed'])}, blacklisted {num(r['blacklisted'])}"
+    return f"selected {num(r['selected'])}, prepared {num(r['prepared'])}, relayed {num(r['relayed'])}, excluded {num(r['excluded'])}"
 
 
 def titled(r: dict) -> str:
@@ -67,17 +71,30 @@ def ranked(values: list[float], at: float) -> float:
     return round(ordered[min(len(ordered) - 1, max(0, math.ceil(at * len(ordered)) - 1))], 4)
 
 
-def large_sends(d: Dengage, rows: list[dict], rules: dict) -> list[tuple[dt.date, float, float]]:
-    return [(d.day(stamp_of(r['at'])), r['relayed'] / r['selected'], r['blacklisted'] / r['selected']) for r in rows if r['selected'] >= rules['delivery_min_selected']]
+def campaign_of(r: dict) -> str:
+    return r.get('campaign') or r['name']
 
 
-def usual_of(large: list[tuple[dt.date, float, float]], before: dt.date, rules: dict) -> dict:
+def large_sends(d: Dengage, rows: list[dict], rules: dict) -> list[tuple[dt.date, float, float, str]]:
+    return [(d.day(stamp_of(r['at'])), r['relayed'] / r['selected'], r['excluded'] / r['selected'], campaign_of(r)) for r in rows if r['selected'] >= rules['delivery_min_selected']]
+
+
+def usual_of(large: list[tuple[dt.date, float, float, str]], before: dt.date, rules: dict, campaign: str | None = None) -> dict:
     share_kept = min(max(float(rules['usual_share']), 0.5), 1.0)
     peers = [x for x in large if before - dt.timedelta(days=BASE_DAYS) <= x[0] < before]
-    known = len(peers) >= rules['baseline_min_sends']
-    return {'sends': len(peers), 'kept': share_kept,
+    own = [x for x in peers if x[3] == campaign] if campaign else []
+    scope = 'campaign' if own and len(own) >= rules['campaign_min_sends'] else 'channel'
+    peers = own if scope == 'campaign' else peers
+    known = bool(peers) and (len(peers) >= rules['baseline_min_sends'] or scope == 'campaign')
+    return {'sends': len(peers), 'kept': share_kept, 'scope': scope,
             'relayed': ranked([x[1] for x in peers], 1 - share_kept) if known else None,
-            'blacklisted': ranked([x[2] for x in peers], share_kept) if known else None}
+            'excluded': ranked([x[2] for x in peers], share_kept) if known else None}
+
+
+def peers(usual: dict, verb: str) -> str:
+    if usual['scope'] == 'campaign':
+        return f"this campaign's {usual['sends']} earlier sends of the 4 weeks before {verb}"
+    return f"this channel's {usual['sends']} large sends of the 4 weeks before {verb}"
 
 
 def most(usual: dict) -> str:
@@ -94,40 +111,40 @@ def send_card(r: dict, at: float) -> dict:
     x = anomaly(CHECK, 'dengage-send', '-', CHECK, f"{r['channel']}-{r['id']}", 'info', r['relayed'], None, None, '', label,
                 f"{titled(r)} went out {when(at)}: {counts(r)}. A large send can show up as an app-open or traffic wave and as a burst of user activity shortly after it.",
                 DAY, f"INFO {label}: {r['name'][:100]}")
-    x.update(channel=r['channel'], sendId=r['id'], sendName=r['name'], sentAt=r['at'], selected=r['selected'], relayed=r['relayed'], blacklisted=r['blacklisted'])
+    x.update(channel=r['channel'], sendId=r['id'], sendName=r['name'], sentAt=r['at'], selected=r['selected'], relayed=r['relayed'], excluded=r['excluded'])
     return keyed(x, r['channel'])
 
 
 def delivery_card(r: dict, at: float, problem: str, usual: dict, rules: dict) -> dict:
-    relayed, black = share(r['relayed'], r['selected']), share(r['blacklisted'], r['selected'])
-    if problem == 'blacklist':
-        label = f"{r['channel'].capitalize()} send lost many contacts to the blacklist"
-        said = (f"the blacklist dropped {num(r['blacklisted'])} of the {num(r['selected'])} contacts it selected ({pct(black)}); {most(usual)} of this channel's "
-                f"{usual['sends']} large sends of the 4 weeks before lost at most {pct(usual['blacklisted'])}")
-        value, base = black, usual['blacklisted']
+    relayed, black = share(r['relayed'], r['selected']), share(r['excluded'], r['selected'])
+    if problem == 'excluded':
+        label = f"{r['channel'].capitalize()} send excluded many contacts"
+        said = (f"Dengage excluded {num(r['excluded'])} of the {num(r['selected'])} contacts it selected ({pct(black)}; {EXCLUDED_WHY.get(r['channel'], EXCLUDED_OTHER)}); "
+                f"{most(usual)} of {peers(usual, 'excluded')} at most {pct(usual['excluded'])}")
+        value, base = black, usual['excluded']
     else:
         label = f"{r['channel'].capitalize()} send reached far fewer contacts than it selected"
-        against = (f"{most(usual)} of this channel's {usual['sends']} large sends of the 4 weeks before relayed at least {pct(usual['relayed'])}" if usual['relayed'] is not None
+        against = (f"{most(usual)} of {peers(usual, 'relayed')} at least {pct(usual['relayed'])}" if usual['relayed'] is not None
                    else f"there is no 4-week baseline for this channel yet, so the limit is {pct(rules['relay_drop'])} of the selected contacts")
         said = f"it relayed {num(r['relayed'])} of the {num(r['selected'])} contacts it selected ({pct(relayed)}); {against}"
         value, base = relayed, usual['relayed']
     x = anomaly(CHECK, 'dengage-delivery', '-', CHECK, f"{r['channel']}-{r['id']}", 'warn', round((value or 0) * 100, 1), None, None, '%', label,
                 f"{titled(r)} went out {when(at)} and {said}. All counts: {counts(r)}. The marketing team checks the send in the Dengage panel.",
                 100, f"WARN {label}: {r['name'][:100]}")
-    x.update(channel=r['channel'], sendId=r['id'], sendName=r['name'], sentAt=r['at'], selected=r['selected'], relayed=r['relayed'], blacklisted=r['blacklisted'],
-             problem=problem, share=value, usualShare=base, usualKept=usual['kept'] if base is not None else None)
+    x.update(channel=r['channel'], sendId=r['id'], sendName=r['name'], sentAt=r['at'], selected=r['selected'], relayed=r['relayed'], excluded=r['excluded'],
+             problem=problem, share=value, usualShare=base, baseline=usual['scope'], usualKept=usual['kept'] if base is not None else None)
     return keyed(x, r['channel'])
 
 
 def problem_of(r: dict, usual: dict, rules: dict) -> str | None:
     if r['selected'] < rules['delivery_min_selected']:
         return None
-    relayed, black = r['relayed'] / r['selected'], r['blacklisted'] / r['selected']
+    relayed, black = r['relayed'] / r['selected'], r['excluded'] / r['selected']
     if relayed < rules['relay_drop'] * (usual['relayed'] if usual['relayed'] is not None else 1):
         return 'relay'
-    base = usual['blacklisted']
+    base = usual['excluded']
     if base is not None and black >= rules['blacklist_floor'] and black > base + rules['blacklist_gap']:
-        return 'blacklist'
+        return 'excluded'
     return None
 
 
@@ -229,7 +246,7 @@ def run_pass(d: Dengage, prior: list | None, now: float, rules: dict) -> tuple[l
         fresh = sorted((r for r in rows if now - stamp_of(r['at']) < rules['card_hours'] * HOUR), key=lambda r: r['at'], reverse=True)
         for r in fresh:
             at = stamp_of(r['at'])
-            usual = usual_of(large, d.day(at), rules)
+            usual = usual_of(large, d.day(at), rules, campaign_of(r))
             problem = problem_of(r, usual, rules)
             if problem:
                 cards.append(delivery_card(r, at, problem, usual, rules))

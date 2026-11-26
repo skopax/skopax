@@ -188,7 +188,7 @@ def past_cards_cap(cards: int) -> int:
 
 
 RUN_DETAIL = 8000
-TRIAGE_PROGRESS = 'progress = a Jira ticket owns the cause (look it up with jira_issue first; owner = its Developer). '
+TRIAGE_PROGRESS = 'progress = a Jira ticket owns the cause (look it up with jira_issue first; owner = its Developer). High and Critical cards take progress with a Jira ticket; handled is only for a Warning card. '
 TRIAGE_UNTRACKED = 'No ticket tracker is set up, so a card is never set to progress here; leave it with your note when a person must act. '
 READ_TOOLS = [
     {'name': 'jira_search', 'description': 'JQL search on Jira (read only). Fields from: ' + ', '.join(JIRA_FIELDS) + '; the Developer field is added when configured.',
@@ -528,7 +528,7 @@ TAG_INTRO = 'Tag a card of this run for a team that reads {product} in its own c
 TAG_BUSINESS = ('{names}: business teams. Tag for one in two cases only, and only for production. kind action (default): the action is that team\'s to take, something they change themselves '
                 '(an admin record, a marketing link, a page text). kind info: the team cannot fix it but needs to know, because right now its customers, a sign-up or checkout flow, a campaign '
                 'or a page it owns is affected for users (a sign-up flow fails while engineering fixes it, a campaign landing page is down); text is then one plain sentence that says what is '
-                'happening for users and that it is being worked on, not an instruction, and the post marks it as information. '
+                'happening for users, not an instruction, and the post marks it as information. '
                 'A purely technical problem with no effect a business reader would notice gets no tag; most cards get none. '
                 'why (required for kind action, optional for kind info, at most {why_limit} characters): one short reason in business terms, what users see or lose '
                 '("Visitors from the spring sale ad land on an empty page"); the post shows it first, and it is what the team reads first. '
@@ -546,7 +546,7 @@ TAG_ROLES = {tags.DEVELOPER: 'developer when it is the code or config of one of 
 TAG_TEAMS = ('{names}: team tags; add one when you confirmed who has to change or decide something of ours to fix the card: {roles}. '
              'They need no text and no kind, and the card goes in full to the channel that takes the tag. Not for a third-party outage we can only wait on, expected noise or a card that clears by itself. ')
 TAG_WHY = 'why is required for kind action: one short reason in business terms (what users see or lose), which the team reads first; send the call again with it'
-TAG_RULES = 'Adds tags and never removes one; a tag a person removed from the card is refused. text replaces the business action unless a person wrote it, and is required when the card has none.'
+TAG_RULES = 'Adds tags and never removes one; a tag a person removed from the card is refused. For a business tag, text and why are refused when they say or imply that someone is following, looking into or fixing it, when they give a time as today, tonight or yesterday (give a date and a clock time, such as 23 Nov 10:00), or when they hold a markdown link. text replaces the business action unless a person wrote it, and is required when the card has none.'
 CARD_ACTIONS = ('resolve', 'take', 'known', 'mute')
 MUTE_HOURS = (1, 720)
 DEFAULT_MUTE_HOURS = 24
@@ -1885,10 +1885,11 @@ class Toolbox:
         owner = str(a.get('owner') or '').strip()[:OWNER_LIMIT] or None
         if state == 'handled':
             instead = 'use triage progress with a Jira ticket, or leave it with your note' if self.tracked() else 'leave it with your note'
+            rule = ' (High and Critical cards take triage progress with a Jira ticket; handled is only for a Warning card)' if self.tracked() else ''
             if card.get('sev') == 'crit':
-                raise ToolError(f'a critical card stays open for a human: {instead}')
+                raise ToolError(f'a critical card stays open for a human: {instead}{rule}')
             if card.get('sev') not in HANDLED_SEVERITIES and not (card.get('sev') == 'high' and card.get('sevBefore') == 'warn'):
-                raise ToolError(f"handled is only for a warn card, this one is {card.get('sev')!r}: {instead}")
+                raise ToolError(f"handled is only for a warn card, this one is {card.get('sev')!r}: {instead}{rule}")
             if card.get('absorb'):
                 raise ToolError('this card holds absorb patterns, so it takes in the cards its incident keeps producing, critical ones too, and a handled parent would hide them: ' + instead)
             held = [x['key'] for x in self._open_children(key) if not information.calm(x)]

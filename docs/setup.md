@@ -92,6 +92,16 @@ With OpenAI, a few things work differently:
 - **Prompt caching** is automatic. Cached input counts as cache reads; cache writes are priced at OpenAI's write price.
 - **Requests are not stored** at OpenAI (`store: false`); the reasoning of a turn is sent back encrypted on the next turn.
 
+### Advisor model
+
+An investigation can run on a cheaper executor model that asks a stronger advisor model for help only on the hard decisions, such as choosing between two suspects or deciding whether a deploy caused the problem. In Admin > Investigator > Who does what, each of the five uses that run the investigator loop (Card runs, Critical cards, High cards, Slack answers and Chat) has an Advisor select. It is off by default (None), and the gate, summaries, self-review and plug-in AI are single calls that have none.
+
+- **When it helps.** Anthropic says the gain depends on a wide capability gap between the two models and on the executor actually asking. It may bring better Critical and High answers at a lower cost than running the strong model for the whole loop, but that is a hypothesis until you measure it on your own cards; on Anthropic's own coding benchmark the pairing bought about what more executor effort did.
+- **Anthropic only.** It works only for a use whose model runs on the Anthropic API. A use on OpenAI, Vertex AI, a compatible connection or a local model shows the select greyed out with Anthropic only; a value stored for such a use is ignored and shown as a problem on the row, and the use never moves to another provider. The select lists only the advisor models that pair with the use's model, so an invalid pair cannot be saved.
+- **Settings.** `<use setting>-advisor` (for example `investigate.model-critical-advisor`) is the advisor model, `<use setting>-advisor-uses` is the consultations per run (1 to 10, default 3) and `<use setting>-advisor-tokens` is the answer size (1024 to 4096, default 2000). The last two show when a model is picked. Each change is listed in Changes like other AI settings.
+- **Cost.** The advisor's tokens are priced at the advisor model's rates and counted in the daily AI cap. Costs shows them as their own advisor line under the use, with the advisor model, and a run shows how many times it consulted. Only counts are kept; the advice text is never stored or logged.
+- **How to measure it.** Pick 20 to 25 past Critical and High cards with a known cause, run each with the current card model alone, with the cheaper executor plus the advisor, and with the cheaper executor alone at higher effort, and compare cost per card, turns, how often it consulted, and whether the named cause is right. Keep the advisor on only where it is cheaper at equal quality.
+
 ### Run Claude on Vertex AI in your own Google Cloud
 
 A Vertex AI connection runs Claude through your own Google Cloud project, under your Google Cloud contract and billing, and the AI provider is your own cloud account, not a separate Anthropic API account. Each use can pick one of its models like any other model (for example card runs on Vertex in the EU and the topic gate on a local model).

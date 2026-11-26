@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from skopax.contract import Context, Denied, Missing, ReadError, SourceDown, Tool, iso
 from skopax.messages import msg
+from skopax.kit.nearest import NEAR, closest, entries
 from skopax.plugins.github.client import PERMISSIONS, SEARCH_HITS, split_name
 from skopax.redact import redact_secrets
 
@@ -61,8 +62,10 @@ def span(lines: str | None, total: int | None = None) -> tuple[int, int]:
         raise refused('lines must look like "120" or "120-160"')
     first = int(m.group(1))
     last = int(m.group(2) or first)
+    if first < 1:
+        raise refused(msg('github.lines_from_one'))
     if last < first:
-        raise refused('lines must go up: "120-160"')
+        raise refused('lines must go up, written like "120-160"')
     return first, min(last, first + MAX_FILE_LINES - 1)
 
 
@@ -144,11 +147,13 @@ def words_of(query: str) -> str:
 
 def nearby(github, a: dict, repo: dict) -> str:
     ref = ref_of(a, repo)
-    folder = str(req(a, 'path')).strip('/')
+    asked = str(req(a, 'path')).strip('/')
+    folder = asked
     end = time.monotonic() + TREE_BUDGET_S
     for _ in range(TREE_STEPS):
         if time.monotonic() > end:
             return ''
+        exact = folder == asked
         try:
             rows = github.listing(repo, folder, ref)
         except Missing:
@@ -156,8 +161,8 @@ def nearby(github, a: dict, repo: dict) -> str:
         except Exception:
             return ''
         if rows:
-            ordered = sorted(rows, key=lambda r: r.get('type') != 'dir')[:TREE_ENTRIES]
-            names = [str(r.get('path') or r.get('name')) + ('/' if r.get('type') == 'dir' else '') for r in ordered]
+            names = [str(r.get('path') or r.get('name')) + ('/' if r.get('type') == 'dir' else '') for r in sorted(rows, key=lambda r: r.get('type') != 'dir')]
+            names = names[:TREE_ENTRIES] if exact else entries(asked.rpartition('/')[2], names, NEAR)
             return msg('github.hint.nearby', folder=folder or msg('github.hint.root'), ref=ref, names=', '.join(names))
         if not folder:
             return ''
@@ -165,7 +170,40 @@ def nearby(github, a: dict, repo: dict) -> str:
     return ''
 
 
+def missing_refs(github, repo: dict, refs: list[str]) -> list[str]:
+    gone = []
+    for ref in dict.fromkeys(refs):
+        try:
+            github.commit(repo, ref)
+        except Missing:
+            gone.append(ref)
+        except Exception:
+            return []
+    return gone
+
+
+def tag_hint(github, repo: dict, refs: list[str], name: str) -> str:
+    try:
+        names = github.tags(repo)
+    except Exception:
+        return ''
+    near = closest(refs, names, NEAR)
+    return msg('github.hint.tags', repo=name, tags=', '.join(near)) if near else ''
+
+
+def no_ref(github, repo: dict, a: dict) -> ReadError | None:
+    asked = str(a.get('ref') or '').strip()
+    if not asked or not missing_refs(github, repo, [asked]):
+        return None
+    name = name_of(req(a, 'repo'))
+    return ReadError(404, msg('github.no_ref', ref=asked, repo=name, permission=PERMISSIONS['code']) + tag_hint(github, repo, [asked], name), HINT_ROOM)
+
+
 def no_file(a: dict, repo: dict, github=None) -> ReadError:
+    if github is not None:
+        wrong = no_ref(github, repo, a)
+        if wrong is not None:
+            return wrong
     text = msg('github.no_file', path=req(a, 'path'), repo=name_of(req(a, 'repo')), ref=ref_of(a, repo), permission=PERMISSIONS['code'])
     return ReadError(404, text + (nearby(github, a, repo) if github is not None else ''), HINT_ROOM)
 
@@ -177,6 +215,8 @@ def read_file(github, a: dict):
     except Missing:
         raise no_file(a, repo, github) from None
     first, last = span(a.get('lines'), len(lines))
+    if first > len(lines) and lines:
+        raise refused(msg('github.lines_past_end', lines=a.get('lines'), total=len(lines)))
     return '\n'.join(f'{i}: {lines[i - 1]}' for i in range(first, min(last, len(lines)) + 1))
 
 
@@ -238,7 +278,8 @@ def compare(github, a: dict):
         old_sha, new_sha = walk_back(github, repo, old, old_back), walk_back(github, repo, new, new_back)
         body = github.compare(repo, old_sha, new_sha)
     except Missing:
-        raise ReadError(404, msg('github.no_refs', old=shown['from'], new=shown['to'], repo=name, permission=PERMISSIONS['code'])) from None
+        gone = missing_refs(github, repo, [old, new])
+        raise ReadError(404, msg('github.no_refs', old=shown['from'], new=shown['to'], repo=name, permission=PERMISSIONS['code']) + (tag_hint(github, repo, gone, name) if gone else ''), HINT_ROOM) from None
     out = {'repo': name, **shown, 'url': body.get('html_url')}
     out |= ({'fromCommit': old_sha[:8]} if old_back else {}) | ({'toCommit': new_sha[:8]} if new_back else {})
     if body.get('status') == 'identical':

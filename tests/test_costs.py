@@ -141,7 +141,7 @@ def test_an_empty_ledger_gives_zeros_and_no_average():
     s = costs.summary([], {}, TODAY, 30, 0.0, 20.0)
 
     # then
-    assert (s['total'], s['avg'], len(s['perBucket']), s['runs'], s['topCards'], s['topAskers']) == ({'usd': 0.0, 'calls': 0, 'runs': 0, 'cacheHit': None}, {'slackAsk': None, 'podRun': None}, 30, [], [], [])
+    assert (s['total'], s['avg'], len(s['perBucket']), s['runs'], s['topCards'], s['topAskers']) == ({'usd': 0.0, 'calls': 0, 'runs': 0, 'cacheHit': None, 'advisorUsd': 0.0}, {'slackAsk': None, 'podRun': None}, 30, [], [], [])
 
 
 def test_the_costs_endpoint_is_for_operators_and_reads_the_window(client: TestClient, store: Store):

@@ -383,7 +383,7 @@ def test_sends_are_read_page_by_page_in_the_api_time_zone_and_broken_rows_are_le
     assert paged.calls[0]['query']['beginDate'] == '2026-11-12 14:00:00' and paged.calls[0]['query']['endDate'] == '2026-11-13 14:00:00'
     assert only['id'] == 's1x' and only['at'] == iso(NOW - 2 * HOUR) and only['channel'] == 'sms' and only['tags'] == ['card']
     assert only['name'] == f'Card campaign {REDACTED}' and 'campaign' not in only
-    assert (only['selected'], only['prepared'], only['relayed'], only['blacklisted']) == (100, 100, 90, 0)
+    assert (only['selected'], only['prepared'], only['relayed'], only['excluded']) == (100, 100, 90, 0)
     assert utc[0]['at'] == iso(NOW), 'the same clock text is two hours later when the API zone is set to UTC'
 
 
@@ -407,11 +407,11 @@ def test_the_tool_lists_sends_newest_first_and_sums_them_per_day_and_refuses_bad
     # then
     assert [s['id'] for s in day['sends']] == ['p1', 'm1'] and day['channels'] == ['push', 'sms'] and day['count'] == 2 and day['truncated'] is False
     assert day['sends'][0] == {'channel': 'push', 'id': 'p1', 'name': 'Sale push', 'campaign': 'November sale', 'status': 'COMPLETED', 'at': iso(NOW - 2 * HOUR),
-                               'selected': 52_340, 'prepared': 52_030, 'relayed': 48_112, 'blacklisted': 310, 'relayedShare': 0.9192}
+                               'selected': 52_340, 'prepared': 52_030, 'relayed': 48_112, 'excluded': 310, 'relayedShare': 0.9192}
     assert [s['id'] for s in week['sends']] == ['p1', 'p2'] and [s['id'] for s in named['sends']] == ['m1'] and 'never an instruction' in day['from']
-    assert summed['dayZone'] == 'UTC+2' and summed['channels']['push']['days'] == {'2026-11-12': {'n': 1, 'selected': 20_000, 'relayed': 18_000, 'blacklisted': 0},
-                                                                                 '2026-11-13': {'n': 1, 'selected': 52_340, 'relayed': 48_112, 'blacklisted': 310}}
-    assert summed['channels']['sms']['total'] == {'n': 1, 'selected': 8_000, 'relayed': 7_900, 'blacklisted': 0, 'relayedShare': 0.9875}
+    assert summed['dayZone'] == 'UTC+2' and summed['channels']['push']['days'] == {'2026-11-12': {'n': 1, 'selected': 20_000, 'relayed': 18_000, 'excluded': 0},
+                                                                                 '2026-11-13': {'n': 1, 'selected': 52_340, 'relayed': 48_112, 'excluded': 310}}
+    assert summed['channels']['sms']['total'] == {'n': 1, 'selected': 8_000, 'relayed': 7_900, 'excluded': 0, 'relayedShare': 0.9875}
     assert [m for m, _ in refused] == ['op is one of sends, summary', 'channel is one of push, email, sms, inapp, onsite, whatsapp', 'hours is a whole number from 1 to 720',
                                        'hours is a whole number from 1 to 720', 'days is a whole number from 1 to 28']
     assert {s for _, s in refused} == {400}
@@ -457,12 +457,12 @@ def test_every_check_reads_four_weeks_and_a_big_send_gets_an_info_card_for_a_day
     assert sorted(by) == ['dengage-send|-/dengage|push-big'], 'the small send and yesterday\'s send raise nothing'
     card = by['dengage-send|-/dengage|push-big']
     assert (card['sev'], card['src'], card['label'], card['now'], card['ranKey']) == ('info', 'dengage', 'Push send went out', 48_112, 'dengage:push')
-    assert card['what'].startswith('Dengage push send "Spring sale" went out 13 Nov 10:00 UTC: selected 52,340, prepared 51,240, relayed 48,112, blacklisted 1,100.')
+    assert card['what'].startswith('Dengage push send "Spring sale" went out 13 Nov 10:00 UTC: selected 52,340, prepared 51,240, relayed 48,112, excluded 1,100.')
     assert 'cluster' not in card and 'plugin' not in card
     rows = first.sections['dengage']
     push = channel_row(rows)
     assert push['last'] == iso(NOW - HOUR) and push['sends24h'] == 2
-    assert len(push['days']) == 28 and push['days']['2026-11-13'] == {'n': 2, 'selected': 52_740, 'relayed': 48_502, 'blacklisted': 1_100}
+    assert len(push['days']) == 28 and push['days']['2026-11-13'] == {'n': 2, 'selected': 52_740, 'relayed': 48_502, 'excluded': 1_100}
     assert [r['id'] for r in rows_of(rows, 'recent')] == ['small', 'big']
     assert rows_of(rows, 'summary') == [{'part': 'summary', 'checkedAt': iso(NOW)}]
     assert not any('cluster' in r or 'plugin' in r for r in rows)
@@ -471,11 +471,11 @@ def test_every_check_reads_four_weeks_and_a_big_send_gets_an_info_card_for_a_day
     assert dengage.links(card, info) == [{'label': 'Dengage', 'url': APP}] and dengage.links({'src': 'vwo'}, info) is None
 
 
-def test_a_send_that_relays_far_less_than_usual_or_loses_many_to_the_blacklist_gets_a_warning():
+def test_a_send_that_relays_far_less_than_usual_or_is_excluded_much_more_gets_a_warning():
     # given
     usual = daily()
     low = raw('low', 'Spring sale', 2, 40_000, 20_000, 800)
-    listed = raw('listed', 'Newsletter', 3, 40_000, 33_000, 6_000)
+    listed = raw('listed', 'Newsletter', 3, 40_000, 33_000, 10_000)
     fine = raw('fine', 'Weekend offer', 4, 40_000, 36_000, 900)
     tiny = raw('tiny', 'Trial', 5, 300, 10)
     fresh = raw('fresh', 'First e-mail', 2, 10_000, 6_500, 3_000)
@@ -492,15 +492,15 @@ def test_a_send_that_relays_far_less_than_usual_or_loses_many_to_the_blacklist_g
     assert relay['label'] == 'Push send reached far fewer contacts than it selected'
     assert "it relayed 20,000 of the 40,000 contacts it selected (50.0 %); 95 % of this channel's 27 large sends of the 4 weeks before relayed at least 92.0 %" in relay['what']
     black = found['dengage-delivery|-/dengage|push-listed']
-    assert (black['problem'], black['share'], black['usualShare'], black['usualKept'], black['now']) == ('blacklist', 0.15, 0.02, 0.95, 15.0)
-    assert 'the blacklist dropped 6,000 of the 40,000 contacts it selected (15.0 %); 95 % of this channel\'s 27 large sends of the 4 weeks before lost at most 2.0 %' in black['what']
+    assert (black['problem'], black['share'], black['usualShare'], black['usualKept'], black['now']) == ('excluded', 0.25, 0.02, 0.95, 25.0)
+    assert 'Dengage excluded 10,000 of the 40,000 contacts it selected (25.0 %; no notification permission, no push token, a duplicate token, or the blacklist); 95 % of this channel\'s 27 large sends of the 4 weeks before excluded at most 2.0 %' in black['what']
     assert [c['key'] for c in alone] == ['dengage-delivery|-/dengage|email-fresh', 'dengage-send|-/dengage|email-ok']
     assert 'there is no 4-week baseline for this channel yet, so the limit is 70.0 % of the selected contacts' in alone[0]['what'] and alone[0]['usualShare'] is None
     assert [c['sig'] for c in loose] == ['dengage-send'], 'the threshold comes from the rules'
     assert check.RULES['relay_drop'] == 0.7 and check.RULES['event_min_selected'] == 1000 and check.RULES['usual_share'] == 0.95 and 'blacklist_times' not in check.RULES
 
 
-def test_a_campaign_part_that_always_loses_a_quarter_to_the_blacklist_is_usual_and_only_a_real_jump_warns():
+def test_a_campaign_part_that_always_loses_a_quarter_to_exclusion_is_usual_and_only_a_real_jump_warns():
     # given
     pairs = [s for k in range(1, 28) for s in (raw(f'a{k:02d}', f'Promo_{k:02d}_part 1', 24 * k + 3, 45_000, 33_700, 11_300),
                                               raw(f'b{k:02d}', f'Promo_{k:02d}_part 2', 24 * k + 3, 48_000, 47_990, 0))]
@@ -515,8 +515,163 @@ def test_a_campaign_part_that_always_loses_a_quarter_to_the_blacklist_is_usual_a
     assert found['dengage-send|-/dengage|push-usual']['sig'] == 'dengage-send', 'part 1 at its usual 25 % is a plain send'
     assert found['dengage-send|-/dengage|push-second']['sig'] == 'dengage-send'
     card = found['dengage-delivery|-/dengage|push-jump']
-    assert (card['problem'], card['share'], card['usualShare']) == ('blacklist', 0.4667, 0.2511)
-    assert "95 % of this channel's 54 large sends of the 4 weeks before lost at most 25.1 %" in card['what']
+    assert (card['problem'], card['share'], card['usualShare']) == ('excluded', 0.4667, 0.2511)
+    assert "95 % of this channel's 54 large sends of the 4 weeks before excluded at most 25.1 %" in card['what']
+
+
+def reminders(count: int = 5, excluded: tuple = (19_000, 18_800, 19_200, 18_900, 19_100), name: str = 'Monthly reminder') -> list[dict]:
+    return [raw(f'm{k:02d}', name, 24 * k + 3, 50_000, 50_000 - excluded[(k - 1) % len(excluded)], excluded[(k - 1) % len(excluded)]) for k in range(1, count + 1)]
+
+
+def others() -> list[dict]:
+    return [raw(f'o{k:02d}', 'Other campaign', 24 * k + 4, 50_000, 46_000, 1_000) for k in range(1, 28)]
+
+
+def test_a_recurring_campaign_that_always_excludes_a_share_opens_no_delivery_card_once_it_has_five_earlier_sends():
+    # given
+    today = raw('today', 'Monthly reminder', 2, 50_000, 31_000, 19_000)
+
+    # when
+    found = swept(Api({'push': daily() + others() + reminders() + [today]})).result.found
+
+    # then
+    assert [(c['key'], c['sig']) for c in found] == [('dengage-send|-/dengage|push-today', 'dengage-send')]
+
+
+def test_the_same_campaign_jumping_far_above_its_own_exclusions_opens_a_card_that_names_the_campaign_baseline():
+    # given
+    jump = raw('jump', 'Monthly reminder', 2, 50_000, 25_000, 30_000)
+
+    # when
+    [card] = [c for c in swept(Api({'push': daily() + others() + reminders() + [jump]})).result.found if c['sig'] == 'dengage-delivery']
+
+    # then
+    assert card['key'] == 'dengage-delivery|-/dengage|push-jump'
+    assert (card['problem'], card['share'], card['baseline']) == ('excluded', 0.6, 'campaign')
+    assert "95 % of this campaign's 5 earlier sends of the 4 weeks before excluded at most 38.4 %" in card['what']
+    assert card['label'] == 'Push send excluded many contacts'
+
+
+def test_a_campaign_with_fewer_than_five_earlier_sends_is_judged_against_the_channel():
+    # given
+    fresh = raw('fresh', 'Monthly reminder', 2, 50_000, 40_000, 19_000)
+
+    # when
+    [card] = [c for c in swept(Api({'push': daily() + others() + reminders(count=2) + [fresh]})).result.found if c['sig'] == 'dengage-delivery']
+
+    # then
+    assert (card['problem'], card['baseline'], card['usualShare']) == ('excluded', 'channel', 0.02)
+    assert "95 % of this channel's 56 large sends of the 4 weeks before excluded at most 2.0 %" in card['what']
+
+
+def test_a_send_without_a_campaign_name_is_matched_to_its_earlier_sends_by_its_own_name():
+    # given
+    history = [raw(f'n{k}', 'Monthly reminder', 24 * k + 3, 50_000, 31_000, 19_000, campaignName=None) for k in range(1, 6)]
+    today = raw('today', 'Monthly reminder', 2, 50_000, 31_000, 19_000, campaignName=None)
+
+    # when
+    found = swept(Api({'push': daily() + history + [today]})).result.found
+
+    # then
+    assert [c['sig'] for c in found] == ['dengage-send']
+
+
+def test_the_campaign_minimum_is_a_rule_and_a_lower_one_judges_a_young_campaign_on_its_own_sends():
+    # given
+    today = raw('today', 'Monthly reminder', 2, 50_000, 31_000, 19_000)
+    api = Api({'push': daily() + others() + reminders(count=2) + [today]})
+
+    # when
+    strict = swept(api).result.found
+    loose = swept(api, rules={'campaign_min_sends': 2}).result.found
+
+    # then
+    assert [c['sig'] for c in strict] == ['dengage-delivery'] and [c['sig'] for c in loose] == ['dengage-send']
+    assert check.RULES['campaign_min_sends'] == 5 and check.RULE_HELP['campaign_min_sends']
+
+
+def test_the_wording_says_excluded_with_its_reasons_once_and_never_blacklist():
+    # given
+    listed = raw('listed', 'Newsletter', 3, 40_000, 33_000, 10_000)
+    plain = raw('plain', 'Spring sale', 2, 52_340, 48_112, 1_100)
+
+    # when
+    found = {c['key']: c for c in swept(Api({'push': daily() + [listed, plain]})).result.found}
+
+    # then
+    card = found['dengage-delivery|-/dengage|push-listed']
+    assert card['label'] == 'Push send excluded many contacts' and card['excluded'] == 10_000 and 'blacklisted' not in card
+    assert 'Dengage excluded 10,000 of the 40,000 contacts it selected (25.0 %; no notification permission' in card['what']
+    assert card['what'].count('no notification permission, no push token, a duplicate token, or the blacklist') == 1
+    assert 'excluded 10,000' in card['what'] and 'blacklisted' not in card['what']
+    assert 'excluded 1,100' in found['dengage-send|-/dengage|push-plain']['what']
+    texts = [c['what'] + c['label'] + c.get('title', '') for c in found.values()] + list(check.RULE_HELP.values()) + [client.NOTE, dengage.DESCRIPTION, dengage.PLUGIN.knowledge[0].text]
+    assert not [t for t in texts if 'blacklist' in t.lower().replace('or the blacklist', '').replace('the blacklist', '')], 'only the explanation names the blacklist'
+
+
+def test_each_channel_names_its_own_exclusion_reasons_and_an_email_card_never_mentions_push_tokens():
+    # given
+    listed = lambda name, sel: raw(name, 'Newsletter', 3, sel, sel - 12_000, 12_000)
+
+    # when
+    email = swept(Api({'email': daily() + [listed('e1', 40_000)]}), channels='email').result.found
+    sms = swept(Api({'sms': daily() + [listed('s1', 40_000)]}), channels='sms').result.found
+    other = swept(Api({'whatsapp': daily() + [listed('w1', 40_000)]}), channels='whatsapp').result.found
+
+    # then
+    [mail] = [c for c in email if c['sig'] == 'dengage-delivery']
+    [text] = [c for c in sms if c['sig'] == 'dengage-delivery']
+    [rest] = [c for c in other if c['sig'] == 'dengage-delivery']
+    assert 'no valid address, unsubscribed, or the blacklist' in mail['what'] and 'push' not in mail['what'].replace('Dengage push', '').lower()
+    assert 'no valid number, opted out, or the blacklist' in text['what'] and 'token' not in text['what']
+    assert "Dengage's own filters or the blacklist" in rest['what'] and 'token' not in rest['what']
+
+
+def test_a_campaign_minimum_of_zero_and_a_baseline_minimum_of_zero_do_not_crash_the_pass():
+    # given
+    fresh = raw('fresh', 'Brand new', 2, 50_000, 46_000, 1_000)
+    api = Api({'push': [fresh]})
+
+    # when
+    zero_campaign = swept(api, rules={'campaign_min_sends': 0}).result
+    zero_baseline = swept(api, rules={'baseline_min_sends': 0}).result
+
+    # then
+    assert zero_campaign.ok and zero_baseline.ok
+    assert [c['sig'] for c in zero_campaign.found] == ['dengage-send'] and [c['sig'] for c in zero_baseline.found] == ['dengage-send']
+
+
+def test_a_card_stored_in_the_old_shape_is_replaced_under_the_same_key_at_the_next_pass(store: Store):
+    # given
+    listed = raw('listed', 'Newsletter', 3, 40_000, 28_000, 12_000)
+    key = 'dengage-delivery|-/dengage|push-listed'
+    stored = old_card(key, 'dengage-delivery', 'push-listed') | {'problem': 'blacklist', 'blacklisted': 12_000, 'label': 'Push send lost many contacts to the blacklist'}
+    store.save_state(stored_state(stored), None)
+
+    # when
+    with board(store, Api({'push': daily() + [listed]})) as c:
+        c.run(NOW)
+        after = by_key(store.load())
+
+    # then
+    card = after[key]
+    assert card['status'] == 'open' and card['problem'] == 'excluded' and card['excluded'] == 12_000 and 'blacklisted' not in card
+    assert card['label'] == 'Push send excluded many contacts'
+
+
+def test_the_tool_reports_excluded_counts_and_still_reads_the_api_field_blacklisted_count():
+    # given
+    api = Api({'push': [raw('a', 'Spring sale', 5, 1_000, 900, 100)]})
+    d = dengage_of(api)
+
+    # when
+    sent = client.read(d, {'op': 'sends', 'channel': 'push', 'hours': 24, 'contains': ''}, NOW)
+    summed = client.read(d, {'op': 'summary', 'channel': 'push', 'days': 3}, NOW)
+
+    # then
+    row = sent['sends'][0]
+    assert row['excluded'] == 100 and 'blacklisted' not in row
+    assert summed['channels']['push']['total']['excluded'] == 100 and 'excluded' in summed['note'] and 'blacklist' not in summed['note'].replace('or the blacklist', '')
 
 
 def test_a_channel_that_sent_most_days_and_then_stops_gets_a_silence_warning_but_its_usual_gaps_do_not():
@@ -871,7 +1026,7 @@ def test_dengage_defaults_read_dates_in_utc():
     assert {f.key: f.default for f in dengage.PLUGIN.fields} == {'url': 'https://api.dengage.com/rest', 'userkey': '', 'password': '', 'channels': '', 'utc-hours': '0'}
     assert {s.key: s.default for s in dengage.PLUGIN.settings} == {}
     assert dict(dengage.PLUGIN.rules[0].defaults) == {'event_min_selected': 1000, 'card_hours': 24, 'delivery_min_selected': 500, 'usual_share': 0.95, 'relay_drop': 0.7,
-                                                      'blacklist_gap': 0.05, 'blacklist_floor': 0.05, 'baseline_min_sends': 5, 'silence_hours': 48, 'silence_active_days': 15}
+                                                      'blacklist_gap': 0.15, 'blacklist_floor': 0.05, 'baseline_min_sends': 5, 'campaign_min_sends': 5, 'silence_hours': 48, 'silence_active_days': 15}
 
 
 def test_dengage_connection_test_reports_ok_and_failures(store: Store):
@@ -918,6 +1073,21 @@ def test_dengage_second_instance_is_scoped(store: Store):
     assert card['links'] == [{'label': 'Dengage', 'url': APP}]
     assert sorted((r.get('cluster') or '', r['part']) for r in state['dengage'] if r['part'] != 'recent') == [('', 'channel'), ('', 'summary'), ('east', 'channel'), ('east', 'summary')]
     assert len(main.logins) == len(east.logins) == 1, 'each instance signs in on its own'
+
+
+def test_the_excluded_share_gap_defaults_to_fifteen_points_and_a_value_someone_set_is_kept():
+    # given
+    jump = raw('jump', 'Spring sale', 2, 40_000, 36_000, 5_200)
+    api = Api({'push': daily() + [jump]})
+
+    # when
+    byDefault = swept(api).result.found
+    strict = swept(api, rules={'blacklist_gap': 0.05}).result.found
+
+    # then
+    assert check.RULES['blacklist_gap'] == 0.15 and dict(dengage.PLUGIN.rules[0].defaults)['blacklist_gap'] == 0.15
+    assert [c['sig'] for c in byDefault] == ['dengage-send']
+    assert [c['sig'] for c in strict] == ['dengage-delivery'] and strict[0]['problem'] == 'excluded'
 
 
 def test_dengage_rules_come_from_the_rule_set(store: Store):
@@ -1107,7 +1277,7 @@ def test_an_instance_row_without_a_utc_offset_reads_dengage_dates_in_utc_and_a_s
 def test_delivery_and_silence_cards_carry_every_field_a_card_sentence_reads():
     # given
     low = raw('low', 'Spring sale', 2, 40_000, 20_000, 800)
-    listed = raw('listed', 'Newsletter', 3, 40_000, 33_000, 6_000)
+    listed = raw('listed', 'Newsletter', 3, 40_000, 33_000, 10_000)
 
     # when
     found = {c['key']: c for c in swept(Api({'push': daily() + [low, listed]})).result.found}
@@ -1115,9 +1285,9 @@ def test_delivery_and_silence_cards_carry_every_field_a_card_sentence_reads():
 
     # then
     relay, black = found['dengage-delivery|-/dengage|push-low'], found['dengage-delivery|-/dengage|push-listed']
-    assert {k: relay[k] for k in ('sig', 'sendName', 'channel', 'selected', 'relayed', 'blacklisted', 'share', 'usualShare', 'problem')} == {
-        'sig': 'dengage-delivery', 'sendName': 'Spring sale', 'channel': 'push', 'selected': 40_000, 'relayed': 20_000, 'blacklisted': 800, 'share': 0.5,
+    assert {k: relay[k] for k in ('sig', 'sendName', 'channel', 'selected', 'relayed', 'excluded', 'share', 'usualShare', 'problem')} == {
+        'sig': 'dengage-delivery', 'sendName': 'Spring sale', 'channel': 'push', 'selected': 40_000, 'relayed': 20_000, 'excluded': 800, 'share': 0.5,
         'usualShare': 0.92, 'problem': 'relay'}
-    assert (black['problem'], black['usualKept']) == ('blacklist', 0.95)
+    assert (black['problem'], black['usualKept']) == ('excluded', 0.95)
     assert {k: silent[k] for k in ('sig', 'channel', 'quietHours', 'activeDays', 'lastSendAt')} == {
         'sig': 'dengage-silence', 'channel': 'sms', 'quietHours': 75, 'activeDays': 25, 'lastSendAt': iso(NOW - 75 * HOUR)}

@@ -1,5 +1,12 @@
 {
  "page": {
+  "Advisor": "Asesor",
+  "Anthropic only": "Solo Anthropic",
+  "Advisor consultations per run": "Consultas al asesor por ejecuci\u00f3n",
+  "Advisor answer size": "Tama\u00f1o de la respuesta del asesor",
+  "advisor": "asesor",
+  "est.": "est.",
+  "Enter a whole number from {0} to {1}": "Introduce un n\u00famero entero de {0} a {1}",
   "Clear filters \u203a": "Quitar filtros \u203a",
   "cards of {0} severity": "tarjetas con severidad {0}",
   "cards of every severity": "tarjetas de cualquier severidad",

@@ -892,6 +892,8 @@ def head_text(a: dict, head: dict, mute: str | None = None, stopped: str = '') -
         mark = OPEN_MARK
     else:
         mark = EMOJI.get(sev, ':white_circle:')
+    if mark in (DONE, OPEN_MARK) and a.get('sevSet') and level not in text and sev in SEVS:
+        text += f' \u00b7 {level}'
     return f"{mark} {text}"
 
 

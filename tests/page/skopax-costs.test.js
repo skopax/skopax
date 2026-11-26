@@ -16,6 +16,10 @@ const USAGE = {since: iso(7 * 1440), runs: 4, usd: 2, turns: 30, usage: {input_t
   models: {'claude-opus-5-5': 30}, outcomes: {done: 4}, tools: [], keys: [], slowest: []};
 
 function money(parts) { const m = Object.assign({cacheRead: 0, input: 0, cacheWrite5m: 0, cacheWrite1h: 0, output: 0, webSearch: 0}, parts); m.total = PARTS.reduce((a, p) => a + m[p], 0); return m; }
+function plus(a, b) { const m = {}; PARTS.forEach((k) => { m[k] = a[k] + b[k]; }); m.total = PARTS.reduce((x, k) => x + m[k], 0); return m; }
+const ADVISOR = money({input: 0.15, output: 0.05});
+const SHARED = JSON.parse(fs.readFileSync(require('path').join(__dirname, 'skopax-costs-advisor.json'), 'utf8'));
+const EXECUTOR = money({cacheRead: 0.6, input: 0.05, cacheWrite5m: 0.3, output: 0.35});
 function zero() { return {pod: 0, page: 0, slack: 0, chat: 0, assess: 0, gate: 0, smalltalk: 0, pagescan: 0, selfreview: 0, threadsummary: 0, mcp: 0}; }
 function keysFor(days) {
   if (days === 1) return [...Array(24).keys()].map((h) => TODAY + 'T' + String(h).padStart(2, '0'));
@@ -35,9 +39,10 @@ function costsBody(days) {
   cache[last - 1].hit.slack = 0;
   cache[last - 1].writeUsd.slack = 0.2;
   return {days, from: keys[0].slice(0, 10), to: TODAY, bucket: days === 1 ? 'hour' : 'day',
-    today: {day: TODAY, spent: 3.4, cap: 20}, total: {usd: 2.7503, calls: 6, runs: 4, cacheHit: 0.93}, avg: {slackAsk: 0.25, podRun: 1.5}, perBucket, cache,
+    today: {day: TODAY, spent: 3.4, cap: 20}, total: {usd: 2.7503, advisorUsd: SHARED.total.advisorUsd, calls: 6, runs: 4, cacheHit: 0.93}, avg: {slackAsk: 0.25, podRun: 1.5}, perBucket, cache,
     sources: [
-      {source: 'pod', calls: 2, runs: 1, usd: money({cacheRead: 0.6, input: 0.2, cacheWrite5m: 0.3, output: 0.4}), cacheHit: 0.95, avgRun: 1.5, models: {'claude-opus-5-5': 2}},
+      {source: 'pod', calls: 2, runs: 1, usd: plus(EXECUTOR, ADVISOR), cacheHit: 0.95, avgRun: 1.5, models: {'claude-opus-5-5': 2},
+       advisor: SHARED.source},
       {source: 'page', calls: 1, runs: 1, usd: money({input: 0.4}), cacheHit: 0, avgRun: 0.4, models: {'claude-opus-5-5': 1}},
       {source: 'slack', calls: 1, runs: 1, usd: money({input: 0.05, cacheWrite1h: 0.2}), cacheHit: 0, avgRun: 0.25, models: {'claude-sonnet-5-5': 1}},
       {source: 'assess', calls: 1, runs: 1, usd: money({output: 0.6}), cacheHit: null, avgRun: 0.6, models: {'claude-opus-5-5': 1}},
@@ -47,8 +52,8 @@ function costsBody(days) {
     topCards: [{key: KEY, runs: 3, usd: 1.9503}, {key: KEY2, runs: 1, usd: 0.2}],
     topAskers: [{by: 'dora.lane', runs: 1, calls: 1, usd: 0.4}, {by: 'adam.baker@example.com', runs: 1, calls: 2, usd: 0.2503}, {by: 'token', runs: 1, calls: 1, usd: 0.33}],
     runs: [
-      {id: 'r1', at: iso(30), source: 'pod', by: 'pod', trigger: 'cards', outcome: 'done', what: KEY, keys: [KEY], model: 'claude-opus-5-5', effort: 'medium', calls: 2, toolCalls: 2, seconds: 95,
-       usd: money({cacheRead: 0.6, input: 0.2, cacheWrite5m: 0.3, output: 0.4}), cacheHit: 0.95},
+      {id: 'r1', at: iso(30), source: 'pod', by: 'pod', trigger: 'cards', outcome: 'done', what: KEY, keys: [KEY], model: 'claude-opus-5-5', effort: 'medium', calls: 2, toolCalls: 2, advisorCalls: SHARED.run.advisorCalls, advisorUsd: SHARED.run.advisorUsd, advisorModel: SHARED.run.advisorModel, seconds: 95,
+       usd: plus(EXECUTOR, ADVISOR), cacheHit: 0.95},
       {id: 'r4', at: iso(60), source: 'assess', by: 'server', trigger: 'assess', outcome: 'failed', what: '2 deploys, 1 flagged', keys: [], model: 'claude-opus-5-5', effort: 'medium', calls: 1, toolCalls: 1, seconds: 180,
        usd: money({output: 0.6}), cacheHit: null},
       {id: 'r2', at: iso(90), source: 'slack', by: 'adam.baker@example.com', trigger: null, outcome: null, what: KEY, keys: [KEY], model: 'claude-sonnet-5-5', effort: 'low', calls: 1, toolCalls: null, seconds: null,
@@ -311,13 +316,40 @@ async function spendPerDayStacksEverySourceWithALegendTooltipsAndATable() {
   console.log('PASS spend per day stacks the eleven sources in fixed colours with a legend, an axis, per-column tooltips and a table view');
 }
 
+async function advisorSpendIsItsOwnLineUnderItsUseAndRunsCountTheCalls() {
+  //given
+  const {dom, doc, errors} = await boot({hash: '#t=costs'});
+  await wait(200);
+
+  //when
+  const line = doc.querySelector('.csrc tr.csrc-advisor[data-advisor="pod"]'), pod = doc.querySelector('.csrc tr[data-source="pod"]');
+  const lines = [...doc.querySelectorAll('.csrc tr.csrc-advisor')].map((r) => r.dataset.advisor);
+  const run = doc.querySelector('.cruns tr[data-run="r1"]'), other = doc.querySelector('.cruns tr[data-run="r2"]');
+
+  //then
+  assert.deepStrictEqual(lines, ['pod'], 'only a source with advisor spend gets the line');
+  assert.strictEqual(pod.nextElementSibling, line, 'the line sits right under its use');
+  assert.deepStrictEqual(cells(line).slice(0, 4), ['advisor', '2', '1', '$0.20 est.'], 'label, calls, runs and spend, with the estimate marked');
+  assert.strictEqual(cells(line)[cells(line).length - 1], 'opus-5-5', 'with the advisor model from the served list');
+  assert.strictEqual(line.querySelector('.cest').textContent, 'est.', 'estimated advisor spend says so');
+  assert.strictEqual(cells(pod)[3], '$1.50', 'the use total is the server total, which already includes the advisor, so it is not added again');
+  assert.strictEqual(doc.querySelectorAll('#costs-strip, .cstrip')[0].querySelectorAll('.cv')[1].textContent, '$2.75', 'the range total is the server total, not the total plus the advisor');
+  assert.strictEqual(run.querySelector('.csplit').closest('tr').lastElementChild.textContent, '$1.50', 'a run total is the server total');
+  assert.strictEqual(run.querySelector('.cmodel .cadv').title, 'opus-5-5', 'the advisor model of the run is in the tooltip');
+  assert.ok(run.querySelector('.cmodel').textContent.indexOf('advisor 2') >= 0, 'a run shows how many times it consulted');
+  assert.ok(other.querySelector('.cmodel').textContent.indexOf('advisor') < 0, 'a run without advisor calls shows nothing');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  console.log('PASS advisor spend is its own line under its use with the advisor model, and a run shows its consultations');
+}
+
 async function theBySourceTableShowsSplitHitShareAverageAndModels() {
   //given
   const {dom, doc} = await boot();
   doc.getElementById('tab-costs').click();
   await wait(100);
   //when
-  const rows = [...doc.querySelectorAll('#costs-sources tbody tr')];
+  const rows = [...doc.querySelectorAll('#costs-sources tbody tr:not(.csrc-advisor)')];
   //then
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-sources thead th')].map((th) => th.textContent),
     ['Source', 'Calls', 'Runs', 'Total', 'Cache read', 'Input', 'Cache write', 'Cache write, long', 'Output', 'Web search', 'Cache hit', 'Avg / run', 'Models']);
@@ -521,7 +553,7 @@ async function theRunListShowsTheSplitBarAndLinksTheFullRunRecord() {
   const split = rows[0].querySelector('.csplit');
   //then
   assert.deepStrictEqual(rows.map((r) => r.dataset.run), ['r1', 'r4', 'r2']);
-  assert.deepStrictEqual(cells(rows[0]).slice(1), ['Investigator runs', 'pod', 'checkout-service / ERROR pattern', 'opus-5-5 \u00b7 medium', '2', '95 s', '', '$1.50']);
+  assert.deepStrictEqual(cells(rows[0]).slice(1), ['Investigator runs', 'pod', 'checkout-service / ERROR pattern', 'opus-5-5 \u00b7 medium \u00b7 advisor 2', '2', '95 s', '', '$1.50']);
   assert.deepStrictEqual([link.getAttribute('href'), link.getAttribute('target'), link.getAttribute('rel')], ['/api/investigations/r1', '_blank', 'noopener'], 'the time opens the full run record');
   assert.deepStrictEqual([...split.children].map((b) => [b.className, b.style.width]), [['p-cacheRead', '40%'], ['p-input', '13.3%'], ['p-cacheWrite5m', '20%'], ['p-output', '26.7%']]);
   assert.strictEqual(split.title, 'Cache read $0.60 \u00b7 Input $0.20 \u00b7 Cache write $0.30 \u00b7 Cache write, long $0.00 \u00b7 Output $0.40 \u00b7 Web search $0.00');
@@ -643,6 +675,7 @@ async function accessResolvingBeforeTheInvestigationsDoesNotRenderAnEmptyHistory
   await theStripShowsTodayAgainstTheCapAndTheRange();
   await oneDayIsCutIntoHoursAndThirtyDaysLabelEveryFifthDay();
   await spendPerDayStacksEverySourceWithALegendTooltipsAndATable();
+  await advisorSpendIsItsOwnLineUnderItsUseAndRunsCountTheCalls();
   await theBySourceTableShowsSplitHitShareAverageAndModels();
   await cacheEfficiencyIsTwoChartsAHitShareLineAndWriteBars();
   await topCardsAndTopAskersSitSideBySide();

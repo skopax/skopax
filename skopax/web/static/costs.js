@@ -99,13 +99,22 @@ function costTable(rows, list, value, fmt, hour) {
     rows.map(function (r) { return '<tr><td>' + esc(costTick(r.t, hour)) + '</td>' + list.map(function (s) { return '<td class="num">' + esc(fmt(value(r, s.id))) + '</td>'; }).join('') + '</tr>'; }).join('') +
     '</tbody></table></div></details>';
 }
+function costAdvisor(s) {
+  var a = s.advisor;
+  if (!a || !(a.calls > 0)) return '';
+  var models = Array.isArray(a.models) ? a.models : [];
+  return '<tr class="csrc-advisor" data-advisor="' + esc(s.source) + '"><td class="cadv">advisor</td><td class="num">' + esc(a.calls) + '</td><td class="num">' + esc(a.runs == null ? '–' : a.runs) + '</td><td class="num"><b>' + esc(costUsd(a.usd)) + '</b>' +
+    (a.estimatedUsd > 0 ? ' <span class="cest">est.</span>' : '') + '</td>' +
+    COST_PARTS.map(function () { return '<td class="num">–</td>'; }).join('') +
+    '<td class="num">–</td><td class="num">–</td><td class="cmodels">' + esc(models.map(costModel).join(' · ') || '–') + '</td></tr>';
+}
 function costSources(d) {
   return '<div class="box"><table class="csrc"><thead><tr><th>Source</th><th class="num">Calls</th><th class="num">Runs</th><th class="num">Total</th>' +
     COST_PARTS.map(function (p) { return '<th class="num">' + esc(p.label) + '</th>'; }).join('') + '<th class="num">Cache hit</th><th class="num">Avg / run</th><th>Models</th></tr></thead><tbody>' +
     d.sources.map(function (s) {
       return '<tr data-source="' + esc(s.source) + '"><td><i class="sw s-' + esc(s.source) + '"></i>' + esc(costLabel(COST_SOURCES, s.source)) + '</td><td class="num">' + esc(s.calls) + '</td><td class="num">' + esc(s.runs) + '</td><td class="num"><b>' + esc(costUsd(s.usd.total)) + '</b></td>' +
         COST_PARTS.map(function (p) { return '<td class="num">' + esc(costUsd(s.usd[p.id])) + '</td>'; }).join('') +
-        '<td class="num">' + esc(costPct(s.cacheHit)) + '</td><td class="num">' + esc(costUsd(s.avgRun)) + '</td><td class="cmodels">' + esc(Object.keys(s.models).map(function (m) { return costModel(m) + ' ' + s.models[m]; }).join(' · ') || '–') + '</td></tr>';
+        '<td class="num">' + esc(costPct(s.cacheHit)) + '</td><td class="num">' + esc(costUsd(s.avgRun)) + '</td><td class="cmodels">' + esc(Object.keys(s.models).map(function (m) { return costModel(m) + ' ' + s.models[m]; }).join(' · ') || '–') + '</td></tr>' + costAdvisor(s);
     }).join('') + '</tbody></table></div>';
 }
 function costCardName(key) {
@@ -141,7 +150,7 @@ function costRuns(d) {
   var body = d.runs.length ? d.runs.map(function (r) {
     return '<tr data-run="' + esc(r.id) + '"><td class="when"><a class="run-link" href="/api/investigations/' + encodeURIComponent(r.id) + '" target="_blank" rel="noopener" data-json="Run record" title="Open the full run record">' + esc(dayhm(r.at)) + '</a></td>' +
       '<td>' + esc(costLabel(COST_SOURCES, r.source)) + (r.outcome && r.outcome !== 'done' ? ' <span class="tag plain">' + esc(r.outcome) + '</span>' : '') + '</td><td>' + esc(costBy(r.by) || '–') + '</td>' +
-      '<td class="cwhat" title="' + esc(r.what) + '">' + costWhat(r) + '</td><td class="cmodel">' + esc(costModel(r.model) + (r.effort ? ' · ' + r.effort : '')) + '</td>' +
+      '<td class="cwhat" title="' + esc(r.what) + '">' + costWhat(r) + '</td><td class="cmodel">' + esc(costModel(r.model) + (r.effort ? ' · ' + r.effort : '')) + (r.advisorCalls > 0 ? ' · <span class="cadv"' + (r.advisorModel ? ' title="' + esc(costModel(r.advisorModel)) + '"' : '') + '>advisor</span> ' + esc(r.advisorCalls) : '') + '</td>' +
       '<td class="num">' + esc(r.toolCalls == null ? '–' : r.toolCalls) + '</td><td class="num">' + esc(r.seconds == null ? '–' : secs(r.seconds)) + '</td><td>' + costSplit(r.usd) + '</td><td class="num"><b>' + esc(costUsd(r.usd.total)) + '</b></td></tr>';
   }).join('') : '<tr class="empty"><td colspan="9">No runs in this range.</td></tr>';
   return '<section id="costs-runs"><h3 class="sub-h">Runs <span class="count">' + esc(d.runs.length) + '</span></h3>' + costLegend(COST_PARTS, 'p') +

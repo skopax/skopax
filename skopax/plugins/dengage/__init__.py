@@ -14,7 +14,7 @@ SECTION_HELP = {check.SECTION: 'per channel: the last send, sends in 24 h, daily
 DESCRIPTION = ('Dengage, the marketing tool that sends the push, e-mail and SMS campaigns, read only: which sends went out, when and to how many. '
                'These sends are made outside the services, so no deploy record and no application log shows them. '
                f'op sends (default): the completed sends of the last `hours` (default {HOURS_DEFAULT}, at most {HOURS_MAX}), newest first, with channel, name, campaign, time (UTC), '
-               'tags and four counts: selected (the audience), prepared, relayed (handed to the provider) and blacklisted, plus relayedShare (0.92 = 92 %); '
+               'tags and four counts: selected (the audience), prepared, relayed (handed to the provider) and excluded (dropped by Dengage, for push: no notification permission, no push token, a duplicate token, or the blacklist), plus relayedShare (0.92 = 92 %); '
                'narrow with channel or contains (part of the send, campaign or tag name). '
                f'op summary: per channel and day for the last `days` (default {DAYS_DEFAULT}, at most {BASE_DAYS}): number of sends and the summed counts. '
                'Without channel both read the channels the instance watches. '

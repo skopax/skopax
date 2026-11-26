@@ -1,5 +1,6 @@
 var AIU_HEADS = ['Use', 'Model', 'Effort', 'Price per million tokens (input / output)', 'Average cost per run (7 days)', 'Data goes to'];
 var AIU_FIT = 'Cheap models often miss steps in long investigations', AIU_FIT_USES = ['card', 'critical', 'high'];
+var AIU_ADV_SAID = {}, AIU_ADV_BUSY = {}, AIU_ADV_FIELDS = {uses: {suffix: '-advisor-uses', label: 'Advisor consultations per run', min: 1, max: 10}, tokens: {suffix: '-advisor-tokens', label: 'Advisor answer size', min: 1024, max: 4096}};
 var AIU_SAID = {}, AIU_SEQ = 0, AIU_EDIT = {}, AIU_PENDING = {}, AIU_CHAIN = Promise.resolve(), AIU_FAILED = false;
 var AIC_TESTING = {}, AIC_SEQ = 0, AIC_PRIVATE_KEY = 'core.allow-private-ai';
 var AIV_TESTING = {}, AIV_MODES = ['key', 'federation', 'pod'];
@@ -9,11 +10,17 @@ var AIC_NOT_FIT = 'Not fit for investigations: the model did not call the tool';
 var AIU_PROVIDERS = {anthropic: 'Anthropic', openai: 'OpenAI', vertex: 'Vertex AI'};
 function aiuText(v) { return typeof v === 'string' ? v : ''; }
 function aiuNum(v) { return typeof v === 'number' && isFinite(v) ? v : null; }
+function aiuAdvOf(a) {
+  if (!a || typeof a !== 'object') return null;
+  var uses = aiuNum(a.maxUses), tokens = aiuNum(a.maxTokens);
+  return {model: aiuText(a.model), choices: (Array.isArray(a.choices) ? a.choices : []).filter(function (c) { return typeof c === 'string' && c; }), maxUses: uses == null ? 3 : uses, maxTokens: tokens == null ? 2000 : tokens,
+    capable: a.capable === true, problem: aiuText(a.problem) || null};
+}
 function aiuOf(r) {
   return (r && Array.isArray(r.uses) ? r.uses : []).filter(function (u) { return u && typeof u.use === 'string' && u.use && typeof u.setting === 'string'; }).map(function (u) {
     var p = u.price && typeof u.price === 'object' ? {input: aiuNum(u.price.input), output: aiuNum(u.price.output)} : null;
     return {use: u.use, label: aiuText(u.label) || u.use, setting: u.setting, model: aiuText(u.model), provider: aiuText(u.provider), company: aiuText(u.company), price: p,
-      avgCost7d: aiuNum(u.avgCost7d), problem: aiuText(u.problem) || null, fit: u.fit === 'cheap' ? 'cheap' : 'ok'};
+      avgCost7d: aiuNum(u.avgCost7d), problem: aiuText(u.problem) || null, fit: u.fit === 'cheap' ? 'cheap' : 'ok', advisor: aiuAdvOf(u.advisor)};
   });
 }
 function aicLast(t) {
@@ -37,6 +44,7 @@ function aiuCovered() {
   (AIUSES || []).forEach(function (u) {
     out[u.setting] = 1;
     if (AI_PAIRS[u.setting]) out[AI_PAIRS[u.setting][0]] = 1;
+    if (u.advisor) ['-advisor', '-advisor-uses', '-advisor-tokens'].forEach(function (x) { out[u.setting + x] = 1; });
   });
   return out;
 }
@@ -100,7 +108,7 @@ function aiuNote(into, cls, text, id, notes) {
   notes.push(id);
 }
 function aiuRow(u) {
-  var id = aiuId(u.use), item = aiuItem(u.setting), tr = el('tr', 'aiu-row' + (u.problem ? ' aiu-bad' : '') + (item && item.source === 'admin' ? ' set' : '')), notes = [];
+  var id = aiuId(u.use), item = aiuItem(u.setting), tr = el('tr', 'aiu-row' + (u.problem || (u.advisor && u.advisor.problem) ? ' aiu-bad' : '') + (item && item.source === 'admin' ? ' set' : '')), notes = [];
   tr.dataset.use = u.use;
   if (item) tr.dataset.key = item.key;
   var th = accText('th', 'aiu-use');
@@ -122,6 +130,7 @@ function aiuRow(u) {
   if (u.fit === 'cheap' && AIU_FIT_USES.indexOf(u.use) >= 0) aiuNote(model, 'adm-help aiu-fit', AIU_FIT, id + '-fit', notes);
   if (item && item.off) aiuNote(model, 'adm-help adm-off-why', item.off, id + '-off', notes);
   var sel = model.querySelector('select.aiu-in');
+  if (u.advisor) model.appendChild(aiuAdvisor(u, id));
   if (sel && notes.length) sel.setAttribute('aria-describedby', notes.join(' '));
   var said = AIU_SAID[u.use];
   if (said) { msg.textContent = said.text; msg.className = 'adm-msg aiu-msg ' + (said.bad ? 'bad' : 'ok'); delete AIU_SAID[u.use]; }
@@ -134,6 +143,103 @@ function aiuRow(u) {
   tr.appendChild(aiuCell('aiu-cost', 4, u.avgCost7d == null ? 'No runs in 7 days' : costUsd(u.avgCost7d)));
   tr.appendChild(aiuCell('aiu-co', 5, u.company));
   return tr;
+}
+function aiuAdvOption(value, text) {
+  var o = accText('option', null, text);
+  o.value = value;
+  return o;
+}
+function aiuAdvisor(u, id) {
+  var a = u.advisor, box = el('div', 'aiu-adv'), notes = [], k = accText('span', 'aiu-adv-k', 'Advisor'), sel = el('select', 'aiu-adv-in'), msg = accText('span', 'adm-msg aiu-adv-msg');
+  box.dataset.use = u.use;
+  k.id = id + '-adv-k';
+  sel.id = id + '-adv';
+  sel.setAttribute('aria-labelledby', id + '-l ' + k.id);
+  sel.appendChild(aiuAdvOption('', 'None'));
+  if (a.capable) {
+    a.choices.forEach(function (c) { sel.appendChild(aiuAdvOption(c, c)); });
+    if (a.model && a.choices.indexOf(a.model) < 0) sel.appendChild(aiuAdvOption(a.model, a.model));
+    sel.value = a.model;
+  } else sel.disabled = true;
+  msg.setAttribute('role', 'status');
+  box.appendChild(k);
+  box.appendChild(sel);
+  if (!a.capable) {
+    var note = accText('p', 'adm-help aiu-adv-note', 'Anthropic only');
+    note.id = id + '-adv-note';
+    box.appendChild(note);
+    notes.push(note.id);
+  }
+  if (a.problem) {
+    var bad = accText('p', 'adm-help aiu-problem aiu-adv-problem bad', a.problem);
+    bad.id = id + '-adv-problem';
+    box.appendChild(bad);
+    notes.push(bad.id);
+  }
+  if (notes.length) sel.setAttribute('aria-describedby', notes.join(' '));
+  if (a.capable && a.model) {
+    var vals = {uses: a.maxUses, tokens: a.maxTokens};
+    Object.keys(AIU_ADV_FIELDS).forEach(function (n) {
+      var f = AIU_ADV_FIELDS[n], wrap = el('div', 'aiu-adv-f'), lab = accText('label', 'aiu-adv-l', f.label), inp = el('input', 'aiu-adv-' + n);
+      inp.type = 'number';
+      inp.id = id + '-adv-' + n;
+      inp.min = String(f.min);
+      inp.max = String(f.max);
+      inp.step = '1';
+      inp.value = String(vals[n]);
+      lab.setAttribute('for', inp.id);
+      inp.addEventListener('change', function () { aiuAdvChange(u, f, inp.value); });
+      wrap.appendChild(lab);
+      wrap.appendChild(inp);
+      box.appendChild(wrap);
+    });
+  }
+  sel.addEventListener('change', function () { aiuAdvPut(u, '-advisor', sel.value); });
+  box.appendChild(msg);
+  var said = AIU_ADV_SAID[u.use];
+  if (said) { msg.textContent = said.text; msg.className = 'adm-msg aiu-adv-msg ' + (said.bad ? 'bad' : 'ok'); delete AIU_ADV_SAID[u.use]; }
+  if (AIU_ADV_BUSY[u.use]) box.querySelectorAll('select, input').forEach(function (c) { c.disabled = true; });
+  return box;
+}
+function aiuAdvChange(u, f, raw) {
+  var n = Number(raw);
+  if (raw === '' || !isFinite(n) || n !== Math.floor(n) || n < f.min || n > f.max) {
+    AIU_ADV_SAID[u.use] = {text: 'Enter a whole number from ' + f.min + ' to ' + f.max, bad: true};
+    renderAiRows();
+    return AIU_CHAIN;
+  }
+  return aiuAdvPut(u, f.suffix, String(n));
+}
+function aiuAdvPut(u, suffix, value) {
+  if (AIU_ADV_BUSY[u.use]) return AIU_CHAIN;
+  AIU_ADV_BUSY[u.use] = true;
+  var key = u.setting + suffix, box = document.querySelector('#ai-rows .aiu-adv[data-use="' + u.use + '"]');
+  if (box) box.querySelectorAll('select, input').forEach(function (c) { c.disabled = true; });
+  var run = function () {
+    return aiuAdvWrite(u, key, value).catch(function (e) {
+      delete AIU_ADV_BUSY[u.use];
+      failToast('the Who does what table could not be redrawn: ' + (e && e.message ? e.message : 'unknown error'));
+      try { renderAiRows(); } catch (again) {}
+    });
+  };
+  AIU_CHAIN = AIU_CHAIN.then(run, run);
+  return AIU_CHAIN;
+}
+async function aiuAdvWrite(u, key, value) {
+  var said;
+  try {
+    var r = await adminApi('PUT', '/api/admin/settings', {key: key, value: value});
+    ADMIN.items = ADMIN.items.map(function (x) { return x.key === r.item.key ? r.item : x; });
+    said = {text: r.item.live === false ? 'Saved, used after the next restart' : 'Saved, live within ' + ((ADMIN && ADMIN.refreshSeconds) || 15) + ' s on every pod', bad: false};
+  } catch (e) {
+    said = {text: e && e.detail ? e.detail : 'Not saved, try again', bad: true};
+  }
+  try { ADMIN_HIST = await adminApi('GET', '/api/admin/history?limit=' + ADMIN_HIST_MAX); } catch (e) {}
+  await aiuReload();
+  delete AIU_ADV_BUSY[u.use];
+  AIU_ADV_SAID[u.use] = said;
+  adminPaintAll(key);
+  adminNotices();
 }
 function aiuSaved(i) { return String(i.value == null ? '' : i.value); }
 function aiuControls(model, u, i, id, notes, msg) {

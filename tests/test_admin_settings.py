@@ -113,7 +113,8 @@ def test_only_admins_and_the_token_read_and_change_settings_and_admin_counts_as_
     assert items['slack.remind-hours']['live'] is False
     endpoints = {'sso.authorize-url', 'sso.token-url', 'sso.jwks-url'}
     assert {k for k, i in items.items() if i['group'] == 'Sign-in' and k.endswith('-url')} == endpoints and all(items[k]['kind'] == 'text' for k in endpoints)
-    plain = {'sso.extra-token-headers'}
+    plain = {'sso.extra-token-headers', 'investigate.model-advisor-tokens', 'investigate.model-critical-advisor-tokens', 'investigate.model-high-advisor-tokens', 'investigate.slack-model-advisor-tokens',
+             'chat.model-advisor-tokens'}
     assert not any('secret' in k or 'token' in k or 'webhook' in k or k.endswith('.url') for k in items if k not in endpoints | plain)
     assert items['sso.extra-token-headers']['kind'] == 'text' and 'a secret does not belong here' in items['sso.extra-token-headers']['help']
 

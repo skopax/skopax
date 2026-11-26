@@ -23,6 +23,8 @@ COMMAND = re.compile(r'[|(]\s*(FROM|ENRICH|LOOKUP\s+JOIN|LOOKUP)\s+([^\s|(),]+)'
 LITERAL = re.compile(r'"(\d+)"')
 SOURCE = re.compile(r'[A-Za-z0-9_.*][A-Za-z0-9_.*:-]*')
 COLUMNS_SHOWN = 5
+COLUMNS_LISTED = 40
+UNREACHABLE = 'ES|QL unreachable'
 COLUMNS_CLOSE = 0.5
 MISSING_NAME = re.compile(r'(?:no such index|Unknown index) \[([^\]]+)\]')
 COLUMNS_S = 15
@@ -347,16 +349,17 @@ def run_esql(ctx: Context, args: dict) -> object:
         if e.unknown:
             raise ReadError(status, first + column_hint(es, query, e.unknown), HINT_ROOM) from None
         slow = e.status == 504 or e.timed_out
-        unserved = not slow and unserved_range(e)
-        narrowed = narrower(query) if slow or unserved else None
+        down = not slow and e.status == 0 and not e.too_large and e.reason == UNREACHABLE
+        unserved = not slow and not down and unserved_range(e)
+        narrowed = narrower(query) if slow or unserved or down else None
         if narrowed is None:
-            raise ReadError(status, first + (f" - {msg('esql.narrow')}" if slow or unserved else '')) from None
+            raise ReadError(status, first + (f" - {msg('esql.narrow')}" if slow or unserved or down else '')) from None
     retry, window = narrowed
     try:
         rows = es.query(retry, timeout=QUERY_S)
     except ElasticError as again:
         raise ReadError(status, msg(f'esql.retry_last_{window}', first=first, again=answer(again.text, again.status, config))) from None
-    return {'note': msg(f"esql.{'range' if unserved else 'timeout'}_note_{window}"), 'rows': rows}
+    return {'note': msg(f"esql.{'unreachable' if down else 'range' if unserved else 'timeout'}_note_{window}"), 'rows': rows}
 
 
 def missing_names(detail: str) -> set[str]:
@@ -411,7 +414,11 @@ def column_hint(es: Elastic | NodeElastic, query: str, unknown: tuple[str, ...])
         return ''
     scored = sorted(((max(difflib.SequenceMatcher(None, u, n).ratio() for u in unknown), n) for n in names if n not in unknown), key=lambda x: (-x[0], x[1]))
     close = [n for ratio, n in scored if ratio >= COLUMNS_CLOSE][:COLUMNS_SHOWN]
-    return msg('esql.closest_columns', sources=', '.join(sources), columns=', '.join(close)) if close else ''
+    prefixes = tuple(u.rpartition('.')[0] + '.' for u in unknown if '.' in u)
+    ordered = [n for n in names if prefixes and n.startswith(prefixes)] + [n for n in names if not (prefixes and n.startswith(prefixes))]
+    listed = [n for n in ordered if n not in unknown][:COLUMNS_LISTED]
+    return (msg('esql.closest_columns', sources=', '.join(sources), columns=', '.join(close)) if close else '') + \
+           (msg('esql.valid_columns', sources=', '.join(sources), columns=', '.join(listed)) if listed else '')
 
 
 def unserved_range(e: ElasticError) -> bool:

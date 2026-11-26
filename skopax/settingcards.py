@@ -1,5 +1,7 @@
 import re
 
+from skopax import advisor
+
 MORE = 'More'
 PLUGIN_RULES = 'Thresholds'
 PLUGIN_OWN = 'Settings'
@@ -20,6 +22,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     'Investigator': (
         ('Provider', ('investigate.provider', 'core.allow-private-ai')),
         ('Models', ('investigate.model', 'investigate.effort', 'investigate.model-critical', 'investigate.model-high', 'investigate.slack-model', 'investigate.slack-effort', 'chat.model', 'chat.effort', 'investigate.gate-model', 'investigate.gate-effort')),
+        ('Advisor models', tuple(key for found in advisor.keys().values() for key in found)),
         ('Spend and limits', ('investigate.daily-usd', 'page.ask-cap', 'chat.max-chars', 'chat.daily-cap', 'mcp.dive-cap', 'investigate.max-cards', 'investigate.rooms',
                               'investigate.max-tool-calls', 'investigate.assess-max-tool-calls', 'investigate.slack-max-tool-calls', 'chat.max-tool-calls', 'screenshot.max-per-day')),
         ('Web', ('core.own-sites', 'investigate.web-domains', 'investigate.web-searches', 'investigate.web-fetches')),
@@ -60,7 +63,7 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
 SECTION_CARD = {'Card tags': 'Tag rules', 'Features': 'Switches'}
 UNITS = {
     'investigate.daily-usd': '$', 'page.ask-cap': 'per hour', 'slack.ask-cap': 'per hour', 'slack.user-ask-cap': 'per hour', 'mcp.dive-cap': 'per hour', 'chat.daily-cap': 'per day',
-    'screenshot.max-per-day': 'per day', 'investigate.web-searches': 'per run', 'investigate.web-fetches': 'per run', 'investigate.max-cards': 'cards',
+    'screenshot.max-per-day': 'per day', 'investigate.web-searches': 'per run', 'investigate.web-fetches': 'per run', **{key: 'per run' for found in advisor.keys().values() for key in found[1:2]}, **{key: 'tokens' for found in advisor.keys().values() for key in found[2:3]}, 'investigate.max-cards': 'cards',
     'investigate.max-tool-calls': 'calls', 'investigate.assess-max-tool-calls': 'calls', 'investigate.slack-max-tool-calls': 'calls', 'chat.max-tool-calls': 'calls', 'investigate.rooms': 'rooms',
     'chat.max-chars': 'chars', 'investigate.refire-hours': 'h', 'investigate.follow-up-hours': 'h', 'investigate.follow-up-close-hours': 'h', 'investigate.settle-max-per-day': 'per day', 'investigate.follow-up-days': 'days', 'jira.points': 'points', 'slack.operator-cache-seconds': 's', 'langfuse.trace-sample': '%',
 }

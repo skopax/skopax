@@ -1,4 +1,5 @@
 import copy
+import difflib
 import logging
 import re
 import threading
@@ -16,6 +17,7 @@ from skopax.runtime import Runtime
 log = logging.getLogger('skopax.plugintools')
 
 TOOL_TIMEOUT_S = 120
+NEAR_NAMES = 3
 ERROR_ROOM_MAX = 800
 FIELD = re.compile(r'\{field:([a-z][a-z0-9-]{0,30})\}')
 
@@ -139,11 +141,13 @@ class PluginTools:
 
     def _not_here(self, tool: Tool, field: str, asked: str, names: list[str], among: Collection[str] | None = None) -> str:
         owners = self._elsewhere(tool, field, asked, among)
-        if not owners:
-            return unwatched(field, asked)
         close = related_names(asked, names)
+        if not owners:
+            near = close or difflib.get_close_matches(asked, names, NEAR_NAMES, 0.6)
+            return unwatched(field, asked) + (f'; closest configured: {", ".join(near)}' if near else '')
         return (f'. "{asked}" is an instance of {", ".join(owners)}, not of {tool.name}'
-                + (f'; did you mean {close[0]}?' if len(close) == 1 else f'; do not use another {field} in its place without saying so in your answer'))
+                + (f'; did you mean {close[0]}?' if len(close) == 1 else f'; did you mean {" or ".join(close[:NEAR_NAMES])}?' if close else
+                   f'; do not use another {field} in its place without saying so in your answer'))
 
     def _described(self, plugin: Plugin, text: str) -> str:
         if '{field:' not in text:
