@@ -135,10 +135,10 @@ async function theBoardHasNoInfoFilterAndAnEmptyPageSaysSo() {
   const {w, doc, errors} = await boot([], true);
 
   //when
-  const chips = [...doc.querySelectorAll('#panel-anoms .qf-c, #panel-anoms .fb-i')].map((b) => b.dataset.f);
+  const chips = [...doc.querySelectorAll('#panel-anoms .qf-c, #panel-anoms .fb-i')].map((b) => b.dataset.f || b.dataset.type);
 
   //then
-  assert.ok(chips.indexOf('warn') >= 0 && chips.indexOf('info') < 0, 'the board has no Info filter');
+  assert.ok(chips.indexOf('sev:warn') >= 0 && chips.indexOf('info') < 0 && chips.indexOf('sev:info') < 0, 'the board has no Info filter');
   assert.match(doc.querySelector('#info-list .info-empty').textContent, /^No information right now\./);
   assert.strictEqual(doc.getElementById('count-info').textContent, '0');
   assert.deepStrictEqual(errors, []);

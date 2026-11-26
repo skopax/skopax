@@ -148,7 +148,7 @@ async function typeCountsFollowTheFilterAndTheViewCopiesItsLink() {
   assert.deepStrictEqual(types(), [['page-typos', '1']], 'under Cleared only the cleared typo counts, other types are not offered');
 
   //when
-  doc.querySelector('#panel-anoms .qf-c[data-f="open"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-f="open"]').click();
 
   //then
   assert.deepStrictEqual(types(), [['page-layout', '1'], ['log', '1'], ['page-typos', '1']], 'under Open the open cards count, ties by name');

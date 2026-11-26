@@ -65,12 +65,12 @@ async function theBoardIsTheDefaultAndAllTopsTheMenu() {
 
   //when
   const pressed = [...doc.querySelectorAll('#card-view button')].map((b) => b.dataset.view + ':' + b.getAttribute('aria-pressed'));
-  const menu = [doc.querySelector('#bf-main .qf-c[data-f]'), doc.querySelector('#bf-lists .fb-i[data-f]')].map((b) => b.dataset.f);
+  const menu = [doc.querySelectorAll('#bf-main .qf-c[data-f]').length, doc.querySelector('#bf-lists .fb-i[data-f]').dataset.f];
 
   //then
   assert.ok(doc.querySelector('#anoms .board') && doc.getElementById('anoms').classList.contains('view-board'), 'with nothing stored the Board shows');
   assert.deepStrictEqual(pressed, ['board:true', 'list:false'], 'Board comes first in the toggle and is pressed');
-  assert.deepStrictEqual(menu, ['open', 'all'], 'Open leads the chips in view and All tops the Status list');
+  assert.deepStrictEqual(menu, [0, 'all'], 'no state chip leads the row and All tops the Status list');
   assert.deepStrictEqual(errors, []);
   w.close();
   return 'the Board is the default view (List still one click away and remembered), and All tops the filter menu';
@@ -79,7 +79,7 @@ async function theBoardIsTheDefaultAndAllTopsTheMenu() {
 async function assigneeAndTagChipsFilterTheBoardTogetherAndALinkKeepsThem() {
   //given
   const {w, doc, errors} = await boot('#t=anoms/all', {'skopax-card-view': 'board'});
-  const chips = () => [...doc.querySelectorAll('#bf-main [data-type], #bf-lists .fb-i[data-type]')].map((b) => b.dataset.type + (b.getAttribute('aria-pressed') === 'true' || b.getAttribute('aria-checked') === 'true' ? '*' : '') + ' ' + b.querySelector('.count').textContent);
+  const chips = () => [...doc.querySelectorAll('#bf-main [data-type], #bf-lists .fb-i[data-type]:not([data-type^="sev:"])')].map((b) => b.dataset.type + (b.getAttribute('aria-pressed') === 'true' || b.getAttribute('aria-checked') === 'true' ? '*' : '') + ' ' + b.querySelector('.count').textContent);
   const shown = () => [...doc.querySelectorAll('#anoms .tile')].map((t) => t.dataset.key).sort();
   const chip = (t) => doc.querySelector('#bf-lists .fb-i[data-type="' + t + '"]');
 
@@ -98,7 +98,7 @@ async function assigneeAndTagChipsFilterTheBoardTogetherAndALinkKeepsThem() {
 
   //then
   assert.deepStrictEqual(listed, ['who:me 1', 'tag:developer 0', 'tag:data 1', 'tag:infra 0', 'tag:analyst 0', 'tag:- 4', 'who:any 2', 'who:none 3', 'who:u:alice 1', 'who:u:carol.diaz 1', 'log 5'], 'Mine sits first in view, then the lists hold every tag ending with Untagged, Assigned, Unassigned, each person with cards and the types');
-  assert.deepStrictEqual([...doc.querySelectorAll('#bf-lists .fb-w')].map((g) => g.dataset.g), ['status', 'tags', 'who', 'type'], 'Status, then Tags, Assignee and Type');
+  assert.deepStrictEqual([...doc.querySelectorAll('#bf-lists .fb-w')].map((g) => g.dataset.g), ['status', 'sev', 'tags', 'who', 'type'], 'Status, Severity, then Tags, Assignee and Type');
   assert.deepStrictEqual(colors, [true, true, true, 'Mine'], 'each tag has its own colour on the tile and as a dot in the Tags list; the chip reads Mine');
   assert.deepStrictEqual(nina, [NEW]);
   assert.deepStrictEqual(both, {cards: [NEW], hash: '#t=anoms/all/' + encodeURIComponent('who:u:alice+tag:data'), menu: 'true'}, 'an assignee and a tag combine, the link and the lists follow');
@@ -433,7 +433,7 @@ async function waitingAndInvestigatedCardsStayInOpenAndOnlyALiveRunTagsTheTile()
   assert.ok(colEl(doc, 'done').querySelector('.bcol-h svg.bcol-tick') && [...doc.querySelectorAll('.bcol-h svg.bcol-tick')].length === 1, 'only the Done column carries the green tick');
   assert.strictEqual(colEl(doc, 'done').querySelector('.bcol-h h3').textContent, 'Done');
   assert.strictEqual(doc.querySelector('#bf-lists .fb-i[data-f="stale"]'), null, 'no separate Waiting entry in the Status list');
-  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-f="open"] .count').textContent, '4', 'Open counts them all, the investigated and the stopped card included');
+  assert.strictEqual(doc.querySelector('#bf-lists .fb-i[data-f="open"] .count').textContent, '4', 'Open counts them all, the investigated and the stopped card included');
   assert.strictEqual(doc.getElementById('count-anoms').textContent, '4', 'the Anomalies tab shows one Open count');
   assert.deepStrictEqual(errors, []);
   w.close();

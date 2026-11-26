@@ -207,7 +207,7 @@ async function recurringTagOnTheRowAndInTheSideMenu() {
   assert.deepStrictEqual(label, ['Recurring', '1', false]);
   assert.deepStrictEqual(filtered, [KEY], 'the filter shows only the recurring card');
   assert.ok(note.includes('Recurring') && note.includes('1'), note);
-  assert.strictEqual(doc.querySelector('#panel-anoms .qf-c[data-f="open"]').getAttribute('aria-pressed'), 'true', 'a second click goes back to Open');
+  assert.strictEqual(doc.querySelector('#bf-lists .fb-i[data-f="open"]').getAttribute('aria-checked'), 'true', 'a second click goes back to Open');
   assert.deepStrictEqual(keys(), [KEY, NEW]);
   assert.ok(item(quiet.doc) && item(quiet.doc).classList.contains('zero'), 'with no card recurring the Recurring entry stays in the Status list, dimmed at zero');
   assert.deepStrictEqual(errors.concat(quiet.errors), []);

@@ -75,21 +75,21 @@ const type = (w, input, text) => { input.value = text; input.dispatchEvent(new w
 const css = () => fs.readFileSync(TEMPLATE, 'utf8');
 const rule = (text, sel) => { const m = new RegExp('(?:^|[}\\n])\\s*' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' \\{([^}]*)\\}').exec(text); return m ? m[1] : null; };
 
-async function theBarShowsQuickChipsFourListsAndTheViewSwitch() {
+async function theBarShowsMineFiveListsAndTheViewSwitch() {
   //given
   const {w, doc, errors} = await boot();
 
   //when
   const row = doc.getElementById('board-filters');
   const parts = [...row.children].map((n) => n.id);
-  const groups = ['status', 'tags', 'who', 'type'].map((g) => [said(doc, g), btn(doc, g).getAttribute('aria-haspopup'), btn(doc, g).getAttribute('aria-expanded'), pop(doc, g).hidden, btn(doc, g).getAttribute('aria-controls') === menu(doc, g).id]);
+  const groups = ['status', 'sev', 'tags', 'who', 'type'].map((g) => [said(doc, g), btn(doc, g).getAttribute('aria-haspopup'), btn(doc, g).getAttribute('aria-expanded'), pop(doc, g).hidden, btn(doc, g).getAttribute('aria-controls') === menu(doc, g).id]);
   const gone = ['more-filters', 'more-filters-box', 'bf-rest', 'card-qf'].map((id) => doc.getElementById(id));
   const view = [...doc.querySelectorAll('#card-view button[data-view]')].map((b) => b.textContent);
 
   //then
-  assert.deepStrictEqual(chips(doc).map((b) => b.querySelector('.lbl').textContent), ['Open', 'Mine', 'Critical', 'Done']);
-  assert.deepStrictEqual(groups, [['Status', 'menu', 'false', true, true], ['Tags', 'menu', 'false', true, true], ['Assignee', 'menu', 'false', true, true], ['Type', 'menu', 'false', true, true]]);
-  assert.deepStrictEqual(parts, ['bf-main', 'bf-lists', 'fb-clear-all', 'card-view'], 'chips, the four lists, Clear all, then the Board/List switch at the row end');
+  assert.deepStrictEqual(chips(doc).map((b) => b.querySelector('.lbl').textContent), ['Mine']);
+  assert.deepStrictEqual(groups, [['Status: Open 3', 'menu', 'false', true, true], ['Severity', 'menu', 'false', true, true], ['Tags', 'menu', 'false', true, true], ['Assignee', 'menu', 'false', true, true], ['Type', 'menu', 'false', true, true]]);
+  assert.deepStrictEqual(parts, ['bf-main', 'bf-lists', 'fb-clear-all', 'card-view'], 'the Mine chip, the five lists, Clear all, then the Board/List switch at the row end');
   assert.ok(doc.getElementById('card-search').parentNode.contains(row), 'the row sits with the search box');
   assert.strictEqual(doc.getElementById('fb-clear-all').hidden, true, 'no Clear all with nothing picked');
   assert.deepStrictEqual(view, ['Board', 'List']);
@@ -97,39 +97,39 @@ async function theBarShowsQuickChipsFourListsAndTheViewSwitch() {
   assert.ok(!/moreFilters|MORE_KEY/.test(fs.readFileSync(path.join(path.dirname(TEMPLATE), 'static', 'cards.js'), 'utf8')), 'the old fold key is no longer read');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'one row: Open, Mine, Critical, Done, then Status, Tags, Assignee and Type lists, then the Board/List switch; More filters is gone';
+  return 'one row: Mine, then Status, Severity, Tags, Assignee and Type lists, then the Board/List switch; More filters is gone';
 }
 
 async function statusListPicksOneAndClosesAndTheButtonSaysIt() {
   //given
   const {w, doc, errors} = await boot('#t=anoms/open');
-  const sections = () => [...menu(doc, 'status').querySelectorAll('[role="group"]')].map((g) => [doc.getElementById(g.getAttribute('aria-labelledby')).textContent, [...g.querySelectorAll('.fb-i')].map(lbl)]);
+  const labelsNow = () => items(doc, 'status').map(lbl);
 
   //when
   btn(doc, 'status').click();
-  const opened = {open: isOpen(doc, 'status'), roles: [...new Set(items(doc, 'status').map((b) => b.getAttribute('role')))], checked: checked(doc, 'status'), sections: sections()};
-  const counts = ['open', 'progress', 'muted', 'crit'].map((f) => item(doc, 'status', f).querySelector('.count').textContent);
-  const dim = ['muted', 'high'].map((f) => item(doc, 'status', f).classList.contains('zero'));
+  const opened = {open: isOpen(doc, 'status'), roles: [...new Set(items(doc, 'status').map((b) => b.getAttribute('role')))], checked: checked(doc, 'status'), labels: labelsNow()};
+  const counts = ['open', 'progress', 'muted'].map((f) => item(doc, 'status', f).querySelector('.count').textContent);
+  const dim = ['muted'].map((f) => item(doc, 'status', f).classList.contains('zero'));
   item(doc, 'status', 'progress').click();
   const picked = {open: isOpen(doc, 'status'), said: said(doc, 'status'), on: grp(doc, 'status').classList.contains('on'), x: clearX(doc, 'status') && !clearX(doc, 'status').hidden ? clearX(doc, 'status').getAttribute('aria-label') : null, hash: w.location.hash, cards: shown(doc), checked: checked(doc, 'status')};
-  chip(doc, 'Critical').click();
-  const viaChip = {said: said(doc, 'status'), on: grp(doc, 'status').classList.contains('on'), checked: checked(doc, 'status'), hash: w.location.hash};
-  chip(doc, 'Open').click();
+  btn(doc, 'sev').click();
+  item(doc, 'sev', 'sev:crit').click();
+  const viaSeverity = {status: said(doc, 'status'), said: said(doc, 'sev'), checked: checked(doc, 'status'), hash: decodeURIComponent(w.location.hash)};
+  btn(doc, 'status').click();
+  item(doc, 'status', 'open').click();
   const backOpen = {said: said(doc, 'status'), on: grp(doc, 'status').classList.contains('on')};
 
   //then
-  assert.deepStrictEqual(opened, {open: true, roles: ['menuitemradio'], checked: ['open'], sections: [
-    ['State', ['All', 'Open', 'In progress', 'Done', 'Muted', 'Stopped firing', 'Investigating', 'Investigated', 'Recurring', 'Archived', 'Closed']],
-    ['Severity', ['Critical', 'High', 'Warning']]]});
-  assert.deepStrictEqual(counts, ['3', '1', '0', '1']);
-  assert.deepStrictEqual(dim, [true, true], 'an entry with 0 is shown dimmed, not hidden');
-  assert.deepStrictEqual(picked, {open: false, said: 'Status: In progress', on: true, x: 'Clear Status filter', hash: '#t=anoms/progress', cards: [PROG], checked: ['progress']});
-  assert.deepStrictEqual(viaChip, {said: 'Status: Critical', on: true, checked: ['crit'], hash: '#t=anoms/crit'}, 'a quick chip sets the same filter, and the button says it like a pick in the list');
-  assert.deepStrictEqual(backOpen, {said: 'Status', on: false}, 'Open, the default, is no choice');
+  assert.deepStrictEqual(opened, {open: true, roles: ['menuitemradio'], checked: ['open'], labels: ['All', 'Open', 'In progress', 'Done', 'Muted', 'Stopped firing', 'Investigating', 'Investigated', 'Recurring', 'Archived', 'Closed']});
+  assert.deepStrictEqual(counts, ['3', '1', '0']);
+  assert.deepStrictEqual(dim, [true], 'an entry with 0 is shown dimmed, not hidden');
+  assert.deepStrictEqual(picked, {open: false, said: 'Status: In progress 1', on: true, x: 'Clear Status filter', hash: '#t=anoms/progress', cards: [PROG], checked: ['progress']});
+  assert.deepStrictEqual(viaSeverity, {status: 'Status: In progress 1', said: 'Severity: Critical', checked: ['progress'], hash: '#t=anoms/progress/sev:crit'}, 'a severity pick keeps the status pick');
+  assert.deepStrictEqual(backOpen, {said: 'Status: Open 3', on: false}, 'Open, the default, is still read on the button but is no choice');
   assert.match(rule(css(), '.fb-w.on .fb-b'), /background:\s*var\(--accent-soft\)/, 'a button with a choice gets the quiet active fill');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'Status is one choice in State and Severity sections with counts; picking closes it and the button reads Status: In progress';
+  return 'Status is one choice among the states with counts; picking closes it and the button reads Status: In progress 1';
 }
 
 async function assigneeListPicksSeveralStaysOpenAndShowsTheCount() {
@@ -187,7 +187,7 @@ async function tagsListShowsColourDotsNotColouredPillsAndSearchNarrowsIt() {
   const untagged = shown(doc);
   btn(doc, 'who').click();
   const who = {tagsOpen: isOpen(doc, 'tags'), search: !pop(doc, 'who').querySelector('input.fb-q').hidden};
-  chip(doc, 'Critical').click();
+  chip(doc, 'Mine').click();
   const chipCloses = isOpen(doc, 'who');
 
   //then
@@ -213,8 +213,8 @@ async function clearingOneGroupAndClearAll() {
   //given
   const {w, doc, errors} = await boot('#t=anoms/progress/' + encodeURIComponent('who:u:paul.stone+tag:data'));
   const all = doc.getElementById('fb-clear-all');
-  const labels = () => ['status', 'tags', 'who', 'type'].map((g) => said(doc, g));
-  const xs = () => ['status', 'tags', 'who', 'type'].filter((g) => clearX(doc, g) && !clearX(doc, g).hidden);
+  const labels = () => ['status', 'sev', 'tags', 'who', 'type'].map((g) => said(doc, g));
+  const xs = () => ['status', 'sev', 'tags', 'who', 'type'].filter((g) => clearX(doc, g) && !clearX(doc, g).hidden);
 
   //when
   const before = {labels: labels(), xs: xs(), all: all.hidden};
@@ -223,18 +223,18 @@ async function clearingOneGroupAndClearAll() {
   const one = {labels: labels(), xs: xs(), all: all.hidden, hash: decodeURIComponent(w.location.hash)};
   all.focus();
   all.click();
-  const allFocus = doc.activeElement === chip(doc, 'Open');
+  const allFocus = doc.activeElement === btn(doc, 'status');
   const none = {labels: labels(), xs: xs(), all: all.hidden, hash: w.location.hash};
   const mine = await boot('#t=anoms/archived/' + encodeURIComponent('who:me+tag:data'));
   mine.doc.getElementById('fb-clear-all').click();
   const kept = {hash: decodeURIComponent(mine.w.location.hash), pressed: chip(mine.doc, 'Mine').getAttribute('aria-pressed'), all: mine.doc.getElementById('fb-clear-all').hidden};
 
   //then
-  assert.deepStrictEqual(before, {labels: ['Status: In progress', 'Tags: Data', 'Assignee: Paul Stone', 'Type'], xs: ['status', 'tags', 'who'], all: false});
-  assert.deepStrictEqual(one, {labels: ['Status: In progress', 'Tags', 'Assignee: Paul Stone', 'Type'], xs: ['status', 'who'], all: false, hash: '#t=anoms/progress/who:u:paul.stone'});
-  assert.deepStrictEqual(none, {labels: ['Status', 'Tags', 'Assignee', 'Type'], xs: [], all: true, hash: '#t=anoms'});
+  assert.deepStrictEqual(before, {labels: ['Status: In progress 1', 'Severity', 'Tags: Data', 'Assignee: Paul Stone', 'Type'], xs: ['status', 'tags', 'who'], all: false});
+  assert.deepStrictEqual(one, {labels: ['Status: In progress 1', 'Severity', 'Tags', 'Assignee: Paul Stone', 'Type'], xs: ['status', 'who'], all: false, hash: '#t=anoms/progress/who:u:paul.stone'});
+  assert.deepStrictEqual(none, {labels: ['Status: Open 3', 'Severity', 'Tags', 'Assignee', 'Type'], xs: [], all: true, hash: '#t=anoms'});
   assert.strictEqual(xFocus, true, 'the x hands focus to its list button');
-  assert.strictEqual(allFocus, true, 'Clear all hides itself and hands focus to the Open chip');
+  assert.strictEqual(allFocus, true, 'Clear all hides itself and hands focus to the Status button');
   assert.deepStrictEqual(kept, {hash: '#t=anoms/open/who:me', pressed: 'true', all: true}, 'Clear all clears the lists, Mine is a chip and stays');
   assert.deepStrictEqual(errors.concat(mine.errors), []);
   w.close(); mine.w.close();
@@ -366,7 +366,7 @@ async function rememberedFiltersAndViewComeBackAfterReload() {
   //then
   assert.strictEqual(legacy, false, 'the old fold key opens nothing');
   assert.strictEqual(view, 'list');
-  assert.deepStrictEqual(['status', 'tags', 'who'].map((g) => said(again.doc, g)), ['Status: All', 'Tags: SEO', 'Assignee (2)']);
+  assert.deepStrictEqual(['status', 'tags', 'who'].map((g) => said(again.doc, g)), ['Status: All 5', 'Tags: SEO', 'Assignee (2)']);
   assert.deepStrictEqual(checked(again.doc, 'who'), ['who:u:carol.diaz', 'who:u:paul.stone']);
   assert.strictEqual(again.doc.querySelector('#card-view [data-view="list"]').getAttribute('aria-pressed'), 'true');
   assert.strictEqual(said(old.doc, 'who'), 'Assignee: Paul Stone', 'an old one-person link still works');
@@ -488,10 +488,10 @@ async function aListALiveUpdateHidesHandsFocusToOpen() {
   //then
   assert.strictEqual(before, 'menuitemcheckbox');
   assert.strictEqual(grp(doc, 'type').hidden, true, 'no card, no Type list');
-  assert.strictEqual(doc.activeElement, chip(doc, 'Open'), 'focus goes to the Open chip, not the page');
+  assert.strictEqual(doc.activeElement, btn(doc, 'status'), 'focus goes to the Status button, not the page');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'when a live update hides an open list, focus goes to the Open chip';
+  return 'when a live update hides an open list, focus goes to the Status button';
 }
 
 function atPhoneWidthTheRowWrapsWithoutHorizontalScroll() {
@@ -534,24 +534,24 @@ async function theListsAreTranslated() {
   btn(doc, 'tags').click();
   const q = pop(doc, 'tags').querySelector('input.fb-q').getAttribute('placeholder');
   btn(doc, 'status').click();
-  const secs = [...menu(doc, 'status').querySelectorAll('.fb-sec')].map((s) => s.textContent);
+  const sevName = said(doc, 'sev');
 
   //then
-  assert.deepStrictEqual(names, [tr['Status'] + ': ' + tr['All'], tr['Tags'], tr['Type']]);
+  assert.deepStrictEqual(names, [tr['Status'] + ': ' + tr['All'] + ' 5', tr['Tags'], tr['Type']]);
   assert.strictEqual(who, tr['{0} ({1})'].replace('{0}', tr['Assignee']).replace('{1}', '2'));
   assert.strictEqual(x, tr['Clear {0} filter'].replace('{0}', tr['Assignee']));
   assert.strictEqual(mine, tr['Mine']);
   assert.strictEqual(group, tr['Filter lists']);
   assert.ok(note.includes(' ' + tr['or'] + ' '), note);
   assert.strictEqual(q, tr['Search tags']);
-  assert.deepStrictEqual(secs, [tr['State'], tr['Severity']]);
+  assert.strictEqual(sevName, tr['Severity']);
   ['de', 'es', 'fr', 'tr'].forEach((l) => ['Status', 'Tags', 'Assignee', 'Type', 'State', 'Severity', 'Clear all', 'Clear {0} filter', 'Search tags', 'Search people', '{0} ({1})', 'Filter lists', 'or'].forEach((s) => assert.ok(typeof pack(l)[s] === 'string', l + ' has ' + s)));
   assert.deepStrictEqual(errors, []);
   w.close();
   return 'the lists, their labels, sections and search boxes read in the page language';
 }
 
-async function theClosedListKeepsTheChipsAndStatus() {
+async function theClosedListKeepsMineAndStatus() {
   //given
   const {w, doc, errors} = await boot('#t=anoms/closed');
 
@@ -562,14 +562,14 @@ async function theClosedListKeepsTheChipsAndStatus() {
   //then
   assert.strictEqual(status, 'Status: Closed');
   assert.deepStrictEqual(checkedNow, ['closed']);
-  assert.strictEqual(chips(doc).length, 4, 'the four chips still lead back to the board');
+  assert.strictEqual(chips(doc).length, 1, 'Mine still leads back to the board');
   assert.match(css(), /\.closed-on \.fb-multi \{\s*display:\s*none/, 'the closed list hides Tags, Assignee and Type, which do not apply to it');
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'the Closed list keeps the chips and the Status list so the board is one click away';
+  return 'the Closed list keeps Mine and the Status list so the board is one click away';
 }
 
-async function mineCriticalAndDoneAreTheExistingFilters() {
+async function mineIsTheChipAndSeverityAndDoneAreMenuPicks() {
   //given
   const {w, doc, errors} = await boot();
 
@@ -578,26 +578,29 @@ async function mineCriticalAndDoneAreTheExistingFilters() {
   const mine = {cards: shown(doc), hash: decodeURIComponent(w.location.hash), pressed: chip(doc, 'Mine').getAttribute('aria-pressed')};
   chip(doc, 'Mine').click();
   const cleared = shown(doc).length;
-  chip(doc, 'Critical').click();
+  btn(doc, 'sev').click();
+  item(doc, 'sev', 'sev:crit').click();
   const crit = {cards: shown(doc), hash: w.location.hash};
-  chip(doc, 'Critical').click();
-  const back = chip(doc, 'Open').getAttribute('aria-pressed');
-  chip(doc, 'Done').click();
-  const done = {cards: shown(doc), hash: w.location.hash};
+  btn(doc, 'sev').click();
+  item(doc, 'sev', 'sev:crit').click();
+  const back = {status: said(doc, 'status'), sev: said(doc, 'sev'), cards: shown(doc).length};
+  btn(doc, 'status').click();
+  item(doc, 'status', 'taken').click();
+  const done = {cards: shown(doc), hash: w.location.hash, status: said(doc, 'status')};
 
   //then
   assert.deepStrictEqual(mine, {cards: [NEW], hash: '#t=anoms/open/who:me', pressed: 'true'});
   assert.ok(cleared > 1, 'pressing Mine again drops it');
-  assert.deepStrictEqual(crit, {cards: [NEW], hash: '#t=anoms/crit'});
-  assert.strictEqual(back, 'true', 'pressing Critical again returns to Open');
-  assert.deepStrictEqual(done, {cards: [DONE], hash: '#t=anoms/taken'});
+  assert.deepStrictEqual(crit, {cards: [NEW], hash: '#t=anoms/open/sev%3Acrit'});
+  assert.deepStrictEqual(back, {status: 'Status: Open 3', sev: 'Severity', cards: cleared}, 'picking Critical again drops the severity and Status stays Open');
+  assert.deepStrictEqual(done, {cards: [DONE], hash: '#t=anoms/taken', status: 'Status: Done 1'});
   assert.deepStrictEqual(errors, []);
   w.close();
-  return 'Mine, Critical and Done are the chips they were: same cards, same links, same toggle';
+  return 'Mine is the chip it was; Critical is a Severity pick and Done a Status pick, with the same cards and a link that keeps them';
 }
 
 (async () => {
-  console.log('PASS ' + await theBarShowsQuickChipsFourListsAndTheViewSwitch());
+  console.log('PASS ' + await theBarShowsMineFiveListsAndTheViewSwitch());
   console.log('PASS ' + await statusListPicksOneAndClosesAndTheButtonSaysIt());
   console.log('PASS ' + await assigneeListPicksSeveralStaysOpenAndShowsTheCount());
   console.log('PASS ' + await tagsListShowsColourDotsNotColouredPillsAndSearchNarrowsIt());
@@ -607,8 +610,8 @@ async function mineCriticalAndDoneAreTheExistingFilters() {
   console.log('PASS ' + await rememberedFiltersAndViewComeBackAfterReload());
   console.log('PASS ' + atPhoneWidthTheRowWrapsWithoutHorizontalScroll());
   console.log('PASS ' + await theListsAreTranslated());
-  console.log('PASS ' + await theClosedListKeepsTheChipsAndStatus());
-  console.log('PASS ' + await mineCriticalAndDoneAreTheExistingFilters());
+  console.log('PASS ' + await theClosedListKeepsMineAndStatus());
+  console.log('PASS ' + await mineIsTheChipAndSeverityAndDoneAreMenuPicks());
   const t = await boot('#t=anoms/all');
   console.log('PASS ' + theCardSearchRuleLeavesTheListSearchAlone(t));
   t.w.close();

@@ -171,7 +171,8 @@ function openTabPath(raw) {
   if (id === 'anoms') {
     var known = LINK_FILTERS.indexOf(sub) >= 0, given = known ? parts[2] : sub;
     var picks = String(given || '').split('+');
-    typeF = given && picks.every(function (p) { return /^(tag:|who:(u:)?)?[a-z0-9.-]{1,60}$/.test(p); }) ? picks.slice(0, F_MAX).join('+') : '';
+    typeF = given && picks.every(function (p) { return /^(tag:|who:(u:)?|sev:)?[a-z0-9.-]{1,60}$/.test(p) && (!isSevF(p) || cardSev(p.slice(4))); }) ? picks.slice(0, F_MAX).join('+') : '';
+    if (known && cardSev(sub)) typeF = sevPicked(sub);
     showTab(id);
     setFilter(known ? sub : 'open');
     return;
@@ -273,11 +274,8 @@ function renderFilters() {
     {id: 'cleared', label: 'Stopped firing', k: 'k-cleared', n: cleared.length, seg: 'anom-chips'},
     {id: 'investigating', label: 'Investigating', k: 'k-act', n: triCount('investigating'), seg: 'tri-chips'},
     {id: 'dived', label: 'Investigated', k: 'k-cleared', n: triCount('dived'), seg: 'tri-chips'},
-    {id: 'crit', label: 'Critical', k: 'k-crit', n: openBySev('crit').length, seg: 'sev-chips', tip: 'open critical items (pushed)'},
-    {id: 'high', label: 'High', k: 'k-high', n: openBySev('high').length, seg: 'sev-chips', tip: 'open high items (pushed)'},
-    {id: 'warn', label: 'Warning', k: 'k-warn', n: openBySev('warn').length, seg: 'sev-chips', tip: 'open warning items (pushed)'},
     {id: 'recurring', label: 'Recurring', k: 'k-warn', n: recurringL.length, seg: 'list-chips', whenAny: true, tip: 'cards that keep coming back with no Jira ticket on them, whatever their status'},
-    {id: 'archived', label: 'Archived', k: 'k-cleared', n: ARCHIVED.length, seg: 'list-chips', tip: 'cards not firing (or muted) with no change for ' + archiveHours() + ' hours; hidden everywhere else'},
+    {id: 'archived', label: 'Archived', k: 'k-cleared', n: ARCHIVED.length, seg: 'list-chips', tip: 'cards not firing (or muted) with no change for {0} hours; hidden everywhere else', tipArg: archiveHours()},
     {id: 'closed', label: 'Closed', k: 'k-cleared', n: CLOSED.data ? CLOSED.data.total : '', seg: 'list-chips', tip: 'cards that already left the page, kept for a year; the count is for the time range picked in the list'}
   ];
   if (svcF) CH.push({id: 'svc', label: svcF.svc + ' cards', k: 'k-act', n: svcCards(svcF).list.length});
@@ -291,7 +289,7 @@ function renderFilterNote(c) {
   note.innerHTML = '<span class="fn-cur">Showing <b>' + esc(c ? c.label : 'Open') + '</b>' + (typeF ? ' · <b>' + esc(noteName(typeF)) + '</b>' : '') +
     '<span class="count">' + esc(typeF ? shownN : c ? c.n : openAll().length) + '</span></span>' +
     (f === 'svc' ? '<button class="xlink" type="button" id="back-svcs">← Back to Services</button>' : '') +
-    (typeF ? '<button class="xlink" type="button" id="clear-type">Every type ›</button>' : '') +
+    (typeF ? '<button class="xlink" type="button" id="clear-type">' + (fParts(typeF).every(function (p) { return fKind(p) === 'type'; }) ? 'Every type \u203a' : 'Clear filters \u203a') + '</button>' : '') +
     (f !== 'svc' && (f !== 'open' || typeF) ? '<button class="xlink copy-f" type="button" id="copy-f" title="Copies a link that opens Board with this filter' + (typeF ? ' and type' : '') + '">' + ICON_LINK + 'Copy link</button>' : '') +
     (f !== 'open' && (typeF || searchQ) ? '<button class="xlink" type="button" id="clear-f">Back to Open ›</button>' : '') +
     (f !== 'all' && (f !== 'open' || typeF || searchQ) ? '<button class="xlink fn-all" type="button" id="all-f">All</button>' : '') +
@@ -318,11 +316,13 @@ document.addEventListener('keydown', function (e) {
   e.preventDefault();
   clearBoardFilters();
 });
+function sevPicked(s) { return fParts(typeF).filter(function (p) { return !isSevF(p); }).concat('sev:' + s).sort(function (x, y) { return F_ORDER[fKind(x)] - F_ORDER[fKind(y)]; }).join('+'); }
 function setFilter(f) {
+  if (cardSev(f)) { typeF = sevPicked(f); f = 'open'; }
   filter = f === 'stale' ? 'open' : f;
   renderQuick();
   renderAnoms();
-  renderFilterNote(CH.filter(function (x) { return x.id === f; })[0]);
+  renderFilterNote(CH.filter(function (x) { return x.id === filter; })[0]);
   markTab();
   if (window.__skopaxRender) window.__skopaxRender();
 }
