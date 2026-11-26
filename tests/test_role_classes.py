@@ -49,6 +49,8 @@ WRITES = {
     ('POST', '/api/admin/anthropic-key/test'): 'admin',
     ('POST', '/api/admin/openai-key/test'): 'admin',
     ('POST', '/api/admin/custom-checks'): 'admin',
+    ('POST', '/api/admin/runs/{run_id}/release'): 'admin',
+    ('POST', '/api/admin/runs/{run_id}/discard'): 'admin',
     ('POST', '/api/admin/custom-checks/preview'): 'admin',
     ('POST', '/api/admin/custom-checks/presets/{preset_id}'): 'admin',
     ('POST', '/api/admin/custom-checks/presets/{preset_id}/render'): 'admin',

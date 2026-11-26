@@ -2,7 +2,21 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
-## 0.6.3 (unreleased)
+## 0.6.4 (2026-11-26)
+
+### Added
+
+- Guard model: an optional second model, separate from the investigator, that checks questions before the investigator runs and answers before they are posted. Admin > Investigator > Who does what has a Guard row with a model select of any provider (None by default) and two switches, Check questions and Check answers, greyed out until a guard model is picked; every change is listed in Changes. The question check covers Slack, chat and MCP `ask`; the answer check covers Slack, chat, MCP `ask` and card investigations. It can pass, hide exact parts or hold an answer, never add text, and any guard failure refuses the question or holds the answer. See [Guard model](docs/setup.md#guard-model).
+- Held answers: an admin reads a held answer and the guard's reason on the run in History and presses Release or Discard; viewers see "Investigation held for review." and the verdict only. Held private chat answers are listed on History for admins only, with nothing else of the chat. Release posts the answer and applies the card writes held with it; if the post fails, the answer stays held and the page says why. An answer that nobody releases within 24 hours is discarded. Every release and discard is listed in Changes. The new notification kind Answer held for review opens History.
+- Each run shows one Guard line (passed, masked, held or refused), with the reason for admins. Costs shows guard spend as its own Guard line with the runs it guarded, and with the guard on the daily cap tile says questions are refused and answers held once the cap is reached.
+- New settings `investigate.guard-model`, `guard.check-questions` and `guard.check-answers` (`INVESTIGATE_GUARD_MODEL`, `GUARD_CHECK_QUESTIONS`, `GUARD_CHECK_ANSWERS`). The guard texts are translated into German, Spanish, French and Turkish.
+
+### Fixed
+
+- Admin > Investigator > Who does what fits a 1280 px window without scrolling sideways: Price and Average cost are one Cost column (price per 1M tokens, then cost per run over 7 days), and the Model and Effort cells keep one order and spacing.
+- The Available in questions choices now say that card runs are always included: Card runs + everyone's questions, Card runs + operator and admin questions, and Card runs only. The MCP tools server's chat-role choices use the same wording, with Card runs + admin questions. Stored values are unchanged.
+
+## 0.6.3 (2026-11-26)
 
 ### Added
 

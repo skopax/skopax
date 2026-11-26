@@ -3,12 +3,12 @@ var NT_LABELS = {
   assigned: 'Assigned to you', unassigned: 'No longer assigned to you', progress: 'In progress', resolved: 'Resolved', reopened: 'Reopened', ticket: 'Jira ticket linked',
   severity: 'Severity changed', merged: 'Merged into another card', ungrouped: 'Taken out of its group', muted: 'Muted', known: 'Marked as known noise', unmuted: 'Unmuted',
   auto: 'Auto-resolved', fired: 'Fired again', escalated: 'Got worse', stopped: 'Stopped firing', run: 'Investigation finished', slack: 'Posted to Slack',
-  thread: 'Slack thread update', reminder: 'Reminder sent', answer: 'Chat answer ready', closing: 'Closes soon'
+  thread: 'Slack thread update', reminder: 'Reminder sent', answer: 'Chat answer ready', closing: 'Closes soon', held: 'Answer held for review'
 };
 var NT_TONE = {
   assigned: 'k-warn', unassigned: 'plain', progress: 'k-info', resolved: 'k-good', reopened: 'k-warn', ticket: 'k-info', severity: 'k-warn', merged: 'plain', ungrouped: 'plain',
   muted: 'k-muted', known: 'k-muted', unmuted: 'plain', auto: 'k-good', fired: 'k-crit', escalated: 'k-crit', stopped: 'k-cleared', run: 'k-act', slack: 'k-act', thread: 'k-act',
-  reminder: 'k-warn', answer: 'k-act', closing: 'k-good'
+  reminder: 'k-warn', answer: 'k-act', closing: 'k-good', held: 'k-warn'
 };
 var NT = {on: false, ready: false, tab: false, mark: false, items: [], unread: 0, more: false, busy: false};
 
@@ -54,7 +54,13 @@ async function ntCount() {
     if (e && (e.code === 401 || e.code === 403)) ntShow(false);
   }
 }
+var NT_HELD_RUN = /^run:([A-Za-z0-9_-]{1,80})$/;
+function ntHeldRun(n) {
+  var m = n.kind === 'held' ? NT_HELD_RUN.exec(String(n.key || '')) : null;
+  return m ? m[1] : null;
+}
 function ntLink(n) {
+  if (ntHeldRun(n)) return '#t=acts';
   if (n.link) return n.link;
   return n.key ? '#a=' + encodeURIComponent(n.key) : '';
 }
@@ -126,7 +132,8 @@ async function ntRead(ids, keep) {
   }
 }
 async function ntGo(n) {
-  var to = ntLink(n);
+  var to = ntLink(n), run = ntHeldRun(n);
+  if (run && typeof POD_OPEN !== 'undefined') POD_OPEN[run] = 1;
   if (!n.read) await ntRead([n.id]);
   if (to.charAt(0) === '#') location.hash = to.slice(1);
   else if (to) location.href = to;

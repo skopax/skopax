@@ -1,4 +1,4 @@
-var AIU_HEADS = ['Use', 'Model', 'Effort', 'Price per million tokens (input / output)', 'Average cost per run (7 days)', 'Data goes to'];
+var AIU_HEADS = ['Use', 'Model', 'Effort', 'Cost', 'Data goes to'];
 var AIU_FIT = 'Cheap models often miss steps in long investigations', AIU_FIT_USES = ['card', 'critical', 'high'];
 var AIU_ADV_SAID = {}, AIU_ADV_BUSY = {}, AIU_ADV_FIELDS = {uses: {suffix: '-advisor-uses', label: 'Advisor consultations per run', min: 1, max: 10}, tokens: {suffix: '-advisor-tokens', label: 'Advisor answer size', min: 1024, max: 4096}};
 var AIU_SAID = {}, AIU_SEQ = 0, AIU_EDIT = {}, AIU_PENDING = {}, AIU_CHAIN = Promise.resolve(), AIU_FAILED = false;
@@ -8,6 +8,10 @@ var AIV_REGION_TEXT = {global: 'global (current models, no residency guarantee)'
 var AIV_REGION_NOTE = 'Current Claude models run on global, us and eu only; a single region serves older models. Choose eu to keep processing in the EU.';
 var AIC_NOT_FIT = 'Not fit for investigations: the model did not call the tool';
 var AIU_PROVIDERS = {anthropic: 'Anthropic', openai: 'OpenAI', vertex: 'Vertex AI'};
+var AIU_GUARD = 'guard', AIU_GUARD_KEYS = ['guard.check-questions', 'guard.check-answers'];
+var AIU_GUARD_SEES = 'The guard model reads questions, answers and the tool results behind them. If it runs on another provider, that provider receives this text.';
+var AIU_GUARD_NEEDS = 'Pick a guard model first; the check stays off until one is set';
+var AIU_GUARD_NO_MODEL = 'A guard check is on but no guard model is set, so the check is off; pick a guard model';
 function aiuText(v) { return typeof v === 'string' ? v : ''; }
 function aiuNum(v) { return typeof v === 'number' && isFinite(v) ? v : null; }
 function aiuAdvOf(a) {
@@ -45,6 +49,7 @@ function aiuCovered() {
     out[u.setting] = 1;
     if (AI_PAIRS[u.setting]) out[AI_PAIRS[u.setting][0]] = 1;
     if (u.advisor) ['-advisor', '-advisor-uses', '-advisor-tokens'].forEach(function (x) { out[u.setting + x] = 1; });
+    if (u.use === AIU_GUARD) AIU_GUARD_KEYS.forEach(function (k) { out[k] = 1; });
   });
   return out;
 }
@@ -101,14 +106,43 @@ function aiuCell(cls, n, value) {
   if (value != null) td.appendChild(accText('span', 'aiu-v', value));
   return td;
 }
+function aiuHost(value) {
+  var span = accText('span', 'aiu-v');
+  String(value).split('.').forEach(function (part, n, all) {
+    span.appendChild(document.createTextNode(n < all.length - 1 ? part + '.' : part));
+    if (n < all.length - 1) span.appendChild(document.createElement('wbr'));
+  });
+  return span;
+}
 function aiuNote(into, cls, text, id, notes) {
   var p = accText('p', cls, text);
   p.id = id;
   into.appendChild(p);
   notes.push(id);
 }
+function aiuOff(u) { return u.use === AIU_GUARD && !u.model; }
+function aiuGuardModel() { var i = aiuItem('investigate.guard-model'); return i ? aiuSaved(i) : ''; }
+function aiuSwitches() {
+  var model = aiuGuardModel();
+  return AIU_GUARD_KEYS.map(aiuItem).filter(Boolean).map(function (i) {
+    var copy = Object.assign({}, i);
+    delete copy.off;
+    delete copy.problem;
+    if (!model && i.value === 'true') copy.problem = AIU_GUARD_NO_MODEL;
+    else if (!model) copy.off = AIU_GUARD_NEEDS;
+    return copy;
+  });
+}
+function aiuGuard(id) {
+  var box = el('div', 'aiu-guard');
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-labelledby', id + '-l');
+  aiuSwitches().forEach(function (i) { box.appendChild(adminRow(i)); });
+  return box;
+}
 function aiuRow(u) {
-  var id = aiuId(u.use), item = aiuItem(u.setting), tr = el('tr', 'aiu-row' + (u.problem || (u.advisor && u.advisor.problem) ? ' aiu-bad' : '') + (item && item.source === 'admin' ? ' set' : '')), notes = [];
+  var guarded = u.use === AIU_GUARD && aiuSwitches().some(function (i) { return i.problem; });
+  var id = aiuId(u.use), item = aiuItem(u.setting), tr = el('tr', 'aiu-row' + (u.problem || (u.advisor && u.advisor.problem) || guarded ? ' aiu-bad' : '') + (item && item.source === 'admin' ? ' set' : '')), notes = [];
   tr.dataset.use = u.use;
   if (item) tr.dataset.key = item.key;
   var th = accText('th', 'aiu-use');
@@ -117,7 +151,7 @@ function aiuRow(u) {
   var name = accText('b', null, u.label);
   name.id = id + '-l';
   th.appendChild(name);
-  if (u.provider) th.appendChild(accText('span', 'tag plain aiu-prov', aiuProvider(u.provider)));
+  if (u.provider && !aiuOff(u)) th.appendChild(accText('span', 'tag plain aiu-prov', aiuProvider(u.provider)));
   tr.appendChild(th);
   var model = accText('td', 'aiu-model');
   model.appendChild(aiuKey(1, id + '-k'));
@@ -129,8 +163,10 @@ function aiuRow(u) {
   if (u.problem) aiuNote(model, 'adm-help aiu-problem bad', u.problem, id + '-problem', notes);
   if (u.fit === 'cheap' && AIU_FIT_USES.indexOf(u.use) >= 0) aiuNote(model, 'adm-help aiu-fit', AIU_FIT, id + '-fit', notes);
   if (item && item.off) aiuNote(model, 'adm-help adm-off-why', item.off, id + '-off', notes);
+  if (u.use === AIU_GUARD) aiuNote(model, 'adm-help aiu-guard-sees', AIU_GUARD_SEES, id + '-sees', notes);
   var sel = model.querySelector('select.aiu-in');
   if (u.advisor) model.appendChild(aiuAdvisor(u, id));
+  if (u.use === AIU_GUARD) model.appendChild(aiuGuard(id));
   if (sel && notes.length) sel.setAttribute('aria-describedby', notes.join(' '));
   var said = AIU_SAID[u.use];
   if (said) { msg.textContent = said.text; msg.className = 'adm-msg aiu-msg ' + (said.bad ? 'bad' : 'ok'); delete AIU_SAID[u.use]; }
@@ -139,10 +175,28 @@ function aiuRow(u) {
   var pair = AI_PAIRS[u.setting], effort = pair ? aiuItem(pair[0]) : null, eff = aiuCell('aiu-effort', 2, effort ? null : '\u2013');
   if (effort) eff.appendChild(adminRow(effort));
   tr.appendChild(eff);
-  tr.appendChild(aiuCell('aiu-price', 3, u.price ? aiuUsd(u.price.input) + ' / ' + aiuUsd(u.price.output) : 'No price'));
-  tr.appendChild(aiuCell('aiu-cost', 4, u.avgCost7d == null ? 'No runs in 7 days' : costUsd(u.avgCost7d)));
-  tr.appendChild(aiuCell('aiu-co', 5, u.company));
+  tr.appendChild(aiuCostCell(u));
+  var co = aiuCell('aiu-co', 4, aiuOff(u) ? 'Nothing is sent' : null);
+  if (!aiuOff(u)) co.appendChild(aiuHost(u.company));
+  tr.appendChild(co);
   return tr;
+}
+function aiuLine(cls, amount, unit) {
+  var line = accText('span', 'aiu-v ' + cls);
+  line.appendChild(accText('span', 'aiu-n', amount));
+  if (unit) {
+    line.appendChild(document.createTextNode(' '));
+    line.appendChild(accText('span', 'aiu-unit', unit));
+  }
+  return line;
+}
+function aiuCostCell(u) {
+  var td = accText('td', 'aiu-cost');
+  td.appendChild(aiuKey(3));
+  if (aiuOff(u)) { td.appendChild(aiuLine('aiu-price', 'Guard off')); return td; }
+  td.appendChild(u.price ? aiuLine('aiu-price', aiuUsd(u.price.input) + ' / ' + aiuUsd(u.price.output), 'per 1M tokens') : aiuLine('aiu-price', 'No price'));
+  td.appendChild(u.avgCost7d == null ? aiuLine('aiu-run', 'No runs in 7 days') : aiuLine('aiu-run', costUsd(u.avgCost7d), 'per run, 7 days'));
+  return td;
 }
 function aiuAdvOption(value, text) {
   var o = accText('option', null, text);

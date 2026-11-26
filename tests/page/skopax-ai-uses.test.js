@@ -3,13 +3,13 @@ const {boot, settings, nameOf, wait, GROUPS, MODELS} = require('./skopax-ai-kit'
 
 const TEMPLATE = process.argv[2];
 const EVIL = '<img src=x onerror=alert(1)>';
-const HEADS = ['Use', 'Model', 'Effort', 'Price per million tokens (input / output)', 'Average cost per run (7 days)', 'Data goes to'];
+const HEADS = ['Use', 'Model', 'Effort', 'Cost', 'Data goes to'];
 const FIT = 'Cheap models often miss steps in long investigations';
 const PHONE = '(max-width: 640px), (max-height: 500px) and (pointer: coarse)';
 const SAVED = 'Saved, live within 15 s on every pod';
 
 const rowOf = (doc, use) => doc.querySelector('#ai-rows .aiu-row[data-use="' + use + '"]');
-const cell = (doc, use, part) => rowOf(doc, use).querySelector('.aiu-' + part + ' .aiu-v').textContent;
+const cell = (doc, use, part) => rowOf(doc, use).querySelector(part === 'price' || part === 'run' ? '.aiu-cost .aiu-' + part : '.aiu-' + part + ' .aiu-v').textContent;
 const pick = (w, sel, value) => {
   sel.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'ArrowDown', bubbles: true}));
   sel.value = value;
@@ -39,10 +39,10 @@ async function rowsRenderEveryUseWithPriceCostAndCompany() {
   assert.deepStrictEqual(labels, HEADS, 'each cell carries its column name for the phone layout');
   assert.deepStrictEqual(tags, ['Anthropic', 'Anthropic', 'deepseek', 'OpenAI', 'OpenAI', 'deepseek', 'OpenAI', 'Anthropic'], 'each row names its provider, the plug-in row too');
   assert.strictEqual(rowOf(doc, 'high').querySelector('.aiu-use b').textContent, 'High cards');
-  assert.deepStrictEqual([cell(doc, 'card', 'price'), cell(doc, 'card', 'cost'), cell(doc, 'card', 'co')], ['$5.00 / $25.00', '$0.42', 'Anthropic']);
-  assert.deepStrictEqual([cell(doc, 'high', 'price'), cell(doc, 'high', 'cost'), cell(doc, 'high', 'co')], ['$0.27 / $1.10', '$0.01', 'api.deepseek.example.com']);
-  assert.deepStrictEqual([cell(doc, 'chat', 'price'), cell(doc, 'chat', 'cost'), cell(doc, 'chat', 'co')], ['$0.40 / $1.60', '$0.0040', 'OpenAI']);
-  assert.deepStrictEqual([cell(doc, 'plugin', 'model'), cell(doc, 'plugin', 'price'), cell(doc, 'plugin', 'cost')], ['claude-sonnet-5-5', 'No price', 'No runs in 7 days'], 'a use with no settings row shows its model as text');
+  assert.deepStrictEqual([cell(doc, 'card', 'price'), cell(doc, 'card', 'run'), cell(doc, 'card', 'co')], ['$5.00 / $25.00 per 1M tokens', '$0.42 per run, 7 days', 'Anthropic']);
+  assert.deepStrictEqual([cell(doc, 'high', 'price'), cell(doc, 'high', 'run'), cell(doc, 'high', 'co')], ['$0.27 / $1.10 per 1M tokens', '$0.01 per run, 7 days', 'api.deepseek.example.com']);
+  assert.deepStrictEqual([cell(doc, 'chat', 'price'), cell(doc, 'chat', 'run'), cell(doc, 'chat', 'co')], ['$0.40 / $1.60 per 1M tokens', '$0.0040 per run, 7 days', 'OpenAI']);
+  assert.deepStrictEqual([cell(doc, 'plugin', 'model'), cell(doc, 'plugin', 'price'), cell(doc, 'plugin', 'run')], ['claude-sonnet-5-5', 'No price', 'No runs in 7 days'], 'a use with no settings row shows its model as text');
   assert.ok(!rowOf(doc, 'plugin').querySelector('select'));
   assert.strictEqual(cell(doc, 'plugin', 'co'), EVIL, 'a hostile company is text');
   assert.strictEqual(doc.querySelectorAll('#ai-rows img').length, 0);
@@ -55,6 +55,13 @@ async function rowsRenderEveryUseWithPriceCostAndCompany() {
   assert.strictEqual(summary.textContent, 'Which model runs: Critical cards claude-opus-5-5 \u00b7 High cards deepseek/deepseek-chat \u00b7 Warning and Info cards claude-opus-5-5', 'the line says what the uses table says');
   assert.ok(summary.compareDocumentPosition(table) & 4, 'and it sits above the table');
   assert.ok(de.doc.querySelector('#ai-rows .aiu h3').textContent !== 'Who does what' && de.doc.querySelector('#ai-rows .aiu-t thead th').textContent !== 'Use', 'the German pack translates the table');
+  const order2 = (cellEl, sels) => sels.map((q) => { const n = cellEl.querySelector(q); return n ? [...cellEl.querySelectorAll('*')].indexOf(n) : -1; });
+  const modelAt = order2(rowOf(doc, 'high').querySelector('.aiu-model'), ['select.aiu-in', '.aiu-meta', '.aiu-help']);
+  const effortAt = order2(rowOf(doc, 'card').querySelector('.aiu-effort'), ['.adm-seg', '.adm-m']);
+  assert.ok(modelAt.every((n, k) => n > -1 && (k === 0 || n > modelAt[k - 1])), 'in Model: select, then the source and Reset line, then the help');
+  assert.ok(effortAt.every((n, k) => n > -1 && (k === 0 || n > effortAt[k - 1])), 'in Effort: the switch, then the source and Reset line');
+  assert.deepStrictEqual([...rowOf(doc, 'card').querySelector('.aiu-cost').children].map((c) => c.className), ['aiu-k', 'aiu-v aiu-price', 'aiu-v aiu-run'], 'Cost has the price line, then the run line');
+  assert.ok(de.doc.querySelector('.aiu-cost .aiu-unit').textContent !== 'per 1M tokens', 'the German pack translates the price unit');
   assert.deepStrictEqual(errors.concat(de.errors), []);
   dom.window.close();
   de.dom.window.close();
@@ -90,7 +97,7 @@ async function aSelectChangeSavesTheSettingAndRepaints() {
   assert.deepStrictEqual(waiting, [0, false, false], 'an arrow-key change sends nothing and shows Save and Cancel');
   assert.deepStrictEqual(puts(calls), [['PUT', '/api/admin/settings', {key: 'investigate.model', value: 'claude-sonnet-5-5'}], ['PUT', '/api/admin/settings', {key: 'chat.model', value: 'gpt-6.2-astra'}]], 'Save and Enter save; Cancel sends nothing');
   assert.ok(calls.filter((c) => c[1] === '/api/admin/ai-uses').length > before, 'the uses are read again');
-  assert.deepStrictEqual(saved, ['$3.00 / $15.00', SAVED, 'claude-sonnet-5-5', true], 'the table repaints with the new price and the usual Saved message');
+  assert.deepStrictEqual(saved, ['$3.00 / $15.00 per 1M tokens', SAVED, 'claude-sonnet-5-5', true], 'the table repaints with the new price and the usual Saved message');
   assert.deepStrictEqual(cancelled, ['gpt-6.2-astra', true, true], 'Cancel puts the saved model back and keeps the focus on the select');
   assert.strictEqual(rowOf(doc, 'chat').querySelector('.aiu-msg').textContent, 'That model is not in the list', 'a refused save shows the server text');
   assert.ok(rowOf(doc, 'chat').querySelector('.aiu-msg').classList.contains('bad'));
@@ -154,7 +161,7 @@ async function aCoveredSettingKeepsItsSourceResetHelpAndProblem() {
   assert.ok(!rowOf(doc, 'card').querySelector('.adm-reset'), 'a default has no Reset');
   assert.deepStrictEqual(puts(calls), [['DELETE', '/api/admin/settings?key=investigate.model-high', undefined]], 'Reset sends DELETE');
   assert.strictEqual(doc.getElementById('aiu-high-model').value, '', 'the use follows the default again');
-  assert.deepStrictEqual([cell(doc, 'high', 'price'), rowOf(doc, 'high').querySelector('.aiu-prov').textContent], ['$5.00 / $25.00', 'Anthropic'], 'and the row repaints from a fresh read');
+  assert.deepStrictEqual([cell(doc, 'high', 'price'), rowOf(doc, 'high').querySelector('.aiu-prov').textContent], ['$5.00 / $25.00 per 1M tokens', 'Anthropic'], 'and the row repaints from a fresh read');
   assert.strictEqual(rowOf(doc, 'high').querySelector('.aiu-msg').textContent, 'Reset to empty');
   assert.ok(!rowOf(doc, 'high').querySelector('.adm-reset'));
   assert.deepStrictEqual(errors, []);

@@ -504,9 +504,9 @@ class Tools:
             r = self.store.investigation(str(args.get('run_id') or '').strip())
         except NotFound as e:
             raise ToolError(e.text) from None
-        return self.run_text(r)
+        return self.run_text(r, user.role == 'admin')
 
-    def run_text(self, r: dict) -> str:
+    def run_text(self, r: dict, admin: bool = False) -> str:
         private = (r.get('ask') or {}).get('private')
         calls = r.get('toolCalls') or []
         lines = [f"Run {r.get('id')} · {r.get('trigger')} · {r.get('outcome')} · started {r.get('startedAt')}" + (f" · ended {r['endedAt']}" if r.get('endedAt') else ''),
@@ -531,6 +531,11 @@ class Tools:
             lines.append(f"error: {clip(r['error'], 400)}")
         if r.get('recap'):
             lines.append(f"recap:\n{str(r['recap'])[:RECAP_CLIP]}")
+        held = r.get('held') if r.get('outcome') == 'held' and isinstance(r.get('held'), dict) else None
+        if held is not None:
+            lines.append(f"held for an admin review until {held.get('until')}")
+            if admin and held.get('text'):
+                lines.append(f"held answer (admins only):\n{str(held['text'])[:RECAP_CLIP]}")
         if r.get('cardAction'):
             lines.append(self.proposal(r['cardAction']))
         return '\n'.join(lines)
@@ -653,7 +658,9 @@ class Tools:
         lines = [head] + ([f"link: {self.chat_link(chat.get('id'))}"] if chat.get('mine', True) else [])
         for i, m in enumerate(msgs[-1:] if only_last else msgs, start=len(msgs) if only_last else 1):
             lines.append(f"\n[{i}] question: {clip(m.get('text'), 600)}")
-            if m.get('answer'):
+            if m.get('held'):
+                lines.append(f"answer: none yet (status held, waiting for an admin review); run: {self.site()}/api/investigations/{quote(str(m.get('runId')), safe='')}")
+            elif m.get('answer'):
                 lines.append(f"answer:\n{str(m['answer'])[:ANSWER_CLIP]}")
             elif m.get('status') in OPEN_STATES:
                 p = m.get('progress') or {}

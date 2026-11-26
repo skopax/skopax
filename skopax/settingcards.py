@@ -21,7 +21,8 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     ),
     'Investigator': (
         ('Provider', ('investigate.provider', 'core.allow-private-ai')),
-        ('Models', ('investigate.model', 'investigate.effort', 'investigate.model-critical', 'investigate.model-high', 'investigate.slack-model', 'investigate.slack-effort', 'chat.model', 'chat.effort', 'investigate.gate-model', 'investigate.gate-effort')),
+        ('Models', ('investigate.model', 'investigate.effort', 'investigate.model-critical', 'investigate.model-high', 'investigate.slack-model', 'investigate.slack-effort', 'chat.model', 'chat.effort', 'investigate.gate-model', 'investigate.gate-effort',
+                    'investigate.guard-model', 'guard.check-questions', 'guard.check-answers')),
         ('Advisor models', tuple(key for found in advisor.keys().values() for key in found)),
         ('Spend and limits', ('investigate.daily-usd', 'page.ask-cap', 'chat.max-chars', 'chat.daily-cap', 'mcp.dive-cap', 'investigate.max-cards', 'investigate.rooms',
                               'investigate.max-tool-calls', 'investigate.assess-max-tool-calls', 'investigate.slack-max-tool-calls', 'chat.max-tool-calls', 'screenshot.max-per-day')),

@@ -540,7 +540,7 @@ def test_mcp_runs_carry_source_mcp_on_the_run_the_ledger_and_activity_and_a_priv
     assert (row['source'], row['what'], row['keys']) == ('mcp', costs.CHAT_WHAT, [])
     assert summary['topCards'] == []
     assert 'chat message · private · via MCP' in lines and 'chat answer · private · via MCP' in lines
-    assert [s['source'] for s in summary['sources']][-1] == 'mcp'
+    assert [s['source'] for s in summary['sources']][-2:] == ['mcp', 'guard']
 
 
 def test_the_connect_claude_page_reads_the_address_the_client_id_and_every_tool_from_the_server(store: Store):

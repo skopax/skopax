@@ -472,8 +472,8 @@ def test_the_chat_brand_json_follows_the_attribution_rules(monkeypatch):
         served = c.get('/chat/public/skopax-brand.json')
 
     # then
-    assert json.loads(plain.body) == {'attribution': {'text': 'Skopax 0.6.3 \u00b7 skopax.io', 'href': 'https://skopax.io'}}
-    assert json.loads(named.body) == {'attribution': {'text': 'Acme Ops \u00b7 powered by Skopax 0.6.3', 'href': 'https://skopax.io'}}
+    assert json.loads(plain.body) == {'attribution': {'text': 'Skopax 0.6.4 \u00b7 skopax.io', 'href': 'https://skopax.io'}}
+    assert json.loads(named.body) == {'attribution': {'text': 'Acme Ops \u00b7 powered by Skopax 0.6.4', 'href': 'https://skopax.io'}}
     assert plain.media_type == 'application/json' and plain.headers['cache-control'] == 'no-cache'
     assert served.status_code == 200 and served.json() == json.loads(named.body)
     assert served.headers['content-type'].startswith('application/json') and served.headers['cache-control'] == 'no-cache' and 'content-security-policy' not in served.headers

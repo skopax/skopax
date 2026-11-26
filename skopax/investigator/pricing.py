@@ -28,15 +28,15 @@ OPENAI_PRICES = {
 TABLES = {ANTHROPIC: PRICES, OPENAI: OPENAI_PRICES}
 ALL_MODELS = tuple(PRICES) + tuple(OPENAI_PRICES)
 DEFAULTS = {
-    ANTHROPIC: {'card': 'claude-opus-5-5', 'slack': 'claude-sonnet-5-5', 'chat': 'claude-sonnet-5-5', 'gate': 'claude-haiku-5-5', 'review': 'claude-sonnet-5-5', 'plugin': 'claude-opus-5-5'},
-    OPENAI: {'card': 'gpt-6.2-astra', 'slack': 'gpt-6.2-sol', 'chat': 'gpt-6.2-sol', 'gate': 'gpt-6-luna', 'review': 'gpt-6.2-sol', 'plugin': 'gpt-6.2-astra'},
+    ANTHROPIC: {'card': 'claude-opus-5-5', 'slack': 'claude-sonnet-5-5', 'chat': 'claude-sonnet-5-5', 'gate': 'claude-haiku-5-5', 'review': 'claude-sonnet-5-5', 'plugin': 'claude-opus-5-5', 'guard': ''},
+    OPENAI: {'card': 'gpt-6.2-astra', 'slack': 'gpt-6.2-sol', 'chat': 'gpt-6.2-sol', 'gate': 'gpt-6-luna', 'review': 'gpt-6.2-sol', 'plugin': 'gpt-6.2-astra', 'guard': ''},
 }
 
 SEARCH_USD = {ANTHROPIC: 0.01, OPENAI: 0.01, 'vertex': 0.01}
 VERTEX_CACHE_READ, VERTEX_CACHE_WRITE_5M, VERTEX_CACHE_WRITE_1H = 0.1, 1.25, 2.0
 TOKEN_PARTS = ('cacheRead', 'input', 'cacheWrite5m', 'cacheWrite1h', 'output')
 PARTS = TOKEN_PARTS + ('webSearch',)
-SOURCES = ('pod', 'page', 'slack', 'chat', 'assess', 'gate', 'smalltalk', 'pagescan', 'selfreview', 'threadsummary', 'mcp')
+SOURCES = ('pod', 'page', 'slack', 'chat', 'assess', 'gate', 'smalltalk', 'pagescan', 'selfreview', 'threadsummary', 'mcp', 'guard')
 POD_BY = 'pod'
 
 

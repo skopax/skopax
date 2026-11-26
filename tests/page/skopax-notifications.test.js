@@ -448,6 +448,30 @@ async function markAllReadCannotRunTwice() {
   return 'Mark all read cannot run twice and shows the top bar while it runs';
 }
 
+async function aHeldAnswerNoticeOpensTheRunOnHistory() {
+  //given
+  const held = {id: 'h1', kind: 'held', key: 'run:r77', num: null, title: 'Run r77', note: '', by: 'Investigator', link: '/api/investigations/r77', t: iso(1), read: false};
+  const {w, doc, errors} = await boot({list: [held], hash: '#t=slack'});
+  const de = await boot({list: [Object.assign({}, held)], hash: '#t=slack', lang: 'de', pack: true});
+
+  //when
+  const tag = doc.querySelector('#nt-list .nt-item[data-id="h1"] .tag');
+  const german = de.doc.querySelector('#nt-list .nt-item[data-id="h1"] .tag').textContent;
+  doc.querySelector('#nt-list .nt-item[data-id="h1"]').click();
+  await wait(80);
+
+  //then
+  assert.strictEqual(tag.textContent, 'Answer held for review', 'the held kind has its own label');
+  assert.ok(tag.classList.contains('k-warn'), 'and a warning tone');
+  assert.ok(german !== 'Answer held for review' && german !== 'held', 'the German pack translates it: ' + german);
+  assert.strictEqual(w.location.hash, '#t=acts', 'it opens History, where an admin releases or discards it, not the raw run record');
+  assert.strictEqual(w.POD_OPEN.r77, 1, 'with the held run unfolded');
+  assert.deepStrictEqual(errors.concat(de.errors), []);
+  w.close();
+  de.w.close();
+  return 'a held answer notice is labelled Answer held for review and opens the run on History';
+}
+
 (async () => {
   console.log('PASS ' + await aRefusedMailIsMarkedOnItsNotificationWithTheReason());
   console.log('PASS ' + await theRowCountsUnreadAndThePanelListsNewestFirst());
@@ -463,4 +487,5 @@ async function markAllReadCannotRunTwice() {
   console.log('PASS ' + await theNotificationsPageShowsOnlyNotifications());
   console.log('PASS ' + await aHeldPostCountsOnActivityNotOnNotifications());
   console.log('PASS ' + await markAllReadCannotRunTwice());
+  console.log('PASS ' + await aHeldAnswerNoticeOpensTheRunOnHistory());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

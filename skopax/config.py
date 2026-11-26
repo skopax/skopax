@@ -227,6 +227,9 @@ class Settings:
     investigate_assess_max_tool_calls: int = 16
     investigate_gate_model: str = 'claude-haiku-5-5'
     investigate_gate_effort: str = 'low'
+    investigate_guard_model: str = ''
+    guard_check_questions: bool = False
+    guard_check_answers: bool = False
     investigate_slack_model: str = 'claude-sonnet-5-5'
     chat_model: str = 'claude-sonnet-5-5'
     chat_effort: str = 'medium'
@@ -571,7 +574,8 @@ def choice(key: str, raw: str, allowed: tuple[str, ...]) -> str:
 
 MODEL_KEYS = {'investigate.model': ('INVESTIGATE_MODEL', 'investigate_model'), 'investigate.model-critical': ('INVESTIGATE_MODEL_CRITICAL', 'investigate_model_critical'),
               'investigate.model-high': ('INVESTIGATE_MODEL_HIGH', 'investigate_model_high'), 'investigate.slack-model': ('INVESTIGATE_SLACK_MODEL', 'investigate_slack_model'),
-              'chat.model': ('CHAT_MODEL', 'chat_model'), 'investigate.gate-model': ('INVESTIGATE_GATE_MODEL', 'investigate_gate_model'), 'self-review.model': ('SELF_REVIEW_MODEL', 'selfreview_model')}
+              'chat.model': ('CHAT_MODEL', 'chat_model'), 'investigate.gate-model': ('INVESTIGATE_GATE_MODEL', 'investigate_gate_model'), 'self-review.model': ('SELF_REVIEW_MODEL', 'selfreview_model'),
+              'investigate.guard-model': ('INVESTIGATE_GUARD_MODEL', 'investigate_guard_model')}
 
 
 def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mapping[str, str] | None = None) -> Settings:
@@ -806,6 +810,9 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         investigate_max_tool_calls=int(get('investigate.max-tool-calls', 'INVESTIGATE_MAX_TOOL_CALLS', '30')),
         investigate_assess_max_tool_calls=int(get('investigate.assess-max-tool-calls', 'INVESTIGATE_ASSESS_MAX_TOOL_CALLS', '16')),
         investigate_gate_model=get('investigate.gate-model', 'INVESTIGATE_GATE_MODEL', 'claude-haiku-5-5').strip(),
+        investigate_guard_model=get('investigate.guard-model', 'INVESTIGATE_GUARD_MODEL', '').strip(),
+        guard_check_questions=get('guard.check-questions', 'GUARD_CHECK_QUESTIONS', 'false').strip().lower() == 'true',
+        guard_check_answers=get('guard.check-answers', 'GUARD_CHECK_ANSWERS', 'false').strip().lower() == 'true',
         investigate_gate_effort=get('investigate.gate-effort', 'INVESTIGATE_GATE_EFFORT', 'low').strip() or 'low',
         investigate_slack_model=get('investigate.slack-model', 'INVESTIGATE_SLACK_MODEL', 'claude-sonnet-5-5').strip(),
         chat_model=get('chat.model', 'CHAT_MODEL', 'claude-sonnet-5-5').strip(),

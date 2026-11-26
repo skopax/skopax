@@ -68,7 +68,7 @@ def test_spend_per_day_has_every_day_of_the_window_split_by_source():
 
     # then
     assert [b['t'] for b in per] == ['2026-10-18', '2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24']
-    assert per[-1] == {'t': TODAY, 'pod': 1.5, 'page': 0.0, 'slack': 0.0, 'chat': 0.0, 'assess': 0.6, 'gate': 0.0, 'smalltalk': 0.0, 'pagescan': 0.0, 'selfreview': 0.0, 'threadsummary': 0.0, 'mcp': 0.0, 'total': 2.1}
+    assert per[-1] == {'t': TODAY, 'pod': 1.5, 'page': 0.0, 'slack': 0.0, 'chat': 0.0, 'assess': 0.6, 'gate': 0.0, 'smalltalk': 0.0, 'pagescan': 0.0, 'selfreview': 0.0, 'threadsummary': 0.0, 'mcp': 0.0, 'guard': 0.0, 'total': 2.1}
     assert (per[-2]['slack'], per[-2]['gate'], per[-2]['total']) == (0.25, 0.0003, 0.2503)
     assert per[2]['page'] == 0.4 and per[0]['total'] == 0.0
 
@@ -88,7 +88,7 @@ def test_every_source_has_its_calls_runs_split_hit_share_average_and_model_mix()
     by = {x['source']: x for x in costs.summary(rows(), META, TODAY, 7, 0, 20.0)['sources']}
 
     # then
-    assert list(by) == ['pod', 'page', 'slack', 'chat', 'assess', 'gate', 'smalltalk', 'pagescan', 'selfreview', 'threadsummary', 'mcp']
+    assert list(by) == ['pod', 'page', 'slack', 'chat', 'assess', 'gate', 'smalltalk', 'pagescan', 'selfreview', 'threadsummary', 'mcp', 'guard']
     assert (by['pod']['calls'], by['pod']['runs'], by['pod']['avgRun'], by['pod']['models']) == (2, 1, 1.5, {'claude-opus-5-5': 2})
     assert by['pod']['usd'] == {'cacheRead': 0.6, 'input': 0.2, 'cacheWrite5m': 0.3, 'cacheWrite1h': 0.0, 'output': 0.4, 'webSearch': 0.0, 'total': 1.5}
     assert by['pod']['cacheHit'] == round(3_000_000 / 3_110_000, 3)

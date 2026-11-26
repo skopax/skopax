@@ -1345,9 +1345,9 @@ async function aRouteEchoChoiceShowsExactlyThreeOptionsAndStartsOnTheDefault() {
 
 async function anInstanceShowsAvailableInQuestionsWithItsThreeChoices() {
   //given
-  const help = 'Who may have Skopax read this connection when answering a Slack ask, a chat message or a page ask. Card investigations always may.';
+  const help = 'Card runs always read this connection. This picks whose questions (Slack asks, chat messages, page asks) may read it too.';
   const fields = [FIELDS[0], {key: 'questions', label: 'Available in questions', kind: 'choice', required: false, default: 'everyone', help, choices: ['everyone', 'operators', 'none'],
-    choiceLabels: {everyone: 'Everyone', operators: 'Operators and admins only', none: 'Card investigations only'}, low: null, high: null, showIf: null, ui: false, group: 'advanced'}];
+    choiceLabels: {everyone: "Card runs + everyone's questions", operators: 'Card runs + operator and admin questions', none: 'Card runs only'}, low: null, high: null, showIf: null, ui: false, group: 'advanced'}];
   const cat = {edition: 'community', secretsKey: 'env', plugins: [{id: 'lean', name: 'Lean', version: '1.0.0', category: 'marketing', description: '', edition: 'community', icon: false, state: 'ok', reason: null, enabled: true, fields,
     instances: [instance('main', {values: {url: 'https://main.example.com', questions: 'everyone'}, secrets: {}}), instance('east', {values: {url: 'https://east.example.com', questions: 'none'}, secrets: {}})]}]};
   const t = await boot({catalog: cat});
@@ -1364,13 +1364,13 @@ async function anInstanceShowsAvailableInQuestionsWithItsThreeChoices() {
   await wait(100);
 
   //then
-  assert.deepStrictEqual(buttons.map((b) => [b.dataset.value, b.textContent]), [['everyone', 'Everyone'], ['operators', 'Operators and admins only'], ['none', 'Card investigations only']]);
+  assert.deepStrictEqual(buttons.map((b) => [b.dataset.value, b.textContent]), [['everyone', "Card runs + everyone's questions"], ['operators', 'Card runs + operator and admin questions'], ['none', 'Card runs only']]);
   assert.deepStrictEqual(checked, ['everyone'], 'the saved value starts checked');
   assert.deepStrictEqual(shown, [true, true], 'the label and the help show');
   assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'PATCH').map((c) => c[2]), [{values: {questions: 'operators'}}]);
   assert.deepStrictEqual(t.errors, []);
   t.w.close();
-  console.log('PASS Integrations: an instance shows Available in questions with Everyone, Operators and admins only and Card investigations only, and saves the pick');
+  console.log('PASS Integrations: an instance shows Available in questions with the three Card runs choices, and saves the pick');
 }
 
 async function anotherPluginsChoiceWithADefaultOptionKeepsItsBlankOption() {

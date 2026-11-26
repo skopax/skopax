@@ -6,7 +6,142 @@ var INV_USAGE = null;
 var INV_SIG = '';
 var POD_OPEN = {};
 var INV_OP = null;
-var POD_OUT = {done: 'k-good', running: 'k-info', stopped: 'k-muted', skipped: 'k-muted', abandoned: 'k-muted', capped: 'k-warn', failed: 'k-crit', refused: 'k-crit'};
+var POD_OUT = {done: 'k-good', running: 'k-info', stopped: 'k-muted', skipped: 'k-muted', abandoned: 'k-muted', capped: 'k-warn', failed: 'k-crit', refused: 'k-crit', held: 'k-warn', releasing: 'k-info', discarded: 'k-muted'};
+var GUARD_FULL = {}, GUARD_ASKED = {}, GUARD_SAID = {}, GUARD_KEPT = {}, GUARD_FOCUS = null, GUARD_HELD_SAY = 'Investigation held for review.';
+function guardAdmin() { return typeof ADMIN_OK !== 'undefined' && ADMIN_OK === true; }
+function guardOf(r) { return r && r.guard && typeof r.guard === 'object' ? r.guard : null; }
+function guardVerdict(g) {
+  if (!g) return '';
+  if (g.questions === 'refuse') return 'Guard: refused';
+  if (g.questions === 'failed') return 'Guard: refused, the check failed';
+  if (g.answers === 'hold') return 'Guard: held';
+  if (g.answers === 'failed') return 'Guard: held, the check failed';
+  if (g.answers === 'mask') return 'Guard: masked ' + Math.max(0, Math.floor(Number(g.masked) || 0));
+  return g.questions === 'pass' || g.answers === 'pass' ? 'Guard: passed' : '';
+}
+function guardNeedsFull(r) {
+  var g = guardOf(r);
+  return r.outcome === 'held' || (!!g && (g.questions === 'refuse' || g.answers === 'hold' || g.answers === 'mask'));
+}
+function heldChats() {
+  if (!guardAdmin()) return Promise.resolve([]);
+  return fetch('/api/investigations?held=true&limit=200', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : []; }, function () { return []; }).then(function (rows) {
+    return (Array.isArray(rows) ? rows : []).filter(function (r) { return r && r.trigger === 'chat'; });
+  });
+}
+function heldMerge(rows, held) {
+  var seen = {};
+  rows.forEach(function (r) { if (r && r.id) seen[r.id] = 1; });
+  var more = held.filter(function (r) { return r && r.id && !seen[r.id] && (seen[r.id] = 1); });
+  Object.keys(GUARD_KEPT).forEach(function (id) { if (!seen[id] && guardAdmin()) { seen[id] = 1; more.push(GUARD_KEPT[id]); } });
+  return more.length ? rows.concat(more).sort(function (a, b) { return String(b.startedAt || '').localeCompare(String(a.startedAt || '')); }) : rows;
+}
+function proposedLeaves(v, out) {
+  if (typeof v === 'string' && v.trim()) out.push(v.trim());
+  else if (Array.isArray(v)) v.forEach(function (x) { proposedLeaves(x, out); });
+  else if (v && typeof v === 'object') Object.keys(v).forEach(function (k) { proposedLeaves(v[k], out); });
+  return out;
+}
+function heldProposedHtml(p) {
+  var kinds = p && typeof p === 'object' ? Object.keys(p).filter(function (k) { return proposedLeaves(p[k], []).length; }) : [];
+  if (!kinds.length) return '';
+  return '<div class="held-proposed"><p class="muted">' + esc(tx('Held proposals')) + '</p><ul data-no-tx>' + kinds.map(function (k) { return '<li>' + esc(proposedLeaves(p[k], []).join(' \u00b7 ')) + '</li>'; }).join('') + '</ul></div>';
+}
+function guardWhyHtml(why) { return '<span class="guard-why">, ' + esc(tx('because')) + ' <span data-no-tx>' + esc(why) + '</span></span>'; }
+function guardLineHtml(r) {
+  var full = GUARD_FULL[r.id], v = guardVerdict(guardOf(r) || (full && full.guard));
+  if (!v) return '';
+  return '<p class="guard-line" data-guard-run="' + esc(r.id) + '"><span class="guard-v">' + esc(tx(v)) + '</span>' + (full && full.reason ? guardWhyHtml(full.reason) : '') + '</p>';
+}
+function heldTextHtml(full) { return '<p class="held-text" data-no-tx>' + esc(full.text) + '</p>' + heldProposedHtml(full.proposed); }
+function heldSaidHtml(id, tag) { return '<' + tag + ' class="held-result" role="status" tabindex="-1">' + esc(GUARD_SAID[id] || '') + '</' + tag + '>'; }
+function heldHtml(r, acts) {
+  var full = GUARD_FULL[r.id];
+  return '<section class="held" data-guard-run="' + esc(r.id) + '"><p class="held-say">' + esc(tx(GUARD_HELD_SAY)) + '</p>' + (full && full.text != null ? heldTextHtml(full) : '') +
+    (acts && guardAdmin() ? '<p class="held-act"><button type="button" class="btn small op-btn admin-only held-release">' + esc(tx('Release answer')) + '</button> <button type="button" class="btn sec small op-btn admin-only held-discard">' +
+      esc(tx('Discard answer')) + '</button> ' + heldSaidHtml(r.id, 'span') + '</p>' : '') + '</section>';
+}
+function guardFill(id) {
+  var full = GUARD_FULL[id];
+  if (!full) return;
+  [].forEach.call(document.querySelectorAll('[data-guard-run]'), function (n) {
+    if (n.dataset.guardRun !== id) return;
+    if (n.classList.contains('guard-line') && full.reason && !n.querySelector('.guard-why')) n.insertAdjacentHTML('beforeend', guardWhyHtml(full.reason));
+    var say = n.classList.contains('held') ? n.querySelector('.held-say') : null;
+    if (say && full.text != null && !n.querySelector('.held-text')) say.insertAdjacentHTML('afterend', heldTextHtml(full));
+    var line = n.parentNode && n.parentNode.querySelector('.guard-line');
+    if (n.classList.contains('held') && full.guard && !(line && line.dataset.guardRun === id)) n.insertAdjacentHTML('afterend', guardLineHtml({id: id, guard: full.guard}));
+  });
+}
+function guardLoad(r) {
+  if (!guardAdmin() || !guardNeedsFull(r) || GUARD_ASKED[r.id]) return;
+  GUARD_ASKED[r.id] = 1;
+  fetch('/api/investigations/' + encodeURIComponent(r.id), {credentials: 'same-origin'}).then(function (x) { return x.ok ? x.json() : null; }).then(function (run) {
+    if (!run || typeof run !== 'object') { delete GUARD_ASKED[r.id]; return; }
+    var held = run.held && typeof run.held === 'object' ? run.held : {}, g = guardOf(run) || {};
+    GUARD_FULL[r.id] = {text: typeof held.text === 'string' ? held.text : null, reason: typeof g.reason === 'string' ? g.reason : '', proposed: held.proposed && typeof held.proposed === 'object' ? held.proposed : null,
+      guard: guardOf(run) ? {questions: g.questions, answers: g.answers, masked: g.masked} : null};
+    guardFill(r.id);
+  }, function () { delete GUARD_ASKED[r.id]; });
+}
+function guardForget(id) { delete GUARD_FULL[id]; delete GUARD_ASKED[id]; }
+function heldAct(r, act, b) {
+  var box = b.closest('.held'), out = box.querySelector('.held-result'), word = act === 'release' ? 'Release answer' : 'Discard answer';
+  if (b.getAttribute('aria-disabled') === 'true') return;
+  if (act === 'discard' && !b.dataset.confirm) {
+    b.dataset.confirm = '1';
+    b.textContent = tx('Click again to discard');
+    b.dataset.timer = setTimeout(function () { delete b.dataset.confirm; b.textContent = tx(word); }, 5000);
+    return;
+  }
+  clearTimeout(+b.dataset.timer);
+  delete b.dataset.confirm;
+  delete GUARD_SAID[r.id];
+  out.textContent = '';
+  box.querySelectorAll('button').forEach(function (x) { x.disabled = true; });
+  var said = function (text) { GUARD_SAID[r.id] = text; GUARD_FOCUS = r.id; out.textContent = text; out.focus(); };
+  var keep = function (run) { if (r.trigger === 'chat' && run && typeof run === 'object' && run.id === r.id && run.outcome !== 'held' && run.outcome !== 'releasing') GUARD_KEPT[r.id] = run; };
+  fetch('/api/admin/runs/' + encodeURIComponent(r.id) + '/' + act, {method: 'POST', headers: {'Accept': 'application/json'}, credentials: 'same-origin'}).then(function (x) {
+    return x.json().then(function (body) { return [x.status, body]; }, function () { return [x.status, null]; });
+  }).then(function (got) {
+    var code = got[0], body = got[1], detail = body && typeof body.detail === 'string' && body.detail ? body.detail : '';
+    if (code >= 200 && code < 300) {
+      guardForget(r.id);
+      keep(body);
+      said(tx(act === 'release' ? 'Answer released' : 'Answer discarded'));
+      loadInvestigations();
+      return;
+    }
+    box.querySelectorAll('button').forEach(function (x) { x.disabled = false; });
+    b.textContent = tx(word);
+    said(detail || tx('Not done, try again'));
+    if (code === 409) {
+      guardForget(r.id);
+      fetch('/api/investigations/' + encodeURIComponent(r.id), {credentials: 'same-origin'}).then(function (x) { return x.ok ? x.json() : null; }, function () { return null; }).then(function (run) {
+        keep(run);
+        loadInvestigations();
+      });
+    }
+  }, function () {
+    box.querySelectorAll('button').forEach(function (x) { x.disabled = false; });
+    b.textContent = tx(word);
+    said(tx('Not done, try again'));
+  });
+}
+var GUARD_WAS_ADMIN = false;
+document.addEventListener('skopax:admin', function () {
+  if (guardAdmin() === GUARD_WAS_ADMIN) return;
+  GUARD_WAS_ADMIN = guardAdmin();
+  if (!GUARD_WAS_ADMIN) {
+    GUARD_FULL = {};
+    GUARD_ASKED = {};
+    GUARD_SAID = {};
+    GUARD_KEPT = {};
+    document.querySelectorAll('.held-text, .held-proposed, .guard-why, .held-act, .held-result').forEach(function (n) { n.remove(); });
+  }
+  if (INV_SIG) { renderPodRuns(); loadInvestigations(); }
+  Object.keys(INV).forEach(function (k) { if (INV[k] && INV[k].outcome === 'held') guardLoad(INV[k]); });
+});
 function usdText(v) { return '$' + Number(v || 0).toFixed(2); }
 var CARD_NAME_LIMIT = 80;
 function cardName(key) {
@@ -28,7 +163,9 @@ function invHtml(a) {
   }).join('') : '';
   var flags = (r.flags || []).length ? '<p class="podflag" title="' + esc(r.flags.map(function (f) { return f.tool + ': ' + f.excerpt; }).join('\n')) + '">Planted-looking text: ' +
     esc(r.flags.map(function (f) { return f.phrase; }).join(', ')) + '</p>' : '';
-  return blockFold('inv', 'podrun', '<h5>' + esc(head) + '<span class="h5n">' + esc(meta) + '</span></h5>', (r.recap ? '<p>' + esc(r.recap) + '</p>' : '') +
+  var held = r.outcome === 'held';
+  if (held) guardLoad(r);
+  return blockFold('inv', 'podrun', '<h5>' + esc(head) + '<span class="h5n">' + esc(meta) + '</span></h5>', (held ? heldHtml(r, false) : r.recap ? '<p>' + esc(r.recap) + '</p>' : '') + guardLineHtml(r) +
     (props ? '<ul>' + props + '</ul>' : '') + flags);
 }
 function invOperator() { return typeof window.__boardLock === 'function' && !window.__boardLock(); }
@@ -240,11 +377,17 @@ function renderPodRuns() {
     var thread = slackAsk && slackThread(r.ask.thread) ? ' · <a href="' + esc(r.ask.thread) + '" target="_blank" rel="noopener">thread</a>' : '';
     var what = priv ? '<span class="muted">private chat message</span>' : r.ask ? '<b>' + (slackAsk ? 'Slack request' : 'Request') + '</b> by ' + esc(r.ask.by || 'an operator') + ': ' + esc(r.ask.text) + ((r.keys || []).length ? ' · ' + cardNames(r.keys) : '') + thread : cardNames(r.keys);
     var n = (r.screenshots || []).length;
-    var answer = priv ? '' : r.recap ? '<p class="' + (r.ask ? 'answer' : 'recap') + '">' + linkify(r.recap).replace(/\n/g, '<br>') + '</p>' : '<p class="muted">' + (r.outcome === 'running' ? 'Working on it…' : 'No answer text.') + '</p>';
+    var answer = r.outcome === 'held' ? heldHtml(r, true) : (priv ? '' : r.recap ? '<p class="' + (r.ask ? 'answer' : 'recap') + '">' + linkify(r.recap).replace(/\n/g, '<br>') + '</p>' : '<p class="muted">' + (r.outcome === 'running' ? 'Working on it…' : 'No answer text.') + '</p>') +
+      (GUARD_SAID[r.id] ? heldSaidHtml(r.id, 'p') : '');
     d.innerHTML = '<summary class="chev"><span class="when"><b>' + esc(dayhm(r.startedAt)) + '</b></span><span class="st ' + (POD_OUT[r.outcome] || 'k-muted') + '">' + esc(r.outcome || '') + '</span><span class="tag plain">' + esc(r.mode) + '</span>' +
       '<span class="hw">' + what + '</span><span class="muted">' + usdText(r.usd) + '</span>' + (n ? '<span class="tag plain shots-n">' + n + ' screenshot' + (n === 1 ? '' : 's') + '</span>' : '') + '</summary>' +
-      '<div class="hbody">' + answer + proposalHtml(r) + shotsHtml(r) + '<p class="hmeta">' + (r.toolCalls || 0) + ' tool calls \u00b7 <a class="record" href="/api/investigations/' + encodeURIComponent(r.id) + '" target="_blank" rel="noopener" data-json="Run record" title="The full run record: tool calls, writes, usage">Run record</a></p></div>';
-    d.addEventListener('toggle', function () { if (d.open) POD_OPEN[r.id] = 1; else delete POD_OPEN[r.id]; });
+      '<div class="hbody">' + answer + guardLineHtml(r) + proposalHtml(r) + shotsHtml(r) + '<p class="hmeta">' + (r.toolCalls || 0) + ' tool calls \u00b7 <a class="record" href="/api/investigations/' + encodeURIComponent(r.id) + '" target="_blank" rel="noopener" data-json="Run record" title="The full run record: tool calls, writes, usage">Run record</a></p></div>';
+    d.addEventListener('toggle', function () { if (d.open) { POD_OPEN[r.id] = 1; guardLoad(r); } else delete POD_OPEN[r.id]; });
+    if (d.open) guardLoad(r);
+    [['release', '.held-release'], ['discard', '.held-discard']].forEach(function (x) {
+      var hb = d.querySelector(x[1]);
+      if (hb) hb.addEventListener('click', function () { heldAct(r, x[0], hb); });
+    });
     var go = d.querySelector('.prop-go');
     if (go) go.addEventListener('click', function () { confirmProposal(r, go); });
     if (keep === r.id) back = go || d.querySelector('.prop-done') || d.querySelector('.prop-result');
@@ -253,6 +396,11 @@ function renderPodRuns() {
   });
   if (window.__skopaxGate) window.__skopaxGate();
   if (back) back.focus({preventScroll: true});
+  if (GUARD_FOCUS) {
+    var said = [].filter.call(list.querySelectorAll('.held-result'), function (n) { var d = n.closest('details'), a = d && d.querySelector('a.record'); return a && a.getAttribute('href') === '/api/investigations/' + encodeURIComponent(GUARD_FOCUS); })[0];
+    GUARD_FOCUS = null;
+    if (said && (!document.activeElement || document.activeElement === document.body)) said.focus({preventScroll: true});
+  }
 }
 var PLUGIN_SIG = null;
 function pluginTilesChanged(list) {
@@ -270,12 +418,14 @@ function loadInvestigations() {
     fetch('/api/server', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : {}; }),
     fetch('/api/investigator/usage?days=7', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; }),
     fetch('/api/card-runs', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; }),
+    heldChats(),
   ]).then(function (got) {
     var rows = Array.isArray(got[0]) ? got[0] : [];
+    rows = heldMerge(rows, got[4]);
     var info = got[1] && !Array.isArray(got[1]) ? got[1].investigate || null : null;
     var usage = got[2] && !Array.isArray(got[2]) && typeof got[2].runs === 'number' ? got[2] : null;
     var cards = got[3] && typeof got[3] === 'object' && !Array.isArray(got[3]) ? got[3] : null;
-    var sig = JSON.stringify([rows.map(function (r) { return [r.id, r.outcome, !!(r.proposal && r.proposal.confirmedAt)]; }), info, usage && [usage.runs, usage.usd], cards]);
+    var sig = JSON.stringify([rows.map(function (r) { return [r.id, r.outcome, !!(r.proposal && r.proposal.confirmedAt), guardVerdict(guardOf(r))]; }), info, usage && [usage.runs, usage.usd], cards]);
     if (got[1] && !Array.isArray(got[1]) && Array.isArray(got[1].plugins)) pluginTilesChanged(got[1].plugins);
     SERVER_TZ = got[1] && !Array.isArray(got[1]) && typeof got[1].tz === 'string' ? got[1].tz : '';
     INV_USAGE = usage;

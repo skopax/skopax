@@ -60,7 +60,10 @@ function runBanner(key) {
     head = s.ahead ? 'Queued, ' + s.ahead + ' ahead' : 'Queued, next';
     cls = 'run-wait';
     if (s.at) bits = [runAge(s.at, 'waiting')];
-  } else if (r.outcome && r.outcome !== 'done') {
+  } else if (r.outcome === 'held') {
+    head = 'Investigation held for review.';
+    cls = 'run-wait';
+  } else if (r.outcome && r.outcome !== 'done' && r.outcome !== 'discarded') {
     head = 'Investigation failed';
     cls = 'run-bad';
     step = '<span class="run-why" data-no-tx>' + runEsc(r.error || r.outcome) + '</span>';

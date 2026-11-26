@@ -592,6 +592,7 @@ def target_of(plugin, info, transport_for: Callable) -> Target | None:
 
 TRACER: list[Tracer | None] = [None]
 CURRENT: contextvars.ContextVar[Trace | None] = contextvars.ContextVar('skopax_trace', default=None)
+QUIET: contextvars.ContextVar[bool] = contextvars.ContextVar('skopax_untraced', default=False)
 
 
 def install(tracer: Tracer | None) -> None:
@@ -650,6 +651,15 @@ def end(handle: Handle) -> bool:
 
 
 @contextlib.contextmanager
+def untraced() -> Iterator[None]:
+    token = QUIET.set(True)
+    try:
+        yield
+    finally:
+        QUIET.reset(token)
+
+
+@contextlib.contextmanager
 def opened(name: str, **meta) -> Iterator[Trace | None]:
     handle = begin(name, **meta)
     try:
@@ -693,6 +703,8 @@ def priced(model: str, usage) -> float | None:
 
 
 def generation(provider: str, kind: str, model: str, system: str, messages: list, call_model: Callable[[], object], tools: list | None = None):
+    if QUIET.get():
+        return call_model()
     trace = CURRENT.get()
     if trace is None:
         found = TRACER[0]

@@ -1,5 +1,6 @@
 import base64
 import dataclasses
+import json
 import logging
 import re
 import socket
@@ -10,7 +11,7 @@ from collections.abc import Callable, Mapping
 
 import anthropic
 
-from skopax import advisor, followup, history, information, severity, tracing
+from skopax import advisor, followup, history, information, messages, severity, tracing
 from skopax.ai import IMAGES_OFF, ModelSetting, clients_for, label_of, provider_of_ref, route, wrap
 from skopax.config import Setting, Settings
 from skopax.contract import OrgPack
@@ -20,14 +21,15 @@ from skopax.features import off_text
 from skopax.investigator import pricing, prompt, select
 from skopax.investigator.flags import REQUESTS, SOFT, asked, scan
 from skopax.investigator.runner import Result, RunConfig, Runner
-from skopax.investigator.tools import Effects, Sources, Toolbox
+from skopax.investigator.guard import MASK_TEXT, apply_mask
+from skopax.investigator.tools import Effects, Sources, Toolbox, applied_writes, leaves, masked_leaves
 from skopax.investigator.toolset import Run, asked_gate
 from skopax.investigator.web import own_domains as own_web_domains, web_from
 from skopax.postdeploy import NUMBERS_BY
 from skopax import clock
 from skopax.messages import msg
 from skopax.outward import outward
-from skopax.store import LEASE_ID, ActionMoved, NotFound, Store, new_id
+from skopax.store import HELD_OUTCOMES, LEASE_ID, ActionMoved, NotFound, Store, new_id
 
 log = logging.getLogger('skopax.investigator')
 
@@ -54,7 +56,83 @@ SOURCE_OF = {'cards': 'pod', 'action': 'pod', 'ask': 'page', 'slack': 'slack', '
 MCP = 'mcp'
 TRACE_NAMES = {'cards': 'card run', 'action': 'investigate click', 'ask': 'page question', 'slack': 'slack question', 'chat': 'chat answer', 'assess': 'deploy assessment', 'review': 'follow-up check'}
 TRACE_OK = ('done', 'skipped')
+HELD_S = 24 * 3600
+HELD_PERIOD = 300
+HELD_OFFSET = 45
+STUCK_RELEASE_S = 600
+REASON_LIMIT = 200
+REFUSED_BY = 'Refused by the guard'
+HELD_PUBLIC = ('until', 'released')
+PROPOSALS = ('ticketProposal', 'cardAction', 'proposal')
 USE_FIELDS = {'card': ('investigate_model', 'card'), 'slack': ('investigate_slack_model', 'slack'), 'chat': ('chat_model', 'chat')}
+
+
+class ReleaseFailed(Exception):
+    pass
+
+
+class ReleaseLost(Exception):
+    pass
+
+
+class ReleaseTaken(ReleaseFailed):
+    pass
+
+
+def guard_reason(reason) -> str:
+    return outward(str(reason or ''))[:REASON_LIMIT]
+
+
+MASK_TAIL_MIN = 4
+HELD_CALL_ERROR = 'hidden while the answer is held'
+
+
+def hidden(text: str, forms: tuple[str, ...]) -> str:
+    if not isinstance(text, str) or not text:
+        return text
+    found = tuple(f for f in forms if f in text)
+    if found:
+        got = apply_mask(text, found)
+        text = got[0] if got is not None else MASK_TEXT
+    for f in forms:
+        tail = next((n for n in range(len(f) - 1, MASK_TAIL_MIN - 1, -1) if text.endswith(f[:n])), 0)
+        if tail:
+            text = text[:-tail] + MASK_TEXT
+    return text
+
+
+def mask_record(toolbox, spans: tuple[str, ...]) -> None:
+    forms = tuple(dict.fromkeys(f for s in spans for f in (s, json.dumps(s, ensure_ascii=False)[1:-1]) if f))
+    for c in toolbox.calls:
+        for field in ('input', 'error'):
+            if isinstance(c.get(field), str):
+                c[field] = hidden(c[field], forms)
+    for w in toolbox.writes:
+        if isinstance(w.get('summary'), str):
+            w['summary'] = hidden(w['summary'], forms)
+    for f in toolbox.flags:
+        if isinstance(f, dict) and isinstance(f.get('excerpt'), str):
+            f['excerpt'] = hidden(f['excerpt'], forms)
+
+
+def stored_calls(calls: list[dict]) -> list[dict]:
+    return [c | {'input': outward(c['input'])} if isinstance(c.get('input'), str) else c for c in calls]
+
+
+def public_run(run: dict) -> dict:
+    out = dict(run)
+    if isinstance(out.get('held'), dict):
+        out['held'] = {k: v for k, v in out['held'].items() if k in HELD_PUBLIC}
+    if out.get('outcome') in HELD_OUTCOMES:
+        out.pop('screenshots', None)
+    if isinstance(out.get('guard'), dict):
+        out['guard'] = {k: v for k, v in out['guard'].items() if k != 'reason'}
+    return out
+
+
+def said(action: dict | None, key: str) -> str:
+    with messages.speaking(((action or {}).get('slack') or {}).get('language')):
+        return msg(key)
 
 
 def via_mcp(action: dict | None) -> bool:
@@ -147,6 +225,8 @@ class Investigator:
         self.on: Callable[[], bool] = lambda: True
         self.pack: Callable[[], OrgPack | None] = lambda: None
         self.role_of: Callable[[dict | None], str | None] = lambda action: None
+        self.guard = None
+        self.admins: Callable[[], list[str]] = lambda: []
         self.clients = clients_for(settings, key, lambda k: anthropic.Anthropic(api_key=k, timeout=REQUEST_TIMEOUT, max_retries=MAX_RETRIES), REQUEST_TIMEOUT, MAX_RETRIES, client, keys)
         self.key = lambda: self.clients.key(route(self, 'investigate_model', 'card')[0])
         self.keyed = lambda: self.clients.keyed(route(self, 'investigate_model', 'card')[0])
@@ -525,6 +605,7 @@ class Investigator:
         toolbox = None
         result = None
         crash = None
+        guarded = None
         trigger = 'review' if review else 'assess' if report_id else 'slack' if slack_ask else 'chat' if chat_ask else 'ask' if ask else 'action' if action else 'cards'
         trace = tracing.Handle(None, None, None)
         with self._lock:
@@ -562,7 +643,10 @@ class Investigator:
                 record['source'] = MCP
             self.store.add_investigation(record)
             self.store.add_activity('run', 'investigator', f"{'follow-up check' if review == followup.VERIFY else 'settle review'} \u00b7 {', '.join(keys)}" if review else f"assessing deploy report · {report.get('summary')}" if report else 'chat message · private' + (' · via MCP' if mcp else '') if chat_ask else f"{'slack ' if slack_ask else ''}ask by {action.get('requestedBy')} · {prompt.flat(ask)[:ASK_LINE]}" if ask else f"run started · {mode} · {', '.join(keys)}" + (f" · via MCP by {action.get('requestedBy')}" if mcp else ''), runId=run_id)
-            if keys or ask or report:
+            guarded = self._guard_start(run_id, action, ask, review, report, cards)
+            if guarded is not None and guarded['refused']:
+                result = Result(outcome='done', recap=guarded['refused'], error=REFUSED_BY)
+            elif keys or ask or report:
                 client, result = self._built(provider)
                 caps = self.clients.capabilities(provider, client) if client is not None else self.clients.capabilities(provider)
                 if client is not None and 'tools' not in caps:
@@ -578,6 +662,7 @@ class Investigator:
                                   strict=self.strict_tools, asker=action.get('requestedBy') if ask and not quick else None, chat=chat_ask, language=self.language,
                                   web=web_from(self.web_domains, self.web_searches if searching else 0, self.web_fetches if searching and 'web_fetch' in caps and getattr(wrap(client), 'provider', provider) != pricing.OPENAI else 0, self.own_domains()), settings=self.settings, role=role, knowledge=readable,
                                   review=review or None)
+                toolbox.hold_writes = bool(guarded and guarded['answers'])
                 if review:
                     config = RunConfig(quick_model, self.slack_effort, self.slack_max_tool_calls, capabilities=caps)
                     brief = prompt.review_brief(cards[0], review, self.base_url, config.max_tool_calls) + prompt.language_note(self.language)
@@ -629,7 +714,7 @@ class Investigator:
             try:
                 with self._lock:
                     self._runs.pop(run_id, None)
-                done = self._finish(run_id, claimed, action, record is not None, toolbox, result, crash, mode, trace.trace)
+                done = self._finish(run_id, claimed, action, record is not None, toolbox, result, crash, mode, trace.trace, guarded)
             finally:
                 tracing.end(trace)
         log.info('investigation %s (%s, %s): %s, %d turns, %d tool calls, $%.2f', run_id, mode, ', '.join(keys), done['outcome'], done['turns'],
@@ -669,41 +754,130 @@ class Investigator:
         others = self.store.load().get('anomalies') or []
         return {c['key']: twin for c in cards if (twin := select.announced(c, others, now))}
 
+    def _guard_start(self, run_id: str, action: dict | None, ask: str, review: str, report: dict | None, cards: list[dict]) -> dict | None:
+        watch = self.guard
+        if watch is None:
+            return None
+        questions = bool(ask) and bool(watch.checks_questions)
+        answers = bool(watch.checks_answers)
+        if not (questions or answers):
+            return None
+        out = {'questions': None, 'answers': answers, 'question': self._guard_question(ask, report, cards), 'ms': 0, 'model': '', 'reason': '', 'refused': None}
+        if not questions:
+            return out
+        try:
+            got = watch.question(ask, self.role_of(action) or '', run_id)
+            verdict, failure, reason, ms, model = got.verdict, got.failure, got.reason, got.ms, got.model
+        except Exception as e:
+            log.warning('the question check of run %s failed: %s', run_id, error_kind(e))
+            verdict, failure, reason, ms, model = 'refuse', 'api', '', 0, ''
+        out.update(ms=int(ms or 0), model=str(model or ''), reason=guard_reason(reason))
+        if failure:
+            out.update(questions='failed', refused=said(action, 'slackevents.guard.unavailable'))
+        elif verdict == 'pass':
+            out['questions'] = 'pass'
+        else:
+            out.update(questions='refuse', refused=said(action, 'slackevents.guard.refused'))
+        return out
+
+    @staticmethod
+    def _guard_question(ask: str, report: dict | None, cards: list[dict]) -> str:
+        if ask:
+            return ask
+        if report:
+            return str(report.get('summary') or '')
+        return '\n'.join(f"{c.get('svc') or '-'} / {c.get('label') or '?'}: {c.get('what') or c.get('sig') or c.get('key') or ''}" for c in cards)
+
+    def _check_answer(self, run_id: str, toolbox, result: Result, guarded: dict | None, proposed: dict) -> tuple[dict | None, dict]:
+        if guarded is None:
+            return None, proposed
+        out = {'questions': guarded['questions'], 'answers': None, 'masked': 0, 'ms': guarded['ms'], 'model': guarded['model'], 'reason': guarded['reason']}
+        if guarded['refused']:
+            return out | {'answers': 'not run'}, proposed
+        queued = toolbox is not None and bool(toolbox.held)
+        if not guarded['answers'] or not (result.recap or queued or proposed):
+            return out, proposed
+        offers = '\n'.join(f'{k}: {t}' for k, v in proposed.items() for t in leaves(v))
+        whole = result.recap + (f'\n\nProposals:\n{offers}' if offers else '') + (f'\n\nCard writes waiting for this check:\n{toolbox.held_text()}' if queued else '')
+        try:
+            digest = toolbox.digest() if toolbox is not None else ''
+            got = self.guard.answer(guarded['question'], whole, digest, run_id)
+            verdict, failure, spans, reason, ms, model = got.verdict, got.failure, tuple(s for s in got.spans or () if isinstance(s, str) and s), got.reason, got.ms, got.model
+        except Exception as e:
+            log.warning('the answer check of run %s failed: %s', run_id, error_kind(e))
+            verdict, failure, spans, reason, ms, model = 'hold', 'api', (), '', 0, ''
+        out.update(ms=out['ms'] + int(ms or 0), model=str(model or out['model'] or ''), reason=guard_reason(reason) or out['reason'])
+        if failure:
+            return out | {'answers': 'failed'}, proposed
+        if verdict == 'pass':
+            return out | {'answers': 'pass'}, proposed
+        if verdict != 'mask':
+            return out | {'answers': 'hold'}, proposed
+        found = [s for s in spans if s in whole]
+        parts = [result.recap] + leaves(proposed) + ([t for w in toolbox.held for t in leaves(w.get('args')) + [str(w.get('summary') or '')]] if queued else [])
+        total = apply_mask(whole, tuple(found))
+        if total is None or any(not any(s in p for p in parts) for s in found) or any(apply_mask(p, tuple(found)) is None for p in parts if p):
+            return out | {'answers': 'hold'}, proposed
+
+        def mask(text: str) -> str:
+            return apply_mask(text, tuple(found))[0] if text else text
+
+        result.recap = mask(result.recap)
+        if toolbox is not None:
+            mask_record(toolbox, tuple(found))
+        if queued:
+            toolbox.mask_held(mask)
+        return out | {'answers': 'mask', 'masked': total[1]}, masked_leaves(proposed, mask)
+
     def _finish(self, run_id: str, claimed: list[str], action: dict | None, recorded: bool, toolbox, result, crash: BaseException | None, mode: str,
-                trace: tracing.Trace | None = None) -> dict:
+                trace: tracing.Trace | None = None, guarded: dict | None = None) -> dict:
         ended = epoch_iso(self.clock())
         if result is None:
             outcome, error = ('failed', error_kind(crash)) if crash is not None else ('skipped', None)
             result = Result(outcome=outcome, error=error)
         result.recap = outward(result.recap or '')
         outcome, error = result.outcome, result.error
-        done = {'outcome': outcome, 'endedAt': ended, 'turns': result.turns, 'models': result.models, 'usage': result.usage, 'usd': round(result.usd, 4),
-                'advisorCalls': result.advisor_calls, 'advisorErrors': result.advisor_errors, 'toolCalls': toolbox.calls if toolbox else [], 'writes': toolbox.writes if toolbox else [], 'flags': toolbox.flags if toolbox else [],
-                'recap': result.recap, 'error': error}
-        if trace is not None:
-            self._traced(trace, outcome, error, result.recap)
+        proposed: dict = {}
         if toolbox is not None and toolbox.proposal:
-            done['ticketProposal'] = toolbox.proposal
+            proposed['ticketProposal'] = toolbox.proposal
         if toolbox is not None and toolbox.plugin_proposal and outcome == 'done':
-            done['proposal'] = toolbox.plugin_proposal
+            proposed['proposal'] = toolbox.plugin_proposal
         call = toolbox.card_action if toolbox is not None else None
         if outcome == 'done':
             call = self._with_ticket(call, action)
         if call:
-            done['cardAction'] = call
+            proposed['cardAction'] = call
+        checked, proposed = self._check_answer(run_id, toolbox, result, guarded, proposed)
+        held = checked is not None and checked['answers'] in ('hold', 'failed')
+        if checked is not None and not held and toolbox is not None and toolbox.held:
+            toolbox.replay(toolbox.held)
+            toolbox.writes[:] = [w for w in toolbox.writes if not w.get('held')]
+        done = {'outcome': outcome, 'endedAt': ended, 'turns': result.turns, 'models': result.models, 'usage': result.usage, 'usd': round(result.usd, 4),
+                'advisorCalls': result.advisor_calls, 'advisorErrors': result.advisor_errors, 'toolCalls': stored_calls(toolbox.calls) if toolbox else [], 'writes': toolbox.writes if toolbox else [], 'flags': toolbox.flags if toolbox else [],
+                'recap': result.recap, 'error': error}
+        if checked is not None:
+            done['guard'] = checked
+        done |= {k: proposed[k] for k in PROPOSALS if k in proposed}
         if toolbox is not None and toolbox.shots:
             done['screenshots'] = toolbox.shots
+        if held:
+            done = self._held(done, action, toolbox, result.recap)
+            outcome = done['outcome']
+        if trace is not None:
+            self._traced(trace, outcome, error, done['recap'])
         try:
             if recorded:
                 self.store.update_investigation(run_id, done)
                 self.store.add_activity('run', 'investigator', f"run {outcome} · {done['turns']} turns · {len(done['toolCalls'])} tool calls · ${done['usd']:.2f}" + (f" · {error}" if error else ''), runId=run_id, outcome=outcome,
-                                        **({'screenshots': done['screenshots']} if done.get('screenshots') else {}))
+                                        **({'screenshots': done['screenshots']} if done.get('screenshots') and not held else {}))
         finally:
             try:
                 for k in claimed:
                     self.store.release_card(k, run_id)
             finally:
-                if action:
+                if action and held:
+                    self._hold_action(run_id, recorded, action, done['recap'])
+                elif action:
                     ok = outcome == 'done'
                     line = (result.recap.splitlines() or ['done'])[0] if ok else f"{outcome}: {error or 'see the run record'}"
                     if ok and mode == 'shadow':
@@ -711,17 +885,191 @@ class Investigator:
                     if not self._close_action(action, 'done' if ok else 'failed', line[:RESULT_LIMIT]):
                         self._answer_slack(run_id, recorded, action, outcome, result.recap, {k: done[k] for k in ('ticketProposal', 'cardAction') if k in done}, done.get('proposal'),
                                            [s['id'] for s in done.get('screenshots') or []])
-                    if ok and recorded:
+                    if ok and recorded and not (guarded and guarded['refused']):
                         self._remember_ask(run_id, action, done)
                     if action.get('type') == 'ask' and action.get('source') == 'chat':
                         self.store.add_activity('ask', 'investigator', f"chat {'answer' if ok else outcome} · private" + (' · via MCP' if via_mcp(action) else ''), runId=run_id, outcome=outcome)
                     elif action.get('type') == 'ask':
                         self.store.add_activity('ask', 'investigator', f"{'answer' if ok else outcome} for {action.get('requestedBy')} · {clip(prompt.flat(action.get('text') or ''), ASK_LINE)} → {clip(line, ASK_LINE)}", runId=run_id, outcome=outcome)
-                    if action.get('type') == 'assess' and action.get('reportId'):
-                        self._close_assessment(str(action['reportId']), run_id, ok, done, toolbox)
+                if action and action.get('type') == 'assess' and action.get('reportId'):
+                    self._close_assessment(str(action['reportId']), run_id, outcome == 'done', done, toolbox, held)
                 if recorded:
-                    self._notify(claimed, action, outcome, result.recap)
+                    self._notify(claimed, action, outcome, done['recap'])
+                if recorded and held:
+                    self._notify_held(run_id)
         return done
+
+    def _held(self, done: dict, action: dict | None, toolbox, text: str) -> dict:
+        asked = bool(action) and action.get('type') == 'ask'
+        kept = {'text': text, 'writes': list(toolbox.held) if toolbox is not None else [], 'until': epoch_iso(self.clock() + HELD_S)}
+        proposed = {k: done.pop(k) for k in PROPOSALS if k in done}
+        if proposed:
+            kept['proposed'] = proposed
+        calls = [c | {'input': ''} | ({'error': HELD_CALL_ERROR} if c.get('error') else {}) for c in done['toolCalls']]
+        writes = [{k: v for k, v in w.items() if k != 'summary'} if w.get('held') else w for w in done['writes']]
+        return done | {'outcome': 'held', 'recap': said(action, 'slackevents.guard.waiting' if asked else 'slackevents.guard.card_held'), 'held': kept, 'toolCalls': calls, 'writes': writes}
+
+    def _hold_action(self, run_id: str, recorded: bool, action: dict, waiting: str) -> None:
+        if not self._close_action(action, 'done', waiting[:RESULT_LIMIT]):
+            self._answer_slack(run_id, recorded, action, 'done', waiting, {})
+        if action.get('type') == 'ask':
+            who = 'chat \u00b7 private' if action.get('source') == 'chat' else f"for {action.get('requestedBy')}"
+            self.store.add_activity('ask', 'investigator', f'answer held for review {who}', runId=run_id, outcome='held')
+
+    def _notify_held(self, run_id: str) -> None:
+        if self.notices is None:
+            return
+        try:
+            self.notices.held([e for e in self.admins() if e], run_id, f"{self.base_url.rstrip('/')}/api/investigations/{run_id}")
+        except Exception as e:
+            log.warning('held answer notifications not saved: %s', error_kind(e))
+
+    def _action_of(self, run: dict) -> dict | None:
+        if not run.get('actionId'):
+            return None
+        try:
+            return self.store.get_action(run['actionId'])
+        except NotFound:
+            return None
+
+    def _replay_box(self, run: dict, now: float) -> Toolbox:
+        trigger = run.get('trigger')
+        ask = trigger in ('ask', 'slack', 'chat')
+        quick = trigger in ('slack', 'chat')
+        return Toolbox(self.sources, self.store, self.effects, list(run.get('keys') or []), run.get('mode') or self.mode, now, self.base_url, run_id=run['_id'], ask=ask,
+                       report_id=(run.get('report') or {}).get('id'), read_only=quick, strict=self.strict_tools, asker=(run.get('ask') or {}).get('by') if ask and not quick else None,
+                       chat=trigger == 'chat', language=self.language, settings=self.settings, review=run.get('review'))
+
+    def _post_released(self, run_id: str, action: dict, text: str, proposed: dict, shots: list[str]) -> None:
+        if action.get('type') != 'ask' or not (action.get('slack') or {}).get('channel') or self.effects.slack_reply is None:
+            return
+        offered = {k: proposed[k] for k in ('ticketProposal', 'cardAction') if k in proposed}
+        if offered:
+            self.store.set_action_fields(action['id'], offered)
+        confirm = {'runProposal': {'run': run_id, 'title': proposed['proposal']['title']}} if proposed.get('proposal') else {}
+        sent = self.effects.slack_reply({**action, **offered, **confirm, **({'screenshots': shots, 'runId': run_id} if shots else {})}, 'done', text)
+        if not sent:
+            raise ReleaseFailed('the Slack reply was not posted')
+        self.store.update_investigation(run_id, {'slackReply': sent})
+
+    def release(self, run_id: str, by: str) -> dict | None:
+        now = self.clock()
+        token = uuid.uuid4().hex
+        run = self.store.claim_held(run_id, epoch_iso(now), token)
+        if run is None:
+            self.expire_held(now, run_id)
+            return None
+        return self._complete(run, token, by, now)
+
+    def _complete(self, run: dict, token: str, by: str, now: float) -> dict | None:
+        run_id = run['_id']
+        kept = run.get('held') or {}
+        text = outward(str(kept.get('text') or ''))
+        proposed = kept.get('proposed') or {}
+        action = self._action_of(run)
+        if not kept.get('posted'):
+            try:
+                if action:
+                    self._post_released(run_id, action, text, proposed, [s['id'] for s in run.get('screenshots') or []])
+            except Exception as e:
+                self.store.unclaim_held(run_id, token)
+                log.warning('held answer of run %s not released: %s', run_id, error_kind(e))
+                raise ReleaseFailed(error_kind(e)) from None
+            self.store.mark_posted(run_id)
+            if not self.store.stamp_release(run_id, token, {'held.posted': True}):
+                return self._lost_claim(run_id, by)
+        box = self._replay_box(run, now)
+        done = {int(i): str(r) for i, r in (kept.get('applied') or {}).items()}
+        lost: list[bool] = []
+
+        def stamp(i: int, result: str) -> None:
+            if not self.store.stamp_release(run_id, token, {f'held.applied.{i}': result}):
+                lost.append(True)
+                raise ReleaseLost(run_id)
+
+        try:
+            said = box.replay(list(kept.get('writes') or []), done, stamp)
+        except ReleaseLost:
+            return self._lost_claim(run_id, by)
+        applied = applied_writes(said[i] for i in range(len(said)) if i not in done) if said else 0
+        writes = [w for w in run.get('writes') or [] if not w.get('held')] + box.writes
+        if not self.store.finish_release(run_id, token, {'recap': text, 'writes': writes, 'held.released': {'by': by, 'at': epoch_iso(now)}} | proposed):
+            return self._lost_claim(run_id, by)
+        report = (run.get('report') or {}).get('id')
+        if run.get('trigger') == 'assess' and report:
+            try:
+                self._numbers_post(report, self.store.deploy_report(report), any(w['tool'] == 'report_slack_draft' for w in box.writes))
+            except NotFound:
+                pass
+        if action:
+            try:
+                self.store.set_action_fields(action['id'], {'result': (text.splitlines() or ['done'])[0][:RESULT_LIMIT]})
+            except NotFound:
+                pass
+            self._remember_ask(run_id, action, {'recap': text, 'endedAt': run.get('endedAt') or epoch_iso(now), 'usd': run.get('usd')})
+        missed = sum(1 for i in range(len(said)) if i not in done) - applied
+        self.store.add_activity('run', by, f"held answer released by {by}" + (f" \u00b7 {applied} held write{'' if applied == 1 else 's'} applied" if applied else '')
+                                + (f" \u00b7 {missed} not applied" if missed else ''), runId=run_id, keys=list(run.get('keys') or []) or None, outcome='done')
+        self._notify(list(run.get('keys') or []), action, 'done', text)
+        return self.store.investigation(run_id)
+
+    def _lost_claim(self, run_id: str, by: str) -> None:
+        log.warning('release of run %s stopped: another release or the recovery job took the run over', run_id)
+        self.store.add_activity('admin', by, f'held answer release stopped \u00b7 run {run_id} \u00b7 taken over by another release; nothing posted again', runId=run_id)
+        raise ReleaseTaken('the release was taken over')
+
+    def discard(self, run_id: str, by: str, expired: bool = False, at: float | None = None) -> dict | None:
+        now = self.clock() if at is None else at
+        action = self._action_of(self.store.held_run(run_id) or {})
+        gone = said(action, 'slackevents.guard.not_released')
+        run = self.store.settle_held(run_id, 'discarded', {'held.discarded': {'by': by, 'at': epoch_iso(now)}, 'recap': gone}, epoch_iso(now), expired)
+        if run is None:
+            if not expired:
+                self.expire_held(now, run_id)
+            return None
+        if action:
+            try:
+                self.store.set_action_fields(action['id'], {'result': gone[:RESULT_LIMIT]})
+            except NotFound:
+                pass
+            self._slack_reply(action, 'done', gone)
+        why = 'after 24 h without a review' if expired else f'by {by}'
+        self.store.add_activity('run', by, f'held answer discarded {why}', runId=run_id, keys=list(run.get('keys') or []) or None, outcome='discarded')
+        return self.store.investigation(run_id)
+
+    def expire_held(self, now: float, only: str | None = None) -> int:
+        gone = 0
+        if only is None:
+            self._unstick(now)
+        for run_id in self.store.expired_held(epoch_iso(now), only):
+            try:
+                if self.discard(run_id, 'expiry', expired=True, at=now) is not None:
+                    gone += 1
+                    continue
+                token = uuid.uuid4().hex
+                run = self.store.claim_held(run_id, epoch_iso(now), token, expired=True)
+                if run is not None:
+                    self._complete(run, token, 'expiry', now)
+            except Exception as e:
+                log.warning('held answer of run %s not discarded: %s', run_id, error_kind(e))
+        return gone
+
+    def _unstick(self, now: float) -> None:
+        before = epoch_iso(now - STUCK_RELEASE_S)
+        for run_id in self.store.stuck_releasing(before):
+            try:
+                if self.store.unstick_release(run_id, before):
+                    log.warning('release of run %s stopped half way; the answer is held again', run_id)
+                    self.store.add_activity('admin', 'server', f'held answer release stopped half way \u00b7 run {run_id} \u00b7 held again', runId=run_id)
+                    continue
+                token = uuid.uuid4().hex
+                run = self.store.retake_release(run_id, before, epoch_iso(now), token)
+                if run is not None:
+                    log.warning('release of run %s stopped after its post; finishing it without posting again', run_id)
+                    self.store.add_activity('admin', 'server', f'held answer release stopped after its post \u00b7 run {run_id} \u00b7 finished without posting again', runId=run_id)
+                    self._complete(run, token, 'server', now)
+            except Exception as e:
+                log.warning('stuck release of run %s not recovered: %s', run_id, error_kind(e))
 
     def _trace(self, run_id: str, trigger: str, keys: list[str], mode: str, action: dict | None, ask: str, provider: str | None = None) -> tracing.Handle:
         handle = tracing.begin(TRACE_NAMES[trigger], runId=run_id, cards=', '.join(keys), provider=provider or self.provider, trigger=trigger, mode=mode, source=MCP if via_mcp(action) else None)
@@ -801,7 +1149,7 @@ class Investigator:
         if sent and recorded:
             self.store.update_investigation(run_id, {'slackReply': sent})
 
-    def _close_assessment(self, report_id: str, run_id: str, ok: bool, done: dict, toolbox) -> None:
+    def _close_assessment(self, report_id: str, run_id: str, ok: bool, done: dict, toolbox, held: bool = False) -> None:
         try:
             report = self.store.deploy_report(report_id)
         except NotFound:
@@ -809,10 +1157,17 @@ class Investigator:
         drafted = bool(toolbox) and any(w['tool'] == 'report_slack_draft' and not w.get('proposed') for w in toolbox.writes)
         self.store.set_report_fields(report_id, {'investigationId': run_id, 'usd': round(done['usd'], 4),
                                                  'costNote': f"investigator assessment, {done['turns']} turns, {len(done['toolCalls'])} tool calls" + ('' if ok else f", {done['outcome']}")})
+        if not held:
+            self._numbers_post(report_id, report, drafted)
+        tail = ' \u00b7 numbers post held with the answer' if held else '' if drafted or (report.get('slackPost') or {}).get('ts') else ' \u00b7 numbers post queued'
+        self.store.add_activity('assess', 'investigator', f"deploy report {'assessed' if ok else done['outcome']} · {report.get('summary')} · ${done['usd']:.2f}" + tail,
+                                runId=run_id, reportId=report_id, outcome=done['outcome'])
+
+    def _numbers_post(self, report_id: str, report: dict, drafted: bool) -> bool:
         text = (report.get('slackDraft') or {}).get('text')
         armed = bool((report.get('autoSend') or {}).get('at'))
         posting = self.effects.autopost is None or self.effects.autopost()
         if posting and not drafted and text and not armed and (report.get('slackDraft') or {}).get('by') == NUMBERS_BY and not (report.get('slackPost') or {}).get('ts'):
             self.store.report_slack_draft(report_id, text, 'server')
-        self.store.add_activity('assess', 'investigator', f"deploy report {'assessed' if ok else done['outcome']} · {report.get('summary')} · ${done['usd']:.2f}" + ('' if drafted or (report.get('slackPost') or {}).get('ts') else ' · numbers post queued'),
-                                runId=run_id, reportId=report_id, outcome=done['outcome'])
+            return True
+        return False

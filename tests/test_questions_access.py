@@ -6,14 +6,14 @@ import pytest
 
 from skopax import locales
 from skopax.actors import TOKEN_PREFIX
-from skopax.contract import QUESTION_CORE_OWNERS, QUESTIONS_FIELD, Capabilities, Check, Field, Knowledge, PassResult, Sweep, Tool
+from skopax.contract import ASKED_ACCESS, QUESTION_CORE_OWNERS, QUESTIONS_FIELD, Capabilities, Check, Field, Knowledge, PassResult, Sweep, Tool
 from skopax.instances import Instances, PluginState
 from skopax.instances import effective_fields
 from skopax.mcptools.bridge import asker_role
 from skopax.investigator import Investigator
 from skopax.investigator.tools import Effects, Toolbox
 from skopax.investigator.toolset import CORE
-from skopax.plugins import jira
+from skopax.plugins import jira, mcp_tools
 from skopax.plugintools import PluginTools
 from skopax.registry import Registry
 from skopax.runtime import Runtime
@@ -28,7 +28,9 @@ from tests.plugins import demo_plugin
 from tests.plugins.base import minimal
 
 SCHEMA = {'type': 'object', 'properties': {'what': {'type': 'string'}}, 'additionalProperties': False}
-HELP = 'Who may have Skopax read this connection when answering a Slack ask, a chat message or a page ask. Card investigations always may.'
+HELP = 'Card runs always read this connection. This picks whose questions (Slack asks, chat messages, page asks) may read it too.'
+
+MCP_HELP = 'Card runs always may use this server. This picks whose chat messages and asks may use it too.'
 
 
 def where(ctx, args):
@@ -151,16 +153,38 @@ def test_the_default_keeps_todays_behaviour(rig):
     assert 'shop_ads' in asked and 'solo_docs' in asked
     assert asked['shop_ads']['input_schema']['properties']['instance']['enum'] == ['main']
     assert (field.label, field.kind, field.default, field.choices, field.group, field.help) == ('Available in questions', 'choice', 'everyone', ('everyone', 'operators', 'none'), 'advanced', HELP)
-    assert dict(field.choice_labels) == {'everyone': 'Everyone', 'operators': 'Operators and admins only', 'none': 'Card investigations only'}
+    assert dict(field.choice_labels) == {'everyone': "Card runs + everyone's questions", 'operators': 'Card runs + operator and admin questions', 'none': 'Card runs only'}
     assert [f.key for f in effective_fields(SOLO)].count(QUESTIONS_FIELD) == 1 and not effective_fields(QUIET)
     assert QUESTIONS_FIELD not in [f['key'] for f in rig.runtime.fields_of('quiet')] and QUESTIONS_FIELD in [f['key'] for f in rig.runtime.fields_of('shop-ads')]
+
+
+def test_labels_say_cards_always_included():
+    # given
+    labels = ASKED_ACCESS.choice_labels
+
+    # when
+    starts = [label.startswith('Card runs') for label in labels.values()]
+
+    # then
+    assert list(labels) == ['everyone', 'operators', 'none'] and all(starts)
+
+
+def test_the_mcp_chat_role_labels_say_cards_always_included():
+    # given
+    field = next(f for f in mcp_tools.PLUGIN.fields if f.key == 'chat-role')
+
+    # when
+    starts = [label.startswith('Card runs') for label in field.choice_labels.values()]
+
+    # then
+    assert list(field.choice_labels) == ['viewer', 'operator', 'admin', 'cards'] and all(starts) and field.help == MCP_HELP
 
 
 @pytest.mark.parametrize('lang', ['de', 'es', 'fr', 'tr'])
 def test_each_core_pack_translates_the_available_in_questions_texts(lang):
     # given
     page = json.loads((locales.ROOT / lang / 'page.json').read_text(encoding='utf-8'))['page']
-    texts = ('Available in questions', 'Everyone', 'Operators and admins only', 'Card investigations only', HELP)
+    texts = ('Available in questions', "Card runs + everyone's questions", 'Card runs + operator and admin questions', 'Card runs + admin questions', 'Card runs only', HELP, MCP_HELP)
 
     # when
     missing = [t for t in texts if not page.get(t) or page[t] == t]

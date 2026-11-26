@@ -1,4 +1,4 @@
-var COST_SOURCES = [{id: 'pod', label: 'Investigator runs'}, {id: 'page', label: 'Page requests'}, {id: 'slack', label: 'Slack requests'}, {id: 'chat', label: 'Chat'}, {id: 'assess', label: 'Assessments'}, {id: 'gate', label: 'Gate'}, {id: 'smalltalk', label: 'Small talk'}, {id: 'pagescan', label: 'Page scan'}, {id: 'selfreview', label: 'Self-review'}, {id: 'threadsummary', label: 'Thread summary'}, {id: 'mcp', label: 'MCP'}];
+var COST_SOURCES = [{id: 'pod', label: 'Investigator runs'}, {id: 'page', label: 'Page requests'}, {id: 'slack', label: 'Slack requests'}, {id: 'chat', label: 'Chat'}, {id: 'assess', label: 'Assessments'}, {id: 'gate', label: 'Gate'}, {id: 'smalltalk', label: 'Small talk'}, {id: 'pagescan', label: 'Page scan'}, {id: 'selfreview', label: 'Self-review'}, {id: 'threadsummary', label: 'Thread summary'}, {id: 'mcp', label: 'MCP'}, {id: 'guard', label: 'Guard'}];
 var COST_PARTS = [{id: 'cacheRead', label: 'Cache read'}, {id: 'input', label: 'Input'}, {id: 'cacheWrite5m', label: 'Cache write'}, {id: 'cacheWrite1h', label: 'Cache write, long'}, {id: 'output', label: 'Output'}, {id: 'webSearch', label: 'Web search'}];
 var COST_RANGES = [1, 7, 30];
 var COSTS = null;
@@ -11,21 +11,22 @@ function costBy(by) { return isTokenActor(by) ? tokenActorLabel(by, 'API calls')
 function costLabel(list, id) { var x = list.filter(function (s) { return s.id === id; })[0]; return x ? x.label : id; }
 function costPct(v) { return v == null ? '–' : Math.round(v * 100) + ' %'; }
 function costUsd(v) { return v == null ? '–' : '$' + (v > 0 && v < 0.01 ? Number(v).toFixed(4) : Number(v).toFixed(2)); }
-function costMeter(t) {
+var COST_GUARD_NOTE = 'With the guard on, questions are refused and answers will be held once the cap is reached.';
+function costMeter(t, guard) {
   var share = t.cap > 0 ? t.spent / t.cap : 0;
   var k = share >= 1 ? 'k-crit' : share >= 0.75 ? 'k-warn' : 'k-info';
   return '<div class="ctile ctoday"><span class="cl">Today</span><span class="cv">' + esc(costUsd(t.spent)) + ' <small>of ' + esc(costUsd(t.cap)) + ' cap</small></span>' +
-    '<span class="cmeter ' + k + '" role="meter" aria-valuemin="0" aria-valuemax="' + esc(t.cap) + '" aria-valuenow="' + esc(t.spent) + '" aria-label="Spent today against the daily cap"><span style="width:' + Math.min(share * 100, 100).toFixed(1) + '%"></span></span></div>';
+    '<span class="cmeter ' + k + '" role="meter" aria-valuemin="0" aria-valuemax="' + esc(t.cap) + '" aria-valuenow="' + esc(t.spent) + '" aria-label="Spent today against the daily cap"><span style="width:' + Math.min(share * 100, 100).toFixed(1) + '%"></span></span>' + (guard ? '<span class="cn ccap-note">' + esc(COST_GUARD_NOTE) + '</span>' : '') + '</div>';
 }
 function costTile(label, value, note) {
   return '<div class="ctile"><span class="cl">' + esc(label) + '</span><span class="cv">' + esc(value) + '</span>' + (note ? '<span class="cn">' + esc(note) + '</span>' : '') + '</div>';
 }
 function costStrip(d) {
-  return '<div class="cstrip">' + costMeter(d.today) +
+  return '<div class="cstrip">' + costMeter(d.today, d.guardOn === true) +
     costTile(d.days === 1 ? 'Today, all sources' : 'Last ' + d.days + ' days', costUsd(d.total.usd), plural(d.total.runs, 'run', 'runs') + ' · ' + plural(d.total.calls, 'call', 'calls')) +
     costTile('Avg per Slack request', costUsd(d.avg.slackAsk)) + costTile('Avg per investigator run', costUsd(d.avg.podRun)) + costTile('Cache hit share', costPct(d.total.cacheHit), 'cache reads over all prompt tokens') + '</div>';
 }
-var COST_RUN_SOURCES = COST_SOURCES.filter(function (s) { return s.id !== 'gate' && s.id !== 'smalltalk' && s.id !== 'pagescan' && s.id !== 'selfreview' && s.id !== 'threadsummary'; });
+var COST_RUN_SOURCES = COST_SOURCES.filter(function (s) { return s.id !== 'gate' && s.id !== 'smalltalk' && s.id !== 'pagescan' && s.id !== 'selfreview' && s.id !== 'threadsummary' && s.id !== 'guard'; });
 function costModel(m) { return String(m || '?').replace(/^claude-/, ''); }
 function costTick(t, hour) {
   if (hour) return t.slice(11, 13) + ':00';
