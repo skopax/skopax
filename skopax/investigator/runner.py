@@ -82,6 +82,7 @@ class Runner:
         self.tools: list[dict] = []
         self.held_run: tuple | None = None
         self.calls = 0
+        self.began = 0.0
 
     def advising(self) -> advisor.Plan | None:
         plan = self.config.advisor
@@ -165,6 +166,7 @@ class Runner:
         self.tools = toolbox.definitions()
         self.held_run = (toolbox, system, day, halt)
         self.calls = 0
+        self.began = self.clock()
         return self._loop(result, plan)
 
     def again(self, text: str, halt: Callable[[], str | tuple[str, str] | None] | None = None) -> Result:
@@ -180,7 +182,7 @@ class Runner:
     def _loop(self, result: Result, plan) -> Result:
         toolbox, system, day, halt = self.held_run
         messages, tools = self.messages, self.tools
-        start = self.clock()
+        start = self.began
         served = getattr(toolbox, 'server_calls', None)
         limited, cut, pauses = False, False, 0
         while True:

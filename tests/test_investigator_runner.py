@@ -223,3 +223,18 @@ def test_a_two_turn_run_checks_halt_at_both_turns_and_before_each_tool(store: St
 
     # then
     assert result.outcome == 'done' and len(seen) == 4
+
+
+def test_the_fix_turn_shares_the_runs_time_budget(store: Store):
+    # given
+    now = [0.0]
+    client = FakeAnthropic([reply(text('first'), stop='end_turn'), reply(text('second'), stop='end_turn')])
+    runner = Runner(client, store, RunConfig('claude-opus-5-5', 'medium', 30, max_seconds=600), lambda: now[0])
+    first = runner.run(FakeBox(), 'SYSTEM', 'BRIEF', DAY, lambda: None)
+
+    # when
+    now[0] = 700.0
+    again = runner.again('fix it')
+
+    # then
+    assert first.outcome == 'done' and again.outcome == 'capped' and again.error == 'time limit'
