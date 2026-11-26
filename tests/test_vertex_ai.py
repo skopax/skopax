@@ -15,6 +15,7 @@ from tests.fake_anthropic import FakeModels
 from tests.test_compat_ai import Maker as CompatMaker, connection as compat_connection, public_dns
 from skopax import ai, clock
 from skopax.ai import FETCH_TYPE, SEARCH_TYPE, Usage, compat_ai, vertex_ai
+from skopax.ai.anthropic_ai import THINKING_ROOM
 from skopax.app import create_app
 from skopax.config import load_settings
 from skopax.investigator import pricing
@@ -733,7 +734,7 @@ def test_a_refresh_under_the_allowed_path_goes_on_to_google_signing_in(tmp_path)
 
 
 @pytest.mark.parametrize('vertex_id, wanted', [('claude-opus-5-5', {'type': 'adaptive'}), ('claude-haiku-5-5', {'type': 'disabled'})])
-def test_a_once_call_with_thinking_on_never_sends_the_unconfirmed_between_tools_type(vertex_id, wanted):
+def test_a_once_call_never_sends_the_unconfirmed_between_tools_type_nor_disabled_to_a_model_that_refuses_it(vertex_id, wanted):
     # given
     maker = Maker()
     held = vertex_ai.VertexAi(maker(connection_of(), '/var/run/secrets/tokens', 30, 0), 'vertex', {'m': vertex_id})
@@ -743,7 +744,8 @@ def test_a_once_call_with_thinking_on_never_sends_the_unconfirmed_between_tools_
     held.once('vertex/m', 'S', [{'role': 'user', 'content': 'Q'}], 100, 'low', 'off')
 
     # then
-    assert [r['body']['thinking'] for r in maker.requests] == [wanted, {'type': 'disabled'}]
+    assert [r['body']['thinking'] for r in maker.requests] == [wanted, wanted]
+    assert [r['body']['max_tokens'] for r in maker.requests] == ([100 + THINKING_ROOM] * 2 if wanted['type'] == 'adaptive' else [100, 100])
     assert 'between_tools' not in json.dumps([r['body'] for r in maker.requests])
 
 
