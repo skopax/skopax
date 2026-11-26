@@ -256,6 +256,8 @@
 "slackevents.guard.card_held": "Investigation retenue pour v\u00e9rification.",
 "slackevents.guard.not_held": "Cette ex\u00e9cution n'a pas de r\u00e9ponse retenue : elle a \u00e9t\u00e9 publi\u00e9e, \u00e9cart\u00e9e, a expir\u00e9 ou n'a jamais \u00e9t\u00e9 retenue.",
 "slackevents.guard.release_failed": "La r\u00e9ponse n'a pas pu \u00eatre publi\u00e9e, elle reste donc retenue. R\u00e9essayez.",
+"slackevents.guard.dropped": "Je n'ai pas pu donner de r\u00e9ponse s\u00fbre \u00e0 cette question ; essayez de la reformuler.",
+"slackevents.guard.card_dropped": "Investigation non publi\u00e9e : le contr\u00f4le de s\u00e9curit\u00e9 s'y est oppos\u00e9 deux fois.",
 "slackevents.reply.stopped": "L'enquêteur a été arrêté ; la réponse est incomplète.",
 "slackevents.small_talk_capped": "Ma limite de bavardage pour cette heure est atteinte 😄 Les questions sur la prod fonctionnent toujours.",
 "slackevents.stopped": "L'enquêteur est arrêté pour le moment.",

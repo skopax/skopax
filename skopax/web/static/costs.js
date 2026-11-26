@@ -109,13 +109,21 @@ function costAdvisor(s) {
     COST_PARTS.map(function () { return '<td class="num">–</td>'; }).join('') +
     '<td class="num">–</td><td class="num">–</td><td class="cmodels">' + esc(models.map(costModel).join(' · ') || '–') + '</td></tr>';
 }
+var COST_GUARD_CATEGORIES = [{id: 'injection', label: 'injection'}, {id: 'harmful', label: 'harmful'}, {id: 'leak', label: 'leak'}, {id: 'contradicted', label: 'contradicted'}, {id: 'other', label: 'other'}];
+function costGuard(s) {
+  var c = s.source === 'guard' && s.categories && typeof s.categories === 'object' ? s.categories : null;
+  var found = c ? COST_GUARD_CATEGORIES.filter(function (k) { return Number(c[k.id]) > 0; }) : [];
+  if (!found.length) return '';
+  return '<tr class="csrc-guard" data-guard-categories="1"><td class="cadv">' + esc(tx('objections')) + '</td><td class="cmodels" colspan="' + (COST_PARTS.length + 6) + '">' +
+    found.map(function (k) { return esc(tx(k.label)) + ' ' + esc(Math.floor(Number(c[k.id]))); }).join(' \u00b7 ') + '</td></tr>';
+}
 function costSources(d) {
   return '<div class="box"><table class="csrc"><thead><tr><th>Source</th><th class="num">Calls</th><th class="num">Runs</th><th class="num">Total</th>' +
     COST_PARTS.map(function (p) { return '<th class="num">' + esc(p.label) + '</th>'; }).join('') + '<th class="num">Cache hit</th><th class="num">Avg / run</th><th>Models</th></tr></thead><tbody>' +
     d.sources.map(function (s) {
       return '<tr data-source="' + esc(s.source) + '"><td><i class="sw s-' + esc(s.source) + '"></i>' + esc(costLabel(COST_SOURCES, s.source)) + '</td><td class="num">' + esc(s.calls) + '</td><td class="num">' + esc(s.runs) + '</td><td class="num"><b>' + esc(costUsd(s.usd.total)) + '</b></td>' +
         COST_PARTS.map(function (p) { return '<td class="num">' + esc(costUsd(s.usd[p.id])) + '</td>'; }).join('') +
-        '<td class="num">' + esc(costPct(s.cacheHit)) + '</td><td class="num">' + esc(costUsd(s.avgRun)) + '</td><td class="cmodels">' + esc(Object.keys(s.models).map(function (m) { return costModel(m) + ' ' + s.models[m]; }).join(' · ') || '–') + '</td></tr>' + costAdvisor(s);
+        '<td class="num">' + esc(costPct(s.cacheHit)) + '</td><td class="num">' + esc(costUsd(s.avgRun)) + '</td><td class="cmodels">' + esc(Object.keys(s.models).map(function (m) { return costModel(m) + ' ' + s.models[m]; }).join(' · ') || '–') + '</td></tr>' + costAdvisor(s) + costGuard(s);
     }).join('') + '</tbody></table></div>';
 }
 function costCardName(key) {

@@ -38,7 +38,7 @@ CANARIES = (CARD_ANSWER, CHAT_ANSWER, CHAT_QUESTION, REASON)
 
 
 def guard_on(c: TestClient) -> None:
-    for key, value in (('investigate.guard-model', MODEL), ('guard.check-answers', 'true')):
+    for key, value in (('investigate.guard-model', MODEL), ('guard.check-answers', 'true'), ('guard.on-hold', 'review')):
         assert c.put('/api/admin/settings', json={'key': key, 'value': value}, headers=AUTH).status_code == 200
 
 

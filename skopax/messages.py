@@ -373,6 +373,8 @@ MESSAGES: dict[str, str] = {
     'slackevents.guard.card_held': 'Investigation held for review.',
     'slackevents.guard.not_held': 'This run has no held answer: it was released, discarded, expired or never held.',
     'slackevents.guard.release_failed': 'The answer could not be posted, so it is still held. Try again.',
+    'slackevents.guard.dropped': "I couldn't give a safe answer to this one; try rephrasing.",
+    'slackevents.guard.card_dropped': 'Investigation not posted: the safety check objected to it twice.',
     'slackevents.click.non_operator': 'Only {product} operators can open tasks.',
     'slackevents.click.done': 'Already opened: {key}',
     'slackevents.click.busy': 'Opening\u2026',

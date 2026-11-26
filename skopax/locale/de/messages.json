@@ -256,6 +256,8 @@
  "slackevents.guard.card_held": "Untersuchung zur Pr\u00fcfung zur\u00fcckgehalten.",
  "slackevents.guard.not_held": "Dieser Lauf hat keine zur\u00fcckgehaltene Antwort: sie wurde freigegeben, verworfen, ist abgelaufen oder wurde nie zur\u00fcckgehalten.",
  "slackevents.guard.release_failed": "Die Antwort konnte nicht gesendet werden und bleibt zur\u00fcckgehalten. Versuchen Sie es erneut.",
+ "slackevents.guard.dropped": "Darauf konnte ich keine sichere Antwort geben; formulieren Sie die Frage bitte anders.",
+ "slackevents.guard.card_dropped": "Untersuchung nicht ver\u00f6ffentlicht: die Sicherheitspr\u00fcfung hat zweimal widersprochen.",
  "slackevents.reply.stopped": "Der Investigator wurde gestoppt; die Antwort ist unvollständig.",
  "slackevents.small_talk_capped": "Mein Smalltalk-Limit für diese Stunde ist voll 😄 Fragen zu Prod funktionieren weiterhin.",
  "slackevents.stopped": "Der Investigator ist gerade gestoppt.",

@@ -188,14 +188,14 @@ def test_searches_are_a_ledger_part_at_a_cent_each_and_count_in_the_total():
     assert parts['usd']['total'] == pytest.approx(4.03) and bare['usd']['total'] == pytest.approx(4.0) and bare['usd']['webSearch'] == 0
 
 
-def test_citation_split_text_joins_without_a_break_and_text_around_a_search_keeps_one():
+def test_citation_split_text_joins_without_a_break_and_text_before_a_search_is_dropped():
     # when
     joined = answer_text([text('GA4 counts '), NS(type='text', text='first_open', citations=[{}]), text(' as a key event.')])
     around = answer_text([text('Looking it up.'), searched('q'), search_hits(), text('Found it.')])
 
     # then
     assert joined == 'GA4 counts first_open as a key event.'
-    assert around == 'Looking it up.\nFound it.'
+    assert around == 'Found it.'
 
 
 def test_the_breakpoint_goes_on_the_last_user_message_when_an_assistant_turn_ends_the_list():

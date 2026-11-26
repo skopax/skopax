@@ -46,6 +46,7 @@ class FakeGuard:
         self.question_check = question or check('pass', reason='')
         self.answer_check = answer or check('pass', reason='')
         self.asked: list[tuple] = []
+        self.contexts: list[str] = []
         self.seen = seen
 
     @property
@@ -60,8 +61,9 @@ class FakeGuard:
         self.asked.append(('question', text, role, run_id))
         return self.question_check
 
-    def answer(self, question: str, answer: str, digest: str, run_id: str) -> Check:
+    def answer(self, question: str, answer: str, digest: str, run_id: str, context: str = '') -> Check:
         self.asked.append(('answer', question, answer, digest, run_id))
+        self.contexts.append(context)
         if self.seen is not None:
             self.seen()
         return self.answer_check

@@ -16,13 +16,23 @@ function guardItems(model, on) {
     base: 'false', default: 'false'}, model || (on || {})[key] ? {} : {off: NEEDS})));
 }
 
+function modeItems(mode, onHold) {
+  const base = {group: 'Investigator', live: true, source: 'admin', by: 'root@example.com', at: null, kind: 'choice'};
+  return [
+    Object.assign({}, base, {key: 'guard.mode', label: 'Guard mode', help: 'Enforce or watch only', value: mode, base: 'enforce', default: 'enforce', choices: ['enforce', 'watch'],
+      choiceLabels: {enforce: 'Enforce', watch: 'Watch only'}}),
+    Object.assign({}, base, {key: 'guard.on-hold', label: 'On hold', help: 'Fix or review', value: onHold, base: 'fix', default: 'fix', choices: ['fix', 'review'],
+      choiceLabels: {fix: 'Fix automatically', review: 'Send to an admin'}}),
+  ];
+}
+
 function guardRow(model, extra) {
   return Object.assign({use: 'guard', label: 'Guard', setting: 'investigate.guard-model', model: model || '', provider: model ? 'openai' : 'anthropic', company: model ? 'OpenAI' : 'Anthropic',
     price: model ? {input: 0.4, output: 1.6} : null, avgCost7d: model ? 0.0021 : null, problem: null, fit: 'ok', advisor: null}, extra || {});
 }
 
 async function start(model, on, extra, opts) {
-  const items = settings().concat(guardItems(model, on));
+  const items = settings().concat(guardItems(model, on)).concat((opts && opts.modes) || []);
   return boot(TEMPLATE, Object.assign({items, rows: uses(items).concat([guardRow(model, extra)])}, opts || {}));
 }
 
@@ -147,8 +157,31 @@ async function theGuardTextsAreTranslated() {
   return 'German, Spanish, French and Turkish translate the guard note, Guard off, Nothing is sent and the switch reason';
 }
 
+const WATCH = 'Watch only: the guard records what it would have done but never refuses, hides or holds anything, so it protects nothing. Switch back to Enforce when you have seen enough.';
+
+async function theGuardRowOffersModeAndOnHoldAndWarnsInWatchOnly() {
+  //given
+  const enforce = await start(MODELS[0], {'guard.check-answers': true}, {}, {modes: modeItems('enforce', 'fix')});
+  const watch = await start(MODELS[0], {'guard.check-answers': true}, {}, {modes: modeItems('watch', 'review')});
+
+  //when
+  const picked = (b, key) => { const sel = rowOf(b.doc).querySelector('.aiu-guard .adm-row[data-key="' + key + '"] select'); return sel && sel.options[sel.selectedIndex].textContent; };
+
+  //then
+  assert.deepStrictEqual([picked(enforce, 'guard.mode'), picked(enforce, 'guard.on-hold')], ['Enforce', 'Fix automatically'], 'both selects sit on the Guard row with plain labels');
+  assert.deepStrictEqual([picked(watch, 'guard.mode'), picked(watch, 'guard.on-hold')], ['Watch only', 'Send to an admin']);
+  assert.ok(!rowOf(enforce.doc).querySelector('.aiu-guard-watch'), 'no warning while it enforces');
+  assert.strictEqual(rowOf(watch.doc).querySelector('.aiu-guard-watch').textContent, WATCH, 'watch only says plainly that it protects nothing');
+  assert.deepStrictEqual([...watch.doc.querySelectorAll('#ai-rows .ai-grp:not(.aiu) .adm-row')].map((r) => r.dataset.key).filter((k) => /guard/.test(k)), [], 'the new keys are not listed again below the table');
+  assert.deepStrictEqual(enforce.errors.concat(watch.errors), []);
+  enforce.dom.window.close();
+  watch.dom.window.close();
+  return 'the Guard row offers Guard mode and On hold, and Watch only shows a plain warning that it protects nothing';
+}
+
 (async () => {
   console.log('PASS ' + await theGuardRowIsOffByDefaultAndItsSwitchesWaitForAModel());
+  console.log('PASS ' + await theGuardRowOffersModeAndOnHoldAndWarnsInWatchOnly());
   console.log('PASS ' + await pickingAModelOpensTheSwitchesAndClearingItClosesThemAgain());
   console.log('PASS ' + await pickingNoneAndSavingTurnsTheGuardOff());
   console.log('PASS ' + await aGuardProblemFromTheServerShowsOnTheRow());

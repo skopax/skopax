@@ -24,17 +24,19 @@ def cache_marked(messages: list[dict]) -> list[dict]:
     return out
 
 
+QUIET_BLOCKS = frozenset({'thinking', 'redacted_thinking'})
+
+
 def answer_text(content) -> str:
-    parts, gap = [], False
+    parts: list[str] = []
+    last: list[str] = []
     for b in content:
-        if getattr(b, 'type', None) == 'text':
-            if parts and gap:
-                parts.append('\n')
+        kind = getattr(b, 'type', None)
+        if kind == 'text':
             parts.append(b.text)
-            gap = False
-        elif parts:
-            gap = True
-    return ''.join(parts).strip()
+        elif kind not in QUIET_BLOCKS and parts:
+            last, parts = parts, []
+    return ''.join(parts or last).strip()
 
 
 ALWAYS_THINKING = ('claude-fable', 'claude-mythos')

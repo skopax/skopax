@@ -217,6 +217,8 @@
  "slackevents.guard.card_held": "\u0130nceleme kontrol i\u00e7in bekletiliyor.",
  "slackevents.guard.not_held": "Bu \u00e7al\u0131\u015fmada bekletilen bir cevap yok: yay\u0131nland\u0131, at\u0131ld\u0131, s\u00fcresi doldu ya da hi\u00e7 bekletilmedi.",
  "slackevents.guard.release_failed": "Cevap g\u00f6nderilemedi, bu y\u00fczden bekletilmeye devam ediyor. Tekrar deneyin.",
+ "slackevents.guard.dropped": "Buna g\u00fcvenli bir yan\u0131t veremedim; soruyu farkl\u0131 bi\u00e7imde sormay\u0131 deneyin.",
+ "slackevents.guard.card_dropped": "\u0130nceleme yay\u0131mlanmad\u0131: g\u00fcvenlik denetimi iki kez itiraz etti.",
  "slackevents.click.non_operator": "Sadece {product} operatörleri task açabilir.",
  "slackevents.click.done": "Zaten açıldı: {key}",
  "slackevents.click.busy": "Açılıyor…",

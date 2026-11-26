@@ -49,7 +49,8 @@ function costsBody(days, guard) {
       {source: 'assess', calls: 1, runs: 1, usd: money({output: 0.6}), cacheHit: null, avgRun: 0.6, models: {'claude-opus-5-5': 1}},
       {source: 'gate', calls: 1, runs: 0, usd: money({input: 0.0002, output: 0.0001}), cacheHit: 0, avgRun: null, models: {'claude-haiku-5-5': 1}},
       {source: 'smalltalk', calls: 0, runs: 0, usd: money({}), cacheHit: null, avgRun: null, models: {}}].concat(guard ? [
-      {source: 'guard', calls: 3, runs: 2, usd: money({input: 0.05, output: 0.01}), cacheHit: 0, avgRun: 0.03, models: {'gpt-6.2-sol': 3}, advisor: null}] : []),
+      {source: 'guard', calls: 3, runs: 2, usd: money({input: 0.05, output: 0.01}), cacheHit: 0, avgRun: 0.03, models: {'gpt-6.2-sol': 3}, advisor: null,
+       categories: guard === 'noted' ? {contradicted: 2, injection: 1, '<b>bad</b>': 4} : {}}] : []),
     models: [{model: 'claude-opus-5-5', calls: 4, usd: 2.5}, {model: 'claude-sonnet-5-5', calls: 1, usd: 0.25}, {model: 'claude-haiku-5-5', calls: 1, usd: 0.0003}],
     topCards: [{key: KEY, runs: 3, usd: 1.9503}, {key: KEY2, runs: 1, usd: 0.2}],
     topAskers: [{by: 'dora.lane', runs: 1, calls: 1, usd: 0.4}, {by: 'adam.baker@example.com', runs: 1, calls: 2, usd: 0.2503}, {by: 'token', runs: 1, calls: 1, usd: 0.33}],
@@ -667,6 +668,25 @@ async function accessResolvingBeforeTheInvestigationsDoesNotRenderAnEmptyHistory
   console.log('PASS operator access arriving before the investigations never renders an empty History');
 }
 
+async function theGuardLineCountsItsObjectionsPerCategory() {
+  //given
+  const noted = await boot({hash: '#t=costs', guard: 'noted'});
+  const clean = await boot({hash: '#t=costs', guard: true});
+  await wait(200);
+
+  //when
+  const line = (b) => b.doc.querySelector('.csrc tr.csrc-guard');
+
+  //then
+  assert.deepStrictEqual(cells(line(noted)), ['objections', 'injection 1 \u00b7 contradicted 2'], 'the Guard line counts its objections per category, in a fixed order, and drops unknown ones');
+  assert.strictEqual(line(noted).previousElementSibling.dataset.source, 'guard', 'right under the Guard line');
+  assert.strictEqual(line(clean), null, 'no objections, no line');
+  assert.deepStrictEqual(noted.errors.concat(clean.errors), []);
+  noted.dom.window.close();
+  clean.dom.window.close();
+  console.log('PASS the Guard line on Costs counts the guard objections per category');
+}
+
 async function theGuardIsItsOwnSourceAndTheCapNoteSaysAnswersAreHeld() {
   //given
   const on = await boot({hash: '#t=costs', guard: true});
@@ -720,4 +740,5 @@ async function theGuardIsItsOwnSourceAndTheCapNoteSaysAnswersAreHeld() {
   await hostileTextIsRenderedAsTextAndEmptyOrZeroDataNeverProducesNaN();
   await theStoredModelAuthorsShowAProviderNeutralName();
   await theGuardIsItsOwnSourceAndTheCapNoteSaysAnswersAreHeld();
+  await theGuardLineCountsItsObjectionsPerCategory();
 })().catch((e) => { console.error(e); process.exit(1); });

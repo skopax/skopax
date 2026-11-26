@@ -1,10 +1,13 @@
 import datetime as dt
 
 from skopax.engine import parse_iso
+from skopax.investigator.guard import CATEGORIES, NONE, USE as GUARD
 from skopax.investigator.pricing import PARTS, POD_BY, SOURCES
 from skopax.jiralinks import SWEEP_BY
 from skopax.postdeploy import SERVER_BY
 from skopax import clock
+
+GUARD_CATEGORIES = tuple(c for c in CATEGORIES if c != NONE)
 
 ADVISOR = 'advisor'
 MACHINE_BY = frozenset({POD_BY, SERVER_BY, SWEEP_BY})
@@ -67,7 +70,7 @@ def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spen
     first, bucket, keys = window(days, today)
     per = {k: dict.fromkeys(SOURCES, 0.0) for k in keys}
     cache = {k: {s: {'usd': money(), 'tokens': tokens()} for s in SOURCES} for k in keys}
-    src = {s: {'calls': 0, 'runs': set(), 'usd': money(), 'tokens': tokens(), 'models': {}, 'advisor': {'calls': 0, 'runs': set(), 'usd': 0.0, 'estimated': 0.0, 'models': set()}} for s in SOURCES}
+    src = {s: {'calls': 0, 'runs': set(), 'usd': money(), 'tokens': tokens(), 'models': {}, 'categories': {}, 'advisor': {'calls': 0, 'runs': set(), 'usd': 0.0, 'estimated': 0.0, 'models': set()}} for s in SOURCES}
     advised = 0.0
     models: dict[str, dict] = {}
     cards: dict[str, dict] = {}
@@ -85,6 +88,8 @@ def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spen
         by_advisor = r.get('role') == ADVISOR
         n = 0 if by_advisor else int(r.get('calls') or 1)
         x['calls'] += n
+        if s == GUARD and not by_advisor and r.get('guardCategory') in GUARD_CATEGORIES:
+            x['categories'][r['guardCategory']] = x['categories'].get(r['guardCategory'], 0) + n
         add(x, r, not by_advisor)
         add(whole, r, not by_advisor)
         if by_advisor:
@@ -137,6 +142,7 @@ def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spen
         x = src[s]
         by_source.append({'source': s, 'calls': x['calls'], 'runs': len(x['runs']), 'usd': rounded(x['usd']), 'cacheHit': hit_share(x['tokens']),
                           'avgRun': round(x['usd']['total'] / len(x['runs']), 4) if x['runs'] else None, 'models': x['models'],
+                          **({'categories': {c: x['categories'][c] for c in GUARD_CATEGORIES if x['categories'].get(c)}} if s == GUARD else {}),
                           'advisor': {'calls': x['advisor']['calls'], 'runs': len(x['advisor']['runs']), 'usd': round(x['advisor']['usd'], 4), 'estimatedUsd': round(x['advisor']['estimated'], 4), 'models': sorted(x['advisor']['models'])} if x['advisor']['calls'] else None})
     newest = sorted(runs.values(), key=lambda run: run['at'], reverse=True)[:RUN_LIST]
     return {

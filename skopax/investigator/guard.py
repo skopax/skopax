@@ -18,7 +18,7 @@ from skopax.outward import outward
 
 log = logging.getLogger('skopax.guard')
 MASK_TEXT = '[hidden by the guard]'
-PROMPT_VERSION = '1'
+PROMPT_VERSION = '2'
 PROMPT = Path(__file__).with_name('guard.md').read_text()
 TIMEOUT = 20.0
 MAX_TOKENS = 500
@@ -34,13 +34,19 @@ QUESTION, ANSWER = 'question', 'answer'
 VERDICTS = {QUESTION: (PASS, REFUSE), ANSWER: (PASS, MASK, HOLD)}
 CLOSED = {QUESTION: REFUSE, ANSWER: HOLD}
 NO_KEY, NO_PRICE, CAP, TIMEOUT_FAILURE, SCHEMA, API = 'no-key', 'no-price', 'cap', 'timeout', 'schema', 'api:'
-KEYS = ('verdict', 'reason', 'spans')
+KEYS = ('verdict', 'category', 'reason', 'spans')
+NONE, INJECTION, HARMFUL, LEAK, CONTRADICTED, OTHER = 'none', 'injection', 'harmful', 'leak', 'contradicted', 'other'
+CATEGORIES = (NONE, INJECTION, HARMFUL, LEAK, CONTRADICTED, OTHER)
+ENFORCE, WATCH = 'enforce', 'watch'
+FIX, REVIEW = 'fix', 'review'
+CUT = '\x00cut\x00'
+CONTEXT_MAX = 3000
 NORMAL_END = frozenset({'end_turn'})
 
 
 def schema_for(check: str) -> dict:
     return {'type': 'object', 'additionalProperties': False, 'required': list(KEYS),
-            'properties': {'verdict': {'type': 'string', 'enum': list(VERDICTS[check])}, 'reason': {'type': 'string', 'description': f'one short sentence, at most {REASON_LIMIT} characters'},
+            'properties': {'verdict': {'type': 'string', 'enum': list(VERDICTS[check])}, 'category': {'type': 'string', 'enum': list(CATEGORIES)}, 'reason': {'type': 'string', 'description': f'one short sentence, at most {REASON_LIMIT} characters'},
                            'spans': {'type': 'array', 'items': {'type': 'string'}, 'description': f'exact substrings of the answer to hide, at most {SPANS_MAX}'}}}
 
 
@@ -73,6 +79,7 @@ class Check:
     ms: int
     model: str
     failure: str | None
+    category: str = NONE
 
 
 def hidden(answer: str, spans: tuple[str, ...]) -> list[tuple[int, int]]:
@@ -113,6 +120,24 @@ def block(marker: str, name: str, text: str) -> str:
     return f'[{marker}:{name}]\n{text}\n[/{marker}:{name}]'
 
 
+def uncut(text: str) -> str:
+    return str(text).replace('\x00', '')
+
+
+def cut_marked(digest: str, limit: int = DIGEST_MAX) -> str:
+    text = str(digest)
+    if len(text) <= limit:
+        return text
+    return CUT + '\n' + text[-limit:]
+
+
+def head_marked(text: str, limit: int = CONTEXT_MAX) -> str:
+    found = uncut(text)
+    if len(found) <= limit:
+        return found
+    return found[:limit] + '\n' + CUT
+
+
 def masked(answer: str, spans: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
     found = tuple(dict.fromkeys(s for s in spans if isinstance(s, str) and s and s in answer))
     if not found or apply_mask(answer, found) is None:
@@ -151,15 +176,24 @@ class Guard:
     def checks_answers(self) -> bool:
         return bool(self.settings.guard_check_answers) and bool(self.chosen)
 
-    def question(self, text: str, role: str, run_id: str) -> Check:
-        return self._check(QUESTION, run_id, (('role', str(role)), ('question', str(text))))
+    @property
+    def watching(self) -> bool:
+        return getattr(self.settings, 'guard_mode', ENFORCE) == WATCH
 
-    def answer(self, question: str, answer: str, digest: str, run_id: str) -> Check:
+    @property
+    def fixing(self) -> bool:
+        return getattr(self.settings, 'guard_on_hold', FIX) != REVIEW
+
+    def question(self, text: str, role: str, run_id: str) -> Check:
+        return self._check(QUESTION, run_id, (('role', uncut(role)), ('question', uncut(text))))
+
+    def answer(self, question: str, answer: str, digest: str, run_id: str, context: str = '') -> Check:
         if not isinstance(answer, str):
             self.last_failure, self.last_said = SCHEMA, ''
             log.warning('guard %s check failed: %s', ANSWER, SCHEMA)
-            return Check(HOLD, '', (), 0.0, 0, self.chosen, SCHEMA)
-        return self._check(ANSWER, run_id, (('question', str(question)), ('answer', answer), ('digest', str(digest)[:DIGEST_MAX])), answer)
+            return Check(HOLD, '', (), 0.0, 0, self.chosen, SCHEMA, OTHER)
+        inputs = (('question', uncut(question)), ('answer', uncut(answer))) + ((('context', head_marked(context)),) if context else ()) + (('digest', cut_marked(digest)),)
+        return self._check(ANSWER, run_id, inputs, answer)
 
     def problem(self) -> str | None:
         on = bool(self.settings.guard_check_questions) or bool(self.settings.guard_check_answers)
@@ -182,21 +216,21 @@ class Guard:
         started = time.monotonic()
         model = self.chosen
         try:
-            model, usd, verdict, reason, spans = self._ask(check, run_id, inputs)
+            model, usd, verdict, category, reason, spans = self._ask(check, run_id, inputs)
             if verdict == MASK:
                 verdict, spans = masked(answer, spans)
         except Failed as e:
             self.last_failure, self.last_said = e.code, e.said
             log.warning('guard %s check failed: %s', check, e.code)
-            return Check(CLOSED[check], '', (), e.usd, int((time.monotonic() - started) * 1000), model, e.code)
+            return Check(CLOSED[check], '', (), e.usd, int((time.monotonic() - started) * 1000), model, e.code, OTHER)
         except Exception as e:
             self.last_failure, self.last_said = API + type(e).__name__, provider_said(e)
             log.warning('guard %s check failed unexpectedly: %s', check, error_kind(e))
-            return Check(CLOSED[check], '', (), 0.0, int((time.monotonic() - started) * 1000), model, self.last_failure)
+            return Check(CLOSED[check], '', (), 0.0, int((time.monotonic() - started) * 1000), model, self.last_failure, OTHER)
         self.last_failure, self.last_said = None, ''
-        return Check(verdict, reason, spans, usd, int((time.monotonic() - started) * 1000), model, None)
+        return Check(verdict, reason, spans, usd, int((time.monotonic() - started) * 1000), model, None, category)
 
-    def _ask(self, check: str, run_id: str, inputs: tuple[tuple[str, str], ...]) -> tuple[str, float, str, str, tuple[str, ...]]:
+    def _ask(self, check: str, run_id: str, inputs: tuple[tuple[str, str], ...]) -> tuple[str, float, str, str, str, tuple[str, ...]]:
         provider, model, fallback = route(self, FIELD, USE)
         if not model or fallback:
             raise Failed(NO_KEY)
@@ -212,7 +246,7 @@ class Guard:
             raise Failed(NO_KEY)
         marker = marker_for(tuple(text for _, text in inputs))
         system = PROMPT.replace('{{marker}}', marker).replace('{{check}}', check)
-        content = '\n\n'.join(block(marker, name, text) for name, text in inputs)
+        content = '\n\n'.join(block(marker, name, text.replace(CUT, f'[{marker}:cut]')) for name, text in inputs)
         try:
             with tracing.untraced():
                 resp = ai.once(model, system, [{'role': 'user', 'content': content}], MAX_TOKENS, EFFORT, THINK_OFF, SCHEMAS[check])
@@ -222,32 +256,37 @@ class Guard:
             usd, priced_as = pricing.charge(model, ai.provider, resp.usage)
         except Exception:
             raise Failed(NO_PRICE) from None
-        self._spend(day, usd, ai.provider, model, resp.usage, priced_as, check, run_id)
         if resp.stop not in NORMAL_END:
+            self._spend(day, usd, ai.provider, model, resp.usage, priced_as, check, run_id, OTHER)
             raise Failed(SCHEMA, usd)
-        verdict, reason, spans = self._read(check, resp.texts, marker, usd)
-        return model, usd, verdict, reason, spans
+        try:
+            verdict, category, reason, spans = self._read(check, resp.texts, marker, usd)
+        except Failed:
+            self._spend(day, usd, ai.provider, model, resp.usage, priced_as, check, run_id, OTHER)
+            raise
+        self._spend(day, usd, ai.provider, model, resp.usage, priced_as, check, run_id, category)
+        return model, usd, verdict, category, reason, spans
 
-    def _read(self, check: str, texts, marker: str, usd: float) -> tuple[str, str, tuple[str, ...]]:
+    def _read(self, check: str, texts, marker: str, usd: float) -> tuple[str, str, str, tuple[str, ...]]:
         try:
             body = json.loads(next(iter(texts)))
         except (StopIteration, ValueError, TypeError):
             raise Failed(SCHEMA, usd) from None
         if not isinstance(body, dict) or set(body) != set(KEYS):
             raise Failed(SCHEMA, usd)
-        verdict, reason, spans = body['verdict'], body['reason'], body['spans']
-        if verdict not in VERDICTS[check] or not isinstance(reason, str) or not isinstance(spans, list) or len(spans) > SPANS_MAX or not all(isinstance(s, str) for s in spans):
+        verdict, category, reason, spans = body['verdict'], body['category'], body['reason'], body['spans']
+        if verdict not in VERDICTS[check] or category not in CATEGORIES or not isinstance(reason, str) or not isinstance(spans, list) or len(spans) > SPANS_MAX or not all(isinstance(s, str) for s in spans):
             raise Failed(SCHEMA, usd)
         said = outward(reason.replace(marker, '')).strip()[:REASON_LIMIT]
-        return verdict, said, tuple(spans) if verdict == MASK else ()
+        return verdict, category, said, tuple(spans) if verdict == MASK else ()
 
-    def _spend(self, day: str, usd: float, provider: str, model: str, usage, priced_as: str | None, check: str, run_id: str) -> None:
+    def _spend(self, day: str, usd: float, provider: str, model: str, usage, priced_as: str | None, check: str, run_id: str, category: str = NONE) -> None:
         try:
             self.store.add_spend(day, usd)
         except Exception as e:
             log.warning('guard spend not added: %s', error_kind(e))
         try:
-            self.store.add_ledger({'source': USE, 'use': USE, 'guardFor': check, 'guardRun': run_id, 'day': day, 'provider': provider, 'model': model,
+            self.store.add_ledger({'source': USE, 'use': USE, 'guardFor': check, 'guardRun': run_id, 'guardCategory': category if category in CATEGORIES else OTHER, 'day': day, 'provider': provider, 'model': model,
                                    'effort': None if provider == pricing.OPENAI else EFFORT, 'runId': None, 'actionId': None, 'keys': [], 'by': None,
                                    **pricing.split(priced_as or model, usage)} | ({'pricedAs': priced_as} if priced_as else {}))
         except Exception as e:

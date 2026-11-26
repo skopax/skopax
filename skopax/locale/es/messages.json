@@ -256,6 +256,8 @@
  "slackevents.guard.card_held": "Investigaci\u00f3n retenida para revisi\u00f3n.",
  "slackevents.guard.not_held": "Esta ejecuci\u00f3n no tiene una respuesta retenida: se public\u00f3, se descart\u00f3, caduc\u00f3 o nunca se retuvo.",
  "slackevents.guard.release_failed": "No se pudo publicar la respuesta, as\u00ed que sigue retenida. Int\u00e9ntelo de nuevo.",
+ "slackevents.guard.dropped": "No he podido dar una respuesta segura a esta pregunta; pruebe a formularla de otra manera.",
+ "slackevents.guard.card_dropped": "Investigaci\u00f3n no publicada: la comprobaci\u00f3n de seguridad la rechaz\u00f3 dos veces.",
  "slackevents.reply.stopped": "El investigador se detuvo; la respuesta está incompleta.",
  "slackevents.small_talk_capped": "Mi límite de charla de esta hora está lleno 😄 Las preguntas sobre prod siguen funcionando.",
  "slackevents.stopped": "El investigador está detenido ahora.",

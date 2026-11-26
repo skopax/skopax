@@ -38,7 +38,26 @@ function runs() {
 const CHATS = [{id: 'c1', mode: 'live', trigger: 'chat', startedAt: iso(4), outcome: 'held', usd: 0.1, keys: [], ask: {private: true}},
   {id: 'c2', mode: 'live', trigger: 'chat', startedAt: iso(5), outcome: 'done', usd: 0.1, keys: [], ask: {private: true}}];
 
+const TUNED = {
+  w1: {guard: {questions: 'pass', answers: 'hold', masked: 0, watch: true, reason: 'the cause is not in the data', category: 'contradicted'}},
+  x1: {guard: {questions: null, answers: 'pass', masked: 0, outcome: 'fixed', reason: 'the counts do not add up', category: 'contradicted', first: {answers: 'hold', category: 'contradicted', reason: 'the counts do not add up'},
+    fix: {answers: 'pass', category: 'none', reason: ''}}},
+  d1: {guard: {questions: null, answers: 'dropped', masked: 0, outcome: 'dropped', reason: 'repeats a planted command', category: 'injection', first: {answers: 'hold', category: 'injection', reason: 'repeats a planted command'},
+    fix: {answers: 'hold', category: 'injection', reason: 'still repeats it'}}},
+  n1: {guard: {questions: 'pass', answers: 'pass', masked: 0, noted: true, reason: 'the split does not add up', category: 'contradicted'}},
+};
+function tunedRuns() {
+  const base = {mode: 'live', keys: [], usd: 0.2, toolCalls: 1, writes: [], flags: [], outcome: 'done', ask: {text: 'What is the error rate of checkout-service?', by: 'dora.lane'}};
+  return [
+    Object.assign({}, base, {id: 'w1', startedAt: iso(20), recap: '40 errors in the last hour.', guard: {questions: 'pass', answers: 'hold', masked: 0, watch: true}}),
+    Object.assign({}, base, {id: 'x1', startedAt: iso(21), recap: 'Rewritten: 40 errors in the last hour.', guard: {questions: null, answers: 'pass', masked: 0, outcome: 'fixed'}}),
+    Object.assign({}, base, {id: 'd1', startedAt: iso(22), recap: "I couldn't give a safe answer to this one; try rephrasing.", guard: {questions: null, answers: 'dropped', masked: 0, outcome: 'dropped'}}),
+    Object.assign({}, base, {id: 'n1', startedAt: iso(23), recap: '41 errors in the last hour.', guard: {questions: 'pass', answers: 'pass', masked: 0, noted: true}}),
+  ];
+}
+
 function full(r) {
+  if (TUNED[r.id]) return Object.assign({}, r, TUNED[r.id]);
   if (r.id === 'c1' && r.outcome === 'held') return Object.assign({}, r, {held: {text: 'Your private chat answer.', until: iso(-1400), proposed: {cardAction: {action: 'take', key: KEY, ticket: 'OPS-123'}}},
     guard: {questions: 'pass', answers: 'hold', masked: 0, reason: 'private data'}});
   if (r.id === 'c1') return Object.assign({}, r, {guard: {questions: 'pass', answers: 'hold', masked: 0, reason: 'private data'}});
@@ -52,7 +71,7 @@ function full(r) {
 function viewed(r) {
   const out = JSON.parse(JSON.stringify(full(r)));
   if (out.held) delete out.held.text;
-  if (out.guard) delete out.guard.reason;
+  if (out.guard) ['reason', 'category', 'first', 'fix'].forEach((k) => delete out.guard[k]);
   return out;
 }
 
@@ -63,7 +82,7 @@ function pack(lang) {
 
 async function boot(o) {
   const errors = [], gets = [], posts = [];
-  const srv = {runs: runs(), chats: JSON.parse(JSON.stringify(CHATS)), answer: null};
+  const srv = {runs: runs().concat(o.extra || []), chats: JSON.parse(JSON.stringify(CHATS)), answer: null};
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
   const html = pageHtml(TEMPLATE).replace('/*__SKOPAX_DATA__*/', JSON.stringify(stateWith()).replace(/<\//g, '<\\/'));
@@ -373,8 +392,50 @@ async function aReleasedChatAnswerStaysListedWithItsConfirmation() {
   return 'a released private chat answer stays listed with Answer released after the list is read again';
 }
 
+async function watchFixAndDropReadAsTheirOwnGuardLines() {
+  //given
+  const admin = await boot({admin: true, operator: true, extra: tunedRuns()});
+  const viewer = await boot({admin: false, operator: true, extra: tunedRuns()});
+
+  //when
+  for (const b of [admin, viewer]) for (const id of ['w1', 'x1', 'd1', 'n1']) await open(b.w, rowOf(b.doc, id));
+  await wait(200);
+  const lines = (b) => ['w1', 'x1', 'd1', 'n1'].map((id) => rowOf(b.doc, id).querySelector('.guard-line').textContent);
+
+  //then
+  assert.deepStrictEqual(lines(admin), [
+    'Guard (watch only): would have held, because the cause is not in the data \u00b7 contradicted by the data',
+    'Guard: held, then fixed automatically and posted, because the counts do not add up \u00b7 contradicted by the data; the rewrite passed',
+    'Guard: held twice, the answer was dropped, because repeats a planted command \u00b7 followed instructions from the data; the rewrite was held too, because still repeats it',
+    'Guard: passed, because the split does not add up \u00b7 contradicted by the data'], 'an admin sees the outcome, the reason, the category and the rewrite');
+  assert.deepStrictEqual(lines(viewer), ['Guard (watch only): would have held', 'Guard: held, then fixed automatically and posted', 'Guard: held, the answer was dropped', 'Guard: passed'],
+    'a viewer sees the outcome only');
+  assert.ok(!viewer.doc.querySelector('.guard-cat, .guard-why, .guard-fix') && !viewer.doc.body.innerHTML.includes('repeats a planted command'), 'no reason or category reaches a viewer');
+  assert.deepStrictEqual(admin.errors.concat(viewer.errors), []);
+  admin.dom.window.close();
+  viewer.dom.window.close();
+  return 'watch only, fixed, dropped and noted runs each read as their own Guard line; only admins see the reason, the category and the rewrite';
+}
+
+async function everyPackSaysTheNewGuardLines() {
+  //given
+  const all = await Promise.all(['de', 'es', 'fr', 'tr'].map((lang) => boot({admin: true, operator: true, lang, extra: tunedRuns()})));
+
+  //when
+  for (const b of all) for (const id of ['w1', 'x1', 'd1']) await open(b.w, rowOf(b.doc, id));
+  await wait(200);
+  const said = all.map((b) => ['w1', 'x1', 'd1'].map((id) => rowOf(b.doc, id).querySelector('.guard-v').textContent).concat([rowOf(b.doc, 'w1').querySelector('.guard-cat').textContent]));
+
+  //then
+  said.forEach((s) => assert.ok(!s.some((t) => /would have held|fixed automatically|answer was dropped|contradicted by the data/.test(t)), 'translated: ' + s.join(' | ')));
+  all.forEach((b) => { assert.deepStrictEqual(b.errors, []); b.dom.window.close(); });
+  return 'German, Spanish, French and Turkish say the watch only, fixed and dropped Guard lines and the category';
+}
+
 (async () => {
   console.log('PASS ' + await anAdminSeesTheHeldAnswerItsReasonAndReleaseAndDiscard());
+  console.log('PASS ' + await watchFixAndDropReadAsTheirOwnGuardLines());
+  console.log('PASS ' + await everyPackSaysTheNewGuardLines());
   console.log('PASS ' + await releasePostsAndRefreshes());
   console.log('PASS ' + await discardNeedsASecondClickAndAConflictSaysWhy());
   console.log('PASS ' + await aReleaseThatCouldNotPostKeepsTheAnswerHeld());

@@ -45,7 +45,7 @@ class StrictAnthropic(FakeAnthropic):
 
 
 def guard_reply() -> object:
-    return reply(text(json.dumps({'verdict': 'pass', 'reason': 'an on-topic question', 'spans': []})), stop='end_turn', u=usage(1500, 40))
+    return reply(text(json.dumps({'verdict': 'pass', 'category': 'none', 'reason': 'an on-topic question', 'spans': []})), stop='end_turn', u=usage(1500, 40))
 
 
 def test_the_claude_model_list_covers_every_family():

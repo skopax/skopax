@@ -26,6 +26,7 @@ PAUSE_ERROR = 'the server tools kept pausing the turn'
 ADVISOR_OVER = 'the advisor was consulted more often than the run allows'
 WEB_REFUSED = 'web tools refused by the API, the run went on without them'
 NO_SYSTEM = 'the system prompt is empty'
+NO_ANSWER = 'the run has no answer to rewrite'
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,10 @@ class Runner:
         self.clock = clock
         self.tag = tag
         self.plan: advisor.Plan | None = None
+        self.messages: list[dict] = []
+        self.tools: list[dict] = []
+        self.held_run: tuple | None = None
+        self.calls = 0
 
     def advising(self) -> advisor.Plan | None:
         plan = self.config.advisor
@@ -156,11 +161,28 @@ class Runner:
             dropped = msg('advisor.dropped', advisor=self.config.advisor.model, executor=self.config.model)
             log.warning('run %s: %s', (self.tag or {}).get('runId'), dropped)
             note(result, dropped)
+        self.messages = [{'role': 'user', 'content': brief}]
+        self.tools = toolbox.definitions()
+        self.held_run = (toolbox, system, day, halt)
+        self.calls = 0
+        return self._loop(result, plan)
+
+    def again(self, text: str, halt: Callable[[], str | tuple[str, str] | None] | None = None) -> Result:
+        result = Result()
+        if self.held_run is None or not self.messages or self.messages[-1].get('role') != 'assistant':
+            result.outcome, result.error = 'failed', NO_ANSWER
+            return result
+        toolbox, system, day, before = self.held_run
+        self.held_run = (toolbox, system, day, halt or before)
+        self.messages.append({'role': 'user', 'content': text})
+        return self._loop(result, self.plan)
+
+    def _loop(self, result: Result, plan) -> Result:
+        toolbox, system, day, halt = self.held_run
+        messages, tools = self.messages, self.tools
         start = self.clock()
-        messages = [{'role': 'user', 'content': brief}]
-        tools = toolbox.definitions()
         served = getattr(toolbox, 'server_calls', None)
-        calls, limited, cut, pauses = 0, False, False, 0
+        limited, cut, pauses = False, False, 0
         while True:
             if stop(result, halt()):
                 break
@@ -178,7 +200,7 @@ class Runner:
                     continue
                 if result.turns == 0 and any(is_web_tool(t) for t in tools):
                     log.warning('run %s: %s: %s', (self.tag or {}).get('runId'), WEB_REFUSED, error_kind(e))
-                    tools = [t for t in tools if not is_web_tool(t)]
+                    tools = self.tools = [t for t in tools if not is_web_tool(t)]
                     note(result, f'{WEB_REFUSED}: {error_kind(e)}')
                     continue
                 result.outcome, result.error = 'failed', error_kind(e)[:ERROR_LIMIT]
@@ -227,8 +249,8 @@ class Runner:
                 continue
             results, halted = [], False
             for b in uses:
-                calls += 1
-                if calls > self.config.max_tool_calls:
+                self.calls += 1
+                if self.calls > self.config.max_tool_calls:
                     limited = True
                     content, is_error = LIMIT_TEXT, True
                 elif halted := stop(result, halt()):

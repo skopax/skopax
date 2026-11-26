@@ -21,7 +21,7 @@ from skopax.features import off_text
 from skopax.investigator import pricing, prompt, select
 from skopax.investigator.flags import REQUESTS, SOFT, asked, scan
 from skopax.investigator.runner import Result, RunConfig, Runner
-from skopax.investigator.guard import MASK_TEXT, apply_mask
+from skopax.investigator.guard import CATEGORIES, MASK_TEXT, apply_mask
 from skopax.investigator.tools import Effects, Sources, Toolbox, applied_writes, leaves, masked_leaves
 from skopax.investigator.toolset import Run, asked_gate
 from skopax.investigator.web import own_domains as own_web_domains, web_from
@@ -63,6 +63,11 @@ STUCK_RELEASE_S = 600
 REASON_LIMIT = 200
 REFUSED_BY = 'Refused by the guard'
 HELD_PUBLIC = ('until', 'released')
+GUARD_PRIVATE = ('reason', 'category', 'first', 'fix', 'noted')
+FIX_TEXT = 'A safety reviewer objected: {category}: {reason}. Rewrite the final answer to fix only that; do not call tools unless needed.'
+CONTEXT_LINE = 200
+DROPPED = 'dropped'
+FIXED = 'fixed'
 PROPOSALS = ('ticketProposal', 'cardAction', 'proposal')
 USE_FIELDS = {'card': ('investigate_model', 'card'), 'slack': ('investigate_slack_model', 'slack'), 'chat': ('chat_model', 'chat')}
 
@@ -81,6 +86,26 @@ class ReleaseTaken(ReleaseFailed):
 
 def guard_reason(reason) -> str:
     return outward(str(reason or ''))[:REASON_LIMIT]
+
+
+def merged(result: Result, again: Result) -> None:
+    result.turns += again.turns
+    result.usd += again.usd
+    result.models += list(again.models)
+    result.advisor_calls += again.advisor_calls
+    result.advisor_errors += again.advisor_errors
+    for k, n in (again.usage or {}).items():
+        result.usage[k] = result.usage.get(k, 0) + n
+    if again.error:
+        result.error = ((result.error + '; ') if result.error else '') + again.error
+
+
+def guard_category(category, verdict: str = '', failure=None) -> str:
+    if failure:
+        return 'other'
+    if verdict == 'pass':
+        return category if category in CATEGORIES else 'none'
+    return category if category in CATEGORIES and category != 'none' else 'other'
 
 
 MASK_TAIL_MIN = 4
@@ -126,7 +151,7 @@ def public_run(run: dict) -> dict:
     if out.get('outcome') in HELD_OUTCOMES:
         out.pop('screenshots', None)
     if isinstance(out.get('guard'), dict):
-        out['guard'] = {k: v for k, v in out['guard'].items() if k != 'reason'}
+        out['guard'] = {k: v for k, v in out['guard'].items() if k not in GUARD_PRIVATE}
     return out
 
 
@@ -706,6 +731,8 @@ class Investigator:
                     system = prompt.slack_system_prompt(sections, pack, extra, index, self.org_about) if quick else prompt.system_prompt(sections, pack, extra, index, self.org_about)
                     system += advisor.NUDGE if plan is not None else ''
                     result = runner.run(toolbox, system, first, day, lambda: self.halt(day, lease))
+                    if guarded is not None and guarded.get('fixing') and not guarded.get('watch') and result.outcome == 'done':
+                        guarded['retry'] = lambda text: runner.again(text, lambda: self.halt(day, lease))
         except BaseException as e:
             crash = e
             log.error('investigation %s crashed: %s', run_id, error_kind(e))
@@ -762,23 +789,34 @@ class Investigator:
         answers = bool(watch.checks_answers)
         if not (questions or answers):
             return None
-        out = {'questions': None, 'answers': answers, 'question': self._guard_question(ask, report, cards), 'ms': 0, 'model': '', 'reason': '', 'refused': None}
+        watching = getattr(watch, 'watching', False) is True
+        out = {'questions': None, 'answers': answers, 'question': self._guard_question(ask, report, cards), 'context': self._guard_context(cards), 'ms': 0, 'model': '', 'reason': '',
+               'category': 'none', 'refused': None, 'watch': watching, 'fixing': getattr(watch, 'fixing', False) is True, 'retry': None}
         if not questions:
             return out
         try:
             got = watch.question(ask, self.role_of(action) or '', run_id)
-            verdict, failure, reason, ms, model = got.verdict, got.failure, got.reason, got.ms, got.model
+            verdict, failure, reason, ms, model, category = got.verdict, got.failure, got.reason, got.ms, got.model, getattr(got, 'category', 'other')
         except Exception as e:
             log.warning('the question check of run %s failed: %s', run_id, error_kind(e))
-            verdict, failure, reason, ms, model = 'refuse', 'api', '', 0, ''
-        out.update(ms=int(ms or 0), model=str(model or ''), reason=guard_reason(reason))
+            verdict, failure, reason, ms, model, category = 'refuse', 'api', '', 0, '', 'other'
+        out.update(ms=int(ms or 0), model=str(model or ''), reason=guard_reason(reason), category=guard_category(category, verdict, failure))
         if failure:
-            out.update(questions='failed', refused=said(action, 'slackevents.guard.unavailable'))
+            out.update(questions='failed', refused=None if watching else said(action, 'slackevents.guard.unavailable'))
         elif verdict == 'pass':
             out['questions'] = 'pass'
         else:
-            out.update(questions='refuse', refused=said(action, 'slackevents.guard.refused'))
+            out.update(questions='refuse', refused=None if watching else said(action, 'slackevents.guard.refused'))
         return out
+
+    @staticmethod
+    def _guard_context(cards: list[dict]) -> str:
+        lines = []
+        for c in cards:
+            num = f"#{c['num']} " if c.get('num') else ''
+            line = outward(f"{num}{prompt.flat(c.get('svc') or '-')} / {prompt.flat(c.get('label') or '?')}, {prompt.flat(c.get('sev') or '?')}, {prompt.flat(c.get('status') or '?')}")[:CONTEXT_LINE]
+            lines.append(line)
+        return '\n'.join(lines)
 
     @staticmethod
     def _guard_question(ask: str, report: dict | None, cards: list[dict]) -> str:
@@ -788,36 +826,81 @@ class Investigator:
             return str(report.get('summary') or '')
         return '\n'.join(f"{c.get('svc') or '-'} / {c.get('label') or '?'}: {c.get('what') or c.get('sig') or c.get('key') or ''}" for c in cards)
 
-    def _check_answer(self, run_id: str, toolbox, result: Result, guarded: dict | None, proposed: dict) -> tuple[dict | None, dict]:
+    def _check_answer(self, run_id: str, toolbox, result: Result, guarded: dict | None, proposed: dict,
+                      renew: Callable[[], dict] | None = None) -> tuple[dict | None, dict]:
         if guarded is None:
             return None, proposed
-        out = {'questions': guarded['questions'], 'answers': None, 'masked': 0, 'ms': guarded['ms'], 'model': guarded['model'], 'reason': guarded['reason']}
+        out = {'questions': guarded['questions'], 'answers': None, 'masked': 0, 'ms': guarded['ms'], 'model': guarded['model'], 'reason': guarded['reason'],
+               'category': guarded.get('category') or 'none'} | ({'watch': True} if guarded.get('watch') else {})
         if guarded['refused']:
             return out | {'answers': 'not run'}, proposed
         queued = toolbox is not None and bool(toolbox.held)
         if not guarded['answers'] or not (result.recap or queued or proposed):
             return out, proposed
+        if guarded.get('watch'):
+            verdict, _, _, _ = self._judged(run_id, toolbox, result, guarded, proposed, out)
+            return out | {'answers': verdict}, proposed
+        verdict, proposed = self._settle(run_id, toolbox, result, guarded, proposed, out)
+        if verdict in ('pass', 'mask') or not guarded.get('fixing'):
+            return out | {'answers': verdict}, proposed
+        first = {'answers': verdict, 'category': out['category'], 'reason': out['reason']}
+        retry = guarded.get('retry')
+        if verdict == 'failed' or retry is None:
+            return out | {'answers': DROPPED, 'first': first, 'outcome': DROPPED}, {}
+        self._clear_attempt(toolbox)
+        try:
+            again = retry(FIX_TEXT.format(category=first['category'], reason=first['reason'] or 'no reason given'))
+        except Exception as e:
+            log.warning('the fix turn of run %s failed: %s', run_id, error_kind(e))
+            again = None
+        if again is not None:
+            merged(result, again)
+        if again is None or again.outcome != 'done' or not str(again.recap or '').strip():
+            return out | {'answers': DROPPED, 'first': first, 'outcome': DROPPED}, {}
+        result.recap = outward(again.recap)
+        proposed = renew() if renew is not None else {}
+        out.update(reason='', category='none')
+        verdict, proposed = self._settle(run_id, toolbox, result, guarded, proposed, out)
+        fix = {'answers': verdict, 'category': out['category'], 'reason': out['reason']}
+        out.update(reason=first['reason'], category=first['category'])
+        if verdict in ('pass', 'mask'):
+            return out | {'answers': verdict, 'first': first, 'fix': fix, 'outcome': FIXED}, proposed
+        return out | {'answers': DROPPED, 'first': first, 'fix': fix, 'outcome': DROPPED}, {}
+
+    @staticmethod
+    def _clear_attempt(toolbox) -> None:
+        if toolbox is None:
+            return
+        toolbox.held.clear()
+        toolbox.writes[:] = [w for w in toolbox.writes if not w.get('held')]
+        toolbox.proposal = toolbox.plugin_proposal = toolbox.card_action = None
+
+    def _judged(self, run_id: str, toolbox, result: Result, guarded: dict, proposed: dict, out: dict) -> tuple[str, tuple[str, ...], str, bool]:
+        queued = toolbox is not None and bool(toolbox.held)
         offers = '\n'.join(f'{k}: {t}' for k, v in proposed.items() for t in leaves(v))
         whole = result.recap + (f'\n\nProposals:\n{offers}' if offers else '') + (f'\n\nCard writes waiting for this check:\n{toolbox.held_text()}' if queued else '')
         try:
             digest = toolbox.digest() if toolbox is not None else ''
-            got = self.guard.answer(guarded['question'], whole, digest, run_id)
+            got = self.guard.answer(guarded['question'], whole, digest, run_id, context=guarded.get('context') or '')
             verdict, failure, spans, reason, ms, model = got.verdict, got.failure, tuple(s for s in got.spans or () if isinstance(s, str) and s), got.reason, got.ms, got.model
+            category = getattr(got, 'category', 'other')
         except Exception as e:
             log.warning('the answer check of run %s failed: %s', run_id, error_kind(e))
-            verdict, failure, spans, reason, ms, model = 'hold', 'api', (), '', 0, ''
-        out.update(ms=out['ms'] + int(ms or 0), model=str(model or out['model'] or ''), reason=guard_reason(reason) or out['reason'])
+            verdict, failure, spans, reason, ms, model, category = 'hold', 'api', (), '', 0, '', 'other'
+        out.update(ms=out['ms'] + int(ms or 0), model=str(model or out['model'] or ''), reason=guard_reason(reason) or out['reason'], category=guard_category(category, verdict, failure))
         if failure:
-            return out | {'answers': 'failed'}, proposed
-        if verdict == 'pass':
-            return out | {'answers': 'pass'}, proposed
+            return 'failed', (), whole, queued
+        return (verdict if verdict in ('pass', 'mask') else 'hold'), spans, whole, queued
+
+    def _settle(self, run_id: str, toolbox, result: Result, guarded: dict, proposed: dict, out: dict) -> tuple[str, dict]:
+        verdict, spans, whole, queued = self._judged(run_id, toolbox, result, guarded, proposed, out)
         if verdict != 'mask':
-            return out | {'answers': 'hold'}, proposed
+            return verdict, proposed
         found = [s for s in spans if s in whole]
         parts = [result.recap] + leaves(proposed) + ([t for w in toolbox.held for t in leaves(w.get('args')) + [str(w.get('summary') or '')]] if queued else [])
         total = apply_mask(whole, tuple(found))
         if total is None or any(not any(s in p for p in parts) for s in found) or any(apply_mask(p, tuple(found)) is None for p in parts if p):
-            return out | {'answers': 'hold'}, proposed
+            return 'hold', proposed
 
         def mask(text: str) -> str:
             return apply_mask(text, tuple(found))[0] if text else text
@@ -827,16 +910,10 @@ class Investigator:
             mask_record(toolbox, tuple(found))
         if queued:
             toolbox.mask_held(mask)
-        return out | {'answers': 'mask', 'masked': total[1]}, masked_leaves(proposed, mask)
+        out['masked'] = total[1]
+        return 'mask', masked_leaves(proposed, mask)
 
-    def _finish(self, run_id: str, claimed: list[str], action: dict | None, recorded: bool, toolbox, result, crash: BaseException | None, mode: str,
-                trace: tracing.Trace | None = None, guarded: dict | None = None) -> dict:
-        ended = epoch_iso(self.clock())
-        if result is None:
-            outcome, error = ('failed', error_kind(crash)) if crash is not None else ('skipped', None)
-            result = Result(outcome=outcome, error=error)
-        result.recap = outward(result.recap or '')
-        outcome, error = result.outcome, result.error
+    def _proposals(self, toolbox, action: dict | None, outcome: str) -> dict:
         proposed: dict = {}
         if toolbox is not None and toolbox.proposal:
             proposed['ticketProposal'] = toolbox.proposal
@@ -847,8 +924,22 @@ class Investigator:
             call = self._with_ticket(call, action)
         if call:
             proposed['cardAction'] = call
-        checked, proposed = self._check_answer(run_id, toolbox, result, guarded, proposed)
-        held = checked is not None and checked['answers'] in ('hold', 'failed')
+        return proposed
+
+    def _finish(self, run_id: str, claimed: list[str], action: dict | None, recorded: bool, toolbox, result, crash: BaseException | None, mode: str,
+                trace: tracing.Trace | None = None, guarded: dict | None = None) -> dict:
+        ended = epoch_iso(self.clock())
+        if result is None:
+            outcome, error = ('failed', error_kind(crash)) if crash is not None else ('skipped', None)
+            result = Result(outcome=outcome, error=error)
+        result.recap = outward(result.recap or '')
+        proposed = self._proposals(toolbox, action, result.outcome)
+        checked, proposed = self._check_answer(run_id, toolbox, result, guarded, proposed, lambda: self._proposals(toolbox, action, result.outcome))
+        outcome, error = result.outcome, result.error
+        held = checked is not None and not checked.get('watch') and checked['answers'] in ('hold', 'failed')
+        dropped = checked is not None and checked['answers'] == DROPPED
+        if dropped:
+            self._clear_attempt(toolbox)
         if checked is not None and not held and toolbox is not None and toolbox.held:
             toolbox.replay(toolbox.held)
             toolbox.writes[:] = [w for w in toolbox.writes if not w.get('held')]
@@ -856,13 +947,16 @@ class Investigator:
                 'advisorCalls': result.advisor_calls, 'advisorErrors': result.advisor_errors, 'toolCalls': stored_calls(toolbox.calls) if toolbox else [], 'writes': toolbox.writes if toolbox else [], 'flags': toolbox.flags if toolbox else [],
                 'recap': result.recap, 'error': error}
         if checked is not None:
-            done['guard'] = checked
+            done['guard'] = {k: v for k, v in checked.items() if not (k == 'category' and v == 'none')} | ({'noted': True} if checked.get('category') not in (None, 'none') else {})
         done |= {k: proposed[k] for k in PROPOSALS if k in proposed}
-        if toolbox is not None and toolbox.shots:
+        if toolbox is not None and toolbox.shots and not (checked is not None and checked.get('outcome') == FIXED):
             done['screenshots'] = toolbox.shots
         if held:
             done = self._held(done, action, toolbox, result.recap)
             outcome = done['outcome']
+        if dropped:
+            done = self._dropped(done, action)
+            result.recap = done['recap']
         if trace is not None:
             self._traced(trace, outcome, error, done['recap'])
         try:
@@ -908,6 +1002,15 @@ class Investigator:
         calls = [c | {'input': ''} | ({'error': HELD_CALL_ERROR} if c.get('error') else {}) for c in done['toolCalls']]
         writes = [{k: v for k, v in w.items() if k != 'summary'} if w.get('held') else w for w in done['writes']]
         return done | {'outcome': 'held', 'recap': said(action, 'slackevents.guard.waiting' if asked else 'slackevents.guard.card_held'), 'held': kept, 'toolCalls': calls, 'writes': writes}
+
+    @staticmethod
+    def _dropped(done: dict, action: dict | None) -> dict:
+        asked = bool(action) and action.get('type') == 'ask'
+        calls = [c | {'input': ''} | ({'error': HELD_CALL_ERROR} if c.get('error') else {}) for c in done['toolCalls']]
+        out = {k: v for k, v in done.items() if k not in PROPOSALS and k != 'screenshots'} | {'flags': [{k: v for k, v in f.items() if k != 'excerpt'} for f in done.get('flags') or [] if isinstance(f, dict)]}
+        outage = ((done.get('guard') or {}).get('first') or {}).get('answers') == 'failed'
+        key = 'slackevents.guard.unavailable' if outage else 'slackevents.guard.dropped' if asked else 'slackevents.guard.card_dropped'
+        return out | {'recap': said(action, key), 'toolCalls': calls}
 
     def _hold_action(self, run_id: str, recorded: bool, action: dict, waiting: str) -> None:
         if not self._close_action(action, 'done', waiting[:RESULT_LIMIT]):
