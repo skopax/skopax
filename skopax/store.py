@@ -100,7 +100,7 @@ REQUEST_FIELDS = {'source': 1, 'text': 1, 'status': 1, 'requestedAt': 1, 'reques
                   'slack.channel': 1, 'slack.channelName': 1, 'slack.outside': 1, 'slack.permalink': 1, 'slack.where': 1, 'slack.threadTs': 1}
 REQUEST_RUN_FIELDS = {'actionId': 1, 'outcome': 1, 'mode': 1, 'startedAt': 1, 'usd': 1, 'recap': 1, 'toolCalls.name': 1}
 RUN_PAGE_FIELDS = {'mode': 1, 'trigger': 1, 'actionId': 1, 'ask': 1, 'keys': 1, 'startedAt': 1, 'outcome': 1, 'usd': 1, 'recap': 1, 'writes': 1, 'flags': 1, 'toolCalls.name': 1, 'screenshots': 1,
-                   'proposal': 1, 'trace': 1}
+                   'proposal': 1, 'trace': 1, 'guard.questions': 1, 'guard.answers': 1, 'guard.masked': 1, 'held.until': 1}
 BACKFILL_RUN_FIELDS = {'keys': 1, 'startedAt': 1, 'endedAt': 1, 'trigger': 1, 'outcome': 1, 'recap': 1, 'writes': 1, 'ask': 1, 'usd': 1}
 BACKFILL_ACTION_FIELDS = {'type': 1, 'key': 1, 'status': 1, 'requestedAt': 1, 'requestedBy': 1, 'reason': 1, 'ticket': 1, 'result': 1}
 INDEX_OPTIONS_CONFLICT = 85
@@ -111,6 +111,7 @@ CHAT_RUN_FIELDS = {'actionId': 1, 'outcome': 1, 'recap': 1, 'usd': 1, 'cardActio
 CHAT_SCAN = 1000
 CHAT_RUN_PUBLIC = ('id', 'mode', 'trigger', 'pod', 'room', 'startedAt', 'endedAt', 'outcome', 'usd', 'turns', 'model', 'effort', 'models', 'usage', 'advisorCalls')
 NOT_CHAT = {'trigger': {'$ne': 'chat'}}
+HELD_OUTCOMES = ('held', 'releasing')
 CARD_RUNS_DAYS = 30
 META_OWN = ('anomalies', 'rev', 'updatedAt', '_id', 'writing')
 CHAT_ERROR = '(private chat)'
@@ -434,6 +435,7 @@ class Store:
         ttl_index(self.investigations, 'startedAtDt', self.investigate_days * 86400)
         self.investigations.create_index([('keys', ASCENDING), ('startedAt', DESCENDING)])
         self.investigations.create_index([('mode', ASCENDING), ('startedAt', DESCENDING)])
+        self.investigations.create_index([('outcome', ASCENDING), ('held.until', ASCENDING)])
         self.anomalies.create_index([('slackPost.channel', ASCENDING), ('slackPost.ts', ASCENDING)])
         self.anomalies.create_index([('threadSeenAt', ASCENDING)], sparse=True)
         self.actions.create_index([('slack.channel', ASCENDING), ('slack.threadTs', ASCENDING)])
@@ -1281,6 +1283,57 @@ class Store:
     def update_investigation(self, run_id: str, fields: dict) -> None:
         self.investigations.update_one({'_id': run_id}, {'$set': fields})
 
+    def settle_held(self, run_id: str, outcome: str, fields: dict, now: str, expired: bool = False) -> dict | None:
+        until = {'$lte': now} if expired else {'$gt': now}
+        return self.investigations.find_one_and_update({'_id': run_id, 'outcome': 'held', 'held.until': until, 'held.posted': {'$ne': True}},
+                                                       {'$set': {'outcome': outcome, **fields}, '$unset': {'held.text': '', 'held.writes': '', 'held.proposed': ''}},
+                                                       return_document=ReturnDocument.BEFORE)
+
+    def claim_held(self, run_id: str, now: str, token: str, expired: bool = False) -> dict | None:
+        found = {'_id': run_id, 'outcome': 'held'} | ({'held.posted': True} if expired else {'held.until': {'$gt': now}})
+        return self.investigations.find_one_and_update(found, {'$set': {'outcome': 'releasing', 'held.releasingAt': now, 'held.claim': token}}, return_document=ReturnDocument.AFTER)
+
+    def stamp_release(self, run_id: str, token: str, fields: dict) -> bool:
+        return self.investigations.update_one({'_id': run_id, 'outcome': 'releasing', 'held.claim': token}, {'$set': fields}).matched_count == 1
+
+    def mark_posted(self, run_id: str) -> None:
+        self.investigations.update_one({'_id': run_id, 'outcome': {'$in': ['releasing', 'held']}}, {'$set': {'held.posted': True}})
+
+    def stuck_releasing(self, before: str, limit: int = 50) -> list[str]:
+        return [d['_id'] for d in self.investigations.find({'outcome': 'releasing', 'held.releasingAt': {'$lt': before}}, {'_id': 1}, limit=limit)]
+
+    def unstick_release(self, run_id: str, before: str) -> bool:
+        return self.investigations.update_one({'_id': run_id, 'outcome': 'releasing', 'held.releasingAt': {'$lt': before}, 'held.posted': {'$ne': True}},
+                                              {'$set': {'outcome': 'held'}, '$unset': {'held.releasingAt': '', 'held.claim': ''}}).modified_count == 1
+
+    def retake_release(self, run_id: str, before: str, now: str, token: str) -> dict | None:
+        return self.investigations.find_one_and_update({'_id': run_id, 'outcome': 'releasing', 'held.releasingAt': {'$lt': before}, 'held.posted': True},
+                                                       {'$set': {'held.releasingAt': now, 'held.claim': token}}, return_document=ReturnDocument.AFTER)
+
+    def unclaim_held(self, run_id: str, token: str) -> None:
+        self.investigations.update_one({'_id': run_id, 'outcome': 'releasing', 'held.claim': token}, {'$set': {'outcome': 'held'}, '$unset': {'held.releasingAt': '', 'held.claim': ''}})
+
+    def finish_release(self, run_id: str, token: str, fields: dict) -> bool:
+        gone = {f'held.{k}': '' for k in ('text', 'writes', 'proposed', 'releasingAt', 'claim', 'applied')}
+        return self.investigations.update_one({'_id': run_id, 'outcome': 'releasing', 'held.claim': token}, {'$set': {'outcome': 'done', **fields}, '$unset': gone}).matched_count == 1
+
+    def held_review_keys(self) -> set[str]:
+        return {k for d in self.investigations.find({'trigger': 'review', 'outcome': {'$in': list(HELD_OUTCOMES)}}, {'keys': 1}) for k in d.get('keys') or []}
+
+    def has_held(self) -> bool:
+        return self.investigations.find_one({'outcome': {'$in': list(HELD_OUTCOMES)}}, {'_id': 1}) is not None
+
+    def held_run(self, run_id: str) -> dict | None:
+        return self.investigations.find_one({'_id': run_id}, {'actionId': 1, 'keys': 1, 'outcome': 1, 'held.until': 1, 'trigger': 1})
+
+    def run_guard_parts(self, run_id: str) -> dict:
+        doc = self.investigations.find_one({'_id': run_id}, {'held': 1, 'guard': 1}) or {}
+        return {k: doc[k] for k in ('held', 'guard') if k in doc}
+
+    def expired_held(self, now: str, run_id: str | None = None, limit: int = 50) -> list[str]:
+        query = {'outcome': 'held', 'held.until': {'$lte': now}} | ({'_id': run_id} if run_id else {})
+        return [d['_id'] for d in self.investigations.find(query, {'_id': 1}, sort=[('startedAt', ASCENDING)], limit=limit)]
+
     def _run(self, doc: dict) -> dict:
         run = {k: v for k, v in _with_id(doc).items() if k != 'startedAtDt'}
         if run.get('trigger') != 'chat':
@@ -1374,8 +1427,10 @@ class Store:
                 'keys': sorted(({**k, 'usd': round(k['usd'], 4)} for k in keys.values()), key=lambda k: (-k['usd'], -k['runs'], k['key']))[:USAGE_TOP_KEYS],
                 'slowest': sorted(slowest, key=lambda c: (-c['ms'], c['tool'], str(c['run'])))[:USAGE_TOP_SLOW]}
 
-    def list_investigations(self, key: str | None, limit: int, page: bool = False, chats: bool = True) -> list[dict]:
+    def list_investigations(self, key: str | None, limit: int, page: bool = False, chats: bool = True, held: bool = False) -> list[dict]:
         query = {'keys': key} | NOT_CHAT if key else ({} if chats else NOT_CHAT)
+        if held:
+            query = query | {'outcome': {'$in': list(HELD_OUTCOMES)}}
         rows = [self._run(d) for d in self.investigations.find(query, RUN_PAGE_FIELDS if page else None, sort=[('startedAt', DESCENDING), ('_id', DESCENDING)], limit=limit)]
         if page:
             for r in rows:
@@ -2249,7 +2304,7 @@ class Store:
             answer = None if open_now or a.get('status') != 'done' else run.get('recap') or a.get('result')
             message = {'id': a['id'], 'text': a.get('text'), 'at': a.get('requestedAt'), 'status': a.get('status'), 'cards': a.get('cards') or [], 'answer': answer,
                        'answeredAt': a.get('doneAt') or a.get('failedAt'), 'runId': run.get('_id'), 'usd': run.get('usd'), 'cardAction': run.get('cardAction') if not open_now else None,
-                       'error': a.get('result') if a.get('status') in ('failed', 'cancelled') else None}
+                       'error': a.get('result') if a.get('status') in ('failed', 'cancelled') else None, 'held': True if run.get('outcome') == 'held' and not open_now else None}
             if open_now and run.get('_id') in progress:
                 message['progress'] = progress[run['_id']]
             messages.append({k: v for k, v in message.items() if v is not None})

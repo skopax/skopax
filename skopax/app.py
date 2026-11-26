@@ -66,8 +66,9 @@ from skopax.contract import CodeHost, OrgPack, SourceDown
 from skopax import engine
 from skopax.engine import Applied, PassResult, apply, iso as epoch_iso, new_pushes
 from skopax.enrich import Enricher
-from skopax.investigator import JOB_OFFSET as INVESTIGATE_OFFSET, JOB_PERIOD as INVESTIGATE_PERIOD, Investigator, prompt, select
+from skopax.investigator import HELD_OFFSET, HELD_PERIOD, JOB_OFFSET as INVESTIGATE_OFFSET, JOB_PERIOD as INVESTIGATE_PERIOD, Investigator, ReleaseFailed, ReleaseTaken, prompt, public_run, select
 from skopax.investigator.gate import Gate, GateDown
+from skopax.investigator.guard import Guard
 from skopax.investigator.pricing import ANTHROPIC, OPENAI, default_model, known as known_model, provider_of
 from skopax.investigator.smalltalk import DEFAULTS as SMALL_TALK_DEFAULTS, Reply, SmallTalk, WINDOW_S as SMALL_TALK_WINDOW_S
 from skopax.investigator.tools import CORE_TOOLS, FIX_FIELDS, Effects, Sources, allowed_link_hosts, draft_problem
@@ -141,7 +142,7 @@ from skopax import ssobutton, workspaceicon
 from skopax.ssoicon import ICON_MAX as SSO_ICON_MAX, IconRefused, SsoIcon, check as icon_check
 from skopax.sso import FIELDS as SSO_FIELDS, SECRET_FIELD as SSO_SECRET_FIELD, SECRET_ID as SSO_SECRET_ID, SECRET_MAX as SSO_SECRET_MAX, InvalidSecret, SignOn, SourceOwned as SecretOwned, SsoConfig, SsoHttp, SsoSecret, TestBusy as SsoTestBusy
 from skopax.throttle import Throttle
-from skopax.store import CARD_HISTORY_MAX, SEVERITY_HIGH_MARK, SEVERITY_RESCORE_MARK, TAG_HUE_NAMES, ActionMoved, ChatPrivate, Conflict, NotFound, Store, iso, new_id, utc_now
+from skopax.store import CARD_HISTORY_MAX, HELD_OUTCOMES, SEVERITY_HIGH_MARK, SEVERITY_RESCORE_MARK, TAG_HUE_NAMES, ActionMoved, ChatPrivate, Conflict, NotFound, Store, iso, new_id, utc_now
 
 OPEN_PATHS = ('/actuator/health', '/actuator/health/*', '/static/*', '/icons/*', '/favicon.ico', '/plugins/*', '/manifest.webmanifest', '/setup', '/login', '/login/sso', '/authorized', '/logout', '/mcp',
               '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/*', '/login/sso-icon')
@@ -1128,6 +1129,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         investigator.on = lambda: features.on('investigator')
         investigator.pack = org_pack
         investigator.role_of = lambda action: asker_role(action, users)
+        investigator.guard = Guard(store, settings, client=anthropic_client, keys=provider_keys)
+        investigator.admins = lambda: [str(u.get('email') or '') for u in users.list() if u.get('role') == 'admin' and not u.get('disabled')]
+    if (settings.guard_check_questions or settings.guard_check_answers) and not settings.investigate_guard_model:
+        store.add_activity(ADMIN_KIND, 'server', msg('guard.checks_off_no_model'))
 
     gate = Gate(store, settings, client=anthropic_client, keys=provider_keys, pack=org_pack)
     threads = ThreadSummaries(store, slack, settings, client=anthropic_client, keys=provider_keys, names=email_names(operators), halted=lambda now: investigator.why_halted(now))
@@ -1442,6 +1447,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         Job(JIRA_ACCESS, JIRA_LINKS_PERIOD, JIRA_LINKS_OFFSET, jira_links_run, jira_links_on),
         Job(SLACK_POSTS, SLACK_POSTS_PERIOD, SLACK_POSTS_OFFSET, slack_posts_run, lambda: slack.enabled),
         Job('investigate', INVESTIGATE_PERIOD, INVESTIGATE_OFFSET, investigator.kick, lambda: investigator.enabled),
+        Job('held-answers', HELD_PERIOD, HELD_OFFSET, lambda now: investigator.expire_held(now),
+            lambda: isinstance(investigator, Investigator) and (bool(getattr(investigator.guard, 'checks_answers', False)) or store.has_held())),
         Job('slack-fallback', SLACK_FALLBACK_PERIOD, SLACK_FALLBACK_OFFSET, fallback.run_once, lambda: slack.enabled and fallback.enabled),
         Job('slack-reminders', REMINDER_PERIOD, REMINDER_OFFSET, lambda now: and_notify(reminders.run_once(now), notices.reminded), lambda: reminders.enabled),
         Job('slack-clear-notes', CLEAR_NOTE_PERIOD, CLEAR_NOTE_OFFSET, clear_notes.run_once, lambda: clear_notes.enabled),
@@ -2791,14 +2798,22 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         store.add_activity('check', by, msg('checks.run_now', check=check.label, by=by))
         return {'job': job}
 
+    def unshot(rows: list[dict], admin: bool) -> list[dict]:
+        return rows if admin else [{k: v for k, v in r.items() if k != 'screenshots'} if r.get('outcome') in HELD_OUTCOMES else r for r in rows]
+
     @app.get('/api/screenshots/{shot_id}')
-    def get_screenshot(shot_id: str) -> Response:
+    def get_screenshot(request: Request, shot_id: str, authorization: Annotated[str | None, Header()] = None) -> Response:
         doc = store.screenshot(shot_id)
+        if doc.get('runId') and not reads_access(request, authorization) and (store.held_run(str(doc['runId'])) or {}).get('outcome') in HELD_OUTCOMES:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f'no screenshot {shot_id}')
         return Response(bytes(doc['data']), media_type=doc.get('mime') or 'image/jpeg', headers={'Cache-Control': 'private, max-age=86400, immutable'})
 
     @app.get('/api/investigations')
-    def get_investigations(key: str | None = None, limit: Annotated[int, Query(ge=1, le=200)] = 50, chats: bool = True) -> list[dict]:
-        return store.list_investigations(key, limit, page=True, chats=chats)
+    def get_investigations(request: Request, key: str | None = None, limit: Annotated[int, Query(ge=1, le=200)] = 50, chats: bool = True, held: bool = False,
+                           authorization: Annotated[str | None, Header()] = None) -> list[dict]:
+        if held and not reads_access(request, authorization):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, 'Admins only')
+        return unshot(store.list_investigations(key, limit, page=True, chats=chats, held=held), reads_access(request, authorization))
 
     @app.get('/api/card-history')
     def get_card_history(request: Request, key: Annotated[str, Query(min_length=1, max_length=400)], limit: Annotated[int, Query(ge=1, le=CARD_HISTORY_MAX)] = 100,
@@ -2809,12 +2824,16 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             card = store.last_past_card(key)
         if not card or not information.is_card(card):
             raise HTTPException(status.HTTP_404_NOT_FOUND, f'no card {key[:80]}')
-        hide = () if reads_access(request, authorization) else (ACCESS_KIND,)
-        return {'key': key, 'actions': [a for a in store.card_actions(key, limit) if a.get('source') != 'chat'], 'activity': store.card_activity(key, limit, hide)}
+        admin = reads_access(request, authorization)
+        return {'key': key, 'actions': [a for a in store.card_actions(key, limit) if a.get('source') != 'chat'],
+                'activity': unshot(store.card_activity(key, limit, () if admin else (ACCESS_KIND,)), admin)}
 
     @app.get('/api/card-runs')
-    def get_card_runs() -> dict:
-        return store.card_runs(a.get('key') for a in store.load().get('anomalies') or [])
+    def get_card_runs(request: Request, authorization: Annotated[str | None, Header()] = None) -> dict:
+        found = store.card_runs(a.get('key') for a in store.load().get('anomalies') or [])
+        if reads_access(request, authorization):
+            return found
+        return {k: v | ({'latest': unshot([v['latest']], False)[0]} if isinstance(v.get('latest'), dict) else {}) for k, v in found.items()}
 
     def tagging(key: str, fields: dict, by: str, line: str) -> dict:
         rev, card = store.set_tagging(key, fields)
@@ -3640,6 +3659,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             log.warning('the sign-in connection test could not run: %s', kind(e))
             return {'ok': False, 'summary': msg('sso.test.unavailable'), 'ms': 0, 'checks': []}
 
+    def running_guard() -> Guard | None:
+        found = getattr(investigator, 'guard', None) if isinstance(investigator, Investigator) else None
+        return found if isinstance(found, Guard) else None
+
     def ai_routes() -> dict[str, tuple[str, str, str | None]]:
         found: dict[str, tuple[str, str, str | None]] = {}
         if isinstance(investigator, Investigator):
@@ -3651,6 +3674,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             found |= {use: (settings.ai_provider, settings.investigate_model, None) for use in ('card', 'critical', 'high', 'slack', 'chat')}
         found['gate'] = ai_route(gate, 'investigate_gate_model', 'gate')
         found['review'] = ai_route(self_review, 'selfreview_model', 'review')
+        found['guard'] = ai_route(running_guard() or gate, 'investigate_guard_model', 'guard')
         try:
             plugin_model = live.plugin_value(aiuses.PLUGIN_MODEL_KEY)
         except KeyError:
@@ -3677,7 +3701,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/admin/ai-uses')
     def get_admin_ai_uses(by: Annotated[str, Depends(require_admin)]) -> dict:
-        return {'uses': aiuses.rows(ai_routes(), settings.ai_provider, store.ledger_since(aiuses.since(clock())), keyed_clients.capabilities, keyed_clients.keyed, settings)}
+        guard = running_guard()
+        return {'uses': aiuses.rows(ai_routes(), settings.ai_provider, store.ledger_since(aiuses.since(clock())), keyed_clients.capabilities, keyed_clients.keyed, settings,
+                                    problems={aiuses.GUARD: guard.problem()} if guard else None)}
 
     @app.get('/api/admin/notices')
     def get_admin_notices(by: Annotated[str, Depends(require_admin)]) -> dict:
@@ -4347,8 +4373,38 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         return store.requests(limit)
 
     @app.get('/api/investigations/{run_id}')
-    def get_investigation(run_id: str) -> dict:
-        return store.investigation(run_id)
+    def get_investigation(request: Request, run_id: str, authorization: Annotated[str | None, Header()] = None) -> dict:
+        run = store.investigation(run_id)
+        if not reads_access(request, authorization):
+            return public_run(run)
+        return run | store.run_guard_parts(run_id) if run.get('trigger') == 'chat' and run.get('outcome') in HELD_OUTCOMES else run
+
+    def settle_held(run_id: str, by: str, release: bool) -> dict:
+        store.investigation(run_id)
+        verb = 'release' if release else 'discard'
+        said = 'not held'
+        try:
+            done = investigator.release(run_id, by) if release else investigator.discard(run_id, by)
+            if done is None:
+                raise HTTPException(status.HTTP_409_CONFLICT, msg('slackevents.guard.not_held'))
+            said = 'released' if release else 'discarded'
+            return done | store.run_guard_parts(run_id)
+        except ReleaseTaken:
+            said = 'taken over by another release'
+            raise HTTPException(status.HTTP_409_CONFLICT, msg('slackevents.guard.not_held')) from None
+        except ReleaseFailed:
+            said = 'release failed, still held'
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, msg('slackevents.guard.release_failed')) from None
+        finally:
+            store.add_activity(ADMIN_KIND, by, f'held answer {verb} \u00b7 run {run_id} \u00b7 {said}', runId=run_id)
+
+    @app.post('/api/admin/runs/{run_id}/release')
+    def post_run_release(run_id: str, by: Annotated[str, Depends(require_admin)]) -> dict:
+        return settle_held(run_id, by, True)
+
+    @app.post('/api/admin/runs/{run_id}/discard')
+    def post_run_discard(run_id: str, by: Annotated[str, Depends(require_admin)]) -> dict:
+        return settle_held(run_id, by, False)
 
     @app.post('/api/investigations/{run_id}/proposal')
     def post_proposal(run_id: str, by: Annotated[str, Depends(require_operator)]) -> dict:
@@ -4387,7 +4443,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         today = clocks.day(time.time())
         rows = store.ledger_since(costs.window(days, today)[0])
         meta = store.run_costs_meta({r['runId'] for r in rows if r.get('runId')})
-        return costs.summary(rows, meta, today, days, store.spent(today), settings.investigate_daily_usd)
+        guard_on = bool(settings.investigate_guard_model) and bool(settings.guard_check_questions or settings.guard_check_answers)
+        return costs.summary(rows, meta, today, days, store.spent(today), settings.investigate_daily_usd, guard_on)
 
     @app.get('/api/slack-intake')
     def get_slack_intake(_: Annotated[str, Depends(require_operator)], limit: Annotated[int, Query(ge=1, le=500)] = 100) -> list[dict]:
@@ -4411,7 +4468,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     @app.get('/api/activity')
     def get_activity(request: Request, since: str | None = None, limit: Annotated[int, Query(ge=1, le=500)] = 100,
                      authorization: Annotated[str | None, Header()] = None) -> list[dict]:
-        return store.list_activity(since, limit, () if reads_access(request, authorization) else (ACCESS_KIND,))
+        admin = reads_access(request, authorization)
+        return unshot(store.list_activity(since, limit, () if admin else (ACCESS_KIND,)), admin)
 
     def small_talk_info() -> dict:
         return talk.rules() | {'usedThisHour': store.count_small_talk(iso(utc_now() - dt.timedelta(seconds=SMALL_TALK_WINDOW_S)))}

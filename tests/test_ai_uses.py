@@ -23,7 +23,7 @@ from skopax.selfreview import SelfReview
 from skopax.store import Store
 
 BOTH = {'anthropic_api_key': 'test-anthropic-key', 'openai_api_key': 'test-openai-key'}
-USES = ['card', 'critical', 'high', 'slack', 'chat', 'gate', 'review', 'plugin']
+USES = ['card', 'critical', 'high', 'slack', 'chat', 'gate', 'review', 'plugin', 'guard']
 
 
 def effects() -> Effects:
@@ -257,6 +257,7 @@ def test_ai_uses_api_lists_every_use_with_price_and_problem(store: Store):
     assert (rows['critical']['model'], rows['high']['model']) == ('claude-opus-5-5', 'claude-sonnet-5-5')
     assert (rows['chat']['provider'], rows['chat']['model'], rows['chat']['problem']) == ('openai', 'gpt-6.1-terra', msg('ai.use_held', owner='OpenAI'))
     assert (rows['plugin']['setting'], rows['plugin']['model']) == ('website.model', 'claude-opus-5-5')
+    assert (rows['guard']['label'], rows['guard']['setting'], rows['guard']['model'], rows['guard']['problem']) == ('Guard', 'investigate.guard-model', '', None)
     assert 'test-anthropic-key' not in got.text
 
 

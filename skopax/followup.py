@@ -217,7 +217,7 @@ class FollowUps:
         waiting = {c['key'] for c in summary.waiting_cards(cards) if not mute_for(state, c['key'], now)}
         windows = tuple(self.windows() or ())
         settle_on = self.feature_on('settle')
-        busy = {a.get('key') for st in OPEN_STATES for a in self.store.list_actions(st, 500) if a.get('type') == REVIEW}
+        busy = {a.get('key') for st in OPEN_STATES for a in self.store.list_actions(st, 500) if a.get('type') == REVIEW} | self.store.held_review_keys()
         due = []
         for c in cards:
             if c['key'] in busy:

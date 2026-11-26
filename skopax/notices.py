@@ -21,7 +21,7 @@ LABELS = {
     'ticket': 'Jira ticket linked', 'severity': 'Severity changed', 'merged': 'Merged into another card', 'ungrouped': 'Taken out of its group',
     'muted': 'Muted', 'known': 'Marked as known noise', 'unmuted': 'Unmuted', 'auto': 'Auto-resolved', 'fired': 'Fired again', 'escalated': 'Got worse',
     'stopped': 'Stopped firing', 'run': 'Investigation finished', 'slack': 'Posted to Slack', 'thread': 'Slack thread update', 'reminder': 'Reminder sent',
-    'answer': 'Chat answer ready', 'closing': 'Closes soon',
+    'answer': 'Chat answer ready', 'closing': 'Closes soon', 'held': 'Answer held for review',
 }
 BURST_S = 60
 FLAP_S = 3600
@@ -264,6 +264,10 @@ class Notices:
 
     def reminded(self, keys: list[str]) -> int:
         return self._each(keys, 'reminder', 'server')
+
+    def held(self, emails: list[str], run_id: str, link: str) -> int:
+        to = {person(e): e for e in emails if person(e)}
+        return self.add(set(to), 'held', 'investigator', None, '', key=f'run:{run_id}', title=f'Run {run_id}', link=link, emails=to)
 
     def posted(self, key: str, by: str, thread: bool = False, text: str = '') -> int:
         card = self._card(key)

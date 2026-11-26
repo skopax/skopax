@@ -39,6 +39,8 @@ MODEL_ROLES = {'investigate.model': 'card', 'investigate.model-critical': 'card'
 MODEL_FIELDS = frozenset(f for _, f in MODEL_KEYS.values())
 OFF_WITH = {OPENAI: {'investigate.web-fetches': 'ai.off_openai', 'investigate.gate-effort': 'ai.off_openai_gate_effort'}}
 OFF_USES = {'investigate.web-fetches': ('investigate_model', 'card'), 'investigate.gate-effort': ('investigate_gate_model', 'gate')}
+GUARD_SWITCHES = ('guard.check-questions', 'guard.check-answers')
+GUARD_MODEL_KEY = 'investigate.guard-model'
 CHAT_CALLS_KEY = 'chat.max-tool-calls'
 WEB_DOMAINS_KEY = 'investigate.web-domains'
 OWN_SITES_KEY = 'core.own-sites'
@@ -296,6 +298,16 @@ STATIC = (
     T('investigate.slack-effort', 'investigate_slack_effort', INV, 'Slack effort', 'Thinking effort of the Slack model', 'choice', choices=EFFORTS),
     T('investigate.gate-model', 'investigate_gate_model', INV, 'Topic gate model', 'Checks that a page or Slack ask is about {product}, and answers small talk', 'choice', choices=MODELS),
     T('investigate.gate-effort', 'investigate_gate_effort', INV, 'Topic gate effort', 'Effort of the topic gate model on every page, chat and Slack ask; low keeps it fast and cheap', 'choice', choices=EFFORTS),
+    T('investigate.guard-model', 'investigate_guard_model', INV, 'Guard model',
+      'A separate model that checks questions before the investigator runs and answers before they are posted. None turns the guard off. '
+      'The guard model reads questions, answers and the tool results behind them; if it runs on another provider, that provider receives this text', 'choice',
+      choices=('',) + MODELS, choice_labels={'': 'None'}),
+    T('guard.check-questions', 'guard_check_questions', INV, 'Check questions',
+      'The guard model checks each Slack, chat and MCP question the topic gate passes on, before the investigator runs; a refused question gets a fixed reply. '
+      'It needs a guard model', 'bool'),
+    T('guard.check-answers', 'guard_check_answers', INV, 'Check answers',
+      'The guard model checks each answer and card investigation before it is posted; it can pass it, hide exact parts, or hold it for an admin to release or discard. '
+      'Chat answers no longer stream while it is on. It needs a guard model', 'bool'),
     T('core.org-about', 'org_about', INV, 'About your company', 'A few sentences about the company and what {product} watches: products, main services, who uses them. Given to the investigator and the topic gate', 'text'),
     T('investigate.daily-usd', 'investigate_daily_usd', INV, 'Daily limit ($)', 'Daily spend cap shared by the investigator and the self-review; 0 stops them all', 'float', 0, 500),
     T('investigate.max-cards', 'investigate_max_cards', INV, 'Cards per run', 'How many open cards one investigator run takes at most', 'int', 1, 20),
@@ -1018,6 +1030,8 @@ class Live:
         if t.choice_labels:
             out['choiceLabels'] = dict(t.choice_labels)
         self.provider_view(t, out)
+        if t.key in GUARD_SWITCHES and not self.current().investigate_guard_model:
+            out.update({'problem': msg('guard.no_model')} if out['value'] == 'true' else {'off': msg('guard.needs_model')})
         if t.key == 'investigate.model':
             out.update(self.card_model_summary())
         if t.key == POST_SEV_KEY and not given and not self.base.slack_post_sev_set:
@@ -1283,6 +1297,10 @@ class Live:
             value = None if raw is None else stored(parse(t, raw, self.base))
         if raw is not None and (problem := advisor.save_problem(self.current(), key, str(value or ''))):
             raise Invalid(problem)
+        if key in GUARD_SWITCHES and value == 'true' and not self.current().investigate_guard_model:
+            raise Invalid(msg('guard.needs_model'))
+        if key == GUARD_MODEL_KEY and not (value if raw is not None else self.base_text(t)) and any(getattr(self.current(), self.known()[k].field) for k in GUARD_SWITCHES):
+            raise Invalid(msg('guard.checks_need_model'))
         if key == POST_SEV_KEY:
             change = self.set_post_sev(value, by, old)
         elif key in SEV_HOURS_KEYS:

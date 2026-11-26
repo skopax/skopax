@@ -20,13 +20,13 @@ function plus(a, b) { const m = {}; PARTS.forEach((k) => { m[k] = a[k] + b[k]; }
 const ADVISOR = money({input: 0.15, output: 0.05});
 const SHARED = JSON.parse(fs.readFileSync(require('path').join(__dirname, 'skopax-costs-advisor.json'), 'utf8'));
 const EXECUTOR = money({cacheRead: 0.6, input: 0.05, cacheWrite5m: 0.3, output: 0.35});
-function zero() { return {pod: 0, page: 0, slack: 0, chat: 0, assess: 0, gate: 0, smalltalk: 0, pagescan: 0, selfreview: 0, threadsummary: 0, mcp: 0}; }
+function zero() { return {pod: 0, page: 0, slack: 0, chat: 0, assess: 0, gate: 0, smalltalk: 0, pagescan: 0, selfreview: 0, threadsummary: 0, mcp: 0, guard: 0}; }
 function keysFor(days) {
   if (days === 1) return [...Array(24).keys()].map((h) => TODAY + 'T' + String(h).padStart(2, '0'));
   return [...Array(days).keys()].reverse().map((n) => new Date(Date.UTC(2026, 9, 24 - n)).toISOString().slice(0, 10));
 }
 
-function costsBody(days) {
+function costsBody(days, guard) {
   const keys = keysFor(days), last = keys.length - 1;
   const perBucket = keys.map((t) => Object.assign({t}, zero(), {total: 0}));
   const cache = keys.map((t) => ({t, hit: {pod: null, page: null, slack: null, assess: null, gate: null, smalltalk: null}, writeUsd: zero()}));
@@ -38,7 +38,8 @@ function costsBody(days) {
   cache[last].writeUsd.pod = 0.3;
   cache[last - 1].hit.slack = 0;
   cache[last - 1].writeUsd.slack = 0.2;
-  return {days, from: keys[0].slice(0, 10), to: TODAY, bucket: days === 1 ? 'hour' : 'day',
+  if (guard) Object.assign(perBucket[last], {guard: 0.06, total: 2.16});
+  return {days, from: keys[0].slice(0, 10), to: TODAY, bucket: days === 1 ? 'hour' : 'day', guardOn: !!guard,
     today: {day: TODAY, spent: 3.4, cap: 20}, total: {usd: 2.7503, advisorUsd: SHARED.total.advisorUsd, calls: 6, runs: 4, cacheHit: 0.93}, avg: {slackAsk: 0.25, podRun: 1.5}, perBucket, cache,
     sources: [
       {source: 'pod', calls: 2, runs: 1, usd: plus(EXECUTOR, ADVISOR), cacheHit: 0.95, avgRun: 1.5, models: {'claude-opus-5-5': 2},
@@ -47,7 +48,8 @@ function costsBody(days) {
       {source: 'slack', calls: 1, runs: 1, usd: money({input: 0.05, cacheWrite1h: 0.2}), cacheHit: 0, avgRun: 0.25, models: {'claude-sonnet-5-5': 1}},
       {source: 'assess', calls: 1, runs: 1, usd: money({output: 0.6}), cacheHit: null, avgRun: 0.6, models: {'claude-opus-5-5': 1}},
       {source: 'gate', calls: 1, runs: 0, usd: money({input: 0.0002, output: 0.0001}), cacheHit: 0, avgRun: null, models: {'claude-haiku-5-5': 1}},
-      {source: 'smalltalk', calls: 0, runs: 0, usd: money({}), cacheHit: null, avgRun: null, models: {}}],
+      {source: 'smalltalk', calls: 0, runs: 0, usd: money({}), cacheHit: null, avgRun: null, models: {}}].concat(guard ? [
+      {source: 'guard', calls: 3, runs: 2, usd: money({input: 0.05, output: 0.01}), cacheHit: 0, avgRun: 0.03, models: {'gpt-6.2-sol': 3}, advisor: null}] : []),
     models: [{model: 'claude-opus-5-5', calls: 4, usd: 2.5}, {model: 'claude-sonnet-5-5', calls: 1, usd: 0.25}, {model: 'claude-haiku-5-5', calls: 1, usd: 0.0003}],
     topCards: [{key: KEY, runs: 3, usd: 1.9503}, {key: KEY2, runs: 1, usd: 0.2}],
     topAskers: [{by: 'dora.lane', runs: 1, calls: 1, usd: 0.4}, {by: 'adam.baker@example.com', runs: 1, calls: 2, usd: 0.2503}, {by: 'token', runs: 1, calls: 1, usd: 0.33}],
@@ -88,7 +90,7 @@ async function boot(opts) {
         if (rec && o.records) return o.records[decodeURIComponent(rec[1])] ? {ok: true, status: 200, json: async () => o.records[decodeURIComponent(rec[1])]} : {ok: false, status: 404, json: async () => ({detail: 'no such run'})};
         if (path.startsWith('/api/costs')) {
           if (o.costs) return {ok: false, status: o.costs, json: async () => ({detail: 'no'})};
-          const body = costsBody(Number(new URL(path, 'https://skopax.example.com').searchParams.get('days')));
+          const body = costsBody(Number(new URL(path, 'https://skopax.example.com').searchParams.get('days')), o.guard);
           return {ok: true, status: 200, json: async () => body};
         }
         if (o.hold && path.startsWith('/api/investigations')) await o.hold;
@@ -306,14 +308,14 @@ async function spendPerDayStacksEverySourceWithALegendTooltipsAndATable() {
   assert.strictEqual(doc.querySelector('#costs-hit .cchart').getAttribute('aria-label'), 'Cache hit share per day, 7 days by source');
   assert.strictEqual(doc.querySelector('#costs-writes .cchart').getAttribute('aria-label'), 'Cache-write spend per day, 7 days by source, $0.50');
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-spend .clegend span')].map((s) => [s.textContent, s.querySelector('.sw').className]),
-    [['Investigator runs', 'sw s-pod'], ['Page requests', 'sw s-page'], ['Slack requests', 'sw s-slack'], ['Chat', 'sw s-chat'], ['Assessments', 'sw s-assess'], ['Gate', 'sw s-gate'], ['Small talk', 'sw s-smalltalk'], ['Page scan', 'sw s-pagescan'], ['Self-review', 'sw s-selfreview'], ['Thread summary', 'sw s-threadsummary'], ['MCP', 'sw s-mcp']], 'the legend always lists all eleven sources in slot order');
+    [['Investigator runs', 'sw s-pod'], ['Page requests', 'sw s-page'], ['Slack requests', 'sw s-slack'], ['Chat', 'sw s-chat'], ['Assessments', 'sw s-assess'], ['Gate', 'sw s-gate'], ['Small talk', 'sw s-smalltalk'], ['Page scan', 'sw s-pagescan'], ['Self-review', 'sw s-selfreview'], ['Thread summary', 'sw s-threadsummary'], ['MCP', 'sw s-mcp'], ['Guard', 'sw s-guard']], 'the legend always lists all twelve sources in slot order');
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-spend .cy span')].map((s) => s.textContent), ['$0.00', '$1.00', '$2.00', '$3.00']);
   assert.deepStrictEqual([...doc.querySelectorAll('#costs-spend .cx span')].map((s) => s.textContent), ['18 Oct', '', '20 Oct', '', '22 Oct', '', '24 Oct'], 'seven days label every second one');
   const rows = [...doc.querySelectorAll('#costs-spend .ctable tbody tr')];
   assert.strictEqual(rows.length, 7);
-  assert.deepStrictEqual(cells(rows[6]), ['24 Oct', '$1.50', '$0.00', '$0.00', '$0.00', '$0.60', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'], 'the table view carries every value, MCP last');
+  assert.deepStrictEqual(cells(rows[6]), ['24 Oct', '$1.50', '$0.00', '$0.00', '$0.00', '$0.60', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00', '$0.00'], 'the table view carries every value, Guard last');
   dom.window.close();
-  console.log('PASS spend per day stacks the eleven sources in fixed colours with a legend, an axis, per-column tooltips and a table view');
+  console.log('PASS spend per day stacks the twelve sources in fixed colours with a legend, an axis, per-column tooltips and a table view');
 }
 
 async function advisorSpendIsItsOwnLineUnderItsUseAndRunsCountTheCalls() {
@@ -468,7 +470,7 @@ async function clickingACardLinkInCostsOpensTheAnomaliesTabOnThatCardRinged() {
 async function everyChartColourIsDefinedForLightAndBothDarkScopes() {
   //given
   const css = fs.readFileSync(TEMPLATE, 'utf8');
-  const all = ['pod', 'page', 'slack', 'chat', 'assess', 'gate', 'smalltalk', 'pagescan', 'selfreview', 'mcp'];
+  const all = ['pod', 'page', 'slack', 'chat', 'assess', 'gate', 'smalltalk', 'pagescan', 'selfreview', 'mcp', 'guard'];
   const tokens = all.map((s) => '--s-' + s).concat(PARTS.map((p) => '--p-' + p));
   //when
   const counts = tokens.map((t) => (css.match(new RegExp(t + ':', 'g')) || []).length);
@@ -665,6 +667,33 @@ async function accessResolvingBeforeTheInvestigationsDoesNotRenderAnEmptyHistory
   console.log('PASS operator access arriving before the investigations never renders an empty History');
 }
 
+async function theGuardIsItsOwnSourceAndTheCapNoteSaysAnswersAreHeld() {
+  //given
+  const on = await boot({hash: '#t=costs', guard: true});
+  const off = await boot({hash: '#t=costs'});
+  await wait(200);
+
+  //when
+  const row = on.doc.querySelector('.csrc tr[data-source="guard"]');
+  const legend = (b, sec) => [...b.doc.querySelectorAll('#' + sec + ' .clegend span')].map((x) => x.textContent);
+  const note = (b) => b.doc.querySelector('#costs .ccap-note');
+
+  //then
+  assert.deepStrictEqual(cells(row).slice(0, 4), ['Guard', '3', '2', '$0.06'], 'the guard is its own source line: calls, guarded runs and spend');
+  assert.strictEqual(cells(row)[cells(row).length - 2], '$0.03', 'the average is per guarded run');
+  assert.ok(row.querySelector('i.sw.s-guard'), 'with its own colour');
+  assert.ok(legend(on, 'costs-spend').indexOf('Guard') >= 0, 'the spend chart lists it');
+  assert.ok(legend(on, 'costs-hit').indexOf('Guard') < 0 && legend(on, 'costs-writes').indexOf('Guard') < 0, 'the guard is not cached, so the cache charts leave it out');
+  assert.ok(on.doc.querySelector('#costs-spend .ccol:last-child b.s-guard'), 'the guard spend stacks on its day');
+  assert.strictEqual(note(on).textContent, 'With the guard on, questions are refused and answers will be held once the cap is reached.');
+  assert.ok(note(on).closest('.ctoday'), 'the note sits with today against the cap');
+  assert.strictEqual(note(off), null, 'without the guard there is no note');
+  assert.deepStrictEqual(on.errors.concat(off.errors), []);
+  on.dom.window.close();
+  off.dom.window.close();
+  console.log('PASS the guard is its own Costs source with guarded runs, out of the cache charts, and the cap note says answers will be held');
+}
+
 (async () => {
   await theCostsTabSitsNextToHistoryAndLoadsWhenOpened();
   await theRangeSwitchRefetchesAndRemembersTheChoice();
@@ -690,4 +719,5 @@ async function accessResolvingBeforeTheInvestigationsDoesNotRenderAnEmptyHistory
   await accessResolvingBeforeTheInvestigationsDoesNotRenderAnEmptyHistory();
   await hostileTextIsRenderedAsTextAndEmptyOrZeroDataNeverProducesNaN();
   await theStoredModelAuthorsShowAProviderNeutralName();
+  await theGuardIsItsOwnSourceAndTheCapNoteSaysAnswersAreHeld();
 })().catch((e) => { console.error(e); process.exit(1); });

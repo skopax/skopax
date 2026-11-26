@@ -63,7 +63,7 @@ def what(meta: dict, keys: list[str]) -> str:
     return (meta.get('ask') or {}).get('text') or (meta.get('report') or {}).get('summary') or ', '.join(meta.get('keys') or keys)
 
 
-def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spent: float, cap: float) -> dict:
+def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spent: float, cap: float, guard_on: bool = False) -> dict:
     first, bucket, keys = window(days, today)
     per = {k: dict.fromkeys(SOURCES, 0.0) for k in keys}
     cache = {k: {s: {'usd': money(), 'tokens': tokens()} for s in SOURCES} for k in keys}
@@ -106,6 +106,8 @@ def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spen
             per[b][s] += total
             add(cache[b][s], r, not by_advisor)
         card_keys = [] if CHAT in (s, r.get('gateFor'), r.get('talkFor')) else r.get('keys') or []
+        if not rid and r.get('guardRun'):
+            x['runs'].add(r['guardRun'])
         if rid:
             x['runs'].add(rid)
             run = runs.setdefault(rid, {'id': rid, 'at': r.get('at') or '', 'source': s, 'by': r.get('by'), 'keys': card_keys, 'effort': r.get('effort'),
@@ -150,6 +152,7 @@ def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spen
         'topCards': sorted(({'key': c['key'], 'runs': len(c['runs']), 'usd': round(c['usd'], 4)} for c in cards.values()), key=lambda c: -c['usd'])[:TOP],
         'topAskers': sorted(({'by': p['by'], 'runs': len(p['runs']), 'calls': p['calls'], 'usd': round(p['usd'], 4)} for p in people.values()), key=lambda p: -p['usd'])[:TOP],
         'runs': [run_row(run, meta.get(run['id']) or {}) for run in newest],
+        'guardOn': guard_on,
     }
 
 

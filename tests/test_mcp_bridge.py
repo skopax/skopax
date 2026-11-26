@@ -1564,7 +1564,7 @@ def test_card_investigations_only_keeps_an_mcp_server_out_of_every_question_but_
     # then
     assert saved.status_code == 200
     assert admin_chat == [] and admin_page == [] and card == ['mcp_main_search']
-    assert dict(mcp_tools.PLUGIN.fields[[f.key for f in mcp_tools.PLUGIN.fields].index('chat-role')].choice_labels)['cards'] == 'Card investigations only'
+    assert dict(mcp_tools.PLUGIN.fields[[f.key for f in mcp_tools.PLUGIN.fields].index('chat-role')].choice_labels)['cards'] == 'Card runs only'
 
 
 def test_a_question_with_no_known_role_counts_as_a_viewer_for_an_mcp_server(store):

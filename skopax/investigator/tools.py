@@ -32,7 +32,7 @@ from skopax.mcptools import PREFIX as BRIDGE_PREFIX
 from skopax.models import email_allowed
 from skopax.ownwords import REASONS as SKOPAX_REASONS
 from skopax.postdeploy import NUMBERS_BY, SERVER_BY
-from skopax.outward import outward_args
+from skopax.outward import outward, outward_args
 from skopax.redact import REDACTED, masked_tree, redact, redact_secrets, redact_text
 from skopax.store import NotFound, auto_sender, draft_hash, glob_match, iso, new_id, utc_now
 
@@ -89,6 +89,14 @@ EMAIL = re.compile(r'[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}')
 HEADLINE_LIMIT = 500
 POST_HEADLINE_LIMIT = 80
 SUMMARY_LIMIT = 300
+DIGEST_CALL = 4000
+DIGEST_LIMIT = 20000
+HELD_TEXT = '{tool} queued for {key}: it is applied once the answer check passes'
+NOT_APPLIED = ' not applied: '
+SKIPPED = ' skipped: '
+OWNED = frozenset({'assess', 'follow_up_verdict', 'settle_verdict', 'note', 'tag', 'triage', 'slack_draft', 'slack_send'})
+POSTING = frozenset({'slack_draft', 'slack_send', 'slack_update'})
+REPLAYED = frozenset({'assess', 'follow_up_verdict', 'settle_verdict', 'note', 'tag', 'triage', 'group', 'slack_draft', 'report_brief', 'report_slack_draft', 'slack_send', 'slack_tell', 'slack_update'})
 EXACT_HOST = '='
 URL = re.compile(r'https?://[^\s<>|)]+', re.I)
 BARE_URL = re.compile(r'(?<![\w@./:\\-])(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+[^\s<>|)]*|/[^\s<>|)]*|[?#][^\s<>|)]+)', re.I)
@@ -324,6 +332,32 @@ WRITE_TOOLS = [
                                           f'At most {TELL_MAX} per ask. When the address finds nobody, ask the asker who they meant; never try a guessed second address.',
      'input_schema': schema({'name': STR, 'email': STR, 'text': STR, 'key': STR}, ['name', 'email', 'text'])},
 ]
+
+
+def leaves(value) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [t for v in value.values() for t in leaves(v)]
+    if isinstance(value, (list, tuple)):
+        return [t for v in value for t in leaves(v)]
+    return []
+
+
+def masked_leaves(value, mask: Callable[[str], str]):
+    if isinstance(value, str):
+        return mask(value)
+    if isinstance(value, dict):
+        return {k: masked_leaves(v, mask) for k, v in value.items()}
+    if isinstance(value, list):
+        return [masked_leaves(v, mask) for v in value]
+    if isinstance(value, tuple):
+        return tuple(masked_leaves(v, mask) for v in value)
+    return value
+
+
+def applied_writes(results: Sequence[str]) -> int:
+    return sum(1 for r in results if NOT_APPLIED not in r and SKIPPED not in r)
 
 
 def without_card_link(text: str, link: str) -> str:
@@ -1043,6 +1077,9 @@ class Toolbox:
         self.run_id = run_id
         self.calls: list[dict] = []
         self.writes: list[dict] = []
+        self.hold_writes = False
+        self.held: list[dict] = []
+        self._seen: list[tuple[str, str]] = []
         self.flags: list[dict] = []
         self.aliases: dict[str, str | None] = {}
         self.marks_down = False
@@ -1146,11 +1183,19 @@ class Toolbox:
                 rows, error, text = web_result(b)
                 entry.pop('pending', None)
                 entry.update(rows=rows, error=error)
+                self._seen.append((entry['name'], str(text or error or '')[:DIGEST_CALL]))
                 self.flags += scan(entry['name'], text, skip=REQUESTS)
                 if self.run_id:
-                    shown = '(private chat)' if self.chat and error else error
+                    shown = self._said_error(error)
                     line = f"{entry['name']}" + (f' \u00b7 {rows} rows' if rows is not None else '') + (f' \u00b7 error: {shown}' if error else '')
                     self.store.add_activity('tool', 'investigator', line, runId=self.run_id, tool=entry['name'], error=shown)
+
+    def _said_error(self, error):
+        if not error:
+            return error
+        if self.chat:
+            return '(private chat)'
+        return msg('guard.tool_failed') if self.hold_writes else outward(str(error))
 
     def _schema(self, name: str) -> dict:
         if self.bridged is not None and self.bridged.owns(name):
@@ -1192,6 +1237,7 @@ class Toolbox:
         content = None
         seen = None
         raw = None
+        said = None
         try:
             found = None if name in CORE or self.sources.plugin_tools is None else self.plugin_tools.get(name)
             kind = found[1].kind if found is not None else None
@@ -1225,6 +1271,7 @@ class Toolbox:
                 text, rows, cut = self.bridged.call(name, sent, self.run_id, self.chat)
                 entry.update(rows=rows, truncated=cut)
                 self.flags += scan(name, text, skip=REQUESTS)
+                said = text
                 return text, False
             if name in CORE and name not in SELF_REFUSING and name not in self.offered():
                 raise ToolError(f'{name} is not available in this run')
@@ -1252,6 +1299,11 @@ class Toolbox:
             if plugin and kind == 'write' and self.mode != 'live':
                 entry['shadow'] = True
                 text, rows, cut = SHADOW_WRITE, None, False
+            elif plugin and kind == 'write' and self.hold_writes:
+                entry['held'] = True
+                self.held.append({'tool': name, 'key': None, 'summary': entry['input'][:SUMMARY_LIMIT], 'args': outward_args(args or {}), 'plugin': True})
+                self.writes.append({'tool': name, 'key': None, 'summary': entry['input'][:SUMMARY_LIMIT], 'proposed': False, 'held': True})
+                text, rows, cut = HELD_TEXT.format(tool=name, key='this run'), None, False
             elif plugin and kind == 'propose':
                 text, rows, cut = self._propose(name, outward_args(args or {})), None, False
             elif plugin:
@@ -1274,6 +1326,7 @@ class Toolbox:
             if name in SOURCE_TOOLS or name in SCANNED_OUTPUT or (plugin and self.plugin_tools.scan(name)):
                 found = scan(name, text if raw is None else raw, skip=REQUESTS) if seen is None else scan(name, seen[0], skip=REQUESTS) + scan(name, seen[1], skip=SOFT + REQUESTS)
                 self.flags += found if raw is None else [f | {'excerpt': safe_excerpt(f, raw if seen is None else seen[0] + '\n' + seen[1])} for f in found]
+            said = text
             return (text if content is None else content), False
         except ToolError as e:
             entry['error'] = e.text[:e.room or ERROR_LIMIT]
@@ -1290,10 +1343,12 @@ class Toolbox:
         finally:
             entry['ms'] = round((time.monotonic() - started) * 1000)
             self.calls.append(entry)
+            self._seen.append((name, str(said if said is not None else entry['error'] or '')[:DIGEST_CALL]))
             wrote = name in WRITE_NAMES or (kind == 'write' and not entry.get('shadow'))
             if self.run_id and not bridged and (not wrote or entry['error']):
-                line = f"{name} \u00b7 {entry['ms']} ms" + (f" \u00b7 {entry['rows']} rows" if entry['rows'] is not None else '') + (f" \u00b7 error: {'(private chat)' if self.chat else entry['error']}" if entry['error'] else '')
-                self.store.add_activity('tool', 'investigator', line, runId=self.run_id, tool=name, error='(private chat)' if self.chat and entry['error'] else entry['error'])
+                shown = self._said_error(entry['error'])
+                line = f"{name} \u00b7 {entry['ms']} ms" + (f" \u00b7 {entry['rows']} rows" if entry['rows'] is not None else '') + (f" \u00b7 error: {shown}" if entry['error'] else '')
+                self.store.add_activity('tool', 'investigator', line, runId=self.run_id, tool=name, error=shown)
         return entry['error'], True
 
     def _outward(self, args: dict) -> dict:
@@ -1711,9 +1766,133 @@ class Toolbox:
             raise ToolError(f'{shown_key(str(key))} is not one of the cards this run investigates; write tools take only: ' + ', '.join(shown_key(k) for k in sorted(self.keys)))
         return self.store.anomaly(key)
 
-    def _write(self, tool: str, key: str, summary: str, apply: Callable[[], object]) -> str:
+    def digest(self, limit: int = DIGEST_LIMIT) -> str:
+        parts: list[str] = []
+        used = 0
+        for name, said in reversed(self._seen):
+            part = f'{name}:\n{outward(said)}'[:DIGEST_CALL]
+            if used + len(part) > limit:
+                if not parts:
+                    parts.append(part[:limit])
+                break
+            parts.append(part)
+            used += len(part) + 2
+        return '\n\n'.join(reversed(parts))[-limit:] if parts else ''
+
+    def held_text(self) -> str:
+        return '\n\n'.join(f"{w.get('tool')} on {w.get('key') or 'this run'}:\n" + '\n'.join(leaves(w.get('args'))) for w in self.held)
+
+    def mask_held(self, mask: Callable[[str], str]) -> None:
+        for w in self.held:
+            w['args'] = masked_leaves(w.get('args') or {}, mask)
+            w['summary'] = mask(str(w.get('summary') or ''))
+        drafts = {w['key']: draft_hash(w['args'].get('text') or '') for w in self.held if w.get('tool') == 'slack_draft'}
+        for w in self.held:
+            if w.get('tool') in ('slack_draft', 'slack_send') and w.get('key') in drafts:
+                w['args']['hash'] = drafts[w['key']]
+
+    def replay(self, writes: list[dict], done: dict[int, str] | None = None, each: Callable[[int, str], object] | None = None) -> list[str]:
+        out: list[str] = []
+        stopped: set[str] = set()
+        for i, w in enumerate(writes):
+            chain = str(w.get('key') or w.get('tool'))
+            if done is not None and i in done:
+                said = done[i]
+            else:
+                said = self._replay_one(w, chain in stopped)
+                if each is not None:
+                    each(i, said)
+            if NOT_APPLIED in said or SKIPPED in said:
+                stopped.add(chain)
+            out.append(said)
+        return out
+
+    def _replay_one(self, w: dict, stopped: bool) -> str:
+        tool, key, args = str(w.get('tool') or ''), w.get('key'), w.get('args') if isinstance(w.get('args'), dict) else {}
+        summary = str(w.get('summary') or '')[:SUMMARY_LIMIT]
+        if stopped:
+            return f'{tool} on {key}{SKIPPED}an earlier write on it was not applied'
+        try:
+            moved = self._moved_on(tool, key, args)
+            if moved:
+                return f'{tool} on {key}{SKIPPED}{moved}'
+            if w.get('plugin'):
+                said = self._replay_plugin(tool, args)
+            else:
+                if tool not in REPLAYED:
+                    raise ToolError(f'{tool} cannot be applied later')
+                said = getattr(self, f'_apply_{tool}')(args)
+                self.writes.append({'tool': tool, 'key': key, 'summary': summary, 'proposed': False})
+                if self.run_id:
+                    self.store.add_activity('write', 'investigator', f'{tool} \u00b7 {key} \u00b7 {summary[:80]}', runId=self.run_id, tool=tool, key=key, proposed=False)
+            return str(said) if said else f'{tool} saved on {key}'
+        except Exception as e:
+            log.warning('held write %s on %s not applied: %s', tool, key, error_kind(e))
+            return f'{tool} on {key}{NOT_APPLIED}{redact_secrets(text_of(e))[:ERROR_LIMIT]}'
+
+    def _moved_on(self, tool: str, key, args: dict | None = None) -> str | None:
+        args = args or {}
+        if tool in ('report_brief', 'report_slack_draft'):
+            return self._report_moved_on(tool, str(args.get('rid') or ''))
+        if tool == 'group':
+            return self._group_moved_on(args)
+        if tool == 'slack_tell':
+            if args.get('key'):
+                self._own(str(args['key']))
+            return None
+        if tool == 'slack_update':
+            card = self._own_or_twin(str(key))
+            if card.get('status') != 'open' and not (card.get('slackPost') or {}).get('ts'):
+                return 'the card has no main-channel post to reply to'
+            return 'someone put the post of this card on hold' if (card.get('autoSend') or {}).get('holdBy') else None
+        if tool not in OWNED:
+            return None
+        card = self._own(str(key))
+        if tool in REVIEW_VERDICTS.values():
+            return None if card.get(followup.FIELD) else 'the card has no follow-up any more'
+        if card.get('status') != 'open':
+            return 'the card is not open any more'
+        if tool in POSTING and (card.get('autoSend') or {}).get('holdBy'):
+            return 'someone put the post of this card on hold'
+        if tool == 'slack_draft' and (card.get('slackPost') or {}).get('at'):
+            return 'the card was posted to the main channel since'
+        return None
+
+    def _report_moved_on(self, tool: str, rid: str) -> str | None:
+        if not rid or rid != self.report_id:
+            raise ToolError(f'report {rid} is not the report this run assessed')
+        report = self.store.deploy_report(rid)
+        if tool == 'report_slack_draft' and (report.get('slackPost') or {}).get('ts'):
+            return 'the report was posted to the main channel since'
+        if (report.get('autoSend') or {}).get('holdBy'):
+            return 'someone put the post of this report on hold'
+        return None
+
+    def _group_moved_on(self, args: dict) -> str | None:
+        parent = self._card(str(args.get('parent') or ''))
+        if not parent:
+            raise ToolError(f"no card {args.get('parent')}")
+        if parent.get('status') != 'open':
+            return 'the parent card is not open any more'
+        closed = [c for c in args.get('children') or [] if self._card(str(c)).get('status') != 'open']
+        return f"{', '.join(closed)} is not open any more" if closed else None
+
+    def _replay_plugin(self, name: str, args: dict) -> str:
+        if self.plugin_tools is None or self.plugin_tools.get(name) is None:
+            raise ToolError(f'{name} is not available any more')
+        got = self.plugin_tools.call(name, args, self.now, rendered=True, states=self.run_states, among=set(self.offered()))
+        self._plugin_write(name, json.dumps(args, ensure_ascii=False, default=str)[:INPUT_LIMIT])
+        return got[0] if isinstance(got, tuple) else ''
+
+    def _write(self, tool: str, key: str, summary: str, apply: Callable[[], object], args: dict | None = None) -> str:
         live = self.mode == 'live'
         entry = {'tool': tool, 'key': key, 'summary': summary[:SUMMARY_LIMIT], 'proposed': not live}
+        if live and self.hold_writes:
+            if args is None:
+                raise ToolError(f'{tool} is not available while answers wait for the answer check')
+            self.held.append({'tool': tool, 'key': key, 'summary': entry['summary'], 'args': args})
+            self.writes.append(entry | {'held': True})
+            return HELD_TEXT.format(tool=tool, key=key)
         if live:
             apply()
         self.writes.append(entry)
@@ -1739,14 +1918,17 @@ class Toolbox:
             done = None
         if done and isinstance(held, dict) and held.get('closeAt'):
             done = {k: v for k, v in done.items() if k not in followup.PENDING_CLOSE}
-        return self._write('assess', key, summary, lambda: self._assessed(key, suspects, recommend, code, flagged, done))
+        args = {'key': key, 'suspects': suspects, 'recommend': recommend, 'code': code, 'flagged': flagged, 'done': done, 'hold': self._flag_hold()}
+        return self._write('assess', key, summary, lambda: self._apply_assess(args), args)
 
-    def _assessed(self, key: str, suspects: list[str], recommend: str, code: list[dict], flagged: bool = False, done: dict | None = None) -> None:
+    def _apply_assess(self, a: dict) -> None:
+        self._assessed(a['key'], a['suspects'], a['recommend'], a['code'], a['flagged'], a['done'], a['hold'])
+
+    def _assessed(self, key: str, suspects: list[str], recommend: str, code: list[dict], flagged: bool = False, done: dict | None = None, hold: str | None = None) -> None:
         self.store.assess(key, suspects, recommend, code or None, by='pod', flagged=flagged)
         if done:
             self.store.follow_up_set(key, done)
         if self.effects.fixes and any(c.get('suggestion') is not None for c in code):
-            hold = self._flag_hold()
             if hold:
                 self.store.add_activity('tool', 'investigator', f'{key}: suggested fix not posted in its main-channel thread: {hold}', runId=self.run_id, tool='assess')
                 return
@@ -1792,9 +1974,15 @@ class Toolbox:
                 raise ToolError(f'evidence: {problem}')
         owner = followup.flat(a.get('owner'), followup.OWNER_LIMIT) or None
         said: list[str] = []
-        result = self._write(tool, key, f'{kind} \u00b7 {evidence}', lambda: said.append(self.effects.follow_up(key, flavor, kind, evidence, owner, self.run_id)))
+        args = {'key': key, 'flavor': flavor, 'kind': kind, 'evidence': evidence, 'owner': owner}
+        result = self._write(tool, key, f'{kind} \u00b7 {evidence}', lambda: said.append(self._apply_follow_up_verdict(args)), args)
         self.verdict = kind
         return said[0] if said else result
+
+    def _apply_follow_up_verdict(self, a: dict):
+        return self.effects.follow_up(a['key'], a['flavor'], a['kind'], a['evidence'], a['owner'], self.run_id)
+
+    _apply_settle_verdict = _apply_follow_up_verdict
 
     def _backing(self, reads: list[dict], key: str, evidence: str) -> list[dict]:
         held = self._card(key).get(followup.FIELD)
@@ -1824,7 +2012,11 @@ class Toolbox:
                 raise Held(f'this run read {hold}, so it sets no cause: the thread note when the card clears carries it to Slack with no person checking; name the trigger in the note text', 'cause', self.flags)
         dropped = 'cause' in a and cause is None
         flagged = bool(self._flag_hold())
-        return self._write('note', key, text, lambda: self.store.note(key, text, by='pod', cause=cause, drop_cause=dropped, flagged=flagged))
+        args = {'key': key, 'text': text, 'cause': cause, 'dropped': dropped, 'flagged': flagged}
+        return self._write('note', key, text, lambda: self._apply_note(args), args)
+
+    def _apply_note(self, a: dict) -> None:
+        self.store.note(a['key'], a['text'], by='pod', cause=a['cause'], drop_cause=a['dropped'], flagged=a['flagged'])
 
     def _what_problem(self, what: str) -> str | None:
         if PING.search(what):
@@ -1865,8 +2057,12 @@ class Toolbox:
         if text and teams and not kept:
             fields.update(tags.business(text, tags.POD, at, a.get('why'), kind))
         summary = ', '.join(wanted) + (f': {text}' if text and teams and not kept else '')
-        out = self._write('tag', key, summary, lambda: self.store.set_tagging(key, fields))
+        args = {'key': key, 'fields': fields}
+        out = self._write('tag', key, summary, lambda: self._apply_tag(args), args)
         return out + ('; the business sentence a person wrote stays as it is' if text and teams and kept else '')
+
+    def _apply_tag(self, a: dict) -> None:
+        self.store.set_tagging(a['key'], a['fields'])
 
     def _open_children(self, key: str) -> list[dict]:
         named = self.grouped.get(key, set())
@@ -1907,7 +2103,8 @@ class Toolbox:
                 raise ToolError('look the ticket up with jira_issue in this run first: ' + ', '.join(missing))
         summary = state + (f' {ticket}' if ticket else '') + (f' ({owner})' if owner else '') + (f' \u00b7 {kind}' + (f' {ref}' if ref else '') if kind in ('fixed', 'duplicate') else '')
         how = {'kind': kind or 'handled', 'ref': ref, 'by': 'pod', 'via': SYSTEM} if state == 'handled' else None
-        result = self._write('triage', key, summary, lambda: self._triage(key, state, ticket, owner, card, how))
+        args = {'key': key, 'state': state, 'ticket': ticket, 'owner': owner, 'how': how}
+        result = self._write('triage', key, summary, lambda: self._triage(key, state, ticket, owner, card, how), args)
         self.triaged[key] = state
         return result
 
@@ -1927,6 +2124,9 @@ class Toolbox:
             except ValueError as e:
                 raise ToolError(text_of(e)) from None
         return kind, ref
+
+    def _apply_triage(self, a: dict) -> None:
+        self._triage(a['key'], a['state'], a['ticket'], a['owner'], self._card(a['key']), a['how'])
 
     def _triage(self, key: str, state: str, ticket: str | None, owner: str | None, before: dict, how: dict | None = None) -> None:
         self.store.triage(key, state, ticket, owner, by='pod', resolution=how)
@@ -1978,7 +2178,8 @@ class Toolbox:
             self._check_absorb(parent, host, children, absorb)
         line = next((text for lang, text in CAUSE_LINES.items() if lang.lower() == str(self.language or '').lower()), CAUSE_LINE).format(ref='#' + str(host['num']) if host.get('num') else shown_key(parent), cause=cause) if cause else None
         summary = 'children: ' + ', '.join(children) + (f" \u00b7 absorb: {', '.join(absorb)}" if absorb else '') + (f' \u00b7 {line}' if line else '')
-        result = self._write('group', parent, summary, lambda: self._grouped(parent, children, absorb, line))
+        args = {'parent': parent, 'children': children, 'absorb': absorb, 'line': line, 'flagged': bool(self._flag_hold())}
+        result = self._write('group', parent, summary, lambda: self._apply_group(args), args)
         self.grouped.setdefault(parent, set()).update(children)
         return result
 
@@ -2008,12 +2209,15 @@ class Toolbox:
             refused.room = ABSORB_ERROR_ROOM
             raise refused
 
-    def _grouped(self, parent: str, children: list[str], absorb: list[str], line: str | None) -> None:
+    def _apply_group(self, a: dict) -> None:
+        self._grouped(a['parent'], a['children'], a['absorb'], a['line'], a['flagged'])
+
+    def _grouped(self, parent: str, children: list[str], absorb: list[str], line: str | None, flagged: bool = False) -> None:
         self.store.group(parent, children, absorb or None)
         for c in children if line else ():
             said = (self._card(c).get('note') or {}).get('text') or ''
             if not said.startswith(line):
-                self.store.note(c, (line + (f'\n{said}' if said else ''))[:DRAFT_LIMIT], by='pod', flagged=bool(self._flag_hold()))
+                self.store.note(c, (line + (f'\n{said}' if said else ''))[:DRAFT_LIMIT], by='pod', flagged=flagged)
 
     def _t_slack_draft(self, a: dict):
         if self.ask:
@@ -2047,12 +2251,18 @@ class Toolbox:
         picked = self._picked(a)
         hold = self._flag_hold()
         said: list[str] = []
-        result = self._write('slack_draft', key, text, lambda: said.append(self._posted('card', key, hold, lambda: self.store.pod_slack_draft(key, text, POD_BY, picked, hold=hold, headline=headline))))
+        args = {'key': key, 'text': text, 'hash': draft_hash(text), 'picked': picked, 'hold': hold, 'headline': headline}
+        result = self._write('slack_draft', key, text, lambda: said.append(self._apply_slack_draft(args)), args)
         if hold:
             self.store.add_activity('tool', 'investigator', f'{key}: Slack post not sent: {hold}', runId=self.run_id, tool='slack_draft')
             self._log_hold(key)
         self.drafted[key] = draft_hash(text)
         return result + ''.join(f'; {x}' for x in said)
+
+    def _apply_slack_draft(self, a: dict) -> str:
+        if draft_hash(a['text']) != a.get('hash', draft_hash(a['text'])):
+            raise ToolError('the stored draft does not match its hash')
+        return self._posted('card', a['key'], a['hold'], lambda: self.store.pod_slack_draft(a['key'], a['text'], POD_BY, a['picked'], hold=a['hold'], headline=a['headline']))
 
     def _posted(self, kind: str, doc_id: str, hold: str | None, save: Callable[[], object]) -> str:
         save()
@@ -2094,7 +2304,11 @@ class Toolbox:
         picked = self._picked(a)
         brief = {'level': level, 'headline': headline, 'points': points, **({'screenshots': picked} if picked else {})}
         hold = self._flag_hold()
-        return self._write('report_brief', f'report:{rid}', f'{level} \u00b7 {headline}', lambda: self._briefed(rid, brief, hold))
+        args = {'rid': rid, 'brief': brief, 'hold': hold}
+        return self._write('report_brief', f'report:{rid}', f'{level} \u00b7 {headline}', lambda: self._apply_report_brief(args), args)
+
+    def _apply_report_brief(self, a: dict) -> None:
+        self._briefed(a['rid'], a['brief'], a['hold'])
 
     def _briefed(self, rid: str, brief: dict, hold: str | None) -> None:
         self.store.report_brief(rid, brief)
@@ -2129,11 +2343,15 @@ class Toolbox:
         picked = self._picked(a)
         hold = self._flag_hold()
         said: list[str] = []
-        result = self._write('report_slack_draft', f'report:{rid}', text, lambda: said.append(self._posted('report', rid, hold, lambda: self.store.report_slack_draft(rid, text, POD_BY, picked, hold))))
+        args = {'rid': rid, 'text': text, 'picked': picked, 'hold': hold}
+        result = self._write('report_slack_draft', f'report:{rid}', text, lambda: said.append(self._apply_report_slack_draft(args)), args)
         if hold:
             self.store.add_activity('tool', 'investigator', f'report {rid}: Slack post not sent: {hold}', runId=self.run_id, tool='report_slack_draft')
             self._log_hold(f'report {rid}')
         return result + ''.join(f'; {x}' for x in said)
+
+    def _apply_report_slack_draft(self, a: dict) -> str:
+        return self._posted('report', a['rid'], a['hold'], lambda: self.store.report_slack_draft(a['rid'], a['text'], POD_BY, a['picked'], a['hold']))
 
     def _log_hold(self, where: str) -> None:
         if self.mode != 'live' or not self.flags:
@@ -2170,13 +2388,24 @@ class Toolbox:
             raise ToolError('triage the card to progress or handled in this run before slack_send; a card you leave investigated is posted at once by slack_draft')
         if (card.get('autoSend') or {}).get('holdBy'):
             raise ToolError('someone put this post on hold; leave it to them')
-        if self.mode == 'live' and draft_hash((card.get('slackDraft') or {}).get('text') or '') != self.drafted[key]:
+        queued = any(w['tool'] == 'slack_draft' and w['key'] == key for w in self.held)
+        if self.mode == 'live' and not queued and draft_hash((card.get('slackDraft') or {}).get('text') or '') != self.drafted[key]:
             raise ToolError('the text on the card changed since your slack_draft; leave it')
+        said: list[str] = []
+        args = {'key': key, 'hash': self.drafted[key]}
+        result = self._write('slack_send', key, 'not posted: auto-send is off' if self._off() else 'posting the text now', lambda: said.append(self._apply_slack_send(args)), args)
+        return result + ''.join(f'; {x}' for x in said if x)
+
+    def _apply_slack_send(self, a: dict) -> str:
+        card = self._card(a['key'])
+        if self.mode == 'live' and draft_hash((card.get('slackDraft') or {}).get('text') or '') != a.get('hash'):
+            raise ToolError('the text on the card is not the text this run drafted; not sent')
+        if (card.get('autoSend') or {}).get('holdBy'):
+            raise ToolError('someone put this post on hold; leave it to them')
         if self._off():
-            said: list[str] = []
-            result = self._write('slack_send', key, 'not posted: auto-send is off', lambda: said.append(self._skip_post('card', key)))
-            return result + ''.join(f'; {x}' for x in said)
-        return self._write('slack_send', key, 'posting the text now', lambda: self.effects.send_slack(key, POD_BY))
+            return self._skip_post('card', a['key'])
+        self.effects.send_slack(a['key'], POD_BY)
+        return ''
 
     def _t_slack_tell(self, a: dict):
         if not self.ask or self.read_only or not self.asker or not self.effects.tell:
@@ -2204,18 +2433,25 @@ class Toolbox:
             raise ToolError(problem)
         self.used['slack_tell'] += 1
         told: list[str] = []
+        args = {'key': key, 'email': email, 'text': text, 'asker': self.asker, 'name': name}
 
         def post():
             try:
-                done = self.effects.tell(key, email, text, self.asker, name)
-            except ValueError as e:
+                told.append(self._apply_slack_tell(args))
+            except ToolError:
                 self.used['slack_tell'] -= 1
-                raise ToolError(text_of(e)) from None
-            told.append(str((done or {}).get('result') or ''))
-            told.append(str(((done or {}).get('slack') or {}).get('permalink') or ''))
+                raise
 
-        saved = self._write('slack_tell', key or 'channel', f'{name} <{email}>: {text}', post)
+        saved = self._write('slack_tell', key or 'channel', f'{name} <{email}>: {text}', post, args)
         return saved + ''.join(f'; {x}' for x in told if x)
+
+    def _apply_slack_tell(self, a: dict) -> str:
+        try:
+            done = self.effects.tell(a['key'], a['email'], a['text'], a['asker'], a['name'])
+        except ValueError as e:
+            raise ToolError(text_of(e)) from None
+        said = [str((done or {}).get('result') or ''), str(((done or {}).get('slack') or {}).get('permalink') or '')]
+        return '; '.join(x for x in said if x)
 
     @staticmethod
     def _post_on_its_way(card: dict) -> bool:
@@ -2264,12 +2500,11 @@ class Toolbox:
             sent, text = msg('slack.update.asked', text=text, who=who), msg('tools.update.asked', text=text, who=who)
         picked = self._picked(a)
         shown: list[str] = []
+        args = {'key': key, 'sent': sent, 'by': self.asker if self.ask else POD_BY, 'picked': picked, 'text': text}
+        saved = self._write('slack_update', key, text, lambda: shown.append(self._apply_slack_update(args)), args)
+        return saved + ''.join(f'; {line}' for line in shown if line)
 
-        def reply():
-            by = self.asker if self.ask else POD_BY
-            done = self.effects.thread_update(key, sent, by, picked, self.run_id, notice=text) if picked else self.effects.thread_update(key, sent, by, notice=text)
-            if picked and isinstance(done, dict) and done.get('result'):
-                shown.append(str(done['result']))
-
-        saved = self._write('slack_update', key, text, reply)
-        return saved + ''.join(f'; {line}' for line in shown)
+    def _apply_slack_update(self, a: dict) -> str:
+        picked = a['picked']
+        done = self.effects.thread_update(a['key'], a['sent'], a['by'], picked, self.run_id, notice=a['text']) if picked else self.effects.thread_update(a['key'], a['sent'], a['by'], notice=a['text'])
+        return str(done['result']) if picked and isinstance(done, dict) and done.get('result') else ''

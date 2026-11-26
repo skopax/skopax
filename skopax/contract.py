@@ -387,8 +387,8 @@ QUESTIONS_FIELD = 'questions'
 QUESTIONS = ('everyone', 'operators', 'none')
 QUESTION_CORE_OWNERS = ('jira',)
 ASKED_ACCESS = Field(QUESTIONS_FIELD, 'Available in questions', 'choice', default='everyone', choices=QUESTIONS,
-                     choice_labels={'everyone': 'Everyone', 'operators': 'Operators and admins only', 'none': 'Card investigations only'}, group='advanced',
-                     help='Who may have Skopax read this connection when answering a Slack ask, a chat message or a page ask. Card investigations always may.')
+                     choice_labels={'everyone': "Card runs + everyone's questions", 'operators': 'Card runs + operator and admin questions', 'none': 'Card runs only'}, group='advanced',
+                     help='Card runs always read this connection. This picks whose questions (Slack asks, chat messages, page asks) may read it too.')
 NODE_VIA = Field(NODE_FIELD, 'Through agent node', 'instance', choices=('kubernetes',), group='advanced', help='Name of a Kubernetes agent instance that reaches this service. Empty means Skopax connects directly.')
 
 
