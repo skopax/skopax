@@ -45,6 +45,12 @@ Status: 0.6.2 is the current release; 0.1.0 was the first stable one. Since 0.1.
 </tr>
 </table>
 
+## How it works
+
+<a href="docs/images/architecture-dark.png#gh-dark-mode-only"><img width="720" src="docs/images/architecture-dark.png#gh-dark-mode-only" alt="Skopax architecture in seven layers: your systems feed checks that turn problems into cards without AI; the card history, past investigations and verdicts form the context; an investigator agent with live read-only tools and four focused agents (ask, gate and summary, review, page scan) do the AI work; a guard layer masks secrets and personal data, cuts bulk records and keeps sources out of questions; each agent picks its model (Anthropic, OpenAI, Claude on your own Google Cloud in the EU, or a local model); answers reach the board, Slack and Teams, mail, chat and MCP clients, and people's verdicts feed back into the context"></a><a href="docs/images/architecture-light.png#gh-light-mode-only"><img width="720" src="docs/images/architecture-light.png#gh-light-mode-only" alt="Skopax architecture in seven layers: your systems feed checks that turn problems into cards without AI; the card history, past investigations and verdicts form the context; an investigator agent with live read-only tools and four focused agents (ask, gate and summary, review, page scan) do the AI work; a guard layer masks secrets and personal data, cuts bulk records and keeps sources out of questions; each agent picks its model (Anthropic, OpenAI, Claude on your own Google Cloud in the EU, or a local model); answers reach the board, Slack and Teams, mail, chat and MCP clients, and people's verdicts feed back into the context"></a>
+
+Checks find the problem without AI. Focused AI agents investigate and explain it behind a guard layer that masks secrets and personal data before the model reads them, and each agent can run on the AI you choose. See [What is masked](docs/privacy.md#what-is-masked) and [What Skopax will not hand out](docs/privacy.md#what-skopax-will-not-hand-out).
+
 ## Plug-ins: connect what you already run
 
 Everything Skopax watches comes through plug-ins, and more than 30 of them ship in the image. Most are ready to switch on in Connect > Integrations; Spring Cloud Config and Vault are set up with `SPRING_CONFIG_URL` and `VAULT_ADDR` instead (see [Configuration](docs/configuration.md#settings-sources)):
