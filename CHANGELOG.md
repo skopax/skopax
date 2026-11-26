@@ -2,6 +2,14 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.6.2 (2026-11-26)
+
+### Changed
+
+- The board filters: Status and Severity are two separate menus that combine with each other and with Tags, Assignee and Type. Status lists only the states and its button always reads the current pick with its count, for example "Status: Open 26"; Severity lists All, Critical, High and Warning with counts for the cards in the Status pick.
+- The Open, Critical and Done chips are gone; state is picked only in the Status menu and severity only in the Severity menu. Mine stays, because it filters by assignee. Old links open with the matching menu values: `#t=anoms/crit` opens Status Open with Severity Critical, `#t=anoms/taken` opens Status Done. The Severity pick is kept in the link as `sev:crit`, `sev:high` or `sev:warn`.
+- In the filter menus (Status, Severity, Tags, Assignee and Type) an option's explanation now shows beside the menu, to the right or to the left when there is no room, so it never covers the options. Keyboard focus shows the same text and screen readers read it as the option's description. On a phone it is a small muted second line under the option. The explanations are translated into German, Spanish, French and Turkish, and the note button that clears a pick reads Clear filters unless only a type is picked.
+
 ## 0.6.1 (2026-11-26)
 
 Skopax can run Claude through your own Google Cloud project on Vertex AI, and the board and the page scan get small fixes.

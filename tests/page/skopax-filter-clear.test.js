@@ -41,6 +41,7 @@ async function boot() {
 
 const pressed = (doc) => [...doc.querySelectorAll('#bf-lists .fb-i[aria-checked="true"]')].map((b) => b.dataset.f || b.dataset.type);
 const chip = (doc, f) => doc.querySelector('#bf-lists .fb-i[data-f="' + f + '"]');
+const sev = (doc, s) => doc.querySelector('#bf-lists .fb-i[data-type="sev:' + s + '"]');
 const who = (doc) => doc.querySelector('#bf-lists .fb-i[data-type="who:none"]');
 const note = (doc) => doc.getElementById('filter-note');
 
@@ -51,7 +52,8 @@ async function turnOn(t, search) {
     box.dispatchEvent(new t.w.Event('input'));
     await wait(30);
   }
-  chip(t.doc, 'warn').click();
+  chip(t.doc, 'progress').click();
+  sev(t.doc, 'warn').click();
   who(t.doc).click();
   await wait(30);
 }
@@ -73,7 +75,7 @@ async function turnOn(t, search) {
   await wait(30);
 
   //then
-  assert.deepStrictEqual(pressed(a.doc).filter((x) => x === 'open' || x === 'warn' || x === 'who:none'), ['open'], 'Clear filters goes back to Open with no chip');
+  assert.deepStrictEqual(pressed(a.doc).filter((x) => x === 'open' || x === 'sev:warn' || x === 'who:none'), ['open'], 'Clear filters goes back to Open with no chip');
   assert.strictEqual(a.doc.getElementById('card-search').value, '', 'and empties the search');
   assert.strictEqual(a.w.location.hash, '#t=anoms', 'and the address is the plain board');
   assert.ok(!a.doc.getElementById('clear-all'), 'nothing left to clear');
@@ -114,7 +116,7 @@ async function turnOn(t, search) {
   await wait(30);
 
   //then
-  assert.ok(!pressed(d.doc).includes('who:none') && pressed(d.doc).includes('open') && !pressed(d.doc).includes('warn'), 'Esc on the board clears every filter');
+  assert.ok(!pressed(d.doc).includes('who:none') && pressed(d.doc).includes('open') && !pressed(d.doc).includes('sev:warn'), 'Esc on the board clears every filter');
   assert.ok(!d.doc.getElementById('clear-all'));
   const stays = async (setup, why) => {
     const t = await boot();
@@ -122,7 +124,7 @@ async function turnOn(t, search) {
     const target = setup(t) || t.doc.body;
     target.dispatchEvent(new t.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
     await wait(30);
-    assert.ok(pressed(t.doc).includes('who:none') && pressed(t.doc).includes('warn'), why);
+    assert.ok(pressed(t.doc).includes('who:none') && pressed(t.doc).includes('sev:warn'), why);
     t.w.close();
   };
   await stays((t) => { t.doc.getElementById('cf-wrap').hidden = false; }, 'Esc with a visible dialog keeps the filters');

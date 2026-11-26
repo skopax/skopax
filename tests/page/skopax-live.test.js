@@ -121,7 +121,7 @@ async function liveUpdateKeepsTheView() {
   assert.ok(!doc.getElementById('tiles') && !doc.querySelector('.pill'), 'no count pills');
   assert.strictEqual(doc.getElementById('tab-anoms').title, '1 critical \u00b7 1 warning', 'the Anomalies tab tooltip counts the new card and never information');
   assert.ok(doc.getElementById('tab-anoms').classList.contains('k-crit') && doc.getElementById('tab-anoms').classList.contains('hot'), 'and takes the worst open severity');
-  assert.deepStrictEqual([...doc.querySelectorAll('#bf-lists .fb-i')].filter((b) => ['crit', 'warn', 'info', 'slack'].includes(b.dataset.f)).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['Critical 1', 'Warning 1'], 'the severity entries follow the live update');
+  assert.deepStrictEqual([...doc.querySelectorAll('#bf-lists .fb-i')].filter((b) => ['sev:crit', 'sev:warn', 'info', 'slack'].includes(b.dataset.f || b.dataset.type)).map((b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent), ['Critical 1', 'Warning 1'], 'the severity entries follow the live update');
   await wait(4100);
   assert.ok(!card(doc, 'restart|payments-api|restarts').classList.contains('linked'), 'highlight is brief');
   dom.window.close();
@@ -211,7 +211,7 @@ async function pastedCardLinkJumpsInAnOpenTab() {
   const {w, doc, errors, dom} = await boot(serve);
   const pressed = () => doc.querySelector('#bf-lists .fb-i[data-f][aria-checked="true"]').dataset.f;
   assert.strictEqual(pressed(), 'open', 'Anomalies opens on Open');
-  doc.querySelector('#panel-anoms .qf-c[data-f="open"]').click();
+  doc.querySelector('#bf-lists .fb-i[data-f="open"]').click();
   assert.strictEqual(pressed(), 'open');
   assert.ok(!card(doc, handled.key), 'handled card is not in the Open view');
 
@@ -420,6 +420,7 @@ async function anomalyFiltersInTheToolbar() {
   const {w, doc, errors, dom} = await boot(serve);
   const items = () => [...doc.querySelectorAll('#bf-lists .fb-i[data-f]')];
   const item = (f) => doc.querySelector('#bf-lists .fb-i[data-f="' + f + '"]');
+  const sevOf = (s) => doc.querySelector('#bf-lists .fb-i[data-type="sev:' + s + '"]');
   const kOf = (b) => [...b.classList].find((c) => c.startsWith('k-'));
   const pressed = () => items().filter((b) => b.getAttribute('aria-checked') === 'true').map((b) => b.dataset.f);
   const note = () => doc.getElementById('filter-note');
@@ -432,11 +433,13 @@ async function anomalyFiltersInTheToolbar() {
 
   //then
   assert.deepStrictEqual([...doc.querySelectorAll('#snav .s-grp[data-grp="main"] a.tab')].map((a) => a.id), ['tab-anoms', 'tab-reqs', 'tab-chat', 'tab-inv'], 'Board, Requests, Chat and Investigator lead the sidebar');
-  assert.deepStrictEqual(items().map((b) => b.dataset.f), ['all', 'open', 'progress', 'taken', 'muted', 'cleared', 'investigating', 'dived', 'recurring', 'archived', 'closed', 'crit', 'high', 'warn'], 'the Status list holds every filter, State then Severity');
-  assert.deepStrictEqual(items().map((b) => b.querySelector('.lbl').textContent), ['All', 'Open', 'In progress', 'Done', 'Muted', 'Stopped firing', 'Investigating', 'Investigated', 'Recurring', 'Archived', 'Closed', 'Critical', 'High', 'Warning'], 'short labels');
-  assert.deepStrictEqual(['taken', 'muted', 'cleared', 'all', 'crit', 'high', 'warn'].map((f) => kOf(item(f))), ['k-good', 'k-muted', 'k-cleared', 'k-act', 'k-crit', 'k-high', 'k-warn'], 'with their colours');
+  assert.deepStrictEqual(items().map((b) => b.dataset.f), ['all', 'open', 'progress', 'taken', 'muted', 'cleared', 'investigating', 'dived', 'recurring', 'archived', 'closed'], 'the Status list holds every state and no severity');
+  assert.deepStrictEqual([...doc.querySelectorAll('#bf-lists .fb-i[data-type^="sev:"]')].map((b) => b.dataset.type), ['sev:all', 'sev:crit', 'sev:high', 'sev:warn'], 'Severity is its own list');
+  assert.deepStrictEqual(items().map((b) => b.querySelector('.lbl').textContent), ['All', 'Open', 'In progress', 'Done', 'Muted', 'Stopped firing', 'Investigating', 'Investigated', 'Recurring', 'Archived', 'Closed'], 'short labels');
+  assert.deepStrictEqual(['taken', 'muted', 'cleared', 'all'].map((f) => kOf(item(f))), ['k-good', 'k-muted', 'k-cleared', 'k-act'], 'with their colours');
+  assert.deepStrictEqual(['crit', 'high', 'warn'].map((s) => kOf(sevOf(s))), ['k-crit', 'k-high', 'k-warn'], 'and the severities theirs');
   assert.deepStrictEqual(['open', 'progress', 'taken', 'muted', 'cleared', 'all'].map((f) => item(f).querySelector('.count').textContent), ['3', '1', '1', '0', '1', '6'], 'Open counts the stopped card nobody acted on too, as the board does');
-  assert.ok(item('crit').classList.contains('zero') && item('muted').classList.contains('zero') && !item('warn').classList.contains('zero'), 'a zero count is faded');
+  assert.ok(sevOf('high').classList.contains('zero') && item('muted').classList.contains('zero') && !sevOf('warn').classList.contains('zero'), 'a zero count is faded');
   assert.deepStrictEqual(pressed(), ['open'], 'the active filter is marked, Open by default');
   assert.ok(!doc.getElementById('tab-sub-anoms') && !doc.getElementById('tabs') && !doc.getElementById('filter-menu'), 'no side menu filters any more');
   assert.strictEqual(note().textContent, 'Showing Open3', 'one small line names the filter and its count');
@@ -464,21 +467,27 @@ async function anomalyFiltersInTheToolbar() {
   assert.ok(!note().classList.contains('on') && !doc.getElementById('clear-all'));
 
   //when
-  item('warn').click();
-  const warnOnly = pressed();
-  item('warn').click();
+  sevOf('warn').click();
+  const warnOnly = [pressed(), sevOf('warn').getAttribute('aria-checked')];
+  sevOf('warn').click();
 
   //then
-  assert.deepStrictEqual([warnOnly, pressed()], [['warn'], ['open']], 'a second click on a severity goes back to Open, like the old chips');
+  assert.deepStrictEqual([warnOnly, pressed(), sevOf('warn').getAttribute('aria-checked')], [[['open'], 'true'], ['open'], 'false'], 'a severity pick keeps Open, and a second click on it drops it');
 
   //when
-  item('progress').click();
   await refresh(6, [anomaly('restart|payments-api|restarts', 'crit')]);
   await refresh(7, [anomaly('restart|payments-api|restarts', 'crit'), anomaly('restart|checkout-service|restarts', 'crit')]);
 
   //then
-  assert.ok(item('crit').querySelector('.count').textContent === '2' && !item('crit').classList.contains('zero'), 'with the new counts');
+  assert.ok(sevOf('crit').querySelector('.count').textContent === '2' && !sevOf('crit').classList.contains('zero'), 'with the new counts');
+
+  //when
+  item('progress').click();
+  await refresh(8, [anomaly('restart|payments-api|restarts', 'crit'), anomaly('restart|checkout-service|restarts', 'crit')]);
+
+  //then
   assert.deepStrictEqual(pressed(), ['progress'], 'and the active filter still marked');
+  assert.strictEqual(sevOf('crit').querySelector('.count').textContent, '0', 'the severity counts follow the Status pick');
 
   //when
   doc.getElementById('tab-anoms').click();
@@ -489,7 +498,7 @@ async function anomalyFiltersInTheToolbar() {
   assert.ok(!navigated(errors), errors.join(' | '));
   assert.deepStrictEqual(errors, []);
   dom.window.close();
-  return 'the Anomalies filters live in the board toolbar (labels, counts, colours, zero faded): a click opens Anomalies with that filter and marks it, a second severity click goes back to Open, the small filter line names the filter and offers Clear filters, and a live refresh updates the counts';
+  return 'the Anomalies filters live in the board toolbar (labels, counts, colours, zero faded): a click opens Anomalies with that filter and marks it, a severity pick keeps the Status pick, the small filter line names the filter and offers Clear filters, and a live refresh updates the counts';
 }
 
 async function datesReadAsDayAndEnglishMonth() {

@@ -827,7 +827,6 @@ function filterBase(f) {
   function add(list) { list.forEach(function (a) { if (out.indexOf(a) < 0) out.push(a); }); }
   if (f === 'open') { add(open); add(stale); return out; }
   if (f === 'all') { [open, stale, inprog, taken, muted, cleared].forEach(add); return out; }
-  if (cardSev(f)) return openBySev(f);
   if (f === 'investigating' || f === 'dived') return A.filter(function (a) { return a.triage === f; });
   if (f === 'svc') return svcF ? svcCards(svcF).list : [];
   return {stale: stale, progress: inprog, taken: taken, muted: muted, cleared: cleared, recurring: recurringL, archived: ARCHIVED, closed: []}[f] || A;
@@ -1048,11 +1047,12 @@ function wireDrop(col) {
   });
 }
 var FB_SEARCH_AT = 8;
-var FB_SECTIONS = [['state', 'State', ['all', 'open', 'progress', 'taken', 'muted', 'cleared', 'investigating', 'dived', 'recurring', 'archived', 'closed']], ['severity', 'Severity', ['crit', 'high', 'warn']]];
-var FB_GROUPS = [{g: 'status', name: 'Status'}, {g: 'tags', name: 'Tags', search: 'Search tags'}, {g: 'who', name: 'Assignee', search: 'Search people'}, {g: 'type', name: 'Type'}];
+var FB_STATES = ['all', 'open', 'progress', 'taken', 'muted', 'cleared', 'investigating', 'dived', 'recurring', 'archived', 'closed'];
+var FB_GROUPS = [{g: 'status', name: 'Status', one: true}, {g: 'sev', name: 'Severity', one: true}, {g: 'tags', name: 'Tags', search: 'Search tags'}, {g: 'who', name: 'Assignee', search: 'Search people'}, {g: 'type', name: 'Type'}];
 var FB_CHEV = '<svg class="fb-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="6 9 12 15 18 9"/></svg>';
 var FB = {};
-function fbGroupOf(p) { return isTagF(p) ? 'tags' : isWhoF(p) ? (p === 'who:me' ? '' : 'who') : 'type'; }
+function fbGroupOf(p) { return isTagF(p) ? 'tags' : isSevF(p) ? 'sev' : isWhoF(p) ? (p === 'who:me' ? '' : 'who') : 'type'; }
+var FB_DESC = 0;
 function fbParts(g) { return fParts(typeF).filter(function (p) { return fbGroupOf(p) === g; }); }
 function fbStatusOn() { return filter !== 'open' && filter !== 'svc'; }
 function fbItems(f) { return [].filter.call(f.m.querySelectorAll('.fb-i'), function (n) { return !n.hidden; }); }
@@ -1068,7 +1068,7 @@ function fbEnter(f, last, byKey) {
   fbShow(f, true);
   var all = fbItems(f);
   if (byKey && f.q && !f.q.hidden && !last) { f.q.focus(); return; }
-  var picked = f.def.g === 'status' ? all.filter(function (n) { return n.getAttribute('aria-checked') === 'true'; })[0] : null;
+  var picked = f.def.one ? all.filter(function (n) { return n.getAttribute('aria-checked') === 'true'; })[0] : null;
   var to = last ? all[all.length - 1] : picked || all[0];
   if (to) to.focus();
 }
@@ -1085,13 +1085,23 @@ function fbClearAll() {
   typeF = fParts(typeF).filter(function (p) { return !fbGroupOf(p); }).join('+');
   setFilter('open');
 }
-function filterTip(c) { return (c.tip ? c.tip + ' · ' : '') + 'opens Board filtered to ' + c.label + (c.seg !== 'anom-chips' ? ', click again for all open' : ''); }
+function tipT(key) {
+  var args = [].slice.call(arguments, 1), out = tx(key);
+  args.forEach(function (a, i) { out = out.replace('{' + i + '}', function () { return a; }); });
+  return out;
+}
+function filterTip(c) { return (c.tip ? tipT(c.tip, c.tipArg) + ' \u00b7 ' : '') + tipT(c.seg !== 'anom-chips' ? 'opens Board filtered to {0}, click again for all open' : 'opens Board filtered to {0}', tx(c.label)); }
 function pickFilter(id) {
   var c = CH.filter(function (x) { return x.id === id; })[0];
   showTab('anoms');
   setFilter(c && c.id === filter && c.seg !== 'anom-chips' ? 'open' : id);
 }
 function fbPick(f, it) {
+  if (f.def.g === 'sev') {
+    setType(it.dataset.type === 'sev:all' ? fParts(typeF).filter(function (p) { return !isSevF(p); }).join('+') : toggledF(it.dataset.type));
+    fbShow(f, false, true);
+    return;
+  }
   if (f.def.g !== 'status') { setType(toggledF(it.dataset.type)); return; }
   pickFilter(it.dataset.f);
   fbShow(f, false, true);
@@ -1131,18 +1141,7 @@ function fbBuild(def, box) {
   pop.appendChild(m);
   wrap.append(b, x, pop);
   box.appendChild(wrap);
-  var f = {def: def, wrap: wrap, b: b, x: x, pop: pop, q: q, m: m, items: {}, parts: {}};
-  if (def.g === 'status') FB_SECTIONS.forEach(function (s) {
-    var sec = el('div', 'fb-g');
-    sec.setAttribute('role', 'group');
-    sec.setAttribute('aria-labelledby', 'fb-sec-' + s[0]);
-    var head = el('div', 'fb-sec', esc(s[1]));
-    head.id = 'fb-sec-' + s[0];
-    head.setAttribute('aria-hidden', 'true');
-    sec.appendChild(head);
-    m.appendChild(sec);
-    f.parts[s[0]] = sec;
-  });
+  var f = {def: def, wrap: wrap, b: b, x: x, pop: pop, q: q, m: m, items: {}};
   b.addEventListener('click', function () { if (pop.hidden) fbEnter(f); else fbShow(f, false); });
   b.addEventListener('keydown', function (e) {
     if ((e.key === 'Enter' || e.key === ' ') && !pop.hidden) { e.preventDefault(); fbShow(f, false, true); }
@@ -1192,11 +1191,20 @@ function fbFill(f, parent, list, role, skip) {
       it.type = 'button';
       it.tabIndex = -1;
       it.setAttribute('role', role);
-      if (role === 'menuitemradio') it.dataset.f = e.id; else it.dataset.type = e.id;
+      if (f.def.g === 'status') it.dataset.f = e.id; else it.dataset.type = e.id;
       if (e.ini != null) it.appendChild(el('span', 'qf-av', esc(e.ini))).setAttribute('aria-hidden', 'true');
       if (e.dot) { it._dot = it.appendChild(el('span', 'fb-dot')); it._dot.setAttribute('aria-hidden', 'true'); }
+      FB_DESC += 1;
       it._lbl = it.appendChild(el('span', 'lbl'));
+      it._lbl.id = 'fb-l-' + FB_DESC;
       it._count = it.appendChild(el('span', 'count'));
+      it._count.id = 'fb-c-' + FB_DESC;
+      it.setAttribute('aria-labelledby', it._lbl.id + ' ' + it._count.id);
+      if (e.tip) {
+        it._desc = it.appendChild(el('span', 'fb-d'));
+        it._desc.id = 'fb-d-' + FB_DESC;
+        it.setAttribute('aria-describedby', it._desc.id);
+      }
       f.items[e.id] = it;
     }
     keep[e.id] = 1;
@@ -1205,9 +1213,10 @@ function fbFill(f, parent, list, role, skip) {
     if (it._dot && it._dot.className !== 'fb-dot ' + e.dot) it._dot.className = 'fb-dot ' + e.dot;
     if (it._said !== e.label) { it._said = e.label; it._lbl.textContent = e.label; }
     if (it._n !== String(e.n)) { it._n = String(e.n); it._count.textContent = it._n; }
-    var on = role === 'menuitemradio' ? e.id === filter : hasF(e.id);
+    var on = e.on != null ? e.on : role === 'menuitemradio' ? e.id === filter : hasF(e.id);
     it.setAttribute('aria-checked', on ? 'true' : 'false');
     if (e.tip && it.getAttribute('title') !== e.tip) it.title = e.tip;
+    if (it._desc && it._desc.textContent !== e.tip) it._desc.textContent = e.tip;
     var at = parent.children[i + skip];
     if (at !== it) parent.insertBefore(it, at || null);
   });
@@ -1218,9 +1227,9 @@ function fbFill(f, parent, list, role, skip) {
     delete f.items[id];
   });
 }
-function fbSay(f, chosen) {
+function fbSay(f, chosen, said) {
   var name = tx(f.def.name), lb = f.b.querySelector('.fb-l');
-  var text = !chosen.length ? name : chosen.length === 1 ? name + ': ' + chosen[0] : tx('{0} ({1})').replace('{0}', function () { return name; }).replace('{1}', chosen.length);
+  var text = said || (!chosen.length ? name : chosen.length === 1 ? name + ': ' + chosen[0] : tx('{0} ({1})').replace('{0}', function () { return name; }).replace('{1}', chosen.length));
   if (lb.textContent !== text) lb.textContent = text;
   f.wrap.classList.toggle('on', chosen.length > 0);
   f.x.hidden = !chosen.length;
@@ -1235,28 +1244,32 @@ function renderFilterLists(base) {
   FB_GROUPS.forEach(function (def) { if (!FB[def.g]) FB[def.g] = fbBuild(def, box); });
   var had = document.activeElement, on = false, all = document.getElementById('fb-clear-all'), mine = !!had && (had === all || box.contains(had));
   var st = FB.status, cur = CH.filter(function (x) { return x.id === filter; })[0];
-  FB_SECTIONS.forEach(function (s) {
-    fbFill(st, st.parts[s[0]], s[2].map(function (id) { return CH.filter(function (x) { return x.id === id; })[0]; }).filter(Boolean).map(function (c) {
-      return {id: c.id, label: c.chip || c.label, n: c.n, k: c.k, tip: filterTip(c)};
-    }), 'menuitemradio', 1);
-  });
-  on = fbSay(st, fbStatusOn() ? [tx(cur ? cur.chip || cur.label : filter)] : []) || on;
+  fbFill(st, st.m, FB_STATES.map(function (id) { return CH.filter(function (x) { return x.id === id; })[0]; }).filter(Boolean).map(function (c) {
+    return {id: c.id, label: c.chip || c.label, n: c.n, k: c.k, tip: filterTip(c)};
+  }), 'menuitemradio', 0);
+  var shownCur = cur && cur.id !== 'svc' ? tx(cur.chip || cur.label) + (cur.n === '' ? '' : ' ' + cur.n) : '';
+  on = fbSay(st, fbStatusOn() ? [shownCur] : [], shownCur ? tx(st.def.name) + ': ' + shownCur : '') || on;
+  var sevOf = fParts(typeF).filter(isSevF)[0] || '';
+  fbFill(FB.sev, FB.sev.m, [{id: 'sev:all', label: 'All', n: base.length, tip: tx('cards of every severity'), on: !sevOf}].concat(CARD_SEVS.map(function (s) {
+    return {id: 'sev:' + s, label: SEV[s][0], n: base.filter(function (a) { return a.sev === s; }).length, k: SEV[s][1], tip: tipT('cards of {0} severity', tx(SEV[s][0])), on: sevOf === 'sev:' + s};
+  })), 'menuitemradio', 0);
+  on = fbSay(FB.sev, sevOf ? [tx(typeName(sevOf))] : []) || on;
   var n = {};
   base.forEach(function (a) { tagIds(a).forEach(function (t) { n[t] = (n[t] || 0) + 1; }); });
   var tags = Object.keys(TAG_NAMES).map(function (id) {
-    return {id: 'tag:' + id, label: tagName(id), n: n[id] || 0, dot: tagClass(id).split(' ').filter(function (c) { return c.indexOf('th-') === 0; }).join(' '), tip: 'cards tagged ' + tagName(id) + (TECH_TAGS[id] ? ': ' + TECH_TAGS[id] + ' to fix them' : ': they go to its Teams channel once they have a business sentence')};
+    return {id: 'tag:' + id, label: tagName(id), n: n[id] || 0, dot: tagClass(id).split(' ').filter(function (c) { return c.indexOf('th-') === 0; }).join(' '), tip: TECH_TAGS[id] ? tipT('cards tagged {0}: {1} to fix them', tagName(id), tx(TECH_TAGS[id])) : tipT('cards tagged {0}: they go to its Teams channel once they have a business sentence', tagName(id))};
   });
-  if (tags.length) tags.push({id: UNTAGGED_F, label: 'Untagged', n: base.filter(function (a) { return !tagIds(a).length; }).length, tip: 'cards with no tag'});
+  if (tags.length) tags.push({id: UNTAGGED_F, label: 'Untagged', n: base.filter(function (a) { return !tagIds(a).length; }).length, tip: tx('cards with no tag')});
   fbFill(FB.tags, FB.tags.m, tags, 'menuitemcheckbox', 0);
   FB.tags.wrap.hidden = !tags.length;
   on = fbSay(FB.tags, fbParts('tags').map(function (p) { return p === UNTAGGED_F ? tx('Untagged') : tagName(p.slice(4)); })) || on;
   var people = whoPeople(base), known = whoPeople(A.concat(ARCHIVED));
   Object.keys(people).forEach(function (s) { if (!people[s].n && known[s]) people[s].name = known[s].name; });
-  var who = [{id: 'who:any', label: WHO_CHIPS['who:any'], n: base.filter(function (a) { return typeIs(a, 'who:any'); }).length, tip: 'cards with an assignee, whoever it is'},
-    {id: 'who:none', label: WHO_CHIPS['who:none'], n: base.filter(function (a) { return typeIs(a, 'who:none'); }).length, tip: 'cards with no assignee'}];
+  var who = [{id: 'who:any', label: WHO_CHIPS['who:any'], n: base.filter(function (a) { return typeIs(a, 'who:any'); }).length, tip: tx('cards with an assignee, whoever it is')},
+    {id: 'who:none', label: WHO_CHIPS['who:none'], n: base.filter(function (a) { return typeIs(a, 'who:none'); }).length, tip: tx('cards with no assignee')}];
   Object.keys(people).sort(function (x, y) { return people[y].n - people[x].n || (x < y ? -1 : 1); }).forEach(function (s) {
     var p = people[s];
-    who.push({id: 'who:u:' + s, label: p.name, n: p.n, ini: p.name.split(/[\s._-]+/).filter(Boolean).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase(), tip: 'cards assigned to ' + p.name});
+    who.push({id: 'who:u:' + s, label: p.name, n: p.n, ini: p.name.split(/[\s._-]+/).filter(Boolean).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase(), tip: tipT('cards assigned to {0}', p.name)});
   });
   fbFill(FB.who, FB.who.m, who, 'menuitemcheckbox', 0);
   on = fbSay(FB.who, fbParts('who').map(function (p) { return isPersonF(p) ? (people[p.slice(6)] || {name: p.slice(6)}).name : tx(WHO_CHIPS[p] || typeName(p)); })) || on;
@@ -1264,7 +1277,7 @@ function renderFilterLists(base) {
   base.forEach(function (a) { var t = typeOf(a); counts[t] = (counts[t] || 0) + 1; });
   fbParts('type').forEach(function (p) { if (!counts[p]) counts[p] = 0; });
   var types = Object.keys(counts).sort(function (x, y) { return counts[y] - counts[x] || (typeName(x) < typeName(y) ? -1 : 1); });
-  fbFill(FB.type, FB.type.m, types.map(function (t) { return {id: t, label: typeName(t), n: counts[t], tip: counts[t] + ' ' + typeName(t) + (counts[t] === 1 ? ' card' : ' cards') + ' (signal ' + t + ')'}; }), 'menuitemcheckbox', 0);
+  fbFill(FB.type, FB.type.m, types.map(function (t) { return {id: t, label: typeName(t), n: counts[t], tip: tipT(counts[t] === 1 ? '{0} {1} card (signal {2})' : '{0} {1} cards (signal {2})', counts[t], tx(typeName(t)), t)}; }), 'menuitemcheckbox', 0);
   FB.type.wrap.hidden = !types.length;
   on = fbSay(FB.type, fbParts('type').map(function (p) { return tx(typeName(p)); })) || on;
   [FB.tags, FB.who].forEach(function (f) {
@@ -1276,28 +1289,15 @@ function renderFilterLists(base) {
   all.hidden = !on;
   if (!mine) return;
   if (had.isConnected && !had.closest('[hidden]')) { if (had !== document.activeElement) had.focus(); return; }
-  var open = document.querySelector('#bf-main [data-f="open"]');
-  if (open) open.focus();
+  FB.status.b.focus();
 }
 function renderQuick() {
   var main = document.getElementById('bf-main');
   if (!main) return;
   var act = document.activeElement;
-  var back = act && main.contains(act) && act.classList.contains('qf-c') ? (act.dataset.f ? '[data-f="' + act.dataset.f + '"]' : '[data-type="' + act.dataset.type + '"]') : '';
+  var back = act && main.contains(act) && act.classList.contains('qf-c') ? '[data-type="' + act.dataset.type + '"]' : '';
   main.innerHTML = '';
   var base = filterBase(filter);
-  function filterChip(id) {
-    var c = CH.filter(function (x) { return x.id === id; })[0];
-    if (!c) return null;
-    var b = el('button', 'qf-c ' + c.k + (c.n ? '' : ' zero'), '<span class="lbl">' + esc(c.chip || c.label) + '</span><span class="count">' + esc(c.n) + '</span>');
-    b.type = 'button'; b.dataset.f = c.id;
-    b.setAttribute('aria-pressed', c.id === filter ? 'true' : 'false');
-    b.title = filterTip(c);
-    b.addEventListener('click', function () { pickFilter(c.id); });
-    return b;
-  }
-  var first = filterChip('open');
-  if (first) main.appendChild(first);
   var mine = base.filter(function (a) { return typeIs(a, 'who:me'); }).length;
   var me = el('button', 'qf-c' + (mine ? '' : ' zero'), '<span class="lbl">Mine</span><span class="count">' + esc(mine) + '</span>');
   me.type = 'button'; me.dataset.type = 'who:me';
@@ -1305,7 +1305,6 @@ function renderQuick() {
   me.title = (ME_USER ? 'cards assigned to you' : 'cards assigned to you (log in to see them)') + ' · ' + (hasF('who:me') ? 'click again to drop this filter' : 'shows only them; combines with the other group');
   me.addEventListener('click', function () { setType(toggledF('who:me')); });
   main.appendChild(me);
-  ['crit', 'taken'].forEach(function (id) { var b = filterChip(id); if (b) main.appendChild(b); });
   renderFilterLists(base);
   if (back) { var again = main.querySelector(back); if (again) again.focus(); }
 }
@@ -1804,7 +1803,6 @@ function paintAnoms() {
     if (list.length || (!searchQ && id === 'open') || empty) groups.push({id: id, title: title, hint: hint, k: k, list: list, empty: empty});
   }
   if (filter === 'open' || filter === 'all') g('open', 'Open', 'critical first; a card that stopped firing or was investigated stays here until someone takes, resolves or mutes it, and its tags say which', SEV[worst][1], openAll());
-  if (cardSev(filter)) g('open', SEV[filter][0], 'open: firing, or stopped with nobody acting on it yet', SEV[filter][1], openBySev(filter));
   if (filter === 'progress' || filter === 'all') g('progress', TRI.progress[0], 'a ticket or hand-off is underway; pushes again only if it doubles or gets worse. A card with a Jira ticket stays until the ticket closes, one with free text drops off 24 hours after it cleared', TRI.progress[1], inprog);
   if (filter === 'taken' || filter === 'all') g('taken', 'Done', 'no action needed; pushes again only if it doubles or gets worse, and comes back under Open when it stops and fires again. Drops off 24 hours after it cleared or was resolved, whichever is later', 'k-good', taken);
   if (filter === 'muted' || filter === 'all') g('muted', 'Muted', 'no pushes while the mute lasts, open or already cleared; unmute to get them again', 'k-muted', muted);

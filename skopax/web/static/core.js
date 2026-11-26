@@ -92,18 +92,19 @@ function sourceLabel(x) {
 function isMine(a) { return !!a.owner && !!ME_USER && (personSlug(a.owner) === personSlug(ME_USER) || !!(a.assigned && a.assigned.email === ME_USER)); }
 function isWhoF(t) { return String(t).startsWith('who:'); }
 function isPersonF(t) { return String(t).startsWith('who:u:'); }
+function isSevF(t) { return String(t).startsWith('sev:'); }
 function fParts(t) { return String(t || '').split('+').filter(Boolean); }
-function fKind(p) { return isTagF(p) ? 'tag' : isWhoF(p) ? 'who' : 'type'; }
+function fKind(p) { return isTagF(p) ? 'tag' : isWhoF(p) ? 'who' : isSevF(p) ? 'sev' : 'type'; }
 function hasF(p) { return fParts(typeF).indexOf(p) >= 0; }
-var F_ORDER = {type: 0, who: 1, tag: 2}, F_MAX = 40;
+var F_ORDER = {type: 0, who: 1, tag: 2, sev: 3}, F_MAX = 40;
 function fKinds(t) { var by = {}; fParts(t).forEach(function (p) { (by[fKind(p)] = by[fKind(p)] || []).push(p); }); return Object.keys(by).map(function (k) { return by[k]; }); }
 function toggledF(p) {
-  var me = fKind(p) === 'who', parts = fParts(typeF).filter(function (x) { return x !== p && !(me && fKind(x) === 'who' && (p === 'who:me' || x === 'who:me')); });
+  var me = fKind(p) === 'who', one = fKind(p) === 'sev', parts = fParts(typeF).filter(function (x) { return x !== p && !(one && fKind(x) === 'sev') && !(me && fKind(x) === 'who' && (p === 'who:me' || x === 'who:me')); });
   if (!hasF(p)) { if (parts.length >= F_MAX) return typeF; parts.push(p); }
   return parts.sort(function (x, y) { return F_ORDER[fKind(x)] - F_ORDER[fKind(y)]; }).join('+');
 }
-function typeIs(a, t) { return String(t).indexOf('+') > 0 ? fKinds(t).every(function (ps) { return ps.some(function (p) { return typeIs(a, p); }); }) : isWhoF(t) ? (t === 'who:none' ? !a.owner : t === 'who:any' ? !!a.owner : isPersonF(t) ? !!a.owner && personSlug(a.owner) === t.slice(6) : isMine(a)) : isTagF(t) ? (t === UNTAGGED_F ? !tagIds(a).length : tagIds(a).indexOf(t.slice(4)) >= 0) : typeOf(a) === (TYPE_ALIAS[t] || t); }
-function typeName(t) { return String(t).indexOf('+') > 0 ? fParts(t).map(typeName).join(' \u00b7 ') : WHO_NAMES[t] || (isPersonF(t) ? 'Assigned to ' + t.slice(6) : isTagF(t) ? (t === UNTAGGED_F ? 'Untagged' : tagName(t.slice(4))) : TYPE_NAMES[TYPE_ALIAS[t] || t] || String(t).replace(/-/g, ' ')); }
+function typeIs(a, t) { return String(t).indexOf('+') > 0 ? fKinds(t).every(function (ps) { return ps.some(function (p) { return typeIs(a, p); }); }) : isSevF(t) ? a.sev === t.slice(4) : isWhoF(t) ? (t === 'who:none' ? !a.owner : t === 'who:any' ? !!a.owner : isPersonF(t) ? !!a.owner && personSlug(a.owner) === t.slice(6) : isMine(a)) : isTagF(t) ? (t === UNTAGGED_F ? !tagIds(a).length : tagIds(a).indexOf(t.slice(4)) >= 0) : typeOf(a) === (TYPE_ALIAS[t] || t); }
+function typeName(t) { return String(t).indexOf('+') > 0 ? fParts(t).map(typeName).join(' \u00b7 ') : isSevF(t) ? (SEV[t.slice(4)] || [t.slice(4)])[0] : WHO_NAMES[t] || (isPersonF(t) ? 'Assigned to ' + t.slice(6) : isTagF(t) ? (t === UNTAGGED_F ? 'Untagged' : tagName(t.slice(4))) : TYPE_NAMES[TYPE_ALIAS[t] || t] || String(t).replace(/-/g, ' ')); }
 function typed(list) { return typeF ? list.filter(function (a) { return typeIs(a, typeF); }) : list; }
 var searchQ = '', searchBack = '';
 var ASK_MAX = 1000;
@@ -424,7 +425,16 @@ function derive(data) {
     if (el.dataset.plugin) out += ' \u00b7 plug-in';
     return out;
   }
+  function inMenu(el) { return el.classList.contains('fb-i') && !!el.closest('.fb-pop'); }
+  function beside(el, bw, bh, vw, vh) {
+    var p = el.closest('.fb-pop').getBoundingClientRect(), r = el.getBoundingClientRect();
+    var top = Math.max(8, Math.min(r.top + r.height / 2 - bh / 2, vh - bh - 8));
+    if (p.right + 8 + bw <= vw - 8) return {left: p.right + 8, top: top};
+    if (p.left - 8 - bw >= 8) return {left: p.left - 8 - bw, top: top};
+    return {left: Math.max(8, Math.min(p.left, vw - bw - 8)), top: Math.max(8, Math.min(p.bottom + 7, vh - bh - 8))};
+  }
   function show(el) {
+    if (inMenu(el) && typeof boardPhone === 'function' && boardPhone()) { hide(); return; }
     var own = el.getAttribute('title'), rail = railed(el), text = rail ? el.dataset.label + badges(el) + (own ? '\n' + own : '') : own;
     box = box || document.getElementById('tipbox');
     if (!text || !box || (el.hasAttribute('aria-haspopup') && el.getAttribute('aria-expanded') === 'true')) return;
@@ -434,11 +444,12 @@ function derive(data) {
     box.textContent = text;
     box.hidden = false;
     var r = el.getBoundingClientRect(), bw = box.offsetWidth, bh = box.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
+    var side = inMenu(el) ? beside(el, bw, bh, vw, vh) : null;
     var left = rail ? Math.min(r.right + 10, Math.max(8, vw - bw - 8)) : Math.min(Math.max(8, r.left + r.width / 2 - bw / 2), Math.max(8, vw - bw - 8));
     var top = rail ? Math.max(8, Math.min(r.top + r.height / 2 - bh / 2, vh - bh - 8)) : r.bottom + 7;
     if (!rail && top + bh > vh - 8) top = Math.max(8, r.top - bh - 7);
-    box.style.left = left + 'px';
-    box.style.top = top + 'px';
+    box.style.left = (side ? side.left : left) + 'px';
+    box.style.top = (side ? side.top : top) + 'px';
   }
   function hide() {
     clearTimeout(timer);

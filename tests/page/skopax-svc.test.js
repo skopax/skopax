@@ -231,16 +231,16 @@ async function severityChipsFilterTheOpenCards() {
   ];
   const serve = {rev: 5, state: base(5, anomalies, [svc('catalog-service', 'store', 'app', 'ok', 9000)])};
   const {doc, errors, dom} = await boot(serve);
-  const sevItem = (f) => doc.querySelector('#bf-lists .fb-i[data-f="' + f + '"]');
+  const sevItem = (f) => doc.querySelector('#bf-lists .fb-i[data-f="' + f + '"], #bf-lists .fb-i[data-type="sev:' + f + '"]');
   const txt = (b) => b.querySelector('.lbl').textContent + ' ' + b.querySelector('.count').textContent;
   const statusPressed = () => ['open', 'taken', 'all', 'progress', 'muted', 'cleared'].map(sevItem).find((b) => b.getAttribute('aria-checked') === 'true') || null;
 
   //then
   assert.deepStrictEqual(['crit', 'high', 'warn'].map(sevItem).map(txt), ['Critical 1', 'High 0', 'Warning 2'], 'open counts in the Status list; muted and cleared cards left out, and no Info filter');
   assert.deepStrictEqual(['archived', 'closed'].map(sevItem).map(txt), ['Archived 0', 'Closed '], 'the Status list holds Archived and Closed; Closed has no count until its list is loaded');
-  assert.deepStrictEqual(['crit', 'high', 'warn', 'archived', 'closed'].map(sevItem).filter((b) => b.classList.contains('zero')).map((b) => b.dataset.f), ['high', 'archived', 'closed'], 'zero items are faded');
+  assert.deepStrictEqual(['crit', 'high', 'warn', 'archived', 'closed'].map(sevItem).filter((b) => b.classList.contains('zero')).map((b) => b.dataset.f || b.dataset.type), ['sev:high', 'archived', 'closed'], 'zero items are faded');
   assert.ok(!doc.getElementById('sev-chips') && !doc.getElementById('anom-chips') && !doc.getElementById('filters'), 'the chips row is gone from the Anomalies tab');
-  assert.match(sevItem('crit').title, /^open critical items \(pushed\) \u00b7 opens Board filtered to Critical, click again for all open$/);
+  assert.strictEqual(sevItem('crit').title, 'cards of Critical severity');
   const anoms = doc.getElementById('tab-anoms');
   assert.ok(anoms.classList.contains('hot') && anoms.classList.contains('k-crit'), 'the Anomalies tab takes the worst open severity');
   assert.strictEqual(anoms.title, '1 critical \u00b7 2 warning');
@@ -252,8 +252,8 @@ async function severityChipsFilterTheOpenCards() {
   //then
   assert.deepStrictEqual(cards(doc), ['5xx|store/catalog-service', 'err|payments/orders-service'], 'Warning shows the open warning cards only');
   assert.strictEqual(sevItem('warn').getAttribute('aria-checked'), 'true');
-  assert.strictEqual(statusPressed(), null, 'Open is not pressed while a severity filters');
-  assert.match(doc.getElementById('filter-note').textContent, /^Showing Warning2Copy linkAllClear filters \u2715/);
+  assert.strictEqual(statusPressed().dataset.f, 'open', 'Open stays pressed while a severity filters');
+  assert.match(doc.getElementById('filter-note').textContent, /^Showing Open \u00b7 Warning2Clear filters \u203aCopy linkAllClear filters \u2715/);
 
   //when
   sevItem('warn').click();
@@ -351,8 +351,8 @@ async function highSitsBetweenCriticalAndWarning() {
   ];
   const serve = {rev: 7, state: base(7, anomalies, [svc('catalog-service', 'store', 'app', 'ok', 9000), svc('orders-service', 'store', 'app', 'ok', 8000), svc('pricing-service', 'store', 'app', 'ok', 7000)])};
   const {doc, errors, dom} = await boot(serve);
-  const sevItem = (f) => doc.querySelector('#bf-lists .fb-i[data-f="' + f + '"]');
-  const chips = ['crit', 'high', 'warn'].map(sevItem).map((b) => b.dataset.f + ':' + b.querySelector('.count').textContent);
+  const sevItem = (f) => doc.querySelector('#bf-lists .fb-i[data-type="sev:' + f + '"]');
+  const chips = ['crit', 'high', 'warn'].map(sevItem).map((b) => b.dataset.type.slice(4) + ':' + b.querySelector('.count').textContent);
   const tpl = require('fs').readFileSync(TEMPLATE, 'utf8');
 
   //when
