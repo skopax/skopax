@@ -2,7 +2,7 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
-## 0.6.6 (unreleased)
+## 0.6.6 (2026-11-26)
 
 ### Added
 

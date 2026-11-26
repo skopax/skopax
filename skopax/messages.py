@@ -1369,6 +1369,7 @@ MESSAGES: dict[str, str] = {
     'guard.failed': 'The last guard check failed ({failure}), so it refused the question or held the answer',
     'guard.tool_failed': 'tool failed; the error text is in the run record',
     'guard.checks_need_model': 'Turn off Check questions and Check answers first: a guard model cannot be cleared while a guard check is on',
+    'guard.watch_at_startup': 'guard in watch mode from the settings at startup \u00b7 the guard records its verdicts but blocks nothing',
     'guard.checks_off_no_model': 'guard checks off \u00b7 a guard check is on but no guard model is set, so nothing is checked',
     'compat.set': 'OpenAI-compatible AI connection {name} saved in Admin',
     'compat.cleared': 'OpenAI-compatible AI connection {name} removed in Admin',

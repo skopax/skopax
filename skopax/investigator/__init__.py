@@ -63,7 +63,7 @@ STUCK_RELEASE_S = 600
 REASON_LIMIT = 200
 REFUSED_BY = 'Refused by the guard'
 HELD_PUBLIC = ('until', 'released')
-GUARD_PRIVATE = ('reason', 'category', 'first', 'fix', 'noted')
+GUARD_PRIVATE = ('reason', 'category', 'first', 'fix', 'noted', 'watch', 'outcome')
 FIX_TEXT = 'A safety reviewer objected: {category}: {reason}. Rewrite the final answer to fix only that; do not call tools unless needed.'
 CONTEXT_LINE = 200
 DROPPED = 'dropped'
@@ -151,8 +151,16 @@ def public_run(run: dict) -> dict:
     if out.get('outcome') in HELD_OUTCOMES:
         out.pop('screenshots', None)
     if isinstance(out.get('guard'), dict):
-        out['guard'] = {k: v for k, v in out['guard'].items() if k not in GUARD_PRIVATE}
+        out['guard'] = public_guard(out['guard'])
+        if out['guard'] is None:
+            out.pop('guard')
     return out
+
+
+def public_guard(guard: dict) -> dict | None:
+    if guard.get('watch'):
+        return None
+    return {k: v for k, v in guard.items() if k not in GUARD_PRIVATE}
 
 
 def said(action: dict | None, key: str) -> str:
@@ -847,6 +855,8 @@ class Investigator:
         retry = guarded.get('retry')
         if verdict == 'failed' or retry is None:
             return out | {'answers': DROPPED, 'first': first, 'outcome': DROPPED}, {}
+        if toolbox is not None:
+            guarded['cut'] = (len(toolbox.calls), len(toolbox.flags))
         self._clear_attempt(toolbox)
         try:
             again = retry(FIX_TEXT.format(category=first['category'], reason=first['reason'] or 'no reason given'))
@@ -951,6 +961,8 @@ class Investigator:
         done |= {k: proposed[k] for k in PROPOSALS if k in proposed}
         if toolbox is not None and toolbox.shots and not (checked is not None and checked.get('outcome') == FIXED):
             done['screenshots'] = toolbox.shots
+        if checked is not None and checked.get('outcome') == FIXED and toolbox is not None:
+            done = self._unfirst(done, (guarded or {}).get('cut') or (len(done['toolCalls']), len(done['flags'])))
         if held:
             done = self._held(done, action, toolbox, result.recap)
             outcome = done['outcome']
@@ -1002,6 +1014,13 @@ class Investigator:
         calls = [c | {'input': ''} | ({'error': HELD_CALL_ERROR} if c.get('error') else {}) for c in done['toolCalls']]
         writes = [{k: v for k, v in w.items() if k != 'summary'} if w.get('held') else w for w in done['writes']]
         return done | {'outcome': 'held', 'recap': said(action, 'slackevents.guard.waiting' if asked else 'slackevents.guard.card_held'), 'held': kept, 'toolCalls': calls, 'writes': writes}
+
+    @staticmethod
+    def _unfirst(done: dict, cut: tuple[int, int]) -> dict:
+        calls_to, flags_to = cut
+        calls = [c | {'input': ''} | ({'error': HELD_CALL_ERROR} if c.get('error') else {}) if i < calls_to else c for i, c in enumerate(done['toolCalls'])]
+        flags = [{k: v for k, v in f.items() if k != 'excerpt'} if i < flags_to else f for i, f in enumerate(done['flags']) if i >= flags_to or isinstance(f, dict)]
+        return done | {'toolCalls': calls, 'flags': flags}
 
     @staticmethod
     def _dropped(done: dict, action: dict | None) -> dict:

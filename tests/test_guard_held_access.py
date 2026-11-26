@@ -270,3 +270,42 @@ def test_tool_error_text_not_in_activity_when_guarded(store: Store):
     assert activity.status_code == 200 and history.status_code == 200
     assert SPAN not in json.dumps(activity.json()) and SPAN not in json.dumps(history.json())
     assert SPAN not in json.dumps(store.list_activity(None, 500), default=str)
+
+
+def test_watch_status_reaches_admins_only(store: Store):
+    # given
+    watched = held_run() | {'id': 'rw', 'outcome': 'done', 'held': None, 'guard': {'questions': 'pass', 'answers': 'hold', 'masked': 0, 'watch': True, 'noted': True, 'reason': 'x'}}
+    fixed = held_run() | {'id': 'rf', 'outcome': 'done', 'held': None, 'guard': {'questions': None, 'answers': 'pass', 'masked': 0, 'outcome': 'fixed', 'first': {'answers': 'hold'}}}
+    for run in (watched, fixed):
+        run.pop('held')
+        store.add_investigation(run)
+    app = create_app(sso_settings(), store)
+    Users(store.db).create(OPERATOR, 'Olga Page', 'operator')
+
+    # when
+    with TestClient(app) as c:
+        admin = {r['id']: r for r in c.get('/api/investigations', headers=AUTH).json()}
+        admin_one = c.get('/api/investigations/rw', headers=AUTH).json()
+        c.cookies.set(SESSION_COOKIE, login_cookie(store, OPERATOR, 'operator'))
+        viewer = {r['id']: r for r in c.get('/api/investigations').json()}
+        viewer_one = c.get('/api/investigations/rw').json()
+
+    # then
+    assert admin['rw']['guard']['watch'] is True and admin['rf']['guard']['outcome'] == 'fixed' and admin_one['guard']['watch'] is True
+    assert 'guard' not in viewer['rw'] and 'guard' not in viewer_one
+    assert viewer['rf']['guard'] == {'questions': None, 'answers': 'pass', 'masked': 0}
+
+
+def test_watch_mode_from_the_environment_leaves_one_changes_row(store: Store):
+    # given
+    Users(store.db).create('root@example.com', 'Root', 'admin')
+
+    # when
+    TestClient(ready_app(dataclasses.replace(settings(), guard_mode='watch'), store))
+    other = Store(store.db.client['other'], release_ignore=store.release_ignore, self_deploy='platform/skopax')
+    TestClient(ready_app(settings(), other))
+    rows = [r['text'] for r in store.list_activity(None, 100) if r['kind'] == 'admin']
+    quiet = [r['text'] for r in other.list_activity(None, 100) if r['kind'] == 'admin']
+
+    # then
+    assert rows == [msg('guard.watch_at_startup')] and quiet == []

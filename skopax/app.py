@@ -66,7 +66,7 @@ from skopax.contract import CodeHost, OrgPack, SourceDown
 from skopax import engine
 from skopax.engine import Applied, PassResult, apply, iso as epoch_iso, new_pushes
 from skopax.enrich import Enricher
-from skopax.investigator import HELD_OFFSET, HELD_PERIOD, JOB_OFFSET as INVESTIGATE_OFFSET, JOB_PERIOD as INVESTIGATE_PERIOD, Investigator, ReleaseFailed, ReleaseTaken, prompt, public_run, select
+from skopax.investigator import HELD_OFFSET, HELD_PERIOD, JOB_OFFSET as INVESTIGATE_OFFSET, JOB_PERIOD as INVESTIGATE_PERIOD, Investigator, ReleaseFailed, ReleaseTaken, prompt, public_guard, public_run, select
 from skopax.investigator.gate import Gate, GateDown
 from skopax.investigator.guard import Guard
 from skopax.investigator.pricing import ANTHROPIC, OPENAI, default_model, known as known_model, provider_of
@@ -1133,6 +1133,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         investigator.admins = lambda: [str(u.get('email') or '') for u in users.list() if u.get('role') == 'admin' and not u.get('disabled')]
     if (settings.guard_check_questions or settings.guard_check_answers) and not settings.investigate_guard_model:
         store.add_activity(ADMIN_KIND, 'server', msg('guard.checks_off_no_model'))
+    if settings.guard_mode == 'watch':
+        store.add_activity(ADMIN_KIND, 'server', msg('guard.watch_at_startup'))
 
     gate = Gate(store, settings, client=anthropic_client, keys=provider_keys, pack=org_pack)
     threads = ThreadSummaries(store, slack, settings, client=anthropic_client, keys=provider_keys, names=email_names(operators), halted=lambda now: investigator.why_halted(now))
@@ -2802,7 +2804,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if admin:
             return rows
         shown = [{k: v for k, v in r.items() if k != 'screenshots'} if r.get('outcome') in HELD_OUTCOMES else r for r in rows]
-        return [r | {'guard': {k: v for k, v in r['guard'].items() if k != 'noted'}} if isinstance(r.get('guard'), dict) else r for r in shown]
+        return [{k: v for k, v in r.items() if k != 'guard'} | ({'guard': g} if (g := public_guard(r['guard'])) is not None else {}) if isinstance(r.get('guard'), dict) else r for r in shown]
 
     @app.get('/api/screenshots/{shot_id}')
     def get_screenshot(request: Request, shot_id: str, authorization: Annotated[str | None, Header()] = None) -> Response:
