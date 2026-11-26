@@ -2,6 +2,12 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.6.7 (unreleased)
+
+### Added
+
+- Tempo traces through Grafana: the Grafana plug-in has two new read tools for the Tempo datasources of the Grafana it is set up for, with its existing URL and token. `tempo_search` runs a TraceQL query over a time window and returns the matching traces with their root service, duration and a few matched spans; `tempo_trace` reads one trace by its hex id (for example one found in a log line) and returns a span tree summary with error spans first, then the slowest. Span data is masked like log lines and cut at fixed sizes. The token needs `datasources:query` on each Tempo datasource. No new plug-in, no new instance and no new check.
+
 ## 0.6.6 (2026-11-26)
 
 ### Added

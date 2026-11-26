@@ -153,8 +153,9 @@ def test_grafana_identity_and_manifest():
     assert manifest['checks'] == [{'id': 'grafana', 'label': 'Alerts firing on Grafana datasources', 'period': 900, 'offset': 540, 'ran': ['grafana']}]
     [check] = grafana.PLUGIN.checks
     assert (check.tool, check.sections, check.once) == ('grafana_alerts', ('grafanaAlerts',), False)
-    [tool] = grafana.PLUGIN.tools
+    [tool, search, trace] = grafana.PLUGIN.tools
     assert (tool.name, tool.kind, tool.per_run, tool.scan, tool.instance_input) == ('grafana_alerts', 'read', 3, True, 'instance')
+    assert [(t.name, t.kind, t.per_run, t.scan) for t in (search, trace)] == [('tempo_search', 'read', 5, True), ('tempo_trace', 'read', 5, True)]
     assert manifest['knowledge'] == ['grafana'] and len(grafana.PLUGIN.knowledge[0].text.splitlines()) <= 40 and manifest['rules'] == []
     assert registry.icon('grafana').startswith('<svg')
 

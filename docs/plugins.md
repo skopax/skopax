@@ -202,20 +202,21 @@ Brokers, partitions, consumer groups and the Kafka calls of each service, from k
 
 ### Grafana
 
-Alerts firing on the Prometheus datasources of Grafana.
+Alerts firing on the Prometheus datasources of Grafana, and read tools for the traces of its Tempo datasources.
 
 - **Set it up:**
 
   1. In Grafana open Administration > Users and access > Service accounts > Add service account. Give it a display name and the Viewer role, then Create.
   2. Open the new service account and choose Add service account token. Name it, leave the expiry as you prefer, and choose Generate token.
-  3. Paste the token into `Token`. It needs `datasources:read` and `datasources:query` on each Prometheus datasource and `alert.rules:read`. Viewer alone may not reach every datasource; if `Test connection` or a card names a missing right, add it by role or datasource permission.
+  3. Paste the token into `Token`. It needs `datasources:read`, `datasources:query` on each Prometheus datasource and on each Tempo datasource whose traces the investigator may read, and `alert.rules:read`. Viewer alone may not reach every datasource; if `Test connection` or a card names a missing right, add it by role or datasource permission.
   4. Enter the Grafana address in `URL` (also used for links to alert rules). Press `Test connection`.
 
   Vendor guide: [Grafana: service accounts](https://grafana.com/docs/grafana/latest/administration/service-accounts/)
 
 - **Fields:** `url` (also used for links to the alert rules), `token` (a service account token), `ca` and `skip-datasources` (comma-separated datasource names). Grafana reads at most 12 datasources a pass and says `read <n> of <m> datasources` past that. A datasource it stops watching, because it is skipped or because a Prometheus instance now covers it, has its cards closed at the next pass.
-- **Check** `grafana` (sub-keys `grafana:<datasource>`; section `grafanaAlerts`). **Tool** `grafana_alerts`.
+- **Check** `grafana` (sub-keys `grafana:<datasource>`; section `grafanaAlerts`). **Tools** `grafana_alerts`, `tempo_search` and `tempo_trace`.
 - **Access:** `datasources:read` to list the datasources (part `datasources`), `datasources:query` on each datasource read (the part is its name) and, for the Grafana-managed alerts the tool shows, `alert.rules:read`.
+- **Traces:** `tempo_search` and `tempo_trace` read the datasources of type `tempo` through the Grafana datasource proxy, with the same URL, token and CA as the rest of the plug-in; no new instance is needed, and the datasources in `skip-datasources` are not read. Both are read only (GET) and at most 5 calls each per run. `datasource` is a part of the datasource name; it can be left out when Grafana has one Tempo datasource, and with several the answer lists their names. `tempo_search` takes a TraceQL `query` (at most 1000 characters), `minutes` (default 60, at most 1440), `at` (unix seconds, at most 30 days back) and `limit` (default 20, at most 50) and returns for each trace its id, root service and name, start (UTC), duration and up to 5 matched spans. `tempo_trace` takes a hex `trace_id` (1 to 32 characters, such as one from a log line) and returns the span count, services, duration and error span count, then at most 100 spans, error spans first and then the slowest, each with up to 15 attributes; it asks Tempo for `/api/v2/traces/<id>` and falls back to `/api/traces/<id>` when that answers 404. Span names, attribute keys and values are cut (values at 200 characters) and masked like log lines, and the answer says what was cut. A Tempo that answers 404 to the search is read as one without TraceQL search, never as no traces. Needs a Tempo with TraceQL search (2.x) and `datasources:query` on the Tempo datasource; a refused read names the missing right.
 
 ### Zabbix
 

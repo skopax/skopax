@@ -2,6 +2,7 @@ from pathlib import Path
 
 from skopax.contract import Capabilities, Check, Context, Field, InstanceInfo, Knowledge, Plugin, ReadError, Sweep, TestResult, Tool, Setup
 from skopax.kit import access, connection
+from skopax.plugins.grafana import tempo
 from skopax.plugins.grafana.grafana import LIST, LIST_RIGHT, MAX_SERIES, NAME, PASS, SECTION, GrafanaError, alert_summary, client_for, links_for, skip_list, sweep
 
 PER_RUN = 3
@@ -71,22 +72,24 @@ PLUGIN = Plugin(
         steps=(
             'In Grafana open Administration > Users and access > Service accounts > Add service account. Give it a display name and the Viewer role, then Create.',
             'Open the new service account and choose Add service account token. Name it, leave the expiry as you prefer, and choose Generate token.',
-            'Paste the token into Token. It needs datasources:read and datasources:query on each Prometheus datasource and alert.rules:read. Viewer alone may not reach every datasource; if Test connection or a card names a missing right, add it by role or datasource permission.',
+            'Paste the token into Token. It needs datasources:read, datasources:query on each Prometheus datasource and on each Tempo datasource whose traces the investigator may read, and alert.rules:read. Viewer alone may not reach every datasource; if Test connection or a card names a missing right, add it by role or datasource permission.',
             'Enter the Grafana address in URL (also used for links to alert rules). Press Test connection.',
         ),
         docs='https://grafana.com/docs/grafana/latest/administration/service-accounts/',
         docs_label='Grafana: service accounts',
     ),
-    id='grafana', name='Grafana', version='0.1.0', category='alerts', description='Alerts firing on the Prometheus datasources of Grafana.', icon='icon.svg',
+    id='grafana', name='Grafana', version='0.1.0', category='alerts', description='Alerts firing on the Prometheus datasources of Grafana, and traces from its Tempo datasources.', icon='icon.svg',
     author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)), uses=('prometheus',),
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Base URL of Grafana, also used for links to its alert rules.'),
-            Field('token', 'Token', 'secret', required=True, help='A service account token with alert read rights.'),
+            Field('token', 'Token', 'secret', required=True, help='A service account token with alert read rights and query rights on the Prometheus and Tempo datasources.'),
             Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),
             Field('ca-pinned', 'Trust this certificate as it is', 'bool', default='false', show_if=('ca', '*'), group='advanced', help="For a server whose own certificate fails the usual checks: paste the server's own certificate; with the switch on, only that exact certificate is accepted, even if it is expired, self-signed or names another host. A CA certificate does not work with the switch on."),
-            Field('skip-datasources', 'Skip datasources', 'text', default='', help='Comma separated datasource names the alert check skips.')),
+            Field('skip-datasources', 'Skip datasources', 'text', default='', help='Comma separated datasource names the alert check and the trace tools skip.')),
     test=test,
     checks=(Check(PASS, 'Alerts firing on Grafana datasources', 900, 540, (PASS,), run, tool='grafana_alerts', sections=(SECTION,), section_help=SECTION_HELP),),
-    tools=(Tool('grafana_alerts', DESCRIPTION, SCHEMA, grafana_alerts, per_run=PER_RUN, scan=True),),
+    tools=(Tool('grafana_alerts', DESCRIPTION, SCHEMA, grafana_alerts, per_run=PER_RUN, scan=True),
+           Tool('tempo_search', tempo.SEARCH_DESCRIPTION, tempo.SEARCH_SCHEMA, tempo.tempo_search, per_run=tempo.PER_RUN),
+           Tool('tempo_trace', tempo.TRACE_DESCRIPTION, tempo.TRACE_SCHEMA, tempo.tempo_trace, per_run=tempo.PER_RUN)),
     links=links, probe_targets=probe_targets,
     knowledge=(Knowledge('grafana', 'Grafana', (Path(__file__).parent / 'grafana.md').read_text(encoding='utf-8'), slack=True),),
 )
