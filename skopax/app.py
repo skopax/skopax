@@ -2799,13 +2799,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         return {'job': job}
 
     def unshot(rows: list[dict], admin: bool) -> list[dict]:
-        return rows if admin else [{k: v for k, v in r.items() if k != 'screenshots'} if r.get('outcome') in HELD_OUTCOMES else r for r in rows]
+        if admin:
+            return rows
+        shown = [{k: v for k, v in r.items() if k != 'screenshots'} if r.get('outcome') in HELD_OUTCOMES else r for r in rows]
+        return [r | {'guard': {k: v for k, v in r['guard'].items() if k != 'noted'}} if isinstance(r.get('guard'), dict) else r for r in shown]
 
     @app.get('/api/screenshots/{shot_id}')
     def get_screenshot(request: Request, shot_id: str, authorization: Annotated[str | None, Header()] = None) -> Response:
         doc = store.screenshot(shot_id)
-        if doc.get('runId') and not reads_access(request, authorization) and (store.held_run(str(doc['runId'])) or {}).get('outcome') in HELD_OUTCOMES:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, f'no screenshot {shot_id}')
+        if doc.get('runId') and not reads_access(request, authorization):
+            outcome, shown = store.run_shot_ids(str(doc['runId']))
+            if outcome is None or outcome in HELD_OUTCOMES or shot_id not in shown:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, f'no screenshot {shot_id}')
         return Response(bytes(doc['data']), media_type=doc.get('mime') or 'image/jpeg', headers={'Cache-Control': 'private, max-age=86400, immutable'})
 
     @app.get('/api/investigations')

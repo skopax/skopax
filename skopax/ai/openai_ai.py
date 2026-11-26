@@ -153,12 +153,17 @@ def turn_of(resp, model: str) -> Turn:
         raise ResponseFailed(status)
     items = list(part(resp, 'output') or [])
     texts, calls, server, refused = [], [], [], False
+    final: list[str] = []
+    last: list[str] = []
     for item in items:
         kind = part(item, 'type')
+        if kind not in ('message', 'reasoning') and final:
+            last, final = final, []
         if kind == 'message':
             for c in part(item, 'content') or []:
                 if part(c, 'type') == 'output_text' and isinstance(part(c, 'text'), str):
                     texts.append(part(c, 'text'))
+                    final.append(part(c, 'text'))
                 elif part(c, 'type') == 'refusal':
                     refused = True
         elif kind == 'function_call':
@@ -174,7 +179,7 @@ def turn_of(resp, model: str) -> Turn:
     else:
         stop = 'tool_use' if calls else 'end_turn'
     searches = sum(1 for i in items if part(i, 'type') == SEARCH_CALL)
-    return Turn(stop=stop, model=served_model(part(resp, 'model'), model), usage=usage_of(resp, searches), texts=texts, text='\n'.join(texts).strip(), calls=calls,
+    return Turn(stop=stop, model=served_model(part(resp, 'model'), model), usage=usage_of(resp, searches), texts=texts, text='\n'.join(final or last).strip(), calls=calls,
                 native=[plain(i) for i in items], server=server)
 
 

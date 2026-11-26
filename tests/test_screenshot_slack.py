@@ -202,6 +202,8 @@ def test_the_app_hands_the_attacher_to_the_slack_replier(store: Store):
 def test_the_api_serves_a_stored_screenshot_and_404s_an_unknown_one(store: Store):
     # given
     shot = stored_shot(store)
+    store.add_investigation({'id': 'run-1', 'trigger': 'cards', 'mode': 'live', 'keys': [KEY], 'startedAt': '2026-10-17T08:00:00Z', 'outcome': 'done', 'toolCalls': [], 'writes': [],
+                             'screenshots': [{'id': shot, 'url': CHAIRS, 'at': '2026-10-17T08:00:00Z', 'kb': 1.0, 'link': f'/api/screenshots/{shot}'}]})
 
     # when
     with TestClient(create_app(settings(), store)) as c:

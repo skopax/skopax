@@ -16,7 +16,7 @@ from pymongo import DESCENDING, ReturnDocument
 
 from skopax import advisor, brand, clock as zone_clock, jirafields, logs, settingcards, tags
 from skopax.config import ALERT_GLOB, ALERT_GLOBS_MAX, AI_PROVIDERS, DEFAULT_ROLES, JIRA_BACKLINK_MODES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve, TRACE_CONTENTS
-from skopax.config import MODEL_KEYS, SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS, read_token_headers, token_headers_reason
+from skopax.config import GUARD_MODES, GUARD_ON_HOLD, MODEL_KEYS, SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS, read_token_headers, token_headers_reason
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import BY_KEY as FEATURE_OF
@@ -308,6 +308,14 @@ STATIC = (
     T('guard.check-answers', 'guard_check_answers', INV, 'Check answers',
       'The guard model checks each answer and card investigation before it is posted; it can pass it, hide exact parts, or hold it for an admin to release or discard. '
       'Chat answers no longer stream while it is on. It needs a guard model', 'bool'),
+    T('guard.mode', 'guard_mode', INV, 'Guard mode',
+      'Enforce lets the guard refuse, hide or hold. Watch only records what the guard would have done and never blocks or changes anything, so it protects nothing; '
+      'use it for a few days to see how often the guard would step in, then switch back to Enforce', 'choice', choices=GUARD_MODES,
+      choice_labels={'enforce': 'Enforce', 'watch': 'Watch only'}),
+    T('guard.on-hold', 'guard_on_hold', INV, 'On hold',
+      'Fix automatically sends the guard objection back to the investigator for one rewrite, which is checked again; if it is held again, a fixed line is posted instead and its card writes are dropped. '
+      'Send to an admin keeps the answer for an admin to release or discard within 24 hours', 'choice', choices=GUARD_ON_HOLD,
+      choice_labels={'fix': 'Fix automatically', 'review': 'Send to an admin'}),
     T('core.org-about', 'org_about', INV, 'About your company', 'A few sentences about the company and what {product} watches: products, main services, who uses them. Given to the investigator and the topic gate', 'text'),
     T('investigate.daily-usd', 'investigate_daily_usd', INV, 'Daily limit ($)', 'Daily spend cap shared by the investigator and the self-review; 0 stops them all', 'float', 0, 500),
     T('investigate.max-cards', 'investigate_max_cards', INV, 'Cards per run', 'How many open cards one investigator run takes at most', 'int', 1, 20),

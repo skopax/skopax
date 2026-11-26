@@ -10,8 +10,22 @@ var POD_OUT = {done: 'k-good', running: 'k-info', stopped: 'k-muted', skipped: '
 var GUARD_FULL = {}, GUARD_ASKED = {}, GUARD_SAID = {}, GUARD_KEPT = {}, GUARD_FOCUS = null, GUARD_HELD_SAY = 'Investigation held for review.';
 function guardAdmin() { return typeof ADMIN_OK !== 'undefined' && ADMIN_OK === true; }
 function guardOf(r) { return r && r.guard && typeof r.guard === 'object' ? r.guard : null; }
+function guardWatched(g) {
+  if (g.questions === 'refuse') return 'Guard (watch only): would have refused';
+  if (g.questions === 'failed' || g.answers === 'failed') return 'Guard (watch only): the check failed, nothing was blocked';
+  if (g.answers === 'hold') return 'Guard (watch only): would have held';
+  if (g.answers === 'mask') return 'Guard (watch only): would have masked';
+  return g.questions === 'pass' || g.answers === 'pass' ? 'Guard (watch only): passed' : '';
+}
+function guardFixed(g) {
+  if (g.outcome === 'fixed') return 'Guard: held, then fixed automatically and posted';
+  if (g.first && g.first.answers === 'failed') return 'Guard: the check failed, the answer was dropped';
+  return g.fix ? 'Guard: held twice, the answer was dropped' : 'Guard: held, the answer was dropped';
+}
 function guardVerdict(g) {
   if (!g) return '';
+  if (g.watch === true) return guardWatched(g);
+  if (g.outcome === 'fixed' || g.answers === 'dropped') return guardFixed(g);
   if (g.questions === 'refuse') return 'Guard: refused';
   if (g.questions === 'failed') return 'Guard: refused, the check failed';
   if (g.answers === 'hold') return 'Guard: held';
@@ -21,7 +35,7 @@ function guardVerdict(g) {
 }
 function guardNeedsFull(r) {
   var g = guardOf(r);
-  return r.outcome === 'held' || (!!g && (g.questions === 'refuse' || g.answers === 'hold' || g.answers === 'mask'));
+  return r.outcome === 'held' || (!!g && (g.questions === 'refuse' || g.answers === 'hold' || g.answers === 'mask' || g.answers === 'dropped' || g.noted === true || g.outcome === 'fixed' || g.watch === true));
 }
 function heldChats() {
   if (!guardAdmin()) return Promise.resolve([]);
@@ -47,11 +61,21 @@ function heldProposedHtml(p) {
   if (!kinds.length) return '';
   return '<div class="held-proposed"><p class="muted">' + esc(tx('Held proposals')) + '</p><ul data-no-tx>' + kinds.map(function (k) { return '<li>' + esc(proposedLeaves(p[k], []).join(' \u00b7 ')) + '</li>'; }).join('') + '</ul></div>';
 }
+var GUARD_CATEGORY = {injection: 'followed instructions from the data', harmful: 'harmful advice', leak: 'secrets or personal data', contradicted: 'contradicted by the data', other: 'other'};
 function guardWhyHtml(why) { return '<span class="guard-why">, ' + esc(tx('because')) + ' <span data-no-tx>' + esc(why) + '</span></span>'; }
+function guardCategoryHtml(category) {
+  return GUARD_CATEGORY[category] ? '<span class="guard-cat"> \u00b7 ' + esc(tx(GUARD_CATEGORY[category])) + '</span>' : '';
+}
+function guardFixHtml(full) {
+  var f = full && full.fix;
+  if (!f || !f.answers) return '';
+  return '<span class="guard-fix">; ' + esc(tx(f.answers === 'pass' || f.answers === 'mask' ? 'the rewrite passed' : 'the rewrite was held too')) + (f.reason ? guardWhyHtml(f.reason) : '') + '</span>';
+}
+function guardMore(full) { return full ? (full.reason ? guardWhyHtml(full.reason) : '') + guardCategoryHtml(full.category) + guardFixHtml(full) : ''; }
 function guardLineHtml(r) {
-  var full = GUARD_FULL[r.id], v = guardVerdict(guardOf(r) || (full && full.guard));
+  var full = GUARD_FULL[r.id], v = guardVerdict((full && full.guard) || guardOf(r));
   if (!v) return '';
-  return '<p class="guard-line" data-guard-run="' + esc(r.id) + '"><span class="guard-v">' + esc(tx(v)) + '</span>' + (full && full.reason ? guardWhyHtml(full.reason) : '') + '</p>';
+  return '<p class="guard-line" data-guard-run="' + esc(r.id) + '"><span class="guard-v">' + esc(tx(v)) + '</span>' + guardMore(full) + '</p>';
 }
 function heldTextHtml(full) { return '<p class="held-text" data-no-tx>' + esc(full.text) + '</p>' + heldProposedHtml(full.proposed); }
 function heldSaidHtml(id, tag) { return '<' + tag + ' class="held-result" role="status" tabindex="-1">' + esc(GUARD_SAID[id] || '') + '</' + tag + '>'; }
@@ -66,7 +90,9 @@ function guardFill(id) {
   if (!full) return;
   [].forEach.call(document.querySelectorAll('[data-guard-run]'), function (n) {
     if (n.dataset.guardRun !== id) return;
-    if (n.classList.contains('guard-line') && full.reason && !n.querySelector('.guard-why')) n.insertAdjacentHTML('beforeend', guardWhyHtml(full.reason));
+    var v = n.classList.contains('guard-line') ? n.querySelector('.guard-v') : null, said = full.guard ? guardVerdict(full.guard) : '';
+    if (v && said) v.textContent = tx(said);
+    if (n.classList.contains('guard-line') && !n.querySelector('.guard-why, .guard-cat, .guard-fix')) n.insertAdjacentHTML('beforeend', guardMore(full));
     var say = n.classList.contains('held') ? n.querySelector('.held-say') : null;
     if (say && full.text != null && !n.querySelector('.held-text')) say.insertAdjacentHTML('afterend', heldTextHtml(full));
     var line = n.parentNode && n.parentNode.querySelector('.guard-line');
@@ -79,8 +105,10 @@ function guardLoad(r) {
   fetch('/api/investigations/' + encodeURIComponent(r.id), {credentials: 'same-origin'}).then(function (x) { return x.ok ? x.json() : null; }).then(function (run) {
     if (!run || typeof run !== 'object') { delete GUARD_ASKED[r.id]; return; }
     var held = run.held && typeof run.held === 'object' ? run.held : {}, g = guardOf(run) || {};
+    var fix = g.fix && typeof g.fix === 'object' ? {answers: g.fix.answers, reason: typeof g.fix.reason === 'string' ? g.fix.reason : ''} : null;
     GUARD_FULL[r.id] = {text: typeof held.text === 'string' ? held.text : null, reason: typeof g.reason === 'string' ? g.reason : '', proposed: held.proposed && typeof held.proposed === 'object' ? held.proposed : null,
-      guard: guardOf(run) ? {questions: g.questions, answers: g.answers, masked: g.masked} : null};
+      category: typeof g.category === 'string' ? g.category : '', fix: fix,
+      guard: guardOf(run) ? {questions: g.questions, answers: g.answers, masked: g.masked, watch: g.watch === true, outcome: g.outcome, first: g.first, fix: fix} : null};
     guardFill(r.id);
   }, function () { delete GUARD_ASKED[r.id]; });
 }

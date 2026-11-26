@@ -8,7 +8,8 @@ var AIV_REGION_TEXT = {global: 'global (current models, no residency guarantee)'
 var AIV_REGION_NOTE = 'Current Claude models run on global, us and eu only; a single region serves older models. Choose eu to keep processing in the EU.';
 var AIC_NOT_FIT = 'Not fit for investigations: the model did not call the tool';
 var AIU_PROVIDERS = {anthropic: 'Anthropic', openai: 'OpenAI', vertex: 'Vertex AI'};
-var AIU_GUARD = 'guard', AIU_GUARD_KEYS = ['guard.check-questions', 'guard.check-answers'];
+var AIU_GUARD = 'guard', AIU_GUARD_KEYS = ['guard.check-questions', 'guard.check-answers', 'guard.mode', 'guard.on-hold'];
+var AIU_GUARD_WATCH = 'Watch only: the guard records what it would have done but never refuses, hides or holds anything, so it protects nothing. Switch back to Enforce when you have seen enough.';
 var AIU_GUARD_SEES = 'The guard model reads questions, answers and the tool results behind them. If it runs on another provider, that provider receives this text.';
 var AIU_GUARD_NEEDS = 'Pick a guard model first; the check stays off until one is set';
 var AIU_GUARD_NO_MODEL = 'A guard check is on but no guard model is set, so the check is off; pick a guard model';
@@ -138,6 +139,8 @@ function aiuGuard(id) {
   box.setAttribute('role', 'group');
   box.setAttribute('aria-labelledby', id + '-l');
   aiuSwitches().forEach(function (i) { box.appendChild(adminRow(i)); });
+  var mode = aiuItem('guard.mode');
+  if (mode && aiuSaved(mode) === 'watch') box.appendChild(accText('p', 'adm-help adm-problem aiu-guard-watch', AIU_GUARD_WATCH));
   return box;
 }
 function aiuRow(u) {

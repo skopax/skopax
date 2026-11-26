@@ -52,4 +52,4 @@ Every text that leaves for people passes the same mask once more before it is st
 
 ## Tracing
 
-Langfuse tracing of Skopax's own AI calls is off unless switched on, and sends no content by default. With `full` content it applies the same masking to every prompt, answer, tool input and output, error and card key before export; see `LANGFUSE_TRACE_CONTENT` in [Configuration](configuration.md#settings). With `full` content, investigator traces include answers the guard later holds or masks, because the trace is written before the answer check; the guard itself is never traced.
+Langfuse tracing of Skopax's own AI calls is off unless switched on, and sends no content by default. With `full` content it applies the same masking to every prompt, answer, tool input and output, error and card key before export; see `LANGFUSE_TRACE_CONTENT` in [Configuration](configuration.md#settings). With `full` content, investigator traces include answers the guard later holds, masks, rewrites or drops (the first attempt of a fixed or dropped run stays in the trace), because the trace is written before the answer check; the guard itself is never traced.

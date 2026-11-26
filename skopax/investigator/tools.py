@@ -21,6 +21,7 @@ from skopax.codehosts import name_of
 from skopax.contract import CodeHost, Knowledge, Missing, RunState, SourceDown
 from skopax.enrich import adf_text
 from skopax.errkind import Authored, kind as error_kind, text_of
+from skopax.investigator.guard import CUT
 from skopax.investigator.flags import PHRASES, REQUESTS, SOFT, safe_excerpt, scan
 from skopax.investigator.prompt import announced_hint, announced_text, card_link, shown_key
 from skopax.investigator.select import NO_SERVICE, announced
@@ -91,6 +92,7 @@ POST_HEADLINE_LIMIT = 80
 SUMMARY_LIMIT = 300
 DIGEST_CALL = 4000
 DIGEST_LIMIT = 20000
+DIGEST_NOTE = 64
 HELD_TEXT = '{tool} queued for {key}: it is applied once the answer check passes'
 NOT_APPLIED = ' not applied: '
 SKIPPED = ' skipped: '
@@ -1079,7 +1081,7 @@ class Toolbox:
         self.writes: list[dict] = []
         self.hold_writes = False
         self.held: list[dict] = []
-        self._seen: list[tuple[str, str]] = []
+        self._seen: list[tuple[str, str, bool]] = []
         self.flags: list[dict] = []
         self.aliases: dict[str, str | None] = {}
         self.marks_down = False
@@ -1183,7 +1185,7 @@ class Toolbox:
                 rows, error, text = web_result(b)
                 entry.pop('pending', None)
                 entry.update(rows=rows, error=error)
-                self._seen.append((entry['name'], str(text or error or '')[:DIGEST_CALL]))
+                self._capture(entry['name'], text or error)
                 self.flags += scan(entry['name'], text, skip=REQUESTS)
                 if self.run_id:
                     shown = self._said_error(error)
@@ -1343,7 +1345,7 @@ class Toolbox:
         finally:
             entry['ms'] = round((time.monotonic() - started) * 1000)
             self.calls.append(entry)
-            self._seen.append((name, str(said if said is not None else entry['error'] or '')[:DIGEST_CALL]))
+            self._capture(name, said if said is not None else entry['error'])
             wrote = name in WRITE_NAMES or (kind == 'write' and not entry.get('shadow'))
             if self.run_id and not bridged and (not wrote or entry['error']):
                 shown = self._said_error(entry['error'])
@@ -1766,18 +1768,31 @@ class Toolbox:
             raise ToolError(f'{shown_key(str(key))} is not one of the cards this run investigates; write tools take only: ' + ', '.join(shown_key(k) for k in sorted(self.keys)))
         return self.store.anomaly(key)
 
+    def _capture(self, name: str, said) -> None:
+        text = str(said or '')
+        self._seen.append((str(name), text[:DIGEST_CALL], len(text) > DIGEST_CALL))
+
     def digest(self, limit: int = DIGEST_LIMIT) -> str:
         parts: list[str] = []
         used = 0
-        for name, said in reversed(self._seen):
-            part = f'{name}:\n{outward(said)}'[:DIGEST_CALL]
-            if used + len(part) > limit:
+        for name, said, *flag in reversed(self._seen):
+            cut = bool(flag and flag[0])
+            head = f'{str(name).replace(chr(0), "")}:\n'
+            body = outward(said).replace(chr(0), '')
+            room = DIGEST_CALL - len(head)
+            if len(body) > room:
+                body, cut = body[:room], True
+            part = head + body + (f'\n{CUT}' if cut else '')
+            if used + len(part) > limit - DIGEST_NOTE:
                 if not parts:
-                    parts.append(part[:limit])
+                    parts.append(head + body[:max(0, limit - DIGEST_NOTE - len(head) - len(CUT) - 1)] + f'\n{CUT}')
                 break
             parts.append(part)
             used += len(part) + 2
-        return '\n\n'.join(reversed(parts))[-limit:] if parts else ''
+        left = len(self._seen) - len(parts)
+        if left:
+            parts.append(f'{CUT}\n{left} earlier tool result{"" if left == 1 else "s"} left out')
+        return '\n\n'.join(reversed(parts))
 
     def held_text(self) -> str:
         return '\n\n'.join(f"{w.get('tool')} on {w.get('key') or 'this run'}:\n" + '\n'.join(leaves(w.get('args'))) for w in self.held)

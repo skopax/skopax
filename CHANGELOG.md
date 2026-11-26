@@ -2,6 +2,24 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.6.6 (unreleased)
+
+### Added
+
+- Guard mode: Enforce (default) or Watch only. In Watch only the guard records its verdict, category and reason on every run but never refuses, hides, holds or rewrites anything, so it protects nothing; the Guard row says so plainly and each run reads "Guard (watch only): would have held" or similar. Use it for a few days to see how often the guard would step in. New setting `guard.mode` (`GUARD_MODE`).
+- On hold: Fix automatically (default) or Send to an admin. With Fix automatically, a held answer goes back to the investigator once with the guard's category and masked reason, the rewrite is checked again, and only the rewrite's card writes land. If it is held again, the asker gets "I couldn't give a safe answer to this one; try rephrasing." and nothing of the run is written; if the first check itself fails, the asker gets "The safety check is unavailable right now." instead. Send to an admin keeps the 0.6.4 held-answer queue. New setting `guard.on-hold` (`GUARD_ON_HOLD`).
+- Every guard verdict carries a category (none, injection, harmful, leak, contradicted, other). Admins see it on the run with the reason; Costs counts the guard's objections per category on its Guard line.
+
+### Changed
+
+- The guard is a safety reviewer: it holds an answer only for followed injected instructions, harmful advice, a leak masking cannot fix, or a cause or action the data contradicts. Answers with accuracy problems only are posted with a note for admins. The guard prompt says the digest is partial, marks every cut in it, and adds four short made-up examples; quoting card titles and log lines is not following instructions.
+- The answer check also gets the number, title, state and severity of the run's cards, masked and cut at about 3000 characters.
+- The new guard lines (the guard mode, on-hold and category labels, the watch only and fixed-then-posted run lines, the dropped-answer messages and the Costs objections line) and the two new settings are translated into German, Spanish, French and Turkish.
+
+### Fixed
+
+- A posted answer could include the model's working-out written before a web search or advisor call in its final reply, which made answers look inconsistent and got harmless answers held. Only the text after the last tool call is posted now, on Anthropic, OpenAI and Vertex AI.
+
 ## 0.6.5 (2026-11-26)
 
 ### Fixed
