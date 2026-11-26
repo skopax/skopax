@@ -1144,6 +1144,14 @@ a.shot.phone img { width: 60px; }
 .aiu-model .adm-problem, .aiu-model .adm-off-why { margin: 4px 0 0; }
 .aiu-problem, .aiu-fit { margin: 4px 0 0; }
 .aiu-fit { color: var(--warn); }
+.aiu-adv { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); }
+.aiu-adv-k { font-size: 0.78rem; font-weight: 600; color: var(--fg-2); }
+.aiu-adv .adm-help, .aiu-adv .adm-msg { flex-basis: 100%; margin: 0; }
+.aiu-adv .adm-msg:empty { display: none; }
+.aiu-adv-f { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.aiu-adv-l { font-size: 0.78rem; color: var(--fg-2); }
+.aiu-adv input { font: inherit; font-size: 0.86rem; width: 6rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: 4px; padding: 4px 8px; }
+.aiu-adv-in:disabled { opacity: 0.6; }
 .aiu-row.aiu-bad > th { box-shadow: inset 3px 0 0 var(--crit); }
 .adm-body .aiu > .adm-model-summary { margin: 0; padding: 0 var(--sp-5) var(--sp-3); }
 .adm-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
@@ -2645,6 +2653,9 @@ h3.sec-t { margin: 4px 0 0; font-size: 0.95rem; font-weight: 600; }
   .aiu-t td, .aiu-t tbody th { display: block; min-width: 0; padding: 4px 0; border-top: 0; overflow-wrap: anywhere; }
   .aiu-k { display: block; font-size: 0.75rem; font-weight: 600; color: var(--muted); }
   .aiu-t select { width: 100%; max-width: 100%; min-height: 44px; }
+  .aiu-adv select, .aiu-adv input { width: 100%; max-width: 100%; }
+  .aiu-adv input { min-height: 44px; }
+  .aiu-adv-f { flex-basis: 100%; }
   .aiu-row.aiu-bad > th { box-shadow: none; }
   .aiu-row.aiu-bad { border-color: var(--crit); }
   .aic-model .aic-m-id, .aiv-model .aiv-m-name, .aiv-model .aiv-m-vid { flex-basis: 100%; max-width: none; }

@@ -28,6 +28,7 @@ from skopax.engine import parse_iso
 from skopax.mcpauth import Forbidden, McpAuth, McpUser, Unavailable
 from skopax.messages import msg
 from skopax.notices import LABELS as NOTICE_LABELS
+from skopax.outward import outward
 from skopax.models import ActionIn
 from skopax.sessions import role_at_least
 from skopax.store import NotFound, Store, iso, utc_now
@@ -41,6 +42,8 @@ UNSUPPORTED = frozenset({'server/discover'})
 POLL_S = 2.0
 HOUR_S = 3600
 LIST_MAX = 50
+REVIEW_MAX = 7
+REVIEW_FINDINGS = 30
 LIST_DEFAULT = 20
 ABOUT_LAYERS = 5
 ABOUT_PLUGINS = 40
@@ -89,6 +92,7 @@ def instructions(base_url: str, name: str | None = None, layers: list[dict] | No
         'take_card, resolve_card, mute_card, reopen_card, assign_card and link_ticket change a card exactly like the buttons on the page (Known noise stays a page and Slack button, where a person confirms it), '
         'in your name; confirm with the user before changing a card they did not name. '
         'list_notifications shows the same notifications as Notifications in the sidebar of the page: cards assigned to the user and what happened on them. '
+        'get_self_review reads the daily self-review of the server: what to improve, with its findings. '
         f'Cards, chats, runs and deploy reports come with a {name} link; show it to the user next to what it names.'
     )
 
@@ -129,6 +133,11 @@ TOOLS = (
     types.Tool(name='list_deploy_reports', title='List deploy reports', annotations=hints(True, False, True, False),
                description='The newest post-deploy check reports, newest first: release, level, headline, services and which ones were flagged.',
                inputSchema=schema({'limit': {'type': 'integer', 'minimum': 1, 'maximum': 20, 'description': 'Reports to return, default 5'}})),
+    types.Tool(name='get_self_review', title='Get self-review', annotations=hints(True, False, True, False),
+               description='The daily self-review of {product} (the Review page): what to improve, newest first, with its date and, when stored, its findings with their kind (code or no code) and state. '
+                           'date (YYYY-MM-DD, the UTC date of the review) picks the review of that day; limit returns the latest N reviews (default 1, at most 7). Read only.',
+               inputSchema=schema({'date': {'type': 'string', 'pattern': r'^\d{4}-\d{2}-\d{2}$', 'description': 'The review of this day, YYYY-MM-DD'},
+                                   'limit': {'type': 'integer', 'minimum': 1, 'maximum': REVIEW_MAX, 'description': 'Latest reviews to return, default 1'}})),
     types.Tool(name='list_my_asks', title='List my asks', annotations=hints(True, False, True, False),
                description='Your own private chats with the investigator, newest first (the ones asked here and the ones on the {product} Chat page), with their ids for get_ask or a follow-up ask.',
                inputSchema=schema({})),
@@ -180,6 +189,7 @@ TOOL_ROLES: dict[str, str] = {
     'get_investigation': 'viewer',
     'investigator_status': 'viewer',
     'list_deploy_reports': 'viewer',
+    'get_self_review': 'viewer',
     'list_my_asks': 'viewer',
     'get_ask': 'viewer',
     'list_notifications': 'viewer',
@@ -224,6 +234,20 @@ class Bridge:
 def clip(text: Any, n: int = TEXT_CLIP) -> str:
     flat = ' '.join(str(text or '').split())
     return flat if len(flat) <= n else flat[:n - 1] + '…'
+
+
+def review_limit(value: Any) -> int:
+    if value is None or value == '':
+        return 1
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ToolError(f'limit is a whole number from 1 to {REVIEW_MAX}')
+    try:
+        number = int(value)
+    except (ValueError, OverflowError):
+        raise ToolError(f'limit is a whole number from 1 to {REVIEW_MAX}') from None
+    if not 1 <= number <= REVIEW_MAX:
+        raise ToolError(f'limit is a whole number from 1 to {REVIEW_MAX}')
+    return number
 
 
 def done(a: dict) -> bool:
@@ -273,7 +297,7 @@ class Tools:
         self.poll_s = poll_s
         self.clock = clock
         self.calls = {'list_cards': self.list_cards, 'get_card': self.get_card, 'get_investigation': self.get_investigation, 'investigator_status': self.investigator_status,
-                      'list_deploy_reports': self.list_deploy_reports, 'list_my_asks': self.list_my_asks, 'get_ask': self.get_ask, 'list_notifications': self.list_notifications, 'about': self.about, 'take_card': self.take_card,
+                      'list_deploy_reports': self.list_deploy_reports, 'get_self_review': self.get_self_review, 'list_my_asks': self.list_my_asks, 'get_ask': self.get_ask, 'list_notifications': self.list_notifications, 'about': self.about, 'take_card': self.take_card,
                       'resolve_card': self.resolve_card, 'mute_card': self.mute_card, 'reopen_card': self.reopen_card,
                       'assign_card': self.assign_card, 'link_ticket': self.link_ticket}
         self.waits = {'investigate_card': (self.start_dive, self.dive_result), 'ask': (self.start_ask, self.ask_result)}
@@ -570,6 +594,28 @@ class Tools:
                          f"\n  {len(rows)} services" + (f", flagged: {', '.join(str(f) for f in flagged[:10])}" if flagged else ', none flagged') +
                          f"\n  link: {self.site()}/#r={quote(str(r.get('id')), safe='')}")
         return '\n'.join(lines)
+
+    def get_self_review(self, user: McpUser, args: dict) -> str:
+        found = self.store.self_reviews()
+        date = str(args.get('date') or '').strip()
+        if date:
+            found = [r for r in found if str(r.get('at') or '')[:10] == date]
+            if not found:
+                return f'No self-review for {date}.'
+        elif not found:
+            return 'No self-review yet.'
+        shown = found[:review_limit(args.get('limit'))]
+        link = f'{self.site()}/#t=review'
+        blocks = []
+        for r in shown:
+            at = str(r.get('at') or '')
+            lines = [f'Self-review of {at[:10]} ({at})', outward(str(r.get('text') or ''), False)]
+            findings = [f for f in r.get('findings') or [] if isinstance(f, dict)][:REVIEW_FINDINGS]
+            if findings:
+                lines.append('Findings:')
+                lines += [f"- {clip(outward(str(f.get('kind') or '-'), False), 40)} \u00b7 {clip(outward(str(f.get('state') or '-'), False), 40)} \u00b7 {clip(outward(str(f.get('text') or ''), False), 300)}" for f in findings]
+            blocks.append('\n'.join(lines))
+        return '\n\n'.join(blocks) + f'\n\nlink: {link}'
 
     def list_my_asks(self, user: McpUser, args: dict) -> str:
         chats = self.store.chats(user.name, LIST_DEFAULT)

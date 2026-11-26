@@ -250,6 +250,10 @@ class GitLab:
         except Unreachable:
             raise SourceDown(msg('enrich.unreachable', source='GitLab')) from None
 
+    def tags(self, repo, limit: int = 100) -> list[str]:
+        rows = self._get(f'/projects/{self._pid(repo)}/repository/tags', per_page=limit, order_by='updated').body or []
+        return [str(r['name']) for r in rows if isinstance(r, dict) and r.get('name')]
+
     def blame(self, repo, path: str, ref: str, first: int, last: int) -> list[dict]:
         params = {'ref': ref, 'range[start]': first, 'range[end]': last}
         return self._get(f'/projects/{self._pid(repo)}/repository/files/{quote(path, safe="")}/blame', **params).body or []

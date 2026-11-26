@@ -324,4 +324,4 @@ def test_the_github_nearest_directory_hint_reaches_the_model_through_the_run_too
     out, failed = b.call('github_file', {'repo': 'checkout-service', 'path': 'src/checkout/nope.py'})
 
     # then
-    assert failed and 'not a file' in out and 'src/checkout/module_19.py' in out, out
+    assert failed and 'not a file' in out and 'src/checkout/module_00.py' in out and 'src/checkout/module_19.py' not in out, out

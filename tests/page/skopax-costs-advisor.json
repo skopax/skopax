@@ -1,0 +1,5 @@
+{
+  "source": {"calls": 2, "runs": 1, "usd": 0.2, "estimatedUsd": 0.05, "models": ["claude-opus-5-5"]},
+  "run": {"advisorCalls": 2, "advisorUsd": 0.2, "advisorModel": "claude-opus-5-5"},
+  "total": {"advisorUsd": 0.2}
+}

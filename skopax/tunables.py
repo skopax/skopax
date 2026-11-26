@@ -14,14 +14,14 @@ from urllib.parse import urlsplit
 
 from pymongo import DESCENDING, ReturnDocument
 
-from skopax import brand, clock as zone_clock, jirafields, logs, settingcards, tags
+from skopax import advisor, brand, clock as zone_clock, jirafields, logs, settingcards, tags
 from skopax.config import ALERT_GLOB, ALERT_GLOBS_MAX, AI_PROVIDERS, DEFAULT_ROLES, JIRA_BACKLINK_MODES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve, TRACE_CONTENTS
 from skopax.config import MODEL_KEYS, SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS, read_token_headers, token_headers_reason
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import BY_KEY as FEATURE_OF
 from skopax.ai import PROVIDERS, explicit, extra_models, label_of, provider_of_ref
-from skopax.investigator.pricing import ALL_MODELS, OPENAI, default_model, known as known_model, provider_of, resolve as resolve_model
+from skopax.investigator.pricing import ALL_MODELS, OPENAI, PRICES, default_model, known as known_model, provider_of, resolve as resolve_model
 from skopax.investigator import web as web_sites
 from skopax.investigator.prompt import writing_languages
 from skopax.messages import languages, msg
@@ -57,6 +57,7 @@ ACTIVITY_VALUE = 80
 REV_ID = 'rev'
 UPGRADE_MARK = 'upgrade:ai-uses'
 UPGRADE_BY = 'upgrade'
+CHAT_EFFORT_MARK = 'upgrade:chat-effort'
 UPGRADE_PENDING = 'upgrade:ai-uses:pending'
 NO_COLOR_SHOWN = 'off (NO_COLOR)'
 
@@ -96,6 +97,8 @@ def choices_of(t: Tunable) -> tuple[str, ...]:
 
 
 def is_model_setting(t: Tunable) -> bool:
+    if t.key in advisor.advisor_keys():
+        return False
     offered = set(choices_of(t)) - {''}
     return bool(offered) and offered <= set(MODELS)
 
@@ -194,6 +197,21 @@ def tag_tunable(tag: str, label: str) -> Tunable:
     return T(f'tags.{tag}.rules', 'tag_rules', TAGS, label, 'Cards tagged ' + label + ' by rule: type:<signal or source>, gone (a removed page) or a card key pattern, separated by commas', 'tagrules', part=tag)
 
 
+ADVISOR_NAMES = {'card': 'card runs', 'critical': 'Critical cards', 'high': 'High cards', 'slack': 'Slack answers', 'chat': 'Chat'}
+ADVISOR_MODELS = tuple(dict.fromkeys(m for found in advisor.PAIRINGS.values() for m in found if m in PRICES))
+
+
+def advisor_tunables() -> tuple[Tunable, ...]:
+    out = []
+    for use, (model_key, uses_key, tokens_key) in advisor.keys().items():
+        name = ADVISOR_NAMES[use]
+        out.append(T(model_key, advisor.field_of(use), INV, f'Advisor for {name}', f'A stronger Anthropic model the {name} model consults for hard decisions through the advisor tool; empty uses none. '
+                  'Only Anthropic models pair with it, and only the pairings the Claude API allows for the model of this use can be saved', 'choice', choices=('',) + ADVISOR_MODELS, choice_labels={'': 'None'}))
+        out.append(T(uses_key, advisor.field_of(use, 'uses'), INV, f'Advisor consultations for {name}', f'Most times one run of {name} may consult its advisor, {advisor.USES_LOW} to {advisor.USES_HIGH}', 'int', advisor.USES_LOW, advisor.USES_HIGH))
+        out.append(T(tokens_key, advisor.field_of(use, 'tokens'), INV, f'Advisor answer size for {name}', f'Most tokens, thinking included, one advice for {name} may use, {advisor.TOKENS_LOW} to {advisor.TOKENS_HIGH}', 'int', advisor.TOKENS_LOW, advisor.TOKENS_HIGH))
+    return tuple(out)
+
+
 def feature_tunable(key: str, field: str) -> Tunable:
     feature = FEATURE_OF[key]
     return T(key, field, FEATURES, feature.label, feature.help, 'bool')
@@ -268,7 +286,7 @@ STATIC = (
     T('investigate.slack-model', 'investigate_slack_model', INV, 'Slack model', 'Model for questions asked in Slack', 'choice', choices=MODELS),
     T('investigate.language', 'investigate_language', INV, 'Card language', 'Language of what the investigator writes on cards, in its Slack posts and on deploy reports: en (English), or a language a locale pack adds. Answers follow the language of the question', 'choice', choices=card_languages),
     T('chat.model', 'chat_model', INV, 'Chat model', 'Model for messages on the Chat page', 'choice', choices=MODELS),
-    T('chat.effort', 'chat_effort', INV, 'Chat effort', 'Thinking effort of the chat model; empty follows the Slack effort', 'choice', choices=('',) + EFFORTS, choice_labels={'': 'Same as Slack'}),
+    T('chat.effort', 'chat_effort', INV, 'Chat effort', 'Thinking effort of the chat model', 'choice', choices=EFFORTS),
     T('chat.max-tool-calls', 'chat_max_tool_calls', INV, 'Chat tool calls', 'Most tool calls one chat answer may use, 3 to 30; 0 follows the Slack cap', 'int', 0, 30),
     T('page.ask-cap', 'page_ask_cap', INV, 'Page asks per hour', 'Ask the investigator questions from the page per hour, everyone together; re-assessing a deploy report has its own count with the same limit; 0 turns both off', 'int', 0, 100),
     T('chat.max-chars', 'chat_max_chars', INV, 'Chat message length (characters)', 'The longest message one person can send: the Chat page, Slack direct messages and Ask the investigator on the page. Longer messages make bigger prompts, so each costs a little more', 'int', 100, 8000),
@@ -401,7 +419,7 @@ STATIC = (
       'the daily warnings digest with the waiting Warning cards of their tags, and the plug-in digests that name one of their tags. It needs a Mail server that is on, and goes out even while Slack is not set up '
       'or Slack auto-send is off; a responsible with nothing in their tags gets no mail', 'bool'),
 ) + tuple(
-    tag_tunable(tag, label) for tag, label in tags.TAGS.items()) + SIGN_IN_ROLES + MCP_ACCESS
+    tag_tunable(tag, label) for tag, label in tags.TAGS.items()) + SIGN_IN_ROLES + MCP_ACCESS + advisor_tunables()
 
 CONFIG_KEY = {'general.timezone': 'core.timezone', 'access.public-read': 'core.public-read'}
 
@@ -860,11 +878,31 @@ class Live:
             held = self._held_fields()
             if held != self._current.ai_models_held:
                 self._current = dataclasses.replace(self._current, ai_models_held=held)
+            follows = self._chat_follows()
+            if follows != self._current.chat_effort_follows:
+                self._current = dataclasses.replace(self._current, chat_effort_follows=follows)
             self._seen()
         except Exception as e:
             log.warning('admin settings not read, keeping the last ones: %s', error_kind(e))
         finally:
             self._lock.release()
+
+    def chat_effort_given(self) -> bool:
+        held = self.overrides.get('chat.effort')
+        return held.get('value') in EFFORTS if held is not None else self.base.chat_effort_set
+
+    def _chat_follows(self) -> bool:
+        return self.tunables.meta.find_one({'_id': CHAT_EFFORT_MARK}, {'_id': 1}) is None and not self.chat_effort_given()
+
+    def chat_effort_notices(self) -> list[dict]:
+        items = []
+        marker = self.tunables.meta.find_one({'_id': CHAT_EFFORT_MARK}, {'skipped': 1})
+        if marker is not None and marker.get('skipped'):
+            items.append({'id': 'chat-effort-skipped', 'level': 'warn', 'text': msg('settings.chat_effort_skipped')})
+        held = self.overrides.get('chat.effort')
+        if marker is not None and held is not None and held.get('value') not in EFFORTS:
+            items.append({'id': 'chat-effort-empty', 'level': 'info', 'text': msg('settings.chat_effort_empty')})
+        return items
 
     def _held_fields(self) -> tuple[str, ...]:
         found = self.tunables.meta.find_one({'_id': UPGRADE_PENDING}, {'keys': 1})
@@ -1098,6 +1136,23 @@ class Live:
             log.info('the upgrade wrote the models each use billed before as settings: %s', ', '.join(c['key'] for c in done))
         return done
 
+    def upgrade_chat_effort(self) -> list[dict]:
+        meta = self.tunables.meta
+        if meta.find_one({'_id': CHAT_EFFORT_MARK}) is not None:
+            return []
+        self.refresh(force=True)
+        done, skipped = [], False
+        if not self.chat_effort_given():
+            now = self.current()
+            if now.investigate_slack_effort not in EFFORTS:
+                skipped = True
+                log.warning('the chat effort was not set from the Slack effort, which is not one of %s', ', '.join(EFFORTS))
+            elif now.investigate_slack_effort != now.chat_effort:
+                done.append(self.tunables.write('chat.effort', now.investigate_slack_effort, UPGRADE_BY, now.chat_effort))
+        meta.update_one({'_id': CHAT_EFFORT_MARK}, {'$setOnInsert': {'at': iso(utc_now()), 'changed': [c['key'] for c in done]} | ({'skipped': True} if skipped else {})}, upsert=True)
+        self.refresh(force=True)
+        return done
+
     def upgrade_wanted(self) -> list[tuple[str, str, str]]:
         now = dataclasses.replace(self.current(), ai_models_held=())
         provider = now.ai_provider
@@ -1226,6 +1281,8 @@ class Live:
             value = now
         else:
             value = None if raw is None else stored(parse(t, raw, self.base))
+        if raw is not None and (problem := advisor.save_problem(self.current(), key, str(value or ''))):
+            raise Invalid(problem)
         if key == POST_SEV_KEY:
             change = self.set_post_sev(value, by, old)
         elif key in SEV_HOURS_KEYS:

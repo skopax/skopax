@@ -1089,6 +1089,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     keyed_clients = Clients(lambda: settings.ai_provider, provider_keys, lambda k: None, 10.0, 0, anthropic_client)
     live.keyed = keyed_clients.keyed
 
+    def upgrade_chat_effort() -> None:
+        live.upgrade_chat_effort()
+
     def upgrade_models() -> None:
         live.upgrade_models(lambda: any(db[name].find_one(found, {'_id': 1}) is not None for name, found in UPGRADE_EVIDENCE))
 
@@ -1717,7 +1720,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
     async def lifespan(_: FastAPI):
         boot_id = secrets.token_hex(8)
         writer = Writer(instances)
-        runtime.migrate = lambda: migrations.attempt(db, registry, boot_id, writer=writer, steps=(upgrade_models,))
+        runtime.migrate = lambda: migrations.attempt(db, registry, boot_id, writer=writer, steps=(upgrade_models, upgrade_chat_effort))
         checked = False
         try:
             store.ensure_indexes()
@@ -1736,7 +1739,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             await asyncio.to_thread(instances.ensure_indexes)
             await asyncio.to_thread(mcptools_auth.ensure_indexes)
             try:
-                caught_up = await asyncio.to_thread(migrations.wait_and_run, db, registry, boot_id, writer=writer, steps=(upgrade_models,))
+                caught_up = await asyncio.to_thread(migrations.wait_and_run, db, registry, boot_id, writer=writer, steps=(upgrade_models, upgrade_chat_effort))
             except PyMongoError as e:
                 log.warning('%s', msg('migrations.lease_error', error=kind(e)))
                 caught_up = None
@@ -3674,7 +3677,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/admin/ai-uses')
     def get_admin_ai_uses(by: Annotated[str, Depends(require_admin)]) -> dict:
-        return {'uses': aiuses.rows(ai_routes(), settings.ai_provider, store.ledger_since(aiuses.since(clock())), keyed_clients.capabilities, keyed_clients.keyed)}
+        return {'uses': aiuses.rows(ai_routes(), settings.ai_provider, store.ledger_since(aiuses.since(clock())), keyed_clients.capabilities, keyed_clients.keyed, settings)}
 
     @app.get('/api/admin/notices')
     def get_admin_notices(by: Annotated[str, Depends(require_admin)]) -> dict:
@@ -3700,6 +3703,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             items.append({'id': 'ai-key', 'level': 'warn', 'text': msg('aikey.unreadable')})
         if openai_key.status()['unreadable']:
             items.append({'id': 'openai-key', 'level': 'warn', 'text': msg('openaikey.unreadable')})
+        items += live.chat_effort_notices()
         items += aiuses.notices(ai_routes_listed(), settings.ai_provider, keyed_clients.keyed) + plugin_model_notices()
         items += [{'id': f'ai-connection:{name}', 'level': 'warn', 'text': msg('compat.unreadable', name=name)} for name in ai_connections.unreadable()]
         items += [{'id': f'ai-name-clash:{name}', 'level': 'warn', 'text': msg('vertex.name_clash', name=name)} for name in sorted(set(vertex_connections.clashes()) | set(ai_connections.clashes()))]

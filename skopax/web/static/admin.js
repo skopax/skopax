@@ -42,6 +42,8 @@ function setAdminAccess(on) {
     AIU_EDIT = {};
     AIU_PENDING = {};
     AIU_SAID = {};
+    AIU_ADV_SAID = {};
+    AIU_ADV_BUSY = {};
     if (typeof pqcClear === 'function') pqcClear();
     NOTES_SEQ++;
     adminNotes([]);

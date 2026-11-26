@@ -1,5 +1,12 @@
 {
  "page": {
+  "Advisor": "Dan\u0131\u015fman",
+  "Anthropic only": "Yaln\u0131zca Anthropic",
+  "Advisor consultations per run": "\u00c7al\u0131\u015ft\u0131rma ba\u015f\u0131na dan\u0131\u015fman say\u0131s\u0131",
+  "Advisor answer size": "Dan\u0131\u015fman yan\u0131t\u0131n\u0131n boyutu",
+  "advisor": "dan\u0131\u015fman",
+  "est.": "tah.",
+  "Enter a whole number from {0} to {1}": "{0} ile {1} aras\u0131nda bir tam say\u0131 girin",
   "Clear filters \u203a": "Filtreleri temizle \u203a",
   "cards of {0} severity": "{0} \u00f6nem derecesindeki kartlar",
   "cards of every severity": "her \u00f6nem derecesindeki kartlar",

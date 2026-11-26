@@ -79,7 +79,7 @@ The example plug-ins are Apache-2.0, so you can copy them freely. The example ca
 
 Skopax is not published to a package index; only its images are. A plug-in in a repository of its own runs its tests against a clone of Skopax at the release it targets, next to the plug-in's folder. From the plug-in's folder:
 
-    git clone --branch v0.6.2 https://github.com/skopax/skopax ../skopax
+    git clone --branch v0.6.3 https://github.com/skopax/skopax ../skopax
     (cd ../skopax && uv sync --frozen)
     PYTHONPATH=../skopax:. ../skopax/.venv/bin/python -m pytest -q tests
 
@@ -91,7 +91,7 @@ The Skopax image is distroless, so it has no `pip` and no shell. Install the plu
 
 ```dockerfile
 ARG BASE_IMAGE=ghcr.io/skopax/skopax
-ARG SKOPAX_VERSION=0.6.2
+ARG SKOPAX_VERSION=0.6.3
 
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS build
 
@@ -106,7 +106,7 @@ COPY --from=build /plugins /usr/local/lib/python3.15/site-packages/
 ```
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.6.2 -t skopax-hello examples/hello-plugin
+docker build --build-arg SKOPAX_VERSION=0.6.3 -t skopax-hello examples/hello-plugin
 ```
 
 - `BASE_IMAGE` (default `ghcr.io/skopax/skopax`) names the Skopax image to build on, for example a mirror or your own registry. `SKOPAX_VERSION` (default: the current release) picks its tag.
@@ -161,6 +161,7 @@ A plug-in reads the network only through `ctx.http()` and the kit. Pinned TLS (`
 - `kit.browser`: the client of the browser service (`Browser`, `Shot`, `BrowserDown`);
 - `kit.google`: Google service-account sign-in (`GoogleAuth`, `access_key`, `bounded`, `connection_test`) and its refusals (`GoogleError`, `access_card`), shared by the Google plug-ins;
 - `kit.umami`: the Umami client (`Umami`, `UmamiError`, `form_of`, `top_paths`), shared by Umami and the page scan;
+- `kit.nearest`: `closest(wanted, names, limit, key)`, the names most like what was asked for, which the GitHub and GitLab tools use to suggest nearby files and tags;
 - `kit.releases`: `attach_publish`, which names the latest Tag Manager publish on a drop card;
 - `kit.flags`: `scan(tool, text)`, the phrase scanner core runs on tool output and on model calls. Core's `card` and `past_cards` answers are scanned like any tool output. In `past_cards` the fields only Skopax or the investigator write are left out of the scan: the outcome label, the run recap, the answer of each earlier ask, and a mute reason Skopax wrote itself (a mute or known noise with no reason typed, or one carrying exactly the text the page, the board or a chat answer fills in when nothing is typed, marked or not), so a past card marked as known noise does not hold the run's posts. A note, a reason a person typed (even one that only starts like Skopax's sentence), the question of each ask, what people said in Slack, every other field and every log line, ticket or page are scanned as written. `past_cards` answers with short digests by default: the first line of the investigator's own note is left out of the scan like its note, and a person's verdict (resolve reason, Known noise or mute reason, ticket) is scanned as written. A `detail` call returns one whole occurrence and is scanned like a full row. `past_runs` answers are scanned too, the earlier answer and its searches apart from the rest, like a run recap. In the brief, the note of a person's earlier verdict is scanned apart from the card text, so only the hard phrases flag in it; the saved card keeps only the newest verdict's kind, who and when. In the brief, the answer line of an earlier Slack ask is left out like the outcome. A refusal caused by planted text (no cause, no business tag, no absorb pattern, no post to the main channel, no Slack message) is marked held on the tool call, and an argument the model sent outside the tool's schema (a name that is not one of the declared choices, a wrong type) is marked refused input; the Tools page counts both apart from errors. A one-off task after start, in the background, marks the mutes and past cards marked earlier. A standing mute entry is marked only when a done action of the same kind has exactly its key or pattern, was applied within 60 seconds of it, took no typed reason (no reason, a Slack click with no reason in its call, or an action applied from a chat answer), and the entry's reason is exactly the text that action wrote (the page's known noise or mute text, the chat text, or the Slack click text); an entry a later duplicate wrote ("follows #n") is never marked. A past card is marked when the live mute entry that covers its key today, found as a pass finds it, is marked and shows the same reason. A failure, or a mute list that changed while the marks were written, leaves the task unfinished and the next start tries again; any other past card is scanned whole; `open_cards` instead shows a card whose text trips the scanner as held, so one planted card does not hold every run's posts.
 

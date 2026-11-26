@@ -225,6 +225,7 @@ class Job:
     head_of: Callable[[dict], dict | None]
     tries: int = 0
     due: float = 0.0
+    watch: str | None = None
 
 
 class CardPosts:
@@ -266,7 +267,13 @@ class CardPosts:
             if kind in GLOB_KINDS and pattern not in keys:
                 return glob_match(pattern, card['key'])
             return card['key'] == pattern
-        self._add(Job(match, lambda card: head))
+        self._add(Job(match, lambda card: head, watch=pattern if kind == 'severity' else None))
+
+    def skipped(self, key: str, reason: str) -> None:
+        try:
+            self.store.add_activity('slack', SERVER_BY, msg('slack.redraw_skipped', reason=msg(reason)), key=key)
+        except Exception as e:
+            log.warning('the skipped redraw of %s was not recorded: %s', key, error_kind(e))
 
     def triaged(self, key: str, before: dict) -> None:
         def head(card: dict) -> dict | None:
@@ -341,8 +348,12 @@ class CardPosts:
             jobs, self._jobs = due + self._jobs, []
         if not jobs:
             return 0
+        watched = {j.watch for j in jobs if j.watch}
         try:
             if not self.slack.enabled:
+                for key in watched:
+                    if self._posted(key):
+                        self.skipped(key, 'slack.skip_off')
                 return 0
             state = self.store.load()
         except Exception as e:
@@ -350,6 +361,10 @@ class CardPosts:
             return 0
         self._checker()
         plan = self._plan(state, jobs)
+        self._tl.watch = watched
+        for key in watched - {entry[0]['key'] for entry in plan}:
+            if self._posted(key):
+                self.skipped(key, 'slack.skip_deleted' if self._deleted(key) else 'slack.skip_nohead')
         started, done = self.timer(), 0
         for index, (card, head, tries, mute) in enumerate(plan):
             if index and self.timer() - started > self.deadline_s - CALL_TIMEOUT_S:
@@ -388,7 +403,7 @@ class CardPosts:
     def _defer(self, rest: list, counted: bool = True) -> None:
         due = self.timer() + self.retry_after_s
         step = 1 if counted else 0
-        retried = [Job(lambda c, keys, mute, k=card['key']: c['key'] == k, lambda c, h=head: h, tries + step, due) for card, head, tries, _ in rest if not counted or tries < RETRIES]
+        retried = [Job(lambda c, keys, mute, k=card['key']: c['key'] == k, lambda c, h=head: h, tries + step, due, card['key'] if card['key'] in getattr(self._tl, 'watch', ()) else None) for card, head, tries, _ in rest if not counted or tries < RETRIES]
         with self._lock:
             self._later += retried
 
@@ -497,8 +512,10 @@ class CardPosts:
         except SlackError as e:
             if e.code not in GONE:
                 log.warning('the Slack post of %s was not rewritten: %s', key, error_kind(e))
+                self._skip_watched(key)
                 return 0
             log.info('the Slack post of %s can no longer be rewritten (%s), it is left as it is', key, e.code)
+            self._skip_watched(key, 'slack.skip_deleted')
             try:
                 self.store.slack_post_drawn(key, post['ts'], {'sig': drawn_sig(card, mute, who), 'at': iso(utc_now()), 'gone': e.code})
             except Exception as e2:
@@ -506,6 +523,7 @@ class CardPosts:
             return 0
         except Exception as e:
             log.warning('the Slack post of %s was not rewritten: %s', key, error_kind(e))
+            self._skip_watched(key)
             return 0
         stored = False
         if fill:
@@ -520,6 +538,22 @@ class CardPosts:
             log.warning('the Slack post of %s was rewritten but not recorded: %s', key, error_kind(e))
         log.info('Slack post of %s rewritten in place: %s', key, (head or post['head']).get('kind'))
         return 1
+
+    def _posted(self, key: str) -> bool:
+        try:
+            return bool((self.store.anomaly(key).get('slackPost') or {}).get('ts'))
+        except Exception:
+            return False
+
+    def _deleted(self, key: str) -> bool:
+        try:
+            return gone_for_good((self.store.anomaly(key).get('slackPost') or {}).get('drawn') or {}, self.clock())
+        except Exception:
+            return False
+
+    def _skip_watched(self, key: str, reason: str = 'slack.skip_error') -> None:
+        if key in getattr(self._tl, 'watch', ()):
+            self.skipped(key, reason)
 
     def _checker(self) -> Callable[[str], str | None]:
         try:

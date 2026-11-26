@@ -6,6 +6,7 @@ from skopax.jiralinks import SWEEP_BY
 from skopax.postdeploy import SERVER_BY
 from skopax import clock
 
+ADVISOR = 'advisor'
 MACHINE_BY = frozenset({POD_BY, SERVER_BY, SWEEP_BY})
 TOP = 10
 RUN_LIST = 100
@@ -35,10 +36,10 @@ def tokens() -> dict:
     return dict.fromkeys(PARTS, 0)
 
 
-def add(into: dict, row: dict) -> None:
+def add(into: dict, row: dict, counted: bool = True) -> None:
     for p in PARTS + ('total',):
         into['usd'][p] += float((row.get('usd') or {}).get(p) or 0)
-    for p in PARTS:
+    for p in PARTS if counted else ():
         into['tokens'][p] += int((row.get('tokens') or {}).get(p) or 0)
 
 
@@ -66,7 +67,8 @@ def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spen
     first, bucket, keys = window(days, today)
     per = {k: dict.fromkeys(SOURCES, 0.0) for k in keys}
     cache = {k: {s: {'usd': money(), 'tokens': tokens()} for s in SOURCES} for k in keys}
-    src = {s: {'calls': 0, 'runs': set(), 'usd': money(), 'tokens': tokens(), 'models': {}} for s in SOURCES}
+    src = {s: {'calls': 0, 'runs': set(), 'usd': money(), 'tokens': tokens(), 'models': {}, 'advisor': {'calls': 0, 'runs': set(), 'usd': 0.0, 'estimated': 0.0, 'models': set()}} for s in SOURCES}
+    advised = 0.0
     models: dict[str, dict] = {}
     cards: dict[str, dict] = {}
     people: dict[str, dict] = {}
@@ -80,27 +82,42 @@ def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spen
         model = r.get('model') or '?'
         rid = r.get('runId')
         x = src[s]
-        n = int(r.get('calls') or 1)
+        by_advisor = r.get('role') == ADVISOR
+        n = 0 if by_advisor else int(r.get('calls') or 1)
         x['calls'] += n
-        add(x, r)
-        add(whole, r)
-        x['models'][model] = x['models'].get(model, 0) + n
+        add(x, r, not by_advisor)
+        add(whole, r, not by_advisor)
+        if by_advisor:
+            x['advisor']['calls'] += int(r.get('calls') or 1)
+            x['advisor']['usd'] += total
+            if r.get('estimated'):
+                x['advisor']['estimated'] += total
+            x['advisor']['models'].add(model)
+            if rid:
+                x['advisor']['runs'].add(rid)
+            advised += total
+        else:
+            x['models'][model] = x['models'].get(model, 0) + n
         m = models.setdefault(model, {'model': model, 'calls': 0, 'usd': 0.0})
         m['calls'] += n
         m['usd'] += total
         b = bucket_of(r, bucket)
         if b in per:
             per[b][s] += total
-            add(cache[b][s], r)
+            add(cache[b][s], r, not by_advisor)
         card_keys = [] if CHAT in (s, r.get('gateFor'), r.get('talkFor')) else r.get('keys') or []
         if rid:
             x['runs'].add(rid)
             run = runs.setdefault(rid, {'id': rid, 'at': r.get('at') or '', 'source': s, 'by': r.get('by'), 'keys': card_keys, 'effort': r.get('effort'),
-                                        'models': {}, 'calls': 0, 'usd': money(), 'tokens': tokens()})
+                                        'models': {}, 'calls': 0, 'usd': money(), 'tokens': tokens(), 'advisor': 0.0, 'advisorModels': {}})
             run['at'] = min(run['at'], r.get('at') or run['at'])
             run['calls'] += n
-            run['models'][model] = run['models'].get(model, 0) + n
-            add(run, r)
+            if by_advisor:
+                run['advisor'] += total
+                run['advisorModels'][model] = run['advisorModels'].get(model, 0) + 1
+            else:
+                run['models'][model] = run['models'].get(model, 0) + n
+            add(run, r, not by_advisor)
         for k in card_keys:
             c = cards.setdefault(k, {'key': k, 'runs': set(), 'usd': 0.0})
             c['usd'] += total / len(card_keys)
@@ -117,12 +134,13 @@ def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spen
     for s in SOURCES:
         x = src[s]
         by_source.append({'source': s, 'calls': x['calls'], 'runs': len(x['runs']), 'usd': rounded(x['usd']), 'cacheHit': hit_share(x['tokens']),
-                          'avgRun': round(x['usd']['total'] / len(x['runs']), 4) if x['runs'] else None, 'models': x['models']})
+                          'avgRun': round(x['usd']['total'] / len(x['runs']), 4) if x['runs'] else None, 'models': x['models'],
+                          'advisor': {'calls': x['advisor']['calls'], 'runs': len(x['advisor']['runs']), 'usd': round(x['advisor']['usd'], 4), 'estimatedUsd': round(x['advisor']['estimated'], 4), 'models': sorted(x['advisor']['models'])} if x['advisor']['calls'] else None})
     newest = sorted(runs.values(), key=lambda run: run['at'], reverse=True)[:RUN_LIST]
     return {
         'days': days, 'from': first, 'to': today, 'bucket': bucket,
         'today': {'day': today, 'spent': round(spent, 4), 'cap': cap},
-        'total': {'usd': round(whole['usd']['total'], 4), 'calls': sum(x['calls'] for x in src.values()), 'runs': len(runs), 'cacheHit': hit_share(whole['tokens'])},
+        'total': {'usd': round(whole['usd']['total'], 4), 'calls': sum(x['calls'] for x in src.values()), 'runs': len(runs), 'cacheHit': hit_share(whole['tokens']), 'advisorUsd': round(advised, 4)},
         'avg': {'slackAsk': by_source[SOURCES.index('slack')]['avgRun'], 'podRun': by_source[SOURCES.index('pod')]['avgRun']},
         'perBucket': [{'t': k, **{s: round(per[k][s], 4) for s in SOURCES}, 'total': round(sum(per[k].values()), 4)} for k in keys],
         'sources': by_source,
@@ -139,6 +157,6 @@ def run_row(run: dict, meta: dict) -> dict:
     private = CHAT in (run['source'], meta.get('trigger'))
     return {'id': run['id'], 'at': meta.get('startedAt') or run['at'], 'source': run['source'], 'by': run['by'], 'trigger': meta.get('trigger'), 'outcome': meta.get('outcome'),
             'what': CHAT_WHAT if private else what(meta, run['keys']), 'keys': [] if private else meta.get('keys') or run['keys'],
-            'model': max(run['models'], key=run['models'].get), 'effort': run['effort'],
-            'calls': run['calls'], 'toolCalls': len(meta['toolCalls']) if 'toolCalls' in meta else None, 'seconds': seconds(meta),
+            'model': max(run['models'] or run['advisorModels'], key=(run['models'] or run['advisorModels']).get) if run['models'] or run['advisorModels'] else None, 'effort': run['effort'],
+            'calls': run['calls'], 'advisorUsd': round(run['advisor'], 4), 'advisorModel': max(run['advisorModels'], key=run['advisorModels'].get) if run['advisorModels'] else None, 'advisorCalls': int(meta.get('advisorCalls') or 0), 'toolCalls': len(meta['toolCalls']) if 'toolCalls' in meta else None, 'seconds': seconds(meta),
             'usd': rounded(run['usd']), 'cacheHit': hit_share(run['tokens'])}

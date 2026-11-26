@@ -3,12 +3,13 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Callable
 
-from skopax import tracing
-from skopax.ai import THINK_OFF, provider_of_ref, wrap
+from skopax import advisor, tracing
+from skopax.ai import ADVISOR, ANTHROPIC, THINK_OFF, Usage, capabilities_of, provider_of_ref, wrap
 from skopax.ai.anthropic_ai import CACHE, FALLBACK_BETA, answer_text, cache_marked
 from skopax.errkind import kind as error_kind
 from skopax.investigator.pricing import charge, default_model, known, split
 from skopax.investigator.web import is_web_tool
+from skopax.messages import msg
 
 log = logging.getLogger('skopax.investigator.runner')
 
@@ -21,7 +22,8 @@ LIMIT_TEXT = 'Tool-call limit reached for this run: call no more tools and give 
 CUT_TEXT = 'cut off at max_tokens and not run; send it again shorter'
 CUT_ERROR = 'tool call cut off at max_tokens'
 BROKEN_TEXT = 'the tool input was not valid JSON and the tool did not run; send it again'
-PAUSE_ERROR = 'the web tools kept pausing the turn'
+PAUSE_ERROR = 'the server tools kept pausing the turn'
+ADVISOR_OVER = 'the advisor was consulted more often than the run allows'
 WEB_REFUSED = 'web tools refused by the API, the run went on without them'
 NO_SYSTEM = 'the system prompt is empty'
 
@@ -35,6 +37,7 @@ class RunConfig:
     cache_ttl: str | None = None
     role: str = 'card'
     capabilities: frozenset[str] | None = None
+    advisor: advisor.Plan | None = None
 
 
 @dataclass
@@ -46,6 +49,14 @@ class Result:
     usd: float = 0.0
     error: str | None = None
     models: list = field(default_factory=list)
+    advisor_calls: int = 0
+    advisor_errors: int = 0
+
+
+def note(result, text: str) -> None:
+    held = result.error or ''
+    if text not in held:
+        result.error = (held + '; ' + text if held else text)[:ERROR_LIMIT]
 
 
 def stop(result: Result, why) -> bool:
@@ -65,10 +76,21 @@ class Runner:
         self.config = config
         self.clock = clock
         self.tag = tag
+        self.plan: advisor.Plan | None = None
+
+    def advising(self) -> advisor.Plan | None:
+        plan = self.config.advisor
+        if plan is None or self.ai.provider != ANTHROPIC:
+            return None
+        held = self.config.capabilities if self.config.capabilities is not None else capabilities_of(self.ai)
+        return plan if ADVISOR in held and plan.model in advisor.choices(self.config.model) else None
 
     def request(self, system: str, tools: list[dict], messages: list[dict]):
         caps = self.config.capabilities
         extra = {} if caps is None else ({} if 'thinking' in caps else {'thinking': THINK_OFF}) | ({} if 'fallbacks' in caps else {'fallbacks': False})
+        if self.plan is not None:
+            extra['advisor'] = self.plan.tool()
+            extra['fallbacks'] = False
         return self.ai.turn(self.config.model, self.config.effort, system, tools, messages, MAX_TOKENS, self.config.cache_ttl, **extra)
 
     def count(self, result: Result, turn, day: str) -> None:
@@ -80,16 +102,37 @@ class Runner:
         cost, priced_as = charge(served, self.ai.provider, usage)
         priced = priced_as or served
         if priced_as is not None:
-            result.error = f'unpriced model {served}, charged at the highest known rate'[:ERROR_LIMIT]
+            note(result, f'unpriced model {served}, charged at the highest known rate')
         result.usd += cost
         self.store.add_spend(day, cost)
         self.ledger(served, priced, usage, day)
+        for model, used in turn.advisor:
+            self.count_advisor(result, model, used, day)
 
-    def ledger(self, served: str, priced: str, usage, day: str) -> None:
+    def count_advisor(self, result: Result, model: str, usage, day: str, estimated: bool = False) -> None:
+        cost, priced_as = charge(model, self.ai.provider, usage)
+        if priced_as is not None:
+            note(result, f'unpriced advisor model {model}, charged at the highest known rate')
+        result.usd += cost
+        self.store.add_spend(day, cost)
+        self.ledger(model, priced_as or model, usage, day, True, estimated)
+
+    def estimate_advisor(self, result: Result, turn, missing: int, plan: advisor.Plan, day: str) -> None:
+        used = turn.usage
+        guess = Usage(input=used.input + used.cache_read + used.cache_write + used.cache_write_long, output=plan.tokens)
+        note(result, msg('advisor.usage_missing'))
+        for _ in range(missing):
+            self.count_advisor(result, plan.model, guess, day, True)
+
+    def ledger(self, served: str, priced: str, usage, day: str, as_advisor: bool = False, estimated: bool = False) -> None:
         if self.tag is None:
             return
         try:
             row = {**self.tag, 'day': day, 'provider': self.ai.provider, 'model': served, 'effort': self.config.effort, **split(priced, usage)}
+            if as_advisor:
+                row['role'] = 'advisor'
+            if estimated:
+                row['estimated'] = True
             if priced != served:
                 row['pricedAs'] = priced
             self.store.add_ledger(row)
@@ -108,6 +151,11 @@ class Runner:
         if not str(system or '').strip():
             result.outcome, result.error = 'failed', NO_SYSTEM
             return result
+        self.plan = plan = self.advising()
+        if self.config.advisor is not None and plan is None:
+            dropped = msg('advisor.dropped', advisor=self.config.advisor.model, executor=self.config.model)
+            log.warning('run %s: %s', (self.tag or {}).get('runId'), dropped)
+            note(result, dropped)
         start = self.clock()
         messages = [{'role': 'user', 'content': brief}]
         tools = toolbox.definitions()
@@ -122,10 +170,16 @@ class Runner:
             try:
                 resp = self.request(system, tools, messages)
             except self.ai.bad_request as e:
+                if result.turns == 0 and plan is not None:
+                    said = msg('advisor.refused', why=error_kind(e))
+                    log.warning('run %s: %s', (self.tag or {}).get('runId'), said)
+                    self.plan = plan = None
+                    note(result, said)
+                    continue
                 if result.turns == 0 and any(is_web_tool(t) for t in tools):
                     log.warning('run %s: %s: %s', (self.tag or {}).get('runId'), WEB_REFUSED, error_kind(e))
                     tools = [t for t in tools if not is_web_tool(t)]
-                    result.error = f'{WEB_REFUSED}: {error_kind(e)}'[:ERROR_LIMIT]
+                    note(result, f'{WEB_REFUSED}: {error_kind(e)}')
                     continue
                 result.outcome, result.error = 'failed', error_kind(e)[:ERROR_LIMIT]
                 break
@@ -134,6 +188,15 @@ class Runner:
                 break
             result.turns += 1
             self.count(result, resp, day)
+            if plan is not None:
+                found, failed = advisor.read_blocks(resp.native)
+                result.advisor_calls += found - failed
+                result.advisor_errors += failed
+                if found - failed > len(resp.advisor):
+                    self.estimate_advisor(result, resp, found - failed - len(resp.advisor), plan, day)
+                if result.advisor_calls > plan.uses:
+                    result.outcome, result.error = 'capped', ADVISOR_OVER
+                    break
             if resp.stop == 'refusal':
                 result.outcome = 'refused'
                 break
@@ -142,7 +205,7 @@ class Runner:
                 served(resp.server)
             if resp.stop == 'pause_turn':
                 pauses += 1
-                if pauses > MAX_PAUSES:
+                if pauses > MAX_PAUSES + (plan.uses if plan is not None else 0):
                     result.outcome, result.error = 'failed', PAUSE_ERROR
                     break
                 continue

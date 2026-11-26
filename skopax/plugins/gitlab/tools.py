@@ -5,11 +5,13 @@ from collections.abc import Callable
 
 from skopax.contract import Context, Denied, Missing, ReadError, SourceDown, Tool, iso
 from skopax.messages import msg
+from skopax.kit.nearest import NEAR, closest, entries
 from skopax.plugins.gitlab.client import PER_PAGE, PERMISSIONS, SEARCH_HITS, branch_of, find, similar_projects, target
 
 MAX_FILE_LINES = 400
 HINT_ROOM = 1600
 TREE_ENTRIES = 20
+TREE_RANKED = 100
 TREE_STEPS = 6
 TREE_BUDGET_S = 10
 MR_STATES = ('opened', 'merged', 'closed', 'all')
@@ -54,8 +56,10 @@ def span(lines: str | None, total: int | None = None) -> tuple[int, int]:
         raise refused('lines must look like "120" or "120-160"')
     first = int(m.group(1))
     last = int(m.group(2) or first)
+    if first < 1:
+        raise refused(msg('gitlab.lines_from_one'))
     if last < first:
-        raise refused('lines must go up: "120-160"')
+        raise refused('lines must go up, written like "120-160"')
     return first, min(last, first + MAX_FILE_LINES - 1)
 
 
@@ -145,19 +149,22 @@ def bridge_row(b: dict) -> dict:
 
 def nearby(gitlab, a: dict, project: dict) -> str:
     ref = ref_of(a, project)
-    folder = req(a, 'path').strip('/')
+    asked = req(a, 'path').strip('/')
+    folder = asked
     end = time.monotonic() + TREE_BUDGET_S
     for _ in range(TREE_STEPS):
         if time.monotonic() > end:
             return ''
+        exact = folder == asked
         try:
-            rows = gitlab.tree(project['id'], folder, ref, TREE_ENTRIES)
+            rows = gitlab.tree(project['id'], folder, ref, TREE_ENTRIES if exact else TREE_RANKED)
         except Missing:
             rows = []
         except Exception:
             return ''
         if rows:
-            names = [(str(r.get('path') or r.get('name')) + ('/' if r.get('type') == 'tree' else '')) for r in rows[:TREE_ENTRIES] if isinstance(r, dict)]
+            names = [(str(r.get('path') or r.get('name')) + ('/' if r.get('type') == 'tree' else '')) for r in rows if isinstance(r, dict)]
+            names = names[:TREE_ENTRIES] if exact else entries(asked.rpartition('/')[2], names, NEAR)
             return msg('gitlab.hint.nearby', folder=folder or msg('gitlab.hint.root'), ref=ref, names=', '.join(names))
         if not folder:
             return ''
@@ -165,7 +172,40 @@ def nearby(gitlab, a: dict, project: dict) -> str:
     return ''
 
 
+def missing_refs(gitlab, project: dict, refs: list[str]) -> list[str]:
+    gone = []
+    for ref in dict.fromkeys(refs):
+        try:
+            gitlab.commit(project['id'], ref)
+        except Missing:
+            gone.append(ref)
+        except Exception:
+            return []
+    return gone
+
+
+def tag_hint(gitlab, project: dict, refs: list[str], repo: str) -> str:
+    try:
+        names = gitlab.tags(project['id'])
+    except Exception:
+        return ''
+    near = closest(refs, names, NEAR)
+    return msg('gitlab.hint.tags', repo=repo, tags=', '.join(near)) if near else ''
+
+
+def no_ref(gitlab, project: dict, a: dict) -> ReadError | None:
+    asked = str(a.get('ref') or '').strip()
+    if not asked or not missing_refs(gitlab, project, [asked]):
+        return None
+    repo = req(a, 'repo')
+    return ReadError(404, msg('gitlab.no_ref', ref=asked, repo=repo, permission=PERMISSIONS['code']) + tag_hint(gitlab, project, [asked], repo), HINT_ROOM)
+
+
 def no_file(a: dict, project: dict, gitlab=None) -> ReadError:
+    if gitlab is not None:
+        wrong = no_ref(gitlab, project, a)
+        if wrong is not None:
+            return wrong
     text = msg('gitlab.no_file', path=req(a, 'path'), repo=req(a, 'repo'), ref=ref_of(a, project), permission=PERMISSIONS['code'])
     return ReadError(404, text + (nearby(gitlab, a, project) if gitlab is not None else ''), HINT_ROOM)
 
@@ -177,6 +217,8 @@ def read_file(gitlab, a: dict):
     except Missing:
         raise no_file(a, project, gitlab) from None
     first, last = span(a.get('lines'), len(lines))
+    if first > len(lines) and lines:
+        raise refused(msg('gitlab.lines_past_end', lines=a.get('lines'), total=len(lines)))
     return '\n'.join(f'{i}: {lines[i - 1]}' for i in range(first, min(last, len(lines)) + 1))
 
 
@@ -237,7 +279,8 @@ def compare(gitlab, a: dict):
         old_sha, new_sha = walk_back(gitlab, project['id'], old, old_back), walk_back(gitlab, project['id'], new, new_back)
         body = gitlab.compare(project['id'], old_sha, new_sha)
     except Missing:
-        raise ReadError(404, msg('gitlab.no_refs', old=shown['from'], new=shown['to'], repo=name, permission=PERMISSIONS['code'])) from None
+        gone = missing_refs(gitlab, project, [old, new])
+        raise ReadError(404, msg('gitlab.no_refs', old=shown['from'], new=shown['to'], repo=name, permission=PERMISSIONS['code']) + (tag_hint(gitlab, project, gone, name) if gone else ''), HINT_ROOM) from None
     out = {'repo': name, **shown, 'url': body.get('web_url')}
     out |= ({'fromCommit': old_sha[:8]} if old_back else {}) | ({'toCommit': new_sha[:8]} if new_back else {})
     notes = (['from and to are the same commit: nothing changed'] if body.get('compare_same_ref') else []) + \

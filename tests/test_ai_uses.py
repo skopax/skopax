@@ -250,7 +250,7 @@ def test_ai_uses_api_lists_every_use_with_price_and_problem(store: Store):
     assert got.status_code == 200 and anon.status_code in (401, 403)
     assert (refused.status_code, refused.json()['detail']) == (403, 'This needs the admin role.')
     assert [r['use'] for r in got.json()['uses']] == USES
-    assert set(rows['card']) == {'use', 'label', 'setting', 'model', 'provider', 'company', 'price', 'avgCost7d', 'problem', 'fit'}
+    assert set(rows['card']) == {'use', 'label', 'setting', 'model', 'provider', 'company', 'price', 'avgCost7d', 'problem', 'fit', 'advisor'}
     assert (rows['card']['label'], rows['card']['setting'], rows['card']['model'], rows['card']['company']) == ('Card runs', 'investigate.model', 'claude-opus-5-5', 'Anthropic')
     assert rows['card']['price'] == {'input': 4.0, 'output': 20.0} and rows['card']['fit'] == 'ok'
     assert rows['card']['avgCost7d'] == 6.0 and rows['high']['avgCost7d'] == 4.0 and rows['critical']['avgCost7d'] is None and rows['gate']['avgCost7d'] == 0.1
@@ -589,3 +589,83 @@ def test_a_use_whose_upgrade_write_failed_keeps_billing_the_provider_it_billed_b
     # then
     assert pending['keys'] == ['investigate.model']
     assert route == ('openai', 'gpt-6.2-astra', None)
+
+
+def chat_effort_changes(store: Store) -> list[tuple[str, str, str]]:
+    return [(r['key'], r['old'], r['new']) for r in store.db['tunable_changes'].find({'by': 'upgrade', 'key': 'chat.effort'})]
+
+
+def test_the_upgrade_writes_the_slack_effort_into_an_unset_chat_effort_once_and_the_two_are_independent_after(store: Store):
+    # given
+    s = dataclasses.replace(settings(), investigate_slack_effort='high')
+
+    # when
+    with TestClient(create_app(s, store)) as first:
+        first_effort = first.app.state.investigator.chat_effort
+        first.put('/api/admin/settings', json={'key': 'investigate.slack-effort', 'value': 'low'}, headers=AUTH)
+        second_effort = first.app.state.investigator.chat_effort
+    with TestClient(create_app(dataclasses.replace(s, investigate_slack_effort='low'), store)) as again:
+        again_effort = again.app.state.investigator.chat_effort
+
+    # then
+    assert chat_effort_changes(store) == [('chat.effort', 'medium', 'high')]
+    assert (first_effort, second_effort, again_effort) == ('high', 'high', 'high')
+
+
+def test_the_upgrade_leaves_a_chat_effort_that_was_given_alone(store: Store):
+    # given
+    admin_set(store, 'chat.effort', 'xhigh')
+    s = dataclasses.replace(settings(), investigate_slack_effort='high')
+
+    # when
+    with TestClient(create_app(s, store)) as c:
+        effort = c.app.state.investigator.chat_effort
+
+    # then
+    assert effort == 'xhigh' and chat_effort_changes(store) == []
+
+
+def test_the_upgrade_turns_a_stored_empty_chat_effort_into_the_slack_effort(store: Store):
+    # given
+    admin_set(store, 'chat.effort', '')
+    s = dataclasses.replace(settings(), investigate_slack_effort='low')
+
+    # when
+    with TestClient(create_app(s, store)) as c:
+        effort = c.app.state.investigator.chat_effort
+
+    # then
+    assert effort == 'low' and chat_effort_changes(store) == [('chat.effort', 'medium', 'low')]
+
+
+def test_chat_follows_the_slack_effort_until_the_upgrade_step_has_run_and_stays_put_after():
+    # given
+    from skopax.tunables import Live, TunableStore
+    import mongomock
+
+    db = mongomock.MongoClient().db
+    live = Live(dataclasses.replace(settings(), investigate_slack_effort='high'), TunableStore(db))
+    live.refresh(force=True)
+
+    # when
+    before = (live.current().chat_effort_follows, live.current().chat_effort)
+    live.upgrade_chat_effort()
+    after = (live.current().chat_effort_follows, live.current().chat_effort)
+
+    # then
+    assert before == (True, 'medium') and after == (False, 'high')
+
+
+def test_a_slack_effort_that_is_not_a_level_skips_the_chat_effort_write_with_a_notice_and_does_not_retry(store: Store):
+    # given
+    s = dataclasses.replace(settings(), investigate_slack_effort='extreme')
+
+    # when
+    with TestClient(create_app(s, store)) as c:
+        with TestClient(create_app(s, store)) as again:
+            notices = again.get('/api/admin/notices', headers=AUTH).json()
+    mark = store.db['tunables_rev'].find_one({'_id': 'upgrade:chat-effort'})
+
+    # then
+    assert chat_effort_changes(store) == [] and mark['skipped'] is True
+    assert 'chat-effort-skipped' in [n['id'] for n in notices['items']]

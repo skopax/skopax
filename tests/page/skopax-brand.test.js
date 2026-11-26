@@ -162,7 +162,7 @@ async function aMissingOrUnreadableBrandBlobStillGetsTheFallbackLine() {
   //then
   for (const page of [missing, unreadable]) {
     assert.deepStrictEqual(page.errors, []);
-    assert.strictEqual(page.doc.getElementById('attribution').textContent, 'Skopax 0.6.2 \u00b7 skopax.io');
+    assert.strictEqual(page.doc.getElementById('attribution').textContent, 'Skopax 0.6.3 \u00b7 skopax.io');
     assert.strictEqual(page.doc.getElementById('attribution').getAttribute('href'), 'https://skopax.io');
     page.w.close();
   }

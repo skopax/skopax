@@ -54,13 +54,22 @@ const USES = [['card', 'Card runs', 'investigate.model'], ['critical', 'Critical
   ['chat', 'Chat', 'chat.model'], ['gate', 'Gate and thread summaries', 'investigate.gate-model'], ['review', 'Daily self-review', 'self-review.model'], ['plugin', 'Plug-in AI', 'plugai.model']];
 const COSTS = {card: 0.42, critical: 1.234, high: 0.0123, slack: 0.05, chat: 0.004, gate: 0.001, review: 0.3, plugin: null};
 
-function uses(list, extra) {
+const LOOPS = ['card', 'critical', 'high', 'slack', 'chat'];
+const ADVISOR_CHOICES = ['claude-opus-5-5'];
+
+function advisorOf(use, own, adv) {
+  if (LOOPS.indexOf(use) < 0) return null;
+  const capable = provider(own) === 'anthropic';
+  return shaped('advisor', Object.assign({model: '', choices: capable ? ADVISOR_CHOICES : [], maxUses: 3, maxTokens: 2000, capable, problem: null}, adv || {}));
+}
+
+function uses(list, extra, adv) {
   const value = (key) => { const i = list.find((x) => x.key === key); return i ? i.value : ''; };
   const card = value('investigate.model');
   return USES.map(([use, label, setting]) => {
     const own = setting === 'plugai.model' ? 'claude-sonnet-5-5' : value(setting) || card;
     const cheap = provider(own).indexOf('compat:') === 0;
-    return Object.assign(shaped('uses', {use, label, setting, model: own, provider: provider(own), company: company(own), price: setting === 'plugai.model' ? null : PRICES[own] || null, avgCost7d: COSTS[use], problem: null, fit: cheap ? 'cheap' : 'ok'}), (extra || {})[use] || {});
+    return Object.assign(shaped('uses', {use, label, setting, model: own, provider: provider(own), company: company(own), price: setting === 'plugai.model' ? null : PRICES[own] || null, avgCost7d: COSTS[use], problem: null, fit: cheap ? 'cheap' : 'ok', advisor: advisorOf(use, own, (adv || {})[use])}), (extra || {})[use] || {});
   });
 }
 
@@ -107,7 +116,7 @@ async function boot(template, opts) {
   vc.on('jsdomError', (e) => errors.push(String(e.message || e)));
   const state = {rev: 1, updatedAt: iso(0), sweptIso: iso(1), nextIso: new Date(Date.now() + 3600000).toISOString(), sources: {prom: 'ok'}, summary: {level: 'ok', headline: 'x', points: [], at: iso(1)},
     anomalies: [], services: [], history: [], logTop: [], routes: [], cloudflare: {checks: [], edge: [], certs: []}, pmm: [], deploys: []};
-  const srv = {items: o.items || settings(), extra: o.uses || {}, conns: o.connections || [], allowPrivate: !!o.allowPrivate, refuse: null, test: shaped('test', {ok: true, tools: true, summary: 'Answers, uses tools', ms: 300}), hold: null, rows: o.rows || null,
+  const srv = {items: o.items || settings(), extra: o.uses || {}, adv: o.advisor || {}, conns: o.connections || [], allowPrivate: !!o.allowPrivate, refuse: null, test: shaped('test', {ok: true, tools: true, summary: 'Answers, uses tools', ms: 300}), hold: null, rows: o.rows || null,
     usesFail: o.usesFail || 0, putHold: null, inflight: 0, most: 0, lastTest: null,
     vertex: o.vertex || null, regions: o.regions || REGIONS, vertexFail: o.vertexFail || 0, vtest: vertexTest(), vlast: null, vhold: null};
   const keyStatus = {using: 'admin', admin: true, config: false, updatedBy: ADMIN_USER, updatedAt: iso(30), note: null};
@@ -125,7 +134,7 @@ async function boot(template, opts) {
         if (p.startsWith('/api/admin')) {
           calls.push([method, p, body]);
           if (p === '/api/admin/anthropic-key' || p === '/api/admin/openai-key') return ok(keyStatus);
-          if (p === '/api/admin/ai-uses') return srv.usesFail ? bad(srv.usesFail, 'down') : ok({uses: srv.rows || uses(srv.items, srv.extra)});
+          if (p === '/api/admin/ai-uses') return srv.usesFail ? bad(srv.usesFail, 'down') : ok({uses: srv.rows || uses(srv.items, srv.extra, srv.adv)});
           if (p === '/api/admin/ai-connections') {
             const snap = JSON.parse(JSON.stringify(shaped('connections', {items: srv.conns, allowPrivate: srv.allowPrivate})));
             if (srv.connHold) { const h = srv.connHold; srv.connHold = null; await h; }
@@ -173,6 +182,13 @@ async function boot(template, opts) {
             const next = Object.assign({}, was, {value: was.base, source: 'default', by: null, at: null});
             srv.items = srv.items.map((i) => i.key === key ? next : i);
             return ok({item: next, change: {}});
+          }
+          if (p === '/api/admin/settings' && method === 'PUT' && /-advisor(-uses|-tokens)?$/.test(body.key)) {
+            if (srv.refuse) return bad(422, srv.refuse);
+            const m = /^(.*)-advisor(-uses|-tokens)?$/.exec(body.key), use = USES.find((x) => x[2] === m[1])[0];
+            const field = m[2] === '-uses' ? 'maxUses' : m[2] === '-tokens' ? 'maxTokens' : 'model';
+            srv.adv[use] = Object.assign({}, srv.adv[use], {[field]: field === 'model' ? body.value : Number(body.value)});
+            return ok({item: {key: body.key, value: body.value, live: true, source: 'admin'}, change: {}});
           }
           if (p === '/api/admin/settings' && method === 'PUT') {
             srv.inflight++;

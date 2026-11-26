@@ -1,7 +1,8 @@
 import datetime as dt
 from collections.abc import Callable, Iterable
 
-from skopax.ai import CAPABILITIES, COMPAT, company_of, label_of, provider_of_ref
+from skopax import advisor
+from skopax.ai import COMPAT, UNDECLARED, company_of, label_of, provider_of_ref
 from skopax.investigator import pricing
 from skopax.messages import msg
 
@@ -40,7 +41,7 @@ def since(now: float) -> str:
     return (dt.datetime.fromtimestamp(now, dt.UTC) - dt.timedelta(days=DAYS - 1)).strftime('%Y-%m-%d')
 
 
-def problem_of(use: str, provider: str, model: str, fallback: str | None, default: str, caps: frozenset[str] = CAPABILITIES, keyed: Callable[[str], bool] | None = None) -> str | None:
+def problem_of(use: str, provider: str, model: str, fallback: str | None, default: str, caps: frozenset[str] = UNDECLARED, keyed: Callable[[str], bool] | None = None) -> str | None:
     if fallback and not pricing.known(fallback):
         return msg('ai.model_unknown_fallback', model=fallback, used=model)
     if fallback:
@@ -56,15 +57,16 @@ def problem_of(use: str, provider: str, model: str, fallback: str | None, defaul
     return None
 
 
-def rows(routes: dict[str, tuple[str, str, str | None]], default: str, ledger: Iterable[dict], caps: Callable[[str], frozenset[str]] = lambda provider: CAPABILITIES,
-         keyed: Callable[[str], bool] | None = None) -> list[dict]:
+def rows(routes: dict[str, tuple[str, str, str | None]], default: str, ledger: Iterable[dict], caps: Callable[[str], frozenset[str]] = lambda provider: UNDECLARED,
+         keyed: Callable[[str], bool] | None = None, settings=None) -> list[dict]:
     spent = averages(ledger)
     out = []
     for use, label, setting in USES:
         provider, model, fallback = routes[use]
         out.append({'use': use, 'label': label, 'setting': setting, 'model': model, 'provider': provider, 'company': company_of(model, provider), 'price': pricing.price_of(model),
                     'avgCost7d': spent.get(use), 'problem': problem_of(use, provider, model, fallback, default, caps(provider), keyed),
-                    'fit': 'cheap' if use in CARD_USES and provider.startswith(COMPAT + ':') else 'ok'})
+                    'fit': 'cheap' if use in CARD_USES and provider.startswith(COMPAT + ':') else 'ok',
+                    'advisor': advisor.view(settings, use, provider, caps(provider), model) if settings is not None and use in advisor.USES else None})
     return out
 
 

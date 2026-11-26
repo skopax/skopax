@@ -168,12 +168,12 @@ def test_a_logged_in_client_initializes_and_lists_every_tool_with_all_four_hints
     # then
     assert init.status_code == 200 and init.json()['result']['serverInfo']['name'] == 'skopax'
     tools = {t['name']: t for t in listed.json()['result']['tools']}
-    assert set(tools) == {'list_cards', 'get_card', 'get_investigation', 'investigator_status', 'list_deploy_reports', 'list_my_asks', 'get_ask', 'list_notifications', 'about', 'investigate_card', 'ask',
+    assert set(tools) == {'list_cards', 'get_card', 'get_investigation', 'investigator_status', 'list_deploy_reports', 'get_self_review', 'list_my_asks', 'get_ask', 'list_notifications', 'about', 'investigate_card', 'ask',
                           'take_card', 'resolve_card', 'mute_card', 'reopen_card', 'assign_card', 'link_ticket'}
     for name, t in tools.items():
         hints = t['annotations']
         assert all(isinstance(hints.get(h), bool) for h in ('readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint')), name
-    assert [n for n, t in tools.items() if t['annotations']['readOnlyHint']] == ['list_cards', 'get_card', 'get_investigation', 'investigator_status', 'list_deploy_reports', 'list_my_asks', 'get_ask',
+    assert [n for n, t in tools.items() if t['annotations']['readOnlyHint']] == ['list_cards', 'get_card', 'get_investigation', 'investigator_status', 'list_deploy_reports', 'get_self_review', 'list_my_asks', 'get_ask',
                                                                                     'list_notifications', 'about']
     assert discover.status_code == 200 and discover.json() == {'jsonrpc': '2.0', 'id': 1, 'error': {'code': -32601, 'message': 'Method not found'}}
     assert (stream.status_code, stream.headers['allow'], anonymous_stream.status_code) == (405, 'POST', 401)

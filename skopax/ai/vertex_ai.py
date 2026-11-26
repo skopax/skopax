@@ -12,7 +12,7 @@ import anthropic
 import httpx2
 
 from skopax import tracing
-from skopax.ai import CAPABILITIES, SEARCH_TYPE, THINK_AUTO, THINK_OFF, Turn
+from skopax.ai import ADVISOR, CAPABILITIES, SEARCH_TYPE, THINK_AUTO, THINK_OFF, Turn
 from skopax.ai.anthropic_ai import AnthropicAi, turn_of
 from skopax.ai.compat_ai import Refused
 from skopax.errkind import kind
@@ -61,7 +61,7 @@ ECHO_ASK = 'Call the echo tool with the text ok.'
 ECHO = {'name': 'echo', 'description': 'Repeats the text it is given', 'input_schema': {'type': 'object', 'properties': {'text': {'type': 'string'}}, 'required': ['text']}}
 FORCED = {'type': 'tool', 'name': 'echo'}
 OWN_TOOLS = (None, 'custom')
-VERTEX_CAPABILITIES = CAPABILITIES - {'web_fetch', 'fallbacks'}
+VERTEX_CAPABILITIES = CAPABILITIES - {'web_fetch', 'fallbacks', ADVISOR}
 
 
 class CredentialError(anthropic.AnthropicError):

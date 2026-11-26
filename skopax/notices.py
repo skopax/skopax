@@ -1,3 +1,4 @@
+import datetime as dt
 import logging
 import time
 from collections.abc import Mapping
@@ -11,7 +12,7 @@ from skopax.actors import POD_BY, SYSTEM, investigator_label, is_token, token_la
 from skopax.errkind import kind as error_kind
 from skopax.mail import tidy
 from skopax.messages import msg
-from skopax.store import NotFound, Store, glob_match
+from skopax.store import NotFound, Store, glob_match, utc_now
 
 log = logging.getLogger('skopax.notices')
 
@@ -24,7 +25,9 @@ LABELS = {
 }
 BURST_S = 60
 FLAP_S = 3600
-SAME_S = {k: FLAP_S if k in ('fired', 'escalated', 'stopped') else BURST_S for k in LABELS}
+WINDOW_BY_KIND = {'fired': FLAP_S, 'escalated': FLAP_S, 'stopped': FLAP_S, 'severity': 0}
+SAME_S = {k: WINDOW_BY_KIND.get(k, BURST_S) for k in LABELS}
+MAIL_S = {'severity': BURST_S}
 MUTES = {'mute': 'muted', 'known': 'known', 'unmute': 'unmuted'}
 GLOB_TYPES = ('mute', 'known', 'unmute')
 TRACKED = ('owner', 'assigned', 'triage', 'ticket', 'resolution', 'sev', 'parent', 'status', 'num', 'svc', 'label')
@@ -142,14 +145,26 @@ class Notices:
         known |= {u: tidy(str(e).strip()) for u, e in (emails or {}).items() if e and '@' in str(e)}
         by_name = (by_name | set(named)) - set(known)
         fresh: list[dict] = []
+        quiet_mail = self.recent(to, row['key'], kind)
         try:
             added = self.store.add_notices([{'user': u, **row, **({'to': known[u]} if u in known else {'named': True} if u in by_name else {})} for u in to], SAME_S, saved=fresh)
         except PyMongoError as e:
             log.warning('%s notification for %s not saved: %s', kind, row['key'], error_kind(e))
             return 0
         if fresh and self.mail is not None:
-            self.mail.queue(fresh)
+            self.mail.queue([r for r in fresh if r['user'] not in quiet_mail])
         return added
+
+    def recent(self, users: list[str], key, kind: str) -> set[str]:
+        window = MAIL_S.get(kind)
+        if not window or not users:
+            return set()
+        since = utc_now() - dt.timedelta(seconds=window)
+        try:
+            return {u for u in users if self.store.notices.find_one({'user': u, 'key': key, 'kind': kind, 'at': {'$gte': since}}, {'_id': 1})}
+        except PyMongoError as e:
+            log.warning('the mail window of %s notifications could not be read: %s', kind, error_kind(e))
+            return set()
 
     def _cards(self) -> dict[str, dict]:
         return {c['key']: c for c in self.store.load().get('anomalies') or []}

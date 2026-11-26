@@ -4,6 +4,8 @@ from skopax import tracing
 from skopax.ai import ANTHROPIC, PROVIDER_CAPABILITIES, THINK_AUTO, THINK_OFF, ToolCall, Turn, neutral
 
 FALLBACK_BETA = 'server-side-fallback-2026-07-01'
+ADVISOR_BETA = 'advisor-tool-2026-03-01'
+ADVISOR_ITERATION = 'advisor_message'
 CACHE = {'type': 'ephemeral'}
 
 
@@ -45,12 +47,24 @@ def thinking_off(model: str) -> dict:
     return {'type': 'disabled'} if model.startswith('claude-haiku') else {'type': 'between_tools'}
 
 
+def part(value, name: str):
+    return value.get(name) if isinstance(value, dict) else getattr(value, name, None)
+
+
+def advisor_usage(resp) -> list[tuple[str, object]]:
+    found = []
+    for item in part(getattr(resp, 'usage', None), 'iterations') or []:
+        if part(item, 'type') == ADVISOR_ITERATION and isinstance(part(item, 'model'), str):
+            found.append((part(item, 'model'), neutral(item)))
+    return found
+
+
 def turn_of(resp, model: str) -> Turn:
     content = list(resp.content or [])
     texts = [b.text for b in content if getattr(b, 'type', None) == 'text' and isinstance(getattr(b, 'text', None), str)]
     calls = [ToolCall(b.id, b.name, b.input or {}) for b in content if getattr(b, 'type', None) == 'tool_use']
     return Turn(stop=getattr(resp, 'stop_reason', None) or 'end_turn', model=getattr(resp, 'model', None) or model, usage=neutral(resp.usage), texts=texts,
-                text=answer_text(content), calls=calls, native=resp.content, server=resp.content)
+                text=answer_text(content), calls=calls, native=resp.content, server=resp.content, advisor=advisor_usage(resp))
 
 
 class AnthropicAi:
@@ -73,10 +87,12 @@ class AnthropicAi:
         return {'model': model, 'max_tokens': max_tokens + (THINKING_ROOM if model.startswith(ALWAYS_THINKING) else 0), 'system': system, 'messages': messages, 'thinking': think, 'output_config': output}
 
     def turn(self, model: str, effort: str, system: str, tools: list[dict], messages: list[dict], max_tokens: int, cache_ttl: str | None = None, thinking: str = THINK_AUTO,
-             fallbacks: bool = True) -> Turn:
-        extra = {'betas': [FALLBACK_BETA], 'extra_body': {'fallbacks': 'default'}} if fallbacks else {}
+             fallbacks: bool = True, advisor: dict | None = None) -> Turn:
+        betas = ([FALLBACK_BETA] if fallbacks else []) + ([ADVISOR_BETA] if advisor else [])
+        extra = ({'betas': betas} if betas else {}) | ({'extra_body': {'fallbacks': 'default'}} if fallbacks else {})
+        offered = tools + [advisor] if advisor else tools
         return tracing.generation(self.provider, 'turn', model, system, messages, lambda: turn_of(self.client.beta.messages.create(
-            **self.turn_args(model, effort, system, tools, messages, max_tokens, cache_ttl, thinking), **extra), model), tools)
+            **self.turn_args(model, effort, system, offered, messages, max_tokens, cache_ttl, thinking), **extra), model), offered)
 
     def once(self, model: str, system: str, messages: list[dict], max_tokens: int, effort: str, thinking: str = THINK_OFF, schema: dict | None = None) -> Turn:
         return tracing.generation(self.provider, 'once', model, system, messages,

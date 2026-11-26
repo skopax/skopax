@@ -1,4 +1,5 @@
 import base64
+import dataclasses
 import logging
 import re
 import socket
@@ -9,7 +10,7 @@ from collections.abc import Callable, Mapping
 
 import anthropic
 
-from skopax import followup, history, information, severity, tracing
+from skopax import advisor, followup, history, information, severity, tracing
 from skopax.ai import IMAGES_OFF, ModelSetting, clients_for, label_of, provider_of_ref, route, wrap
 from skopax.config import Setting, Settings
 from skopax.contract import OrgPack
@@ -122,6 +123,7 @@ class Investigator:
     slack_model = ModelSetting('investigate_slack_model', 'slack')
     chat_model = ModelSetting('chat_model', 'chat')
     chat_effort_set = Setting('chat_effort')
+    chat_effort_follows = Setting('chat_effort_follows')
     chat_max_tool_calls_set = Setting('chat_max_tool_calls')
     language = Setting('investigate_language')
     slack_effort = Setting('investigate_slack_effort')
@@ -183,7 +185,7 @@ class Investigator:
 
     @property
     def chat_effort(self) -> str:
-        return self.chat_effort_set or self.slack_effort
+        return self.slack_effort if self.chat_effort_follows else self.chat_effort_set
 
     @property
     def chat_max_tool_calls(self) -> int:
@@ -211,6 +213,14 @@ class Investigator:
         if asked:
             return (*self.use_route('card'), 'card', None)
         return self.card_route(c.get('sev') for c in cards)
+
+    def advisor_use(self, use: str, quick: bool, review: bool, asked: bool, cards: list[dict]) -> str | None:
+        if review:
+            return None
+        if quick or asked:
+            return use
+        worst = severity.worst(c.get('sev') for c in cards)
+        return 'critical' if worst == severity.CRIT else 'high' if worst == severity.HIGH else 'card'
 
     def use_route(self, use: str) -> tuple[str, str, str | None]:
         field, role = USE_FIELDS[use]
@@ -587,6 +597,10 @@ class Investigator:
                 else:
                     config = RunConfig(model, self.effort, self.assess_max_tool_calls if report else self.max_tool_calls, capabilities=caps)
                     brief = prompt.brief(cards, {**action, 'report': report} if report else action, self.base_url, config.max_tool_calls, None if ask or report else self._announced(cards, now)) + ('' if ask else prompt.language_note(self.language))
+                plan = None
+                if client is not None and (wanted := self.advisor_use(use, quick, bool(review), bool(ask or report), cards)) is not None:
+                    plan = advisor.resolve(self.settings, wanted, provider, caps, config.model)[0]
+                    config = dataclasses.replace(config, advisor=plan)
                 if ask and not review:
                     brief += prompt.questions_note(toolbox.not_in_questions())
                 if report:
@@ -605,6 +619,7 @@ class Investigator:
                     runner = Runner(client, self.store, config, tag=tag)
                     first = [{'type': 'text', 'text': brief}] + blocks if quick and blocks else brief
                     system = prompt.slack_system_prompt(sections, pack, extra, index, self.org_about) if quick else prompt.system_prompt(sections, pack, extra, index, self.org_about)
+                    system += advisor.NUDGE if plan is not None else ''
                     result = runner.run(toolbox, system, first, day, lambda: self.halt(day, lease))
         except BaseException as e:
             crash = e
@@ -663,7 +678,7 @@ class Investigator:
         result.recap = outward(result.recap or '')
         outcome, error = result.outcome, result.error
         done = {'outcome': outcome, 'endedAt': ended, 'turns': result.turns, 'models': result.models, 'usage': result.usage, 'usd': round(result.usd, 4),
-                'toolCalls': toolbox.calls if toolbox else [], 'writes': toolbox.writes if toolbox else [], 'flags': toolbox.flags if toolbox else [],
+                'advisorCalls': result.advisor_calls, 'advisorErrors': result.advisor_errors, 'toolCalls': toolbox.calls if toolbox else [], 'writes': toolbox.writes if toolbox else [], 'flags': toolbox.flags if toolbox else [],
                 'recap': result.recap, 'error': error}
         if trace is not None:
             self._traced(trace, outcome, error, result.recap)

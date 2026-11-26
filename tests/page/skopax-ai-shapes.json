@@ -1,5 +1,6 @@
 {
-  "uses": ["avgCost7d", "company", "fit", "label", "model", "price", "problem", "provider", "setting", "use"],
+  "uses": ["advisor", "avgCost7d", "company", "fit", "label", "model", "price", "problem", "provider", "setting", "use"],
+  "advisor": ["capable", "choices", "maxTokens", "maxUses", "model", "problem"],
   "connections": ["allowPrivate", "items"],
   "connection": ["baseUrl", "company", "images", "key", "lastTest", "models", "name", "provider", "tools", "updatedAt", "updatedBy"],
   "model": ["id", "input", "output", "ref"],
