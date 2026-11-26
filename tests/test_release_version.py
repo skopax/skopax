@@ -76,8 +76,8 @@ def test_the_tree_version_is_the_current_release():
     declared = tomllib.loads((ROOT / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version']
 
     # then
-    assert release_version.package_version() == declared == skopax.__version__ == '0.6.4'
-    assert release_version.main(['check', 'v0.6.4']) == 0
+    assert release_version.package_version() == declared == skopax.__version__ == '0.6.5'
+    assert release_version.main(['check', 'v0.6.5']) == 0
 
 
 def test_release_tag_turns_a_package_version_into_its_git_tag():

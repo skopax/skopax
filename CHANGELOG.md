@@ -2,6 +2,13 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.6.5 (2026-11-26)
+
+### Fixed
+
+- The guard failed with "Bad request" on Claude Opus and Sonnet models, so every question was refused and every answer held. The topic gate failed the same way on those models, so a question asked on the page was let through unchecked. One-shot calls (guard, gate, self-review, Slack thread summaries, small talk and plug-in AI) now send each Claude model a thinking setting it accepts: thinking off on Haiku, Opus and Sonnet, and adaptive thinking with extra output room on models that always think. On Vertex AI, Opus and Sonnet get adaptive thinking with extra output room.
+- The Guard row in Admin > Investigator now shows what the AI provider said after the error code when the last guard check failed, masked and cut to 200 characters. The provider's text is not logged.
+
 ## 0.6.4 (2026-11-26)
 
 ### Added

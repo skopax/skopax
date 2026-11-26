@@ -50,10 +50,18 @@ SCHEMAS = {QUESTION: QUESTION_SCHEMA, ANSWER: ANSWER_SCHEMA}
 
 
 class Failed(Exception):
-    def __init__(self, code: str, usd: float = 0.0):
+    def __init__(self, code: str, usd: float = 0.0, said: str = ''):
         super().__init__(code)
         self.code = code
         self.usd = usd
+        self.said = said
+
+
+def provider_said(e: BaseException) -> str:
+    body = getattr(e, 'body', None)
+    found = body.get('error', body) if isinstance(body, dict) else None
+    text = found.get('message') if isinstance(found, dict) else None
+    return outward(text).strip()[:REASON_LIMIT] if isinstance(text, str) else ''
 
 
 @dataclass(frozen=True)
@@ -129,6 +137,7 @@ class Guard:
         self.clients = clients_for(settings, None, lambda k: anthropic.Anthropic(api_key=k, timeout=TIMEOUT, max_retries=0), TIMEOUT, 0, client, keys)
         self.clock = clock
         self.last_failure: str | None = None
+        self.last_said = ''
 
     @property
     def chosen(self) -> str:
@@ -147,7 +156,7 @@ class Guard:
 
     def answer(self, question: str, answer: str, digest: str, run_id: str) -> Check:
         if not isinstance(answer, str):
-            self.last_failure = SCHEMA
+            self.last_failure, self.last_said = SCHEMA, ''
             log.warning('guard %s check failed: %s', ANSWER, SCHEMA)
             return Check(HOLD, '', (), 0.0, 0, self.chosen, SCHEMA)
         return self._check(ANSWER, run_id, (('question', str(question)), ('answer', answer), ('digest', str(digest)[:DIGEST_MAX])), answer)
@@ -167,7 +176,7 @@ class Guard:
         except Exception as e:
             log.warning('guard route could not be read: %s', error_kind(e))
             return msg('guard.failed', failure=API + type(e).__name__)
-        return msg('guard.failed', failure=self.last_failure) if self.last_failure else None
+        return msg('guard.failed', failure=f'{self.last_failure}: {self.last_said}' if self.last_said else self.last_failure) if self.last_failure else None
 
     def _check(self, check: str, run_id: str, inputs: tuple[tuple[str, str], ...], answer: str = '') -> Check:
         started = time.monotonic()
@@ -177,14 +186,14 @@ class Guard:
             if verdict == MASK:
                 verdict, spans = masked(answer, spans)
         except Failed as e:
-            self.last_failure = e.code
+            self.last_failure, self.last_said = e.code, e.said
             log.warning('guard %s check failed: %s', check, e.code)
             return Check(CLOSED[check], '', (), e.usd, int((time.monotonic() - started) * 1000), model, e.code)
         except Exception as e:
-            self.last_failure = API + type(e).__name__
+            self.last_failure, self.last_said = API + type(e).__name__, provider_said(e)
             log.warning('guard %s check failed unexpectedly: %s', check, error_kind(e))
             return Check(CLOSED[check], '', (), 0.0, int((time.monotonic() - started) * 1000), model, self.last_failure)
-        self.last_failure = None
+        self.last_failure, self.last_said = None, ''
         return Check(verdict, reason, spans, usd, int((time.monotonic() - started) * 1000), model, None)
 
     def _ask(self, check: str, run_id: str, inputs: tuple[tuple[str, str], ...]) -> tuple[str, float, str, str, tuple[str, ...]]:
@@ -208,7 +217,7 @@ class Guard:
             with tracing.untraced():
                 resp = ai.once(model, system, [{'role': 'user', 'content': content}], MAX_TOKENS, EFFORT, THINK_OFF, SCHEMAS[check])
         except Exception as e:
-            raise Failed(TIMEOUT_FAILURE if timed_out(e) else API + type(e).__name__) from None
+            raise Failed(TIMEOUT_FAILURE if timed_out(e) else API + type(e).__name__, said=provider_said(e)) from None
         try:
             usd, priced_as = pricing.charge(model, ai.provider, resp.usage)
         except Exception:

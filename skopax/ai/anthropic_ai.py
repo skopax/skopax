@@ -83,8 +83,8 @@ class AnthropicAi:
 
     def once_args(self, model: str, system: str, messages: list[dict], max_tokens: int, effort: str, thinking: str, schema: dict | None) -> dict:
         output = {'effort': effort} | ({'format': {'type': 'json_schema', 'schema': schema}} if schema is not None else {})
-        think = {'type': 'adaptive'} if model.startswith(ALWAYS_THINKING) else {'type': 'disabled'} if thinking == THINK_OFF else thinking_off(model)
-        return {'model': model, 'max_tokens': max_tokens + (THINKING_ROOM if model.startswith(ALWAYS_THINKING) else 0), 'system': system, 'messages': messages, 'thinking': think, 'output_config': output}
+        think = thinking_off(model)
+        return {'model': model, 'max_tokens': max_tokens + (THINKING_ROOM if think['type'] == 'adaptive' else 0), 'system': system, 'messages': messages, 'thinking': think, 'output_config': output}
 
     def turn(self, model: str, effort: str, system: str, tools: list[dict], messages: list[dict], max_tokens: int, cache_ttl: str | None = None, thinking: str = THINK_AUTO,
              fallbacks: bool = True, advisor: dict | None = None) -> Turn:

@@ -13,7 +13,7 @@ import httpx2
 
 from skopax import tracing
 from skopax.ai import ADVISOR, CAPABILITIES, SEARCH_TYPE, THINK_AUTO, THINK_OFF, Turn
-from skopax.ai.anthropic_ai import AnthropicAi, turn_of
+from skopax.ai.anthropic_ai import THINKING_ROOM, AnthropicAi, turn_of
 from skopax.ai.compat_ai import Refused
 from skopax.errkind import kind
 from skopax.instances import NAME
@@ -362,6 +362,7 @@ class VertexAi(AnthropicAi):
         args = self.once_args(self.wire(model), system, messages, max_tokens, effort, thinking, schema)
         if args['thinking'].get('type') == 'between_tools':
             args['thinking'] = {'type': 'adaptive'}
+            args['max_tokens'] += THINKING_ROOM
         return tracing.generation(self.provider, 'once', model, system, messages, lambda: self.served(self.guarded(lambda: self.client.messages.create(**args)), model))
 
     def served(self, resp, ref: str) -> Turn:
