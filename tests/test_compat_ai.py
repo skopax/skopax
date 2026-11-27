@@ -357,7 +357,7 @@ def test_the_private_switch_is_a_default_off_core_setting(store: Store):
 
     # then
     assert settings().allow_private_ai is False
-    assert (item['help'], item['kind']) == ('Lets an OpenAI-compatible AI connection point at a private address, for example a local Ollama', 'bool')
+    assert (item['help'], item['kind']) == ('Lets an OpenAI-compatible AI connection point at a private or loopback address, for example a local Ollama. It adds nothing by itself: add the model under Admin \u203a Investigator as a compatible connection. Link-local and cloud metadata addresses stay refused', 'bool')
 
 
 def test_a_private_base_url_is_refused_on_save_until_the_switch_is_on(store: Store, monkeypatch):

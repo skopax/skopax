@@ -124,7 +124,7 @@ def test_held_answers_reach_admins_only_through_every_route(store: Store):
     assert held_admin['held']['text'] == CHAT_ANSWER and held_admin['guard']['reason'] == REASON
     assert held_admin['ask'] == {'private': True} and held_admin['keys'] == [] and CHAT_QUESTION not in json.dumps(held_admin)
     assert all(set(t) == {'name'} for t in held_admin.get('toolCalls') or [])
-    assert 'held' not in admin[passed_chat['id']] and 'guard' not in admin[passed_chat['id']] and PASSED_ANSWER not in json.dumps(admin[passed_chat['id']])
+    assert 'held' not in admin[passed_chat['id']] and admin[passed_chat['id']]['guard'] == {'questions': None, 'answers': 'pass', 'masked': 0} and PASSED_ANSWER not in json.dumps(admin[passed_chat['id']])
     assert admin_held.status_code == 200 and sorted(r['id'] for r in admin_held.json()) == sorted([card['id'], held_chat['id']])
     assert leaks(admin_held.json()) == [] and all(r['held'] == {'until': r['held']['until']} for r in admin_held.json() if 'held' in r)
     assert anonymous_held.status_code in (401, 403) and operator_held.status_code == 403

@@ -1154,7 +1154,12 @@ a.shot.phone img { width: 60px; }
 .aic-last-v.bad, .aiu-problem.bad { color: var(--crit); }
 .aic-add > summary { cursor: pointer; padding: 10px 16px; border: 1px dashed var(--line-2); border-radius: 6px; font-weight: 600; }
 .aic-add[open] > summary { margin-bottom: 10px; }
-.aic-private { margin: 0; overflow-wrap: anywhere; }
+.aic-private { margin: 0; overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.aic-private > .adm-row { border-top: 0; }
+.aic-private > .aic-private-t { margin: 0; padding: 10px 16px; }
+.aic-private-t { margin: 6px 0 0; }
+.aic-intro { margin: 0; max-width: 80ch; overflow-wrap: anywhere; }
+.aic-url-help { margin: 0; font-size: 0.76rem; color: var(--muted); overflow-wrap: anywhere; }
 .aiu-box { max-width: 100%; overflow-x: auto; }
 .aiu-t { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
 .aiu-t th, .aiu-t td { text-align: left; vertical-align: top; padding: 8px 6px; border-top: 1px solid var(--line); }

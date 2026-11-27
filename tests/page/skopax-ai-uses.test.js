@@ -49,7 +49,7 @@ async function rowsRenderEveryUseWithPriceCostAndCompany() {
   assert.ok(rowOf(doc, 'card').querySelector('.aiu-effort .adm-row[data-key="investigate.effort"] select'), 'the effort row sits in its use row');
   assert.ok(rowOf(doc, 'gate').querySelector('.aiu-effort .adm-row[data-key="investigate.gate-effort"]'));
   assert.ok(!rowOf(doc, 'critical').querySelector('.aiu-effort .adm-row') && !rowOf(doc, 'review').querySelector('.aiu-effort .adm-row'), 'a use without an effort has none');
-  assert.deepStrictEqual(settingsLeft, ['investigate.provider', 'core.allow-private-ai', 'investigate.rooms'], 'the model and effort rows the table covers are not drawn twice');
+  assert.deepStrictEqual(settingsLeft, ['investigate.provider', 'investigate.rooms'], 'the model and effort rows the table covers, and the Private AI addresses switch shown with the connections, are not drawn twice');
   assert.strictEqual(doc.querySelectorAll('#ai-rows .adm-pair').length, 0);
   assert.strictEqual(doc.querySelectorAll('#ai-rows .adm-model-summary').length, 1, 'one Which model runs line');
   assert.strictEqual(summary.textContent, 'Which model runs: Critical cards claude-opus-5-5 \u00b7 High cards deepseek/deepseek-chat \u00b7 Warning and Info cards claude-opus-5-5', 'the line says what the uses table says');

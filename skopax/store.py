@@ -128,6 +128,9 @@ CHAT_RUN_FIELDS = {'actionId': 1, 'outcome': 1, 'recap': 1, 'usd': 1, 'cardActio
 CHAT_SCAN = 1000
 CHAT_RUN_PUBLIC = ('id', 'mode', 'trigger', 'pod', 'room', 'startedAt', 'endedAt', 'outcome', 'usd', 'turns', 'model', 'effort', 'models', 'usage', 'advisorCalls')
 NOT_CHAT = {'trigger': {'$ne': 'chat'}}
+CHAT_GUARD = ('questions', 'answers', 'masked', 'watch', 'outcome', 'category', 'noted')
+CHAT_GUARD_STEPS = ('first', 'fix')
+CHAT_GUARD_STEP = ('questions', 'answers')
 REFUSED_BY = 'Refused by the guard'
 NOT_REFUSED = {'error': {'$ne': REFUSED_BY}}
 HELD_OUTCOMES = ('held', 'releasing')
@@ -190,6 +193,14 @@ def new_id() -> str:
 
 def _without_ids(doc: dict) -> dict:
     return {k: v for k, v in doc.items() if k not in ('_id', 'pos')}
+
+
+def chat_guard(guard: dict) -> dict:
+    out = {k: guard[k] for k in CHAT_GUARD if k in guard}
+    for step in CHAT_GUARD_STEPS:
+        if isinstance(guard.get(step), dict):
+            out[step] = {k: guard[step][k] for k in CHAT_GUARD_STEP if k in guard[step]}
+    return out
 
 
 def _with_id(doc: dict) -> dict:
@@ -1590,7 +1601,8 @@ class Store:
         if run.get('trigger') != 'chat':
             return run
         shown = {k: v for k, v in run.items() if k in CHAT_RUN_PUBLIC}
-        return shown | {'keys': [], 'ask': {'private': True}} | ({'toolCalls': [{'name': c.get('name')} for c in run['toolCalls']]} if 'toolCalls' in run else {})
+        return shown | {'keys': [], 'ask': {'private': True}} | ({'toolCalls': [{'name': c.get('name')} for c in run['toolCalls']]} if 'toolCalls' in run else {}) | \
+            ({'guard': chat_guard(run['guard'])} if isinstance(run.get('guard'), dict) else {})
 
     def investigation(self, run_id: str) -> dict:
         doc = self.investigations.find_one({'_id': run_id})

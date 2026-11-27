@@ -145,6 +145,8 @@ def stored_calls(calls: list[dict]) -> list[dict]:
 
 def public_run(run: dict) -> dict:
     out = dict(run)
+    if out.get('trigger') == 'chat':
+        out.pop('guard', None)
     if isinstance(out.get('held'), dict):
         out['held'] = {k: v for k, v in out['held'].items() if k in HELD_PUBLIC}
     if out.get('outcome') in HELD_OUTCOMES:

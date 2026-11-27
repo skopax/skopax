@@ -3,6 +3,11 @@ var AIU_FIT = 'Cheap models often miss steps in long investigations', AIU_FIT_US
 var AIU_ADV_SAID = {}, AIU_ADV_BUSY = {}, AIU_ADV_FIELDS = {uses: {suffix: '-advisor-uses', label: 'Advisor consultations per run', min: 1, max: 10}, tokens: {suffix: '-advisor-tokens', label: 'Advisor answer size', min: 1024, max: 4096}};
 var AIU_SAID = {}, AIU_SEQ = 0, AIU_EDIT = {}, AIU_PENDING = {}, AIU_CHAIN = Promise.resolve(), AIU_FAILED = false;
 var AIC_TESTING = {}, AIC_SEQ = 0, AIC_PRIVATE_KEY = 'core.allow-private-ai';
+var AIC_INTRO = 'A compatible connection is any AI service that speaks the OpenAI Chat Completions API. Cloud services such as DeepSeek, OpenRouter or Groq work as they are. A model on your own network, such as Ollama, vLLM or LM Studio, needs Private AI addresses turned on first.';
+var AIC_PRIVATE_ON = 'On: connections may point at private and loopback addresses, such as 192.168.1.20 or localhost. Link-local and cloud metadata addresses stay blocked.';
+var AIC_PRIVATE_OFF = 'Off: only public addresses are allowed. Turn it on to add a model that runs on your own network.';
+var AIC_PRIVATE_NEXT = 'Private AI addresses are on. Add your local model here, for example Ollama with the base URL http://192.168.1.20:11434/v1.';
+var AIC_URL_HELP = 'Examples: a cloud service https://api.deepseek.com/v1, Ollama http://HOST:11434/v1, vLLM http://HOST:8000/v1';
 var AIV_TESTING = {}, AIV_MODES = ['key', 'federation', 'pod'];
 var AIV_REGION_TEXT = {global: 'global (current models, no residency guarantee)', us: 'us (current models, processing stays in the US)', eu: 'eu (current models, processing stays in the EU)'};
 var AIV_REGION_NOTE = 'Current Claude models run on global, us and eu only; a single region serves older models. Choose eu to keep processing in the EU.';
@@ -52,6 +57,7 @@ function aiuCovered() {
     if (u.advisor) ['-advisor', '-advisor-uses', '-advisor-tokens'].forEach(function (x) { out[u.setting + x] = 1; });
     if (u.use === AIU_GUARD) AIU_GUARD_KEYS.forEach(function (k) { out[k] = 1; });
   });
+  if (AICONN && !AICONN.failed) out[AIC_PRIVATE_KEY] = 1;
   return out;
 }
 function aiuSummary() {
@@ -450,6 +456,8 @@ function aicPaint(box, said, saidFor) {
     box.appendChild(wrap);
     return;
   }
+  wrap.appendChild(accText('p', 'adm-help aic-intro', AIC_INTRO));
+  wrap.appendChild(aicPrivate());
   var list = accText('ul', 'aic-list');
   AICONN.connections.forEach(function (c) {
     var li = aicConnLi(c);
@@ -461,22 +469,27 @@ function aicPaint(box, said, saidFor) {
   var note = accText('p', 'adm-msg aic-said' + (said && saidFor === 'compat' ? ' ok' : ''), said && saidFor === 'compat' ? said : '');
   note.setAttribute('role', 'status');
   wrap.appendChild(note);
-  wrap.appendChild(aicPrivate());
   box.appendChild(wrap);
 }
 function aicPrivate() {
-  var p = accText('p', 'adm-help aic-private'), on = AICONN.allowPrivate;
-  p.appendChild(accText('span', 'aic-private-t', on ? 'Private and loopback addresses are allowed for compatible connections (core.allow-private-ai is on).' : 'Private and loopback addresses are refused for compatible connections (core.allow-private-ai is off).'));
-  if (!aiuItem(AIC_PRIVATE_KEY) || typeof window.__skopaxFindSetting !== 'function') return p;
-  p.appendChild(document.createTextNode(' '));
-  var go = accText('a', 'aic-private-go', 'Open the setting');
-  go.href = '#t=settings';
-  go.addEventListener('click', function (e) {
-    e.preventDefault();
-    window.__skopaxFindSetting(AIC_PRIVATE_KEY);
-  });
-  p.appendChild(go);
-  return p;
+  var box = accText('div', 'aic-private'), item = aiuItem(AIC_PRIVATE_KEY), state = accText('p', 'adm-help aic-private-t', AICONN.allowPrivate ? AIC_PRIVATE_ON : AIC_PRIVATE_OFF);
+  if (!item) {
+    box.appendChild(state);
+    return box;
+  }
+  var row = adminRow(item);
+  row.querySelector('.adm-l').appendChild(state);
+  box.appendChild(row);
+  return box;
+}
+async function aicPrivateDone(item) {
+  await aicRefresh();
+  var fold = document.querySelector('#ai .aic-add'), name = fold && fold.querySelector('.aic-n'), note = document.querySelector('#ai .aic-said'), on = item.value === 'true' && !!AICONN && AICONN.allowPrivate;
+  if (note && !on && note.dataset.next) { note.textContent = ''; note.className = 'adm-msg aic-said'; delete note.dataset.next; }
+  if (!on || !fold || !name) return;
+  fold.open = true;
+  if (note) { note.textContent = AIC_PRIVATE_NEXT; note.className = 'adm-msg aic-said ok'; note.dataset.next = '1'; }
+  name.focus();
 }
 var AIC_REFRESH_SEQ = 0, AIC_REFRESH = null;
 function aicRefresh() {
@@ -614,6 +627,10 @@ function aicCard(c) {
   url.setAttribute('inputmode', 'url');
   url.placeholder = 'https://api.example.com/v1';
   aicField(card, 'Base URL', url);
+  var urlHelp = accText('p', 'adm-help aic-url-help', AIC_URL_HELP);
+  urlHelp.id = id + '-url-h';
+  url.setAttribute('aria-describedby', urlHelp.id);
+  url.parentNode.appendChild(urlHelp);
   var key = aicInput('aic-key-in', id + '-key', '');
   key.type = 'password';
   key.setAttribute('autocomplete', 'new-password');

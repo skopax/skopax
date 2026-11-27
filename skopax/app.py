@@ -2878,7 +2878,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if admin:
             return rows
         shown = [{k: v for k, v in r.items() if k != 'screenshots'} if r.get('outcome') in HELD_OUTCOMES else r for r in rows]
-        return [{k: v for k, v in r.items() if k != 'guard'} | ({'guard': g} if (g := public_guard(r['guard'])) is not None else {}) if isinstance(r.get('guard'), dict) else r for r in shown]
+        return [{k: v for k, v in r.items() if k != 'guard'} | ({'guard': g} if r.get('trigger') != 'chat' and (g := public_guard(r['guard'])) is not None else {}) if isinstance(r.get('guard'), dict) else r
+                for r in shown]
 
     @app.get('/api/screenshots/{shot_id}')
     def get_screenshot(request: Request, shot_id: str, authorization: Annotated[str | None, Header()] = None) -> Response:
@@ -3782,6 +3783,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/admin/ai-uses')
     def get_admin_ai_uses(by: Annotated[str, Depends(require_admin)]) -> dict:
+        live.refresh(force=True)
         guard = running_guard()
         return {'uses': aiuses.rows(ai_routes(), settings.ai_provider, store.ledger_since(aiuses.since(clock())), keyed_clients.capabilities, keyed_clients.keyed, settings,
                                     problems={aiuses.GUARD: guard.problem()} if guard else None)}
@@ -3912,6 +3914,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     @app.get('/api/admin/ai-connections')
     def get_admin_ai_connections(by: Annotated[str, Depends(require_admin)]) -> dict:
+        live.refresh(force=True)
         return {'items': ai_connections.views(), 'allowPrivate': bool(settings.allow_private_ai)}
 
     @app.put('/api/admin/ai-connections/{name}')

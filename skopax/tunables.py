@@ -280,7 +280,7 @@ STATIC = (
     T('sso.button-icon', 'sso_button_icon', SIGNIN, 'Button icon', 'The icon of the single sign-on button: auto picks a mark from the issuer host, company shows the image uploaded on the Single sign-on card, none shows the text only', 'choice', choices=SSO_BUTTON_ICONS),
     T('investigate.provider', 'ai_provider', INV, 'Default provider', 'The AI provider, anthropic or openai, whose default model serves each use whose model is not set. Each use can pick a model of any provider that has a key; '
       'a use whose provider has no working key falls back to the default model of this provider for that use, and Admin says so. A change applies from the next run or ask', 'choice', choices=AI_PROVIDERS),
-    T('core.allow-private-ai', 'allow_private_ai', INV, 'Private AI addresses', 'Lets an OpenAI-compatible AI connection point at a private address, for example a local Ollama', 'bool'),
+    T('core.allow-private-ai', 'allow_private_ai', INV, 'Private AI addresses', 'Lets an OpenAI-compatible AI connection point at a private or loopback address, for example a local Ollama. It adds nothing by itself: add the model under Admin \u203a Investigator as a compatible connection. Link-local and cloud metadata addresses stay refused', 'bool'),
     T('investigate.model', 'investigate_model', INV, 'Card model', 'Model for Warning and Info cards, and for Critical and High cards that have no model of their own below. Also used for page asks and deploy-report assessments', 'choice', choices=MODELS),
     T('investigate.model-critical', 'investigate_model_critical', INV, 'Model for Critical cards', 'Model for cards whose worst alert is Critical; empty uses the Card model', 'choice',
       choices=('',) + MODELS, choice_labels={'': SAME_AS_CARD}),
