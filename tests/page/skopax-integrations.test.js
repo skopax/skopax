@@ -68,6 +68,7 @@ async function boot(opts) {
     beforeParse(w) {
       w.scrollTo = () => {};
       w.Element.prototype.scrollIntoView = function () {};
+      if (opts.storage) Object.keys(opts.storage).forEach((k) => w.localStorage.setItem(k, opts.storage[k]));
       if (opts.pack) { w.SKOPAX_I18N = opts.pack; w.document.cookie = 'skopax_lang=' + Object.keys(opts.pack)[0] + '; path=/'; }
       w.fetch = async (path, o) => {
         const p = String(path), method = (o && o.method) || 'GET', body = o && o.body ? JSON.parse(o.body) : null;
@@ -1962,6 +1963,47 @@ async function anMcpErrorCountsForKnowledgeOnlyOnAnInstanceWithKnowledgeOn() {
   console.log('PASS Integrations: an MCP error counts against the Knowledge badge only on an instance with Knowledge source on');
 }
 
+function viaCatalog() {
+  const c = catalog();
+  const peer = {key: 'prometheus', label: 'Prometheus', kind: 'instance', required: true, default: '', help: '', choices: ['prometheus'], low: null, high: null, showIf: null, ui: false};
+  c.plugins.push({id: 'redis', name: 'Redis', version: '1.0.0', category: 'infrastructure', description: 'Reads Redis.', edition: 'community', icon: false, state: 'ok', reason: null, enabled: true, fields: [peer], checks: CHECKS,
+    instances: [instance('main')], health: health('ok', 'Healthy', iso(2))});
+  c.plugins.push({id: 'loose', name: 'Loose', version: '1.0.0', category: 'other', description: '', edition: 'community', icon: false, state: 'ok', reason: null, enabled: true, fields: [Object.assign({}, peer, {key: 'p', required: false})], checks: CHECKS,
+    instances: [], health: health('off', 'Not set up yet')});
+  return c;
+}
+
+async function anIntegrationThatReadsThroughPrometheusSaysSoOnItsTileItsCatalogRowAndItsPanel() {
+  //given
+  const de = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'skopax', 'locale', 'de', 'page.json'), 'utf8'));
+  const t = await boot({catalog: viaCatalog()});
+  await open(t);
+  const g = await boot({catalog: viaCatalog(), pack: {de: Object.assign({}, de.page, {'@rules': de.rules})}});
+  await open(g);
+
+  //when
+  const onTile = tile(t.doc, 'redis').querySelector('.int-via-tag');
+  const plain = ['prometheus', 'loose'].map((id) => !!(tile(t.doc, id) && tile(t.doc, id).querySelector('.int-via-tag')));
+  addBtn(t.doc).click();
+  await wait(60);
+  const row = pick(t.doc, 'redis').querySelector('.int-via-tag');
+  const rowPlain = ['prometheus', 'loose'].map((id) => !!pick(t.doc, id).querySelector('.int-via-tag'));
+  tile(t.doc, 'redis').querySelector('.int-open').click();
+  await wait(60);
+  const line = panel(t.doc).querySelector('.int-via');
+  const german = tile(g.doc, 'redis').querySelector('.int-via-tag');
+
+  //then
+  assert.deepStrictEqual([onTile.textContent, onTile.title], ['Via Prometheus', 'No direct connection: it reads the data from your Prometheus instance. Add Prometheus first.']);
+  assert.deepStrictEqual(plain, [false, false], 'a direct connection and an optional instance field carry no tag');
+  assert.deepStrictEqual([row.textContent, row.title], [onTile.textContent, onTile.title], 'the catalog row carries the same tag');
+  assert.deepStrictEqual(rowPlain, [false, false]);
+  assert.strictEqual(line.textContent, onTile.title, 'the panel says it under the description');
+  assert.deepStrictEqual([german.textContent, german.title], ['\u00dcber Prometheus', 'Keine direkte Verbindung: liest die Daten aus Ihrer Prometheus-Instanz. F\u00fcgen Sie zuerst Prometheus hinzu.']);
+  [t, g].forEach((x) => { assert.deepStrictEqual(x.errors, []); x.w.close(); });
+  console.log('PASS Integrations: an integration that reads through Prometheus says so on its tile, its catalog row and its panel, in German too');
+}
+
 async function theKnowledgeBadgeAndItsTooltipsTranslateWithAPackAndTheFieldNameFillsTheTemplate() {
   //given
   const de = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'skopax', 'locale', 'de', 'page.json'), 'utf8'));
@@ -2895,6 +2937,87 @@ async function aSavedAgentNodeThatIsGoneStaysSelectedWithAMarker() {
   console.log('PASS Integrations: a saved agent node that is gone or not an agent stays selected with a marker');
 }
 
+async function recentlyOpenedListsTheLastOpenedIntegrationsAtTheTopAndHidesWhileFiltering() {
+  //given
+  const t = await boot({storage: {'skopax.int.recent': JSON.stringify(['gone', 7])}});
+  await open(t);
+  const {doc, w} = t;
+  const box = () => doc.querySelector('#integrations .int-recent');
+  const btns = () => [...doc.querySelectorAll('#integrations .int-recent .int-recent-b')];
+  const chip = (label) => [...doc.querySelectorAll('#integrations .int-chip')].filter((c) => c.textContent === label)[0];
+  const find = () => doc.querySelector('#integrations .int-find');
+
+  //when
+  const before = box();
+  openTile(t, 'acme');
+  key(w, doc.activeElement, 'Escape');
+  const one = box();
+  openTile(t, 'pager');
+  key(w, doc.activeElement, 'Escape');
+  openTile(t, 'evil');
+  key(w, doc.activeElement, 'Escape');
+  openTile(t, 'acme');
+  key(w, doc.activeElement, 'Escape');
+  const row = {ids: btns().map((b) => b.dataset.id), head: box().querySelector('.int-group-h').textContent, label: box().getAttribute('aria-labelledby'),
+    names: btns().map((b) => b.querySelector('.int-recent-n').textContent), evil: box().querySelectorAll('img[onerror], img[src="x"]').length,
+    first: box().previousElementSibling.classList.contains('int-note'), tiles: box().querySelectorAll('.int-tile, .int-switch').length,
+    stored: JSON.parse(w.localStorage.getItem('skopax.int.recent'))};
+  btns()[1].click();
+  const opened = [wrap(doc).hidden, doc.getElementById(panel(doc).getAttribute('aria-labelledby')).textContent];
+  key(w, doc.activeElement, 'Escape');
+  const back = doc.activeElement === btns()[0];
+  setValue(w, find(), 'acme');
+  const searching = box().hidden;
+  setValue(w, find(), '');
+  const cleared = box().hidden;
+  chip('Metrics').click();
+  const filtered = box().hidden;
+  chip('All').click();
+  const all = box().hidden;
+  for (const id of ['cracked', 'acme', 'pager', 'evil', 'gold']) {
+    openTile(t, id);
+    key(w, doc.activeElement, 'Escape');
+  }
+  const capped = btns().map((b) => b.dataset.id);
+
+  //then
+  assert.strictEqual(before, null, 'no row before anything known was opened');
+  assert.strictEqual(one, null, 'one opened integration is not a list yet');
+  assert.deepStrictEqual(row, {ids: ['acme', 'evil', 'pager'], head: 'Recently opened', label: 'int-recent-h', names: ['Acme metrics', EVIL, 'Pager'], evil: 0, first: true, tiles: 0,
+    stored: ['acme', 'evil', 'pager', 'gone']}, 'newest first, unknown and non-text ids dropped, names as text, small buttons and no copied tiles');
+  assert.deepStrictEqual(opened, [false, EVIL], 'a button opens that integration');
+  assert.ok(back, 'closing the panel focuses the button it was opened from');
+  assert.deepStrictEqual([searching, cleared, filtered, all], [true, false, true, false], 'hidden while a search or a category narrows the tiles');
+  assert.deepStrictEqual(capped, ['gold', 'evil', 'pager', 'acme'], 'shows the last four');
+  assert.deepStrictEqual(t.errors, []);
+  t.w.close();
+  console.log('PASS Integrations: Recently opened lists the last four opened integrations at the top as small buttons, newest first, and hides while filtering');
+}
+
+async function recentlyOpenedSurvivesABrokenStoreAndIsNotShownReadOnly() {
+  //given
+  const broken = await boot({storage: {'skopax.int.recent': '{not json'}});
+  await open(broken);
+  const ro = await boot({admin: false, storage: {'skopax.int.recent': JSON.stringify(['acme', 'pager'])}});
+  await open(ro);
+
+  //when
+  openTile(broken, 'acme');
+  key(broken.w, broken.doc.activeElement, 'Escape');
+  openTile(broken, 'pager');
+  key(broken.w, broken.doc.activeElement, 'Escape');
+  const fixed = [...broken.doc.querySelectorAll('#integrations .int-recent .int-recent-b')].map((b) => b.dataset.id);
+  const readOnly = ro.doc.querySelector('#integrations .int-recent');
+
+  //then
+  assert.deepStrictEqual(fixed, ['pager', 'acme'], 'a broken stored value starts a fresh list');
+  assert.strictEqual(readOnly, null, 'read-only viewers cannot open panels, so there is no row');
+  assert.deepStrictEqual(broken.errors, []);
+  broken.w.close();
+  ro.w.close();
+  console.log('PASS Integrations: Recently opened survives a broken stored value and is not shown read-only');
+}
+
 (async () => {
   await theTilesShowEveryConnectedPluginWithItsStateHealthAndIcon();
   await anOnTileWithEveryInstanceOffShowsItsSwitchAsIdle();
@@ -2989,4 +3112,7 @@ async function aSavedAgentNodeThatIsGoneStaysSelectedWithAMarker() {
   await theAgentNodeFieldIsASelectOfAgentModeKubernetesInstancesWithANoneFirst();
   await theRelayOfAKubernetesInstanceListsOtherAgentNodesButNotItself();
   await aSavedAgentNodeThatIsGoneStaysSelectedWithAMarker();
+  await anIntegrationThatReadsThroughPrometheusSaysSoOnItsTileItsCatalogRowAndItsPanel();
+  await recentlyOpenedListsTheLastOpenedIntegrationsAtTheTopAndHidesWhileFiltering();
+  await recentlyOpenedSurvivesABrokenStoreAndIsNotShownReadOnly();
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

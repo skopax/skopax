@@ -2,6 +2,22 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.7.1 (2026-11-27)
+
+### Added
+
+- Admin > Integrations has a Recently opened row at the top: the last four integrations you opened, newest first, as small buttons that open them. It is kept in this browser only, needs two opened integrations before it shows, hides while you search or pick a category, and is not shown to people who cannot change integrations.
+- An integration with no direct connection of its own, which reads its data through another one such as Prometheus, says so with a Via tag on its tile, its row in the Add integration list and its panel, with a hint to add that one first.
+
+### Changed
+
+- The board: the tile of the open card has a stronger ring and glow, and the other tiles fade while its drawer is open, so it is clear which card you are looking at.
+- Admin > Integrations: the Custom checks section stops at the width of the other Admin pages instead of stretching across wide screens.
+
+### Upgrading
+
+- Nothing to set and no migration; old and new pods can run side by side during a rolling update.
+
 ## 0.7.0 (2026-11-27)
 
 ### Added

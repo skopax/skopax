@@ -281,7 +281,7 @@ function aCriticalTileKeepsHoverFeedback() {
   for (const [name, block] of Object.entries(blocks)) assert.ok(token(block, '--crit-tile-line-hover'), name + ' block defines the hover border');
 }
 
-async function aSelectedCriticalTileKeepsTheRingAndTheGlow() {
+async function theOpenCardsTileOutshinesTheRestAndTheOtherTilesFadeWhileItsDrawerIsOpen() {
   //given
   const css = fs.readFileSync(TEMPLATE, 'utf8');
   const {doc, errors} = await boot('en');
@@ -294,8 +294,13 @@ async function aSelectedCriticalTileKeepsTheRingAndTheGlow() {
 
   //then
   assert.ok(selected.classList.contains('on') && selected.classList.contains('k-crit'));
-  assert.match(rule, /box-shadow:\s*0 0 0 2px var\(--ring\),\s*var\(--crit-glow\)/);
+  assert.match(rule, /border-color:\s*var\(--ring\)/);
+  assert.match(rule, /box-shadow:\s*0 0 0 2px var\(--ring\),\s*0 0 18px 3px color-mix\(in srgb, var\(--ring\) 55%, transparent\)/);
+  assert.ok(!/crit-glow/.test(rule), 'the selected critical tile trades its own glow for the selection glow');
+  assert.strictEqual(cssRule(css, '.tile.on').replace(/^[^{]*/, ''), rule.replace(/^[^{]*/, ''), 'any selected tile looks the same');
   assert.ok(!/var\(--ring\)/.test(cssRule(css, '.tile.k-crit')), 'an unselected critical tile shows no ring');
+  assert.match(cssRule(css, '#anoms:has(> .card-drawer) .tile:not(.on)'), /opacity:\s*\.45;\s*box-shadow:\s*none/, 'the other tiles fade and lose their glow while a drawer is open');
+  assert.match(cssRule(css, '#anoms:has(> .card-drawer) .tile.k-crit:not(.on)'), /border-color:\s*var\(--line\)/);
   assert.deepStrictEqual(errors, []);
 }
 
@@ -333,7 +338,7 @@ async function hoveringABadgeShowsOnlyTheBadgeTooltip() {
     ['tile css', async () => tilesWrapInsideTheColumn()],
     ['off-board panel title', anOffBoardCardInThePanelNeverShowsABareDash],
     ['critical glow', criticalTilesGlowAndHighTilesDoNot],
-    ['selected critical', aSelectedCriticalTileKeepsTheRingAndTheGlow],
+    ['selected critical', theOpenCardsTileOutshinesTheRestAndTheOtherTilesFadeWhileItsDrawerIsOpen],
     ['one tooltip', hoveringABadgeShowsOnlyTheBadgeTooltip],
     ['theme blocks and contrast', async () => theCriticalTokensLiveInEveryThemeBlockAndTheLightTintKeepsContrast()],
     ['critical hover', async () => aCriticalTileKeepsHoverFeedback()],
