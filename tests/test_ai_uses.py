@@ -670,3 +670,33 @@ def test_a_slack_effort_that_is_not_a_level_skips_the_chat_effort_write_with_a_n
     # then
     assert chat_effort_changes(store) == [] and mark['skipped'] is True
     assert 'chat-effort-skipped' in [n['id'] for n in notices['items']]
+
+
+def test_another_pod_shows_a_just_saved_guard_model_at_once(store: Store):
+    # given
+    s = dataclasses.replace(settings(), **BOTH)
+    with TestClient(create_app(s, store)) as saving, TestClient(create_app(s, store)) as other:
+        before = {r['use']: r for r in other.get('/api/admin/ai-uses', headers=AUTH).json()['uses']}['guard']['model']
+
+        # when
+        saved = saving.put('/api/admin/settings', json={'key': 'investigate.guard-model', 'value': 'gpt-6.2-sol'}, headers=AUTH)
+        after = {r['use']: r for r in other.get('/api/admin/ai-uses', headers=AUTH).json()['uses']}['guard']
+
+    # then
+    assert saved.status_code == 200
+    assert (before, after['model'], after['provider']) == ('', 'gpt-6.2-sol', 'openai')
+
+
+def test_another_pod_shows_the_private_address_switch_at_once(store: Store):
+    # given
+    s = dataclasses.replace(settings(), **BOTH)
+    with TestClient(create_app(s, store)) as saving, TestClient(create_app(s, store)) as other:
+        before = other.get('/api/admin/ai-connections', headers=AUTH).json()['allowPrivate']
+
+        # when
+        saved = saving.put('/api/admin/settings', json={'key': 'core.allow-private-ai', 'value': 'true'}, headers=AUTH)
+        after = other.get('/api/admin/ai-connections', headers=AUTH).json()['allowPrivate']
+
+    # then
+    assert saved.status_code == 200
+    assert (before, after) == (False, True)

@@ -7,6 +7,13 @@ const MARKER = 'sk-leak-' + 'z'.repeat(32);
 const TYPED = 'sk-test-' + 'c'.repeat(32);
 const NOT_FIT = 'Answers, but did not call the tool: not fit for investigations';
 const NOT_FIT_NOTE = 'Not fit for investigations: the model did not call the tool';
+const INTRO = 'A compatible connection is any AI service that speaks the OpenAI Chat Completions API. Cloud services such as DeepSeek, OpenRouter or Groq work as they are. A model on your own network, such as Ollama, vLLM or LM Studio, needs Private AI addresses turned on first.';
+const PRIVATE_ON = 'On: connections may point at private and loopback addresses, such as 192.168.1.20 or localhost. Link-local and cloud metadata addresses stay blocked.';
+const PRIVATE_OFF = 'Off: only public addresses are allowed. Turn it on to add a model that runs on your own network.';
+const PRIVATE_NEXT = 'Private AI addresses are on. Add your local model here, for example Ollama with the base URL http://192.168.1.20:11434/v1.';
+const URL_HELP = 'Examples: a cloud service https://api.deepseek.com/v1, Ollama http://HOST:11434/v1, vLLM http://HOST:8000/v1';
+const PRIVATE = 'core.allow-private-ai';
+const privateRow = (doc) => doc.querySelector('#ai .aic-private .adm-row[data-key="' + PRIVATE + '"]');
 
 function two() {
   const at = iso(30);
@@ -27,7 +34,6 @@ async function aConnectionCardShowsItsModelsAndLastTest() {
 
   //when
   const deep = card(doc, 'deepseek'), local = card(doc, 'local'), groq = card(doc, 'groq');
-  const go = doc.querySelector('#ai .aic-private .aic-private-go');
   const names = [...deep.querySelectorAll('.aic-model input, .aic-model button')].map((c) => nameOf(doc, c));
 
   //then
@@ -50,21 +56,21 @@ async function aConnectionCardShowsItsModelsAndLastTest() {
   assert.strictEqual(local.querySelector('.aic-last-v').textContent, 'Not tested yet');
   assert.ok(deep.querySelector('.aic-del') && deep.querySelector('.aic-save') && deep.querySelector('.aic-test'));
   assert.strictEqual(doc.querySelector('#ai .aic-add summary').textContent, 'Add compatible connection');
-  assert.strictEqual(doc.querySelector('#ai .aic-private-t').textContent, 'Private and loopback addresses are refused for compatible connections (core.allow-private-ai is off).');
-  assert.ok(go && go.textContent === 'Open the setting', 'with a link to the setting');
-  assert.ok(bare.doc.querySelector('#ai .aic-private-t') && !bare.doc.querySelector('#ai .aic-private-go'), 'a server without the setting gets no dead link');
+  assert.strictEqual(doc.querySelector('#ai .aic-intro').textContent, INTRO, 'an intro says what a compatible connection is and when Private AI addresses is needed');
+  assert.ok(privateRow(doc) && privateRow(doc).querySelector('input.adm-sw[role="switch"]'), 'the Private AI addresses switch sits in the connections section');
+  assert.strictEqual(doc.querySelector('#ai .aic-private-t').textContent, PRIVATE_OFF);
+  const order = [doc.querySelector('#ai .aic-intro'), doc.querySelector('#ai .aic-private'), doc.querySelector('#ai .aic-list')];
+  assert.ok((order[0].compareDocumentPosition(order[1]) & 4) && (order[1].compareDocumentPosition(order[2]) & 4), 'intro, then the switch, then the connections');
+  assert.ok(!doc.querySelector('#ai-rows .adm-row[data-key="' + PRIVATE + '"]'), 'the switch is not listed again below the table');
+  assert.ok(bare.doc.querySelector('#ai .aic-private-t') && !bare.doc.querySelector('#ai .aic-private .adm-row'), 'a server without the setting shows the state and no switch');
   const controls = [...doc.querySelectorAll('#ai .aic input, #ai .aic select, #ai .aic button, #ai .aic summary')];
   assert.deepStrictEqual(controls.filter((c) => !nameOf(doc, c)).map((c) => c.outerHTML.slice(0, 80)), [], 'every connection control has a name');
   assert.strictEqual(doc.querySelectorAll('#panel-ai form').length, 0);
   assert.deepStrictEqual([...doc.querySelectorAll('#panel-ai input[type="password"]')].map((i) => i.className), [...doc.querySelectorAll('#ai .aic-key-in')].map(() => 'aic-key-in'), 'only the connection key fields are password fields');
-  go.click();
-  await wait(200);
-  const row = doc.querySelector('#ai-rows .adm-row[data-key="core.allow-private-ai"]');
-  assert.ok(row.classList.contains('adm-hit') && doc.activeElement === row, 'the link finds the switch the way the search does');
   assert.deepStrictEqual(errors.concat(bare.errors), []);
   dom.window.close();
   bare.dom.window.close();
-  return 'each compatible connection has a card with its name, base URL, company, key status, models with numbered prices, tools and images, last test (not fit without a tool call) and actions, followed by Add and the private-address line';
+  return 'each compatible connection has a card with its name, base URL, company, key status, models with numbered prices, tools and images, last test (not fit without a tool call) and actions, after an intro and the Private AI addresses switch';
 }
 
 async function addingAConnectionSendsOnlyTypedValues() {
@@ -299,6 +305,69 @@ async function aSavedKeyIsNeverShownInTheInput() {
   return 'a saved key is never written into the page; the key fields are empty masked text fields with the password-manager opt-outs';
 }
 
+async function turningPrivateAddressesOnSavesItAndOpensTheAddForm() {
+  //given
+  const {dom, w, doc, errors, calls} = await boot(TEMPLATE, {connections: two().connections});
+  const flip = (on) => {
+    const sw = privateRow(doc).querySelector('input.adm-sw');
+    sw.checked = on;
+    sw.dispatchEvent(new w.Event('change', {bubbles: true}));
+    privateRow(doc).querySelector('.adm-save').click();
+  };
+
+  //when
+  flip(true);
+  await wait(250);
+  const on = {fold: doc.querySelector('#ai .aic-add').open, focus: doc.activeElement === addForm(doc).querySelector('.aic-n'), said: doc.querySelector('#ai .aic-said').textContent,
+    state: doc.querySelector('#ai .aic-private-t').textContent, checked: privateRow(doc).querySelector('input.adm-sw').checked, msg: privateRow(doc).querySelector('.adm-msg').textContent};
+  flip(false);
+  await wait(250);
+  const off = {said: doc.querySelector('#ai .aic-said').textContent, state: doc.querySelector('#ai .aic-private-t').textContent, checked: privateRow(doc).querySelector('input.adm-sw').checked};
+
+  //then
+  assert.deepStrictEqual(calls.filter((c) => c[0] === 'PUT' && c[1] === '/api/admin/settings').map((c) => c[2]), [{key: PRIVATE, value: 'true'}, {key: PRIVATE, value: 'false'}], 'each flip is a setting write');
+  assert.deepStrictEqual(on, {fold: true, focus: true, said: PRIVATE_NEXT, state: PRIVATE_ON, checked: true, msg: 'Saved, live within 15 s on every pod'}, 'turning it on opens the add form, focuses the name and says what to add');
+  assert.deepStrictEqual(off, {said: '', state: PRIVATE_OFF, checked: false}, 'turning it off only saves and updates the text');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'turning Private AI addresses on saves it, opens the add form with the name focused and an example base URL, and turning it off only updates the text';
+}
+
+async function aPrivateAddressSwitchThatCannotBeChangedShowsWhy() {
+  //given
+  const why = 'Set by SKOPAX_ALLOW_PRIVATE_AI in the environment';
+  const items = settings().map((i) => i.key === PRIVATE ? Object.assign({}, i, {value: 'true', off: why}) : i);
+  const {dom, doc, errors} = await boot(TEMPLATE, {connections: two().connections, items, allowPrivate: true});
+
+  //when
+  const sw = privateRow(doc).querySelector('input.adm-sw');
+
+  //then
+  assert.deepStrictEqual([sw.disabled, sw.checked], [true, true], 'the switch shows its value but cannot be changed');
+  assert.strictEqual(privateRow(doc).querySelector('.adm-off-why').textContent, why, 'and says why');
+  assert.strictEqual(doc.querySelector('#ai .aic-private-t').textContent, PRIVATE_ON);
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'a Private AI addresses switch that cannot be changed here shows its state and the reason';
+}
+
+async function theBaseUrlHasExamples() {
+  //given
+  const {dom, doc, errors} = await boot(TEMPLATE, {connections: two().connections});
+
+  //when
+  const said = [addForm(doc), card(doc, 'deepseek')].map((c) => {
+    const url = c.querySelector('.aic-url');
+    return doc.getElementById(url.getAttribute('aria-describedby')).textContent;
+  });
+
+  //then
+  assert.deepStrictEqual(said, [URL_HELP, URL_HELP], 'the add form and each card give base URL examples tied to the field');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  return 'the Base URL field of the add form and of each card has examples for a cloud service, Ollama and vLLM';
+}
+
 (async () => {
   console.log('PASS ' + await aConnectionCardShowsItsModelsAndLastTest());
   console.log('PASS ' + await addingAConnectionSendsOnlyTypedValues());
@@ -308,4 +377,7 @@ async function aSavedKeyIsNeverShownInTheInput() {
   console.log('PASS ' + await anOlderRefreshNeverAppliesLast());
   console.log('PASS ' + await aConnectionSaveKeepsUnsavedSettings());
   console.log('PASS ' + await aSavedKeyIsNeverShownInTheInput());
+  console.log('PASS ' + await turningPrivateAddressesOnSavesItAndOpensTheAddForm());
+  console.log('PASS ' + await aPrivateAddressSwitchThatCannotBeChangedShowsWhy());
+  console.log('PASS ' + await theBaseUrlHasExamples());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

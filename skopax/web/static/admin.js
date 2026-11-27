@@ -977,7 +977,7 @@ function adminFilter() {
 }
 
 function adminRowEl(key) {
-  return document.querySelector(['#admin', '#feat-other', '#ai-rows', '#acc-mcp', '#acc-sso .sso-roles'].map(function (box) { return box + ' .adm-row[data-key="' + key + '"]'; }).join(', '));
+  return document.querySelector(['#admin', '#feat-other', '#ai-rows', '#ai', '#acc-mcp', '#acc-sso .sso-roles'].map(function (box) { return box + ' .adm-row[data-key="' + key + '"]'; }).join(', '));
 }
 function adminKeep(box, saved, paint) {
   var keep = document.activeElement && box.contains(document.activeElement) ? document.activeElement.id : null, edits = saved ? unsaved(box, saved) : [];
@@ -1029,6 +1029,7 @@ async function adminDone(r, said, reverted) {
   try { ADMIN_HIST = await adminApi('GET', '/api/admin/history?limit=' + ADMIN_HIST_MAX); } catch (e) {}
   adminPaintAll(r.item.key);
   if (r.item.key === 'investigate.provider') { await loadAi(); adminNotices(); }
+  if (r.item.key === AIC_PRIVATE_KEY && typeof aicPrivateDone === 'function') await aicPrivateDone(r.item);
   var row = adminRowEl(r.item.key);
   if (row) { var m = row.querySelector('.adm-msg'); m.textContent = said; m.className = 'adm-msg ok'; }
   var note = reverted && document.getElementById('adm-ch-msg');

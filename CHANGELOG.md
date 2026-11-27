@@ -2,6 +2,24 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.7.2 (2026-11-27)
+
+### Added
+
+- History shows admins the guard's result on private chat runs: passed, masked and how many parts, refused, held, fixed or dropped, the category, and whether it ran in Watch only. The question, the answer and the guard's reason stay hidden, because the reason can quote the chat; a held chat answer is still shown to admins for review as before. People who are not admins see no guard result on a private chat.
+
+### Changed
+
+- Admin > Investigator explains compatible connections: a line above the list says what one is, that cloud services such as DeepSeek, OpenRouter or Groq work as they are, and that a model on your own network (Ollama, vLLM, LM Studio) needs Private AI addresses first. The Private AI addresses switch now sits in that section with a plain on or off line; turning it on opens the Add compatible connection form with an example address, and the Base URL field lists example addresses. The setting's help says it adds nothing by itself.
+
+### Fixed
+
+- With more than one pod, a guard model you just saved could still show as Guard off, and Private AI addresses as off, until the page was reloaded about 15 seconds later. The Who does what table and the compatible connections now read the newest settings.
+
+### Upgrading
+
+- Nothing to set and no migration; old and new pods can run side by side during a rolling update.
+
 ## 0.7.1 (2026-11-27)
 
 ### Added

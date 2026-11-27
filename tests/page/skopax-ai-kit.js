@@ -199,6 +199,7 @@ async function boot(template, opts) {
             const was = srv.items.find((i) => i.key === body.key);
             const next = Object.assign({}, was, {value: body.value, source: 'admin', by: ADMIN_USER, at: iso(0)});
             srv.items = srv.items.map((i) => i.key === body.key ? next : i);
+            if (body.key === 'core.allow-private-ai') srv.allowPrivate = body.value === 'true';
             return ok({item: next, change: {}});
           }
           if (p === '/api/admin/settings') return ok({items: srv.items, rev: 1, refreshSeconds: 15});
