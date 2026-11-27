@@ -5,6 +5,7 @@ var INT_MCP = 'mcp-tools', INT_MCP_PRESETS = null, INT_MCP_BACK = null, INT_MCP_
 var INT_MCP_KINDS = {read: ['Reads', 'k-good'], unknown: ['May change data', 'k-warn'], write: ['Changes data', 'k-crit']};
 var INT_MCP_STATES = {connected: 'Connected', reconnect: 'Needs a new sign-in', none: 'Not connected'};
 var INT_SEG_MAX = 3, INT_CUSTOM = '@custom', INT_KNOW = '@knowledge';
+var INT_RECENT_KEY = 'skopax.int.recent', INT_RECENT_SHOWN = 4, INT_RECENT_KEPT = 8;
 function intBase(p) { return '/api/admin/plugins/' + encodeURIComponent(p.id); }
 function intStateOf(p) { return !p.state ? 'broken' : p.state === 'ok' ? (p.enabled ? 'on' : 'off') : p.state; }
 function intSay(msg, text, bad) {
@@ -308,6 +309,21 @@ function intKnowState(p) {
   if (intKnowErr(p)) return {name: 'setup', text: 'Knowledge needs setup', tip: 'Knowledge source: fix the problem shown on this tile so the investigator can search it'};
   return on;
 }
+function intVia(p) {
+  var f = intList(p && p.fields).filter(function (x) { return !!x && x.kind === 'instance' && x.required === true && Array.isArray(x.choices) && x.choices.length === 1 && x.choices[0] !== p.id; })[0];
+  if (!f) return '';
+  var src = intFind(f.choices[0]);
+  return src ? intName(src) : String(f.label || f.choices[0]);
+}
+function intViaTip(via) { return tx('No direct connection: it reads the data from your {0} instance. Add {0} first.').split('{0}').join(via); }
+function intViaTag(p) {
+  var via = intVia(p);
+  if (!via) return null;
+  var tag = accText('span', 'tag int-via-tag k-muted', tx('Via {0}').replace('{0}', function () { return via; }));
+  tag.setAttribute('data-no-tx', '');
+  tag.title = intViaTip(via);
+  return tag;
+}
 function intKnowTagOf(st) {
   if (!st) return null;
   var tag = accText('span', 'tag int-know-tag k-' + (st.name === 'on' ? 'info' : st.name === 'off' ? 'muted' : 'warn'), st.text);
@@ -422,6 +438,46 @@ function intTileOpen(id) {
   var t = [].filter.call(document.querySelectorAll('#integrations .int-tile'), function (x) { return x.dataset.id === id; })[0];
   return t && t.querySelector('.int-open');
 }
+function intRecentIds() {
+  var v = null;
+  try { v = JSON.parse(load(INT_RECENT_KEY) || '[]'); } catch (e) { v = null; }
+  return Array.isArray(v) ? v.filter(function (x) { return typeof x === 'string' && x; }) : [];
+}
+function intRemember(id) {
+  if (typeof id !== 'string' || !id) return;
+  save(INT_RECENT_KEY, JSON.stringify([id].concat(intRecentIds().filter(function (x) { return x !== id; })).slice(0, INT_RECENT_KEPT)));
+}
+function intRecentBtn(id) {
+  return [].filter.call(document.querySelectorAll('#integrations .int-recent-b'), function (b) { return b.dataset.id === id; })[0];
+}
+function intRecentBox() {
+  if (intRO()) return null;
+  var tiled = intPlugins().filter(intTiled), list = intRecentIds().map(function (id) { return tiled.filter(function (p) { return p.id === id; })[0]; }).filter(Boolean).slice(0, INT_RECENT_SHOWN);
+  if (list.length < 2) return null;
+  var sec = accText('section', 'int-recent'), h = accText('h4', 'int-group-h', 'Recently opened'), row = accText('div', 'int-recent-row');
+  h.id = 'int-recent-h';
+  sec.setAttribute('aria-labelledby', h.id);
+  list.forEach(function (p) {
+    var b = accText('button', 'int-recent-b'), n = accText('span', 'int-recent-n', intName(p));
+    b.type = 'button';
+    b.dataset.id = p.id;
+    n.setAttribute('data-no-tx', '');
+    b.appendChild(intIcon(p));
+    b.appendChild(n);
+    b.addEventListener('click', function () { intOpen(p.id, undefined, {recent: p.id}); });
+    row.appendChild(b);
+  });
+  sec.appendChild(h);
+  sec.appendChild(row);
+  return sec;
+}
+function intRecentPaint() {
+  var was = document.querySelector('#integrations .int-recent'), note = document.querySelector('#integrations .int-note'), now = intRecentBox();
+  if (now) now.hidden = !!(INT_CAT || INT_Q.trim());
+  if (was && now) was.replaceWith(now);
+  else if (was) was.remove();
+  else if (now && note) note.after(now);
+}
 function intHay(p, ks) {
   if (ks === undefined) ks = intKnowState(p);
   return foldCase([intName(p), p.id, intCatLabel(intCatOf(p)), typeof p.description === 'string' ? p.description : '', intIsCustom(p) ? 'custom' : '', ks ? 'knowledge' : ''].join(' '));
@@ -467,7 +523,11 @@ function intTile(p) {
   dot.appendChild(accText('span', 'int-dot ' + (h ? h.state : 'off')));
   dot.appendChild(accText('span', 'sr', need ? 'Needs attention' : st === 'on' ? 'On' : 'Off'));
   row.appendChild(dot);
-  var kt = intKnowTagOf(ks);
+  var kt = intKnowTagOf(ks), vt = intViaTag(p);
+  if (vt) {
+    row.classList.add('know');
+    row.appendChild(vt);
+  }
   if (kt) {
     row.classList.add('know');
     row.appendChild(kt);
@@ -542,6 +602,8 @@ function intFilter() {
   });
   document.querySelectorAll('#integrations .int-group').forEach(function (g) { g.hidden = ![].some.call(g.querySelectorAll('.int-tile'), function (t) { return !t.hidden; }); });
   document.querySelectorAll('#integrations .int-chip').forEach(function (c) { c.setAttribute('aria-pressed', String(c.dataset.cat === INT_CAT)); });
+  var recent = document.querySelector('#integrations .int-recent');
+  if (recent) recent.hidden = !!(INT_CAT || q);
   if (!none) return;
   none.hidden = !(q && all.length && !seen);
   none.querySelector('.int-none-t').textContent = 'No integration matches "' + q + '"';
@@ -658,6 +720,8 @@ function renderIntegrations(note) {
   var said = accText('p', 'adm-msg ok int-note', note || '');
   said.setAttribute('role', 'status');
   box.appendChild(said);
+  var recent = intRecentBox();
+  if (recent) box.appendChild(recent);
   if (anyCustom) {
     [['custom', 'Custom plug-ins', shown.filter(intIsCustom)], ['builtin', 'Built-in plug-ins', shown.filter(function (p) { return !intIsCustom(p); })]].forEach(function (g) {
       if (!g[2].length) return;
@@ -760,7 +824,7 @@ function intPick(p, note) {
   b.dataset.id = p.id;
   b.dataset.origin = p.origin || 'builtin';
   b.dataset.find = intHay(p);
-  var n = intList(p.instances).length, tags = [intKnowKey(p) ? intKnowTagOf({name: 'on', text: 'Knowledge', tip: INT_KNOW_TIP}) : null, intIsCustom(p) ? accText('span', 'muted int-pick-c', 'Custom') : null,
+  var n = intList(p.instances).length, tags = [intViaTag(p), intKnowKey(p) ? intKnowTagOf({name: 'on', text: 'Knowledge', tip: INT_KNOW_TIP}) : null, intIsCustom(p) ? accText('span', 'muted int-pick-c', 'Custom') : null,
     p.state === 'locked' ? accText('span', 'tag k-act int-ed', String(p.edition || '').charAt(0).toUpperCase() + String(p.edition || '').slice(1)) : null];
   var status = intOutside(p) ? accText('span', 'int-has idle', 'Set up outside Admin') : connected || n ? accText('span', 'int-has' + (connected ? '' : ' idle'), (connected ? '\u2713 ' : '') + (n > 1 ? n + ' added' : 'Added')) : null;
   intPickBody(b, intIcon(p), intName(p), typeof p.description === 'string' ? p.description : '', note, tags, status);
@@ -874,6 +938,8 @@ function intOpen(id, name, from) {
   if (!w) return;
   INT_PANEL = {id: id, name: name, from: from};
   if (!intPanelPaint()) return;
+  intRemember(id);
+  intRecentPaint();
   w.hidden = false;
   document.addEventListener('keydown', intKeys);
   intFocusFirst();
@@ -904,7 +970,7 @@ function intClose(back) {
   if (w) w.hidden = true;
   if (panel) panel.textContent = '';
   if (!back || !s) return;
-  var to = (s.from && s.from.tile && intTileOpen(s.from.tile)) || document.getElementById('int-add-btn');
+  var to = (s.from && s.from.recent && intRecentBtn(s.from.recent)) || (s.from && s.from.tile && intTileOpen(s.from.tile)) || document.getElementById('int-add-btn');
   if (to) to.focus();
 }
 function intLeave() {
@@ -953,6 +1019,7 @@ function intPanelPaint(note) {
   head.appendChild(close);
   panel.appendChild(head);
   if (p.description) panel.appendChild(accText('p', 'adm-help int-desc', String(p.description)));
+  if (intVia(p)) { var viaLine = accText('p', 'adm-help int-via', intViaTip(intVia(p))); viaLine.setAttribute('data-no-tx', ''); panel.appendChild(viaLine); }
   panel.appendChild(accText('p', 'muted int-meta', intMetaOf(p)));
   intSetup(p, panel, !insts.length);
   if (!usable && p.reason) panel.appendChild(accText('p', 'adm-msg bad int-reason', String(p.reason)));
