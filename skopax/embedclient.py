@@ -38,14 +38,18 @@ resolve = socket.getaddrinfo
 
 
 class EmbedError(Authored, Exception):
-    def __init__(self, kind: str, counts: bool = True):
-        text = msg('embed.reason.no_url') if kind == 'off' else msg(f'embed.{kind}')
+    def __init__(self, kind: str, counts: bool = True, local: bool = False):
+        text = msg('embed.reason.no_url') if kind == 'off' else msg('embed.blocked') if local else msg(f'embed.{kind}')
         super().__init__(text)
         self.kind = kind
         self.counts = counts
 
 
 class RefusedAddress(Exception):
+    pass
+
+
+class BlockedAddress(RefusedAddress):
     pass
 
 
@@ -72,7 +76,7 @@ def addresses(host: str, port: int | None) -> list:
 
 def check_addresses(found: list, allow_public: bool) -> None:
     if any(ip is None or blocked(ip) for ip in found):
-        raise RefusedAddress()
+        raise BlockedAddress()
     if not allow_public and any(not inside(ip) for ip in found):
         raise RefusedAddress()
 
@@ -229,6 +233,8 @@ def checked_target(url: str, allow_public: bool) -> str:
         raise EmbedError('down')
     try:
         check_addresses(found, allow_public)
+    except BlockedAddress:
+        raise EmbedError('refused', local=True) from None
     except RefusedAddress:
         raise EmbedError('refused') from None
     return base
@@ -328,6 +334,9 @@ class EmbedClient:
             (self.breaker.failure if e.counts else self.breaker.neutral)(e.kind, ticket)
             log.warning('the embedding service call failed: %s', e.kind)
             raise
+        except BlockedAddress:
+            self.breaker.neutral('refused', ticket)
+            raise EmbedError('refused', local=True) from None
         except RefusedAddress:
             self.breaker.neutral('refused', ticket)
             raise EmbedError('refused') from None

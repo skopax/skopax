@@ -349,7 +349,7 @@ def test_metadata_and_link_local_addresses_are_always_refused(monkeypatch, ip, a
     error = failing(make(service, embed_allow_public=allow_public))
 
     # then
-    assert error.kind == 'refused' and service.requests == []
+    assert error.kind == 'refused' and error.text == msg('embed.blocked') != msg('embed.refused') and 'public' not in error.text and service.requests == []
 
 
 def test_one_bad_address_among_good_ones_refuses_the_name(monkeypatch):

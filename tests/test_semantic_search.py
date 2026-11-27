@@ -654,7 +654,7 @@ def blended(base: np.ndarray, cosine: float) -> list[float]:
 def test_hits_below_the_threshold_are_dropped_and_scores_are_rounded(box, store):
     # given
     base = np.array(embed_text(QUERY))
-    for ref, cosine in (('strong', 0.93), ('edge-in', 0.82), ('edge-out', 0.78), ('weak', 0.4)):
+    for ref, cosine in (('strong', 0.86), ('edge-in', 0.82), ('edge-out', 0.78), ('weak', 0.4)):
         add_run(store, ref)
         box.put('run', ref, svc=SVC, trigger='review', vec=blended(base, cosine))
 
@@ -663,7 +663,7 @@ def test_hits_below_the_threshold_are_dropped_and_scores_are_rounded(box, store)
 
     # then
     assert refs(result) == ['strong', 'edge-in']
-    assert [h.score for h in result.items] == [0.93, 0.82]
+    assert [h.score for h in result.items] == [0.86, 0.82]
     assert all(round(h.score, 2) == h.score for h in result.items)
 
 
@@ -883,3 +883,96 @@ def test_guard_refused_asks_are_not_in_the_word_fallback(box, store):
 
     # then
     assert refs(result) == ['ok']
+
+
+SECRET = 'AKIAIOSFODNN7EXAMPLE'
+
+
+def test_a_secret_and_an_email_in_the_query_never_reach_the_embedder(box, store):
+    # given
+    add_run(store, 'ok')
+    box.put('run', 'ok', svc=SVC, trigger='review')
+
+    # when
+    result = box.run(SearchContext.ui('viewer'), text=f'pool exhausted for alice@example.com with key {SECRET}')
+
+    # then
+    sent = box.fake.texts
+    assert len(sent) == 1 and SECRET not in sent[0] and 'alice@example.com' not in sent[0] and 'pool exhausted' in sent[0]
+    assert result.semantic is True
+
+
+def test_a_masking_timeout_falls_back_without_calling_the_service(box, store, monkeypatch):
+    # given
+    add_run(store, 'ok')
+    box.put('run', 'ok', svc=SVC, trigger='review')
+    monkeypatch.setattr(chunks, 'redact_text', lambda text, limit=None: sr.TIMEOUT_MARK)
+
+    # when
+    result = box.run(SearchContext.ui('viewer'))
+
+    # then
+    assert result.semantic is False and result.note and box.fake.calls == []
+
+
+def test_a_query_that_masks_to_nothing_falls_back_without_calling_the_service(box, store):
+    # given
+    add_run(store, 'ok')
+
+    # when
+    result = box.run(SearchContext.card_run(), text=SECRET)
+
+    # then
+    assert result.semantic is False and result.note and result.items == [] and box.fake.calls == []
+
+
+def test_the_word_fallback_still_reads_the_raw_text_locally(box, store, monkeypatch):
+    # given
+    add_run(store, 'ok', recap='The retry storm hit alice@example.com')
+    monkeypatch.setattr(chunks, 'redact_text', lambda text, limit=None: sr.TIMEOUT_MARK)
+
+    # when
+    result = box.run(SearchContext.ui('viewer'), text='alice@example.com')
+
+    # then
+    assert result.semantic is False and refs(result) == ['ok'] and box.fake.calls == []
+
+
+def test_hits_far_below_the_best_hit_are_dropped(box, store):
+    # given
+    base = np.array(embed_text(QUERY))
+    for ref, cosine in (('best', 0.95), ('near', 0.91), ('far', 0.83)):
+        add_run(store, ref)
+        box.put('run', ref, svc=SVC, trigger='review', vec=blended(base, cosine))
+
+    # when
+    result = box.run(SearchContext.ui('viewer'), limit=20)
+
+    # then
+    assert refs(result) == ['best', 'near']
+
+
+def test_the_relative_cut_is_keyed_by_model():
+    # given
+    sr.RELATIVE_CUTS['other/model'] = 0.2
+
+    # when
+    try:
+        cuts = [sr.relative_cut('other/model'), sr.relative_cut(EMBED_MODEL), sr.relative_cut('unknown/model')]
+    finally:
+        del sr.RELATIVE_CUTS['other/model']
+
+    # then
+    assert cuts == [0.2, 0.05, 0.05]
+
+
+def test_the_search_module_imports_first_in_a_fresh_interpreter():
+    # given
+    import subprocess
+    import sys
+
+    # when
+    done = subprocess.run([sys.executable, '-c', 'import skopax.semantic.search'], capture_output=True, text=True, timeout=120)
+
+    # then
+    assert done.returncode == 0, done.stderr

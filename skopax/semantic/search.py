@@ -34,6 +34,8 @@ MAX_LIMIT = 20
 QUERY_MAX = 500
 MIN_SCORE = 0.80
 MIN_SCORES = {EMBED_MODEL: 0.80}
+RELATIVE_CUT = 0.05
+RELATIVE_CUTS = {EMBED_MODEL: RELATIVE_CUT}
 SCORE_DIGITS = 2
 EXCERPT = 300
 TITLE = 120
@@ -131,6 +133,10 @@ def usable_knowledge(runtime, allowed: Callable[[object], bool] | None = None) -
             continue
         for item in plugin.knowledge:
             yield plugin.id, '', item
+
+
+def relative_cut(model: str) -> float:
+    return RELATIVE_CUTS.get(model, RELATIVE_CUT)
 
 
 def looks_like_log_line(text: str) -> bool:
@@ -235,8 +241,11 @@ class Searcher:
         return None
 
     def semantic(self, ctx: SearchContext, s, query: str, chosen: list[str], limit: int, service: str | None) -> SearchResult:
+        safe = chunks.masked(query)
+        if safe is None:
+            return self.fallback(ctx, query, chosen, limit, service, msg('embed.reason.query'))
         try:
-            vector = self.client.embed_queries([query])[0]
+            vector = self.client.embed_queries([safe])[0]
         except EmbedError as e:
             return self.fallback(ctx, query, chosen, limit, service, e.text)
         except Exception as e:
@@ -281,6 +290,10 @@ class Searcher:
             if parsed is None or parsed[0] not in chosen or score < floor:
                 continue
             best[parsed] = max(score, best.get(parsed, score))
+        if best:
+            top = max(best.values())
+            cut = relative_cut(s.embed_model)
+            best = {p: v for p, v in best.items() if v >= top - cut}
         ranked = sorted(best.items(), key=lambda t: (-t[1], t[0]))[:limit * CANDIDATES]
         return SearchResult(True, note, rebuilding, self.hydrate(ctx, ranked, limit))
 

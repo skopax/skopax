@@ -9,7 +9,6 @@ from skopax.investigator import prompt
 from skopax.investigator.tools import similar_row
 from skopax.investigator.flags import REQUESTS, SOFT, safe_excerpt, scan
 from skopax.redact import masked_tree
-from skopax.semantic.search import SearchContext
 
 log = logging.getLogger(__name__)
 
@@ -106,6 +105,7 @@ def brief_block(toolbox, cards: list[dict], clock: Callable[[], float] = time.mo
     searcher = toolbox.sources.similar
     if not cards or not wanted(toolbox.settings, searcher):
         return ''
+    from skopax.semantic.search import SearchContext
     ctx = SearchContext.card_run(toolbox.run_kind(), toolbox._searched)
     hits = search(searcher, ctx, cards, toolbox.run_id, clock, budget)
     rows = [r for r in (similar_row(h) for h in hits) if r is not None]

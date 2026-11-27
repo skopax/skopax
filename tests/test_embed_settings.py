@@ -218,7 +218,7 @@ def test_admin_saves_in_range_values_and_normalises_the_prefix(live):
 
 
 LANGS = ('de', 'es', 'fr', 'tr')
-NOTES = ('embed.off', 'embed.reason.disabled', 'embed.reason.no_url', 'embed.down', 'embed.refused', 'embed.mismatch', 'embed.auth', 'embed.bad_answer', 'embed.rebuilding', 'embed.needs_url', 'embed.sources_invalid')
+NOTES = ('embed.off', 'embed.reason.disabled', 'embed.reason.no_url', 'embed.down', 'embed.refused', 'embed.blocked', 'embed.mismatch', 'embed.auth', 'embed.bad_answer', 'embed.rebuilding', 'embed.needs_url', 'embed.sources_invalid')
 
 
 def test_the_notes_are_english_messages_and_outbound():

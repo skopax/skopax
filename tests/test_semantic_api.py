@@ -367,3 +367,25 @@ def test_the_throttle_message_is_translated_and_outbound(lang):
 
     # then
     assert messages.outbound('search.throttled') and pack['search.throttled'].strip() and pack['search.throttled'] != messages.MESSAGES['search.throttled']
+
+
+def test_a_log_line_in_the_ui_query_is_normalised_like_the_investigator_does(store, box):
+    # given
+    seen = []
+
+    class Spy:
+        def search(self, ctx, text, kinds, limit, service=None):
+            seen.append((text, kinds))
+            return SearchResult(True, None, None, [])
+
+    client = make(store, box, role='viewer')
+    client.app.state.semantic_searcher = Spy()
+    line = '2026-11-20T10:00:00Z ERROR connection refused to 10.1.2.3:5432 request 8f14e45f-ceea-467f-a0e6-b3a2f0f4c9d1'
+
+    # when
+    client.get('/api/search', params={'q': line})
+    client.get('/api/search', params={'q': line, 'kinds': 'errors'})
+    client.get('/api/search', params={'q': line, 'kinds': 'runs'})
+
+    # then
+    assert seen[0][0] != line and seen[0][0] == seen[1][0] and seen[2][0] == line

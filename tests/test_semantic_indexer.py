@@ -871,3 +871,17 @@ def test_guard_refused_runs_are_never_indexed(box, store):
     assert box.refs('run') == {'ok'}
     assert ix.Indexer.eligible(box.indexer, ix.BY_NAME['run'], {'outcome': 'done', 'trigger': 'review', 'error': 'Refused by the guard'}) is False
     assert ix.chunks.run_passages({'_id': 'x', 'outcome': 'done', 'trigger': 'review', 'ask': {'text': 'q'}, 'recap': 'a', 'error': 'Refused by the guard'}) == []
+
+
+def test_an_occurrence_keeps_its_what_without_a_live_card(box, store):
+    # given
+    did = store.record_card({'key': KEY, 'svc': 'checkout-service', 'label': 'High CPU', 'sub': 'pod-a', 'sev': 'warn', 'firstSeen': '2026-11-20T09:00:00Z', 'lastSeen': '2026-11-20T09:00:00Z',
+                             'what': 'CPU above 90 percent for 10 minutes ' + 'x' * 3000}, 'cleared')
+
+    # when
+    drain(box, 2)
+
+    # then
+    stored = store.card_history.find_one({'_id': did})
+    assert len(stored['what']) <= 1001 and stored['what'].startswith('CPU above 90 percent')
+    assert any('what: CPU above 90 percent for 10 minutes' in t for t in box.fake.texts)

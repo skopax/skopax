@@ -2823,6 +2823,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         if held is None:
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg('search.throttled'), headers={'Retry-After': str(search_retry_after(who))})
         index_kinds = [i for k in wanted for i in semantic_shape.UI_KINDS[k]] if wanted else None
+        if index_kinds is None or 'errtpl' in index_kinds:
+            text = semantic_search.normalise_query(text)
         try:
             found = app.state.semantic_searcher.search(semantic_search.SearchContext.ui(role), text, index_kinds, limit)
         except semantic_search.SearchUnavailable:
