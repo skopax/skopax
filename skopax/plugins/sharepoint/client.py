@@ -293,7 +293,7 @@ class Graph:
                     if len(files) >= WALK_ITEMS:
                         partial = True
                         break
-                    files.append({'path': path, 'id': item.get('id'), 'url': item.get('webUrl'), 'name': item.get('name')})
+                    files.append({'path': path, 'id': item.get('id'), 'url': item.get('webUrl'), 'name': item.get('name'), 'modified': item.get('lastModifiedDateTime')})
         self._walked = (self.clock(), files, partial)
         return files, partial
 

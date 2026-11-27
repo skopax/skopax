@@ -26,10 +26,41 @@ services:
       SKOPAX_ADMIN_EMAIL: ${SKOPAX_ADMIN_EMAIL:-}
       SKOPAX_ADMIN_PASSWORD: ${SKOPAX_ADMIN_PASSWORD:-}
       SKOPAX_PUBLIC_READ: ${SKOPAX_PUBLIC_READ:-false}
+      SKOPAX_EMBED_URL: ${SKOPAX_EMBED_URL:-}
+      SKOPAX_EMBED_API_KEY: ${SKOPAX_EMBED_API_KEY:-}
   browser:
     image: chromedp/headless-shell:157.0.8103.15
     restart: unless-stopped
     shm_size: 1gb
+  embed:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.10.0@sha256:f0a4bb206b9d4877746b5b9f638e138fe683eeb9787c14d541a12c993b562d86
+    profiles: [semantic]
+    restart: unless-stopped
+    command:
+      - --model-id
+      - /model
+      - --served-model-name
+      - intfloat/multilingual-e5-small
+      - --max-client-batch-size
+      - "32"
+      - --max-concurrent-requests
+      - "64"
+      - --tokenization-workers
+      - "1"
+    environment:
+      PORT: "8080"
+      API_KEY: ${SKOPAX_EMBED_API_KEY:-}
+    volumes:
+      - ${SKOPAX_EMBED_MODEL_DIR:-./embed-model}:/model:ro
+    user: "65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    cpus: 1
+    mem_limit: 1.5g
   prometheus:
     image: prom/prometheus:v3.1.0@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218
     profiles: [demo]

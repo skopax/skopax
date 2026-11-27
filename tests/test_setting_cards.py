@@ -31,7 +31,7 @@ def test_the_investigator_section_has_the_agreed_cards_in_order():
     titles = [title for title, _ in settingcards.CARDS['Investigator']]
 
     # then
-    assert titles == ['Provider', 'Models', 'Advisor models', 'Spend and limits', 'Web', 'Behaviour', 'Follow-up checks', 'Langfuse tracing']
+    assert titles == ['Provider', 'Models', 'Advisor models', 'Spend and limits', 'Web', 'Behaviour', 'Follow-up checks', 'Langfuse tracing', 'Search by meaning']
     assert [title for title, _ in settingcards.CARDS['Slack']] == ['Channel and posting', 'Questions', 'Threads and reminders', 'Daily warnings']
 
 

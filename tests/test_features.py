@@ -35,7 +35,7 @@ from skopax.slack import CREATE_TASK, Slack
 from skopax.store import Store
 from skopax.tunables import STATIC, Live, TunableStore
 
-IDS = ('investigator', 'chat', 'slack-autosend', 'slack-listener', 'mcp', 'public-read', 'push', 'postdeploy', 'self-review', 'update-check', 'tag-report', 'warn-digest', 'settle', 'langfuse-tracing', 'hide-attribution')
+IDS = ('investigator', 'chat', 'slack-autosend', 'slack-listener', 'mcp', 'public-read', 'push', 'postdeploy', 'self-review', 'update-check', 'tag-report', 'warn-digest', 'settle', 'langfuse-tracing', 'semantic-search', 'hide-attribution')
 ICONS = Path(__file__).resolve().parent.parent / 'skopax' / 'web' / 'static' / 'icons.js'
 KEY = 'log|checkout-service|ERROR|boom'
 DRAFT = 'checkout-service showed 116 ERROR lines, 13:05 UTC.\nhttps://skopax.example.com/#a=x'
@@ -252,7 +252,7 @@ def test_features_list_every_core_feature_in_order():
     assert tunables['investigate.mode'].live is True and tunables['core.postdeploy'].live is True
 
 
-def test_defaults_keep_every_feature_on_except_four(store: Store):
+def test_defaults_keep_every_feature_on_except_five(store: Store):
     # given
     base = dataclasses.replace(load_settings(env={}), token=TOKEN)
 
@@ -263,7 +263,7 @@ def test_defaults_keep_every_feature_on_except_four(store: Store):
 
     # then
     assert tuple(listed) == IDS
-    assert [k for k, on in listed.items() if not on] == ['public-read', 'self-review', 'langfuse-tracing', 'hide-attribution']
+    assert [k for k, on in listed.items() if not on] == ['public-read', 'self-review', 'langfuse-tracing', 'semantic-search', 'hide-attribution']
     assert mine == listed
 
 
@@ -278,7 +278,7 @@ def test_me_carries_the_server_off_text_of_each_switched_off_feature(store: Stor
         after = c.get('/api/me', headers=AUTH).json()['featureOff']
 
     # then
-    assert before == {f: off_text(f) for f in ('public-read', 'self-review', 'langfuse-tracing', 'hide-attribution')}
+    assert before == {f: off_text(f) for f in ('public-read', 'self-review', 'langfuse-tracing', 'semantic-search', 'hide-attribution')}
     assert after['investigator'] == off_text('investigator') == msg('features.off', feature='AI investigator')
     assert set(after) == set(before) | {'investigator'}
 
@@ -653,7 +653,7 @@ def test_a_community_feature_never_asks_for_the_edition(store: Store):
     locked = features.locked('hide-attribution')
 
     # then
-    assert len(community) == 14 and before == []
+    assert len(community) == 15 and before == []
     assert locked is True and asked == ['edition']
 
 

@@ -164,6 +164,7 @@ READS = {
     '/api/deploys': 'read',
     '/api/gate-examples': 'read',
     '/api/history/cards': 'read',
+    '/api/search': 'read',
     '/api/integrations': 'login',
     '/api/integrations/custom-checks': 'login',
     '/api/investigations': 'read',

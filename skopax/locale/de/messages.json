@@ -434,5 +434,18 @@
  "mail.warndigest.title.many": "{n} Warnungskarten in Ihren Tags warten",
  "mail.warndigest.service": "{svc} ({n})",
  "mail.warndigest.more": "+{n} weitere auf dem Board",
- "postdeploy.head_one": "Deploy-Prüfung {date}: 1 Service ({span} {zone}), {clean} sauber"
+ "postdeploy.head_one": "Deploy-Prüfung {date}: 1 Service ({span} {zone}), {clean} sauber",
+ "embed.off": "Die Suche nach Bedeutung ist aus: {reason}.",
+ "embed.reason.disabled": "sie ist in Verwaltung › Funktionen ausgeschaltet",
+ "embed.reason.no_url": "es ist keine Adresse für den Embedding-Dienst gesetzt",
+ "embed.reason.not_ready": "der Index ist noch nicht bereit",
+ "embed.down": "der Embedding-Dienst antwortet nicht",
+ "embed.refused": "die Adresse des Embedding-Dienstes ist öffentlich und nicht erlaubt",
+ "embed.mismatch": "der Embedding-Dienst führt ein anderes Modell aus als das eingestellte",
+ "embed.auth": "der Embedding-Dienst hat den Schlüssel nicht akzeptiert",
+ "embed.bad_answer": "der Embedding-Dienst hat eine unbrauchbare Antwort gesendet",
+ "embed.rebuilding": "Die Suche nach Bedeutung baut ihren Index neu auf: {done} von {total} fertig",
+ "embed.needs_url": "Die Adresse des Embedding-Dienstes (SKOPAX_EMBED_URL) ist nicht gesetzt, daher lässt sich die Suche nach Bedeutung nicht einschalten",
+ "embed.sources_invalid": "Indizierte Quellen enthält {entry}, das keine Quelle ist; erlaubt sind {allowed}",
+ "search.throttled": "Zu viele Suchanfragen, warten Sie eine Minute und versuchen Sie es erneut"
 }

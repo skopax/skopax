@@ -1,7 +1,7 @@
 import json
 import re
 import threading
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -43,6 +43,10 @@ __all__ = [
     'Setting',
     'Tool',
     'Knowledge',
+    'DocRef',
+    'DocText',
+    'Corpus',
+    'Truncated',
     'OrgPack',
     'Panel',
     'Locale',
@@ -296,6 +300,34 @@ class Knowledge:
     text: str
     slack: bool = False
     inline: bool = False
+
+
+class Truncated(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class DocRef:
+    id: str
+    title: str
+    url: str | None
+    modified: str | None
+    space: str = ''
+
+
+@dataclass(frozen=True)
+class DocText:
+    title: str
+    url: str | None
+    text: str
+
+
+@dataclass(frozen=True)
+class Corpus:
+    list: Callable[['Context', str | None], Iterator[DocRef]]
+    read: Callable[['Context', str], DocText]
+    max_pages: int
+    spaces: Callable[[Mapping[str, str]], tuple[str, ...] | None] | None = None
 
 
 @dataclass(frozen=True)
@@ -654,4 +686,5 @@ class Plugin:
     setup: Setup | None = None
     company_knowledge: str = ''
     knowledge_also: bool = False
+    corpus: Corpus | None = None
     test_posts: bool = False

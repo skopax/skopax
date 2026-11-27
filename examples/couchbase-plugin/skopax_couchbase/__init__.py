@@ -357,7 +357,7 @@ CARD_TYPES = (CardType('couchbase-down', 'Couchbase node down'), CardType('couch
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='infrastructure',
     description='Example plug-in: a Couchbase cluster read through a Prometheus instance: nodes, connections, index memory, rebalance, failover and N1QL errors, timeouts and time.',
-    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.7', uses=('prometheus',),
+    icon='icon.svg', author='Skopax', licence='Apache-2.0', core='>=0.1,<0.8', uses=('prometheus',),
     fields=(Field('prometheus', 'Prometheus', 'instance', required=True, choices=('prometheus',), help='The Prometheus instance that scrapes the Couchbase exporters.'),
             Field('cluster', 'Cluster', 'text', required=True, help='The name the cards and the page show for this cluster, such as orders-prod.'),
             Field('selector', 'Selector', 'text', default=DEFAULT_SELECTOR,

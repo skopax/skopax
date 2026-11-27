@@ -1,16 +1,17 @@
 from pathlib import Path
 from time import monotonic
 
-from skopax.contract import Capabilities, Context, Field, InstanceInfo, Knowledge, Missing, Plugin, ReadError, Setup, TestResult, Transport
+from skopax.contract import Capabilities, Context, Corpus, Field, InstanceInfo, Knowledge, Missing, Plugin, ReadError, Setup, TestResult, Transport
 from skopax.kit import connection
 from skopax.messages import msg
 from skopax.plugins.sharepoint.client import LOGIN_HOST, GRAPH_HOST, Graph, folder_problem, guid_problem, site_problem
-from skopax.plugins.sharepoint.tools import NAME, TOOLS
+from skopax.plugins.sharepoint.tools import NAME, TOOLS, corpus_list, corpus_read
 
 ID = 'sharepoint'
 HOME = Path(__file__).parent
 TEST_BUDGET_S = 12
 MAX_INSTANCES = 10
+CORPUS_PAGES = 3000
 TENANT, CLIENT = 'Tenant ID', 'Client ID'
 LEARN = 'https://learn.microsoft.com/en-us/graph/permissions-selected-overview'
 
@@ -63,7 +64,7 @@ def test(ctx: Context) -> TestResult:
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='other',
     description='Preview, not yet tried on a live tenant. Searches and reads one SharePoint or OneDrive folder of company knowledge, such as runbooks, postmortems and design notes, read only and cited with links.',
-    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.2,<0.7', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.2,<0.8', edition='community',
     capabilities=Capabilities(hosts=('@site', LOGIN_HOST, GRAPH_HOST), secrets=('client-secret',)),
     client=make_client, max_instances=MAX_INSTANCES,
     fields=(Field('tenant-id', TENANT, 'text', required=True, check=guid_problem(TENANT),
@@ -75,7 +76,9 @@ PLUGIN = Plugin(
                   help='The address of one SharePoint site, such as https://contoso.sharepoint.com/sites/ops, or of a OneDrive, such as https://contoso-my.sharepoint.com/personal/jane_contoso_com.'),
             Field('library', 'Library', 'text', help="The name of the document library, such as Documents. Empty: the site's default library."),
             Field('folder', 'Folder', 'text', required=True, check=folder_problem,
-                  help='The folder inside the library whose documents, subfolders included, the investigator may search and read, such as Runbooks/Prod.')),
+                  help='The folder inside the library whose documents, subfolders included, the investigator may search and read, such as Runbooks/Prod.'),
+            Field('index-pages', 'Index pages for search by meaning', 'bool', default='false', group='advanced',
+                  help='Keep copies of the documents of this folder in Skopax as vectors and short excerpts, so Search by meaning can find them. Needs Search by meaning to be on. Turning this off deletes the copies.')),
     test=test, tools=TOOLS,
     knowledge=(Knowledge('sharepoint', NAME, (HOME / 'sharepoint.md').read_text(encoding='utf-8'), slack=True, inline=True),),
     setup=Setup(steps=(
@@ -87,5 +90,5 @@ PLUGIN = Plugin(
         'In Graph Explorer read the site id with GET https://graph.microsoft.com/v1.0/sites/contoso.sharepoint.com:/sites/ops, then send POST https://graph.microsoft.com/v1.0/sites/{site-id}/permissions with roles ["read"] and grantedToIdentities holding the application id (the Client ID).',
         'Fill in Site URL and Folder (and Library when it is not the default one), then choose Test connection.',
     ), docs=LEARN, docs_label='Microsoft Learn: selected permissions'),
-    company_knowledge='always',
+    company_knowledge='always', corpus=Corpus(corpus_list, corpus_read, CORPUS_PAGES),
 )

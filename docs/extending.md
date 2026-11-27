@@ -24,7 +24,7 @@ hello = "skopax_hello:PLUGIN"
   - `id`, `name`, `version` (`X.Y.Z`);
   - `category` (one of the contract's `CATEGORIES`);
   - `description`, `icon`, `author`, `licence`;
-  - `core`, the range of Skopax versions the plug-in works with, as a PEP 440 specifier such as `>=0.5,<0.7`.
+  - `core`, the range of Skopax versions the plug-in works with, as a PEP 440 specifier such as `>=0.5,<0.8`.
 - **The `core` range and release candidates.** A release candidate counts as the release it leads to: Skopax `0.1.0rc1` is checked as `0.1.0`, so `>=0.1,<0.2` loads on it. A range that names a pre-release itself, such as `>=0.1.0rc2` or `==0.1.0rc1`, is compared with the full version, pre-releases included. A plug-in whose range does not match is listed under "+ Add integration" but cannot be set up, and the reason names the installed version.
 - **Plug-ins that declare `<0.6`.** Third-party plug-ins whose `core` range ends at `<0.6` are refused by 0.6.0 until their range is raised; the Admin notices strip names each refused plug-in.
 - **`fields`.** One required field, `Field('url', 'URL', 'url', required=True, help=...)`. An admin adds an instance in Connect > Integrations and fills in the field, and the code reads it as `ctx.instance.config['url']`. A plug-in can have many instances, and each one runs the checks with its own values.
@@ -79,7 +79,7 @@ The example plug-ins are Apache-2.0, so you can copy them freely. The example ca
 
 Skopax is not published to a package index; only its images are. A plug-in in a repository of its own runs its tests against a clone of Skopax at the release it targets, next to the plug-in's folder. From the plug-in's folder:
 
-    git clone --branch v0.6.7 https://github.com/skopax/skopax ../skopax
+    git clone --branch v0.7.0 https://github.com/skopax/skopax ../skopax
     (cd ../skopax && uv sync --frozen)
     PYTHONPATH=../skopax:. ../skopax/.venv/bin/python -m pytest -q tests
 
@@ -91,7 +91,7 @@ The Skopax image is distroless, so it has no `pip` and no shell. Install the plu
 
 ```dockerfile
 ARG BASE_IMAGE=ghcr.io/skopax/skopax
-ARG SKOPAX_VERSION=0.6.7
+ARG SKOPAX_VERSION=0.7.0
 
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS build
 
@@ -106,7 +106,7 @@ COPY --from=build /plugins /usr/local/lib/python3.15/site-packages/
 ```
 
 ```sh
-docker build --build-arg SKOPAX_VERSION=0.6.7 -t skopax-hello examples/hello-plugin
+docker build --build-arg SKOPAX_VERSION=0.7.0 -t skopax-hello examples/hello-plugin
 ```
 
 - `BASE_IMAGE` (default `ghcr.io/skopax/skopax`) names the Skopax image to build on, for example a mirror or your own registry. `SKOPAX_VERSION` (default: the current release) picks its tag.
@@ -210,6 +210,8 @@ A plug-in whose setup breaks these rules does not load, with a reason that says 
 Any other value breaks the plug-in, with a reason that says so. Connect > Integrations shows a tile of a knowledge source in its own category with a Knowledge badge (Knowledge, Knowledge off or Knowledge needs setup, with a tooltip saying why), and the Knowledge chip lists exactly those tiles; "+ Add integration" marks the entry with the badge too. The admin listing serves it as `companyKnowledge`.
 
 `knowledge_also=True` says knowledge is a second role of a plug-in whose main job is something else, such as Jira (tickets) or GitHub (code). It needs `company_knowledge` set; any other value, or `True` without `company_knowledge`, breaks the plug-in. Every knowledge source shows the same badge and sits in the Knowledge chip; the flag only records the plug-in's main role. Pure sources such as Confluence leave it `False`. The listings serve it as `knowledgeAlso`.
+
+`corpus` makes a plug-in a source of pages for Search by meaning. It is a `Corpus(list, read, max_pages, spaces=None)`: `list(ctx, since)` yields a `DocRef` (id, title, url, modified, space) for every page changed since the given time (all pages when it is empty), `read(ctx, id)` returns a `DocText` (title, url and text, already redacted), `max_pages` caps one listing (1 to 100000), and `spaces(config)` returns the spaces the instance allows. A listing that stops early raises `Truncated`, so nothing is deleted on it. The plug-in needs a bool field `index-pages`; pages are indexed only on instances where it is on.
 
 ### Peers, clients and state
 

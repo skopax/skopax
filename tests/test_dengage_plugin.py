@@ -1004,7 +1004,7 @@ def test_dengage_identity_and_manifest():
     assert 'skopax.plugins.dengage' in BUILTIN and Registry.load({}, entry_points=False).get('dengage').state == 'ok'
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'dengage', 'Dengage', '0.1.0', 'marketing', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
+        'dengage', 'Dengage', '0.1.0', 'marketing', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.8', 'community')
     assert card_types_view(dengage.PLUGIN) == [{'sig': 'dengage-send', 'label': 'Dengage sends', 'alias': ''}, {'sig': 'dengage-delivery', 'label': 'Dengage delivery', 'alias': ''},
                                                {'sig': 'dengage-silence', 'label': 'Dengage silence', 'alias': ''}, {'sig': 'dengage-access', 'label': 'No access', 'alias': 'no-access'}]
     assert probe.own_findings is True and dengage.PLUGIN.migrations == ()

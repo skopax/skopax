@@ -18,7 +18,7 @@ from skopax.contract import OrgPack
 from skopax.engine import iso as epoch_iso
 from skopax.errkind import Refusal, kind as error_kind, text_of
 from skopax.features import off_text
-from skopax.investigator import pricing, prompt, select
+from skopax.investigator import pricing, prompt, select, similar
 from skopax.investigator.flags import REQUESTS, SOFT, asked, scan
 from skopax.investigator.runner import Result, RunConfig, Runner
 from skopax.investigator.guard import CATEGORIES, MASK_TEXT, apply_mask
@@ -29,7 +29,7 @@ from skopax.postdeploy import NUMBERS_BY
 from skopax import clock
 from skopax.messages import msg
 from skopax.outward import outward
-from skopax.store import HELD_OUTCOMES, LEASE_ID, ActionMoved, NotFound, Store, new_id
+from skopax.store import HELD_OUTCOMES, LEASE_ID, REFUSED_BY, ActionMoved, NotFound, Store, new_id
 
 log = logging.getLogger('skopax.investigator')
 
@@ -61,7 +61,6 @@ HELD_PERIOD = 300
 HELD_OFFSET = 45
 STUCK_RELEASE_S = 600
 REASON_LIMIT = 200
-REFUSED_BY = 'Refused by the guard'
 HELD_PUBLIC = ('until', 'released')
 GUARD_PRIVATE = ('reason', 'category', 'first', 'fix', 'noted', 'watch', 'outcome')
 FIX_TEXT = 'A safety reviewer objected: {category}: {reason}. Rewrite the final answer to fix only that; do not call tools unless needed.'
@@ -696,6 +695,7 @@ class Investigator:
                                   web=web_from(self.web_domains, self.web_searches if searching else 0, self.web_fetches if searching and 'web_fetch' in caps and getattr(wrap(client), 'provider', provider) != pricing.OPENAI else 0, self.own_domains()), settings=self.settings, role=role, knowledge=readable,
                                   review=review or None)
                 toolbox.hold_writes = bool(guarded and guarded['answers'])
+                toolbox.similar_knowledge = pack is None or pack.plugin_sections
                 if review:
                     config = RunConfig(quick_model, self.slack_effort, self.slack_max_tool_calls, capabilities=caps)
                     brief = prompt.review_brief(cards[0], review, self.base_url, config.max_tool_calls) + prompt.language_note(self.language)
@@ -714,7 +714,8 @@ class Investigator:
                     toolbox.flags += asked(asker, '\n'.join([prompt.flat(ask)] + [str(t.get('text') or '') for t in action.get('thread') or [] if t.get('who', 'person') != 'bot']))
                 else:
                     config = RunConfig(model, self.effort, self.assess_max_tool_calls if report else self.max_tool_calls, capabilities=caps)
-                    brief = prompt.brief(cards, {**action, 'report': report} if report else action, self.base_url, config.max_tool_calls, None if ask or report else self._announced(cards, now)) + ('' if ask else prompt.language_note(self.language))
+                    brief = prompt.brief(cards, {**action, 'report': report} if report else action, self.base_url, config.max_tool_calls, None if ask or report else self._announced(cards, now),
+                                         '' if ask or report else similar.brief_block(toolbox, cards)) + ('' if ask else prompt.language_note(self.language))
                 plan = None
                 if client is not None and (wanted := self.advisor_use(use, quick, bool(review), bool(ask or report), cards)) is not None:
                     plan = advisor.resolve(self.settings, wanted, provider, caps, config.model)[0]

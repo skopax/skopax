@@ -79,7 +79,7 @@ PLUGIN = Plugin(
         docs_label='Grafana: service accounts',
     ),
     id='grafana', name='Grafana', version='0.1.0', category='alerts', description='Alerts firing on the Prometheus datasources of Grafana, and traces from its Tempo datasources.', icon='icon.svg',
-    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)), uses=('prometheus',),
+    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.8', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('token',)), uses=('prometheus',),
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Base URL of Grafana, also used for links to its alert rules.'),
             Field('token', 'Token', 'secret', required=True, help='A service account token with alert read rights and query rights on the Prometheus and Tempo datasources.'),
             Field('ca', 'CA certificate', 'pem', group='advanced', help='PEM certificate to trust instead of the system roots.'),

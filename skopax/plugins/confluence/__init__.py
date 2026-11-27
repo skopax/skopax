@@ -1,9 +1,9 @@
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from time import monotonic
 from urllib.parse import quote, urlencode, urlsplit
 
-from skopax.contract import Capabilities, Context, Field, HttpError, Knowledge, Plugin, Setup, ReadError, TestResult, Tool, call
+from skopax.contract import Capabilities, Context, Corpus, DocRef, DocText, Field, HttpError, Knowledge, Plugin, Setup, ReadError, TestResult, Tool, call, send
 from skopax.kit import connection
 from skopax.kit.env import env_set
 from skopax.plugins.confluence.client import (BODY_LIMIT, DENIED, GATEWAY, HITS, NO_SPACES, OPS, SPACES, TEXT_LIMIT, TEXT_MIN, Confluence, basic, denied_text, in_spaces,
@@ -11,6 +11,7 @@ from skopax.plugins.confluence.client import (BODY_LIMIT, DENIED, GATEWAY, HITS,
 
 ID = 'confluence'
 PER_RUN = 8
+CORPUS_PAGES = 5000
 TEST_BUDGET_S = 12
 STR = {'type': 'string'}
 DESCRIPTION = ('Search and read the Confluence at {field:url} with this service\'s Atlassian account, read only: runbooks, design pages, release and incident notes. '
@@ -80,14 +81,28 @@ def read(ctx: Context, args: dict) -> object:
     return wiki.search(str(wanted), args.get('space')) if op == 'search' else wiki.page(str(wanted))
 
 
+def corpus_list(ctx: Context, since: str | None) -> Iterator[DocRef]:
+    return Confluence.of(ctx.instance.config, ctx.http()).listing(since, CORPUS_PAGES)
+
+
+def corpus_read(ctx: Context, ref_id: str) -> DocText:
+    return Confluence.of(ctx.instance.config, ctx.http()).document(ref_id)
+
+
+def corpus_spaces(config: Mapping[str, str]) -> tuple[str, ...]:
+    return Confluence.of(config, send).spaces
+
+
 PLUGIN = Plugin(
     id=ID, name='Confluence', version='0.1.0', category='other', description='Search and read Confluence pages of the allowed spaces, read only.', icon='icon.svg',
-    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community', capabilities=Capabilities(hosts=('@url', 'api.atlassian.com'), secrets=('api-token',)),
+    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.8', edition='community', capabilities=Capabilities(hosts=('@url', 'api.atlassian.com'), secrets=('api-token',)),
     max_instances=1,
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Address of the Atlassian Cloud site, such as https://example.atlassian.net. Calls go through api.atlassian.com.'),
             Field('email', 'Email', 'text', required=True, help='Email of the Atlassian account that reads the pages.'),
             Field('api-token', 'API token', 'secret', required=True, help='Atlassian API token of that account.'),
-            Field('spaces', 'Spaces', 'text', help='Comma list of the space keys the tool may read. Empty means none: the tool is not offered and reads nothing.')),
+            Field('spaces', 'Spaces', 'text', help='Comma list of the space keys the tool may read. Empty means none: the tool is not offered and reads nothing.'),
+            Field('index-pages', 'Index pages for search by meaning', 'bool', default='false', group='advanced',
+                  help='Keep copies of the pages of the allowed spaces in Skopax as vectors and short excerpts, so Search by meaning can find them. Needs Search by meaning to be on. Turning this off, or removing a space, deletes the copies.')),
     env_instances=env_instances, test=test,
     tools=(Tool('confluence', DESCRIPTION, SCHEMA, read, instance_input=None, per_run=PER_RUN, scan=True, needs_field='spaces'),),
     knowledge=(Knowledge('confluence', 'Confluence', (Path(__file__).parent / 'confluence.md').read_text(encoding='utf-8'), slack=True),),
@@ -98,5 +113,5 @@ PLUGIN = Plugin(
         'In URL give your Atlassian Cloud address, such as https://example.atlassian.net. In Spaces list the space keys the tool may read, such as ENG, OPS.',
         'Choose Test connection. It names any listed space the account cannot see.',
     ), docs='https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/', docs_label='Atlassian: manage API tokens'),
-    company_knowledge='spaces',
+    company_knowledge='spaces', corpus=Corpus(corpus_list, corpus_read, CORPUS_PAGES, corpus_spaces),
 )

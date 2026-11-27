@@ -279,6 +279,27 @@ body:not(.is-rail) .s-grp.folded > a.tab:not([aria-current="page"]):not(.k-crit)
 .top-find input::placeholder { color: var(--muted); }
 .top-find kbd { font: 500 11px/16px var(--font-data); color: var(--muted); border: 1px solid var(--line-2); border-radius: 5px; padding: 0 5px; background: transparent; white-space: nowrap; }
 #top-find-btn { display: none; }
+.sem-find { position: relative; flex: 0 1 260px; min-width: 150px; max-width: 320px; display: flex; align-items: center; gap: 8px; height: 34px; box-sizing: border-box; padding: 0 8px 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--muted); cursor: text; }
+.sem-find[hidden] { display: none; }
+.sem-find:hover { border-color: var(--line-2); }
+.sem-find:focus-within { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 25%, transparent); }
+.sem-find input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--fg); font: 13.5px var(--font-ui); }
+.sem-find input::placeholder { color: var(--muted); }
+.sem-find kbd { font: 500 11px/16px var(--font-data); color: var(--muted); border: 1px solid var(--line-2); border-radius: 5px; padding: 0 5px; background: transparent; }
+.sem-pop { position: absolute; z-index: 70; top: calc(100% + 6px); left: 0; width: max(100%, 420px); max-width: calc(100vw - 24px); max-height: min(520px, 70vh); overflow-y: auto; box-sizing: border-box; padding: 6px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); color: var(--fg); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3); }
+.sem-pop[hidden] { display: none; }
+.sem-note { margin: 0; padding: 6px 10px 8px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.sem-g { padding: 8px 10px 4px; color: var(--muted); font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.sem-none { padding: 4px 10px 8px; color: var(--muted); font-size: 12.5px; }
+.sem-o { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 7px; color: inherit; text-decoration: none; font-size: 13.5px; cursor: pointer; }
+.sem-o[aria-selected="true"] { background: var(--active); }
+.sem-o .sem-t { min-width: 0; flex: 1; display: grid; }
+.sem-o .sem-t b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sem-o .sem-t small { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sem-o .sem-chip { flex: none; padding: 0 6px; border: 1px solid var(--line-2); border-radius: 3px; color: var(--muted); font: 11px var(--font-data); }
+.sem-empty { padding: 22px; text-align: center; color: var(--muted); overflow-wrap: anywhere; }
+.sem-sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.cl-sim { margin: 8px 0 0; }
 .top-bell { position: relative; }
 .top-bell .b-num { position: absolute; top: -3px; right: -4px; min-width: 15px; height: 15px; padding: 0 3px; font-size: 9.5px; line-height: 15px; }
 .pal.drop { padding: 0; pointer-events: none; }
@@ -324,6 +345,7 @@ article.inc:not(.open) .run-banner { display: none; }
 }
 @media (max-width: 760px) {
   .top-find { display: none; }
+  .sem-find { display: none; }
   #top-find-btn { display: inline-grid; }
 }
 @media (max-width: 640px) {
@@ -2743,6 +2765,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
       <div class="crumb" id="crumb"><b id="crumb-page"></b></div>
       <span class="off-tag" id="off-tag" hidden>PAUSED</span>
       <div class="top-find" id="top-find"><input type="text" id="top-q" role="combobox" aria-expanded="false" aria-controls="pal-list" aria-haspopup="listbox" aria-autocomplete="list" aria-label="Search" autocomplete="off" spellcheck="false" placeholder="Search cards, services, pages and settings"><kbd id="top-kbd"></kbd></div>
+      <div class="sem-find" id="sem-find" hidden><input type="search" id="sem-q" role="combobox" aria-expanded="false" aria-controls="sem-list" aria-haspopup="listbox" aria-autocomplete="list" aria-keyshortcuts="/" aria-label="Search by meaning" autocomplete="off" spellcheck="false" maxlength="200" placeholder="Search by meaning: cards, runs, changes, pages"><kbd>/</kbd><div class="sem-pop" id="sem-pop" hidden><p class="sem-note" id="sem-note" hidden></p><div class="sem-list" id="sem-list" role="listbox" aria-label="Search by meaning"></div></div><p class="sem-sr" id="sem-count" role="status" aria-live="polite"></p></div>
       <div class="top-r">
         <button type="button" class="ibtn" id="top-find-btn" aria-label="Search" aria-haspopup="dialog" aria-controls="pal"></button>
         <a class="run-pill" id="run-pill" hidden></a>
@@ -3260,6 +3283,7 @@ html[data-density="compact"] .grp, html[data-density="compact"] .dreps { gap: 6p
 <script src="/static/chips.js"></script>
 <script src="/static/admininst.js"></script>
 <script src="/static/integrations.js"></script>
+<script src="/static/search.js"></script>
 <script src="/static/promqlchecks.js"></script>
 <script src="/static/intview.js"></script>
 <script src="/static/tools.js"></script>

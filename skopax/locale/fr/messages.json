@@ -434,5 +434,18 @@
 "mail.warndigest.title.many": "{n} cartes d'avertissement de vos tags attendent",
 "mail.warndigest.service": "{svc} ({n})",
 "mail.warndigest.more": "+{n} de plus sur le tableau",
- "postdeploy.head_one": "Vérification des déploiements du {date} : 1 service ({span} {zone}), {clean} propres"
+ "postdeploy.head_one": "Vérification des déploiements du {date} : 1 service ({span} {zone}), {clean} propres",
+ "embed.off": "La recherche par sens est désactivée : {reason}.",
+ "embed.reason.disabled": "elle est désactivée dans Administration › Fonctionnalités",
+ "embed.reason.no_url": "aucune adresse du service d’embeddings n’est définie",
+ "embed.reason.not_ready": "l’index n’est pas encore prêt",
+ "embed.down": "le service d’embeddings ne répond pas",
+ "embed.refused": "l’adresse du service d’embeddings est publique et n’est pas autorisée",
+ "embed.mismatch": "le service d’embeddings exécute un autre modèle que celui défini",
+ "embed.auth": "le service d’embeddings n’a pas accepté la clé",
+ "embed.bad_answer": "le service d’embeddings a envoyé une réponse inutilisable",
+ "embed.rebuilding": "La recherche par sens reconstruit son index : {done} sur {total} terminés",
+ "embed.needs_url": "L’adresse du service d’embeddings (SKOPAX_EMBED_URL) n’est pas définie, la recherche par sens ne peut donc pas être activée",
+ "embed.sources_invalid": "Sources indexées contient {entry}, qui n’est pas une source ; utilisez {allowed}",
+ "search.throttled": "Trop de recherches, attendez une minute et réessayez"
 }

@@ -1,11 +1,11 @@
 import io
 import re
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from xml.etree import ElementTree
 from xml.parsers import expat
 
-from skopax.contract import Context, Denied, Missing, ReadError, SourceDown, Tool
+from skopax.contract import Context, Denied, DocRef, DocText, Missing, ReadError, SourceDown, Tool, Truncated
 from skopax.messages import msg
 from skopax.plugins.sharepoint import client as graph
 from skopax.redact import redact_secrets
@@ -199,6 +199,30 @@ def served(run: Callable[[graph.Graph, dict], object]) -> Callable[[Context, dic
             raise ReadError(404, str(e.args[0]) if e.args and e.args[0] else msg('sharepoint.missing', folder=g.folder)) from None
 
     return go
+
+
+def corpus_list(ctx: Context, since: str | None) -> Iterator[DocRef]:
+    g = ctx.client()
+    if g is None or not g.enabled:
+        raise ReadError(503, msg('integrations.off', name=NAME))
+    try:
+        files, partial = g.walk()
+    except Denied as e:
+        raise ReadError(403, e.text) from None
+    except SourceDown as e:
+        raise ReadError(502, e.text) from None
+    except Missing as e:
+        raise ReadError(404, str(e.args[0]) if e.args and e.args[0] else msg('sharepoint.missing', folder=g.folder)) from None
+    for f in files:
+        if f.get('id') and readable(f.get('name')):
+            yield DocRef(str(f['id']), str(f['path']), f.get('url'), f.get('modified'), '')
+    if partial:
+        raise Truncated()
+
+
+def corpus_read(ctx: Context, ref_id: str) -> DocText:
+    found = served(read)(ctx, {'id': ref_id})
+    return DocText(str(found.get('path') or ''), found.get('url'), str(found.get('text') or ''))
 
 
 DOCS = ('Company knowledge kept as documents in one SharePoint or OneDrive folder and its subfolders, read only: runbooks, postmortems, design notes and how-tos. '

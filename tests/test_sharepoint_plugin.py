@@ -88,7 +88,8 @@ def test_sharepoint_identity_manifest_and_setup():
     assert manifest['capabilities'] == {'hosts': ['@site', 'login.microsoftonline.com', 'graph.microsoft.com'], 'secrets': ['client-secret'], 'agentReads': False}
     assert [(f['key'], f['label'], f['kind'], f['required']) for f in manifest['fields']] == [
         ('tenant-id', 'Tenant ID', 'text', True), ('client-id', 'Client ID', 'text', True), ('client-secret', 'Client secret', 'secret', True),
-        ('site', 'Site URL', 'url', True), ('library', 'Library', 'text', False), ('folder', 'Folder', 'text', True)]
+        ('site', 'Site URL', 'url', True), ('library', 'Library', 'text', False), ('folder', 'Folder', 'text', True),
+        ('index-pages', 'Index pages for search by meaning', 'bool', False)]
     assert {t.name: (t.kind, t.per_run) for t in sharepoint.PLUGIN.tools} == {'sharepoint_docs': ('read', 8)}
     assert [(k.id, k.inline) for k in sharepoint.PLUGIN.knowledge] == [('sharepoint', True)] and len(sharepoint.PLUGIN.knowledge[0].text) <= 2000
     assert setup is not None and len(setup.steps) >= 5 and setup.docs.startswith('https://learn.microsoft.com/')

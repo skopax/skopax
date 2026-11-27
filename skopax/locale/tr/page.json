@@ -1963,7 +1963,21 @@
   "pod identity": "pod kimli\u011fi",
   "Enter a project id": "Bir proje kimli\u011fi girin",
   "Delete this Vertex AI connection?": "Bu Vertex AI ba\u011flant\u0131s\u0131 silinsin mi?",
-  "Its credentials and models are deleted. A use set to one of its models is held until another model is picked.": "Kimlik bilgileri ve modelleri silinir. Modellerinden birine ayarl\u0131 bir kullan\u0131m, ba\u015fka bir model se\u00e7ilene kadar bekletilir."
+  "Its credentials and models are deleted. A use set to one of its models is held until another model is picked.": "Kimlik bilgileri ve modelleri silinir. Modellerinden birine ayarl\u0131 bir kullan\u0131m, ba\u015fka bir model se\u00e7ilene kadar bekletilir.",
+  "Search by meaning": "Anlama g\u00f6re ara",
+  "Search by meaning: cards, runs, changes, pages": "Anlama g\u00f6re ara: kartlar, \u00e7al\u0131\u015ft\u0131rmalar, de\u011fi\u015fiklikler, sayfalar",
+  "Nothing matches.": "E\u015fle\u015fen bir \u015fey yok.",
+  "Showing word matches.": "S\u00f6zc\u00fck e\u015fle\u015fmeleri g\u00f6steriliyor.",
+  "meaning": "anlam",
+  "words": "s\u00f6zc\u00fckler",
+  "Found by meaning": "Anlama g\u00f6re bulundu",
+  "Found by matching words": "E\u015fle\u015fen s\u00f6zc\u00fcklerle bulundu",
+  "No results": "Sonu\u00e7 yok",
+  "{0} result": "{0} sonu\u00e7",
+  "{0} results": "{0} sonu\u00e7",
+  "Too many searches, wait a minute and try again.": "\u00c7ok fazla arama yap\u0131ld\u0131, bir dakika bekleyip yeniden deneyin.",
+  "Search is not available right now.": "Arama \u015fu anda kullan\u0131lam\u0131yor.",
+  "No word matches. {0} similar by meaning": "S\u00f6zc\u00fck e\u015fle\u015fmesi yok. Anlam olarak benzer {0} sonu\u00e7"
  },
  "rules": [
   ["^Off \u00b7 the (.+) plug-in is switched off$", "Kapal\u0131 \u00b7 $1 eklentisi kapat\u0131ld\u0131"],

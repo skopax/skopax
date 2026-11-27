@@ -193,7 +193,7 @@ def test(ctx: Context) -> TestResult:
 PLUGIN = Plugin(
     id=ID, name='Email route', version='0.1.0', category='chat',
     description='A route that mails chosen cards to a list of addresses, like a Teams route. Add one per list; it sends through the Mail server.', icon='icon.svg',
-    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community', capabilities=Capabilities(), uses=(mail.PLUGIN_ID,),
+    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.8', edition='community', capabilities=Capabilities(), uses=(mail.PLUGIN_ID,),
     fields=(Field('recipients', 'Recipients', 'text', required=True, check=recipients_problem,
                   help='Comma or space list of 1 to 50 email addresses, such as alice@example.com, ops@example.com. Each address gets a mail of its own, so no one sees the others.'),
             Field('tags', 'Card tags', 'text', check=tags.terms_problem, suggest=tags.suggested, separator=',', help='Comma list of card tag ids or names this route takes, such as infra, developer. A route needs card tags or card keys.'),

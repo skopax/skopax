@@ -18,7 +18,7 @@ const REFUSED = 'MCP server needs single sign-on first.';
 
 function features() {
   return TABLE.map((f) => {
-    const off = ['public-read', 'self-review', 'langfuse-tracing', 'hide-attribution', 'mcp'].indexOf(f.id) >= 0;
+    const off = ['public-read', 'self-review', 'langfuse-tracing', 'hide-attribution', 'mcp', 'semantic-search'].indexOf(f.id) >= 0;
     const locked = f.edition !== 'community';
     return {id: f.id, key: f.key, label: f.label, help: f.help, icon: f.icon, on: !off, stored: !off, locked, edition: f.edition,
       needs: f.id === 'mcp' ? [NEEDS_SSO] : [], restart: f.id === 'slack-listener' ? RESTART : null, source: 'default', reason: locked ? LOCKED : null};
@@ -97,12 +97,12 @@ async function theGridHasTenCardsInTableOrderWithNeedsTheRestartNoteAndTheLock()
   const cards = [...doc.querySelectorAll('#features .feat')];
 
   //then
-  assert.strictEqual(TABLE.length, 15, 'features.py lists fifteen features');
+  assert.strictEqual(TABLE.length, 16, 'features.py lists sixteen features');
   assert.deepStrictEqual(cards.map((c) => c.dataset.id), TABLE.map((f) => f.id), 'one card per feature in the order of the feature table');
   assert.deepStrictEqual(cards.map((c) => c.querySelector('.feat-l').textContent), TABLE.map((f) => f.label));
   assert.deepStrictEqual(cards.map((c) => c.querySelector('.feat-i svg').outerHTML), TABLE.map((f) => svg(doc, w.navIcon(f.icon))), 'each card has its icon tile');
   assert.deepStrictEqual(cards.map((c) => c.querySelector('.feat-h').textContent), TABLE.map((f) => f.help));
-  assert.deepStrictEqual(cards.map((c) => c.querySelector('[role="switch"]').getAttribute('aria-checked')), TABLE.map((f) => String(['public-read', 'self-review', 'langfuse-tracing', 'hide-attribution', 'mcp'].indexOf(f.id) < 0)));
+  assert.deepStrictEqual(cards.map((c) => c.querySelector('[role="switch"]').getAttribute('aria-checked')), TABLE.map((f) => String(['public-read', 'self-review', 'langfuse-tracing', 'hide-attribution', 'mcp', 'semantic-search'].indexOf(f.id) < 0)));
   assert.deepStrictEqual(cards.map((c) => c.querySelector('[role="switch"]').getAttribute('aria-label')), TABLE.map((f) => f.label), 'every switch is named by its feature');
   assert.deepStrictEqual([...card(doc, 'mcp').querySelectorAll('.feat-need')].map((n) => n.textContent), [NEEDS_SSO], 'a missing need is a pill');
   assert.strictEqual(card(doc, 'investigator').querySelectorAll('.feat-need').length, 0);
@@ -114,7 +114,7 @@ async function theGridHasTenCardsInTableOrderWithNeedsTheRestartNoteAndTheLock()
   assert.strictEqual(sw(doc, 'hide-attribution').getAttribute('aria-disabled'), 'true', 'and a disabled switch');
   assert.strictEqual(sw(doc, 'hide-attribution').title, LOCKED, 'whose title is the reason');
   assert.ok(cards.filter((c) => c.dataset.id !== 'hide-attribution').every((c) => !c.querySelector('.feat-ed') && !c.querySelector('[role="switch"]').hasAttribute('aria-disabled')), 'no other card is locked');
-  assert.strictEqual(doc.getElementById('count-features').textContent, '10/15');
+  assert.strictEqual(doc.getElementById('count-features').textContent, '10/16');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
   return 'Features shows the ten cards in table order with their icon, help, needs pills, restart note, and an Enterprise badge and disabled switch titled with the reason on the locked one';
@@ -141,7 +141,7 @@ async function aToggleSendsTheChoiceAndTheCountFollows() {
   assert.deepStrictEqual(during, ['false', 'true'], 'the switch moves at once and is busy until the answer');
   assert.strictEqual(sw(doc, 'investigator').getAttribute('aria-checked'), 'false');
   assert.ok(!sw(doc, 'investigator').hasAttribute('aria-busy'));
-  assert.strictEqual(doc.getElementById('count-features').textContent, '9/15', 'the Features count follows');
+  assert.strictEqual(doc.getElementById('count-features').textContent, '9/16', 'the Features count follows');
   assert.deepStrictEqual([...card(doc, 'chat').querySelectorAll('.feat-need')].map((n) => n.textContent), ['Needs the AI investigator: it is off or not set up (Admin \u203a Features).'], 'the other cards show their new needs');
   assert.strictEqual(card(doc, 'investigator').querySelector('.feat-msg').textContent, 'Turned off');
 
@@ -151,7 +151,7 @@ async function aToggleSendsTheChoiceAndTheCountFollows() {
 
   //then
   assert.deepStrictEqual(calls.filter((c) => c[0] === 'PUT').map((c) => c.slice(1)).slice(-1), [['/api/admin/features/public-read', {on: true}]]);
-  assert.strictEqual(doc.getElementById('count-features').textContent, '10/15');
+  assert.strictEqual(doc.getElementById('count-features').textContent, '10/16');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
   return 'a click sends PUT /api/admin/features/<id> with on, a second click waits, and the Features count and the other cards follow';
@@ -173,7 +173,7 @@ async function aRefusalPutsTheSwitchBackAndALockedOneSendsNothing() {
   assert.strictEqual(card(doc, 'mcp').querySelector('.feat-msg').textContent, REFUSED, 'and shows the server text under the card');
   assert.ok(card(doc, 'mcp').querySelector('.feat-msg').classList.contains('bad'));
   assert.strictEqual(sw(doc, 'hide-attribution').getAttribute('aria-checked'), 'false');
-  assert.strictEqual(doc.getElementById('count-features').textContent, '10/15', 'the count does not move');
+  assert.strictEqual(doc.getElementById('count-features').textContent, '10/16', 'the count does not move');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
   return 'a 409 puts the switch back and shows its text under the card; a locked switch sends nothing';
@@ -198,7 +198,7 @@ async function aLockedFeatureStoredOnCanOnlyBeSwitchedOff() {
   assert.deepStrictEqual(first, {checked: 'true', disabled: false, title: LOCKED, note: 'Still saved as on from an earlier edition, where it has no effect: switch it off to clear it.', badge: 'Enterprise'}, 'a locked feature stored on shows the stored value, stays switchable and says why');
   assert.deepStrictEqual(puts(calls, 'hide-attribution'), [{on: false}], 'one click sends off, whatever the switch says, and nothing after that');
   assert.deepStrictEqual(after, {checked: 'false', disabled: 'true', title: LOCKED, note: false}, 'then it is locked and disabled like any locked switch');
-  assert.strictEqual(doc.getElementById('count-features').textContent, '10/15', 'the count never counted it as on');
+  assert.strictEqual(doc.getElementById('count-features').textContent, '10/16', 'the count never counted it as on');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
   return 'a locked feature stored on is painted from the stored value and can only be switched off: one literal {on: false}, then the switch is disabled';
@@ -258,7 +258,7 @@ async function aStaleReadAfterAToggleDoesNotFlipTheSwitchBack() {
   await wait(60);
 
   //then
-  assert.deepStrictEqual(held, ['false', '9/15', 'Turned off'], 'a read from a pod that has not seen the change yet does not flip the switch back');
+  assert.deepStrictEqual(held, ['false', '9/16', 'Turned off'], 'a read from a pod that has not seen the change yet does not flip the switch back');
   assert.strictEqual(reopened, 'false', 'nor does reopening Features while that pod is behind');
   assert.deepStrictEqual(agreed, [], 'once a read agrees, the page drops what it held');
   assert.strictEqual(sw(doc, 'push').getAttribute('aria-checked'), 'true', 'after the hold time a read wins again, so a change made elsewhere shows');
@@ -366,7 +366,7 @@ async function anOlderReadThatEndsLastIsDropped() {
   //then
   assert.strictEqual(sw(doc, 'investigator').getAttribute('aria-checked'), 'true', 'the second toggle stands');
   assert.deepStrictEqual([...card(doc, 'chat').querySelectorAll('.feat-need')].map((n) => n.textContent), [], 'the read sent after the first toggle, ending last, does not bring back the need it saw');
-  assert.strictEqual(doc.getElementById('count-features').textContent, '10/15');
+  assert.strictEqual(doc.getElementById('count-features').textContent, '10/16');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
   return 'a read that was sent earlier but ends later never repaints the grid';

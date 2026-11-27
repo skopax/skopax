@@ -30,7 +30,7 @@ COMMUNITY = ('CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'TRADEMARKS.md', 'SECURITY
 COMMUNITY_HOSTS = ('modeltrademarkguidelines.org', 'www.modeltrademarkguidelines.org', 'creativecommons.org', 'www.contributor-covenant.org', 'contributor-covenant.org', 'developercertificate.org')
 COMMUNITY_TREES = ('github.com/mozilla',)
 ENV_NAME = re.compile(r'`\$?\{?([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)(_\*)?')
-OUTSIDE_NAMES = {'AWS_CONTAINER_CREDENTIALS_FULL_URI', 'AWS_ROLE_ARN', 'AWS_WEB_IDENTITY_TOKEN_FILE', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'FORWARDED_ALLOW_IPS', 'GITHUB_TOKEN', 'THIRD_PARTY_NOTICES'}
+OUTSIDE_NAMES = {'AWS_CONTAINER_CREDENTIALS_FULL_URI', 'AWS_ROLE_ARN', 'AWS_WEB_IDENTITY_TOKEN_FILE', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'FORWARDED_ALLOW_IPS', 'GITHUB_TOKEN', 'THIRD_PARTY_NOTICES', 'API_KEY', 'HF_HUB_OFFLINE', 'SKOPAX_EMBED_MODEL_DIR'}
 
 
 def read(rel: str) -> str:
@@ -595,7 +595,7 @@ def test_every_env_name_the_docs_mention_exists_and_the_settings_list_points_at_
 def test_the_configuration_page_keeps_the_compose_rules_in_one_paragraph():
     # given
     text = read('docs/configuration.md')
-    compose = next(part for part in text.split('\n\n') if 'passes exactly five variables' in part)
+    compose = next(part for part in text.split('\n\n') if 'passes exactly seven variables' in part)
     start = text.index('## Branding')
     branding = text[start:text.index('\n## ', start + 1)]
 
@@ -720,3 +720,22 @@ def test_the_extending_page_says_how_to_test_a_plug_in_outside_this_repository_a
     assert steps in text and 'not published to a package index' in flat
     assert '`--no-deps`' in flat and 'not a runtime dependency of the plug-in wheel' in flat
     assert '`browser-down|<host>`' not in text
+
+
+def test_the_embed_service_is_pinned_hardened_and_kept_off_the_network_in_compose_and_kubernetes():
+    # given
+    embed = yaml.safe_load(read('docker-compose.yml'))['services']['embed']
+    deployment = yaml.safe_load(read('examples/k8s/embed/deployment.yaml'))['spec']['template']['spec']
+    job = read('examples/k8s/embed/model-fetch-job.yaml')
+    operations = ' '.join(read('docs/operations.md').split())
+    amd64 = 'ghcr.io/huggingface/text-embeddings-inference:cpu-1.10.0@sha256:f0a4bb206b9d4877746b5b9f638e138fe683eeb9787c14d541a12c993b562d86'
+    arm64 = 'ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.10.0@sha256:446c683eef5bbbdf1eb9899966b8e198921f671e92ee3fe3d7a5f6d770ea0a26'
+
+    # then
+    assert embed['image'] == amd64 == deployment['containers'][0]['image'] and embed['profiles'] == ['semantic'] and 'ports' not in embed
+    assert embed['command'] == deployment['containers'][0]['args']
+    assert embed['user'] == '65532' and embed['read_only'] is True and embed['cap_drop'] == ['ALL'] and embed['tmpfs'] == ['/tmp']
+    assert embed['cpus'] == 1 and embed['mem_limit'] == '1.5g' and embed['volumes'][0].endswith(':/model:ro')
+    assert arm64 in operations and arm64 in read('examples/k8s/embed/README.md')
+    assert 'sha256 mismatch' in job and read('examples/k8s/embed/networkpolicy.yaml').rstrip().endswith('egress: []')
+    assert all(sha in operations for sha in re.findall(r'^\s+([0-9a-f]{64})  ', job, re.MULTILINE)) and 'HF_HUB_OFFLINE' in operations

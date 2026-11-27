@@ -11,7 +11,7 @@ from packaging.licenses import InvalidLicenseExpression, canonicalize_license_ex
 
 OVERRIDES = Path(__file__).with_name('licence_overrides.toml')
 ALLOWED = frozenset(('MIT', 'BSD-2-Clause', 'BSD-3-Clause', 'Apache-2.0', 'ISC', 'PSF-2.0', 'Python-2.0', 'MPL-2.0'))
-ONLY_FOR = {'regex': frozenset(('CNRI-Python',))}
+ONLY_FOR = {'regex': frozenset(('CNRI-Python',)), 'numpy': frozenset(('0BSD', 'Zlib', 'CC0-1.0'))}
 TEXT_FREE = frozenset(('Apache-2.0', 'PSF-2.0', 'MPL-2.0'))
 LICENCE_CLASSIFIER = re.compile(r'license\s*::', re.I)
 OSI = 'License :: OSI Approved :: '

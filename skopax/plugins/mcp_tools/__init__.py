@@ -7,7 +7,7 @@ PRESET_NAMES = {'atlassian': 'Atlassian (Jira and Confluence)', 'notion': 'Notio
 PLUGIN = Plugin(
     id=ID, name='MCP server', version='0.1.0', category='other',
     description='Adds the tools of an outside MCP server to the investigator and the chat, and can search one folder of company documents', icon='icon.svg',
-    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('header-value', 'oauth-client-secret')),
+    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.8', edition='community', capabilities=Capabilities(hosts=('@url',), secrets=('header-value', 'oauth-client-secret')),
     max_instances=20,
     setup=Setup(
         steps=(

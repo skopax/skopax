@@ -1,6 +1,7 @@
 import contextlib
 import datetime as dt
 import functools
+import math
 import logging
 import re
 import hashlib
@@ -9,6 +10,7 @@ import time
 import uuid
 from typing import Callable, Iterator
 
+from bson.binary import Binary
 from pymongo import ASCENDING, DESCENDING, ReturnDocument
 from pymongo.database import Database
 from pymongo.errors import BulkWriteError, DuplicateKeyError, OperationFailure, PyMongoError
@@ -29,6 +31,21 @@ PLUGIN_MEMO_KEEP_DAYS = 90
 TEAMS_KEEP = 10
 FIX_KEEP = 20
 CARD_COUNTER = 'card'
+EMBED_SEQ = 'embed-seq'
+EMBED_KINDS = ('run', 'card', 'open', 'change', 'knowledge', 'doc', 'errtpl')
+EMBED_OPS = ('upsert', 'delete')
+EMBED_STATES = ('embed-marks', 'embed-status')
+EMBED_DOC_KEYS = frozenset(('kind', 'ref', 'part', 'fp', 'hash', 'vec', 'f', 'at', 'expireAt', 'title', 'url', 'excerpt'))
+EMBED_TEXT_KINDS = ('doc',)
+EMBED_EXCERPT_MAX = 300
+EMBED_TITLE_MAX = 200
+EMBED_URL_MAX = 500
+EMBED_F_KEYS = frozenset(('svc', 'plugin', 'instance', 'space', 'slack', 'level', 'sev', 'trigger', 'label', 'keys', 'started', 'ns'))
+EMBED_F_STRING_MAX = 120
+EMBED_F_LIST_MAX = 4
+EMBED_CLAIM_STALE_S = 600
+EMBED_MAX_DIMS = 4096
+EMBED_KEEP_DAYS = 7
 CARD_ACTION_TYPES = ('dive', 'take', 'resolve', 'mute', 'unmute', 'reopen', 'link', 'severity', 'known', 'group', 'ticket')
 POST_STAMPS = ('reminder', 'clearNote', 'update', 'stateNote', 'head', 'drawn')
 ECHO_KEEP = 20
@@ -111,6 +128,8 @@ CHAT_RUN_FIELDS = {'actionId': 1, 'outcome': 1, 'recap': 1, 'usd': 1, 'cardActio
 CHAT_SCAN = 1000
 CHAT_RUN_PUBLIC = ('id', 'mode', 'trigger', 'pod', 'room', 'startedAt', 'endedAt', 'outcome', 'usd', 'turns', 'model', 'effort', 'models', 'usage', 'advisorCalls')
 NOT_CHAT = {'trigger': {'$ne': 'chat'}}
+REFUSED_BY = 'Refused by the guard'
+NOT_REFUSED = {'error': {'$ne': REFUSED_BY}}
 HELD_OUTCOMES = ('held', 'releasing')
 CARD_RUNS_DAYS = 30
 META_OWN = ('anomalies', 'rev', 'updatedAt', '_id', 'writing')
@@ -287,6 +306,66 @@ def draft_update(draft: dict | None, auto: dict | None) -> dict:
     return {'$set': {'slackDraft': draft}, '$unset': {'autoSend': '', 'slackSkipped': ''}}
 
 
+def _embed_filter_value(value) -> bool:
+    if isinstance(value, str):
+        return len(value) <= EMBED_F_STRING_MAX
+    if isinstance(value, float):
+        return math.isfinite(value)
+    return isinstance(value, (bool, int))
+
+
+def _embed_filters(raw) -> dict:
+    f = {} if raw is None else raw
+    if not isinstance(f, dict) or set(f) - EMBED_F_KEYS:
+        raise ValueError('embedding filter fields are not allowed')
+    for value in f.values():
+        if isinstance(value, list):
+            if len(value) > EMBED_F_LIST_MAX or any(not isinstance(v, str) or len(v) > EMBED_F_STRING_MAX for v in value):
+                raise ValueError('embedding filter lists hold at most 4 short strings')
+        elif not _embed_filter_value(value):
+            raise ValueError('embedding filter values must be short scalars')
+    return f
+
+
+def _embed_doc(raw: dict, dims: int | None) -> dict:
+    if not isinstance(raw, dict) or set(raw) - EMBED_DOC_KEYS:
+        raise ValueError('embedding doc has unknown fields')
+    kind, ref, part = raw.get('kind'), raw.get('ref'), raw.get('part')
+    if kind not in EMBED_KINDS:
+        raise ValueError(f'unknown embedding kind {kind!r}')
+    if not isinstance(ref, str) or not ref or len(ref) > 512 or isinstance(part, bool) or not isinstance(part, int) or part < 0:
+        raise ValueError('embedding doc needs a ref and a part number')
+    fp, digest = raw.get('fp'), raw.get('hash')
+    if not isinstance(fp, str) or not fp or not isinstance(digest, str) or not digest:
+        raise ValueError('embedding doc needs fp and hash')
+    vec = raw.get('vec')
+    if not isinstance(vec, (bytes, bytearray, memoryview, Binary)):
+        raise ValueError('embedding vec must be bytes')
+    vec = bytes(vec)
+    size = len(vec)
+    if size == 0 or size % 2 or size > EMBED_MAX_DIMS * 2 or (dims is not None and size != dims * 2):
+        raise ValueError('embedding vec has the wrong length')
+    f = _embed_filters(raw.get('f'))
+    at = raw.get('at')
+    if at is not None and not isinstance(at, dt.datetime):
+        raise ValueError('embedding at must be a datetime')
+    expire = raw.get('expireAt')
+    if expire is not None and not isinstance(expire, dt.datetime):
+        raise ValueError('embedding expireAt must be a datetime')
+    doc = {'_id': f'{kind}:{ref}:{part}', 'kind': kind, 'ref': ref, 'part': part, 'fp': fp, 'hash': digest, 'vec': Binary(vec), 'f': f}
+    if at is not None:
+        doc['at'] = at
+    if expire is not None:
+        doc['expireAt'] = expire
+    text = {k: raw[k] for k in ('title', 'url', 'excerpt') if raw.get(k) is not None}
+    if text:
+        if (kind not in EMBED_TEXT_KINDS or any(not isinstance(v, str) for v in text.values()) or len(text.get('excerpt', '')) > EMBED_EXCERPT_MAX
+                or len(text.get('title', '')) > EMBED_TITLE_MAX or len(text.get('url', '')) > EMBED_URL_MAX):
+            raise ValueError('only doc embeddings carry a title, a url and an excerpt, within their length limits')
+        doc.update(text)
+    return doc
+
+
 def ttl_index(coll, field: str, seconds: int) -> None:
     try:
         coll.create_index(field, expireAfterSeconds=seconds)
@@ -389,6 +468,7 @@ class Store:
         self.row_links = row_links
         self.release_ignore = release_ignore
         self.history_days = history_days
+        self.embed_gate: Callable[[str], bool] | None = None
         self.investigate_days = investigate_days
         self.screenshot_days = screenshot_days
         self.meta = db['state']
@@ -415,6 +495,10 @@ class Store:
         self.route_health = db['route_health']
         self.route_marks = db['route_since']
         self.plugin_memos = db['plugin_memos']
+        self.embeddings = db['embeddings']
+        self.embed_tombstones = db['embed_tombstones']
+        self.embed_queue = db['embed_queue']
+        self.log_templates = db['log_templates']
 
     def ensure_indexes(self) -> None:
         self.runs.create_index('at', expireAfterSeconds=RUN_KEEP_DAYS * 86400)
@@ -454,6 +538,15 @@ class Store:
         self.notices.create_index('at', expireAfterSeconds=NOTICE_KEEP_DAYS * 86400)
         self.notices.create_index([('user', ASCENDING), ('at', DESCENDING), ('_id', DESCENDING)])
         self.notices.create_index([('user', ASCENDING), ('read', ASCENDING)])
+        self.embeddings.create_index([('fp', ASCENDING), ('seq', ASCENDING)])
+        self.embeddings.create_index([('kind', ASCENDING), ('ref', ASCENDING)])
+        self.embeddings.create_index([('fp', ASCENDING), ('hash', ASCENDING)])
+        ttl_index(self.embeddings, 'expireAt', 0)
+        self.embed_tombstones.create_index('seq')
+        ttl_index(self.embed_tombstones, 'at', EMBED_KEEP_DAYS * 86400)
+        ttl_index(self.embed_queue, 'at', EMBED_KEEP_DAYS * 86400)
+        ttl_index(self.log_templates, 'expireAt', 0)
+        self.log_templates.create_index([('lastSeen', DESCENDING), ('_id', DESCENDING)])
 
     def ping(self) -> bool:
         try:
@@ -472,6 +565,148 @@ class Store:
     def server_runs(self) -> dict:
         meta = self.meta.find_one({'_id': STATE_ID}, {'serverPasses': 1, 'serverPushes': 1}) or {}
         return {'passes': meta.get('serverPasses') or {}, 'pushes': meta.get('serverPushes') or []}
+
+    def embed_state(self, name: str) -> dict:
+        if name not in EMBED_STATES:
+            raise ValueError(f'unknown embed state {name!r}')
+        return _without_ids(self.meta.find_one({'_id': name}) or {})
+
+    def save_embed_state(self, name: str, doc: dict) -> None:
+        if name not in EMBED_STATES:
+            raise ValueError(f'unknown embed state {name!r}')
+        self.meta.replace_one({'_id': name}, {**{k: v for k, v in doc.items() if k != '_id'}, '_id': name}, upsert=True)
+
+    def _embed_seqs(self, count: int) -> int:
+        last = self.counters.find_one_and_update({'_id': EMBED_SEQ}, {'$inc': {'n': count}}, upsert=True, return_document=ReturnDocument.AFTER)['n']
+        return last - count + 1
+
+    def upsert_embeddings(self, docs: list[dict], dims: int | None = None) -> int:
+        built = [_embed_doc(d, dims) for d in docs]
+        if not built:
+            return 0
+        first = self._embed_seqs(len(built))
+        for n, doc in enumerate(built):
+            doc['seq'] = first + n
+            self.embeddings.replace_one({'_id': doc['_id']}, doc, upsert=True)
+        return len(built)
+
+    def delete_embeddings(self, kind: str, ref: str, from_part: int = 0) -> int:
+        if kind not in EMBED_KINDS or not isinstance(ref, str) or not ref:
+            raise ValueError('embedding delete needs a known kind and a ref')
+        query: dict = {'kind': kind, 'ref': ref}
+        if from_part > 0:
+            query['part'] = {'$gte': int(from_part)}
+        ids = [d['_id'] for d in self.embeddings.find(query, {'_id': 1})]
+        if not ids:
+            return 0
+        first = self._embed_seqs(len(ids))
+        at = utc_now()
+        for n, i in enumerate(ids):
+            self.embed_tombstones.replace_one({'_id': i}, {'_id': i, 'seq': first + n, 'at': at}, upsert=True)
+        self.embeddings.delete_many({'_id': {'$in': ids}})
+        return len(ids)
+
+    def embeddings_since(self, fp: str, seq: int, limit: int) -> list[dict]:
+        return list(self.embeddings.find({'fp': fp, 'seq': {'$gt': int(seq)}}).sort('seq', ASCENDING).limit(max(1, int(limit))))
+
+    def tombstones_since(self, seq: int) -> list[dict]:
+        return list(self.embed_tombstones.find({'seq': {'$gt': int(seq)}}).sort('seq', ASCENDING))
+
+    def embedding_rows(self, kind: str, refs: list[str] | None = None) -> dict[str, list[dict]]:
+        query: dict = {'kind': kind}
+        if refs is not None:
+            query['ref'] = {'$in': list(refs)}
+        rows: dict[str, list[dict]] = {}
+        for d in self.embeddings.find(query, {'ref': 1, 'part': 1, 'hash': 1, 'fp': 1}):
+            rows.setdefault(d['ref'], []).append({'part': d['part'], 'hash': d['hash'], 'fp': d['fp']})
+        return rows
+
+    def embedding_refs_after(self, kind: str, after: str, limit: int, before: str | None = None) -> list[str]:
+        refs: list[str] = []
+        bounds = {'$gt': after} | ({'$lt': before} if before else {})
+        for d in self.embeddings.find({'kind': kind, 'ref': bounds}, {'ref': 1}).sort('ref', ASCENDING):
+            if d['ref'] not in refs:
+                if len(refs) >= limit:
+                    break
+                refs.append(d['ref'])
+        return refs
+
+    def embedding_count(self, kind: str | None = None, fp: str | None = None, other_than: str | None = None) -> int:
+        query: dict = {}
+        if kind is not None:
+            query['kind'] = kind
+        if fp is not None:
+            query['fp'] = fp
+        if other_than is not None:
+            query['fp'] = {'$ne': other_than}
+        return self.embeddings.count_documents(query)
+
+    def purge_embeddings_except(self, fp: str) -> int:
+        return self.embeddings.delete_many({'fp': {'$ne': fp}}).deleted_count
+
+    def embedding_by_hash(self, fp: str, hash: str) -> bytes | None:
+        doc = self.embeddings.find_one({'fp': fp, 'hash': hash}, {'vec': 1})
+        return bytes(doc['vec']) if doc and doc.get('vec') is not None else None
+
+    def enqueue_embed(self, kind: str, ref: str, op: str) -> bool:
+        try:
+            if op == 'upsert' and self.embed_gate is not None and not self.embed_gate(kind):
+                return False
+            if kind not in EMBED_KINDS or op not in EMBED_OPS or not isinstance(ref, str) or not ref:
+                raise ValueError('unknown kind, op or empty ref')
+            self.embed_queue.insert_one({'kind': kind, 'ref': ref, 'op': op, 'at': utc_now()})
+            return True
+        except Exception as e:
+            log.warning('embed queue skipped %s %s: %s', op, kind, error_kind(e))
+            return False
+
+    def save_log_templates(self, docs: list[dict]) -> int:
+        fresh = 0
+        for d in docs:
+            update: dict = {'$set': {'lastSeen': d['lastSeen'], 'expireAt': d['expireAt'], **({'card': d['card']} if d.get('card') else {})},
+                            '$max': {'peak': int(d.get('peak') or 0)},
+                            '$setOnInsert': {k: d[k] for k in ('svc', 'level', 'template', 'plugin', 'instance', 'firstSeen')}}
+            done = self.log_templates.update_one({'_id': d['_id']}, update, upsert=True)
+            if done.upserted_id is not None:
+                fresh += 1
+                self.enqueue_embed('errtpl', d['_id'], 'upsert')
+        return fresh
+
+    def drain_embed_queue(self, limit: int, kinds: list[str] | None = None) -> list[dict]:
+        taken: dict[tuple[str, str], dict] = {}
+        now = utc_now()
+        free = {'$or': [{'claimed': {'$exists': False}}, {'claimed': None}, {'claimed': {'$lt': now - dt.timedelta(seconds=EMBED_CLAIM_STALE_S)}}]}
+        if kinds is not None:
+            free = {'$and': [free, {'kind': {'$in': list(kinds)}}]}
+        for _ in range(max(0, int(limit))):
+            doc = self.embed_queue.find_one_and_update(free, {'$set': {'claimed': now}}, sort=[('_id', ASCENDING)], return_document=ReturnDocument.AFTER)
+            if doc is None:
+                break
+            ids = taken.pop((doc['kind'], doc['ref']), {}).get('ids', []) + [doc['_id']]
+            taken[(doc['kind'], doc['ref'])] = {'kind': doc['kind'], 'ref': doc['ref'], 'op': doc['op'], 'ids': ids}
+        return list(taken.values())
+
+    def release_embed_queue(self, ops: list[dict]) -> int:
+        ids = [i for op in ops if isinstance(op, dict) for i in op.get('ids') or []]
+        if not ids:
+            return 0
+        return self.embed_queue.update_many({'_id': {'$in': ids}}, {'$unset': {'claimed': ''}}).modified_count
+
+    def save_embed_marks(self, marks: dict, version: int) -> bool:
+        doc = {**{k: v for k, v in marks.items() if k not in ('_id', 'ver')}, '_id': 'embed-marks', 'ver': int(version) + 1}
+        try:
+            if version:
+                return self.meta.replace_one({'_id': 'embed-marks', 'ver': int(version)}, doc).matched_count == 1
+            self.meta.replace_one({'_id': 'embed-marks', 'ver': None}, doc, upsert=True)
+            return True
+        except DuplicateKeyError:
+            return False
+
+    def ack_embed_queue(self, ops: list[dict]) -> int:
+        ids = [i for op in ops if isinstance(op, dict) for i in op.get('ids') or []]
+        if not ids:
+            return 0
+        return self.embed_queue.delete_many({'_id': {'$in': ids}}).deleted_count
 
     def state_section(self, name: str) -> object:
         return (self.meta.find_one({'_id': STATE_ID}, {name: 1}) or {}).get(name)
@@ -1109,6 +1344,7 @@ class Store:
         if old is None:
             update['$setOnInsert'] = {'createdAt': iso(now), 'reopens': self.card_history.count_documents({'key': key, 'firstSeen': {'$lt': first}})}
         self.card_history.update_one({'_id': did}, update, upsert=True)
+        self.enqueue_embed('card', did, 'upsert')
         linked = list(dict.fromkeys(doc['runs'] + ([ask['runId']] if ask and ask.get('runId') else [])))
         if linked:
             self.investigations.update_many({'_id': {'$in': linked}}, {'$addToSet': {'cardHistory': did}})
@@ -1244,6 +1480,7 @@ class Store:
         for d in docs:
             if d.get('runs'):
                 self.investigations.update_many({'_id': {'$in': d['runs']}}, {'$addToSet': {'cardHistory': d['_id']}})
+            self.enqueue_embed('card', d['_id'], 'upsert')
         return written
 
     def backfill_marked(self, name: str) -> bool:
@@ -1282,12 +1519,17 @@ class Store:
 
     def update_investigation(self, run_id: str, fields: dict) -> None:
         self.investigations.update_one({'_id': run_id}, {'$set': fields})
+        if 'outcome' in fields:
+            self.enqueue_embed('run', run_id, 'upsert')
 
     def settle_held(self, run_id: str, outcome: str, fields: dict, now: str, expired: bool = False) -> dict | None:
         until = {'$lte': now} if expired else {'$gt': now}
-        return self.investigations.find_one_and_update({'_id': run_id, 'outcome': 'held', 'held.until': until, 'held.posted': {'$ne': True}},
-                                                       {'$set': {'outcome': outcome, **fields}, '$unset': {'held.text': '', 'held.writes': '', 'held.proposed': ''}},
-                                                       return_document=ReturnDocument.BEFORE)
+        found = self.investigations.find_one_and_update({'_id': run_id, 'outcome': 'held', 'held.until': until, 'held.posted': {'$ne': True}},
+                                                        {'$set': {'outcome': outcome, **fields}, '$unset': {'held.text': '', 'held.writes': '', 'held.proposed': ''}},
+                                                        return_document=ReturnDocument.BEFORE)
+        if found is not None:
+            self.enqueue_embed('run', run_id, 'upsert')
+        return found
 
     def claim_held(self, run_id: str, now: str, token: str, expired: bool = False) -> dict | None:
         found = {'_id': run_id, 'outcome': 'held'} | ({'held.posted': True} if expired else {'held.until': {'$gt': now}})
@@ -1315,7 +1557,10 @@ class Store:
 
     def finish_release(self, run_id: str, token: str, fields: dict) -> bool:
         gone = {f'held.{k}': '' for k in ('text', 'writes', 'proposed', 'releasingAt', 'claim', 'applied')}
-        return self.investigations.update_one({'_id': run_id, 'outcome': 'releasing', 'held.claim': token}, {'$set': {'outcome': 'done', **fields}, '$unset': gone}).matched_count == 1
+        matched = self.investigations.update_one({'_id': run_id, 'outcome': 'releasing', 'held.claim': token}, {'$set': {'outcome': 'done', **fields}, '$unset': gone}).matched_count == 1
+        if matched:
+            self.enqueue_embed('run', run_id, 'upsert')
+        return matched
 
     def held_review_keys(self) -> set[str]:
         return {k for d in self.investigations.find({'trigger': 'review', 'outcome': {'$in': list(HELD_OUTCOMES)}}, {'keys': 1}) for k in d.get('keys') or []}
@@ -2433,9 +2678,12 @@ class Store:
                 doc['requestedBy'] = action['requestedBy']
         self._linked(doc)
         self.deploy_reports.insert_one(doc)
+        self.enqueue_embed('change', f"report:{doc['_id']}", 'upsert')
         if replaces:
             self.actions.update_many({'reportId': {'$in': replaces}}, {'$set': {'reportId': doc['_id']}})
             self.deploy_reports.delete_many({'_id': {'$in': replaces}})
+            for gone in replaces:
+                self.enqueue_embed('change', f'report:{gone}', 'delete')
         if action_id:
             self.actions.update_one({'_id': action_id}, {'$set': {'reportId': doc['_id']}})
         return _with_id(doc)
@@ -2461,11 +2709,23 @@ class Store:
             if fresh:
                 update['$set'] = fresh
             try:
-                inserted += self.deploys.update_one(key, update, upsert=True).upserted_id is not None
+                done = self.deploys.update_one(key, update, upsert=True)
+                inserted += done.upserted_id is not None
+                self._embed_deploy(key, done.upserted_id, bool(fresh))
             except DuplicateKeyError:
                 self.deploys.update_one(key, {k: v for k, v in update.items() if k != '$setOnInsert'})
+                self._embed_deploy(key, None, bool(fresh))
         out = {'received': len(deploys), 'inserted': inserted, 'existing': len(deploys) - inserted - ignored}
         return out | {'ignored': ignored} if ignored else out
+
+    def _embed_deploy(self, key: dict, upserted, changed: bool) -> None:
+        try:
+            found = str(upserted) if upserted is not None else (str((self.deploys.find_one(key, {'_id': 1}) or {}).get('_id') or '') if changed else '')
+        except Exception as e:
+            log.warning('embed queue skipped upsert change: %s', error_kind(e))
+            return
+        if found:
+            self.enqueue_embed('change', f'deploy:{found}', 'upsert')
 
     def _deploy_seq(self, image: dict, d: dict) -> int | None:
         rows = list(self.deploys.find(image, {'at': 1, 'fromImage': 1, 'seq': 1}))
@@ -2481,6 +2741,7 @@ class Store:
     def delete_deploy(self, deploy_id: str) -> None:
         if self.deploys.delete_one({'_id': deploy_id}).deleted_count == 0:
             raise NotFound(f'no deploy with id {deploy_id}')
+        self.enqueue_embed('change', f'deploy:{deploy_id}', 'delete')
 
     def deploys_since(self, since: str) -> list[dict]:
         return [_with_id(d) for d in self.deploys.find({'at': {'$gte': since}}, sort=[('at', ASCENDING), ('_id', ASCENDING)])]
@@ -2492,7 +2753,10 @@ class Store:
         return [_with_id(d) for d in self.deploys.find(query, sort=[('at', ASCENDING), ('_id', ASCENDING)])]
 
     def update_deploy(self, deploy_id: str, guard: dict, update: dict) -> bool:
-        return self.deploys.update_one({'_id': deploy_id, **guard}, update).modified_count > 0
+        changed = self.deploys.update_one({'_id': deploy_id, **guard}, update).modified_count > 0
+        if changed:
+            self.enqueue_embed('change', f'deploy:{deploy_id}', 'upsert')
+        return changed
 
     def claim_run(self, name: str, boot: str | None = None) -> bool:
         try:
@@ -2574,11 +2838,14 @@ class Store:
         flagged = any(r.get('flags') for r in report.get('rows') or [])
         brief = {**brief, 'level': brief.get('level') or ('warn' if flagged else 'ok'), 'at': iso(utc_now())}
         self.deploy_reports.update_one({'_id': report_id}, {'$set': {'brief': brief}})
+        self.enqueue_embed('change', f'report:{report_id}', 'upsert')
         return brief
 
     def set_report_fields(self, report_id: str, fields: dict) -> None:
         if self.deploy_reports.update_one({'_id': report_id}, {'$set': fields}).matched_count == 0:
             raise NotFound(f'no deploy report with id {report_id}')
+        if 'summary' in fields or 'brief' in fields:
+            self.enqueue_embed('change', f'report:{report_id}', 'upsert')
 
     def related_post(self, card: dict, since: str) -> dict | None:
         roots = {'slackPost.ts': {'$exists': True}, 'slackPost.threadOf': {'$exists': False}, 'slackPost.digest': {'$ne': True}, 'slackPost.at': {'$gte': since},
@@ -2619,6 +2886,7 @@ class Store:
     def delete_deploy_report(self, report_id: str) -> None:
         if self.deploy_reports.delete_one({'_id': report_id}).deleted_count == 0:
             raise NotFound(f'no deploy report with id {report_id}')
+        self.enqueue_embed('change', f'report:{report_id}', 'delete')
         self.actions.update_many({'reportId': report_id}, {'$unset': {'reportId': ''}})
 
     def seen(self, channel: str, ts: str, at: dt.datetime) -> bool:

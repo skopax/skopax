@@ -542,7 +542,7 @@ def report_text(r: dict) -> str:
     return 'Rows (signals now, 1 d / 7 d in brackets):\n' + (rows or '- none') + '\n\nReleased issues:\n' + (issues or '- none')
 
 
-def brief(cards: list[dict], action: dict | None, base: str, calls: int, announced: dict[str, dict] | None = None) -> str:
+def brief(cards: list[dict], action: dict | None, base: str, calls: int, announced: dict[str, dict] | None = None, similar: str = '') -> str:
     if action and action.get('type') == 'assess' and action.get('report'):
         r = action['report']
         head = f"Assess deploy report {flat(r.get('id') or '')}: {flat(r.get('summary') or '')} (window {flat(r.get('windowFrom') or '?')} \u2192 {flat(r.get('windowTo') or '?')}, releases {flat(', '.join(r.get('releases') or []) or 'none')})."
@@ -560,7 +560,7 @@ def brief(cards: list[dict], action: dict | None, base: str, calls: int, announc
         head = f"Investigate click on the {brand.product()} page by {flat(action.get('requestedBy') or 'an operator')} (action {flat(action['id'])})."
     else:
         head = f"{len(cards)} new or escalated card{'' if len(cards) == 1 else 's'} on the {brand.product()} page."
-    return head + '\n\nCards:\n' + cards_text(cards, base, announced) + '\n\n' + CLOSE.format(calls=calls)
+    return head + '\n\nCards:\n' + cards_text(cards, base, announced) + similar + '\n\n' + CLOSE.format(calls=calls)
 
 
 REVIEW_HEAD = {

@@ -153,7 +153,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 
 PLUGIN = Plugin(
     id=ID, name='Google Ads', version='0.1.0', category='marketing', description='Broken ad links and disapproved ads of a Google Ads account, and Google Ads numbers for the investigator.',
-    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.8', edition='community',
     capabilities=Capabilities(hosts=('googleads.googleapis.com', 'oauth2.googleapis.com', '*'), secrets=('developer-token', 'credentials')), uses=('website',),
     fields=(Field('customer-id', 'Customer id', 'text', required=True, help='The 10-digit id of the Google Ads account, with or without dashes, as shown at the top right in Google Ads.'),
             Field('login-customer-id', 'Manager account id', 'text',

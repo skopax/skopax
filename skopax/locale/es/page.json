@@ -1963,7 +1963,21 @@
   "pod identity": "identidad del pod",
   "Enter a project id": "Escribe un ID de proyecto",
   "Delete this Vertex AI connection?": "\u00bfEliminar esta conexi\u00f3n de Vertex AI?",
-  "Its credentials and models are deleted. A use set to one of its models is held until another model is picked.": "Se eliminan sus credenciales y sus modelos. Un uso con uno de sus modelos queda en espera hasta que se elija otro modelo."
+  "Its credentials and models are deleted. A use set to one of its models is held until another model is picked.": "Se eliminan sus credenciales y sus modelos. Un uso con uno de sus modelos queda en espera hasta que se elija otro modelo.",
+  "Search by meaning": "Buscar por significado",
+  "Search by meaning: cards, runs, changes, pages": "Buscar por significado: tarjetas, ejecuciones, cambios, p\u00e1ginas",
+  "Nothing matches.": "No hay coincidencias.",
+  "Showing word matches.": "Se muestran coincidencias de palabras.",
+  "meaning": "significado",
+  "words": "palabras",
+  "Found by meaning": "Encontrado por significado",
+  "Found by matching words": "Encontrado por palabras coincidentes",
+  "No results": "Sin resultados",
+  "{0} result": "{0} resultado",
+  "{0} results": "{0} resultados",
+  "Too many searches, wait a minute and try again.": "Demasiadas b\u00fasquedas, espere un minuto e int\u00e9ntelo de nuevo.",
+  "Search is not available right now.": "La b\u00fasqueda no est\u00e1 disponible ahora.",
+  "No word matches. {0} similar by meaning": "Sin coincidencias de palabras. {0} similares por significado"
  },
  "rules": [
   ["^Off \u00b7 the (.+) plug-in is switched off$", "Apagado \u00b7 el plug-in $1 est\u00e1 desactivado"],

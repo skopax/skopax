@@ -79,6 +79,68 @@ Skopax writes one line per log record to standard error.
 - **Bad values.** A value that is not one of these starts with the default and one warning that names it.
 - **At start and live.** The variables set the log from the first line of a start. Once the settings are read, Admin > Settings has Log format, Log colour and Log level (`core.log-format`, `core.log-color` and `core.log-level`, which the config file or a settings source can also give). A value saved there wins over the variable, except that a non-empty `NO_COLOR` keeps colour off (Log colour then reads `off (NO_COLOR)` in Admin), and applies from the next line on, without a restart; Reset goes back to the variable. The first lines of a start, written before the settings are read, always follow the variables or the defaults. An agent has no Admin settings and follows the variables only.
 
+## Search by meaning
+
+Search by meaning finds earlier cards, runs, deploys, notes, pages and error messages by what they say, in any of the model's languages, not by the words they use. A question in Turkish finds a German or English postmortem. It adds the header search box, the investigator's `find_similar` tool and a short list of similar earlier incidents in the brief of a card investigation. It is off by default, it costs no AI spend, and without an embedding service the word search is all there is. The settings are in [Search by meaning](configuration.md#search-by-meaning) and what is stored is in [What is embedded](privacy.md#what-is-embedded).
+
+It needs one extra service: an embedding server that speaks `POST /v1/embeddings`. Skopax is built for Hugging Face text-embeddings-inference (TEI) 1.10.0 serving `intfloat/multilingual-e5-small` (384 dimensions, about 100 languages including Turkish, English, German, Spanish and French). The service runs inside your network; it is not an AI provider, and nothing is sent to a company outside it unless you set `SKOPAX_EMBED_ALLOW_PUBLIC`.
+
+### Deploy with Compose
+
+The compose file has an `embed` service under the profile `semantic`, so a plain `docker compose up` does not start it. It runs the TEI image pinned by digest, publishes no port, runs as user 65532 with a read-only root file system and no capabilities, and is limited to 1 CPU and 1.5 GiB.
+
+1. Put the model on disk. The service reads it from a folder, by default `./embed-model` next to the compose file (set `SKOPAX_EMBED_MODEL_DIR` for another folder), mounted read-only at `/model`. Download the eight files of revision `614241f622f53c4eeff9890bdc4f31cfecc418b3` from `https://huggingface.co/intfloat/multilingual-e5-small/resolve/614241f622f53c4eeff9890bdc4f31cfecc418b3/<file>` and check each against its sha256:
+
+   | File | sha256 |
+   |---|---|
+   | `config.json` | `69137736cab8b8903a07fe8afaafdda25aac55415a12a55d1bffa9f581abf959` |
+   | `tokenizer.json` | `0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39` |
+   | `tokenizer_config.json` | `a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b` |
+   | `special_tokens_map.json` | `d05497f1da52c5e09554c0cd874037a083e1dc1b9cfd48034d1c717f1afc07a7` |
+   | `modules.json` | `c6e29747481e8b5dd2b58401966aeac910de39092f90cda9a704b1545f902b04` |
+   | `sentence_bert_config.json` | `948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529` |
+   | `1_Pooling/config.json` | `987f7a67a38fa564c849bb5d277c52ab9088a84368fc0be31a354125aebb12a0` |
+   | `onnx/model.onnx` | `ca456c06b3a9505ddfd9131408916dd79290368331e7d76bb621f1cba6bc8665` |
+
+   Keep the folder layout (`1_Pooling/` and `onnx/` are subfolders). The whole model is about 465 MB.
+2. Make a key and the address Skopax calls in `.env`: `echo SKOPAX_EMBED_API_KEY="$(openssl rand -hex 32)" >> .env` and `echo SKOPAX_EMBED_URL=http://embed:8080 >> .env`. The compose file passes both to Skopax and gives the key to the service as `API_KEY`. Set the key before you start the service: with no key the service answers anyone on the compose network.
+3. Start it with `docker compose --profile semantic up -d`, then turn on Search by meaning in Admin > Features. The switch stays locked while the URL is empty.
+
+The compose file pins the amd64 image, `ghcr.io/huggingface/text-embeddings-inference:cpu-1.10.0@sha256:f0a4bb206b9d4877746b5b9f638e138fe683eeb9787c14d541a12c993b562d86`. TEI has no multi-architecture tag, so on an arm64 host change the image to `ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.10.0@sha256:446c683eef5bbbdf1eb9899966b8e198921f671e92ee3fe3d7a5f6d770ea0a26`. Do not use a 1.9 release: it writes the API key to its log.
+
+### Deploy on Kubernetes
+
+[examples/k8s/embed](../examples/k8s/embed/README.md) has the manifests: a Deployment, a Service on port 80, a 1 GiB volume, a Job that fetches the model files and fails on any sha256 mismatch, a NetworkPolicy and a Secret for the key. Apply the volume, run the Job, then apply the Deployment; the README has the order. Set `SKOPAX_EMBED_URL=http://skopax-embed` and the same key in Skopax's environment.
+
+The service's own key covers only the embedding routes. `/health`, `/metrics`, `/docs` and the API description answer without one, so keep the service off every network except Skopax's: the example NetworkPolicy allows ingress from the Skopax pods only and no egress. The model name `SKOPAX_EMBED_MODEL` has to match the name the service serves (`--served-model-name`); Skopax refuses an answer that names another model or has vectors of another length.
+
+### Sizing
+
+- **Embedding service:** 1 vCPU and 1.25 to 1.5 GiB of memory. It cannot start with 1 GiB. It holds the model in memory (about 0.9 GiB idle, about 1 GiB at its peak) and the figures here are for one core.
+- **Skopax pod:** about 80 MB of memory per 100,000 vectors, up to the cap `SKOPAX_EMBED_MAX_VECTORS` (300,000 vectors, about 230 MB), plus about 50 MB for the numpy library. The index is loaded by the first search or the first run that needs it, and only pods that search keep it.
+- **MongoDB:** about 1 KB per vector, so 100,000 vectors are about 100 MB. A vector's size does not depend on its text. A year of an average install comes to roughly 60,000 to 150,000 vectors. Older items beyond the cap are left out of search, the oldest first, and the indexer's status in the state collection says so.
+- **Disk:** about 1 GB for the model volume.
+
+### First fill
+
+When the feature is turned on, Skopax adds new items as they arrive and, in the background, the older ones: newest first, at most `SKOPAX_EMBED_BACKFILL_PER_PASS` (default 200) every minute, and `SKOPAX_EMBED_DOCS_PER_PASS` pages. On one cloud vCPU the service manages about 4 to 8 passages a second at 200 tokens and 2 to 3.5 at 400 tokens, so the default of 200 a minute leaves it room for live items. At that pace 100,000 vectors take about 8 hours. Raising the per-pass limit above what the service can do only builds a queue. Search works from the first vector: newer items are found first, and the indexer writes how far the fill is (counts and progress) to the state collection for now. A question is answered in about 15 to 30 ms by the service plus about 10 ms per 100,000 vectors in Skopax.
+
+### Changing the model
+
+Changing `SKOPAX_EMBED_MODEL` or the passage prefix gives the index a new fingerprint. Search switches at once to the part of the new index that exists and says "index rebuilding" with how far it is; the old vectors are removed when the new ones are complete. The index rebuilds by itself when the model or the prefix changes; there is no button for it. The first answer from the service is checked: a different model name or vector length marks the service down with "model mismatch" and nothing is stored.
+
+### When the service is down
+
+After three failed calls in a row Skopax marks the service down for 30 seconds, then for twice as long each time up to 10 minutes, and sends nothing meanwhile. During that time search falls back to word matches with a note, `find_similar` is not offered (a run that already has it gets a message that points to `past_cards` and `past_runs`), and the brief block is skipped. Indexing keeps a queue of changes for 7 days and catches up when the service answers again. Skopax writes and board passes are never held up by the service.
+
+### Air-gapped installs
+
+The CPU image of TEI ignores `HF_HUB_OFFLINE` and would still try to reach the Hugging Face hub for a model name, so do not give it a hub name. Both examples start it with `--model-id /model`, a folder mounted read-only, and name the model with `--served-model-name`. Copy the eight files in from a machine that can download them (and check the sha256 values above), or from your own artifact store, into the folder or the volume. The image itself has to come through your registry mirror, by its digest. The service then makes no outside connection at all.
+
+### Throughput
+
+Requests ask for at most 32 texts, and the service accepts 64 at the same time. The CPU backend runs 8 texts per forward pass, which is why `SKOPAX_EMBED_BATCH` defaults to 8; a larger batch gains nothing. Several Skopax pods share one service: only one pod per minute claims the indexing job, so they do not multiply the load. If search questions time out while a fill runs, lower `SKOPAX_EMBED_BACKFILL_PER_PASS` or raise `SKOPAX_EMBED_TIMEOUT_SECONDS` (the default is 3 seconds).
+
 ## Behind a proxy or ingress
 
 Set `FORWARDED_ALLOW_IPS` to the proxy's address or range, for example `10.0.0.0/8`. Without it every client appears to come from the proxy's IP, so 20 wrong passwords from anyone pause password login for everyone for 15 minutes. The log warns when this looks misconfigured. Logins are also limited to 5 failures per email in 15 minutes.

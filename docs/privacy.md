@@ -50,6 +50,34 @@ Every text that leaves for people passes the same mask once more before it is st
 - Kubernetes Secrets, ConfigMaps and the environment values of pods: the Kubernetes reads are a fixed list (pods, events, rollouts, previous logs, nodes, daemon sets) and only status fields are kept.
 - ES|QL queries read only the indices set on the Elasticsearch connection (the log index and the log flow index on cluster logs; the APM index, `logs-apm.error-*` and `metrics-apm.*` on cluster apm), the indices set on enabled plug-in instances that read through that connection (such as CSP reports and Varnish), or narrower patterns of them. Any other index, alias or remote cluster in FROM or LOOKUP JOIN is refused, and so are ENRICH and comments in a query.
 
+## What is embedded
+
+Search by meaning is off by default. While it is on, Skopax sends text to the embedding service you named in `SKOPAX_EMBED_URL`, so that items can be found by what they say. The service is not an AI provider: it runs the model itself, inside your network, and it answers with numbers only.
+
+What is embedded, after the same masking as the text sent to the AI provider:
+
+- Finished runs of the investigator that were not chat and were not refused: the question and the answer.
+- The history of cards: what, outcome, cause, note and the verdict note of each occurrence, with the ticket key.
+- Open cards: service, label, what and note, while they are open and not muted.
+- Deploys and deploy reports: the namespace and service, the image change, who changed it, tickets, and the report's summary and points.
+- Plug-in knowledge text of plug-ins that are in use.
+- Error and warning templates from the log plug-ins: the message with its ids and numbers replaced, never the raw line.
+- Pages of Confluence and SharePoint, only for an instance whose Index pages for search by meaning field is on, and only the spaces or folder that instance may read.
+
+What is never embedded:
+
+- Answers that are held, dropped or discarded by the guard, runs that were refused, and every guard and held field.
+- Chat conversations and Slack direct messages.
+- Tool inputs and outputs of a run, screenshots, activity lines, instance settings and secrets, Admin > Changes and proposals.
+
+Where it goes: the masked text of one item at a time, plus the question you type into the search box, to the embedding service only. The service does not log request text. Skopax refuses an address that is not private or loopback unless `SKOPAX_EMBED_ALLOW_PUBLIC` is set, and always refuses link-local and cloud metadata addresses. Nothing leaves your cluster for this feature unless you set that switch.
+
+Where the vectors live: in the `embeddings` collection of the Skopax database, and in memory in each pod that searches. A vector is 384 numbers per piece of text. The text of an item is not stored there, with one exception: a documentation page keeps its title, its address and an excerpt of at most 300 characters, masked, to show in results. Vectors can be partly turned back into text, so Skopax treats them as sensitive: they get the same access rules as the items themselves, a result is checked against what the asker may read before it is shown, and the indexer's status, written to the state collection for now, holds counts only.
+
+Retention and deletion: a vector expires with its source (a card history entry after the history days, an error template 90 days after it was last seen, a run with its retention). It is removed when its source stops qualifying: a run that leaves done, an open card that clears or is muted, a page that is removed or no longer indexed. A regular check against the sources also finds removals that no event reported. Deleting the `embeddings` collection removes all vectors; Skopax then fills it again unless you turn the feature off. A change queue and a list of removals are kept for 7 days.
+
+Turning the feature off stops indexing and search but keeps the stored vectors and page excerpts in MongoDB until they expire or their source is purged. To remove them at once, drop the `embeddings` collection. While the feature is off, `/api/search` keeps answering with word matches over cards and runs (the search box is hidden).
+
 ## Tracing
 
 Langfuse tracing of Skopax's own AI calls is off unless switched on, and sends no content by default. With `full` content it applies the same masking to every prompt, answer, tool input and output, error and card key before export; see `LANGFUSE_TRACE_CONTENT` in [Configuration](configuration.md#settings). With `full` content, investigator traces include answers the guard later holds, masks, rewrites or drops (the first attempt of a fixed or dropped run stays in the trace), because the trace is written before the answer check; the guard itself is never traced.

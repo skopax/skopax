@@ -61,7 +61,7 @@ from skopax.operators import OperatorUnknown, Operators
 from skopax.postdeploy import JOB_OFFSET as POSTDEPLOY_OFFSET, JOB_PERIOD as POSTDEPLOY_PERIOD, SERVER_BY, PostDeploy
 from skopax.attach import Attacher
 from skopax.autosend import AutoSend, Fallback, PostNow, fresh as fresh_cards, kept as kept_text, waiting as auto_send_waiting
-from skopax.config import MCP_CLIENT_ID, ConfigurationError, Settings
+from skopax.config import EMBED_MODEL, MCP_CLIENT_ID, ConfigurationError, Settings
 from skopax.contract import CodeHost, OrgPack, SourceDown
 from skopax import engine
 from skopax.engine import Applied, PassResult, apply, iso as epoch_iso, new_pushes
@@ -96,6 +96,11 @@ from skopax.push import Pusher, push_users
 from skopax.investigator.flags import REQUESTS, masked_asked, masked_scan
 from skopax.redact import redact
 from skopax.scheduler import Job, Scheduler
+from skopax.embedclient import KNOWN_DIMS, EmbedClient, dims_of
+from skopax.semantic import indexer as semantic_indexer
+from skopax.semantic import search as semantic_search
+from skopax.semantic import uishape as semantic_shape
+from skopax.semantic.index import VectorIndex
 from skopax.settle import Settle, ignore_doc, ignored
 from skopax.slackevents import Clicks, Intake, Listener, Replier, TicketRefused, socket_client, way_in
 from skopax.clearnotes import ClearNotes
@@ -141,12 +146,18 @@ from skopax.signin import Refused, SignIn, domain_refused
 from skopax import ssobutton, workspaceicon
 from skopax.ssoicon import ICON_MAX as SSO_ICON_MAX, IconRefused, SsoIcon, check as icon_check
 from skopax.sso import FIELDS as SSO_FIELDS, SECRET_FIELD as SSO_SECRET_FIELD, SECRET_ID as SSO_SECRET_ID, SECRET_MAX as SSO_SECRET_MAX, InvalidSecret, SignOn, SourceOwned as SecretOwned, SsoConfig, SsoHttp, SsoSecret, TestBusy as SsoTestBusy
-from skopax.throttle import Throttle
+from skopax.throttle import KEY_MAX, Throttle
 from skopax.store import CARD_HISTORY_MAX, HELD_OUTCOMES, SEVERITY_HIGH_MARK, SEVERITY_RESCORE_MARK, TAG_HUE_NAMES, ActionMoved, ChatPrivate, Conflict, NotFound, Store, iso, new_id, utc_now
 
 OPEN_PATHS = ('/actuator/health', '/actuator/health/*', '/static/*', '/icons/*', '/favicon.ico', '/plugins/*', '/manifest.webmanifest', '/setup', '/login', '/login/sso', '/authorized', '/logout', '/mcp',
               '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/*', '/login/sso-icon')
 READ_METHODS = ('GET', 'HEAD')
+SEARCH_PER_MINUTE = 30
+SEARCH_WINDOW_S = 60
+SEARCH_Q_MIN = 3
+SEARCH_Q_MAX = 200
+SEARCH_LIMIT_MAX = 20
+SEARCH_LIMIT_DEFAULT = 10
 FORM_BODY_MAX = 16384
 LOGIN_PAGE = Path(__file__).parent / 'web' / 'login.html'
 LOGIN_SLOT = re.compile(r'\[\[(\w+)\]\]')
@@ -1443,6 +1454,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
                          given=lambda plugin_id: live.plugin_value_given(f'{plugin_id}.model'))
     runtime.ai = plugin_ai.for_check
     runtime.memos = store.plugin_memo
+    embed_indexer = semantic_indexer.Indexer(store, lambda: settings, EmbedClient(lambda: settings), lambda: features.on('semantic-search'), lambda: semantic_indexer.usable_knowledge(runtime), lambda: semantic_indexer.usable_docs(runtime))
+    store.embed_gate = embed_indexer.wants
+    embed_client = EmbedClient(lambda: settings)
+    semantic_searcher = semantic_search.Searcher(store, lambda: settings, embed_client, VectorIndex(dims_of(settings.embed_model) or KNOWN_DIMS[EMBED_MODEL], max_vectors=settings.embed_max_vectors),
+                                                 lambda: features.on('semantic-search'), knowledge=lambda allowed: semantic_search.usable_knowledge(runtime, allowed),
+                                                 serving=runtime.serving)
+    investigator.sources.similar = semantic_searcher
     core_jobs = [
         Job('enrich', SWEEP_PERIOD, ENRICH_OFFSET, lambda now: enricher.sweep(), lambda: enricher.enabled),
         Job('settle', SWEEP_PERIOD, SETTLE_OFFSET, lambda now: settle.run_once(), settle.enabled),
@@ -1463,6 +1481,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         Job(warndigest.RUN, warndigest.PERIOD, warndigest.OFFSET, warn_digest.run_once, lambda: warn_digest.scheduled),
         Job(followup.RUN, followup.PERIOD, followup.OFFSET, follow_ups.run_once, lambda: follow_ups.enabled),
         Job('notice-mail', noticemail.PERIOD, noticemail.OFFSET, notice_mail.run_once, notice_mail.ready),
+        Job(semantic_indexer.NAME, semantic_indexer.PERIOD, semantic_indexer.OFFSET, embed_indexer.run_once, embed_indexer.active, background=True),
     ]
     scheduler = Scheduler(store, boot=investigator.owner, jobs=lambda: core_jobs + [Job('postdeploy', POSTDEPLOY_PERIOD, POSTDEPLOY_OFFSET, lambda now: postdeploy.run_once(now), postdeploy.enabled)] + sweeper.jobs())
 
@@ -1904,6 +1923,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
 
     app = FastAPI(title=brand.product(), version=__version__, lifespan=lifespan)
     app.state.features = features
+    app.state.embed_indexer = embed_indexer
+    app.state.semantic_searcher = semantic_searcher
     app.state.tracer = tracer
     app.state.feature_needs = feature_needs
     app.state.auto_send = auto
@@ -2756,6 +2777,57 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
             raise HTTPException(status_code=422, detail='from is after to')
         rows, total = store.closed_cards(iso(lo), iso(hi), q, outcome, page, size)
         return {'from': iso(lo), 'to': iso(hi), 'page': page, 'size': size, 'total': total, 'items': rows, 'outcomes': history.OUTCOME_TEXT}
+
+    search_throttle = Throttle(db, limit=SEARCH_PER_MINUTE, window_seconds=SEARCH_WINDOW_S)
+
+    def search_caller(request: Request, authorization: str | None) -> tuple[str, str]:
+        try:
+            actor = acting(request, authorization)
+        except HTTPException as e:
+            if e.status_code != status.HTTP_401_UNAUTHORIZED:
+                raise
+            if not settings.public_read:
+                raise
+            host = request.client.host if request.client and request.client.host else 'unknown'
+            return 'anonymous', f'search:ip:{host}'
+        return actor.role, f'search:{actor.name}'
+
+    def search_retry_after(who: str) -> int:
+        try:
+            since = search_throttle.when(-SEARCH_WINDOW_S)
+            oldest = search_throttle.col.find_one({'key': who[:KEY_MAX], 'at': {'$gt': since}}, sort=[('at', 1)])
+            at = oldest['at'] if oldest else None
+            if at is None:
+                return SEARCH_WINDOW_S
+            at = at if at.tzinfo else at.replace(tzinfo=dt.timezone.utc)
+            return max(1, min(SEARCH_WINDOW_S, math.ceil(at.timestamp() + SEARCH_WINDOW_S - search_throttle.clock())))
+        except Exception:
+            return SEARCH_WINDOW_S
+
+    @app.get('/api/search')
+    def get_search(request: Request, q: Annotated[str, Query(min_length=SEARCH_Q_MIN, max_length=SEARCH_Q_MAX)], kinds: Annotated[str | None, Query(max_length=100)] = None,
+                   limit: Annotated[int, Query(ge=1, le=SEARCH_LIMIT_MAX)] = SEARCH_LIMIT_DEFAULT, authorization: Annotated[str | None, Header()] = None) -> dict:
+        text = q.strip()
+        if len(text) < SEARCH_Q_MIN:
+            raise HTTPException(422, f'q is at least {SEARCH_Q_MIN} characters')
+        wanted = [k.strip() for k in (kinds or '').split(',') if k.strip()]
+        unknown = [k for k in wanted if k not in semantic_shape.UI_KINDS]
+        if unknown:
+            raise HTTPException(422, 'kinds is a comma list of ' + ', '.join(semantic_shape.UI_KINDS))
+        role, who = search_caller(request, authorization)
+        try:
+            held = search_throttle.reserve(who)
+        except PyMongoError as e:
+            log.warning('search throttle check failed: %s', kind(e))
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, msg('db.unavailable')) from None
+        if held is None:
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, msg('search.throttled'), headers={'Retry-After': str(search_retry_after(who))})
+        index_kinds = [i for k in wanted for i in semantic_shape.UI_KINDS[k]] if wanted else None
+        try:
+            found = app.state.semantic_searcher.search(semantic_search.SearchContext.ui(role), text, index_kinds, limit)
+        except semantic_search.SearchUnavailable:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, msg('db.unavailable')) from None
+        return {'semantic': found.semantic, 'note': found.note, 'rebuilding': found.rebuilding, 'items': semantic_shape.items_of(found)}
 
     @app.get('/api/rev')
     def get_rev() -> dict:

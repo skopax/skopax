@@ -85,7 +85,7 @@ Settings from the environment, the config file and plug-in sources, branding and
 
 This list names the settings most installs set. Every setting has an id, such as `core.timezone`, shown under its row in Admin > Settings (or in the Admin section that owns it). To set one without the page, give it under `settings:` in the config file (see [Settings sources](#settings-sources)), where `${NAME}` takes its value from the environment.
 
-The compose file publishes the port on 127.0.0.1 only. It passes exactly five variables through from your shell environment or `.env`: `SKOPAX_TOKEN`, `SKOPAX_SECRET_KEY`, `SKOPAX_ADMIN_EMAIL`, `SKOPAX_ADMIN_PASSWORD` and `SKOPAX_PUBLIC_READ`; any other variable there never reaches the container. Any other setting, for example `FORWARDED_ALLOW_IPS` behind a proxy or `SSO_DEFAULT_ROLE`, goes under the `skopax` service's `environment:` in `docker-compose.yml`.
+The compose file publishes the port on 127.0.0.1 only. It passes exactly seven variables through from your shell environment or `.env`: `SKOPAX_TOKEN`, `SKOPAX_SECRET_KEY`, `SKOPAX_ADMIN_EMAIL`, `SKOPAX_ADMIN_PASSWORD`, `SKOPAX_PUBLIC_READ`, `SKOPAX_EMBED_URL` and `SKOPAX_EMBED_API_KEY` (the last two only matter for the `semantic` profile, see [Search by meaning](operations.md#search-by-meaning)); any other variable there never reaches the container. Any other setting, for example `FORWARDED_ALLOW_IPS` behind a proxy or `SSO_DEFAULT_ROLE`, goes under the `skopax` service's `environment:` in `docker-compose.yml`.
 
 The compose file sets `SKOPAX_BASE_URL` to `http://localhost:8080`; change it for a real deployment. Cookies are `Secure` when that base (or `SSO_REDIRECT_URI` if no base is set) starts with `https://`.
 
@@ -149,6 +149,27 @@ Every model call sends the text the investigator works with (card details, tool 
 - A model of a Vertex AI connection (`<connection>/<model>`) goes to Google Cloud Vertex AI, in the location of the connection and under your own Google Cloud project: `eu` and `us` keep processing in that multi-region, a single region keeps it there, and `global` gives no residency guarantee; see [Run Claude on Vertex AI in your own Google Cloud](setup.md#run-claude-on-vertex-ai-in-your-own-google-cloud).
 
 Check the data terms of each company before you choose its models for a use. Langfuse tracing, when it is on, sends its own copy to the Langfuse host; see `langfuse.trace-content`.
+
+## Search by meaning
+
+Search by meaning finds earlier runs, cards, deploys, notes and pages by what they say, not by the words they use. It needs an embedding service that speaks the OpenAI embeddings API (`POST /v1/embeddings`), and it stays off until the deployment names one. Only the masked text of an item is sent to that service, and the vectors are kept in the database; the text itself is not.
+
+- `SKOPAX_FEATURE_SEMANTIC_SEARCH` (`core.semantic-search`): default `false`. The switch. It cannot be turned on while `SKOPAX_EMBED_URL` is empty. Admin > Features lists it as Search by meaning, and a value saved there overrides this one and applies at once. Off keeps the word search.
+- `SKOPAX_EMBED_URL` (`embed.url`): empty by default. The address of the embedding service, such as `http://skopax-embed:8080`, without a path, query, user name or password; at most 500 characters. Deployment only: it is not an Admin setting.
+- `SKOPAX_EMBED_API_KEY` (`embed.api-key`): empty by default. The key sent as a bearer token to the service, if it needs one; plain ASCII without spaces. Deployment only: it is not an Admin setting and is never shown.
+- `SKOPAX_EMBED_ALLOW_PUBLIC` (`embed.allow-public`): default `false`. While off, the service must sit on a private or loopback address; turn it on to use a service on a public address. Link-local and cloud metadata addresses are refused either way, and every address is checked again on each connection. Deployment only: it is not an Admin setting.
+- `SKOPAX_EMBED_MODEL` (`embed.model`): default `intfloat/multilingual-e5-small`. The model name sent to the service; an answer from another model is refused. Changing it rebuilds the index.
+- `SKOPAX_EMBED_QUERY_PREFIX` (`embed.query-prefix`) and `SKOPAX_EMBED_PASSAGE_PREFIX` (`embed.passage-prefix`): empty by default, which uses the model default: `query: ` and `passage: ` for an e5 model and nothing for others. Changing the passage prefix rebuilds the index.
+- `SKOPAX_EMBED_TIMEOUT_SECONDS` (`embed.timeout-seconds`): default `3`, from 1 to 60. How long a search question waits for the service.
+- `SKOPAX_EMBED_BATCH_TIMEOUT_SECONDS` (`embed.batch-timeout-seconds`): default `60`, from 5 to 300. How long indexing waits for the service for one batch.
+- `SKOPAX_EMBED_BATCH` (`embed.batch`): default `8`, from 1 to 32. Texts sent in one call.
+- `SKOPAX_EMBED_BACKFILL_PER_PASS` (`embed.backfill-per-pass`): default `200`, from 0 to 5000. The most older items added in one pass; 0 pauses the backfill.
+- `SKOPAX_EMBED_DOCS_PER_PASS` (`embed.docs-per-pass`): default `200`, from 0 to 2000. The most documentation pages added in one pass; 0 pauses indexing of pages.
+- `SKOPAX_EMBED_MAX_VECTORS` (`embed.max-vectors`): default `300000`, from 1000 to 2000000. The most vectors one pod keeps in memory. Above it the oldest items by their own date are left out, kind by kind.
+- `SKOPAX_EMBED_SOURCES` (`embed.sources`): default `runs, cards, changes, knowledge, docs, logs`. What is indexed, separated by commas; a name that is not a source is skipped with a warning. Documentation pages also need the index switch of their integration.
+- `INVESTIGATE_SIMILAR_IN_BRIEF` (`investigate.similar-in-brief`): default `true`. Adds a short list of similar earlier incidents to the brief of a card investigation while Search by meaning is on and answering.
+
+Apart from the three marked deployment only, every setting above is also listed in Admin > Investigator and a value saved there applies at once. Until the service has answered once, the status of the service is unknown; after three failed calls in a row it is marked down for 30 seconds, then for longer (up to 10 minutes) while it keeps failing, and word search is used meanwhile.
 
 ## Branding
 

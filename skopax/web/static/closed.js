@@ -131,6 +131,21 @@ function closedRow(r) {
   row.innerHTML = '<span class="cl-sevc">' + sev(r.sev) + '</span><span class="cl-num">' + num + '</span><span class="cl-main">' + main + '</span><span class="cl-res">' + out + '</span><span class="cl-when">' + when + '</span>';
   return row;
 }
+function closedSimilar(text, body) {
+  if (text.length < 3 || body.querySelector('#cl-sim') || typeof window.semEnabled !== 'function' || !window.semEnabled()) return;
+  var mine = CLOSED.seq;
+  fetch('/api/search?kinds=cards&limit=20&q=' + encodeURIComponent(text), {headers: {'Accept': 'application/json'}, credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+    if (!d || d.semantic !== true || !Array.isArray(d.items) || mine !== CLOSED.seq || CLOSED.q !== text || !body.isConnected || body.querySelector('.cl-list') || body.querySelector('#cl-sim')) return;
+    var n = d.items.filter(function (it) { return it && it.kind === 'cards' && it.match === 'meaning'; }).length;
+    if (!n) return;
+    var line = el('p', 'cl-sim'), go = el('button', 'btn sec small', 'No word matches. ' + n + ' similar by meaning');
+    go.type = 'button';
+    go.id = 'cl-sim';
+    go.addEventListener('click', function () { window.semOpen(text); });
+    line.appendChild(go);
+    body.appendChild(line);
+  }, function () {});
+}
 function paintClosedBody() {
   var body = document.getElementById('cl-body');
   if (!body) return;
@@ -141,6 +156,7 @@ function paintClosedBody() {
   if (!d) { body.appendChild(el('p', 'muted', 'Loading closed cards…')); return; }
   if (!d.items.length) {
     body.appendChild(el('div', 'card empty-card', '<span class="ok" aria-hidden="true">✓</span><span>' + esc(CLOSED.q || CLOSED.outcome ? 'No closed card matches.' : 'No card closed in this time range.') + '</span>'));
+    if (CLOSED.q) closedSimilar(CLOSED.q, body);
     return;
   }
   var list = el('div', 'cl-list');

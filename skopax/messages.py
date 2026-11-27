@@ -13,7 +13,7 @@ log = logging.getLogger('skopax.messages')
 
 ENGLISH = 'en'
 LANG_TAG = re.compile(r'[a-z]{2,3}(-[A-Za-z0-9]{2,8})?')
-OUTBOUND = frozenset({'proposals', 'slack', 'slackevents', 'slackhealth', 'reminder', 'clear', 'autosend', 'notes', 'tickets', 'postdeploy', 'review', 'push', 'gate', 'assign', 'routes', 'pagescan', 'tagreport', 'warndigest', 'mail'})
+OUTBOUND = frozenset({'proposals', 'slack', 'slackevents', 'slackhealth', 'reminder', 'clear', 'autosend', 'notes', 'tickets', 'postdeploy', 'review', 'push', 'gate', 'assign', 'routes', 'pagescan', 'tagreport', 'warndigest', 'mail', 'embed', 'search'})
 OUTBOUND_KEYS = frozenset({'engine.window.hour', 'engine.window.hours', 'engine.window.day', 'engine.window.days'})
 TEXT_MAX = 4000
 SHOWN_MAX = 80
@@ -776,6 +776,7 @@ MESSAGES: dict[str, str] = {
     'plugins.why.instance_field': 'instance field {key} needs exactly one choice, a plug-in listed in uses',
     'plugins.why.setup': 'the setup guide must be 1-{steps} printable steps of at most {step} characters, with an optional https docs link of at most {docs} characters and a link label of at most {label} printable characters that needs the link',
     'plugins.why.knowledge_also': 'knowledge_also {value} must be true or false, and true needs company_knowledge set',
+    'plugins.why.corpus': 'corpus needs callable list and read hooks, a max_pages from 1 to {max}, and a bool field index-pages',
     'plugins.why.company_knowledge': 'company_knowledge {value} must be empty, always, or the key of one of the plug-in\'s own fields',
     'plugins.why.max_instances': 'max_instances must be empty or a whole number of at least 1',
     'plugins.why.agent_instance': 'agent-read field {key} cannot be an instance field',
@@ -1362,6 +1363,19 @@ MESSAGES: dict[str, str] = {
     'advisor.dropped': 'The advisor {advisor} was not used with {executor} in this run, so the run went on without it',
     'advisor.usage_missing': 'advisor usage missing; spend estimated',
     'advisor.refused': 'the API refused the advisor, the run went on without it: {why}',
+    'embed.off': 'Search by meaning is off: {reason}.',
+    'embed.reason.disabled': 'it is turned off in Admin \u203a Features',
+    'embed.reason.no_url': 'no embedding service address is set',
+    'embed.reason.not_ready': 'the index is not ready yet',
+    'embed.down': 'the embedding service is not answering',
+    'embed.refused': 'the embedding service address is public and not allowed',
+    'embed.mismatch': 'the embedding service runs another model than the one set',
+    'embed.auth': 'the embedding service did not accept the key',
+    'embed.bad_answer': 'the embedding service sent an answer that cannot be used',
+    'embed.rebuilding': 'Search by meaning is rebuilding its index: {done} of {total} done',
+    'embed.needs_url': 'The embedding service address is not set (SKOPAX_EMBED_URL), so Search by meaning cannot be turned on',
+    'embed.sources_invalid': 'Indexed sources has {entry}, which is not a source; use {allowed}',
+    'search.throttled': 'Too many searches, wait a minute and try again',
     'guard.needs_model': 'Pick a guard model first; the check stays off until one is set',
     'guard.no_model': 'A guard check is on but no guard model is set, so the check is off; pick a guard model',
     'guard.no_key': '{owner} has no working key or connection for the guard model {model}: questions are refused and answers held until you fix it',

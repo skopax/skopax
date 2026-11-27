@@ -62,6 +62,7 @@ CORE: dict[str, Spec] = {s.name: s for s in (
     _core('past_cards', 'read', per_run=10),
     _core('self_review', 'read', per_run=2),
     _core('past_runs', 'read', per_run=8),
+    _core('find_similar', 'read', per_run=6, scan=True),
     _core('pass_table', 'read', scan=True),
     _core(KNOWLEDGE, 'read'),
     _core('assess', 'write'),

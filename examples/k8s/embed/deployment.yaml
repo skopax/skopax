@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skopax-embed
+  labels:
+    app.kubernetes.io/name: skopax-embed
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skopax-embed
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: skopax-embed
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: embed
+          image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.10.0@sha256:f0a4bb206b9d4877746b5b9f638e138fe683eeb9787c14d541a12c993b562d86
+          args:
+            - --model-id
+            - /model
+            - --served-model-name
+            - intfloat/multilingual-e5-small
+            - --max-client-batch-size
+            - "32"
+            - --max-concurrent-requests
+            - "64"
+            - --tokenization-workers
+            - "1"
+          env:
+            - name: PORT
+              value: "8080"
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: skopax-embed
+                  key: api-key
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1280Mi
+            limits:
+              cpu: "1"
+              memory: 1536Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: model
+              mountPath: /model
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: model
+          persistentVolumeClaim:
+            claimName: skopax-embed-model
+            readOnly: true
+        - name: tmp
+          emptyDir: {}
