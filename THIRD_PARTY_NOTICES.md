@@ -145,6 +145,19 @@ Names of identity providers are trademarks of their owners and are used only to 
 
 None bundled. The page, card page, login, setup and chat use the system font stacks.
 
+## Numerical libraries
+
+The search-by-meaning index uses numpy 2.5.5 (`numpy==2.5.5` in `pyproject.toml`). The container image lists numpy and its licence in `/usr/share/doc/skopax/third-party-python.md` like every other Python distribution, and lists the native libraries its Linux wheels bundle in `/usr/share/doc/skopax/third-party-bundled.md`. They are named here as well because one of them is not under a permissive licence.
+
+| Component | Where it comes from | Licence |
+|---|---|---|
+| numpy | the numpy wheel, numpy.org | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0, as the wheel's `License-Expression` reads; the wheel ships each licence text under its `dist-info/licenses` |
+| OpenBLAS | bundled in the numpy Linux wheels under `numpy.libs/` | BSD-3-Clause |
+| LAPACK | built into the bundled OpenBLAS | modified BSD, the BSD-3-Clause terms |
+| libgfortran | bundled in the numpy Linux wheels under `numpy.libs/` | GPL-3.0-or-later WITH GCC-exception-3.1 |
+
+libgfortran is the GNU Fortran runtime from the GCC project (gcc.gnu.org). It is under the GNU General Public License version 3 or later with the GCC Runtime Library Exception 3.1, which lets a program link against it and be distributed under its own licence. Skopax does not modify it, and it ships as the unmodified shared library from the numpy wheel. Its source is available from gcc.gnu.org.
+
 ## Python distributions and Debian libraries
 
 Listed in the container image under `/usr/share/doc/skopax/`, as the first paragraph says.

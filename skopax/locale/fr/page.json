@@ -1963,7 +1963,21 @@
   "pod identity": "identit\u00e9 du pod",
   "Enter a project id": "Saisissez un ID de projet",
   "Delete this Vertex AI connection?": "Supprimer cette connexion Vertex AI ?",
-  "Its credentials and models are deleted. A use set to one of its models is held until another model is picked.": "Ses identifiants et ses mod\u00e8les sont supprim\u00e9s. Un usage r\u00e9gl\u00e9 sur l\u2019un de ses mod\u00e8les est suspendu jusqu\u2019au choix d\u2019un autre mod\u00e8le."
+  "Its credentials and models are deleted. A use set to one of its models is held until another model is picked.": "Ses identifiants et ses mod\u00e8les sont supprim\u00e9s. Un usage r\u00e9gl\u00e9 sur l\u2019un de ses mod\u00e8les est suspendu jusqu\u2019au choix d\u2019un autre mod\u00e8le.",
+  "Search by meaning": "Rechercher par sens",
+  "Search by meaning: cards, runs, changes, pages": "Rechercher par sens : cartes, ex\u00e9cutions, changements, pages",
+  "Nothing matches.": "Aucun r\u00e9sultat.",
+  "Showing word matches.": "Affichage des correspondances de mots.",
+  "meaning": "sens",
+  "words": "mots",
+  "Found by meaning": "Trouv\u00e9 par le sens",
+  "Found by matching words": "Trouv\u00e9 par des mots correspondants",
+  "No results": "Aucun r\u00e9sultat",
+  "{0} result": "{0} r\u00e9sultat",
+  "{0} results": "{0} r\u00e9sultats",
+  "Too many searches, wait a minute and try again.": "Trop de recherches, attendez une minute et r\u00e9essayez.",
+  "Search is not available right now.": "La recherche n'est pas disponible pour le moment.",
+  "No word matches. {0} similar by meaning": "Aucune correspondance de mots. {0} similaires par le sens"
  },
  "rules": [
   ["^Off \u00b7 the (.+) plug-in is switched off$", "\u00c9teint \u00b7 le plug-in $1 est d\u00e9sactiv\u00e9"],

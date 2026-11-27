@@ -434,5 +434,20 @@
  "mail.warndigest.title.many": "{n} tarjetas de advertencia en sus etiquetas esperan",
  "mail.warndigest.service": "{svc} ({n})",
  "mail.warndigest.more": "+{n} m\u00e1s en el tablero",
- "postdeploy.head_one": "Comprobación de deploy del {date}: 1 servicio ({span} {zone}), {clean} limpios"
+ "postdeploy.head_one": "Comprobación de deploy del {date}: 1 servicio ({span} {zone}), {clean} limpios",
+ "embed.off": "La búsqueda por significado está desactivada: {reason}.",
+ "embed.reason.disabled": "está desactivada en Admin › Funciones",
+ "embed.reason.no_url": "no hay una dirección del servicio de embeddings",
+ "embed.reason.not_ready": "el índice aún no está listo",
+ "embed.reason.query": "la consulta no se pudo preparar para enviarla de forma segura",
+ "embed.down": "el servicio de embeddings no responde",
+ "embed.refused": "la dirección del servicio de embeddings es pública y no está permitida",
+ "embed.blocked": "la dirección del servicio de embeddings es una dirección link-local o de metadatos y nunca se permite",
+ "embed.mismatch": "el servicio de embeddings ejecuta otro modelo distinto del configurado",
+ "embed.auth": "el servicio de embeddings no aceptó la clave",
+ "embed.bad_answer": "el servicio de embeddings envió una respuesta inutilizable",
+ "embed.rebuilding": "La búsqueda por significado está reconstruyendo su índice: {done} de {total} listos",
+ "embed.needs_url": "La dirección del servicio de embeddings (SKOPAX_EMBED_URL) no está definida, así que no se puede activar la búsqueda por significado",
+ "embed.sources_invalid": "Fuentes indexadas incluye {entry}, que no es una fuente; use {allowed}",
+ "search.throttled": "Demasiadas búsquedas, espere un minuto e inténtelo de nuevo"
 }

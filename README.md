@@ -15,7 +15,7 @@ Behind it, alerts and errors are grouped into one card per problem, so the team 
 
 The name comes from the Greek *skopos*, "lookout": the one who stands on a high place, scans the horizon and calls out what is coming.
 
-Status: 0.6.7 is the current release; 0.1.0 was the first stable one. Since 0.1.0, settings and the plug-in contract follow semantic versioning: before 1.0, no breaking change ships without a note in [CHANGELOG.md](CHANGELOG.md).
+Status: 0.7.0 is the current release; 0.1.0 was the first stable one. Since 0.1.0, settings and the plug-in contract follow semantic versioning: before 1.0, no breaking change ships without a note in [CHANGELOG.md](CHANGELOG.md).
 
 ## What it looks like
 
@@ -47,9 +47,11 @@ Status: 0.6.7 is the current release; 0.1.0 was the first stable one. Since 0.1.
 
 ## How it works
 
-<a href="docs/images/architecture-dark.png#gh-dark-mode-only"><img width="720" src="docs/images/architecture-dark.png#gh-dark-mode-only" alt="Skopax architecture in seven layers: your systems feed checks that turn problems into cards without AI; the card history, past investigations and verdicts form the context; an investigator agent with live read-only tools, which can consult an optional stronger advisor model, and four focused agents (ask, gate and summary, review, page scan) do the AI work; a guard layer masks secrets and personal data, cuts bulk records and keeps sources out of questions, and an optional guard model on any provider checks questions before the run and answers before they are posted; each agent picks its model (Anthropic, OpenAI, Claude on your own Google Cloud in the EU, or a local model); answers reach the board, Slack and Teams, mail, chat and MCP clients, and people's verdicts feed back into the context"></a><a href="docs/images/architecture-light.png#gh-light-mode-only"><img width="720" src="docs/images/architecture-light.png#gh-light-mode-only" alt="Skopax architecture in seven layers: your systems feed checks that turn problems into cards without AI; the card history, past investigations and verdicts form the context; an investigator agent with live read-only tools, which can consult an optional stronger advisor model, and four focused agents (ask, gate and summary, review, page scan) do the AI work; a guard layer masks secrets and personal data, cuts bulk records and keeps sources out of questions, and an optional guard model on any provider checks questions before the run and answers before they are posted; each agent picks its model (Anthropic, OpenAI, Claude on your own Google Cloud in the EU, or a local model); answers reach the board, Slack and Teams, mail, chat and MCP clients, and people's verdicts feed back into the context"></a>
+<a href="docs/images/architecture-dark.png#gh-dark-mode-only"><img width="720" src="docs/images/architecture-dark.png#gh-dark-mode-only" alt="Skopax architecture in seven layers: your systems feed checks that turn problems into cards without AI; the card history, past investigations and verdicts form the context, with an optional search by meaning over past incidents, deploys, pages and log error patterns fed by an embedding service inside your network; an investigator agent with live read-only tools, including Tempo traces read through Grafana, which can consult an optional stronger advisor model, and four focused agents (ask, gate and summary, review, page scan) do the AI work; a guard layer masks secrets and personal data, cuts bulk records and keeps sources out of questions, and an optional guard model on any provider checks questions before the run and answers before they are posted; each agent picks its model (Anthropic, OpenAI, Claude on your own Google Cloud in the EU, or a local model); answers reach the board, Slack and Teams, mail, chat and MCP clients, and people's verdicts feed back into the context"></a><a href="docs/images/architecture-light.png#gh-light-mode-only"><img width="720" src="docs/images/architecture-light.png#gh-light-mode-only" alt="Skopax architecture in seven layers: your systems feed checks that turn problems into cards without AI; the card history, past investigations and verdicts form the context, with an optional search by meaning over past incidents, deploys, pages and log error patterns fed by an embedding service inside your network; an investigator agent with live read-only tools, including Tempo traces read through Grafana, which can consult an optional stronger advisor model, and four focused agents (ask, gate and summary, review, page scan) do the AI work; a guard layer masks secrets and personal data, cuts bulk records and keeps sources out of questions, and an optional guard model on any provider checks questions before the run and answers before they are posted; each agent picks its model (Anthropic, OpenAI, Claude on your own Google Cloud in the EU, or a local model); answers reach the board, Slack and Teams, mail, chat and MCP clients, and people's verdicts feed back into the context"></a>
 
 Checks find the problem without AI. Focused AI agents investigate and explain it behind a guard layer that masks secrets and personal data before the model reads them, and each agent can run on the AI you choose. See [What is masked](docs/privacy.md#what-is-masked) and [What Skopax will not hand out](docs/privacy.md#what-skopax-will-not-hand-out).
+
+Search by meaning finds earlier incidents, deploys, pages and log error patterns by what they say, in any language, for the investigator's `find_similar` tool, the header search box and the brief of each card investigation. It is off by default and uses vector embeddings from a multilingual embedding service that runs inside your network, with no AI spend. See [Search by meaning](docs/operations.md#search-by-meaning) and [What is embedded](docs/privacy.md#what-is-embedded).
 
 ## Plug-ins: connect what you already run
 
@@ -59,7 +61,7 @@ Everything Skopax watches comes through plug-ins, and more than 30 of them ship 
 
 | Area | Plug-ins |
 |---|---|
-| Metrics, logs and alerts | Prometheus, Elasticsearch, Loki, Grafana, Zabbix, CloudWatch |
+| Metrics, logs, traces and alerts | Prometheus, Elasticsearch, Loki, Grafana (with Tempo traces), Zabbix, CloudWatch |
 | Infrastructure | Kubernetes, Argo CD, Kafka, Redis, PMM (Postgres, MongoDB), Airbyte, Capacity, Batch jobs |
 | Web and edge | Website, Cloudflare, Varnish, Chrome UX Report, CSP reports, Safe Browsing |
 | Apps | App stores, Crashlytics |
@@ -86,7 +88,7 @@ The investigator calls the AI providers you pick, Anthropic, OpenAI or an OpenAI
 
 ## Quickstart
 
-Skopax ships as a ready image, so there is nothing to clone or build: `ghcr.io/skopax/skopax:0.6.7`, built for `linux/amd64` and `linux/arm64`. Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. [Operations](docs/operations.md#the-image) has more on the image.
+Skopax ships as a ready image, so there is nothing to clone or build: `ghcr.io/skopax/skopax:0.7.0`, built for `linux/amd64` and `linux/arm64`. Docker Hub has a mirror of each release, `docker.io/skopax/skopax`; release candidates are published to GHCR only. [Operations](docs/operations.md#the-image) has more on the image.
 
 Run it with a MongoDB of your own. The first line makes the secret key once:
 
@@ -97,7 +99,7 @@ Run it with a MongoDB of your own. The first line makes the secret key once:
       -e MONGO_URI=mongodb://skopax-mongo:27017/skopax \
       -e SKOPAX_BASE_URL=http://localhost:8080 \
       -e SKOPAX_SECRET_KEY="$SKOPAX_SECRET_KEY" \
-      ghcr.io/skopax/skopax:0.6.7
+      ghcr.io/skopax/skopax:0.7.0
 
 Then open http://localhost:8080. Keep that key, for example in your password manager (`echo "$SKOPAX_SECRET_KEY"` prints it), and pass the same value on every start. With another key, Skopax cannot open the integration secrets sealed with the old one, so each has to be entered again, and everyone has to sign in again (see [Settings](docs/configuration.md#settings)).
 
@@ -116,7 +118,7 @@ Save this as `compose.yml` in an empty folder:
           interval: 10s
           retries: 10
       skopax:
-        image: ghcr.io/skopax/skopax:0.6.7
+        image: ghcr.io/skopax/skopax:0.7.0
         restart: unless-stopped
         ports:
           - "127.0.0.1:8080:8080"

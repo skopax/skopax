@@ -92,7 +92,7 @@ def links(card: dict, info: InstanceInfo) -> list[dict] | None:
 
 PLUGIN = Plugin(
     id=ID, name='Crashlytics', version='0.1.0', category='apps', description='Crash and ANR spikes and new crashes of the mobile apps, read from Firebase Crashlytics.', icon='icon.svg',
-    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
+    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.8', edition='community',
     capabilities=Capabilities(hosts=('firebasecrashlytics.googleapis.com', 'oauth2.googleapis.com'), secrets=('credentials',)),
     fields=(Field('project', 'Firebase project', 'text', help='Firebase project id, shown in the Test result. The API reads the project number from the app ids.'),
             Field('android-app-id', 'Android app id', 'text', help='Firebase app id of the Android app, such as 1:<project number>:android:<hex>. Empty skips Android.'),

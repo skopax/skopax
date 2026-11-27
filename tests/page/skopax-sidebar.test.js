@@ -500,7 +500,7 @@ async function theTopBarHoldsTheCrumbAndTheLastCheck() {
 
   //then
   assert.ok(top, 'the content column starts with the top bar');
-  assert.deepStrictEqual([...top.children].map((c) => c.id || c.className), ['side-open', 'crumb', 'off-tag', 'top-find', 'top-r'], 'hamburger, crumb, stopped tag, the search field, then the right cluster');
+  assert.deepStrictEqual([...top.children].map((c) => c.id || c.className), ['side-open', 'crumb', 'off-tag', 'top-find', 'sem-find', 'top-r'], 'hamburger, crumb, stopped tag, the search fields, then the right cluster');
   assert.strictEqual(doc.getElementById('env-tag'), null, 'the environment label moved into the instance switcher');
   assert.deepStrictEqual([...doc.querySelector('.top-r').children].map((c) => c.id), ['top-find-btn', 'run-pill', 'inv-menu', 'top-bell', 'theme-btn'], 'the search icon leads the right cluster, the bell sits before the theme button, and there is no Last check');
   assert.strictEqual(doc.getElementById('last-check'), null, 'no Last check in the top bar');

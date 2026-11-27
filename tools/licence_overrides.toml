@@ -59,3 +59,11 @@ reason = "copyright file: Files libuuid/* License BSD-3-clause; the GPL parts ar
 [debian.libzstd1]
 licence = "(BSD-3-Clause OR GPL-2.0-only) AND MIT"
 reason = "copyright file: Files * License BSD-3-clause or GPL-2, used under BSD-3-Clause; lib/dictBuilder/divsufsort.* in the library is Expat"
+
+[bundled."numpy.libs/libscipy_openblas64_-4b78795a.so"]
+licence = "BSD-3-Clause AND BSD-3-Clause-Open-MPI AND GPL-3.0-or-later WITH GCC-exception-3.1"
+reason = "OpenBLAS (BSD-3-Clause) with LAPACK (BSD-3-Clause-Open-MPI) and the static libgfortran runtime (GPL-3.0-or-later WITH GCC-exception-3.1), as numpy 2.5.5's LICENSE.txt lists for the x86_64 manylinux wheel"
+
+[bundled."numpy.libs/libscipy_openblas64_-1b7162d6.so"]
+licence = "BSD-3-Clause AND BSD-3-Clause-Open-MPI AND GPL-3.0-or-later WITH GCC-exception-3.1"
+reason = "OpenBLAS (BSD-3-Clause) with LAPACK (BSD-3-Clause-Open-MPI) and the static libgfortran runtime (GPL-3.0-or-later WITH GCC-exception-3.1), as numpy 2.5.5's LICENSE.txt lists for the aarch64 manylinux wheel"

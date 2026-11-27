@@ -30,6 +30,8 @@ CARDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
         ('Behaviour', ('investigate.mode', 'investigate.language', 'investigate.refire-hours', 'investigate.strict-tools', 'core.org-about', 'mcp.wait-seconds')),
         ('Follow-up checks', ('investigate.follow-up-hours', 'investigate.follow-up-days', 'investigate.follow-up-close-hours', 'investigate.settle-max-per-day')),
         ('Langfuse tracing', ('langfuse.trace-instance', 'langfuse.trace-content', 'langfuse.trace-sample')),
+        ('Search by meaning', ('embed.model', 'embed.query-prefix', 'embed.passage-prefix', 'embed.timeout-seconds', 'embed.batch-timeout-seconds', 'embed.batch', 'embed.backfill-per-pass',
+                               'embed.docs-per-pass', 'embed.max-vectors', 'embed.sources', 'investigate.similar-in-brief')),
     ),
     'Slack': (
         ('Channel and posting', ('slack.channel', 'slack.post-sev', 'slack.fallback-minutes', 'routes.wait-minutes', 'routes.slack-echo', 'slack.attach-screenshots', 'slack.push-user')),

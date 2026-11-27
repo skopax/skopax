@@ -71,7 +71,7 @@ def test(ctx: Context) -> TestResult:
 
 PLUGIN = Plugin(
     id=ID, name='Slack', version='0.1.0', category='chat', description='Posts cards and deploy reports to a Slack channel and answers questions and button clicks there.', icon='icon.svg',
-    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community', capabilities=Capabilities(hosts=('slack.com',), secrets=('bot-token', 'app-token')),
+    author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.8', edition='community', capabilities=Capabilities(hosts=('slack.com',), secrets=('bot-token', 'app-token')),
     max_instances=1,
     fields=(Field('bot-token', 'Bot token', 'secret', required=True, help='The bot token (xoxb-...) of the Slack app. The channel cards go to is set in Admin \u203a Settings \u203a Slack \u203a Channel.'),
             Field('app-token', 'App token', 'secret', help='The app-level token (xapp-...) for Socket Mode, which the Slack listener needs. A new app token takes effect after a restart.')),

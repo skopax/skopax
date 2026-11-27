@@ -213,6 +213,8 @@ def outcome(card: dict, ev: str, previous: str | None = None) -> str:
 
 def snapshot(card: dict) -> dict:
     out = {f: card.get(f) for f in CARD_FIELDS if card.get(f) is not None}
+    if card.get('what'):
+        out['what'] = cut(card['what'], TEXT_LIMIT)
     note = note_text(card.get('note'))
     if note:
         out['note'] = note

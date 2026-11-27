@@ -1963,7 +1963,21 @@
   "pod identity": "Pod-Identit\u00e4t",
   "Enter a project id": "Geben Sie eine Projekt-ID ein",
   "Delete this Vertex AI connection?": "Diese Vertex-AI-Verbindung l\u00f6schen?",
-  "Its credentials and models are deleted. A use set to one of its models is held until another model is picked.": "Ihre Zugangsdaten und Modelle werden gel\u00f6scht. Ein Einsatz mit einem ihrer Modelle wird angehalten, bis ein anderes Modell gew\u00e4hlt wird."
+  "Its credentials and models are deleted. A use set to one of its models is held until another model is picked.": "Ihre Zugangsdaten und Modelle werden gel\u00f6scht. Ein Einsatz mit einem ihrer Modelle wird angehalten, bis ein anderes Modell gew\u00e4hlt wird.",
+  "Search by meaning": "Nach Bedeutung suchen",
+  "Search by meaning: cards, runs, changes, pages": "Nach Bedeutung suchen: Karten, L\u00e4ufe, \u00c4nderungen, Seiten",
+  "Nothing matches.": "Nichts passt.",
+  "Showing word matches.": "Es werden Worttreffer angezeigt.",
+  "meaning": "Bedeutung",
+  "words": "W\u00f6rter",
+  "Found by meaning": "Nach Bedeutung gefunden",
+  "Found by matching words": "\u00dcber \u00fcbereinstimmende W\u00f6rter gefunden",
+  "No results": "Keine Ergebnisse",
+  "{0} result": "{0} Ergebnis",
+  "{0} results": "{0} Ergebnisse",
+  "Too many searches, wait a minute and try again.": "Zu viele Suchanfragen, warten Sie eine Minute und versuchen Sie es erneut.",
+  "Search is not available right now.": "Die Suche ist gerade nicht verf\u00fcgbar.",
+  "No word matches. {0} similar by meaning": "Keine Worttreffer. {0} \u00e4hnliche nach Bedeutung"
  },
  "rules": [
   ["^Off \u00b7 the (.+) plug-in is switched off$", "Aus \u00b7 das Plug-in $1 ist ausgeschaltet"],

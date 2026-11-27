@@ -47,11 +47,12 @@ def test_confluence_identity_and_manifest():
     assert json.loads(json.dumps(manifest, allow_nan=False)) == manifest
     assert 'skopax.plugins.confluence' in BUILTIN and loaded.state == 'ok'
     assert (manifest['id'], manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'confluence', 'Confluence', '0.1.0', 'other', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
+        'confluence', 'Confluence', '0.1.0', 'other', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.8', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url', 'api.atlassian.com'], 'secrets': ['api-token'], 'agentReads': False}
     assert manifest['uses'] == [] and manifest['maxInstances'] == 1 and manifest['checks'] == [] and manifest['rules'] == [] and manifest['settings'] == []
     assert [(f['key'], f['kind'], f['required'], f['ui']) for f in manifest['fields']] == [('url', 'url', True, True), ('email', 'text', True, False),
-                                                                                          ('api-token', 'secret', True, False), ('spaces', 'text', False, False)]
+                                                                                          ('api-token', 'secret', True, False), ('spaces', 'text', False, False),
+                                                                                          ('index-pages', 'bool', False, False)]
     assert 'empty' in manifest['fields'][3]['help'].lower() and 'nothing' in manifest['fields'][3]['help']
     assert [(t['name'], t['kind']) for t in manifest['tools']] == [('confluence', 'read')] and manifest['knowledge'] == ['confluence']
     assert plugin.description.endswith('.') and plugin.description.count('.') == 1
@@ -113,7 +114,7 @@ def test_confluence_defaults_are_neutral():
     defaults = {f.key: f.default for f in confluence.PLUGIN.fields}
 
     # then
-    assert defaults == {'url': '', 'email': '', 'api-token': '', 'spaces': ''}
+    assert defaults == {'url': '', 'email': '', 'api-token': '', 'spaces': '', 'index-pages': 'false'}
     assert {s.key: s.default for s in confluence.PLUGIN.settings} == {}
 
 

@@ -2,11 +2,24 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
-## 0.6.7 (unreleased)
+## 0.7.0 (2026-11-27)
 
 ### Added
 
+- Search by meaning: finds earlier cards, runs, deploys, notes, pages and error messages by what they say, in German, English, Spanish, French, Turkish and about a hundred other languages, not by the words they use. It is off by default (Admin > Features, `SKOPAX_FEATURE_SEMANTIC_SEARCH`) and cannot be turned on until `SKOPAX_EMBED_URL` names an embedding service. It needs no AI provider and costs no AI spend; only the masked text of an item is sent to that service, which runs inside your network, and the vectors are kept in the database. Held, dropped, discarded, refused and chat items are never embedded. See [Search by meaning](docs/operations.md#search-by-meaning) and [What is embedded](docs/privacy.md#what-is-embedded).
+- Embedding service: the compose file has an `embed` service under the profile `semantic`, and `examples/k8s/embed` has Kubernetes manifests (Deployment, Service, volume, a model-fetch Job that checks the sha256 of every file, a NetworkPolicy and a Secret). Both run text-embeddings-inference 1.10.0 pinned by digest with `intfloat/multilingual-e5-small` from a mounted folder, non-root, with a read-only root file system and no network egress, and work air-gapped.
+- `find_similar`, a new read tool for the investigator: earlier incidents, notes and pages, and error templates for a text, in any language. It is offered only while the service answers, and the process prompt tells the investigator to use it before a deep dive.
+- A search box in the page header (press `/` to focus it) that searches cards, runs, changes, pages and error messages by meaning, grouped and linked to their views. When the service is off or down it shows word matches with a note. The closed cards search says how many similar cards it found by meaning when there is no word match.
+- Similar earlier incidents in card briefs: a short list in the brief of a card investigation (`INVESTIGATE_SIMILAR_IN_BRIEF`, on by default, only while Search by meaning answers; skipped silently when it is slow).
+- Documentation pages: Confluence and SharePoint have a new advanced field, Index pages for search by meaning (off by default), that lets their pages and files be embedded and found. New optional plug-in hook `corpus` for other plug-ins.
+- Error templates: error and warning messages of the Loki and Elasticsearch checks are reduced to templates and kept for 90 days, so `find_similar` can match a new error to an old one and its card without storing raw log lines.
+- New settings and variables: `SKOPAX_FEATURE_SEMANTIC_SEARCH`, `SKOPAX_EMBED_URL`, `SKOPAX_EMBED_API_KEY`, `SKOPAX_EMBED_ALLOW_PUBLIC`, `SKOPAX_EMBED_MODEL`, `SKOPAX_EMBED_QUERY_PREFIX`, `SKOPAX_EMBED_PASSAGE_PREFIX`, `SKOPAX_EMBED_TIMEOUT_SECONDS`, `SKOPAX_EMBED_BATCH_TIMEOUT_SECONDS`, `SKOPAX_EMBED_BATCH`, `SKOPAX_EMBED_BACKFILL_PER_PASS`, `SKOPAX_EMBED_DOCS_PER_PASS`, `SKOPAX_EMBED_MAX_VECTORS`, `SKOPAX_EMBED_SOURCES` and `INVESTIGATE_SIMILAR_IN_BRIEF`. The compose file passes `SKOPAX_EMBED_URL` and `SKOPAX_EMBED_API_KEY` through, besides the five it passed before. See [Search by meaning](docs/configuration.md#search-by-meaning).
+- The new strings are translated into German, Spanish, French and Turkish. Skopax now ships numpy 2.5.5 (about 50 MB), and its notices list the libraries it bundles.
 - Tempo traces through Grafana: the Grafana plug-in has two new read tools for the Tempo datasources of the Grafana it is set up for, with its existing URL and token. `tempo_search` runs a TraceQL query over a time window and returns the matching traces with their root service, duration and a few matched spans; `tempo_trace` reads one trace by its hex id (for example one found in a log line) and returns a span tree summary with error spans first, then the slowest. Span data is masked like log lines and cut at fixed sizes. The token needs `datasources:query` on each Tempo datasource. No new plug-in, no new instance and no new check.
+
+### Upgrading
+
+Third-party plug-ins that declare a `core` range ending at `<0.7` are refused by 0.7.0 until their range is raised; the Admin notices strip names each refused plug-in. The plug-ins that ship with Skopax and the examples are already raised to `<0.8`. Otherwise nothing is required. Search by meaning is off by default, and nothing is sent anywhere until you deploy the embedding service, set `SKOPAX_EMBED_URL` and turn the feature on. The new collections and indexes are created at start.
 
 ## 0.6.6 (2026-11-26)
 

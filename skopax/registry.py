@@ -17,7 +17,7 @@ from packaging.version import InvalidVersion, Version
 import skopax
 from skopax.bounded import HOOK_TIMEOUT_S, Bound
 from skopax.chattext import STARTERS_MAX as CHAT_STARTERS_MAX, TEXT_MAX as CHAT_TEXT_MAX, chat_kept, chat_problem, tree_problem
-from skopax.contract import CATEGORIES, ECHO_FIELD, NODE_FIELD, NODE_VIA, ROUTE_ECHO, EDITIONS, FIELD_KINDS, ID, SEPARATORS, SUGGEST_KINDS, KNOWLEDGE_INLINE_MAX, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Setup, Tag, TagRule, Tool
+from skopax.contract import CATEGORIES, Corpus, ECHO_FIELD, NODE_FIELD, NODE_VIA, ROUTE_ECHO, EDITIONS, FIELD_KINDS, ID, SEPARATORS, SUGGEST_KINDS, KNOWLEDGE_INLINE_MAX, TOOL_KINDS, CardType, Check, Knowledge, Locale, OrgPack, Outbound, Panel, Plugin, Redaction, Setup, Tag, TagRule, Tool
 from skopax.errkind import Authored, kind as exc_kind
 from skopax.messages import LANG_TAG, msg, refusal as message_refusal
 
@@ -150,6 +150,8 @@ PACK_FIELDS = ('product', 'org')
 SECTION_ANCHOR = re.compile(r'^## [^\n]*?\{#([a-z-]+)\}[ \t]*$', re.M)
 HELP_MAX = 160
 SETUP_STEPS_MAX = 10
+CORPUS_PAGES_MAX = 100_000
+INDEX_FIELD = 'index-pages'
 SETUP_STEP_MAX = 400
 SETUP_DOCS_MAX = 500
 SETUP_LABEL_MAX = 60
@@ -626,6 +628,17 @@ def _outbound_ok(hook: object, fields: dict) -> bool:
     return hook.sev_field is None or (sev is not None and sev.kind == 'choice' and set(sev.choices) <= set(SEVERITIES))
 
 
+def _corpus_ok(plugin: Plugin) -> bool:
+    corpus = plugin.corpus
+    if not isinstance(corpus, Corpus) or not callable(corpus.list) or not callable(corpus.read):
+        return False
+    if isinstance(corpus.max_pages, bool) or not isinstance(corpus.max_pages, int) or not 1 <= corpus.max_pages <= CORPUS_PAGES_MAX:
+        return False
+    if corpus.spaces is not None and not callable(corpus.spaces):
+        return False
+    return any(f.key == INDEX_FIELD and f.kind == 'bool' for f in plugin.fields)
+
+
 def _setup_ok(setup) -> bool:
     if setup is None:
         return True
@@ -721,6 +734,8 @@ def _check(plugin: Plugin, directory: Path | None) -> None:
         raise _why('company_knowledge', value=str(plugin.company_knowledge)[:30])
     if not isinstance(plugin.knowledge_also, bool) or (plugin.knowledge_also and not plugin.company_knowledge):
         raise _why('knowledge_also', value=str(plugin.knowledge_also)[:30])
+    if plugin.corpus is not None and not _corpus_ok(plugin):
+        raise _why('corpus', max=CORPUS_PAGES_MAX)
     caps = plugin.capabilities
     for f in tuple(plugin.fields) + tuple(f for read in plugin.agent_reads for f in read.fields):
         if f.kind == 'secret' and f.key not in caps.secrets:

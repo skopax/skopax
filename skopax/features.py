@@ -41,6 +41,8 @@ FEATURES: tuple[Feature, ...] = (
             'Lets the investigator review a stopped card that people took or were assigned to, investigated or not, once its auto-resolve window has passed, and announce, in its Slack thread when it has one, when it will close it; it needs the investigator in live mode', 'check'),
     Feature('langfuse-tracing', 'core.langfuse-tracing', 'Langfuse tracing',
             'Sends every AI call of {product} (runs, chat answers, topic checks, self-review and plug-in AI helpers) to a Langfuse project as a trace with its model calls, tool calls, tokens, cost and timing; pick the Langfuse instance in Admin \u203a Investigator \u203a Langfuse tracing', 'pulse'),
+    Feature('semantic-search', 'core.semantic-search', 'Search by meaning',
+            'Finds earlier runs, cards, deploys, notes and pages by meaning, in the search box, in the investigator and in the card brief. It needs an embedding service; the deployment sets its address. Off keeps the word search', 'search'),
     Feature('hide-attribution', 'core.hide-attribution', 'Hide "powered by Skopax"', 'Hides the "powered by Skopax" line on every page, in the chat and on Slack and Teams posts', 'badge', edition='enterprise'),
 )
 KEYS = frozenset(f.key for f in FEATURES)

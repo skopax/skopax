@@ -20,6 +20,7 @@ from skopax.redact import redact_text
 from skopax.registry import CORE_RAN
 from skopax.runtime import Runtime
 from skopax.scheduler import Job
+from skopax.semantic import templates
 from skopax.store import Conflict, Store
 
 log = logging.getLogger('skopax.sweeps')
@@ -401,6 +402,10 @@ class Sweeper:
                 outputs.after(plugin, check, info, scoped, keymaps[i], pictures[i], now, owns)
             except Exception as e:
                 log.warning('the side outputs of pass %s were not finished: %s', check.id, kind(e))
+        if plugin.id in templates.SECTIONS.values():
+            for i in live:
+                info, scoped = taken[i]
+                templates.collect(self.store, plugin.id, info.name if info is not None else '', scoped.sections, scoped.result.found)
         if added and self.enrich is not None:
             try:
                 self.enrich(added)

@@ -434,5 +434,20 @@
  "mail.warndigest.title.many": "Etiketlerinizde {n} uyar\u0131 kart\u0131 bekliyor",
  "mail.warndigest.service": "{svc} ({n})",
  "mail.warndigest.more": "Panoda +{n} tane daha",
- "postdeploy.head_one": "{date} deploy kontrolü: 1 servis ({span} {zone}), {clean} sorunsuz"
+ "postdeploy.head_one": "{date} deploy kontrolü: 1 servis ({span} {zone}), {clean} sorunsuz",
+ "embed.off": "Anlama göre arama kapalı: {reason}.",
+ "embed.reason.disabled": "Yönetim › Özellikler bölümünden kapatılmış",
+ "embed.reason.no_url": "embedding hizmeti adresi ayarlanmamış",
+ "embed.reason.not_ready": "dizin henüz hazır değil",
+ "embed.reason.query": "sorgu gönderilmeye güvenli hale getirilemedi",
+ "embed.down": "embedding hizmeti yanıt vermiyor",
+ "embed.refused": "embedding hizmeti adresi herkese açık ve buna izin verilmiyor",
+ "embed.blocked": "embedding hizmeti adresi link-local veya metadata adresi ve buna asla izin verilmiyor",
+ "embed.mismatch": "embedding hizmeti ayarlanandan farklı bir model çalıştırıyor",
+ "embed.auth": "embedding hizmeti anahtarı kabul etmedi",
+ "embed.bad_answer": "embedding hizmeti kullanılamayan bir yanıt gönderdi",
+ "embed.rebuilding": "Anlama göre arama dizinini yeniden oluşturuyor: {done} / {total} tamamlandı",
+ "embed.needs_url": "Embedding hizmeti adresi (SKOPAX_EMBED_URL) ayarlanmamış, bu yüzden anlama göre arama açılamaz",
+ "embed.sources_invalid": "Dizinlenen kaynaklar içinde kaynak olmayan {entry} var; şunları kullanın: {allowed}",
+ "search.throttled": "Çok fazla arama yapıldı, bir dakika bekleyip yeniden deneyin"
 }

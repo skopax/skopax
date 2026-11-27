@@ -9,6 +9,7 @@ from skopax import severity
 from skopax.contract import HttpError, PassResult, Sweep, Transport, Unreachable, anomaly, iso, send
 from skopax.kit import access, flags, options
 from skopax.kit.promql import auth_headers, credential
+from skopax.kit.text import normalised
 from skopax.messages import msg
 from skopax.redact import redact_secrets
 from skopax.remote import JSON_ACCEPT, PAGE_READ, Reply
@@ -59,16 +60,8 @@ TENANT_BAR = 'Tenant is one tenant id; a | would make Loki read several tenants 
 TENANT_MISSING = 'Loki needs a tenant: the server answered that no org id was sent. Set Tenant to the tenant id it expects (sent as X-Scope-OrgID).'
 IDENT = re.compile(r'[A-Za-z_][A-Za-z0-9_]*\Z')
 MATCHER = re.compile(r'\s*([A-Za-z_][A-Za-z0-9_]*)\s*(=~|!~|!=|=)\s*')
-TIMESTAMP = re.compile(r'^\s*\[?\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?\]?\s*')
-STAMP_ANY = re.compile(r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?')
-UUID = re.compile(r'\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b')
-HEX = re.compile(r'\b(?:0x)?(?=[0-9a-fA-F]*\d)(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{8,}\b')
-IP = re.compile(r'\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b')
-LONG_NUMBER = re.compile(r'\d{4,}')
 PLACEHOLDER = re.compile(r'<(?:id|ip|n|time)>')
 UNSAFE = re.compile(r'<(?:id|ip|n|time)>|\[[^\]]*\]|[^\x20-\x7e]|["\\<>&*`\[\]]')
-LOGFMT_MSG = re.compile(r'(?:^|\s)(?:msg|message)=(?:"((?:[^"\\]|\\.)*)"|(\S+))')
-JSON_KEYS = ('msg', 'message', 'error', 'err', 'log')
 
 
 def nanos(at: float) -> str:
@@ -459,34 +452,6 @@ def headers_of(config: Mapping[str, str]) -> dict[str, str]:
 def client_for(config: Mapping[str, str], transport: Transport, timeout: float = TIMEOUT, budget: Budget | None = None) -> Loki:
     secrets = tuple(str(config.get(k) or '') for k in ('token', 'password'))
     return Loki(str(config.get('url') or ''), headers_of(config), transport, timeout, budget, secrets)
-
-
-def message_of(line: str) -> str:
-    text = line.strip()
-    if text.startswith('{'):
-        try:
-            found = json.loads(text)
-        except ValueError:
-            found = None
-        if isinstance(found, dict):
-            for key in JSON_KEYS:
-                value = found.get(key)
-                if isinstance(value, str) and value.strip():
-                    return value
-    m = LOGFMT_MSG.search(text)
-    if m:
-        return (m.group(1) or m.group(2) or '').replace('\\"', '"')
-    return text
-
-
-def normalised(line: str) -> str:
-    text = TIMESTAMP.sub('', message_of(line))
-    text = STAMP_ANY.sub('<time>', text)
-    text = UUID.sub('<id>', text)
-    text = HEX.sub('<id>', text)
-    text = IP.sub('<ip>', text)
-    text = LONG_NUMBER.sub('<n>', text)
-    return flat(text)[:PATTERN_LIMIT]
 
 
 def needles_of(pattern: str, raw: str) -> list[str]:

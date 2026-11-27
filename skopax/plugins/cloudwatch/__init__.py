@@ -107,7 +107,7 @@ PLUGIN = Plugin(
     ),
     id='cloudwatch', name=NAME, version='0.1.0', category='alerts',
     description='A card for each AWS CloudWatch alarm in ALARM, optional Logs Insights error counts per log group, and read tools for alarms, metrics and logs.',
-    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.5,<0.7', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.5,<0.8', edition='community',
     capabilities=Capabilities(hosts=HOSTS, secrets=('secret-access-key', 'session-token')),
     fields=(Field('region', 'Region', 'text', required=True, check=region_problem, help='The AWS region to read, such as eu-west-1. One instance reads one region.'),
             Field('access-key-id', 'Access key ID', 'text', help='The access key ID of an IAM user with the read-only policy. Leave empty to use IRSA on EKS.'),

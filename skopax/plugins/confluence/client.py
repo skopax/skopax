@@ -1,11 +1,12 @@
 import base64
+import datetime as dt
 import re
 import threading
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from html.parser import HTMLParser
 from urllib.parse import quote, urlencode
 
-from skopax.contract import HttpError, ReadError, Transport, Unreachable, call, send
+from skopax.contract import DocRef, DocText, HttpError, ReadError, Transport, Unreachable, call, send
 from skopax.messages import msg
 from skopax.redact import HTML_BLOCKS, HTML_CELLS, html_columns_masked, redact_secrets
 
@@ -27,6 +28,8 @@ TEXT_LIMIT = 200
 HITS = 10
 EXCERPT_LIMIT = 300
 BODY_LIMIT = 12_000
+LIST_PAGE = 50
+LIST_OVERLAP = dt.timedelta(days=1)
 SPACE_KEY = re.compile(r'~?[A-Za-z0-9]\w{0,99}', re.ASCII)
 PAGE_ID = re.compile(r'\d{1,20}')
 HIGHLIGHT = re.compile(r'@@@(?:end)?hl@@@')
@@ -96,6 +99,15 @@ def cql_text(value: str) -> str:
 def search_cql(text: str, space: str | None) -> str:
     cql = f'type = page AND text ~ "{cql_text(text)}"'
     return cql + (f' AND space = "{space}"' if space else '')
+
+
+def since_cql(since: str | None) -> str:
+    try:
+        when = dt.datetime.fromisoformat(str(since or '').strip().replace('Z', '+00:00'))
+    except ValueError:
+        return ''
+    when = when if when.tzinfo else when.replace(tzinfo=dt.timezone.utc)
+    return f' AND lastmodified > "{(when.astimezone(dt.timezone.utc) - LIST_OVERLAP).strftime("%Y-%m-%d %H:%M")}"'
 
 
 def denied_text(part: str, status: int, checked: bool = False) -> str:
@@ -227,6 +239,32 @@ class Confluence:
         except ReadError as e:
             return out | ({'note': e.message} if e.status in DENIED else {})
         return out | ({'note': spaces_unseen(hidden)} if hidden else {})
+
+    def listing(self, since: str | None, limit: int) -> Iterator[DocRef]:
+        if not self.spaces:
+            raise ReadError(403, NO_SPACES)
+        cql = f'type = page AND {in_spaces(self.spaces)}{since_cql(since)} ORDER BY lastmodified'
+        start, seen = 0, 0
+        while seen < limit + 1:
+            body = self._get('/rest/api/search', 'search results', cql=cql, limit=min(LIST_PAGE, limit + 1 - seen), start=start, expand='content.space,content.version')
+            found = [r for r in body.get('results') or [] if isinstance(r, dict)]
+            for r in found:
+                content = r.get('content') or {}
+                space = str((content.get('space') or {}).get('key') or '').strip()
+                pid = str(content.get('id') or '')
+                if not PAGE_ID.fullmatch(pid) or not SPACE_KEY.fullmatch(space) or space.upper() not in self.spaces:
+                    continue
+                webui = (content.get('_links') or {}).get('webui') or ''
+                yield DocRef(pid, masked(str(content.get('title') or ''))[:200], f'{self.wiki}{webui}' if webui.startswith('/') else None,
+                             (content.get('version') or {}).get('when') or r.get('lastModified'), space)
+            seen += len(found)
+            start += len(found)
+            if not found:
+                return
+
+    def document(self, page_id: str) -> DocText:
+        found = self.page(page_id)
+        return DocText(str(found.get('title') or ''), found.get('url'), str(found.get('text') or ''))
 
     @staticmethod
     def page_id(value: str) -> str:

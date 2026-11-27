@@ -46,6 +46,11 @@ RELEASE_PARTS = ('project', 'yyyy', 'mm', 'dd')
 RELEASE_NEEDS = ('project', 'dd', 'mm')
 NEW_ENV_PREFIX = 'SKOPAX_'
 ROLES_STALE_MINUTES = 60
+EMBED_MODEL = 'intfloat/multilingual-e5-small'
+EMBED_SOURCES = ('runs', 'cards', 'changes', 'knowledge', 'docs', 'logs')
+E5_MARK = 'e5'
+E5_QUERY = 'query: '
+E5_PASSAGE = 'passage: '
 LOG_FORMAT_KEY, LOG_COLOR_KEY, LOG_LEVEL_KEY = 'core.log-format', 'core.log-color', 'core.log-level'
 BOOT_ENV = ('SKOPAX_PLUGINS', 'SKOPAX_CONFIG_FILE', 'SKOPAX_MODE', 'SKOPAX_AGENT_TOKEN', 'SKOPAX_AGENT_RELAY_HOSTS', 'SKOPAX_KUBE_LOCAL_NAME')
 ORG_ABOUT_MAX = 2000
@@ -260,6 +265,21 @@ class Settings:
     business_days: bool = True
     allow_private_ai: bool = False
     vertex_token_dir: str = '/var/run/secrets/tokens'
+    semantic_search_on: bool = False
+    embed_url: str = ''
+    embed_api_key: str = field(default='', repr=False)
+    embed_model: str = EMBED_MODEL
+    embed_query_prefix: str = ''
+    embed_passage_prefix: str = ''
+    embed_allow_public: bool = False
+    embed_timeout_seconds: int = 3
+    embed_batch_timeout_seconds: int = 60
+    embed_batch: int = 8
+    embed_backfill_per_pass: int = 200
+    embed_docs_per_pass: int = 200
+    embed_max_vectors: int = 300000
+    embed_sources: tuple[str, ...] = EMBED_SOURCES
+    investigate_similar_in_brief: bool = True
     archive_hours: int = 48
     history_keep_days: int = 365
     recurring_count: int = 3
@@ -312,6 +332,14 @@ class Settings:
     log_color: str = logs.ALWAYS
     log_level: str = logs.DEFAULT_LEVEL
     roles_stale_max_minutes: int = ROLES_STALE_MINUTES
+
+    @property
+    def query_prefix(self) -> str:
+        return prefix_of(self.embed_query_prefix) or (E5_QUERY if E5_MARK in self.embed_model.lower() else '')
+
+    @property
+    def passage_prefix(self) -> str:
+        return prefix_of(self.embed_passage_prefix) or (E5_PASSAGE if E5_MARK in self.embed_model.lower() else '')
 
     @property
     def release_projects(self) -> tuple[str, ...]:
@@ -504,6 +532,21 @@ def bounded(key: str, raw: str, low: int, high: int, default: int) -> int:
         return value
     log.warning('%s %r is not a whole number from %d to %d; using %d', key, raw, low, high, default)
     return default
+
+
+def prefix_of(raw: str) -> str:
+    text = raw.strip()
+    return text + ' ' if text else ''
+
+
+def sources_of(raw: str) -> tuple[str, ...]:
+    kept: list[str] = []
+    for name in (p.lower() for p in csv_of(raw)):
+        if name not in EMBED_SOURCES:
+            log.warning('embed.sources %r is not one of %s; skipped', name, ', '.join(EMBED_SOURCES))
+        elif name not in kept:
+            kept.append(name)
+    return tuple(kept)
 
 
 CHAT_EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
@@ -849,6 +892,21 @@ def load_settings(fetch: Callable[[], dict[str, str]] | None = None, env: Mappin
         business_days=get('core.business-days', 'SKOPAX_BUSINESS_DAYS', 'true').strip().lower() == 'true',
         allow_private_ai=get('core.allow-private-ai', 'SKOPAX_ALLOW_PRIVATE_AI', 'false').strip().lower() == 'true',
         vertex_token_dir=get('core.vertex-token-dir', 'SKOPAX_VERTEX_TOKEN_DIR', '/var/run/secrets/tokens').strip() or '/var/run/secrets/tokens',
+        semantic_search_on=get('core.semantic-search', 'SKOPAX_FEATURE_SEMANTIC_SEARCH', 'false').strip().lower() == 'true',
+        embed_url=get('embed.url', 'SKOPAX_EMBED_URL', '').strip().rstrip('/'),
+        embed_api_key=get('embed.api-key', 'SKOPAX_EMBED_API_KEY', '').strip(),
+        embed_model=get('embed.model', 'SKOPAX_EMBED_MODEL', EMBED_MODEL).strip() or EMBED_MODEL,
+        embed_query_prefix=prefix_of(get('embed.query-prefix', 'SKOPAX_EMBED_QUERY_PREFIX', '')),
+        embed_passage_prefix=prefix_of(get('embed.passage-prefix', 'SKOPAX_EMBED_PASSAGE_PREFIX', '')),
+        embed_allow_public=get('embed.allow-public', 'SKOPAX_EMBED_ALLOW_PUBLIC', 'false').strip().lower() == 'true',
+        embed_timeout_seconds=clamped('embed.timeout-seconds', get('embed.timeout-seconds', 'SKOPAX_EMBED_TIMEOUT_SECONDS', '3').strip(), 1, 60, 3),
+        embed_batch_timeout_seconds=clamped('embed.batch-timeout-seconds', get('embed.batch-timeout-seconds', 'SKOPAX_EMBED_BATCH_TIMEOUT_SECONDS', '60').strip(), 5, 300, 60),
+        embed_batch=clamped('embed.batch', get('embed.batch', 'SKOPAX_EMBED_BATCH', '8').strip(), 1, 32, 8),
+        embed_backfill_per_pass=clamped('embed.backfill-per-pass', get('embed.backfill-per-pass', 'SKOPAX_EMBED_BACKFILL_PER_PASS', '200').strip(), 0, 5000, 200),
+        embed_docs_per_pass=clamped('embed.docs-per-pass', get('embed.docs-per-pass', 'SKOPAX_EMBED_DOCS_PER_PASS', '200').strip(), 0, 2000, 200),
+        embed_max_vectors=clamped('embed.max-vectors', get('embed.max-vectors', 'SKOPAX_EMBED_MAX_VECTORS', '300000').strip(), 1000, 2000000, 300000),
+        embed_sources=sources_of(get('embed.sources', 'SKOPAX_EMBED_SOURCES', ', '.join(EMBED_SOURCES))),
+        investigate_similar_in_brief=get('investigate.similar-in-brief', 'INVESTIGATE_SIMILAR_IN_BRIEF', 'true').strip().lower() == 'true',
         archive_hours=int(get('cards.archive-hours', 'CARDS_ARCHIVE_HOURS', '48').strip() or 48),
         history_keep_days=int(get('history.keep-days', 'HISTORY_KEEP_DAYS', '365').strip() or 365),
         recurring_count=int(get('recurring.count', 'RECURRING_COUNT', '3').strip() or 3),

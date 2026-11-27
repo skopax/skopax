@@ -16,7 +16,7 @@ from pymongo import DESCENDING, ReturnDocument
 
 from skopax import advisor, brand, clock as zone_clock, jirafields, logs, settingcards, tags
 from skopax.config import ALERT_GLOB, ALERT_GLOBS_MAX, AI_PROVIDERS, DEFAULT_ROLES, JIRA_BACKLINK_MODES, INVESTIGATE_MODES, ORG_ABOUT_MAX, SETTING_TEXT_MAX, SLACK_LISTEN_MODES, SLACK_POST_SEV, SLACK_POST_SEVS, SSO_CLAIM_MODES, retired_info, SSO_CLIENT_AUTH, ConfigurationError, Settings, load_settings, release_problem, resolve, TRACE_CONTENTS
-from skopax.config import GUARD_MODES, GUARD_ON_HOLD, MODEL_KEYS, SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS, read_token_headers, token_headers_reason
+from skopax.config import EMBED_SOURCES, GUARD_MODES, GUARD_ON_HOLD, MODEL_KEYS, SSO_BUTTON_ICONS, SSO_BUTTON_TEXT_MAX, WORKSPACE_ICONS, read_token_headers, token_headers_reason
 from skopax.contract import Plugin
 from skopax.errkind import Authored, kind as error_kind
 from skopax.features import BY_KEY as FEATURE_OF
@@ -41,6 +41,8 @@ OFF_WITH = {OPENAI: {'investigate.web-fetches': 'ai.off_openai', 'investigate.ga
 OFF_USES = {'investigate.web-fetches': ('investigate_model', 'card'), 'investigate.gate-effort': ('investigate_gate_model', 'gate')}
 GUARD_SWITCHES = ('guard.check-questions', 'guard.check-answers')
 GUARD_MODEL_KEY = 'investigate.guard-model'
+SEMANTIC_KEY = 'core.semantic-search'
+EMBED_SOURCES_KEY = 'embed.sources'
 CHAT_CALLS_KEY = 'chat.max-tool-calls'
 WEB_DOMAINS_KEY = 'investigate.web-domains'
 OWN_SITES_KEY = 'core.own-sites'
@@ -341,6 +343,19 @@ STATIC = (
     T('investigate.web-searches', 'investigate_web_searches', INV, 'Web searches per run', 'Web searches one run may make, $0.01 each; 0 turns search off', 'int', 0, 10),
     T('investigate.web-fetches', 'investigate_web_fetches', INV, 'Web pages per run', 'Web pages one run may read; 0 turns page reads off', 'int', 0, 10),
     T('screenshot.max-per-day', 'screenshot_max_per_day', INV, 'Screenshots per day', 'Screenshots plug-in tools may store per day, all runs together; it resets at local midnight', 'int', 0, 500),
+    T('embed.model', 'embed_model', INV, 'Embedding model', 'The model name {product} sends to the embedding service and expects back in its answer; a service that answers with another model is refused. '
+      'Changing it rebuilds the index of Search by meaning. The service address and key are set by the deployment, not here', 'text'),
+    T('embed.query-prefix', 'embed_query_prefix', INV, 'Query prefix', 'Text put before a search question before it is embedded; empty uses the model default, "query: " for an e5 model and nothing for others', 'text'),
+    T('embed.passage-prefix', 'embed_passage_prefix', INV, 'Passage prefix', 'Text put before each indexed text before it is embedded; empty uses the model default, "passage: " for an e5 model and nothing for others. '
+      'Changing it rebuilds the index', 'text'),
+    T('embed.timeout-seconds', 'embed_timeout_seconds', INV, 'Search timeout (seconds)', 'How long a search question waits for the embedding service, 1 to 60', 'int', 1, 60),
+    T('embed.batch-timeout-seconds', 'embed_batch_timeout_seconds', INV, 'Indexing timeout (seconds)', 'How long indexing waits for the embedding service for one batch, 5 to 300', 'int', 5, 300),
+    T('embed.batch', 'embed_batch', INV, 'Indexing batch size', 'Texts sent to the embedding service in one call, 1 to 32', 'int', 1, 32),
+    T('embed.backfill-per-pass', 'embed_backfill_per_pass', INV, 'Backfill per pass', 'Most older items the index adds in one pass; 0 pauses the backfill of older items', 'int', 0, 5000),
+    T('embed.docs-per-pass', 'embed_docs_per_pass', INV, 'Documents per pass', 'Most documentation pages the index adds in one pass; 0 pauses indexing of pages', 'int', 0, 2000),
+    T('embed.max-vectors', 'embed_max_vectors', INV, 'Index size limit', 'Most vectors one pod keeps in memory for Search by meaning, 1000 to 2000000; the oldest are left out above it', 'int', 1000, 2000000),
+    T(EMBED_SOURCES_KEY, 'embed_sources', INV, 'Indexed sources', 'What Search by meaning indexes, separated by commas: ' + ', '.join(EMBED_SOURCES) + '. Documentation pages also need the index switch of their integration', 'list'),
+    T('investigate.similar-in-brief', 'investigate_similar_in_brief', INV, 'Similar earlier incidents', 'Adds a short list of similar earlier incidents to the brief of a card investigation while Search by meaning is on and answering', 'bool'),
     T(TRACE_INSTANCE_KEY, 'langfuse_trace_instance', INV, 'Langfuse instance', 'The Langfuse instance (Connect \u203a Integrations) that {product} sends its own traces to. Pick one for a separate Langfuse project, for example one named skopax, '
       'not the project of an app {product} watches: the picked instance stops being watched. Its keys must be allowed to write traces; a read-only key cannot. '
       'None sends nothing. Turn tracing on in Admin \u203a Features', 'choice', choices=trace_instances, choice_labels={'': 'None'}),
@@ -424,6 +439,7 @@ STATIC = (
     feature_tunable('core.warn-digest', 'warn_digest_on'),
     feature_tunable('core.settle', 'settle_on'),
     feature_tunable('core.langfuse-tracing', 'langfuse_tracing_on'),
+    feature_tunable('core.semantic-search', 'semantic_search_on'),
     feature_tunable('core.hide-attribution', 'hide_attribution'),
 ) + tuple(T(key, field, RULES, label, 'Thresholds of the ' + label + ' cards; an empty field uses the default', 'rules', defaults=dict(defaults)) for key, field, label, defaults in RULE_SETS) + (
     T(CERT_SKIP_KEY, 'cert_skip', RULES, 'Certificates not watched', 'Hosts whose certificate expiry raises no card, separated by commas: shop.example.com also covers its subdomains, '
@@ -604,6 +620,10 @@ def parse(t: Tunable, raw, base: Settings, loading: bool = False):
                 raise Invalid(msg('sso.domain_invalid', entry=wrong[0][:SKIP_SHOWN]))
         if t.items and not loading:
             check_items(t, entries)
+        if t.key == EMBED_SOURCES_KEY:
+            if (unknown := [p for p in entries if p.lower() not in EMBED_SOURCES]) and not loading:
+                raise Invalid(msg('embed.sources_invalid', entry=unknown[0][:SKIP_SHOWN], allowed=', '.join(EMBED_SOURCES)))
+            entries = tuple(dict.fromkeys(p.lower() for p in entries if p.lower() in EMBED_SOURCES))
         if t.key == ALERTS_WARN_KEY:
             if len(entries) > ALERT_GLOBS_MAX and not loading:
                 raise Invalid(msg('alerts.warn_too_many', limit=ALERT_GLOBS_MAX))
@@ -1040,6 +1060,8 @@ class Live:
         self.provider_view(t, out)
         if t.key in GUARD_SWITCHES and not self.current().investigate_guard_model:
             out.update({'problem': msg('guard.no_model')} if out['value'] == 'true' else {'off': msg('guard.needs_model')})
+        if t.key == SEMANTIC_KEY and not self.current().embed_url:
+            out.update({'problem': msg('embed.needs_url')} if out['value'] == 'true' else {'off': msg('embed.needs_url')})
         if t.key == 'investigate.model':
             out.update(self.card_model_summary())
         if t.key == POST_SEV_KEY and not given and not self.base.slack_post_sev_set:
@@ -1307,6 +1329,8 @@ class Live:
             raise Invalid(problem)
         if key in GUARD_SWITCHES and value == 'true' and not self.current().investigate_guard_model:
             raise Invalid(msg('guard.needs_model'))
+        if key == SEMANTIC_KEY and value == 'true' and not self.current().embed_url:
+            raise Invalid(msg('embed.needs_url'))
         if key == GUARD_MODEL_KEY and not (value if raw is not None else self.base_text(t)) and any(getattr(self.current(), self.known()[k].field) for k in GUARD_SWITCHES):
             raise Invalid(msg('guard.checks_need_model'))
         if key == POST_SEV_KEY:

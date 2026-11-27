@@ -114,7 +114,7 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 PLUGIN = Plugin(
     id=ID, name='Umami', version='0.1.0', category='marketing', description='Pageviews and one tracked event of a website, read from Umami, with a read-only analytics tool.',
-    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.8', edition='community',
     capabilities=Capabilities(hosts=('@url', '@ui-url'), secrets=('api-key', 'token', 'password')),
     fields=(Field('url', 'URL', 'url', required=True, ui=True, help='Umami Cloud: https://api.umami.is/v1, with the API key. Your own Umami server: its address, with the token or '
                                                                      'the username and password; the API is read under /api.'),

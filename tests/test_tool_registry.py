@@ -50,8 +50,8 @@ OFFERED = {
     'slack ask': sorted(READS + ['propose_card_action', 'propose_ticket']),
     'chat': sorted(READS + ['propose_card_action', 'propose_investigation']),
 }
-CAPS = {'self_review': 2, 'past_cards': 10, 'past_runs': 8}
-SCANNED = {'jira_search', 'jira_issue', 'pass_table'}
+CAPS = {'self_review': 2, 'past_cards': 10, 'past_runs': 8, 'find_similar': 6}
+SCANNED = {'jira_search', 'jira_issue', 'pass_table', 'find_similar'}
 CORE_NAMES = {t['name'] for t in READ_TOOLS + WRITE_TOOLS} | {TAG, PROPOSE_TICKET['name'], PROPOSE_CARD_ACTION['name'], PROPOSE_INVESTIGATION['name']}
 DEMO = demo_plugin.PLUGIN
 DEMO_DIR = Path(demo_plugin.__file__).parent

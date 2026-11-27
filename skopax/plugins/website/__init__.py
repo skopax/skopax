@@ -143,7 +143,7 @@ def probe_targets(info: InstanceInfo) -> list[dict]:
 
 PLUGIN = Plugin(
     id=ID, name=NAME, version='0.1.0', category='web', description='Reads pages of your website, takes screenshots through a browser service, watches that browser and scans pages for typos and layout problems.',
-    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.8', edition='community',
     capabilities=Capabilities(hosts=('@url', '@browser-url', '*'), secrets=('scan-headers',)), uses=('umami', 'browser'), client=client,
     fields=(Field('url', 'Site URL', 'url', required=True, help='The base URL of the site, https, for example https://www.example.com. The tools open only its host, its subdomains and the more hosts below.', ui=True),
             Field('hosts', 'More hosts', 'text', address='hosts', hosts_of=honoured_hosts, help='More hosts of the same site, separated by commas, for example example.net; their subdomains count too.'),

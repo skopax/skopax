@@ -47,7 +47,7 @@ PLUGIN = Plugin(
     ),
     id=ID, name='CSP reports', version='0.1.0', category='web',
     description='Deprecated: use the CSP preset under custom checks; this plug-in leaves in 0.4. Content Security Policy violation reports from the logs in Elasticsearch: hosts the browsers block for the first time, and jumps in the hourly report count.',
-    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.8', edition='community',
     uses=('elasticsearch',),
     fields=(Field('elasticsearch', 'Elasticsearch', 'instance', required=True, choices=('elasticsearch',), help='The Elasticsearch instance that holds the CSP reports.'),
             Field('query', 'Query', 'text', required=True,

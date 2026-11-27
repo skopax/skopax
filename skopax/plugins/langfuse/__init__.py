@@ -166,7 +166,7 @@ PLUGIN = Plugin(
         docs_label='Langfuse: roles and project API key permissions',
     ),
     id=ID, name='Langfuse', version='0.1.0', category='other', description='Errors, traffic, latency and cost of the turns an AI app traces to Langfuse, and a read-only trace tool.',
-    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.7', edition='community',
+    icon='icon.svg', author='Skopax', licence='AGPL-3.0-only', core='>=0.1,<0.8', edition='community',
     capabilities=Capabilities(hosts=('@url',), secrets=('secret-key', 'langfuse.secret-key'), agent_reads=True),
     fields=(Field('url', 'URL', 'url', required=True, default=CLOUD, ui=True, help='Address of Langfuse, the cloud region or your own server.'),
             Field('public-key', 'Public key', 'text', required=True, help='Public key (pk-lf-...) of the Langfuse project.'),

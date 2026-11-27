@@ -249,7 +249,7 @@ def test_pmm_identity_and_manifest():
     assert Registry.load({}, entry_points=False).get('pmm').state == 'ok'
     assert json.loads(json.dumps(manifest)) == manifest
     assert (manifest['name'], manifest['version'], manifest['category'], manifest['author'], manifest['licence'], manifest['core'], manifest['edition']) == (
-        'PMM (Postgres, MongoDB)', '0.1.0', 'infrastructure', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.7', 'community')
+        'PMM (Postgres, MongoDB)', '0.1.0', 'infrastructure', 'Skopax', 'AGPL-3.0-only', '>=0.1,<0.8', 'community')
     assert manifest['capabilities'] == {'hosts': ['@url'], 'secrets': ['token'], 'agentReads': False} and manifest['uses'] == []
     assert [(f['key'], f['kind'], f['required'], f['ui']) for f in manifest['fields']] == [
         ('url', 'url', True, True), ('token', 'secret', True, False), ('ca', 'pem', False, False), ('ca-pinned', 'bool', False, False), ('metrics-datasource', 'text', False, False),

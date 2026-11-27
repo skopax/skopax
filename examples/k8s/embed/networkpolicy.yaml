@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: skopax-embed
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: skopax-embed
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: skopax
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress: []
