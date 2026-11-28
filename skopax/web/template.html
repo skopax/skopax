@@ -2353,6 +2353,10 @@ span.acc-chip { display: inline-block; padding: 1px 9px; font-size: 0.78rem; fon
 .cpair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 22px; }
 .ckey { max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-data); font-size: 0.82rem; }
 .csrc, .cruns { min-width: 880px; }
+.cobj { font: inherit; color: var(--link); background: none; border: 0; padding: 0 2px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; border-radius: 3px; }
+.cobj[aria-pressed="true"] { font-weight: 700; text-decoration-thickness: 2px; }
+.cobj:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+#costs-runs .cobj-all { margin-left: 8px; vertical-align: 1px; }
 .csrc th, .csrc td, .cruns th, .cruns td { padding-inline: 8px; }
 .csrc td:first-child { white-space: nowrap; }
 .cmodels { font-family: var(--font-data); font-size: 0.8rem; color: var(--fg-2); white-space: normal; }

@@ -4523,12 +4523,14 @@ def create_app(settings: Settings | None = None, store: Store | None = None, sla
         return toolusage.with_status(usage, ToolSet(runtime), store.last_probe() if on else None) | {'probe': on, 'langfuse': tracer.project_url()}
 
     @app.get('/api/costs')
-    def get_costs(_: Annotated[str, Depends(require_login)], days: Annotated[int, Query(ge=1, le=30)] = 7) -> dict:
+    def get_costs(request: Request, _: Annotated[str, Depends(require_login)], days: Annotated[int, Query(ge=1, le=30)] = 7,
+                  runs: Annotated[str, Query(pattern='^(newest|all)$')] = 'newest', authorization: Annotated[str | None, Header()] = None) -> dict:
         today = clocks.day(time.time())
         rows = store.ledger_since(costs.window(days, today)[0])
-        meta = store.run_costs_meta({r['runId'] for r in rows if r.get('runId')})
+        admin = reads_access(request, authorization)
+        meta = store.run_costs_meta({r['runId'] for r in rows if r.get('runId')} | ({r['guardRun'] for r in rows if r.get('guardRun')} if admin else set()))
         guard_on = bool(settings.investigate_guard_model) and bool(settings.guard_check_questions or settings.guard_check_answers)
-        return costs.summary(rows, meta, today, days, store.spent(today), settings.investigate_daily_usd, guard_on)
+        return costs.summary(rows, meta, today, days, store.spent(today), settings.investigate_daily_usd, guard_on, admin, runs == 'all')
 
     @app.get('/api/slack-intake')
     def get_slack_intake(_: Annotated[str, Depends(require_operator)], limit: Annotated[int, Query(ge=1, le=500)] = 100) -> list[dict]:

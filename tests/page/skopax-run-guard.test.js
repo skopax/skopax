@@ -118,8 +118,9 @@ async function boot(o) {
           if (!o.admin) return {ok: false, status: 403, json: async () => ({detail: 'Admins only'})};
           return ok(srv.chats.concat(srv.runs).filter((r) => r.outcome === 'held').sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)));
         }
+        if (o.holdChats && url.startsWith('/api/investigations?') && url.includes('chats=true')) await o.holdChats;
         const body = url.startsWith('/api/me') ? {loginEnabled: true, user: o.user === false ? null : 'dora.lane@example.com', operator: !!o.operator, admin: !!o.admin, jira: false}
-          : url.startsWith('/api/rev') ? {rev: 5} : url.startsWith('/api/investigations') ? srv.runs : url.startsWith('/api/server') ? {investigate: {mode: 'live', enabled: true, stopped: null, spentToday: 1, cap: 20}} : [];
+          : url.startsWith('/api/rev') ? {rev: 5} : url.startsWith('/api/investigations') ? (url.includes('chats=true') ? srv.runs.concat(srv.chats).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)) : srv.runs) : url.startsWith('/api/server') ? {investigate: {mode: 'live', enabled: true, stopped: null, spentToday: 1, cap: 20}} : [];
         return ok(body);
       };
     },
@@ -432,6 +433,118 @@ async function everyPackSaysTheNewGuardLines() {
   return 'German, Spanish, French and Turkish say the watch only, fixed and dropped Guard lines and the category';
 }
 
+async function anAdminJumpsToTheFirstHeldAnswer() {
+  //given
+  const admin = await boot({admin: true, operator: true});
+  const viewer = await boot({admin: false, operator: true});
+  const badge = admin.doc.querySelector('#pod-ctl .pod-held');
+
+  //when
+  badge.click();
+  await wait(200);
+  const d = rowOf(admin.doc, 'h1');
+
+  //then
+  assert.strictEqual(badge.textContent, '3 answers held', 'two held runs and one held private chat answer');
+  assert.ok(d.open, 'the newest held run opens');
+  assert.strictEqual(admin.doc.activeElement, d.querySelector('.held-release'), 'and Release answer has the focus');
+  assert.strictEqual(viewer.doc.querySelector('#pod-ctl .pod-held'), null, 'only admins get the shortcut');
+  assert.deepStrictEqual(admin.errors.concat(viewer.errors), []);
+  admin.dom.window.close();
+  viewer.dom.window.close();
+  return 'an admin jumps from the held count to the newest held answer, with Release answer focused';
+}
+
+async function oneHeldAnswerIsCountedInTheSingularAndNoneShowsNoBadge() {
+  //given
+  const one = await boot({admin: true, operator: true});
+  one.srv.runs = one.srv.runs.filter((r) => r.id !== 'f1');
+  one.srv.chats = [];
+
+  //when
+  one.w.loadInvestigations();
+  await wait(200);
+  const said = one.doc.querySelector('#pod-ctl .pod-held').textContent;
+  one.srv.runs = one.srv.runs.filter((r) => r.id !== 'h1');
+  one.w.loadInvestigations();
+  await wait(200);
+
+  //then
+  assert.strictEqual(said, '1 answer held');
+  assert.strictEqual(one.doc.querySelector('#pod-ctl .pod-held'), null, 'nothing held, no badge');
+  assert.deepStrictEqual(one.errors, []);
+  one.dom.window.close();
+  return 'one held answer is counted in the singular and none shows no badge';
+}
+
+async function theGuardObjectedFilterListsOnlyObjectionsChatsIncluded() {
+  //given
+  const admin = await boot({admin: true, operator: true, extra: tunedRuns()});
+  const viewer = await boot({admin: false, operator: true});
+  admin.srv.chats.push({id: 'c3', mode: 'live', trigger: 'chat', startedAt: iso(7), outcome: 'done', usd: 0.1, keys: [], ask: {private: true}, guard: {questions: 'pass', answers: 'mask', masked: 1}});
+  const ids = (doc) => [...doc.querySelectorAll('#pod-list li.hrow')].map((li) => li.dataset.run);
+  const all = ids(admin.doc);
+  const toggle = () => admin.doc.querySelector('#pod-ctl .pod-guard-only');
+
+  //when
+  toggle().click();
+  await wait(250);
+  const on = [ids(admin.doc), toggle().getAttribute('aria-pressed'), admin.doc.activeElement === toggle(), admin.doc.getElementById('hist-runs-n').textContent];
+  const chat = rowOf(admin.doc, 'c3');
+  toggle().click();
+  await wait(250);
+
+  //then
+  assert.deepStrictEqual(on[0], ['h1', 'c1', 'm1', 'c3', 'q1', 'f1', 'w1', 'x1', 'd1', 'n1'], 'held, masked, refused, failed, watch only, fixed, dropped and noted runs; private chats included; passed and unguarded runs left out');
+  assert.deepStrictEqual(on.slice(1), ['true', true, '10']);
+  assert.ok(admin.gets.some((g) => g.startsWith('/api/investigations?limit=100&chats=true')), 'the filter asks for chats too');
+  assert.strictEqual(chat.querySelector('.hw').textContent, 'private chat message', 'a private chat keeps its text hidden');
+  assert.deepStrictEqual(ids(admin.doc), all, 'off brings the normal list back');
+  assert.strictEqual(toggle().getAttribute('aria-pressed'), 'false');
+  assert.strictEqual(viewer.doc.querySelector('#pod-ctl .pod-guard-only'), null, 'only admins get the filter');
+  assert.deepStrictEqual(admin.errors.concat(viewer.errors), []);
+  admin.dom.window.close();
+  viewer.dom.window.close();
+  return 'the Guard objected filter lists only the runs the guard objected to, private chats included, for admins only';
+}
+
+async function aChatListStillOnItsWayIsDroppedWhenAdminIsLost() {
+  //given
+  let release;
+  const holdChats = new Promise((r) => { release = r; });
+  const admin = await boot({admin: true, operator: true, holdChats});
+  admin.srv.chats.push({id: 'c3', mode: 'live', trigger: 'chat', startedAt: iso(7), outcome: 'done', usd: 0.1, keys: [], ask: {private: true}, guard: {questions: 'pass', answers: 'mask', masked: 1}});
+  const ids = () => [...admin.doc.querySelectorAll('#pod-list li.hrow')].map((li) => li.dataset.run);
+
+  //when
+  admin.doc.querySelector('#pod-ctl .pod-guard-only').click();
+  await wait(50);
+  admin.w.setAdminAccess(false);
+  release();
+  await wait(250);
+
+  //then
+  assert.ok(admin.gets.some((g) => g.startsWith('/api/investigations?limit=100&chats=true')), 'the chat list was asked for while still an admin');
+  assert.ok(ids().length > 0 && ids().indexOf('c3') < 0, 'the late chat list never reaches the History of someone who is no longer an admin: ' + ids().join(','));
+  assert.strictEqual(admin.doc.querySelector('#pod-ctl .pod-guard-only'), null, 'and the filter is gone');
+  assert.deepStrictEqual(admin.errors, []);
+  admin.dom.window.close();
+  return 'a chat list still on its way is dropped when admin is lost';
+}
+
+async function everyPackSaysTheHeldBadgeAndTheGuardFilter() {
+  //given
+  const all = await Promise.all(['de', 'es', 'fr', 'tr'].map((lang) => boot({admin: true, operator: true, lang})));
+
+  //when
+  const said = all.map((b) => [b.doc.querySelector('#pod-ctl .pod-held').textContent, b.doc.querySelector('#pod-ctl .pod-guard-only').textContent]);
+
+  //then
+  said.forEach((s) => assert.ok(!/answers held/.test(s[0]) && /3/.test(s[0]) && s[1] !== 'Guard objected', 'translated: ' + s.join(' | ')));
+  all.forEach((b) => { assert.deepStrictEqual(b.errors, []); b.dom.window.close(); });
+  return 'German, Spanish, French and Turkish say the held count and the Guard objected filter';
+}
+
 (async () => {
   console.log('PASS ' + await anAdminSeesTheHeldAnswerItsReasonAndReleaseAndDiscard());
   console.log('PASS ' + await watchFixAndDropReadAsTheirOwnGuardLines());
@@ -447,4 +560,9 @@ async function everyPackSaysTheNewGuardLines() {
   console.log('PASS ' + await everyPackSaysTheGuardTexts());
   console.log('PASS ' + await aHeldPrivateChatAnswerIsListedForAdminsOnly());
   console.log('PASS ' + await aReleasedChatAnswerStaysListedWithItsConfirmation());
+  console.log('PASS ' + await anAdminJumpsToTheFirstHeldAnswer());
+  console.log('PASS ' + await oneHeldAnswerIsCountedInTheSingularAndNoneShowsNoBadge());
+  console.log('PASS ' + await theGuardObjectedFilterListsOnlyObjectionsChatsIncluded());
+  console.log('PASS ' + await aChatListStillOnItsWayIsDroppedWhenAdminIsLost());
+  console.log('PASS ' + await everyPackSaysTheHeldBadgeAndTheGuardFilter());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });

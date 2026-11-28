@@ -92,6 +92,11 @@ async function boot(opts) {
         if (path.startsWith('/api/costs')) {
           if (o.costs) return {ok: false, status: o.costs, json: async () => ({detail: 'no'})};
           const body = costsBody(Number(new URL(path, 'https://skopax.example.com').searchParams.get('days')), o.guard);
+          if (o.objections) body.objectionRuns = o.objections;
+          if (path.includes('runs=all')) {
+            if (!o.allRuns) return {ok: false, status: 500, json: async () => ({detail: 'no'})};
+            body.runs = o.allRuns;
+          }
           return {ok: true, status: 200, json: async () => body};
         }
         if (o.hold && path.startsWith('/api/investigations')) await o.hold;
@@ -714,6 +719,235 @@ async function theGuardIsItsOwnSourceAndTheCapNoteSaysAnswersAreHeld() {
   console.log('PASS the guard is its own Costs source with guarded runs, out of the cache charts, and the cap note says answers will be held');
 }
 
+function objectionRun(id, objections, extra) {
+  return Object.assign({id, at: iso(45), source: 'pod', by: 'pod', trigger: 'cards', outcome: 'done', what: KEY, keys: [KEY], model: 'claude-opus-5-5', effort: 'medium', calls: 1, toolCalls: 1, seconds: 20,
+    usd: money({input: 0.1}), cacheHit: 0, objections}, extra || {});
+}
+
+async function anAdminClicksAnObjectionToSeeOnlyThoseRuns() {
+  //given
+  const runs = [objectionRun('o1', {contradicted: 2}), objectionRun('o2', {contradicted: 1, injection: 1}, {source: 'chat', trigger: 'chat', what: 'Chat message (private)', keys: []}), objectionRun('o3', {injection: 1})];
+  const admin = await boot({hash: '#t=costs', guard: 'noted', objections: runs});
+  const other = await boot({hash: '#t=costs', guard: 'noted'});
+  await wait(200);
+  const doc = admin.doc;
+  const ids = () => [...doc.querySelectorAll('#costs-runs tr[data-run]')].map((tr) => tr.dataset.run);
+  const btn = (c) => doc.querySelector('.csrc-guard .cobj[data-filter="objection"][data-value="' + c + '"]');
+  const all = ids();
+
+  //when
+  btn('contradicted').click();
+  await wait(20);
+  const picked = ids(), head = doc.querySelector('#costs-runs h3').textContent, pressed = btn('contradicted').getAttribute('aria-pressed');
+  const tags = [...doc.querySelectorAll('#costs-runs .cobj-n')].map((t) => t.textContent), focused = doc.activeElement && doc.activeElement.className;
+  btn('injection').click();
+  await wait(20);
+  const second = ids(), one = doc.querySelector('#costs-runs h3').textContent;
+  doc.querySelector('#costs-runs .cobj-all').click();
+  await wait(20);
+
+  //then
+  assert.deepStrictEqual([...doc.querySelectorAll('.csrc-guard .cobj')].map((b) => b.textContent), ['injection 1', 'contradicted 2'], 'each objection count is a button');
+  assert.deepStrictEqual(picked, ['o1', 'o2'], 'only the runs that got this objection');
+  assert.strictEqual(head.trim(), '2 runs with this objection: contradicted Show all runs Download CSV', 'the heading counts runs in words, so it is not read as a second objection count');
+  assert.strictEqual(pressed, 'true');
+  assert.deepStrictEqual(tags, ['contradicted 2', 'contradicted 1'], 'each run says how many times it got it');
+  assert.ok(/cobj-all/.test(focused), 'focus moves to the way back');
+  assert.deepStrictEqual(second, ['o2', 'o3'], 'another objection switches the list');
+  assert.strictEqual(one.trim(), '2 runs with this objection: injection Show all runs Download CSV');
+  assert.deepStrictEqual(ids(), all, 'Show all runs brings the normal list back');
+  assert.strictEqual(doc.activeElement, btn('injection'), 'and focus returns to the objection');
+  assert.strictEqual(other.doc.querySelectorAll('.csrc-guard .cobj').length, 0, 'without the run list (not an admin) the counts stay plain text');
+  assert.deepStrictEqual(cells(other.doc.querySelector('.csrc tr.csrc-guard')), ['objections', 'injection 1 \u00b7 contradicted 2']);
+  assert.deepStrictEqual(admin.errors.concat(other.errors), []);
+  admin.dom.window.close();
+  other.dom.window.close();
+  console.log('PASS an admin clicks an objection on Costs to list only the runs that got it');
+}
+
+async function sourceAndPersonCountsFilterTheRunList() {
+  //given
+  const {dom, w, doc, errors} = await boot({hash: '#t=costs'});
+  await wait(200);
+  const ids = () => [...doc.querySelectorAll('#costs-runs tr[data-run]')].map((tr) => tr.dataset.run);
+  const head = () => doc.querySelector('#costs-runs h3').textContent.trim();
+  const src = (s) => doc.querySelector('.csrc tr[data-source="' + s + '"] .cobj[data-filter="source"]');
+  const who = (b) => doc.querySelector('#costs-people .cobj[data-filter="by"][data-value="' + b + '"]');
+  const all = ids();
+  const plain = [src('page'), src('gate'), who('dora.lane'), who('token')];
+
+  //when
+  src('pod').click();
+  await wait(20);
+  const pod = [ids(), head(), src('pod').getAttribute('aria-pressed'), doc.activeElement && doc.activeElement.className];
+  who('adam.baker@example.com').click();
+  await wait(20);
+  const adam = [ids(), head(), src('pod').getAttribute('aria-pressed'), who('adam.baker@example.com').getAttribute('aria-pressed')];
+  who('adam.baker@example.com').click();
+  await wait(20);
+  const cleared = ids();
+  src('slack').click();
+  const body = costsBody(7);
+  body.runs = body.runs.filter((r) => r.source !== 'slack');
+  w.renderCosts(body);
+  const gone = [ids(), head()];
+  const many = costsBody(7);
+  many.runs = Array.from({length: 100}, (_, n) => Object.assign({}, many.runs[n % 3], {id: 'm' + n}));
+  w.renderCosts(many);
+  doc.querySelector('.csrc tr[data-source="assess"] .cobj').click();
+  await wait(20);
+  const capped = doc.querySelector('#costs-runs .ccapped');
+
+  //then
+  assert.deepStrictEqual(plain, [null, null, null, null], 'a count with no run in the list stays plain text');
+  assert.deepStrictEqual(pod, [['r1'], '1 run from this source: Investigator runs Show all runs Download CSV', 'true', 'btn sec small cobj-all'], 'a source run count lists only that source');
+  assert.deepStrictEqual(adam, [['r2'], '1 run by this person: adam.baker@example.com Show all runs Download CSV', 'false', 'true'], 'a person lists only their runs and replaces the source filter');
+  assert.deepStrictEqual(cleared, all, 'clicking the active one again shows all runs');
+  assert.deepStrictEqual(gone, [['r1', 'r4'], 'Runs 2 Download CSV'], 'a new range without that source drops the filter');
+  assert.ok(capped && capped.textContent === 'Only the newest 100 runs are listed. Download CSV has every run in the range.', 'a full list says it is capped');
+  assert.strictEqual(head(), '33 runs from this source: Assessments Show all runs Download CSV');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  console.log('PASS the source run counts and the top askers filter the Costs run list');
+}
+
+async function oneRunWithAnObjectionIsCountedInTheSingular() {
+  //given
+  const {dom, doc, errors} = await boot({hash: '#t=costs', guard: 'noted', objections: [objectionRun('o9', {injection: 1})]});
+  await wait(200);
+
+  //when
+  doc.querySelector('.csrc-guard .cobj[data-value="injection"]').click();
+  await wait(20);
+
+  //then
+  assert.strictEqual(doc.querySelector('#costs-runs h3').textContent.trim(), '1 run with this objection: injection Show all runs Download CSV');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  console.log('PASS one run with an objection is counted in the singular');
+}
+
+async function aFullListDownloadsEveryRunInTheRangeNotJustTheListedOnes() {
+  //given
+  const base = costsBody(7).runs;
+  const every = Array.from({length: 150}, (_, n) => Object.assign({}, base[n % 3], {id: 'e' + n}));
+  const ok = await boot({hash: '#t=costs', allRuns: every});
+  const down = await boot({hash: '#t=costs'});
+  await wait(200);
+  const saved = [];
+  [ok, down].forEach((b) => {
+    b.w.URL.createObjectURL = (blob) => { saved.push({blob, of: b}); return 'blob:costs'; };
+    b.w.URL.revokeObjectURL = () => {};
+    b.w.HTMLAnchorElement.prototype.click = function () {};
+    const listed = costsBody(7);
+    listed.runs = every.slice(0, 100);
+    b.w.renderCosts(listed);
+  });
+  const note = ok.doc.querySelector('#costs-runs .ccapped');
+
+  //when
+  ok.doc.querySelector('#costs-runs .ccsv').click();
+  await wait(50);
+  const whole = (await saved[0].blob.text()).split('\r\n').length;
+  ok.doc.querySelector('.csrc tr[data-source="assess"] .cobj').click();
+  await wait(20);
+  ok.doc.querySelector('#costs-runs .ccsv').click();
+  await wait(50);
+  const filtered = (await saved[1].blob.text()).split('\r\n').length;
+  down.doc.querySelector('#costs-runs .ccsv').click();
+  await wait(50);
+  const failed = down.doc.querySelector('#costs-runs .ccsv');
+
+  //then
+  assert.ok(note && /Download CSV has every run in the range\.$/.test(note.textContent), 'the plain list says it is capped too');
+  assert.ok(ok.gets.some((g) => g === '/api/costs?days=7&runs=all'), 'a full list asks the server for every run');
+  assert.strictEqual(whole, 152, 'a header, all 150 runs and the closing line break');
+  assert.strictEqual(filtered, 52, 'the filter applies to every run: 50 assessments');
+  assert.strictEqual(saved.length, 2, 'a failed fetch saves nothing rather than a short file');
+  assert.deepStrictEqual([failed.textContent, failed.disabled], ['The download failed. Try again.', false]);
+  assert.deepStrictEqual(ok.errors.concat(down.errors), []);
+  ok.dom.window.close();
+  down.dom.window.close();
+  console.log('PASS a full run list downloads every run in the range, not just the listed ones');
+}
+
+async function losingAdminTurnsTheObjectionButtonsBackIntoPlainCounts() {
+  //given
+  const {dom, w, doc, errors} = await boot({hash: '#t=costs', guard: 'noted', objections: [objectionRun('o1', {contradicted: 2}), objectionRun('o2', {injection: 1})]});
+  await wait(200);
+  doc.querySelector('.csrc-guard .cobj[data-value="contradicted"]').click();
+  await wait(20);
+  const before = [...doc.querySelectorAll('#costs-runs tr[data-run]')].map((tr) => tr.dataset.run);
+
+  //when
+  w.setAdminAccess(false);
+  await wait(20);
+
+  //then
+  assert.deepStrictEqual(before, ['o1']);
+  assert.strictEqual(doc.querySelectorAll('.csrc-guard .cobj').length, 0, 'the counts are plain text again');
+  assert.deepStrictEqual(cells(doc.querySelector('.csrc tr.csrc-guard')), ['objections', 'injection 1 \u00b7 contradicted 2']);
+  assert.ok(!doc.querySelector('#costs-runs').dataset.filter && !doc.querySelector('#costs-runs tr[data-run="o1"]'), 'the filtered runs are gone and the normal list is back');
+  assert.strictEqual(w.COSTS.objectionRuns, undefined, 'the run list is dropped from the page');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  console.log('PASS losing admin turns the objection buttons back into plain counts');
+}
+
+async function theRunListDownloadsAsCsvWithTheFilterAndSafeCells() {
+  //given
+  const {dom, w, doc, errors} = await boot({hash: '#t=costs'});
+  await wait(200);
+  const got = [];
+  w.URL.createObjectURL = (b) => { got.push({blob: b}); return 'blob:costs'; };
+  w.URL.revokeObjectURL = () => {};
+  w.HTMLAnchorElement.prototype.click = function () { got[got.length - 1].name = this.download; got[got.length - 1].href = this.href; };
+  const body = costsBody(7);
+  body.runs[1] = Object.assign({}, body.runs[1], {what: '=HYPERLINK("http://x")'});
+  body.runs[2] = Object.assign({}, body.runs[2], {what: 'say "hi", then go'});
+  w.renderCosts(body);
+
+  //when
+  doc.querySelector('#costs-runs .ccsv').click();
+  doc.querySelector('.csrc tr[data-source="slack"] .cobj').click();
+  await wait(20);
+  doc.querySelector('#costs-runs .ccsv').click();
+  const text = await Promise.all(got.map((g) => g.blob.text()));
+  const lines = text[0].split('\r\n');
+
+  //then
+  assert.strictEqual(got[0].name, 'skopax-costs-runs-' + body.from + '-' + body.to + '.csv');
+  assert.strictEqual(got[0].href, 'blob:costs');
+  assert.strictEqual(lines[0], '"Time","Source","Who","Card or question","Model","Effort","Tools","Seconds","Total USD"');
+  assert.strictEqual(lines.length, 5, 'a header, three runs and the closing line break');
+  assert.ok(lines[1].startsWith('"' + body.runs[0].at + '","Investigator runs",'), lines[1]);
+  assert.ok(lines[2].includes(',"\'=HYPERLINK(""http://x"")",'), 'a formula is defused and inner quotes doubled: ' + lines[2]);
+  assert.ok(lines[3].includes(',"say ""hi"", then go",'), lines[3]);
+  assert.ok(lines[3].endsWith(',"sonnet-5-5","low","","","0.25"'), 'empty tools and seconds stay empty: ' + lines[3]);
+  assert.deepStrictEqual(text[1].split('\r\n').length, 3, 'the download follows the filter: a header and the one Slack run');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  console.log('PASS the run list downloads as CSV, follows the filter and defuses formulas');
+}
+
+async function openCostsFromHistoryUsesTheSevenDayRange() {
+  //given
+  const {dom, w, doc, gets} = await boot({days: '30'});
+  doc.getElementById('tab-acts').click();
+  await wait(50);
+
+  //when
+  doc.querySelector('#pod-ctl .pod-usage a').click();
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual(costGets(gets), ['/api/costs?days=7'], 'the usage line is about this week, so Costs opens on 7 d');
+  assert.strictEqual(w.localStorage.getItem('skopax-costs-days'), '7');
+  assert.strictEqual(doc.querySelector('#costs-range button[aria-pressed="true"]').textContent, '7 d');
+  dom.window.close();
+  console.log('PASS Open Costs from History opens the seven-day range');
+}
+
 (async () => {
   await theCostsTabSitsNextToHistoryAndLoadsWhenOpened();
   await theRangeSwitchRefetchesAndRemembersTheChoice();
@@ -741,4 +975,11 @@ async function theGuardIsItsOwnSourceAndTheCapNoteSaysAnswersAreHeld() {
   await theStoredModelAuthorsShowAProviderNeutralName();
   await theGuardIsItsOwnSourceAndTheCapNoteSaysAnswersAreHeld();
   await theGuardLineCountsItsObjectionsPerCategory();
+  await anAdminClicksAnObjectionToSeeOnlyThoseRuns();
+  await sourceAndPersonCountsFilterTheRunList();
+  await oneRunWithAnObjectionIsCountedInTheSingular();
+  await theRunListDownloadsAsCsvWithTheFilterAndSafeCells();
+  await aFullListDownloadsEveryRunInTheRangeNotJustTheListedOnes();
+  await losingAdminTurnsTheObjectionButtonsBackIntoPlainCounts();
+  await openCostsFromHistoryUsesTheSevenDayRange();
 })().catch((e) => { console.error(e); process.exit(1); });

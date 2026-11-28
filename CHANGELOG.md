@@ -2,6 +2,24 @@
 
 Skopax follows semantic versioning. Releases are listed newest first.
 
+## 0.7.3 (2026-11-28)
+
+### Added
+
+- Costs: the numbers lead to the runs behind them. The run count of a source and a name in Top askers filter the Runs table to those runs; one filter is active at a time and Show all runs clears it. A count stays plain text when none of its runs is in the list.
+- Costs: for admins, each objection count on the Guard line filters the Runs table to the runs that got that objection, with a tag on each run saying how many times. The counts are guard checks and the list is runs, so two objections on one run show as one row. People who are not admins keep the plain counts, and the server does not send them the run list; a private chat is listed as a private chat message with no text.
+- Costs: Download CSV saves the runs shown, following the active filter: time, source, who, card or question, model, effort, tools, seconds and total. When the list is full at its newest 100 runs, the file still has every run in the range. Every field is quoted, and a field that starts like a spreadsheet formula is defused with a leading single quote.
+- History: admins get an answers held button that opens the newest held answer with Release answer in focus, and a Guard objected filter that lists only the runs the guard refused, held, masked, fixed, dropped or noted, private chats included. A private chat still shows as a private chat message with no text.
+
+### Changed
+
+- The usage line in History opens Costs on the 7-day range, since the line is about this week.
+- History lists the newest 30 runs plus any older held ones, so a held answer never drops off the list while it waits for review.
+
+### Upgrading
+
+- Nothing to set and no migration; old and new pods can run side by side during a rolling update.
+
 ## 0.7.2 (2026-11-27)
 
 ### Added
