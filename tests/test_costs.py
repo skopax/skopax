@@ -3,10 +3,15 @@ import time
 
 from fastapi.testclient import TestClient
 
-from tests.conftest import AUTH
+from tests.conftest import AUTH, settings
+from tests.test_auth import sso_settings
+from tests.test_read_gate import login_cookie
 from skopax import costs
 from skopax import clock
+from skopax.app import create_app
+from skopax.auth import SESSION_COOKIE
 from skopax.store import Store
+from skopax.users import Users
 
 TODAY = '2026-10-24'
 K1 = 'log|checkout-service|ERROR|boom'
@@ -162,3 +167,47 @@ def test_the_costs_endpoint_is_for_operators_and_reads_the_window(client: TestCl
     body = resp.json()
     assert body['today'] == {'day': today, 'spent': 3.4, 'cap': 25.0}
     assert (body['total']['usd'], body['total']['calls'], len(body['perBucket']), [r['id'] for r in body['runs']]) == (0.5, 1, 7, ['r1'])
+
+
+def guard_rows() -> list[dict]:
+    return [row('guard', {'input': 0.001}, {'input': 100}, at='2026-10-24T06:03:00Z', guardRun='r1', guardFor='answer', guardCategory=c, by='pod') for c in ('contradicted', 'contradicted', 'none')] + [
+        row('guard', {'input': 0.001}, {'input': 100}, at='2026-10-24T07:00:00Z', guardRun='gone', guardFor='question', guardCategory='injection', by='pod'),
+        row('guard', {'input': 0.001}, {'input': 100}, at='2026-10-24T08:00:00Z', guardRun='chat-1', guardFor='answer', guardCategory='leak', by='olga.page@example.com')]
+
+
+def test_the_runs_behind_each_objection_are_listed_only_when_asked():
+    # given
+    meta = META | {'chat-1': {'_id': 'chat-1', 'trigger': 'chat', 'outcome': 'done', 'startedAt': '2026-10-24T07:59:00Z', 'ask': {'text': 'secret question'}, 'keys': [K1]}}
+
+    # when
+    plain = costs.summary(rows() + guard_rows(), meta, TODAY, 7, 0, 20.0)
+    shown = costs.summary(rows() + guard_rows(), meta, TODAY, 7, 0, 20.0, objections=True)['objectionRuns']
+
+    # then
+    assert 'objectionRuns' not in plain
+    assert [(r['id'], r['objections']) for r in shown] == [('chat-1', {'leak': 1}), ('gone', {'injection': 1}), ('r1', {'contradicted': 2})]
+    chat, gone, r1 = shown
+    assert (chat['what'], chat['keys'], chat['trigger']) == ('Chat message (private)', [], 'chat')
+    assert (gone['source'], gone['at'], gone['usd']['total']) == ('guard', '2026-10-24T07:00:00Z', 0.0)
+    assert (r1['source'], r1['what'], r1['calls'], r1['usd']['total']) == ('pod', K1, 2, 1.5)
+    assert 'secret question' not in str(shown)
+
+
+def test_only_admins_get_the_runs_behind_the_objections(store: Store):
+    # given
+    today = clock.day(time.time())
+    store.add_ledger(row('guard', {'input': 0.001}, {'input': 100}, day=today, guardRun='r9', guardFor='answer', guardCategory='contradicted', by='pod'))
+    Users(store.db).create('olga.page@example.com', 'Olga Page', 'operator')
+    operator = login_cookie(store, 'olga.page@example.com', 'operator')
+
+    # when
+    with TestClient(create_app(settings(), store)) as c:
+        admin = c.get('/api/costs', params={'days': 1}, headers=AUTH).json()
+    with TestClient(create_app(sso_settings(), store)) as c:
+        c.cookies.set(SESSION_COOKIE, operator)
+        seen = c.get('/api/costs', params={'days': 1})
+
+    # then
+    assert [(r['id'], r['objections']) for r in admin['objectionRuns']] == [('r9', {'contradicted': 1})]
+    assert seen.status_code == 200 and 'objectionRuns' not in seen.json()
+    assert next(s for s in seen.json()['sources'] if s['source'] == 'guard')['categories'] == {'contradicted': 1}

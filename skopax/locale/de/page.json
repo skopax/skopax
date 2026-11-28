@@ -1,5 +1,10 @@
 {
  "page": {
+  "run with this objection": "Lauf mit diesem Einwand",
+  "runs with this objection": "L\u00e4ufe mit diesem Einwand",
+  "Show the runs with this objection": "Die L\u00e4ufe mit diesem Einwand zeigen",
+  "No run in this range had this objection.": "Kein Lauf in diesem Zeitraum hatte diesen Einwand.",
+  "Show all runs": "Alle L\u00e4ufe zeigen",
   "Guard off": "W\u00e4chter aus",
   "Release answer": "Antwort freigeben",
   "Discard answer": "Antwort verwerfen",

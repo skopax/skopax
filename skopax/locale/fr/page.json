@@ -1,5 +1,10 @@
 {
  "page": {
+  "run with this objection": "ex\u00e9cution avec cette objection",
+  "runs with this objection": "ex\u00e9cutions avec cette objection",
+  "Show the runs with this objection": "Afficher les ex\u00e9cutions avec cette objection",
+  "No run in this range had this objection.": "Aucune ex\u00e9cution de cette p\u00e9riode n'a eu cette objection.",
+  "Show all runs": "Afficher toutes les ex\u00e9cutions",
   "Guard off": "Garde d\u00e9sactiv\u00e9e",
   "Release answer": "Publier la r\u00e9ponse",
   "Discard answer": "Rejeter la r\u00e9ponse",

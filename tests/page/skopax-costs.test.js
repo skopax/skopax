@@ -92,6 +92,7 @@ async function boot(opts) {
         if (path.startsWith('/api/costs')) {
           if (o.costs) return {ok: false, status: o.costs, json: async () => ({detail: 'no'})};
           const body = costsBody(Number(new URL(path, 'https://skopax.example.com').searchParams.get('days')), o.guard);
+          if (o.objections) body.objectionRuns = o.objections;
           return {ok: true, status: 200, json: async () => body};
         }
         if (o.hold && path.startsWith('/api/investigations')) await o.hold;
@@ -714,6 +715,52 @@ async function theGuardIsItsOwnSourceAndTheCapNoteSaysAnswersAreHeld() {
   console.log('PASS the guard is its own Costs source with guarded runs, out of the cache charts, and the cap note says answers will be held');
 }
 
+function objectionRun(id, objections, extra) {
+  return Object.assign({id, at: iso(45), source: 'pod', by: 'pod', trigger: 'cards', outcome: 'done', what: KEY, keys: [KEY], model: 'claude-opus-5-5', effort: 'medium', calls: 1, toolCalls: 1, seconds: 20,
+    usd: money({input: 0.1}), cacheHit: 0, objections}, extra || {});
+}
+
+async function anAdminClicksAnObjectionToSeeOnlyThoseRuns() {
+  //given
+  const runs = [objectionRun('o1', {contradicted: 2}), objectionRun('o2', {contradicted: 1, injection: 1}, {source: 'chat', trigger: 'chat', what: 'Chat message (private)', keys: []}), objectionRun('o3', {injection: 1})];
+  const admin = await boot({hash: '#t=costs', guard: 'noted', objections: runs});
+  const other = await boot({hash: '#t=costs', guard: 'noted'});
+  await wait(200);
+  const doc = admin.doc;
+  const ids = () => [...doc.querySelectorAll('#costs-runs tr[data-run]')].map((tr) => tr.dataset.run);
+  const btn = (c) => doc.querySelector('.csrc-guard .cobj[data-category="' + c + '"]');
+  const all = ids();
+
+  //when
+  btn('contradicted').click();
+  await wait(20);
+  const picked = ids(), head = doc.querySelector('#costs-runs h3').textContent, pressed = btn('contradicted').getAttribute('aria-pressed');
+  const tags = [...doc.querySelectorAll('#costs-runs .cobj-n')].map((t) => t.textContent), focused = doc.activeElement && doc.activeElement.className;
+  btn('injection').click();
+  await wait(20);
+  const second = ids(), one = doc.querySelector('#costs-runs h3').textContent;
+  doc.querySelector('#costs-runs .cobj-all').click();
+  await wait(20);
+
+  //then
+  assert.deepStrictEqual([...doc.querySelectorAll('.csrc-guard .cobj')].map((b) => b.textContent), ['injection 1', 'contradicted 2'], 'each objection count is a button');
+  assert.deepStrictEqual(picked, ['o1', 'o2'], 'only the runs that got this objection');
+  assert.strictEqual(head.trim(), '2 runs with this objection: contradicted Show all runs', 'the heading counts runs in words, so it is not read as a second objection count');
+  assert.strictEqual(pressed, 'true');
+  assert.deepStrictEqual(tags, ['contradicted 2', 'contradicted 1'], 'each run says how many times it got it');
+  assert.ok(/cobj-all/.test(focused), 'focus moves to the way back');
+  assert.deepStrictEqual(second, ['o2', 'o3'], 'another objection switches the list');
+  assert.strictEqual(one.trim(), '2 runs with this objection: injection Show all runs');
+  assert.deepStrictEqual(ids(), all, 'Show all runs brings the normal list back');
+  assert.strictEqual(doc.activeElement, btn('injection'), 'and focus returns to the objection');
+  assert.strictEqual(other.doc.querySelectorAll('.csrc-guard .cobj').length, 0, 'without the run list (not an admin) the counts stay plain text');
+  assert.deepStrictEqual(cells(other.doc.querySelector('.csrc tr.csrc-guard')), ['objections', 'injection 1 \u00b7 contradicted 2']);
+  assert.deepStrictEqual(admin.errors.concat(other.errors), []);
+  admin.dom.window.close();
+  other.dom.window.close();
+  console.log('PASS an admin clicks an objection on Costs to list only the runs that got it');
+}
+
 (async () => {
   await theCostsTabSitsNextToHistoryAndLoadsWhenOpened();
   await theRangeSwitchRefetchesAndRemembersTheChoice();
@@ -741,4 +788,5 @@ async function theGuardIsItsOwnSourceAndTheCapNoteSaysAnswersAreHeld() {
   await theStoredModelAuthorsShowAProviderNeutralName();
   await theGuardIsItsOwnSourceAndTheCapNoteSaysAnswersAreHeld();
   await theGuardLineCountsItsObjectionsPerCategory();
+  await anAdminClicksAnObjectionToSeeOnlyThoseRuns();
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -1,5 +1,10 @@
 {
  "page": {
+  "run with this objection": "\u00e7al\u0131\u015ft\u0131rmada bu itiraz var",
+  "runs with this objection": "\u00e7al\u0131\u015ft\u0131rmada bu itiraz var",
+  "Show the runs with this objection": "Bu itiraz\u0131n oldu\u011fu \u00e7al\u0131\u015ft\u0131rmalar\u0131 g\u00f6ster",
+  "No run in this range had this objection.": "Bu aral\u0131kta bu itiraz\u0131 alan \u00e7al\u0131\u015ft\u0131rma yok.",
+  "Show all runs": "T\u00fcm \u00e7al\u0131\u015ft\u0131rmalar\u0131 g\u00f6ster",
   "Guard off": "Koruma kapal\u0131",
   "Release answer": "Cevab\u0131 yay\u0131nla",
   "Discard answer": "Cevab\u0131 at",

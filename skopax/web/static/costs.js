@@ -5,6 +5,7 @@ var COSTS = null;
 var COSTS_SEQ = 0;
 var COSTS_OP = null;
 var COSTS_LOCKED = false;
+var COSTS_OBJ = null;
 var COSTS_DAYS = (function () { var d = parseInt(load('skopax-costs-days'), 10); return COST_RANGES.indexOf(d) >= 0 ? d : 7; })();
 var COST_SHOWN_BY = {'Claude (self-review)': 'AI (self-review)', 'Claude': 'the investigator'};
 function costBy(by) { return isTokenActor(by) ? tokenActorLabel(by, 'API calls') : COST_SHOWN_BY[by] || (isInvestigatorBy(by) ? investigatorName() : by); }
@@ -110,12 +111,17 @@ function costAdvisor(s) {
     '<td class="num">–</td><td class="num">–</td><td class="cmodels">' + esc(models.map(costModel).join(' · ') || '–') + '</td></tr>';
 }
 var COST_GUARD_CATEGORIES = [{id: 'injection', label: 'injection'}, {id: 'harmful', label: 'harmful'}, {id: 'leak', label: 'leak'}, {id: 'contradicted', label: 'contradicted'}, {id: 'other', label: 'other'}];
-function costGuard(s) {
+function costObjRuns(d) { return d && Array.isArray(d.objectionRuns) ? d.objectionRuns : null; }
+function costGuard(s, d) {
   var c = s.source === 'guard' && s.categories && typeof s.categories === 'object' ? s.categories : null;
   var found = c ? COST_GUARD_CATEGORIES.filter(function (k) { return Number(c[k.id]) > 0; }) : [];
   if (!found.length) return '';
+  var click = !!costObjRuns(d);
   return '<tr class="csrc-guard" data-guard-categories="1"><td class="cadv">' + esc(tx('objections')) + '</td><td class="cmodels" colspan="' + (COST_PARTS.length + 6) + '">' +
-    found.map(function (k) { return esc(tx(k.label)) + ' ' + esc(Math.floor(Number(c[k.id]))); }).join(' \u00b7 ') + '</td></tr>';
+    found.map(function (k) {
+      var text = esc(tx(k.label)) + ' ' + esc(Math.floor(Number(c[k.id])));
+      return click ? '<button type="button" class="cobj" data-category="' + esc(k.id) + '" aria-pressed="' + (COSTS_OBJ === k.id) + '" aria-controls="costs-runs" title="' + esc(tx('Show the runs with this objection')) + '">' + text + '</button>' : text;
+    }).join(' \u00b7 ') + '</td></tr>';
 }
 function costSources(d) {
   return '<div class="box"><table class="csrc"><thead><tr><th>Source</th><th class="num">Calls</th><th class="num">Runs</th><th class="num">Total</th>' +
@@ -123,7 +129,7 @@ function costSources(d) {
     d.sources.map(function (s) {
       return '<tr data-source="' + esc(s.source) + '"><td><i class="sw s-' + esc(s.source) + '"></i>' + esc(costLabel(COST_SOURCES, s.source)) + '</td><td class="num">' + esc(s.calls) + '</td><td class="num">' + esc(s.runs) + '</td><td class="num"><b>' + esc(costUsd(s.usd.total)) + '</b></td>' +
         COST_PARTS.map(function (p) { return '<td class="num">' + esc(costUsd(s.usd[p.id])) + '</td>'; }).join('') +
-        '<td class="num">' + esc(costPct(s.cacheHit)) + '</td><td class="num">' + esc(costUsd(s.avgRun)) + '</td><td class="cmodels">' + esc(Object.keys(s.models).map(function (m) { return costModel(m) + ' ' + s.models[m]; }).join(' · ') || '–') + '</td></tr>' + costAdvisor(s) + costGuard(s);
+        '<td class="num">' + esc(costPct(s.cacheHit)) + '</td><td class="num">' + esc(costUsd(s.avgRun)) + '</td><td class="cmodels">' + esc(Object.keys(s.models).map(function (m) { return costModel(m) + ' ' + s.models[m]; }).join(' · ') || '–') + '</td></tr>' + costAdvisor(s) + costGuard(s, d);
     }).join('') + '</tbody></table></div>';
 }
 function costCardName(key) {
@@ -155,20 +161,30 @@ function costSplit(usd) {
     return '<b class="p-' + p.id + '" style="width:' + (usd[p.id] / sum * 100).toFixed(1) + '%"></b>';
   }).join('') : '') + '</span>';
 }
+function costObjTag(r) {
+  var n = COSTS_OBJ && r.objections ? Math.floor(Number(r.objections[COSTS_OBJ])) : 0;
+  return n > 0 ? ' <span class="tag plain cobj-n">' + esc(tx(costLabel(COST_GUARD_CATEGORIES, COSTS_OBJ))) + ' ' + esc(n) + '</span>' : '';
+}
 function costRuns(d) {
-  var body = d.runs.length ? d.runs.map(function (r) {
+  var objs = COSTS_OBJ ? (costObjRuns(d) || []).filter(function (r) { return r && r.objections && Number(r.objections[COSTS_OBJ]) > 0; }) : null;
+  var list = objs || d.runs;
+  var body = list.length ? list.map(function (r) {
     return '<tr data-run="' + esc(r.id) + '"><td class="when"><a class="run-link" href="/api/investigations/' + encodeURIComponent(r.id) + '" target="_blank" rel="noopener" data-json="Run record" title="Open the full run record">' + esc(dayhm(r.at)) + '</a></td>' +
-      '<td>' + esc(costLabel(COST_SOURCES, r.source)) + (r.outcome && r.outcome !== 'done' ? ' <span class="tag plain">' + esc(r.outcome) + '</span>' : '') + '</td><td>' + esc(costBy(r.by) || '–') + '</td>' +
+      '<td>' + esc(costLabel(COST_SOURCES, r.source)) + (r.outcome && r.outcome !== 'done' ? ' <span class="tag plain">' + esc(r.outcome) + '</span>' : '') + costObjTag(r) + '</td><td>' + esc(costBy(r.by) || '–') + '</td>' +
       '<td class="cwhat" title="' + esc(r.what) + '">' + costWhat(r) + '</td><td class="cmodel">' + esc(costModel(r.model) + (r.effort ? ' · ' + r.effort : '')) + (r.advisorCalls > 0 ? ' · <span class="cadv"' + (r.advisorModel ? ' title="' + esc(costModel(r.advisorModel)) + '"' : '') + '>advisor</span> ' + esc(r.advisorCalls) : '') + '</td>' +
       '<td class="num">' + esc(r.toolCalls == null ? '–' : r.toolCalls) + '</td><td class="num">' + esc(r.seconds == null ? '–' : secs(r.seconds)) + '</td><td>' + costSplit(r.usd) + '</td><td class="num"><b>' + esc(costUsd(r.usd.total)) + '</b></td></tr>';
-  }).join('') : '<tr class="empty"><td colspan="9">No runs in this range.</td></tr>';
-  return '<section id="costs-runs"><h3 class="sub-h">Runs <span class="count">' + esc(d.runs.length) + '</span></h3>' + costLegend(COST_PARTS, 'p') +
+  }).join('') : '<tr class="empty"><td colspan="9">' + esc(objs ? tx('No run in this range had this objection.') : 'No runs in this range.') + '</td></tr>';
+  var head = objs ? esc(objs.length) + ' ' + esc(tx(objs.length === 1 ? 'run with this objection' : 'runs with this objection')) + ': ' + esc(tx(costLabel(COST_GUARD_CATEGORIES, COSTS_OBJ))) + ' <button type="button" class="btn sec small cobj-all">' + esc(tx('Show all runs')) + '</button>'
+    : 'Runs <span class="count">' + esc(d.runs.length) + '</span>';
+  return '<section id="costs-runs"' + (objs ? ' data-objection="' + esc(COSTS_OBJ) + '"' : '') + '><h3 class="sub-h">' + head + '</h3>' + costLegend(COST_PARTS, 'p') +
     '<div class="box"><table class="cruns"><thead><tr><th>Time</th><th>Source</th><th>Who</th><th>Card or question</th><th>Model · effort</th><th class="num">Tools</th><th class="num">Duration</th><th>Split</th><th class="num">Total</th></tr></thead><tbody>' + body + '</tbody></table></div></section>';
 }
 function renderCosts(d) {
   var box = document.getElementById('costs');
   if (!box) return;
   COSTS_LOCKED = false;
+  var guardSrc = (d.sources || []).filter(function (s) { return s.source === 'guard'; })[0];
+  if (COSTS_OBJ && !(costObjRuns(d) && guardSrc && guardSrc.categories && Number(guardSrc.categories[COSTS_OBJ]) > 0)) COSTS_OBJ = null;
   var hour = d.bucket === 'hour';
   var spend = function (r, id) { return r[id]; };
   var writes = function (r, id) { return r.writeUsd[id]; };
@@ -183,6 +199,28 @@ function renderCosts(d) {
     costTop(d) + costRuns(d);
   var count = document.getElementById('count-costs');
   if (count) count.textContent = costUsd(d.today.spent);
+  costObjWire(box, d);
+}
+function costObjWire(box, d) {
+  [].forEach.call(box.querySelectorAll('.cobj'), function (b) {
+    b.addEventListener('click', function () {
+      COSTS_OBJ = COSTS_OBJ === b.dataset.category ? null : b.dataset.category;
+      var y = window.scrollY;
+      renderCosts(d);
+      window.scrollTo(0, y);
+      var runs = document.getElementById('costs-runs'), all = runs && runs.querySelector('.cobj-all');
+      if (all) { runs.scrollIntoView({block: 'start'}); all.focus({preventScroll: true}); }
+      else { var again = box.querySelector('.cobj[data-category="' + b.dataset.category + '"]'); if (again) again.focus({preventScroll: true}); }
+    });
+  });
+  var all = box.querySelector('.cobj-all');
+  if (all) all.addEventListener('click', function () {
+    var was = COSTS_OBJ;
+    COSTS_OBJ = null;
+    renderCosts(d);
+    var back = box.querySelector('.cobj[data-category="' + was + '"]');
+    if (back) back.focus();
+  });
 }
 function costLocked(code) {
   var box = document.getElementById('costs');
