@@ -211,3 +211,35 @@ def test_only_admins_get_the_runs_behind_the_objections(store: Store):
     assert [(r['id'], r['objections']) for r in admin['objectionRuns']] == [('r9', {'contradicted': 1})]
     assert seen.status_code == 200 and 'objectionRuns' not in seen.json()
     assert next(s for s in seen.json()['sources'] if s['source'] == 'guard')['categories'] == {'contradicted': 1}
+
+
+def test_every_run_lifts_the_cap_on_both_run_lists():
+    # given
+    many = [row('pod', {'input': 0.01}, {'input': 10}, at=f'2026-10-24T06:{n // 60:02d}:{n % 60:02d}Z', run=f'm{n}') for n in range(130)]
+    flags = [row('guard', {'input': 0.001}, {'input': 100}, guardRun=f'm{n}', guardFor='answer', guardCategory='leak') for n in range(130)]
+
+    # when
+    listed = costs.summary(many + flags, {}, TODAY, 7, 0, 20.0, objections=True)
+    every = costs.summary(many + flags, {}, TODAY, 7, 0, 20.0, objections=True, every_run=True)
+
+    # then
+    assert (len(listed['runs']), len(listed['objectionRuns'])) == (100, 100)
+    assert (len(every['runs']), len(every['objectionRuns'])) == (130, 130)
+    assert every['runs'][0]['id'] == 'm129' and every['total'] == listed['total']
+
+
+def test_the_costs_endpoint_gives_every_run_only_when_asked(client: TestClient, store: Store):
+    # given
+    today = clock.day(time.time())
+    for n in range(103):
+        store.add_ledger(row('pod', {'input': 0.01}, {'input': 10}, day=today, at=f'{today}T06:{n // 60:02d}:{n % 60:02d}Z', run=f'm{n}'))
+
+    # when
+    newest = client.get('/api/costs', params={'days': 1}, headers=AUTH)
+    every = client.get('/api/costs', params={'days': 1, 'runs': 'all'}, headers=AUTH)
+    odd = client.get('/api/costs', params={'days': 1, 'runs': 'some'}, headers=AUTH)
+    guest = client.get('/api/costs', params={'days': 1, 'runs': 'all'})
+
+    # then
+    assert (len(newest.json()['runs']), len(every.json()['runs'])) == (100, 103)
+    assert (odd.status_code, guest.status_code) == (422, 401)

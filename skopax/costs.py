@@ -70,13 +70,13 @@ def new_run(rid: str, at: str, source: str, by, keys: list, effort) -> dict:
     return {'id': rid, 'at': at, 'source': source, 'by': by, 'keys': keys, 'effort': effort, 'models': {}, 'calls': 0, 'usd': money(), 'tokens': tokens(), 'advisor': 0.0, 'advisorModels': {}}
 
 
-def objection_runs(flagged: dict[str, dict], runs: dict[str, dict], meta: dict[str, dict]) -> list[dict]:
+def objection_runs(flagged: dict[str, dict], runs: dict[str, dict], meta: dict[str, dict], limit: int | None) -> list[dict]:
     found = [runs.get(rid) or new_run(rid, f['at'], GUARD, None, [], None) for rid, f in flagged.items()]
-    newest = sorted(found, key=lambda run: run['at'], reverse=True)[:RUN_LIST]
+    newest = sorted(found, key=lambda run: run['at'], reverse=True)[:limit]
     return [run_row(run, meta.get(run['id']) or {}) | {'objections': {c: flagged[run['id']]['n'][c] for c in GUARD_CATEGORIES if flagged[run['id']]['n'].get(c)}} for run in newest]
 
 
-def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spent: float, cap: float, guard_on: bool = False, objections: bool = False) -> dict:
+def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spent: float, cap: float, guard_on: bool = False, objections: bool = False, every_run: bool = False) -> dict:
     first, bucket, keys = window(days, today)
     per = {k: dict.fromkeys(SOURCES, 0.0) for k in keys}
     cache = {k: {s: {'usd': money(), 'tokens': tokens()} for s in SOURCES} for k in keys}
@@ -157,7 +157,8 @@ def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spen
                           'avgRun': round(x['usd']['total'] / len(x['runs']), 4) if x['runs'] else None, 'models': x['models'],
                           **({'categories': {c: x['categories'][c] for c in GUARD_CATEGORIES if x['categories'].get(c)}} if s == GUARD else {}),
                           'advisor': {'calls': x['advisor']['calls'], 'runs': len(x['advisor']['runs']), 'usd': round(x['advisor']['usd'], 4), 'estimatedUsd': round(x['advisor']['estimated'], 4), 'models': sorted(x['advisor']['models'])} if x['advisor']['calls'] else None})
-    newest = sorted(runs.values(), key=lambda run: run['at'], reverse=True)[:RUN_LIST]
+    limit = None if every_run else RUN_LIST
+    newest = sorted(runs.values(), key=lambda run: run['at'], reverse=True)[:limit]
     return {
         'days': days, 'from': first, 'to': today, 'bucket': bucket,
         'today': {'day': today, 'spent': round(spent, 4), 'cap': cap},
@@ -172,7 +173,7 @@ def summary(rows: list[dict], meta: dict[str, dict], today: str, days: int, spen
         'topAskers': sorted(({'by': p['by'], 'runs': len(p['runs']), 'calls': p['calls'], 'usd': round(p['usd'], 4)} for p in people.values()), key=lambda p: -p['usd'])[:TOP],
         'runs': [run_row(run, meta.get(run['id']) or {}) for run in newest],
         'guardOn': guard_on,
-        **({'objectionRuns': objection_runs(flagged, runs, meta)} if objections else {}),
+        **({'objectionRuns': objection_runs(flagged, runs, meta, limit)} if objections else {}),
     }
 
 

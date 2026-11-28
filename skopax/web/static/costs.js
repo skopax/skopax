@@ -123,11 +123,11 @@ var COST_FILTERS = {
     label: function (v) { return tx(costLabel(COST_GUARD_CATEGORIES, v)); },
     runs: function (d, v) { return (costObjRuns(d) || []).filter(function (r) { return r && r.objections && Number(r.objections[v]) > 0; }); },
     valid: function (d, v) { var g = (d.sources || []).filter(function (s) { return s.source === 'guard'; })[0]; return !!(costObjRuns(d) && g && g.categories && Number(g.categories[v]) > 0); }},
-  source: {one: 'run from this source', many: 'runs from this source', empty: 'No runs in this range.', capped: true,
+  source: {one: 'run from this source', many: 'runs from this source', empty: 'No runs in this range.',
     label: function (v) { return costLabel(COST_SOURCES, v); },
     runs: function (d, v) { return (d.runs || []).filter(function (r) { return r && r.source === v; }); },
     valid: function (d, v) { return costHasRuns(d, 'source', v); }},
-  by: {one: 'run by this person', many: 'runs by this person', empty: 'No runs in this range.', capped: true,
+  by: {one: 'run by this person', many: 'runs by this person', empty: 'No runs in this range.',
     label: function (v) { return costBy(v); },
     runs: function (d, v) { return (d.runs || []).filter(function (r) { return r && r.by === v; }); },
     valid: function (d, v) { return costHasRuns(d, 'by', v); }}
@@ -200,8 +200,21 @@ function costCsv(list) {
   })).map(function (row) { return row.map(costCsvCell).join(','); }).join('\r\n') + '\r\n';
 }
 function costCsvName(d) { var day = function (x) { return String(x || '').replace(/[^0-9-]/g, ''); }; return 'skopax-costs-runs-' + day(d.from) + '-' + day(d.to) + '.csv'; }
-function costDownload(d) {
-  var url = URL.createObjectURL(new Blob([costCsv(costShownRuns(d))], {type: 'text/csv;charset=utf-8'}));
+function costRunsCapped(d) {
+  var list = COSTS_FILTER && COSTS_FILTER.kind === 'objection' ? costObjRuns(d) || [] : d.runs || [];
+  return list.length >= COSTS_RUN_CAP;
+}
+function costDownload(d, btn) {
+  if (!costRunsCapped(d)) { costSave(d, costShownRuns(d)); return; }
+  btn.disabled = true;
+  fetch('/api/costs?days=' + encodeURIComponent(d.days) + '&runs=all', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; }).then(function (full) {
+    btn.disabled = false;
+    if (!full || !Array.isArray(full.runs)) { btn.textContent = tx('The download failed. Try again.'); return; }
+    costSave(full, costFiltered(full) || full.runs);
+  });
+}
+function costSave(d, list) {
+  var url = URL.createObjectURL(new Blob([costCsv(list)], {type: 'text/csv;charset=utf-8'}));
   var a = document.createElement('a');
   a.href = url;
   a.download = costCsvName(d);
@@ -224,7 +237,7 @@ function costRuns(d) {
   var csv = ' <button type="button" class="btn sec small ccsv"' + (list.length ? '' : ' disabled') + '>' + esc(tx('Download CSV')) + '</button>';
   var head = f ? esc(objs.length) + ' ' + esc(tx(objs.length === 1 ? f.one : f.many)) + ': ' + esc(f.label(COSTS_FILTER.value)) + ' <button type="button" class="btn sec small cobj-all">' + esc(tx('Show all runs')) + '</button>' + csv
     : 'Runs <span class="count">' + esc(d.runs.length) + '</span>' + csv;
-  var capped = f && f.capped && d.runs.length >= COSTS_RUN_CAP ? '<p class="panel-note muted ccapped">' + esc(tx('Only the newest 100 runs are listed.')) + '</p>' : '';
+  var capped = costRunsCapped(d) ? '<p class="panel-note muted ccapped">' + esc(tx('Only the newest 100 runs are listed. Download CSV has every run in the range.')) + '</p>' : '';
   return '<section id="costs-runs"' + (f ? ' data-filter="' + esc(COSTS_FILTER.kind) + '"' : '') + '><h3 class="sub-h">' + head + '</h3>' + capped + costLegend(COST_PARTS, 'p') +
     '<div class="box"><table class="cruns"><thead><tr><th>Time</th><th>Source</th><th>Who</th><th>Card or question</th><th>Model · effort</th><th class="num">Tools</th><th class="num">Duration</th><th>Split</th><th class="num">Total</th></tr></thead><tbody>' + body + '</tbody></table></div></section>';
 }
@@ -274,7 +287,7 @@ function costObjWire(box, d) {
     if (back) back.focus();
   });
   var csv = box.querySelector('.ccsv');
-  if (csv) csv.addEventListener('click', function () { costDownload(d); });
+  if (csv) csv.addEventListener('click', function () { costDownload(d, csv); });
 }
 function costLocked(code) {
   var box = document.getElementById('costs');
@@ -343,6 +356,11 @@ document.querySelectorAll('#costs-range button').forEach(function (b) {
     save('skopax-costs-days', String(COSTS_DAYS));
     loadCosts();
   });
+});
+document.addEventListener('skopax:admin', function (e) {
+  if ((e.detail && e.detail.on) || !COSTS || !costObjRuns(COSTS)) return;
+  delete COSTS.objectionRuns;
+  if (!COSTS_LOCKED && document.getElementById('costs-runs')) renderCosts(COSTS);
 });
 markCostsTab(false);
 markCostRange();

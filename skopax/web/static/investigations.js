@@ -496,13 +496,15 @@ function pluginTilesChanged(list) {
   if (typeof TOOLS !== 'undefined' && TOOLS && Array.isArray(TOOLS.tools)) renderTools(TOOLS);
 }
 function loadInvestigations() {
+  var chats = POD_GUARD_ONLY && guardAdmin();
   Promise.all([
-    fetch('/api/investigations?limit=100&chats=' + (POD_GUARD_ONLY && guardAdmin() ? 'true' : 'false'), {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : []; }),
+    fetch('/api/investigations?limit=100&chats=' + (chats ? 'true' : 'false'), {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : []; }),
     fetch('/api/server', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : {}; }),
     fetch('/api/investigator/usage?days=7', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; }),
     fetch('/api/card-runs', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; }),
     heldChats(),
   ]).then(function (got) {
+    if (chats !== (POD_GUARD_ONLY && guardAdmin())) return;
     var rows = Array.isArray(got[0]) ? got[0] : [];
     rows = heldMerge(rows, got[4]);
     var info = got[1] && !Array.isArray(got[1]) ? got[1].investigate || null : null;

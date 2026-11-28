@@ -93,6 +93,10 @@ async function boot(opts) {
           if (o.costs) return {ok: false, status: o.costs, json: async () => ({detail: 'no'})};
           const body = costsBody(Number(new URL(path, 'https://skopax.example.com').searchParams.get('days')), o.guard);
           if (o.objections) body.objectionRuns = o.objections;
+          if (path.includes('runs=all')) {
+            if (!o.allRuns) return {ok: false, status: 500, json: async () => ({detail: 'no'})};
+            body.runs = o.allRuns;
+          }
           return {ok: true, status: 200, json: async () => body};
         }
         if (o.hold && path.startsWith('/api/investigations')) await o.hold;
@@ -800,7 +804,7 @@ async function sourceAndPersonCountsFilterTheRunList() {
   assert.deepStrictEqual(adam, [['r2'], '1 run by this person: adam.baker@example.com Show all runs Download CSV', 'false', 'true'], 'a person lists only their runs and replaces the source filter');
   assert.deepStrictEqual(cleared, all, 'clicking the active one again shows all runs');
   assert.deepStrictEqual(gone, [['r1', 'r4'], 'Runs 2 Download CSV'], 'a new range without that source drops the filter');
-  assert.ok(capped && capped.textContent === 'Only the newest 100 runs are listed.', 'a full list says it is capped');
+  assert.ok(capped && capped.textContent === 'Only the newest 100 runs are listed. Download CSV has every run in the range.', 'a full list says it is capped');
   assert.strictEqual(head(), '33 runs from this source: Assessments Show all runs Download CSV');
   assert.deepStrictEqual(errors, []);
   dom.window.close();
@@ -821,6 +825,73 @@ async function oneRunWithAnObjectionIsCountedInTheSingular() {
   assert.deepStrictEqual(errors, []);
   dom.window.close();
   console.log('PASS one run with an objection is counted in the singular');
+}
+
+async function aFullListDownloadsEveryRunInTheRangeNotJustTheListedOnes() {
+  //given
+  const base = costsBody(7).runs;
+  const every = Array.from({length: 150}, (_, n) => Object.assign({}, base[n % 3], {id: 'e' + n}));
+  const ok = await boot({hash: '#t=costs', allRuns: every});
+  const down = await boot({hash: '#t=costs'});
+  await wait(200);
+  const saved = [];
+  [ok, down].forEach((b) => {
+    b.w.URL.createObjectURL = (blob) => { saved.push({blob, of: b}); return 'blob:costs'; };
+    b.w.URL.revokeObjectURL = () => {};
+    b.w.HTMLAnchorElement.prototype.click = function () {};
+    const listed = costsBody(7);
+    listed.runs = every.slice(0, 100);
+    b.w.renderCosts(listed);
+  });
+  const note = ok.doc.querySelector('#costs-runs .ccapped');
+
+  //when
+  ok.doc.querySelector('#costs-runs .ccsv').click();
+  await wait(50);
+  const whole = (await saved[0].blob.text()).split('\r\n').length;
+  ok.doc.querySelector('.csrc tr[data-source="assess"] .cobj').click();
+  await wait(20);
+  ok.doc.querySelector('#costs-runs .ccsv').click();
+  await wait(50);
+  const filtered = (await saved[1].blob.text()).split('\r\n').length;
+  down.doc.querySelector('#costs-runs .ccsv').click();
+  await wait(50);
+  const failed = down.doc.querySelector('#costs-runs .ccsv');
+
+  //then
+  assert.ok(note && /Download CSV has every run in the range\.$/.test(note.textContent), 'the plain list says it is capped too');
+  assert.ok(ok.gets.some((g) => g === '/api/costs?days=7&runs=all'), 'a full list asks the server for every run');
+  assert.strictEqual(whole, 152, 'a header, all 150 runs and the closing line break');
+  assert.strictEqual(filtered, 52, 'the filter applies to every run: 50 assessments');
+  assert.strictEqual(saved.length, 2, 'a failed fetch saves nothing rather than a short file');
+  assert.deepStrictEqual([failed.textContent, failed.disabled], ['The download failed. Try again.', false]);
+  assert.deepStrictEqual(ok.errors.concat(down.errors), []);
+  ok.dom.window.close();
+  down.dom.window.close();
+  console.log('PASS a full run list downloads every run in the range, not just the listed ones');
+}
+
+async function losingAdminTurnsTheObjectionButtonsBackIntoPlainCounts() {
+  //given
+  const {dom, w, doc, errors} = await boot({hash: '#t=costs', guard: 'noted', objections: [objectionRun('o1', {contradicted: 2}), objectionRun('o2', {injection: 1})]});
+  await wait(200);
+  doc.querySelector('.csrc-guard .cobj[data-value="contradicted"]').click();
+  await wait(20);
+  const before = [...doc.querySelectorAll('#costs-runs tr[data-run]')].map((tr) => tr.dataset.run);
+
+  //when
+  w.setAdminAccess(false);
+  await wait(20);
+
+  //then
+  assert.deepStrictEqual(before, ['o1']);
+  assert.strictEqual(doc.querySelectorAll('.csrc-guard .cobj').length, 0, 'the counts are plain text again');
+  assert.deepStrictEqual(cells(doc.querySelector('.csrc tr.csrc-guard')), ['objections', 'injection 1 \u00b7 contradicted 2']);
+  assert.ok(!doc.querySelector('#costs-runs').dataset.filter && !doc.querySelector('#costs-runs tr[data-run="o1"]'), 'the filtered runs are gone and the normal list is back');
+  assert.strictEqual(w.COSTS.objectionRuns, undefined, 'the run list is dropped from the page');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  console.log('PASS losing admin turns the objection buttons back into plain counts');
 }
 
 async function theRunListDownloadsAsCsvWithTheFilterAndSafeCells() {
@@ -908,5 +979,7 @@ async function openCostsFromHistoryUsesTheSevenDayRange() {
   await sourceAndPersonCountsFilterTheRunList();
   await oneRunWithAnObjectionIsCountedInTheSingular();
   await theRunListDownloadsAsCsvWithTheFilterAndSafeCells();
+  await aFullListDownloadsEveryRunInTheRangeNotJustTheListedOnes();
+  await losingAdminTurnsTheObjectionButtonsBackIntoPlainCounts();
   await openCostsFromHistoryUsesTheSevenDayRange();
 })().catch((e) => { console.error(e); process.exit(1); });

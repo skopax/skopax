@@ -118,6 +118,7 @@ async function boot(o) {
           if (!o.admin) return {ok: false, status: 403, json: async () => ({detail: 'Admins only'})};
           return ok(srv.chats.concat(srv.runs).filter((r) => r.outcome === 'held').sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)));
         }
+        if (o.holdChats && url.startsWith('/api/investigations?') && url.includes('chats=true')) await o.holdChats;
         const body = url.startsWith('/api/me') ? {loginEnabled: true, user: o.user === false ? null : 'dora.lane@example.com', operator: !!o.operator, admin: !!o.admin, jira: false}
           : url.startsWith('/api/rev') ? {rev: 5} : url.startsWith('/api/investigations') ? (url.includes('chats=true') ? srv.runs.concat(srv.chats).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)) : srv.runs) : url.startsWith('/api/server') ? {investigate: {mode: 'live', enabled: true, stopped: null, spentToday: 1, cap: 20}} : [];
         return ok(body);
@@ -507,6 +508,30 @@ async function theGuardObjectedFilterListsOnlyObjectionsChatsIncluded() {
   return 'the Guard objected filter lists only the runs the guard objected to, private chats included, for admins only';
 }
 
+async function aChatListStillOnItsWayIsDroppedWhenAdminIsLost() {
+  //given
+  let release;
+  const holdChats = new Promise((r) => { release = r; });
+  const admin = await boot({admin: true, operator: true, holdChats});
+  admin.srv.chats.push({id: 'c3', mode: 'live', trigger: 'chat', startedAt: iso(7), outcome: 'done', usd: 0.1, keys: [], ask: {private: true}, guard: {questions: 'pass', answers: 'mask', masked: 1}});
+  const ids = () => [...admin.doc.querySelectorAll('#pod-list li.hrow')].map((li) => li.dataset.run);
+
+  //when
+  admin.doc.querySelector('#pod-ctl .pod-guard-only').click();
+  await wait(50);
+  admin.w.setAdminAccess(false);
+  release();
+  await wait(250);
+
+  //then
+  assert.ok(admin.gets.some((g) => g.startsWith('/api/investigations?limit=100&chats=true')), 'the chat list was asked for while still an admin');
+  assert.ok(ids().length > 0 && ids().indexOf('c3') < 0, 'the late chat list never reaches the History of someone who is no longer an admin: ' + ids().join(','));
+  assert.strictEqual(admin.doc.querySelector('#pod-ctl .pod-guard-only'), null, 'and the filter is gone');
+  assert.deepStrictEqual(admin.errors, []);
+  admin.dom.window.close();
+  return 'a chat list still on its way is dropped when admin is lost';
+}
+
 async function everyPackSaysTheHeldBadgeAndTheGuardFilter() {
   //given
   const all = await Promise.all(['de', 'es', 'fr', 'tr'].map((lang) => boot({admin: true, operator: true, lang})));
@@ -538,5 +563,6 @@ async function everyPackSaysTheHeldBadgeAndTheGuardFilter() {
   console.log('PASS ' + await anAdminJumpsToTheFirstHeldAnswer());
   console.log('PASS ' + await oneHeldAnswerIsCountedInTheSingularAndNoneShowsNoBadge());
   console.log('PASS ' + await theGuardObjectedFilterListsOnlyObjectionsChatsIncluded());
+  console.log('PASS ' + await aChatListStillOnItsWayIsDroppedWhenAdminIsLost());
   console.log('PASS ' + await everyPackSaysTheHeldBadgeAndTheGuardFilter());
 })().catch((e) => { console.error('FAIL', e.message); console.error(e); process.exit(1); });
