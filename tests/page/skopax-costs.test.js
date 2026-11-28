@@ -728,7 +728,7 @@ async function anAdminClicksAnObjectionToSeeOnlyThoseRuns() {
   await wait(200);
   const doc = admin.doc;
   const ids = () => [...doc.querySelectorAll('#costs-runs tr[data-run]')].map((tr) => tr.dataset.run);
-  const btn = (c) => doc.querySelector('.csrc-guard .cobj[data-category="' + c + '"]');
+  const btn = (c) => doc.querySelector('.csrc-guard .cobj[data-filter="objection"][data-value="' + c + '"]');
   const all = ids();
 
   //when
@@ -745,12 +745,12 @@ async function anAdminClicksAnObjectionToSeeOnlyThoseRuns() {
   //then
   assert.deepStrictEqual([...doc.querySelectorAll('.csrc-guard .cobj')].map((b) => b.textContent), ['injection 1', 'contradicted 2'], 'each objection count is a button');
   assert.deepStrictEqual(picked, ['o1', 'o2'], 'only the runs that got this objection');
-  assert.strictEqual(head.trim(), '2 runs with this objection: contradicted Show all runs', 'the heading counts runs in words, so it is not read as a second objection count');
+  assert.strictEqual(head.trim(), '2 runs with this objection: contradicted Show all runs Download CSV', 'the heading counts runs in words, so it is not read as a second objection count');
   assert.strictEqual(pressed, 'true');
   assert.deepStrictEqual(tags, ['contradicted 2', 'contradicted 1'], 'each run says how many times it got it');
   assert.ok(/cobj-all/.test(focused), 'focus moves to the way back');
   assert.deepStrictEqual(second, ['o2', 'o3'], 'another objection switches the list');
-  assert.strictEqual(one.trim(), '2 runs with this objection: injection Show all runs');
+  assert.strictEqual(one.trim(), '2 runs with this objection: injection Show all runs Download CSV');
   assert.deepStrictEqual(ids(), all, 'Show all runs brings the normal list back');
   assert.strictEqual(doc.activeElement, btn('injection'), 'and focus returns to the objection');
   assert.strictEqual(other.doc.querySelectorAll('.csrc-guard .cobj').length, 0, 'without the run list (not an admin) the counts stay plain text');
@@ -759,6 +759,122 @@ async function anAdminClicksAnObjectionToSeeOnlyThoseRuns() {
   admin.dom.window.close();
   other.dom.window.close();
   console.log('PASS an admin clicks an objection on Costs to list only the runs that got it');
+}
+
+async function sourceAndPersonCountsFilterTheRunList() {
+  //given
+  const {dom, w, doc, errors} = await boot({hash: '#t=costs'});
+  await wait(200);
+  const ids = () => [...doc.querySelectorAll('#costs-runs tr[data-run]')].map((tr) => tr.dataset.run);
+  const head = () => doc.querySelector('#costs-runs h3').textContent.trim();
+  const src = (s) => doc.querySelector('.csrc tr[data-source="' + s + '"] .cobj[data-filter="source"]');
+  const who = (b) => doc.querySelector('#costs-people .cobj[data-filter="by"][data-value="' + b + '"]');
+  const all = ids();
+  const plain = [src('page'), src('gate'), who('dora.lane'), who('token')];
+
+  //when
+  src('pod').click();
+  await wait(20);
+  const pod = [ids(), head(), src('pod').getAttribute('aria-pressed'), doc.activeElement && doc.activeElement.className];
+  who('adam.baker@example.com').click();
+  await wait(20);
+  const adam = [ids(), head(), src('pod').getAttribute('aria-pressed'), who('adam.baker@example.com').getAttribute('aria-pressed')];
+  who('adam.baker@example.com').click();
+  await wait(20);
+  const cleared = ids();
+  src('slack').click();
+  const body = costsBody(7);
+  body.runs = body.runs.filter((r) => r.source !== 'slack');
+  w.renderCosts(body);
+  const gone = [ids(), head()];
+  const many = costsBody(7);
+  many.runs = Array.from({length: 100}, (_, n) => Object.assign({}, many.runs[n % 3], {id: 'm' + n}));
+  w.renderCosts(many);
+  doc.querySelector('.csrc tr[data-source="assess"] .cobj').click();
+  await wait(20);
+  const capped = doc.querySelector('#costs-runs .ccapped');
+
+  //then
+  assert.deepStrictEqual(plain, [null, null, null, null], 'a count with no run in the list stays plain text');
+  assert.deepStrictEqual(pod, [['r1'], '1 run from this source: Investigator runs Show all runs Download CSV', 'true', 'btn sec small cobj-all'], 'a source run count lists only that source');
+  assert.deepStrictEqual(adam, [['r2'], '1 run by this person: adam.baker@example.com Show all runs Download CSV', 'false', 'true'], 'a person lists only their runs and replaces the source filter');
+  assert.deepStrictEqual(cleared, all, 'clicking the active one again shows all runs');
+  assert.deepStrictEqual(gone, [['r1', 'r4'], 'Runs 2 Download CSV'], 'a new range without that source drops the filter');
+  assert.ok(capped && capped.textContent === 'Only the newest 100 runs are listed.', 'a full list says it is capped');
+  assert.strictEqual(head(), '33 runs from this source: Assessments Show all runs Download CSV');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  console.log('PASS the source run counts and the top askers filter the Costs run list');
+}
+
+async function oneRunWithAnObjectionIsCountedInTheSingular() {
+  //given
+  const {dom, doc, errors} = await boot({hash: '#t=costs', guard: 'noted', objections: [objectionRun('o9', {injection: 1})]});
+  await wait(200);
+
+  //when
+  doc.querySelector('.csrc-guard .cobj[data-value="injection"]').click();
+  await wait(20);
+
+  //then
+  assert.strictEqual(doc.querySelector('#costs-runs h3').textContent.trim(), '1 run with this objection: injection Show all runs Download CSV');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  console.log('PASS one run with an objection is counted in the singular');
+}
+
+async function theRunListDownloadsAsCsvWithTheFilterAndSafeCells() {
+  //given
+  const {dom, w, doc, errors} = await boot({hash: '#t=costs'});
+  await wait(200);
+  const got = [];
+  w.URL.createObjectURL = (b) => { got.push({blob: b}); return 'blob:costs'; };
+  w.URL.revokeObjectURL = () => {};
+  w.HTMLAnchorElement.prototype.click = function () { got[got.length - 1].name = this.download; got[got.length - 1].href = this.href; };
+  const body = costsBody(7);
+  body.runs[1] = Object.assign({}, body.runs[1], {what: '=HYPERLINK("http://x")'});
+  body.runs[2] = Object.assign({}, body.runs[2], {what: 'say "hi", then go'});
+  w.renderCosts(body);
+
+  //when
+  doc.querySelector('#costs-runs .ccsv').click();
+  doc.querySelector('.csrc tr[data-source="slack"] .cobj').click();
+  await wait(20);
+  doc.querySelector('#costs-runs .ccsv').click();
+  const text = await Promise.all(got.map((g) => g.blob.text()));
+  const lines = text[0].split('\r\n');
+
+  //then
+  assert.strictEqual(got[0].name, 'skopax-costs-runs-' + body.from + '-' + body.to + '.csv');
+  assert.strictEqual(got[0].href, 'blob:costs');
+  assert.strictEqual(lines[0], '"Time","Source","Who","Card or question","Model","Effort","Tools","Seconds","Total USD"');
+  assert.strictEqual(lines.length, 5, 'a header, three runs and the closing line break');
+  assert.ok(lines[1].startsWith('"' + body.runs[0].at + '","Investigator runs",'), lines[1]);
+  assert.ok(lines[2].includes(',"\'=HYPERLINK(""http://x"")",'), 'a formula is defused and inner quotes doubled: ' + lines[2]);
+  assert.ok(lines[3].includes(',"say ""hi"", then go",'), lines[3]);
+  assert.ok(lines[3].endsWith(',"sonnet-5-5","low","","","0.25"'), 'empty tools and seconds stay empty: ' + lines[3]);
+  assert.deepStrictEqual(text[1].split('\r\n').length, 3, 'the download follows the filter: a header and the one Slack run');
+  assert.deepStrictEqual(errors, []);
+  dom.window.close();
+  console.log('PASS the run list downloads as CSV, follows the filter and defuses formulas');
+}
+
+async function openCostsFromHistoryUsesTheSevenDayRange() {
+  //given
+  const {dom, w, doc, gets} = await boot({days: '30'});
+  doc.getElementById('tab-acts').click();
+  await wait(50);
+
+  //when
+  doc.querySelector('#pod-ctl .pod-usage a').click();
+  await wait(100);
+
+  //then
+  assert.deepStrictEqual(costGets(gets), ['/api/costs?days=7'], 'the usage line is about this week, so Costs opens on 7 d');
+  assert.strictEqual(w.localStorage.getItem('skopax-costs-days'), '7');
+  assert.strictEqual(doc.querySelector('#costs-range button[aria-pressed="true"]').textContent, '7 d');
+  dom.window.close();
+  console.log('PASS Open Costs from History opens the seven-day range');
 }
 
 (async () => {
@@ -789,4 +905,8 @@ async function anAdminClicksAnObjectionToSeeOnlyThoseRuns() {
   await theGuardIsItsOwnSourceAndTheCapNoteSaysAnswersAreHeld();
   await theGuardLineCountsItsObjectionsPerCategory();
   await anAdminClicksAnObjectionToSeeOnlyThoseRuns();
+  await sourceAndPersonCountsFilterTheRunList();
+  await oneRunWithAnObjectionIsCountedInTheSingular();
+  await theRunListDownloadsAsCsvWithTheFilterAndSafeCells();
+  await openCostsFromHistoryUsesTheSevenDayRange();
 })().catch((e) => { console.error(e); process.exit(1); });

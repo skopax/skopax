@@ -7,6 +7,8 @@ var INV_SIG = '';
 var POD_OPEN = {};
 var INV_OP = null;
 var POD_OUT = {done: 'k-good', running: 'k-info', stopped: 'k-muted', skipped: 'k-muted', abandoned: 'k-muted', capped: 'k-warn', failed: 'k-crit', refused: 'k-crit', held: 'k-warn', releasing: 'k-info', discarded: 'k-muted'};
+var POD_GUARD_ONLY = false;
+var POD_SHOWN = 30;
 var GUARD_FULL = {}, GUARD_ASKED = {}, GUARD_SAID = {}, GUARD_KEPT = {}, GUARD_FOCUS = null, GUARD_HELD_SAY = 'Investigation held for review.';
 function guardAdmin() { return typeof ADMIN_OK !== 'undefined' && ADMIN_OK === true; }
 function guardOf(r) { return r && r.guard && typeof r.guard === 'object' ? r.guard : null; }
@@ -161,6 +163,7 @@ document.addEventListener('skopax:admin', function () {
   if (guardAdmin() === GUARD_WAS_ADMIN) return;
   GUARD_WAS_ADMIN = guardAdmin();
   if (!GUARD_WAS_ADMIN) {
+    POD_GUARD_ONLY = false;
     GUARD_FULL = {};
     GUARD_ASKED = {};
     GUARD_SAID = {};
@@ -355,9 +358,52 @@ function podUsageLine() {
   if (go) go.addEventListener('click', function (e) {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
     e.preventDefault();
+    if (typeof COSTS_DAYS !== 'undefined') { COSTS_DAYS = 7; save('skopax-costs-days', '7'); markCostRange(); }
     showTab('costs');
   });
   return usage;
+}
+function guardObjected(r) {
+  var g = guardOf(r), v = g ? guardVerdict(g) : '';
+  return !!r && (r.outcome === 'held' || (!!g && (g.noted === true || (!!v && !/passed$/.test(v)))));
+}
+function podShownRows() {
+  var rows = POD_GUARD_ONLY && guardAdmin() ? INV_ROWS.filter(guardObjected) : INV_ROWS;
+  return rows.slice(0, POD_SHOWN).concat(rows.slice(POD_SHOWN).filter(function (r) { return r && r.outcome === 'held'; }));
+}
+function podGuardToggle() {
+  var b = el('button', 'btn sec small pod-guard-only');
+  b.type = 'button';
+  b.textContent = tx('Guard objected');
+  b.title = tx('Show only the runs the guard objected to, private chats included');
+  b.setAttribute('aria-pressed', String(POD_GUARD_ONLY));
+  b.addEventListener('click', function () {
+    POD_GUARD_ONLY = !POD_GUARD_ONLY;
+    renderPodRuns();
+    var again = document.querySelector('#pod-ctl .pod-guard-only');
+    if (again) again.focus();
+    loadInvestigations();
+  });
+  return b;
+}
+function podOpenRun(id) {
+  var li = [].filter.call(document.querySelectorAll('#pod-list li.hrow'), function (n) { return n.dataset.run === id; })[0], d = li && li.querySelector('details');
+  if (!d) return;
+  var hist = document.getElementById('hist-runs');
+  if (hist) hist.open = true;
+  POD_OPEN[id] = 1;
+  d.open = true;
+  li.scrollIntoView({block: 'center'});
+  var go = d.querySelector('.held-release') || d.querySelector('summary');
+  if (go) go.focus({preventScroll: true});
+}
+function podHeldBadge(id, n) {
+  var b = el('button', 'btn small pod-held');
+  b.type = 'button';
+  b.textContent = n + ' ' + tx(n === 1 ? 'answer held' : 'answers held');
+  b.title = tx('Open the first held answer');
+  b.addEventListener('click', function () { podOpenRun(id); });
+  return b;
 }
 function refreshPodUsage() {
   var ctl = document.getElementById('pod-ctl'), state = ctl && ctl.querySelector('.pod-state');
@@ -373,6 +419,7 @@ function renderPodRuns() {
   var ctl = document.getElementById('pod-ctl'), list = document.getElementById('pod-list');
   if (!ctl || !list) return;
   var i = INV_INFO || {};
+  var guardFocus = !!(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('pod-guard-only'));
   ctl.innerHTML = '';
   var line = el('span', 'pod-state', i.mode ? esc(i.mode) + ' · ' + usdText(i.spentToday) + ' of ' + usdText(i.cap) + ' today' + (i.stopped ? ' · Stopped by ' + esc(i.stopped.by) + ' ' + esc(dayhm(i.stopped.at)) : '') : 'not set up');
   ctl.append(line);
@@ -393,13 +440,21 @@ function renderPodRuns() {
     ask.addEventListener('click', function () { if (ask.getAttribute('aria-disabled') !== 'true') askDialog(); });
     ctl.append(ask);
   }
+  var shown = podShownRows(), heldRows = shown.filter(function (r) { return r && r.outcome === 'held'; });
+  if (guardAdmin()) {
+    var gt = podGuardToggle();
+    ctl.append(gt);
+    if (guardFocus) gt.focus();
+    if (heldRows.length) ctl.append(podHeldBadge(heldRows[0].id, heldRows.length));
+  }
   var keep = heldProposal(), back = null;
   list.innerHTML = '';
   var rn = document.getElementById('hist-runs-n');
-  if (rn) rn.textContent = INV_ROWS.length ? String(Math.min(INV_ROWS.length, 30)) : '';
-  if (!INV_ROWS.length) list.appendChild(el('li', 'muted', 'No investigations yet.'));
-  INV_ROWS.slice(0, 30).forEach(function (r) {
+  if (rn) rn.textContent = shown.length ? String(shown.length) : '';
+  if (!shown.length) list.appendChild(el('li', 'muted', POD_GUARD_ONLY && guardAdmin() ? tx('No recent run had a guard objection.') : 'No investigations yet.'));
+  shown.forEach(function (r) {
     var li = el('li', 'hrow'), d = el('details');
+    li.dataset.run = r.id;
     if (POD_OPEN[r.id]) d.open = true;
     var slackAsk = !!(r.ask && r.ask.source === 'slack'), priv = !!(r.ask && r.ask.private);
     var thread = slackAsk && slackThread(r.ask.thread) ? ' · <a href="' + esc(r.ask.thread) + '" target="_blank" rel="noopener">thread</a>' : '';
@@ -442,7 +497,7 @@ function pluginTilesChanged(list) {
 }
 function loadInvestigations() {
   Promise.all([
-    fetch('/api/investigations?limit=100&chats=false', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : []; }),
+    fetch('/api/investigations?limit=100&chats=' + (POD_GUARD_ONLY && guardAdmin() ? 'true' : 'false'), {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : []; }),
     fetch('/api/server', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : {}; }),
     fetch('/api/investigator/usage?days=7', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; }),
     fetch('/api/card-runs', {credentials: 'same-origin'}).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; }),
